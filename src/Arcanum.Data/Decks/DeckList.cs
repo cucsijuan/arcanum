@@ -4,11 +4,20 @@ using Arcanum.Engine.Cards;
 
 namespace Arcanum.Data.Decks;
 
-public sealed record DeckEntry(int Count, string Name);
+/// <summary>A deck line: count and card name, optionally the printing (set code and collector number) whose art to show.</summary>
+public sealed record DeckEntry(int Count, string Name, string? Set = null, string? Number = null)
+{
+    /// <summary>Whether two entries name the same card in the same printing.</summary>
+    public bool SameCard(string name, string? set, string? number) =>
+        Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(Set, set, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(Number, number, StringComparison.OrdinalIgnoreCase);
+}
 
 /// <summary>
 /// Plain-text deck list: one "count name" per line ("4 Glade Cub"), "#" comments, blank lines ignored.
-/// A "Sideboard" line starts the sideboard section. Set codes in parentheses after the name are ignored.
+/// A "Sideboard" line starts the sideboard section. A set code in parentheses and a collector number after the name
+/// ("4 Glade Cub (ABC) 123") choose the printing, and with it the card's art.
 /// </summary>
 public sealed partial class DeckList
 {
@@ -49,7 +58,9 @@ public sealed partial class DeckList
 
             var match = EntryLine().Match(line);
             if (!match.Success) throw new FormatException($"Can't read deck line '{line}'.");
-            section.Add(new DeckEntry(int.Parse(match.Groups["count"].Value), match.Groups["name"].Value.Trim()));
+            section.Add(new DeckEntry(int.Parse(match.Groups["count"].Value), match.Groups["name"].Value.Trim(),
+                match.Groups["set"].Success && match.Groups["set"].Value.Trim() is { Length: > 0 } set ? set.ToUpperInvariant() : null,
+                match.Groups["number"].Success ? match.Groups["number"].Value : null));
         }
         return deck;
     }
@@ -63,7 +74,13 @@ public sealed partial class DeckList
             if (entries.Count == 0) return;
             if (sb.Length > 0) sb.Append('\n');
             sb.Append(title).Append('\n');
-            foreach (var e in entries) sb.Append(e.Count).Append(' ').Append(e.Name).Append('\n');
+            foreach (var e in entries)
+            {
+                sb.Append(e.Count).Append(' ').Append(e.Name);
+                if (e.Set is not null) sb.Append(" (").Append(e.Set).Append(')');
+                if (e.Set is not null && e.Number is not null) sb.Append(' ').Append(e.Number);
+                sb.Append('\n');
+            }
         }
         Section("Commander", Commander);
         Section("Deck", Main);
@@ -71,10 +88,10 @@ public sealed partial class DeckList
         return sb.ToString();
     }
 
-    /// <summary>Adds (or with a negative <paramref name="delta"/> removes) copies of a card in a section.</summary>
-    public static void Adjust(List<DeckEntry> section, string name, int delta)
+    /// <summary>Adds (or with a negative <paramref name="delta"/> removes) copies of a card (in a given printing) in a section.</summary>
+    public static void Adjust(List<DeckEntry> section, string name, int delta, string? set = null, string? number = null)
     {
-        int index = section.FindIndex(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        int index = section.FindIndex(e => e.SameCard(name, set, number));
         int count = (index >= 0 ? section[index].Count : 0) + delta;
         if (index >= 0)
         {
@@ -83,9 +100,19 @@ public sealed partial class DeckList
         }
         else if (count > 0)
         {
-            section.Add(new DeckEntry(count, name));
+            section.Add(new DeckEntry(count, name, set, number));
         }
     }
+
+    /// <summary>The definition for a deck line: in its printing when the database knows printings.</summary>
+    public static bool TryResolve(ICardDatabase database, DeckEntry entry, out CardDefinition definition) =>
+        database is CardData.CardDatabase cards
+            ? cards.TryGet(entry.Name, entry.Set, entry.Number, out definition)
+            : database.TryGet(entry.Name, out definition);
+
+    /// <summary>One definition per copy for the lines the database knows.</summary>
+    public static List<CardDefinition> Definitions(ICardDatabase database, IEnumerable<DeckEntry> entries) =>
+        entries.SelectMany(e => TryResolve(database, e, out var d) ? Enumerable.Repeat(d, e.Count) : Enumerable.Empty<CardDefinition>()).ToList();
 
     /// <summary>Card definitions for the main deck; names the database doesn't know are returned separately.</summary>
     public (List<CardDefinition> Cards, List<string> Unknown) Resolve(ICardDatabase database)
@@ -94,12 +121,12 @@ public sealed partial class DeckList
         var unknown = new List<string>();
         foreach (var entry in Main)
         {
-            if (database.TryGet(entry.Name, out var def)) cards.AddRange(Enumerable.Repeat(def, entry.Count));
+            if (TryResolve(database, entry, out var def)) cards.AddRange(Enumerable.Repeat(def, entry.Count));
             else unknown.Add(entry.Name);
         }
         return (cards, unknown);
     }
 
-    [GeneratedRegex(@"^(?<count>\d+)x?\s+(?<name>[^(]+?)(\s+\([^)]*\).*)?$")]
+    [GeneratedRegex(@"^(?<count>\d+)x?\s+(?<name>[^(]+?)(\s+\((?<set>[^)]*)\)(\s+(?<number>[^\s*]+))?.*)?$")]
     private static partial Regex EntryLine();
 }

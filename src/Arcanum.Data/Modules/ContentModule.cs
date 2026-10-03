@@ -17,7 +17,11 @@ public sealed record CardSource(
 /// <param name="ByIdTemplate">URL for an exact image id ({id}), used when a name is ambiguous (tokens).</param>
 public sealed record ImageSource(string UrlTemplate, int MinIntervalMs, string? ByIdTemplate = null);
 
-public sealed record ModuleSources(string UserAgent, CardSource Cards, ImageSource Images);
+/// <summary>Where every printing of every card comes from (sets, collector numbers, rarities, exact images).</summary>
+public sealed record PrintingSource(string Index, string DownloadField);
+
+/// <param name="Printings">Optional: without it cards have no set information and show their default picture.</param>
+public sealed record ModuleSources(string UserAgent, CardSource Cards, ImageSource Images, PrintingSource? Printings = null);
 
 /// <summary>
 /// A content module installed on disk: where card data and images come from, card scripts, formats and decks.
@@ -58,7 +62,10 @@ public sealed class ContentModule
             new CardSource(Required(cards, "format"), Required(cards, "index"), Required(cards, "downloadField"), Required(cards, "updatedField"),
                 StringList(cards, "includeIfLegalIn"), StringList(cards, "excludeLayouts")),
             new ImageSource(Required(images, "urlTemplate"), images.TryGetProperty("minIntervalMs", out var ms) ? ms.GetInt32() : 100,
-                Optional(images, "byIdTemplate")));
+                Optional(images, "byIdTemplate")),
+            s.TryGetProperty("printings", out var printings)
+                ? new PrintingSource(Required(printings, "index"), Required(printings, "downloadField"))
+                : null);
 
         return new ContentModule(directory, manifest, sources);
     }
@@ -105,6 +112,20 @@ public sealed class ContentModule
             catch (Exception e) when (e is FormatException or JsonException) { errors?.Add($"{Path.GetFileName(file)}: {e.Message}"); }
         }
         return formats;
+    }
+
+    /// <summary>Card sets in sets/*.json (their cards, boosters and limited settings).</summary>
+    public List<Limited.SetDefinition> LoadSets(List<string>? errors = null)
+    {
+        var sets = new List<Limited.SetDefinition>();
+        var dir = Path.Combine(Directory, "sets");
+        if (!System.IO.Directory.Exists(dir)) return sets;
+        foreach (var file in System.IO.Directory.EnumerateFiles(dir, "*.json").Order())
+        {
+            try { sets.Add(Limited.SetDefinition.Parse(File.ReadAllText(file))); }
+            catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException) { errors?.Add($"{Path.GetFileName(file)}: {e.Message}"); }
+        }
+        return sets;
     }
 
     public string ImageUrl(string cardName) => Sources.Images.UrlTemplate.Replace("{name}", Uri.EscapeDataString(cardName));

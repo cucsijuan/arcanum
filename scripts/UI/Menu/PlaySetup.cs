@@ -186,9 +186,9 @@ public partial class PlaySetup : Control
             var (definitions, unknown) = deck.Resolve(cards);
             if (unknown.Count > 0) GD.PushWarning($"Deck '{info.Name}': unknown cards {string.Join(", ", unknown)}");
             var commanders = format.Commander
-                ? deck.Commander.SelectMany(e => cards.TryGet(e.Name, out var d) ? Enumerable.Repeat(d, e.Count) : Enumerable.Empty<Arcanum.Engine.Cards.CardDefinition>()).ToList()
+                ? DeckList.Definitions(cards, deck.Commander)
                 : null;
-            if (!format.Commander) definitions.AddRange(deck.Commander.SelectMany(e => cards.TryGet(e.Name, out var d) ? new[] { d } : Array.Empty<Arcanum.Engine.Cards.CardDefinition>()));
+            if (!format.Commander) definitions.AddRange(DeckList.Definitions(cards, deck.Commander));
             bool bot = _vsBot && i > 0;
             seats.Add(new GameSession.Seat(_seats[i].Name.Text is { Length: > 0 } n ? n : $"Player {i + 1}", definitions, bot, commanders));
         }

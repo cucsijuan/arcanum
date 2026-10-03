@@ -69,8 +69,8 @@ public static partial class CardFactory
             OracleText = record.OracleText,
             Keywords = record.Keywords,
             TapForMana = tapForMana,
-            Spell = WithTokenImages(script?.Spell, record),
-            Abilities = derivedAbilities.Concat((script?.Abilities ?? Array.Empty<Engine.Abilities.AbilityDefinition>()).Select(a => WithTokenImages(a, record)!)).ToList(),
+            Spell = WithTokenImages(script?.Spell, record.RelatedTokens),
+            Abilities = derivedAbilities.Concat((script?.Abilities ?? Array.Empty<Engine.Abilities.AbilityDefinition>()).Select(a => WithTokenImages(a, record.RelatedTokens)!)).ToList(),
             EnchantTarget = script?.Aura ?? enchant,
             EntersTapped = entersTapped || (script?.EntersTapped ?? false),
             EntersWithCounters = script?.EntersWithCounters ?? 0,
@@ -117,18 +117,29 @@ public static partial class CardFactory
     /// Points each token an ability creates at the exact token printing the card source lists for this card
     /// (matched by name, and by power/toughness when several share a name), so the client shows the right picture.
     /// </summary>
-    private static T? WithTokenImages<T>(T? ability, CardRecord record) where T : Engine.Abilities.AbilityDefinition
+    private static T? WithTokenImages<T>(T? ability, IReadOnlyList<RelatedToken> tokens, bool replace = false) where T : Engine.Abilities.AbilityDefinition
     {
-        if (ability is null || record.RelatedTokens.Count == 0 || !ability.Effects.Any(e => e is Engine.Abilities.CreateTokens)) return ability;
+        if (ability is null || tokens.Count == 0 || !ability.Effects.Any(e => e is Engine.Abilities.CreateTokens)) return ability;
         var effects = ability.Effects.Select(effect =>
         {
-            if (effect is not Engine.Abilities.CreateTokens create || create.Token.ImageKey is not null) return effect;
-            var candidates = record.RelatedTokens.Where(t => t.Name.Equals(create.Token.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (effect is not Engine.Abilities.CreateTokens create || (create.Token.ImageKey is not null && !replace)) return effect;
+            var candidates = tokens.Where(t => t.Name.Equals(create.Token.Name, StringComparison.OrdinalIgnoreCase)).ToList();
             var match = candidates.Count <= 1 ? candidates.FirstOrDefault() : candidates.FirstOrDefault(t => MatchesStats(t, create.Token)) ?? candidates[0];
             return match is null ? effect : create with { Token = create.Token with { ImageKey = match.Id } };
         }).ToList();
         return ability with { Effects = effects };
     }
+
+    /// <summary>
+    /// The card as printed in <paramref name="printing"/>: same rules, with that printing's picture and the tokens
+    /// printed alongside it.
+    /// </summary>
+    public static CardDefinition ForPrinting(CardDefinition definition, Printing printing) => definition with
+    {
+        ImageKey = printing.Id,
+        Spell = WithTokenImages(definition.Spell, printing.Tokens, replace: true),
+        Abilities = definition.Abilities.Select(a => WithTokenImages(a, printing.Tokens, replace: true)!).ToList(),
+    };
 
     /// <summary>Related tokens carry no stats in the source's listing; their type line can still tell colors apart.</summary>
     private static bool MatchesStats(RelatedToken token, CardDefinition definition) =>

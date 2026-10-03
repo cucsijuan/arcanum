@@ -36,26 +36,46 @@ public partial class ContentLoader : Node
         var dataDir = ProjectSettings.GlobalizePath($"user://card_data/{Module.Manifest.Id}");
         Directory.CreateDirectory(dataDir);
         // Bump the version when import rules change so existing installs re-import.
-        var compact = Path.Combine(dataDir, $"cards.v3-{Module.Manifest.Version}.jsonl.gz");
+        var compact = Path.Combine(dataDir, $"cards.v4-{Module.Manifest.Version}.jsonl.gz");
 
         if (!File.Exists(compact))
         {
             foreach (var old in Directory.EnumerateFiles(dataDir, "cards*.jsonl.gz")) File.Delete(old);
             var source = Path.Combine(dataDir, "source.download");
             Report("Looking up card data…");
-            var downloadUrl = await ResolveDownloadUrlAsync(Module);
+            var downloadUrl = await ResolveDownloadUrlAsync(Module.Sources.Cards.Index, Module.Sources.Cards.DownloadField);
             if (downloadUrl is null) return false;
-            if (!await DownloadAsync(downloadUrl, source, Module.Sources.UserAgent)) return false;
+            if (!await DownloadAsync(downloadUrl, source, Module.Sources.UserAgent, "card data")) return false;
+
+            // Every printing of every card: sets, collector numbers, rarities and exact pictures.
+            string? printingsFile = null;
+            if (Module.Sources.Printings is { } printingSource)
+            {
+                Report("Looking up printings…");
+                var printingsUrl = await ResolveDownloadUrlAsync(printingSource.Index, printingSource.DownloadField);
+                if (printingsUrl is null) return false;
+                printingsFile = Path.Combine(dataDir, "printings.download");
+                if (!await DownloadAsync(printingsUrl, printingsFile, Module.Sources.UserAgent, "printings")) return false;
+            }
 
             Report("Preparing card data…");
             await Task.Run(() =>
             {
+                Dictionary<string, List<Printing>>? printings = null;
+                if (printingsFile is not null)
+                {
+                    using var printingsInput = File.OpenRead(printingsFile);
+                    printings = OracleJsonl.ImportPrintings(printingsInput);
+                }
                 using var input = File.OpenRead(source);
                 var temp = compact + ".tmp";
-                using (var output = File.Create(temp)) OracleJsonl.WriteCompact(OracleJsonl.Import(input, Module.Sources.Cards.ToFilter()), output);
+                var records = OracleJsonl.Import(input, Module.Sources.Cards.ToFilter());
+                if (printings is not null) records = OracleJsonl.WithPrintings(records, printings);
+                using (var output = File.Create(temp)) OracleJsonl.WriteCompact(records, output);
                 File.Move(temp, compact, overwrite: true);
             });
             File.Delete(source);
+            if (printingsFile is not null) File.Delete(printingsFile);
         }
 
         Report("Loading cards…");
@@ -84,12 +104,12 @@ public partial class ContentLoader : Node
         return candidates.FirstOrDefault(dir => File.Exists(Path.Combine(dir, "manifest.json")));
     }
 
-    private async Task<string?> ResolveDownloadUrlAsync(ContentModule module)
+    private async Task<string?> ResolveDownloadUrlAsync(string index, string downloadField)
     {
-        var (ok, body) = await RequestAsync(module.Sources.Cards.Index, module.Sources.UserAgent);
+        var (ok, body) = await RequestAsync(index, Module!.Sources.UserAgent);
         if (!ok) return null;
         using var doc = JsonDocument.Parse(body);
-        return doc.RootElement.TryGetProperty(module.Sources.Cards.DownloadField, out var url) ? url.GetString() : null;
+        return doc.RootElement.TryGetProperty(downloadField, out var url) ? url.GetString() : null;
     }
 
     private async Task<(bool Ok, byte[] Body)> RequestAsync(string url, string userAgent)
@@ -105,7 +125,7 @@ public partial class ContentLoader : Node
         return response;
     }
 
-    private async Task<bool> DownloadAsync(string url, string path, string userAgent)
+    private async Task<bool> DownloadAsync(string url, string path, string userAgent, string what)
     {
         var http = new HttpRequest { DownloadFile = path, Timeout = 0, UseThreads = true };
         AddChild(http);
@@ -117,7 +137,7 @@ public partial class ContentLoader : Node
         {
             int total = http.GetBodySize();
             int done = http.GetDownloadedBytes();
-            Report(total > 0 ? $"Downloading card data… {done * 100L / total}%" : $"Downloading card data… {done / 1_048_576} MB");
+            Report(total > 0 ? $"Downloading {what}… {done * 100L / total}%" : $"Downloading {what}… {done / 1_048_576} MB");
             await ToSignal(GetTree().CreateTimer(0.2), SceneTreeTimer.SignalName.Timeout);
         }
         http.QueueFree();

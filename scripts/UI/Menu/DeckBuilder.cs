@@ -13,8 +13,9 @@ using Godot;
 namespace Arcanum.UI.Menu;
 
 /// <summary>
-/// Deck builder: search the card pool with filters, click to add (right-click to remove), see the deck grouped
-/// by type with a mana curve and live format validation; save, import and export deck lists.
+/// Deck builder: search the card pool with filters (including by set, which shows that set's printings and art),
+/// click to add (right-click to remove), see the deck grouped by type with a mana curve and live format validation,
+/// choose each card's printing; save, import and export deck lists.
 /// </summary>
 public partial class DeckBuilder : Control
 {
@@ -36,7 +37,7 @@ public partial class DeckBuilder : Control
     private bool _dirty;
     private bool _editingSideboard;
     private bool _editingCommander;
-    private List<CardEntry> _results = new();
+    private List<(CardEntry Entry, Printing? Printing)> _results = new();
     private int _page;
     private readonly List<DeckInfo> _saved = new();
 
@@ -45,6 +46,8 @@ public partial class DeckBuilder : Control
     private readonly Dictionary<string, Button> _colorToggles = new();
     private readonly OptionButton _typeFilter = MenuKit.Options(TypeFilters.Select(t => t.Label));
     private readonly OptionButton _mvFilter = MenuKit.Options(ManaValueFilters);
+    private readonly OptionButton _setFilter = MenuKit.Options(new[] { "All sets" });
+    private IReadOnlyList<SetInfo> _sets = Array.Empty<SetInfo>();
     private readonly CheckButton _supportedOnly = MenuKit.Toggle("Playable only", true);
     private readonly CheckButton _legalOnly = MenuKit.Toggle("Legal in format", true);
     private readonly Godot.Timer _searchDelay = new() { WaitTime = 0.3, OneShot = true };
@@ -93,6 +96,9 @@ public partial class DeckBuilder : Control
 
         foreach (var f in App.Instance.Formats) _format.AddItem(f.Name);
         _format.Selected = 0;
+        _sets = Cards.Sets;
+        foreach (var set in _sets) _setFilter.AddItem($"{set.Name} ({set.Code.ToUpperInvariant()})");
+        _setFilter.Visible = _sets.Count > 0;
         RefreshSavedDecks();
         NewDeck();
         RunSearch();
@@ -162,8 +168,13 @@ public partial class DeckBuilder : Control
         }
         _typeFilter.ItemSelected += _ => RunSearch();
         _mvFilter.ItemSelected += _ => RunSearch();
+        _setFilter.ItemSelected += _ => RunSearch();
+        _setFilter.TooltipText = "Only cards printed in this set, with that set's art";
+        _setFilter.CustomMinimumSize = new Vector2(220, 0);
+        _setFilter.ClipText = true;
         filters.AddChild(_typeFilter);
         filters.AddChild(_mvFilter);
+        filters.AddChild(_setFilter);
         left.AddChild(filters);
 
         var toggles = new HBoxContainer();
@@ -243,7 +254,7 @@ public partial class DeckBuilder : Control
         _importDialog.OkButtonText = "Import";
         _importDialog.Size = new Vector2I(720, 560);
         var box = new VBoxContainer();
-        box.AddChild(MenuKit.Hint("Paste a deck list: one \"4 Card Name\" per line. Set codes are ignored; \"Sideboard\", \"Commander\" and \"Companion\" sections are understood."));
+        box.AddChild(MenuKit.Hint("Paste a deck list: one \"4 Card Name\" per line, optionally with the set code and collector number (\"4 Card Name (ABC) 123\") to choose the printing. \"Sideboard\", \"Commander\" and \"Companion\" sections are understood."));
         _importText.CustomMinimumSize = new Vector2(680, 420);
         _importText.AddThemeFontSizeOverride("font_size", 14);
         box.AddChild(_importText);
@@ -269,10 +280,17 @@ public partial class DeckBuilder : Control
             ManaValueMax = mv <= 0 ? null : mv == ManaValueFilters.Length - 1 ? null : mv - 1,
             SupportedOnly = _supportedOnly.ButtonPressed,
             LegalIn = _legalOnly.ButtonPressed ? Format.Legality : null,
+            Set = SelectedSet?.Code,
         };
-        _results = Cards.Search(query).ToList();
+        var found = Cards.Search(query);
+        _results = SelectedSet is { } set
+            ? found.SelectMany(e => e.Record.Printings.Where(p => p.Set == set.Code).Select(p => (e, (Printing?)p)))
+                .OrderBy(x => x.Item2!.CollectorNumber, Comparer<string>.Create(OracleJsonl.CompareNumbers)).ToList()
+            : found.Select(e => (e, (Printing?)null)).ToList();
         ShowPage(0);
     }
+
+    private SetInfo? SelectedSet => _setFilter.Selected > 0 && _setFilter.Selected <= _sets.Count ? _sets[_setFilter.Selected - 1] : null;
 
     private void ShowPage(int page)
     {
@@ -280,7 +298,7 @@ public partial class DeckBuilder : Control
         int pages = Math.Max(1, (_results.Count + pageSize - 1) / pageSize);
         _page = Math.Clamp(page, 0, pages - 1);
         foreach (var child in _grid.GetChildren()) child.QueueFree();
-        foreach (var entry in _results.Skip(_page * pageSize).Take(pageSize)) _grid.AddChild(Tile(entry));
+        foreach (var (entry, printing) in _results.Skip(_page * pageSize).Take(pageSize)) _grid.AddChild(Tile(entry, printing));
         _resultInfo.Text = _results.Count == 0 ? "No cards match" : $"{_results.Count:N0} cards · page {_page + 1} of {pages}";
         _prev.Disabled = _page == 0;
         _next.Disabled = _page >= pages - 1;
@@ -290,23 +308,29 @@ public partial class DeckBuilder : Control
     {
         Id = new CardId(id), Owner = new PlayerId(0), Controller = new PlayerId(0), Zone = Zone.Hand, IsHidden = false,
         Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
-        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness,
+        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey,
     };
 
-    private Control Tile(CardEntry entry)
+    /// <summary>The card's definition in a printing (its art), or its default one.</summary>
+    private CardDefinition DefinitionOf(string name, string? set, string? number) =>
+        Cards.TryGet(name, set, number, out var d) ? d : Cards.Find(name)!.Definition;
+
+    private Control Tile(CardEntry entry, Printing? printing)
     {
         var tile = new Control { CustomMinimumSize = TileSize };
         var card = new CardNode { Size = TileSize };
         tile.AddChild(card);
-        card.Setup(ViewOf(entry.Definition, -1), showCostPips: false);
-        card.Clicked += _ => Add(entry.Name, 1);
-        card.RightClicked += _ => Add(entry.Name, -1);
+        string? set = printing?.Set.ToUpperInvariant(), number = printing?.CollectorNumber;
+        card.Setup(ViewOf(DefinitionOf(entry.Name, set, number), -1), showCostPips: false);
+        card.Clicked += _ => Add(entry.Name, 1, set, number);
+        card.RightClicked += _ => Add(entry.Name, -1, set, number);
+        if (printing is not null) card.TooltipText = $"{printing.SetName} #{printing.CollectorNumber} · {printing.Rarity}";
         card.HoverStarted += c => ShowPreview(c, tile);
         card.HoverEnded += _ => _preview.Visible = false;
         if (entry.Support != CardSupport.Full)
         {
             card.Modulate = new Color(1, 1, 1, 0.6f);
-            card.TooltipText = "Not fully supported yet: some of its rules won't work in games.";
+            card.TooltipText = (card.TooltipText.Length > 0 ? card.TooltipText + "\n" : "") + "Not fully supported yet: some of its rules won't work in games.";
         }
         int copies = Section.Where(e => e.Name.Equals(entry.Name, StringComparison.OrdinalIgnoreCase)).Sum(e => e.Count);
         if (copies > 0)
@@ -335,9 +359,12 @@ public partial class DeckBuilder : Control
 
     private List<DeckEntry> Section => _editingCommander ? _deck.Commander : _editingSideboard ? _deck.Sideboard : _deck.Main;
 
-    private void Add(string name, int delta)
+    private void Add(string name, int delta, string? set = null, string? number = null)
     {
-        DeckList.Adjust(Section, name, delta);
+        // Removing from the results grid takes a copy of any printing when that exact printing isn't in the deck.
+        if (delta < 0 && !Section.Any(e => e.SameCard(name, set, number)) && Section.LastOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } other)
+            (set, number) = (other.Set, other.Number);
+        DeckList.Adjust(Section, name, delta, set, number);
         MarkDirty();
         RefreshDeck();
         ShowPage(_page); // update copy badges
@@ -419,7 +446,7 @@ public partial class DeckBuilder : Control
         {
             row.MouseEntered += () =>
             {
-                _preview.Setup(ViewOf(card.Definition, -2), false);
+                _preview.Setup(ViewOf(DefinitionOf(entry.Name, entry.Set, entry.Number), -2), false);
                 var rect = row.GetGlobalRect();
                 _preview.Position = new Vector2(rect.Position.X - _preview.Size.X - 16, Math.Clamp(rect.Position.Y - 120, 90, GetViewportRect().Size.Y - _preview.Size.Y - 20));
                 _preview.Visible = true;
@@ -428,14 +455,51 @@ public partial class DeckBuilder : Control
         }
         row.AddChild(name);
         if (card is not null) row.AddChild(BoardStyle.MakeCostRow(card.Definition.ManaCost.ToString(), 18, 11));
+        if (card is { Record.Printings.Count: > 0 }) row.AddChild(PrintingButton(entry, card));
         foreach (var (text, delta) in new[] { ("−", -1), ("+", 1) })
         {
             var b = BoardStyle.MakeButton(text, 14);
             b.CustomMinimumSize = new Vector2(30, 28);
-            b.Pressed += () => Add(entry.Name, delta);
+            b.Pressed += () => Add(entry.Name, delta, entry.Set, entry.Number);
             row.AddChild(b);
         }
         return row;
+    }
+
+    /// <summary>The line's set code; pressing it lists the card's printings to switch to.</summary>
+    private Control PrintingButton(DeckEntry entry, CardEntry card)
+    {
+        var button = BoardStyle.MakeButton(entry.Set ?? "Any", 12);
+        button.CustomMinimumSize = new Vector2(52, 28);
+        button.TooltipText = entry.Set is null ? "Default art: choose a printing" : $"{card.Record.FindPrinting(entry.Set, entry.Number)?.SetName ?? entry.Set} #{entry.Number}: choose another printing";
+        button.Pressed += () =>
+        {
+            var menu = new PopupMenu();
+            var printings = card.Record.Printings.Reverse().ToList(); // newest first
+            menu.AddItem("Default art");
+            foreach (var p in printings) menu.AddItem($"{p.SetName} ({p.Set.ToUpperInvariant()}) #{p.CollectorNumber}");
+            menu.IdPressed += id =>
+            {
+                var chosen = id == 0 ? null : printings[(int)id - 1];
+                SetPrinting(entry, chosen?.Set.ToUpperInvariant(), chosen?.CollectorNumber);
+                menu.QueueFree();
+            };
+            menu.PopupHide += () => menu.QueueFree();
+            AddChild(menu);
+            menu.Position = (Vector2I)button.GetScreenPosition() + new Vector2I(0, (int)button.Size.Y);
+            menu.Popup();
+        };
+        return button;
+    }
+
+    /// <summary>Moves every copy of a line to another printing (joining a line of that printing if there is one).</summary>
+    private void SetPrinting(DeckEntry entry, string? set, string? number)
+    {
+        if (entry.SameCard(entry.Name, set, number)) return;
+        DeckList.Adjust(Section, entry.Name, -entry.Count, entry.Set, entry.Number);
+        DeckList.Adjust(Section, entry.Name, entry.Count, set, number);
+        MarkDirty();
+        RefreshDeck();
     }
 
     private void RefreshCurve()

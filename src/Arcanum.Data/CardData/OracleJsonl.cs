@@ -82,13 +82,80 @@ public static class OracleJsonl
                 : new Dictionary<string, string>(),
             Faces = faces,
             IsToken = layout == "token" || (Str(c, "type_line")?.StartsWith("Token") ?? false),
-            RelatedTokens = c.TryGetProperty("all_parts", out var parts)
-                ? parts.EnumerateArray()
-                    .Where(p => Str(p, "component") == "token" && Str(p, "id") is not null && Str(p, "name") is not null)
-                    .Select(p => new RelatedToken(Str(p, "name")!, Str(p, "id")!, Str(p, "type_line") ?? ""))
-                    .ToList()
-                : new List<RelatedToken>(),
+            RelatedTokens = Tokens(c),
+            DefaultPrintingId = Str(c, "id"),
+            Printings = c.TryGetProperty("printings", out var printings)
+                ? printings.EnumerateArray().Select(PrintingFrom).OfType<Printing>().ToList()
+                : new List<Printing>(),
         };
+    }
+
+    private static List<RelatedToken> Tokens(JsonElement c) =>
+        c.TryGetProperty("all_parts", out var parts)
+            ? parts.EnumerateArray()
+                .Where(p => Str(p, "component") == "token" && Str(p, "id") is not null && Str(p, "name") is not null)
+                .Select(p => new RelatedToken(Str(p, "name")!, Str(p, "id")!, Str(p, "type_line") ?? ""))
+                .ToList()
+            : new List<RelatedToken>();
+
+    /// <summary>A printing from a line of the printings source (or from Arcanum's compact form, which uses the same names).</summary>
+    private static Printing? PrintingFrom(JsonElement c)
+    {
+        if (Str(c, "set") is not { } set || Str(c, "id") is not { } id || Str(c, "collector_number") is not { } number) return null;
+        return new Printing(set, Str(c, "set_name") ?? set.ToUpperInvariant(), number, Str(c, "rarity") ?? "common", id,
+            Str(c, "released_at") ?? "", Str(c, "set_type") ?? "", c.TryGetProperty("booster", out var b) && b.ValueKind == JsonValueKind.True,
+            Tokens(c));
+    }
+
+    /// <summary>Set types whose printings are not playing cards (collector replicas, token sets) and are skipped.</summary>
+    private static readonly HashSet<string> SkippedSetTypes = new() { "memorabilia", "token", "minigame" };
+
+    /// <summary>
+    /// Reads the printings source (one line per printing) and returns the paper printings of each card by oracle id,
+    /// oldest first. Digital-only printings, oversized cards and other languages are skipped.
+    /// </summary>
+    public static Dictionary<string, List<Printing>> ImportPrintings(Stream source)
+    {
+        var byCard = new Dictionary<string, List<Printing>>();
+        using var reader = new StreamReader(OpenMaybeGzip(source), Encoding.UTF8);
+        string? line;
+        while ((line = reader.ReadLine()) is not null)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            using var doc = JsonDocument.Parse(line);
+            var c = doc.RootElement;
+            if (Str(c, "oracle_id") is not { } oracleId) continue;
+            if (c.TryGetProperty("digital", out var digital) && digital.ValueKind == JsonValueKind.True) continue;
+            if (c.TryGetProperty("oversized", out var oversized) && oversized.ValueKind == JsonValueKind.True) continue;
+            if (Str(c, "lang") is { } lang && lang != "en") continue;
+            if (SkippedSetTypes.Contains(Str(c, "set_type") ?? "") || Str(c, "layout") == "token") continue;
+            if (PrintingFrom(c) is not { } printing) continue;
+            if (!byCard.TryGetValue(oracleId, out var list)) byCard[oracleId] = list = new List<Printing>();
+            list.Add(printing);
+        }
+        foreach (var list in byCard.Values)
+            list.Sort((a, b) => string.CompareOrdinal(a.Released, b.Released) is var d && d != 0 ? d : CompareNumbers(a.CollectorNumber, b.CollectorNumber));
+        return byCard;
+    }
+
+    /// <summary>Adds the printings found by <see cref="ImportPrintings"/> to each record.</summary>
+    public static IEnumerable<CardRecord> WithPrintings(IEnumerable<CardRecord> records, IReadOnlyDictionary<string, List<Printing>> printings) =>
+        records.Select(r => printings.TryGetValue(r.OracleId, out var list) ? r with { Printings = list } : r);
+
+    /// <summary>Collector numbers in numeric order ("9" before "10"), with any letters after the digits breaking ties.</summary>
+    public static int CompareNumbers(string a, string b)
+    {
+        static (int, string) Key(string n)
+        {
+            int i = 0;
+            while (i < n.Length && !char.IsDigit(n[i])) i++;
+            int start = i;
+            while (i < n.Length && char.IsDigit(n[i])) i++;
+            return (i > start && int.TryParse(n[start..i], out int v) ? v : int.MaxValue, n);
+        }
+        var (na, sa) = Key(a);
+        var (nb, sb) = Key(b);
+        return na != nb ? na.CompareTo(nb) : string.CompareOrdinal(sa, sb);
     }
 
     /// <summary>Writes records in Arcanum's own compact JSON Lines form (gzip).</summary>
@@ -120,17 +187,23 @@ public static class OracleJsonl
                     foreach (var (format, status) in r.Legalities) writer.WriteString(format, status);
                     writer.WriteEndObject();
                 }
-                if (r.RelatedTokens.Count > 0)
+                WriteTokens(writer, r.RelatedTokens);
+                WriteIf(writer, "id", r.DefaultPrintingId);
+                if (r.Printings.Count > 0)
                 {
-                    // Same shape as the source's all_parts, so ReadCompact parses it with the same code.
-                    writer.WriteStartArray("all_parts");
-                    foreach (var token in r.RelatedTokens)
+                    writer.WriteStartArray("printings");
+                    foreach (var p in r.Printings)
                     {
                         writer.WriteStartObject();
-                        writer.WriteString("component", "token");
-                        writer.WriteString("id", token.Id);
-                        writer.WriteString("name", token.Name);
-                        WriteIf(writer, "type_line", token.TypeLine);
+                        writer.WriteString("set", p.Set);
+                        writer.WriteString("set_name", p.SetName);
+                        writer.WriteString("collector_number", p.CollectorNumber);
+                        writer.WriteString("rarity", p.Rarity);
+                        writer.WriteString("id", p.Id);
+                        WriteIf(writer, "released_at", p.Released);
+                        WriteIf(writer, "set_type", p.SetType);
+                        if (p.Booster) writer.WriteBoolean("booster", true);
+                        WriteTokens(writer, p.Tokens);
                         writer.WriteEndObject();
                     }
                     writer.WriteEndArray();
@@ -170,6 +243,23 @@ public static class OracleJsonl
             if (FromSource(doc.RootElement) is { } record) records.Add(record);
         }
         return records;
+    }
+
+    /// <summary>Tokens in the same shape as the source's all_parts, so reading uses the same code.</summary>
+    private static void WriteTokens(Utf8JsonWriter writer, IReadOnlyList<RelatedToken> tokens)
+    {
+        if (tokens.Count == 0) return;
+        writer.WriteStartArray("all_parts");
+        foreach (var token in tokens)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("component", "token");
+            writer.WriteString("id", token.Id);
+            writer.WriteString("name", token.Name);
+            WriteIf(writer, "type_line", token.TypeLine);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
     }
 
     private static void WriteIf(Utf8JsonWriter w, string name, string? value)

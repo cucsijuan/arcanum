@@ -31,6 +31,9 @@ public sealed record CardQuery
 
     /// <summary>Legality key of a format; only cards legal (or restricted) there match.</summary>
     public string? LegalIn { get; init; }
+
+    /// <summary>Set code; only cards printed in that set match.</summary>
+    public string? Set { get; init; }
 }
 
 /// <summary>All cards known to the client, looked up by name. Built from a module's imported card data.</summary>
@@ -50,6 +53,39 @@ public sealed class CardDatabase : ICardDatabase
             _byName[record.Name] = new CardEntry(definition, support, record);
         }
         _sorted = _byName.Values.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        Sets = _sorted.SelectMany(e => e.Record.Printings)
+            .GroupBy(p => p.Set, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new SetInfo(g.Key, g.First().SetName, g.Min(p => p.Released) ?? "", g.First().SetType, g.Count()))
+            .OrderByDescending(s => s.Released, StringComparer.Ordinal).ThenBy(s => s.Name, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>Every set any known card was printed in, newest first.</summary>
+    public IReadOnlyList<SetInfo> Sets { get; }
+
+    public SetInfo? FindSet(string code) => Sets.FirstOrDefault(s => s.Code.Equals(code, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Each printing in a set with its card, in collector number order.</summary>
+    public IEnumerable<(CardEntry Card, Printing Printing)> PrintingsIn(string set) =>
+        _sorted.SelectMany(e => e.Record.Printings.Where(p => p.Set.Equals(set, StringComparison.OrdinalIgnoreCase)).Select(p => (e, p)))
+            .OrderBy(x => x.p.CollectorNumber, Comparer<string>.Create(OracleJsonl.CompareNumbers));
+
+    private readonly Dictionary<string, CardDefinition> _byPrinting = new();
+
+    /// <summary>
+    /// The card's definition as printed in a set (its picture and tokens). Without a set, or when the card was never
+    /// printed there, the card's default definition.
+    /// </summary>
+    public bool TryGet(string name, string? set, string? collectorNumber, out CardDefinition definition)
+    {
+        if (!_byName.TryGetValue(name, out var entry)) { definition = null!; return false; }
+        if (set is null || entry.Record.FindPrinting(set, collectorNumber) is not { } printing) { definition = entry.Definition; return true; }
+        lock (_byPrinting)
+        {
+            if (!_byPrinting.TryGetValue(printing.Id, out definition!))
+                _byPrinting[printing.Id] = definition = CardFactory.ForPrinting(entry.Definition, printing);
+        }
+        return true;
     }
 
     public int Count => _byName.Count;
@@ -83,6 +119,7 @@ public sealed class CardDatabase : ICardDatabase
                 if (!colorMatch) continue;
             }
             if (query.LegalIn is { } format && !(r.Legalities.TryGetValue(format, out var status) && status is "legal" or "restricted")) continue;
+            if (query.Set is { } set && r.FindPrinting(set) is null) continue;
             if (words.Length > 0 && !words.All(w => Contains(r.Name, w) || Contains(r.TypeLine, w) || Contains(r.OracleText, w))) continue;
             yield return entry;
         }
