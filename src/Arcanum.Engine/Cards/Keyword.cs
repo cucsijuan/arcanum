@@ -18,6 +18,10 @@ public enum Keyword
     Indestructible,
     Hexproof,
     Shroud,
+    /// <summary>Can be cast any time its controller could cast an instant (rule 702.8).</summary>
+    Flash,
+    /// <summary>"Whenever you cast a noncreature spell, this creature gets +1/+1 until end of turn" (rule 702.108).</summary>
+    Prowess,
     /// <summary>"This creature can't block." (not a printed keyword; used by static abilities).</summary>
     CantBlock,
     /// <summary>"This creature can't be blocked."</summary>

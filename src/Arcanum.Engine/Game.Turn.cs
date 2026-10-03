@@ -13,6 +13,12 @@ public sealed partial class Game
         State.TurnNumber++;
         var active = State.GetPlayer(State.ActivePlayer);
         active.LandsPlayedThisTurn = 0;
+        State.CreaturesDiedThisTurn = 0;
+        foreach (var player in State.Players)
+        {
+            player.AttackedThisTurn = false;
+            player.LifeGainedThisTurn = 0;
+        }
         foreach (var permanent in State.PermanentsControlledBy(active.Id)) permanent.ControlledSinceTurnStart = true;
         Emit(new TurnBegan(State.TurnNumber, active.Id));
 

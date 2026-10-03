@@ -10,47 +10,7 @@ public static class ViewBuilder
     /// <param name="commanderTaxPerCast">Commander tax per previous cast (0 outside commander games).</param>
     public static GameView Build(GameState state, PlayerId viewer, bool revealAll = false, int commanderTaxPerCast = 0)
     {
-        CardView View(CardId id)
-        {
-            var card = state.GetCard(id);
-            bool visible = revealAll || card.Zone.IsPublic() || (card.Zone == Zone.Hand && card.Owner == viewer);
-            if (!visible)
-            {
-                return new CardView
-                {
-                    Id = card.Id, Owner = card.Owner, Controller = card.Controller, Zone = card.Zone, IsHidden = true,
-                };
-            }
-            return new CardView
-            {
-                Id = card.Id,
-                Owner = card.Owner,
-                Controller = card.Controller,
-                Zone = card.Zone,
-                IsHidden = false,
-                Name = card.Name,
-                ManaCost = card.Definition.ManaCost.ToString(),
-                Types = card.Types,
-                Power = card.Definition.Power is null ? null : card.Power,
-                Toughness = card.Definition.Toughness is null ? null : card.Toughness,
-                Tapped = card.Tapped,
-                Damage = card.Damage,
-                SummoningSick = card.Zone == Zone.Battlefield && card.IsSummoningSick,
-                Keywords = Enum.GetValues<Cards.Keyword>().Where(card.Has).Select(Cards.Keywords.DisplayName).ToList(),
-                PlusOneCounters = card.CounterCount(Abilities.CounterKind.PlusOnePlusOne),
-                MinusOneCounters = card.CounterCount(Abilities.CounterKind.MinusOneMinusOne),
-                IsToken = card.Definition.IsToken,
-                OracleText = card.Definition.OracleText,
-                Colors = card.Definition.Colors,
-                ImageKey = card.Definition.ImageKey,
-                AttachedTo = card.AttachedTo,
-                IsCommander = card.IsCommander,
-                CommanderTax = card.IsCommander ? commanderTaxPerCast * state.GetPlayer(card.Owner).CommanderCasts.GetValueOrDefault(card.Id) : 0,
-                BasePower = card.Definition.Power,
-                BaseToughness = card.Definition.Toughness,
-                AbilityTexts = card.Definition.Abilities.Select(a => a.Text).ToList(),
-            };
-        }
+        CardView View(CardId id) => Card(state, id, viewer, revealAll, commanderTaxPerCast);
 
         IReadOnlyList<CardView> Views(IEnumerable<CardId> ids) => ids.Select(View).ToList();
 
@@ -84,6 +44,49 @@ public static class ViewBuilder
                 ?? (IReadOnlyList<AttackView>)Array.Empty<AttackView>(),
             IsGameOver = state.IsGameOver,
             Winner = state.Winner,
+        };
+    }
+
+    /// <summary>One card as <paramref name="viewer"/> may see it; <paramref name="reveal"/> shows it even if hidden.</summary>
+    public static CardView Card(GameState state, CardId id, PlayerId viewer, bool reveal = false, int commanderTaxPerCast = 0)
+    {
+        var card = state.GetCard(id);
+        bool visible = reveal || card.Zone.IsPublic() || (card.Zone == Zone.Hand && card.Owner == viewer);
+        if (!visible)
+        {
+            return new CardView
+            {
+                Id = card.Id, Owner = card.Owner, Controller = card.Controller, Zone = card.Zone, IsHidden = true,
+            };
+        }
+        return new CardView
+        {
+            Id = card.Id,
+            Owner = card.Owner,
+            Controller = card.Controller,
+            Zone = card.Zone,
+            IsHidden = false,
+            Name = card.Name,
+            ManaCost = card.Definition.ManaCost.ToString(),
+            Types = card.Types,
+            Power = card.Definition.Power is null ? null : card.Power,
+            Toughness = card.Definition.Toughness is null ? null : card.Toughness,
+            Tapped = card.Tapped,
+            Damage = card.Damage,
+            SummoningSick = card.Zone == Zone.Battlefield && card.IsSummoningSick,
+            Keywords = Enum.GetValues<Cards.Keyword>().Where(card.Has).Select(Cards.Keywords.DisplayName).ToList(),
+            PlusOneCounters = card.CounterCount(Abilities.CounterKind.PlusOnePlusOne),
+            MinusOneCounters = card.CounterCount(Abilities.CounterKind.MinusOneMinusOne),
+            IsToken = card.Definition.IsToken,
+            OracleText = card.Definition.OracleText,
+            Colors = card.Definition.Colors,
+            ImageKey = card.Definition.ImageKey,
+            AttachedTo = card.AttachedTo,
+            IsCommander = card.IsCommander,
+            CommanderTax = card.IsCommander ? commanderTaxPerCast * state.GetPlayer(card.Owner).CommanderCasts.GetValueOrDefault(card.Id) : 0,
+            BasePower = card.Definition.Power,
+            BaseToughness = card.Definition.Toughness,
+            AbilityTexts = card.Definition.Abilities.Select(a => a.Text).ToList(),
         };
     }
 }

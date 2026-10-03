@@ -579,6 +579,7 @@ public partial class GameBoard : Control
                 break;
             }
             case SelectCardsDecision s: s.Answer(view.Players[s.Player.Value].Hand.Take(s.Count).Select(c => c.Id).ToList()); break;
+            case ChooseCardsDecision c: c.Answer(c.Request.Options.Take(Math.Max(c.Request.Min, 1)).Take(c.Request.Max).Select(o => o.Id).ToList()); break;
         }
     }
 
@@ -891,6 +892,15 @@ public partial class GameBoard : Control
                 var confirm = AddButton($"Confirm ({_selected.Count}/{s.Count})", () => s.Answer(_selected.ToList()), primary: true);
                 confirm.Disabled = _selected.Count != s.Count;
                 break;
+
+            case ChooseCardsDecision c:
+            {
+                _prompt.Text = $"{who}: {c.Request.Prompt}";
+                var range = c.Request.Min == c.Request.Max ? $"{c.Request.Max}" : $"{c.Request.Min}–{c.Request.Max}";
+                var done = AddButton($"Confirm ({_selected.Count} of {range})", () => c.Answer(_selected.ToList()), primary: true);
+                done.Disabled = _selected.Count < c.Request.Min || _selected.Count > c.Request.Max;
+                break;
+            }
         }
     }
 
@@ -1147,6 +1157,10 @@ public partial class GameBoard : Control
                 if (!_selected.Remove(id) && _selected.Count < s.Count) _selected.Add(id);
                 break;
 
+            case ChooseCardsDecision c when c.Request.Options.Any(o => o.Id == id):
+                if (!_selected.Remove(id) && _selected.Count < c.Request.Max) _selected.Add(id);
+                break;
+
             default:
                 return;
         }
@@ -1181,6 +1195,7 @@ public partial class GameBoard : Control
         }
         var line = EventLogFormatter.Format(_session.Game, e, _session.RevealAll);
         if (line is null) return;
+        if (_autoplay && e is TurnBegan or PlayerLost or GameEnded) GD.Print(line); // smoke tests follow the game in the console
         _log.AppendText((e is TurnBegan ? "\n[b]" + line + "[/b]" : line) + "\n");
         if (!_logPanel.Visible) _unreadLog++;
         UpdateLogBadge();
@@ -1190,9 +1205,18 @@ public partial class GameBoard : Control
     /// Visual feedback for an event. Runs while the engine is mid-resolution, before the board redraws, so card
     /// nodes are still where the player last saw them.
     /// </summary>
-    /// <summary>The opening hand, large and centered on the local half, while a mulligan is being decided.</summary>
+    /// <summary>
+    /// The opening hand, large and centered on the local half, while a mulligan is being decided; the same view shows
+    /// the cards of any other card choice (scry, surveil...).
+    /// </summary>
     private void UpdateMulliganView(Decision? decision)
     {
+        if (decision is ChooseCardsDecision choice)
+        {
+            var who = _session.Game.State.GetPlayer(choice.Player).Name;
+            _mulligan.ShowHand(choice.Request.Options, $"{who}: {choice.Request.Prompt}", _selected, selectable: true);
+            return;
+        }
         bool bottom = decision is SelectCardsDecision { Reason: SelectCardsReason.MulliganBottom };
         if (decision is not (MulliganDecision or SelectCardsDecision { Reason: SelectCardsReason.MulliganBottom }))
         {

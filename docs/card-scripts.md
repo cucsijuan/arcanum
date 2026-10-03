@@ -94,7 +94,13 @@ Effects say who or what they affect with these values:
 | Until end of turn | `{ "pump": [3, 3], "what": "target", "keywords": ["Trample"] }` |
 | Counters | `{ "counters": 1, "what": "self" }` / `{ "counters": 1, "what": "target", "kind": "-1/-1" }` |
 | Attach this Aura/Equipment | `{ "attach": "target" }` |
-| Tokens | `{ "tokens": 2, "token": { "name": "Soldier", "types": "Creature — Soldier", "power": 1, "toughness": 1, "keywords": [] } }` |
+| Tokens | `{ "tokens": 2, "token": { "name": "Soldier", "types": "Creature — Soldier", "power": 1, "toughness": 1, "keywords": [], "colors": ["W"] } }` |
+| Predefined tokens | `{ "tokens": 1, "token": "Treasure" }` (also `"Food"`, `"Clue"`) |
+| Scry / surveil | `{ "scry": 2 }` / `{ "surveil": 1 }` |
+| Fight | `{ "fight": "target", "with": "target2" }` (or `"fight": "self"`) |
+| Discard (the player chooses) | `{ "discard": 1, "who": "opponents" }` |
+| Only if a condition holds | `{ "if": "raid", "then": [ ... ], "else": [ ... ] }` |
+| Optional | `{ "may": "Draw a card?", "effects": [ ... ] }` |
 
 ## Triggers
 
@@ -106,6 +112,40 @@ Effects say who or what they affect with these values:
 | `upkeep` | At the beginning of your upkeep |
 | `endStep` | At the beginning of your end step |
 | `combatDamageToPlayer` | This creature deals combat damage to a player |
+| `blocks` / `attacksOrBlocks` | This creature blocks / attacks or blocks |
+| `creatureEnters` | A creature matching `filter` enters (default: a creature you control) |
+| `creatureDies` | A creature matching `filter` dies |
+| `landfall` | A land you control enters |
+| `gainLife` | You gain life |
+| `castSpell` | You cast a spell matching `filter` |
+| `beginCombat` | At the beginning of combat on your turn |
+| `youAttack` | You attack with one or more creatures |
+
+A trigger can have an intervening condition, `"if": ...`: it triggers only if the condition holds, and does
+nothing on resolution unless it still holds.
+
+### Filters
+
+```json
+{ "types": ["instant", "sorcery"], "not": ["creature"], "subtype": "Elf", "controller": "you", "other": true, "minPower": 4, "token": false }
+```
+
+Every field is optional. `types` matches any of the listed card types, `not` excludes types, `controller` is
+`you` (default), `opponent` or `any`, `other` excludes the source itself and `token` limits to (or excludes)
+tokens.
+
+## Conditions
+
+| Value | True when |
+|-------|-----------|
+| `"raid"` | You attacked this turn |
+| `"morbid"` | A creature died this turn |
+| `"gainedLife"` / `{ "gainedLife": 3 }` | You gained (at least that much) life this turn |
+| `"threshold"` / `{ "graveyard": 7 }` | That many cards are in your graveyard |
+| `"ferocious"` | You control a creature with power 4 or greater |
+| `{ "control": filter, "count": 2 }` | You control at least that many permanents matching the filter |
+| `{ "life": 10 }` | You have at least that much life |
+| `{ "not": condition }` | The condition is false |
 
 ## Costs
 

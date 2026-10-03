@@ -44,6 +44,7 @@ public sealed partial class Game
                 }
                 Emit(new AttackerDeclared(d.Attacker, d.Defender));
             }
+            if (declared.Count > 0) Emit(new AttacksDeclared(active, declared.Count));
         }
 
         _skipCombatDamageSteps = combat.Attacks.Count == 0; // rule 508.8

@@ -40,7 +40,7 @@ public sealed partial class Game
                 if (consecutivePasses >= State.LivingPlayers.Count())
                 {
                     if (State.Stack.Count == 0) break;
-                    ResolveTopOfStack();
+                    await ResolveTopOfStackAsync();
                     consecutivePasses = 0;
                     player = State.ActivePlayer; // rule 117.3b
                 }
@@ -82,7 +82,7 @@ public sealed partial class Game
                 if (card.Zone == Zone.Hand && sorcerySpeed && player.LandsPlayedThisTurn < Config.LandsPerTurn) actions.Add(new PlayLand(card.Id));
                 continue;
             }
-            bool timingOk = card.Is(CardType.Instant) || sorcerySpeed;
+            bool timingOk = card.Is(CardType.Instant) || card.Definition.KeywordAbilities.Contains(Keyword.Flash) || sorcerySpeed;
             if (timingOk && HasLegalTargets(CastingTargets(card.Definition), playerId, card.Id)
                 && ManaPayment.FindPlan(State, playerId, CastingCost(card)) is not null)
                 actions.Add(new CastSpell(card.Id));
@@ -203,10 +203,12 @@ public sealed partial class Game
 
     private void TapForMana(Player player, ManaTap tap)
     {
-        State.GetCard(tap.Source).Tapped = true;
+        var source = State.GetCard(tap.Source);
+        source.Tapped = true;
         Emit(new PermanentTapped(tap.Source));
         player.ManaPool.Add(tap.Type);
         Emit(new ManaAdded(player.Id, tap.Type, tap.Source));
+        if (source.Definition.SacrificeForMana) MoveCard(source.Id, Zone.Graveyard);
     }
 
     /// <summary>Total cost to cast a card: its mana cost, plus commander tax when cast from the command zone (903.8).</summary>
@@ -219,7 +221,7 @@ public sealed partial class Game
     private static AbilityDefinition? CastingTargets(CardDefinition definition) =>
         definition.Spell ?? (definition.EnchantTarget is { } enchant ? new SpellAbility { Targets = new[] { enchant } } : null);
 
-    private void ResolveTopOfStack()
+    private async Task ResolveTopOfStackAsync()
     {
         var item = State.Stack[^1];
         State.Stack.RemoveAt(State.Stack.Count - 1);
@@ -228,7 +230,7 @@ public sealed partial class Game
             case SpellOnStack spell:
             {
                 var card = State.GetCard(spell.Card);
-                if (CastingTargets(card.Definition) is { } effect && !ApplyResolution(item, effect, card))
+                if (CastingTargets(card.Definition) is { } effect && !await ApplyResolutionAsync(item, effect, card))
                 {
                     MoveCard(spell.Card, Zone.Graveyard);
                     Emit(new FizzledOnResolution(spell.Card));
@@ -241,7 +243,7 @@ public sealed partial class Game
                 break;
             }
             case AbilityOnStack ability:
-                if (!ApplyResolution(item, ability.Ability, State.GetCard(ability.Source)))
+                if (!await ApplyResolutionAsync(item, ability.Ability, State.GetCard(ability.Source)))
                 {
                     Emit(new FizzledOnResolution(ability.Source));
                     break;

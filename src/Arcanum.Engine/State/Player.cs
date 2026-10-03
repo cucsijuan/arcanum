@@ -20,6 +20,12 @@ public sealed class Player
     public ManaPool ManaPool { get; } = new();
     public int LandsPlayedThisTurn { get; set; }
 
+    /// <summary>This player attacked with at least one creature this turn (raid).</summary>
+    public bool AttackedThisTurn { get; set; }
+
+    /// <summary>Total life gained this turn.</summary>
+    public int LifeGainedThisTurn { get; set; }
+
     /// <summary>Set when the player tried to draw from an empty library; checked as a state-based action.</summary>
     public bool AttemptedDrawFromEmptyLibrary { get; set; }
 

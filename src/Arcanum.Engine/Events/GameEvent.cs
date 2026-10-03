@@ -30,6 +30,8 @@ public sealed record PermanentUntapped(CardId Card) : GameEvent;
 public sealed record ManaAdded(PlayerId Player, ManaType Type, CardId? Source) : GameEvent;
 
 public sealed record AttackerDeclared(CardId Attacker, PlayerId Defender) : GameEvent;
+/// <summary>All attackers have been declared; <paramref name="Count"/> creatures attack.</summary>
+public sealed record AttacksDeclared(PlayerId Player, int Count) : GameEvent;
 public sealed record BlockerDeclared(CardId Blocker, CardId Attacker) : GameEvent;
 public sealed record DamageDealt(CardId Source, CardId? TargetCard, PlayerId? TargetPlayer, int Amount, bool IsCombat = false) : GameEvent;
 public sealed record AbilityActivated(PlayerId Player, CardId Source, string Text) : GameEvent;
@@ -44,6 +46,9 @@ public sealed record PermanentDestroyed(CardId Card) : GameEvent;
 public sealed record CommanderReturned(CardId Card, PlayerId Owner) : GameEvent;
 public sealed record LifeChanged(PlayerId Player, int OldLife, int NewLife) : GameEvent;
 public sealed record CreatureDied(CardId Card) : GameEvent;
+public sealed record CardDiscarded(PlayerId Player, CardId Card) : GameEvent;
+/// <summary>Scry (<paramref name="Scry"/> true) or surveil: <paramref name="Moved"/> of the <paramref name="Looked"/> cards left the top.</summary>
+public sealed record LookedAtTop(PlayerId Player, int Looked, int Moved, bool Scry) : GameEvent;
 
 public sealed record PlayerLost(PlayerId Player, string Reason) : GameEvent;
 public sealed record GameEnded(PlayerId? Winner) : GameEvent;

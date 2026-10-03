@@ -5,6 +5,7 @@ using Arcanum.Engine.Core;
 using Arcanum.Engine.Events;
 using Arcanum.Engine.Players;
 using Arcanum.Engine.State;
+using Arcanum.Engine.Views;
 
 namespace Arcanum.Engine;
 
@@ -88,17 +89,29 @@ public sealed partial class Game
     // ------------------------------------------------------------------ resolution (rule 608)
 
     /// <summary>Carries out a resolving spell's or ability's effects. Returns false if every target became illegal.</summary>
-    private bool ApplyResolution(StackItem item, AbilityDefinition ability, Card source)
+    private async Task<bool> ApplyResolutionAsync(StackItem item, AbilityDefinition ability, Card source)
     {
         var legal = new bool[item.Targets.Count];
         for (int i = 0; i < item.Targets.Count; i++)
             legal[i] = IsStillLegal(item.Targets[i], ability.Targets[i], item.Controller, source.Id);
         if (item.Targets.Count > 0 && !legal.Any(l => l)) return false; // 608.2b
 
+        // An intervening "if" clause is checked again on resolution (rule 603.4).
+        if (ability is TriggeredAbility { Condition: { } condition } && !Holds(condition, item.Controller, source)) return true;
+
         var context = new EffectContext(item.Controller, source, item.Targets, legal);
-        foreach (var effect in ability.Effects) Apply(effect, context);
+        await ApplyAllAsync(ability.Effects, context);
         RecomputeContinuousEffects();
         return true;
+    }
+
+    private async Task ApplyAllAsync(IEnumerable<Effect> effects, EffectContext ctx)
+    {
+        foreach (var effect in effects)
+        {
+            if (State.IsGameOver) return;
+            await ApplyAsync(effect, ctx);
+        }
     }
 
     private sealed record EffectContext(PlayerId Controller, Card Source, IReadOnlyList<ChosenTarget> Targets, bool[] TargetLegal);
@@ -123,10 +136,37 @@ public sealed partial class Game
         _ => Array.Empty<PlayerId>(),
     };
 
-    private void Apply(Effect effect, EffectContext ctx)
+    private async Task ApplyAsync(Effect effect, EffectContext ctx)
     {
         switch (effect)
         {
+            case Scry sc:
+                await LookAtTopAsync(ctx.Controller, sc.Count, CardChoicePurpose.ScryToBottom, ctx.Source);
+                break;
+            case Surveil sv:
+                await LookAtTopAsync(ctx.Controller, sv.Count, CardChoicePurpose.SurveilToGraveyard, ctx.Source);
+                break;
+            case Fight f:
+            {
+                var first = CardsFor(f.First, ctx).FirstOrDefault();
+                var second = CardsFor(f.Second, ctx).FirstOrDefault();
+                // If either creature is gone (or no longer a creature), no damage is dealt (rule 701.14b).
+                if (first is null || second is null || !first.IsCreature || !second.IsCreature) break;
+                int firstPower = first.Power, secondPower = second.Power;
+                DamageCreature(first, second, firstPower);
+                if (first.Id != second.Id) DamageCreature(second, first, secondPower);
+                break;
+            }
+            case Discard d:
+                foreach (var player in PlayersFor(d.Who, ctx)) await DiscardAsync(player, d.Count);
+                break;
+            case IfThen c:
+                await ApplyAllAsync(Holds(c.Condition, ctx.Controller, ctx.Source) ? c.Then : c.Else ?? Array.Empty<Effect>(), ctx);
+                break;
+            case MayDo m:
+                if (await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest(m.Prompt, ctx.Source.Id)))
+                    await ApplyAllAsync(m.Effects, ctx);
+                break;
             case DealDamage d:
                 foreach (var card in CardsFor(d.To, ctx)) DamageCreature(ctx.Source, card, d.Amount);
                 foreach (var player in PlayersFor(d.To, ctx)) DamagePlayer(ctx.Source, player, d.Amount);
@@ -228,6 +268,79 @@ public sealed partial class Game
         Emit(new CardMoved(id, controller, Zone.Exile, Zone.Battlefield, controller));
     }
 
+    /// <summary>Scry or surveil: the player looks at the top cards and picks which ones leave the top.</summary>
+    private async Task LookAtTopAsync(PlayerId who, int count, CardChoicePurpose purpose, Card source)
+    {
+        var player = State.GetPlayer(who);
+        var top = player.Library.Take(count).ToList();
+        if (top.Count == 0) return;
+        bool scry = purpose == CardChoicePurpose.ScryToBottom;
+        var prompt = scry
+            ? $"Scry {count}: choose cards to put on the bottom of your library"
+            : $"Surveil {count}: choose cards to put into your graveyard";
+        var options = top.Select(id => ViewBuilder.Card(State, id, who, reveal: true)).ToList();
+        var chosen = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest(prompt, source.Id, options, 0, top.Count, purpose));
+        Require(chosen.Distinct().Count() == chosen.Count && chosen.All(top.Contains), "Choose among the cards looked at.");
+
+        foreach (var id in chosen)
+        {
+            if (scry)
+            {
+                player.Library.Remove(id);
+                player.Library.Add(id);
+            }
+            else MoveCard(id, Zone.Graveyard);
+        }
+        Emit(new LookedAtTop(who, top.Count, chosen.Count, scry));
+    }
+
+    private async Task DiscardAsync(PlayerId who, int count)
+    {
+        var player = State.GetPlayer(who);
+        count = Math.Min(count, player.Hand.Count);
+        if (count == 0) return;
+        var chosen = await ControllerOf(who).ChooseDiscardAsync(ViewFor(who), count);
+        Require(chosen.Count == count && chosen.Distinct().Count() == count && chosen.All(player.Hand.Contains),
+            $"Must discard exactly {count} distinct cards from hand.");
+        foreach (var card in chosen)
+        {
+            MoveCard(card, Zone.Graveyard);
+            Emit(new CardDiscarded(who, card));
+        }
+    }
+
+    // ------------------------------------------------------------------ conditions and filters
+
+    private bool Holds(Condition condition, PlayerId controller, Card? source)
+    {
+        var player = State.GetPlayer(controller);
+        return condition switch
+        {
+            AttackedThisTurn => player.AttackedThisTurn,
+            CreatureDiedThisTurn => State.CreaturesDiedThisTurn > 0,
+            GainedLifeThisTurn g => player.LifeGainedThisTurn >= g.AtLeast,
+            CardsInGraveyard g => player.Graveyard.Count >= g.AtLeast,
+            YouControl y => State.Battlefield.Select(State.GetCard).Count(c => Matches(y.Filter, c, c.Controller, source, controller)) >= y.AtLeast,
+            LifeAtLeast l => player.Life >= l.Amount,
+            Not n => !Holds(n.Inner, controller, source),
+            _ => throw new NotSupportedException($"Condition {condition.GetType().Name} is not implemented."),
+        };
+    }
+
+    /// <summary>Whether <paramref name="obj"/> (controlled by <paramref name="objController"/>) fits the filter, seen from the ability's side.</summary>
+    private static bool Matches(ObjectFilter filter, Card obj, PlayerId objController, Card? source, PlayerId sourceController)
+    {
+        if (filter.Types != 0 && (obj.Types & filter.Types) == 0) return false;
+        if ((obj.Types & filter.ExcludedTypes) != 0) return false;
+        if (filter.Subtype is { } subtype && !obj.Definition.Subtypes.Contains(subtype, StringComparer.OrdinalIgnoreCase)) return false;
+        if (filter.Controller == ControllerFilter.You && objController != sourceController) return false;
+        if (filter.Controller == ControllerFilter.Opponent && objController == sourceController) return false;
+        if (filter.Other && source is not null && obj.Id == source.Id) return false;
+        if (filter.MinPower is { } min && obj.Power < min) return false;
+        if (filter.Token is { } token && obj.Definition.IsToken != token) return false;
+        return true;
+    }
+
     // ------------------------------------------------------------------ continuous effects (rule 611, 613)
 
     /// <summary>
@@ -292,13 +405,45 @@ public sealed partial class Game
         switch (e)
         {
             case CardMoved { To: Zone.Battlefield } m:
-                Queue(m.Card, TriggerEvent.EntersBattlefield, State.GetCard(m.Card).Controller);
+            {
+                var entering = State.GetCard(m.Card);
+                Queue(m.Card, TriggerEvent.EntersBattlefield, entering.Controller);
+                if (entering.IsCreature) QueueObservers(TriggerEvent.CreatureEnters, entering, entering.Controller);
+                if (entering.Is(CardType.Land)) QueueObservers(TriggerEvent.LandEnters, entering, entering.Controller);
                 break;
+            }
             case CardMoved { From: Zone.Battlefield, To: Zone.Graveyard } m when State.GetCard(m.Card).IsCreature:
                 Queue(m.Card, TriggerEvent.Dies, m.LastController);
+                QueueObservers(TriggerEvent.CreatureDies, State.GetCard(m.Card), m.LastController);
                 break;
             case AttackerDeclared a:
                 Queue(a.Attacker, TriggerEvent.Attacks, State.GetCard(a.Attacker).Controller);
+                Queue(a.Attacker, TriggerEvent.AttacksOrBlocks, State.GetCard(a.Attacker).Controller);
+                break;
+            case AttacksDeclared a:
+                foreach (var card in State.PermanentsControlledBy(a.Player).ToList()) Queue(card.Id, TriggerEvent.YouAttack, a.Player);
+                break;
+            case BlockerDeclared b:
+                Queue(b.Blocker, TriggerEvent.Blocks, State.GetCard(b.Blocker).Controller);
+                Queue(b.Blocker, TriggerEvent.AttacksOrBlocks, State.GetCard(b.Blocker).Controller);
+                break;
+            case LifeChanged l when l.NewLife > l.OldLife:
+                foreach (var card in State.PermanentsControlledBy(l.Player).ToList()) Queue(card.Id, TriggerEvent.YouGainLife, l.Player);
+                break;
+            case SpellCast c:
+            {
+                var spell = State.GetCard(c.Card);
+                foreach (var observer in State.PermanentsControlledBy(c.Player).ToList())
+                {
+                    if (!spell.IsCreature && observer.Has(Keyword.Prowess)) _pendingTriggers.Add(new PendingTrigger(observer.Id, ProwessTrigger, c.Player));
+                    foreach (var ability in observer.Definition.Abilities.OfType<TriggeredAbility>())
+                        if (ability.Trigger == TriggerEvent.YouCastSpell && Matches(ability.Filter ?? new ObjectFilter(), spell, c.Player, observer, c.Player))
+                            AddPending(observer.Id, ability, c.Player);
+                }
+                break;
+            }
+            case StepBegan { Step: Step.BeginCombat } s:
+                foreach (var card in State.PermanentsControlledBy(s.ActivePlayer).ToList()) Queue(card.Id, TriggerEvent.YourBeginCombat, s.ActivePlayer);
                 break;
             case DamageDealt { IsCombat: true, TargetPlayer: not null } d:
                 Queue(d.Source, TriggerEvent.DealsCombatDamageToPlayer, State.GetCard(d.Source).Controller);
@@ -315,8 +460,31 @@ public sealed partial class Game
     private void Queue(CardId source, TriggerEvent trigger, PlayerId controller)
     {
         foreach (var ability in State.GetCard(source).Definition.Abilities.OfType<TriggeredAbility>())
-            if (ability.Trigger == trigger) _pendingTriggers.Add(new PendingTrigger(source, ability, controller));
+            if (ability.Trigger == trigger) AddPending(source, ability, controller);
     }
+
+    /// <summary>Triggers of permanents watching for an event that happened to <paramref name="subject"/> ("whenever another creature you control enters").</summary>
+    private void QueueObservers(TriggerEvent trigger, Card subject, PlayerId subjectController)
+    {
+        foreach (var observer in State.Battlefield.Select(State.GetCard).ToList())
+            foreach (var ability in observer.Definition.Abilities.OfType<TriggeredAbility>())
+                if (ability.Trigger == trigger && Matches(ability.Filter ?? ObjectFilter.YourCreatures, subject, subjectController, observer, observer.Controller))
+                    AddPending(observer.Id, ability, observer.Controller);
+    }
+
+    /// <summary>An ability with an intervening "if" clause triggers only if the condition holds now (rule 603.4).</summary>
+    private void AddPending(CardId source, TriggeredAbility ability, PlayerId controller)
+    {
+        if (ability.Condition is { } condition && !Holds(condition, controller, State.GetCard(source))) return;
+        _pendingTriggers.Add(new PendingTrigger(source, ability, controller));
+    }
+
+    private static readonly TriggeredAbility ProwessTrigger = new()
+    {
+        Trigger = TriggerEvent.YouCastSpell,
+        Effects = new Effect[] { new PumpUntilEndOfTurn(1, 1, Subject.Self) },
+        Text = "Prowess",
+    };
 
     /// <summary>
     /// Puts waiting triggered abilities on the stack in APNAP order (603.3b), choosing their targets. A trigger

@@ -89,8 +89,26 @@ public sealed partial class Game
     private void Emit(GameEvent e)
     {
         _log.Add(e);
+        TrackTurnHistory(e);
         CollectTriggers(e);
         EventRaised?.Invoke(e);
+    }
+
+    /// <summary>Remembers what happened this turn for conditions like raid and morbid.</summary>
+    private void TrackTurnHistory(GameEvent e)
+    {
+        switch (e)
+        {
+            case CardMoved { From: Zone.Battlefield, To: Zone.Graveyard } m when State.GetCard(m.Card).IsCreature:
+                State.CreaturesDiedThisTurn++;
+                break;
+            case LifeChanged l when l.NewLife > l.OldLife:
+                State.GetPlayer(l.Player).LifeGainedThisTurn += l.NewLife - l.OldLife;
+                break;
+            case AttacksDeclared a:
+                State.GetPlayer(a.Player).AttackedThisTurn = true;
+                break;
+        }
     }
 
     /// <summary>Plays the game to completion.</summary>

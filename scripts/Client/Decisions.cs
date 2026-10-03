@@ -74,6 +74,12 @@ public sealed class SelectCardsDecision : Decision<IReadOnlyList<CardId>>
     public required SelectCardsReason Reason { get; init; }
 }
 
+/// <summary>Pick cards among options the engine shows (scry, surveil, search...).</summary>
+public sealed class ChooseCardsDecision : Decision<IReadOnlyList<CardId>>
+{
+    public required CardChoiceRequest Request { get; init; }
+}
+
 /// <summary>Single queue point for decisions of every local seat (hotseat shares one screen).</summary>
 public sealed class DecisionHub
 {

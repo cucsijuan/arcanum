@@ -44,6 +44,42 @@ public class ScriptTests
     }
 
     [Fact]
+    public void ParsesFiltersConditionsAndNewEffects()
+    {
+        var script = CardScriptParser.Parse("""
+            { "abilities": [
+                { "trigger": "creatureEnters", "filter": { "types": ["creature"], "subtype": "Cat", "other": true },
+                  "effects": [{ "scry": 1 }] },
+                { "trigger": "endStep", "if": "raid", "effects": [{ "tokens": 1, "token": "Treasure" }] },
+                { "trigger": "castSpell", "filter": { "types": ["instant", "sorcery"] },
+                  "effects": [{ "may": "Surveil 1?", "effects": [{ "surveil": 1 }] }] },
+                { "cost": "{T}", "targets": ["creature:you", "creature:opponent"],
+                  "effects": [{ "fight": "target", "with": "target2" },
+                              { "if": { "control": { "types": ["creature"], "minPower": 4 } }, "then": [{ "draw": 1 }], "else": [{ "discard": 1 }] }] },
+            ] }
+            """);
+        var enters = Assert.IsType<TriggeredAbility>(script.Abilities[0]);
+        Assert.Equal(TriggerEvent.CreatureEnters, enters.Trigger);
+        Assert.Equal(new ObjectFilter(CardType.Creature, Subtype: "Cat", Other: true), enters.Filter);
+        Assert.Equal(1, Assert.IsType<Scry>(enters.Effects[0]).Count);
+
+        var raid = Assert.IsType<TriggeredAbility>(script.Abilities[1]);
+        Assert.IsType<AttackedThisTurn>(raid.Condition);
+        Assert.Same(PredefinedTokens.Treasure, Assert.IsType<CreateTokens>(raid.Effects[0]).Token);
+
+        var cast = Assert.IsType<TriggeredAbility>(script.Abilities[2]);
+        Assert.Equal(CardType.Instant | CardType.Sorcery, cast.Filter!.Types);
+        var may = Assert.IsType<MayDo>(cast.Effects[0]);
+        Assert.IsType<Surveil>(Assert.Single(may.Effects));
+
+        var fight = Assert.IsType<ActivatedAbility>(script.Abilities[3]);
+        Assert.Equal(new Fight(Subject.TargetAt(0), Subject.TargetAt(1)), fight.Effects[0]);
+        var branch = Assert.IsType<IfThen>(fight.Effects[1]);
+        Assert.Equal(4, Assert.IsType<YouControl>(branch.Condition).Filter.MinPower);
+        Assert.IsType<Discard>(Assert.Single(branch.Else!));
+    }
+
+    [Fact]
     public void ParsesPumpCountersAndTokens()
     {
         var script = CardScriptParser.Parse("""

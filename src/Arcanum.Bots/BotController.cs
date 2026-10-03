@@ -60,6 +60,29 @@ public sealed class BotController : IPlayerController
     public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) =>
         Task.FromResult<IReadOnlyList<CardId>>(LeastUseful(view, count));
 
+    public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request)
+    {
+        int lands = view.Battlefield.Count(c => c.Controller == _me && (c.Types & CardType.Land) != 0)
+                    + view.Self.Hand.Count(c => (c.Types & CardType.Land) != 0);
+        // Lands are dead draws once there are enough; spells far above the mana available are slow.
+        bool Unwanted(CardView c) => (c.Types & CardType.Land) != 0 ? lands >= 5 : ManaValue(c.ManaCost) > lands + 2;
+        double Value(CardView c) => (c.Types & CardType.Creature) != 0 ? CreatureValue(c) : 1 + ManaValue(c.ManaCost);
+
+        IEnumerable<CardView> picks = request.Purpose switch
+        {
+            CardChoicePurpose.ScryToBottom or CardChoicePurpose.SurveilToGraveyard => request.Options.Where(Unwanted),
+            CardChoicePurpose.ToHand or CardChoicePurpose.ToBattlefield => request.Options.OrderByDescending(Value).Take(request.Max),
+            _ => request.Options.OrderBy(Value).Take(request.Min),
+        };
+        var chosen = picks.Take(request.Max).Select(c => c.Id).ToList();
+        foreach (var extra in request.Options.OrderBy(Value).Where(c => !chosen.Contains(c.Id)))
+        {
+            if (chosen.Count >= request.Min) break;
+            chosen.Add(extra.Id);
+        }
+        return Task.FromResult<IReadOnlyList<CardId>>(chosen);
+    }
+
     /// <summary>Extra lands when flooded, otherwise the most expensive spells.</summary>
     private static List<CardId> LeastUseful(GameView view, int count)
     {

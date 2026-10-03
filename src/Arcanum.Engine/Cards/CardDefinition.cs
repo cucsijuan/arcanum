@@ -30,6 +30,9 @@ public sealed record CardDefinition
     /// </summary>
     public IReadOnlyList<ManaType> TapForMana { get; init; } = Array.Empty<ManaType>();
 
+    /// <summary>Its mana ability also sacrifices it: "{T}, Sacrifice this artifact: Add one mana of any color."</summary>
+    public bool SacrificeForMana { get; init; }
+
     /// <summary>What an instant or sorcery does (null for permanents and spells without effects).</summary>
     public SpellAbility? Spell { get; init; }
 

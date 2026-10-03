@@ -33,6 +33,13 @@ public sealed class TestController : IPlayerController
 
     public Func<GameView, YesNoRequest, bool> YesNo { get; set; } = (_, _) => true;
 
+    /// <summary>Default picks the minimum number of options, from the first.</summary>
+    public Func<GameView, CardChoiceRequest, IReadOnlyList<CardId>> Choose { get; set; } =
+        (_, request) => request.Options.Take(request.Min).Select(c => c.Id).ToList();
+
+    /// <summary>Last card choice received, for assertions.</summary>
+    public CardChoiceRequest? LastChoice { get; private set; }
+
     public static PlayerAction Greedy(GameView view, IReadOnlyList<PlayerAction> legal) =>
         legal.OfType<PlayLand>().Cast<PlayerAction>().FirstOrDefault()
         ?? legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault()
@@ -72,4 +79,10 @@ public sealed class TestController : IPlayerController
 
     public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) =>
         Task.FromResult<IReadOnlyList<CardId>>(view.Self.Hand.TakeLast(count).Select(c => c.Id).ToList());
+
+    public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request)
+    {
+        LastChoice = request;
+        return Task.FromResult(Choose(view, request));
+    }
 }

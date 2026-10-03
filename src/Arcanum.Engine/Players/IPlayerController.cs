@@ -40,6 +40,9 @@ public interface IPlayerController
     Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request);
 
     Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count);
+
+    /// <summary>Pick cards among the request's options (scry, surveil, search...); the engine checks the count.</summary>
+    Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request);
 }
 
 public sealed class InvalidDecisionException(string message) : Exception(message);

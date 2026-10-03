@@ -25,6 +25,9 @@ public sealed class GameState
     public Step Step { get; set; }
     public CombatState? Combat { get; set; }
 
+    /// <summary>Creatures that died this turn (morbid).</summary>
+    public int CreaturesDiedThisTurn { get; set; }
+
     public bool IsGameOver { get; set; }
     public PlayerId? Winner { get; set; }
 

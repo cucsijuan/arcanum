@@ -70,7 +70,8 @@ public static class ManaPayment
         var (fromPool, rest) = ApplyPool(cost, state.GetPlayer(player).ManaPool);
 
         var sources = AvailableSources(state, player, exclude)
-            .OrderBy(c => c.Definition.TapForMana.Count)
+            .OrderBy(c => c.Definition.SacrificeForMana) // keep one-shot sources (Treasure) for last
+            .ThenBy(c => c.Definition.TapForMana.Count)
             .ThenBy(c => c.Id.Value)
             .ToList();
         var used = new bool[sources.Count];

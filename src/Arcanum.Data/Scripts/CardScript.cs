@@ -48,6 +48,8 @@ public static class CardScriptParser
                     abilities.Add(new TriggeredAbility
                     {
                         Trigger = ParseTrigger(trigger.GetString()!), Targets = Targets(a), Effects = Effects(a), Text = Text(a),
+                        Filter = a.TryGetProperty("filter", out var filter) ? ParseFilter(filter) : null,
+                        Condition = a.TryGetProperty("if", out var condition) ? ParseCondition(condition) : null,
                     });
                 }
                 else if (a.TryGetProperty("cost", out var cost))
@@ -136,8 +138,63 @@ public static class CardScriptParser
         "upkeep" => TriggerEvent.YourUpkeep,
         "endStep" => TriggerEvent.YourEndStep,
         "combatDamageToPlayer" => TriggerEvent.DealsCombatDamageToPlayer,
+        "blocks" => TriggerEvent.Blocks,
+        "attacksOrBlocks" => TriggerEvent.AttacksOrBlocks,
+        "creatureEnters" => TriggerEvent.CreatureEnters,
+        "landfall" => TriggerEvent.LandEnters,
+        "creatureDies" => TriggerEvent.CreatureDies,
+        "gainLife" => TriggerEvent.YouGainLife,
+        "castSpell" => TriggerEvent.YouCastSpell,
+        "beginCombat" => TriggerEvent.YourBeginCombat,
+        "youAttack" => TriggerEvent.YouAttack,
         _ => throw new FormatException($"Unknown trigger '{text}'."),
     };
+
+    /// <summary>{ "types": ["instant", "sorcery"], "not": ["creature"], "subtype": "Elf", "controller": "you", "other": true, "minPower": 4, "token": false }</summary>
+    public static ObjectFilter ParseFilter(JsonElement f)
+    {
+        CardType Types(string name) => f.TryGetProperty(name, out var list)
+            ? list.EnumerateArray().Aggregate((CardType)0, (acc, t) => acc | (Enum.TryParse<CardType>(t.GetString(), ignoreCase: true, out var type) ? type : throw new FormatException($"Unknown card type '{t}'.")))
+            : 0;
+        return new ObjectFilter(
+            Types("types"),
+            Types("not"),
+            f.TryGetProperty("subtype", out var subtype) ? subtype.GetString() : null,
+            f.TryGetProperty("controller", out var controller) ? controller.GetString() switch
+            {
+                "you" => ControllerFilter.You,
+                "opponent" => ControllerFilter.Opponent,
+                "any" => ControllerFilter.Any,
+                var unknown => throw new FormatException($"Unknown filter controller '{unknown}'."),
+            } : ControllerFilter.You,
+            f.TryGetProperty("other", out var other) && other.GetBoolean(),
+            f.TryGetProperty("minPower", out var minPower) ? minPower.GetInt32() : null,
+            f.TryGetProperty("token", out var token) ? token.GetBoolean() : null);
+    }
+
+    /// <summary>"raid", "morbid", "threshold", "ferocious", or { "gainedLife": 1 }, { "graveyard": 7 }, { "control": filter, "count": 2 }, { "life": 10 }, { "not": condition }.</summary>
+    public static Condition ParseCondition(JsonElement c)
+    {
+        if (c.ValueKind == JsonValueKind.String)
+        {
+            return c.GetString() switch
+            {
+                "raid" => new AttackedThisTurn(),
+                "morbid" => new CreatureDiedThisTurn(),
+                "threshold" => new CardsInGraveyard(7),
+                "ferocious" => new YouControl(new ObjectFilter(CardType.Creature, MinPower: 4)),
+                "gainedLife" => new GainedLifeThisTurn(),
+                var unknown => throw new FormatException($"Unknown condition '{unknown}'."),
+            };
+        }
+        if (c.TryGetProperty("gainedLife", out var gained)) return new GainedLifeThisTurn(gained.GetInt32());
+        if (c.TryGetProperty("graveyard", out var graveyard)) return new CardsInGraveyard(graveyard.GetInt32());
+        if (c.TryGetProperty("control", out var control))
+            return new YouControl(ParseFilter(control), c.TryGetProperty("count", out var count) ? count.GetInt32() : 1);
+        if (c.TryGetProperty("life", out var life)) return new LifeAtLeast(life.GetInt32());
+        if (c.TryGetProperty("not", out var inner)) return new Not(ParseCondition(inner));
+        throw new FormatException($"Unknown condition {c.GetRawText()}.");
+    }
 
     /// <summary>"{2}{R}, {T}, sacrifice".</summary>
     public static AbilityCost ParseCost(string text)
@@ -155,13 +212,22 @@ public static class CardScriptParser
     }
 
     private static IReadOnlyList<Effect> Effects(JsonElement e) =>
-        e.TryGetProperty("effects", out var list) ? list.EnumerateArray().Select(ParseEffect).ToList() : throw new FormatException("Missing \"effects\".");
+        e.TryGetProperty("effects", out var list) ? EffectList(list) : throw new FormatException("Missing \"effects\".");
+
+    private static IReadOnlyList<Effect> EffectList(JsonElement list) => list.EnumerateArray().Select(ParseEffect).ToList();
 
     private static Effect ParseEffect(JsonElement e)
     {
         string? Str(string name) => e.TryGetProperty(name, out var v) ? v.GetString() : null;
         int Int(string name) => e.GetProperty(name).GetInt32();
 
+        if (e.TryGetProperty("scry", out _)) return new Scry(Int("scry"));
+        if (e.TryGetProperty("surveil", out _)) return new Surveil(Int("surveil"));
+        if (Str("fight") is { } fighter) return new Fight(ParseSubject(fighter), ParseSubject(Str("with") ?? "target2"));
+        if (e.TryGetProperty("discard", out _)) return new Discard(Int("discard"), ParseSubject(Str("who")));
+        if (e.TryGetProperty("if", out var condition))
+            return new IfThen(ParseCondition(condition), EffectList(e.GetProperty("then")), e.TryGetProperty("else", out var otherwise) ? EffectList(otherwise) : null);
+        if (Str("may") is { } prompt) return new MayDo(prompt, Effects(e));
         if (e.TryGetProperty("damage", out _)) return new DealDamage(Int("damage"), ParseSubject(Str("to") ?? "target"));
         if (e.TryGetProperty("draw", out _)) return new DrawCards(Int("draw"), ParseSubject(Str("who")));
         if (e.TryGetProperty("gainLife", out _)) return new GainLife(Int("gainLife"), ParseSubject(Str("who")));
@@ -188,8 +254,11 @@ public static class CardScriptParser
         throw new FormatException($"Unknown effect {e.GetRawText()}.");
     }
 
+    /// <summary>A token described in full, or the name of a token the rules define (Treasure, Food, Clue).</summary>
     private static CardDefinition ParseToken(JsonElement t)
     {
+        if (t.ValueKind == JsonValueKind.String)
+            return PredefinedTokens.ByName(t.GetString()!) ?? throw new FormatException($"Unknown predefined token '{t}'.");
         var (supertypes, types, subtypes) = TypeLine.Parse(t.GetProperty("types").GetString()!);
         return new CardDefinition
         {
