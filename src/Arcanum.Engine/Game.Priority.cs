@@ -63,6 +63,7 @@ public sealed partial class Game
         {
             CheckStateBasedActions();
             if (State.IsGameOver) return;
+            await OfferCommanderReturnsAsync();
         }
         while (await PutPendingTriggersOnStackAsync());
     }
@@ -73,16 +74,17 @@ public sealed partial class Game
         var actions = new List<PlayerAction> { PassPriority.Instance };
         bool sorcerySpeed = playerId == State.ActivePlayer && State.Step.IsMain() && State.Stack.Count == 0;
 
-        foreach (var card in player.Hand.Select(State.GetCard))
+        // Cards in hand, plus commanders in the command zone (rule 903.8).
+        foreach (var card in player.Hand.Concat(player.Command).Select(State.GetCard))
         {
             if (card.Is(CardType.Land))
             {
-                if (sorcerySpeed && player.LandsPlayedThisTurn < Config.LandsPerTurn) actions.Add(new PlayLand(card.Id));
+                if (card.Zone == Zone.Hand && sorcerySpeed && player.LandsPlayedThisTurn < Config.LandsPerTurn) actions.Add(new PlayLand(card.Id));
                 continue;
             }
             bool timingOk = card.Is(CardType.Instant) || sorcerySpeed;
             if (timingOk && HasLegalTargets(CastingTargets(card.Definition), playerId, card.Id)
-                && ManaPayment.FindPlan(State, playerId, card.Definition.ManaCost) is not null)
+                && ManaPayment.FindPlan(State, playerId, CastingCost(card)) is not null)
                 actions.Add(new CastSpell(card.Id));
         }
 
@@ -143,8 +145,9 @@ public sealed partial class Game
         var targets = await ChooseTargetsAsync(player.Id, CastingTargets(card.Definition), cardId, card.Name, canCancel: true);
         if (targets is null) return false;
 
-        if (!await PayManaAsync(player, cardId, card.Definition.ManaCost, exclude: null)) return false;
+        if (!await PayManaAsync(player, cardId, CastingCost(card), exclude: null)) return false;
 
+        if (card.Zone == Zone.Command) player.CommanderCasts[cardId] = player.CommanderCasts.GetValueOrDefault(cardId) + 1;
         MoveCard(cardId, Zone.Stack);
         State.Stack.Add(new SpellOnStack(cardId, player.Id, targets));
         Emit(new SpellCast(player.Id, cardId));
@@ -205,6 +208,12 @@ public sealed partial class Game
         player.ManaPool.Add(tap.Type);
         Emit(new ManaAdded(player.Id, tap.Type, tap.Source));
     }
+
+    /// <summary>Total cost to cast a card: its mana cost, plus commander tax when cast from the command zone (903.8).</summary>
+    public ManaCost CastingCost(Card card) =>
+        card.Zone == Zone.Command && Config.Commander is { } rules
+            ? card.Definition.ManaCost.PlusGeneric(rules.TaxPerCast * State.GetPlayer(card.Owner).CommanderCasts.GetValueOrDefault(card.Id))
+            : card.Definition.ManaCost;
 
     /// <summary>What a spell targets when cast: an instant/sorcery's targets, or an Aura's enchant target.</summary>
     private static AbilityDefinition? CastingTargets(CardDefinition definition) =>

@@ -26,6 +26,12 @@ public sealed record FormatRules
     /// <summary>Cards with the Basic supertype ignore the copy limit.</summary>
     public bool BasicLandsUnlimited { get; init; } = true;
 
+    /// <summary>
+    /// Commander-style deck: a separate commander section (one legendary creature, or two with partner), deck size
+    /// counts the commander, and every card must fit the commanders' color identity. Games use commander rules.
+    /// </summary>
+    public bool Commander { get; init; }
+
     /// <summary>Starting life total for games in this format.</summary>
     public int StartingLife { get; init; } = 20;
 
@@ -48,6 +54,7 @@ public sealed record FormatRules
             SideboardMax = Int("sideboardMax") ?? 15,
             BasicLandsUnlimited = !e.TryGetProperty("basicLandsUnlimited", out var b) || b.GetBoolean(),
             StartingLife = Int("startingLife") ?? 20,
+            Commander = e.TryGetProperty("commander", out var c) && c.GetBoolean(),
             Description = Str("description") ?? "",
         };
     }
@@ -66,13 +73,15 @@ public static class DeckValidator
     public static List<DeckIssue> Validate(DeckList deck, FormatRules format, CardDatabase cards)
     {
         var issues = new List<DeckIssue>();
-        int main = deck.Main.Sum(e => e.Count);
+        int main = deck.Main.Sum(e => e.Count) + (format.Commander ? deck.Commander.Sum(e => e.Count) : 0);
+        if (format.Commander) ValidateCommanders(deck, format, cards, issues);
         int side = deck.Sideboard.Sum(e => e.Count);
         if (main < format.MinDeckSize) issues.Add(new(IssueSeverity.Error, $"Deck has {main} cards; {format.Name} needs at least {format.MinDeckSize}."));
         if (format.MaxDeckSize is { } max && main > max) issues.Add(new(IssueSeverity.Error, $"Deck has {main} cards; {format.Name} allows at most {max}."));
         if (side > format.SideboardMax) issues.Add(new(IssueSeverity.Error, $"Sideboard has {side} cards; at most {format.SideboardMax}."));
 
-        foreach (var group in deck.Main.Concat(deck.Sideboard).GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
+        foreach (var group in deck.Main.Concat(deck.Sideboard).Concat(format.Commander ? deck.Commander : Enumerable.Empty<DeckEntry>())
+                     .GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
         {
             var name = group.First().Name;
             int copies = group.Sum(e => e.Count);
@@ -95,5 +104,32 @@ public static class DeckValidator
                 issues.Add(new(IssueSeverity.Warning, $"{name} isn't fully supported yet; some of its rules won't work.", name));
         }
         return issues;
+    }
+
+    private static void ValidateCommanders(DeckList deck, FormatRules format, CardDatabase cards, List<DeckIssue> issues)
+    {
+        var commanders = deck.Commander.Select(e => cards.Find(e.Name)).OfType<CardEntry>().ToList();
+        int count = deck.Commander.Sum(e => e.Count);
+        bool partners = commanders.Count == 2 && commanders.All(c => c.Record.Keywords.Contains("Partner", StringComparer.OrdinalIgnoreCase));
+        if (count == 0) issues.Add(new(IssueSeverity.Error, "Choose a commander (Commander section)."));
+        else if (count > 2 || (count == 2 && !partners)) issues.Add(new(IssueSeverity.Error, "Only one commander, or two that both have partner."));
+
+        foreach (var c in commanders)
+        {
+            bool legendaryCreature = (c.Definition.Supertypes & Supertype.Legendary) != 0 && c.Definition.Is(CardType.Creature);
+            bool allowed = legendaryCreature || c.Record.OracleText.Contains("can be your commander", StringComparison.OrdinalIgnoreCase);
+            if (!allowed) issues.Add(new(IssueSeverity.Error, $"{c.Name} can't be a commander (it isn't a legendary creature).", c.Name));
+        }
+
+        // Color identity (rule 903.4): every card's mana symbols must fit the commanders' combined identity.
+        var identity = commanders.SelectMany(c => c.Record.ColorIdentity).ToHashSet();
+        if (commanders.Count == 0) return;
+        foreach (var entry in deck.Main)
+        {
+            if (cards.Find(entry.Name) is not { } card) continue;
+            var outside = card.Record.ColorIdentity.Where(color => !identity.Contains(color)).ToList();
+            if (outside.Count > 0)
+                issues.Add(new(IssueSeverity.Error, $"{card.Name} is outside your commander's color identity ({string.Join("", outside)}).", card.Name));
+        }
     }
 }

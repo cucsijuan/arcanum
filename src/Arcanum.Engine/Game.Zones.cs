@@ -31,6 +31,7 @@ public sealed partial class Game
 
         card.ResetStatus();
         card.Zone = to;
+        NoteCommanderMove(card, to);
         switch (to)
         {
             case Zone.Battlefield:

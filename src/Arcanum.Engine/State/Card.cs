@@ -34,6 +34,9 @@ public sealed class Card
 
     public Dictionary<CounterKind, int> Counters { get; } = new();
 
+    /// <summary>This card is its owner's commander (the designation follows it across zones, rule 903.3).</summary>
+    public bool IsCommander { get; init; }
+
     /// <summary>The permanent this Aura or Equipment is attached to (rule 701.3).</summary>
     public CardId? AttachedTo { get; set; }
 

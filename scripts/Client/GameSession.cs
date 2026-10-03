@@ -17,7 +17,7 @@ namespace Arcanum.Client;
 public sealed class GameSession
 {
     /// <param name="IsBot">Played by the computer instead of a person on this device.</param>
-    public sealed record Seat(string Name, IReadOnlyList<CardDefinition> Deck, bool IsBot = false);
+    public sealed record Seat(string Name, IReadOnlyList<CardDefinition> Deck, bool IsBot = false, IReadOnlyList<CardDefinition>? Commanders = null);
 
     private readonly GameConfig _config;
     private readonly IReadOnlyList<Seat> _seats;
@@ -53,11 +53,11 @@ public sealed class GameSession
             {
                 var bot = new Arcanum.Bots.BotController(new PlayerId(i)) { Pace = BotPaceAsync, AlwaysKeep = setup is not null };
                 bots.Add(bot);
-                return new PlayerSetup(s.Name, bot, s.Deck);
+                return new PlayerSetup(s.Name, bot, s.Deck, s.Commanders);
             }
             var controller = new UiPlayerController(new PlayerId(i), Hub, Log, policy);
             _controllers.Add(controller);
-            return new PlayerSetup(s.Name, controller, s.Deck);
+            return new PlayerSetup(s.Name, controller, s.Deck, s.Commanders);
         }).ToList());
         // Bots read printed rules only for cards they can see (the controller enforces that).
         foreach (var bot in bots) bot.UseCardRules(id => Game.State.Cards.TryGetValue(id, out var c) ? c.Definition : null);
@@ -71,8 +71,22 @@ public sealed class GameSession
     /// <param name="setup">Optional sandbox setup run on the new game before it starts.</param>
     public static GameSession CreateHotseat(ulong seed, Seat first, Seat second, Action<Game>? setup = null,
         int startingLife = 20, AutoPassPolicy? policy = null, bool confirmManaPayment = true) =>
-        new(new GameConfig { Seed = seed, StartingLife = startingLife, StartingPlayer = setup is null ? null : new PlayerId(0) },
-            new[] { first, second }, policy ?? new AutoPassPolicy(), replay: null, setup) { ConfirmManaPayment = confirmManaPayment };
+        CreateMatch(seed, new[] { first, second }, setup, startingLife, policy, confirmManaPayment, commander: false);
+
+    /// <summary>A game for any number of seats (people on this device and/or the computer).</summary>
+    /// <param name="commander">Use commander rules (command zone, tax, commander damage).</param>
+    public static GameSession CreateMatch(ulong seed, IReadOnlyList<Seat> seats, Action<Game>? setup, int startingLife,
+        AutoPassPolicy? policy, bool confirmManaPayment, bool commander) =>
+        new(new GameConfig
+            {
+                Seed = seed,
+                StartingLife = startingLife,
+                StartingPlayer = setup is null ? null : new PlayerId(0),
+                Commander = commander ? new CommanderRules() : null,
+            },
+            seats, policy ?? new AutoPassPolicy(), replay: null, setup) { ConfirmManaPayment = confirmManaPayment };
+
+    public int PlayerCount => _seats.Count;
 
     /// <summary>Ask players to confirm each mana payment (applies to every local seat).</summary>
     public bool ConfirmManaPayment

@@ -31,6 +31,8 @@ public sealed class TestController : IPlayerController
     public Func<GameView, DamageAssignmentRequest, DamageAssignment> AssignDamage { get; set; } =
         (_, request) => request.Suggested;
 
+    public Func<GameView, YesNoRequest, bool> YesNo { get; set; } = (_, _) => true;
+
     public static PlayerAction Greedy(GameView view, IReadOnlyList<PlayerAction> legal) =>
         legal.OfType<PlayLand>().Cast<PlayerAction>().FirstOrDefault()
         ?? legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault()
@@ -65,6 +67,8 @@ public sealed class TestController : IPlayerController
 
     public Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) =>
         Task.FromResult(AssignDamage(view, request));
+
+    public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) => Task.FromResult(YesNo(view, request));
 
     public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) =>
         Task.FromResult<IReadOnlyList<CardId>>(view.Self.Hand.TakeLast(count).Select(c => c.Id).ToList());

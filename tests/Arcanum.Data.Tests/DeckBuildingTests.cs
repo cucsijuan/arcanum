@@ -118,3 +118,91 @@ public class DeckBuildingTests
         Assert.Equal("Ember Bolt", Assert.Single(deck.Sideboard).Name);
     }
 }
+
+public class CommanderFormatTests
+{
+    private static CardRecord Card(string name, string type, string[] identity, string text = "", string[]? keywords = null) => new()
+    {
+        OracleId = "o-" + name, Name = name, Layout = "normal", TypeLine = type, ManaCost = "{1}", OracleText = text,
+        ColorIdentity = identity, Keywords = keywords ?? Array.Empty<string>(), Power = type.Contains("Creature") ? "2" : null,
+        Toughness = type.Contains("Creature") ? "2" : null, Legalities = new Dictionary<string, string> { ["edh"] = "legal" },
+    };
+
+    private static readonly CardDatabase Db = new(new[]
+    {
+        Card("Forest", "Basic Land — Forest", new[] { "G" }),
+        Card("Grove Queen", "Legendary Creature — Elf", new[] { "G" }),
+        Card("Anvil Duke", "Legendary Creature — Dwarf", new[] { "R" }),
+        Card("Twin A", "Legendary Creature — Elf", new[] { "G" }, keywords: new[] { "Partner" }),
+        Card("Twin B", "Legendary Creature — Dwarf", new[] { "R" }, keywords: new[] { "Partner" }),
+        Card("Plain Bear", "Creature — Bear", new[] { "G" }),
+        Card("Ember Imp", "Creature — Imp", new[] { "R" }),
+    }.Concat(Enumerable.Range(0, 60).Select(i => Card($"Elf {i}", "Creature — Elf", new[] { "G" }))));
+
+    private static readonly FormatRules Edh = FormatRules.Parse("""
+        { "id": "edh", "name": "Commander", "legality": "edh", "minDeckSize": 100, "maxDeckSize": 100, "maxCopies": 1, "sideboardMax": 0, "commander": true, "startingLife": 40 }
+        """);
+
+    private static DeckList Deck(string commander, params string[] extra)
+    {
+        var text = $"Commander\n1 {commander}\nDeck\n39 Forest\n" + string.Join("\n", Enumerable.Range(0, 60).Select(i => $"1 Elf {i}")) + "\n" + string.Join("\n", extra);
+        return DeckList.Parse(text);
+    }
+
+    private static List<string> Errors(DeckList deck) =>
+        DeckValidator.Validate(deck, Edh, Db).Where(i => i.Severity == IssueSeverity.Error).Select(i => i.Message).ToList();
+
+    [Fact]
+    public void ValidCommanderDeck() => Assert.Empty(Errors(Deck("Grove Queen")));
+
+    [Fact]
+    public void DeckSizeCountsTheCommander()
+    {
+        var errors = Errors(Deck("Grove Queen", "1 Plain Bear"));
+        Assert.Contains(errors, e => e.Contains("at most 100"));
+    }
+
+    [Fact]
+    public void CardsOutsideColorIdentityAreIllegal()
+    {
+        var deck = Deck("Grove Queen");
+        deck.Main.RemoveAt(deck.Main.Count - 1);
+        deck.Main.Add(new DeckEntry(1, "Ember Imp"));
+        Assert.Contains(Errors(deck), e => e.Contains("Ember Imp is outside your commander's color identity"));
+    }
+
+    [Fact]
+    public void SingletonApplies()
+    {
+        var deck = Deck("Grove Queen");
+        deck.Main[^1] = deck.Main[^2];
+        Assert.Contains(Errors(deck), e => e.Contains("2 copies of"));
+    }
+
+    [Fact]
+    public void CommanderMustBeALegendaryCreature()
+    {
+        Assert.Contains(Errors(Deck("Plain Bear")), e => e.Contains("can't be a commander"));
+    }
+
+    [Fact]
+    public void TwoCommandersNeedPartner()
+    {
+        var two = Deck("Grove Queen");
+        two.Commander.Add(new DeckEntry(1, "Anvil Duke"));
+        two.Main.RemoveAt(two.Main.Count - 1);
+        Assert.Contains(Errors(two), e => e.Contains("two that both have partner"));
+
+        var partners = Deck("Twin A");
+        partners.Commander.Add(new DeckEntry(1, "Twin B"));
+        partners.Main.RemoveAt(partners.Main.Count - 1);
+        Assert.DoesNotContain(Errors(partners), e => e.Contains("partner"));
+    }
+
+    [Fact]
+    public void MissingCommanderIsReported()
+    {
+        var deck = DeckList.Parse("40 Forest\n" + string.Join("\n", Enumerable.Range(0, 60).Select(i => $"1 Elf {i}")));
+        Assert.Contains(Errors(deck), e => e.Contains("Choose a commander"));
+    }
+}

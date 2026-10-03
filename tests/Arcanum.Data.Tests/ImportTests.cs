@@ -177,5 +177,17 @@ public class ModuleTests
         var db = new CardDatabase(OracleJsonl.Import(file, module.Sources.Cards.ToFilter()), scripts);
         int supported = db.All.Count(d => db.SupportOf(d.Name) == CardSupport.Full);
         Console.WriteLine($"cards={db.Count} supported={supported}");
+
+        // Starter decks must be legal in their format (commander decks: the module's commander format).
+        var formats = module.LoadFormats();
+        foreach (var name in module.DeckNames())
+        {
+            var deck = Arcanum.Data.Decks.DeckList.Parse(module.ReadDeck(name));
+            var format = deck.Commander.Count > 0 ? formats.First(f => f.Commander) : formats.First();
+            var problems = Arcanum.Data.Formats.DeckValidator.Validate(deck, format, db);
+            var deckErrors = problems.Where(i => i.Severity == Arcanum.Data.Formats.IssueSeverity.Error).Select(i => i.Message).ToList();
+            Console.WriteLine($"deck {name} ({format.Name}): {deckErrors.Count} errors, {problems.Count - deckErrors.Count} warnings {string.Join(" | ", deckErrors.Take(3))}");
+            Assert.Empty(deckErrors);
+        }
     }
 }

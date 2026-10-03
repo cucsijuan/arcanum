@@ -35,6 +35,7 @@ public partial class DeckBuilder : Control
     private DeckInfo? _info;
     private bool _dirty;
     private bool _editingSideboard;
+    private bool _editingCommander;
     private List<CardEntry> _results = new();
     private int _page;
     private readonly List<DeckInfo> _saved = new();
@@ -58,6 +59,7 @@ public partial class DeckBuilder : Control
     private readonly OptionButton _format = MenuKit.Options(Array.Empty<string>());
     private readonly Button _mainTab = BoardStyle.MakeButton("Main", 15);
     private readonly Button _sideTab = BoardStyle.MakeButton("Sideboard", 15);
+    private readonly Button _commanderTab = BoardStyle.MakeButton("Commander", 15);
     private readonly VBoxContainer _list = new();
     private readonly HBoxContainer _curve = new();
     private readonly RichTextLabel _validation = new() { BbcodeEnabled = true, FitContent = true, ScrollActive = false };
@@ -199,19 +201,21 @@ public partial class DeckBuilder : Control
         right.AddThemeConstantOverride("separation", 10);
         _name.TextChanged += _ => MarkDirty();
         right.AddChild(MenuKit.Row("Name", _name, 70));
-        _format.ItemSelected += _ => { MarkDirty(); RunSearch(); };
+        _format.ItemSelected += _ => { MarkDirty(); RunSearch(); RefreshDeck(); };
         right.AddChild(MenuKit.Row("Format", _format, 70));
 
         var tabs = new HBoxContainer();
         tabs.AddThemeConstantOverride("separation", 8);
-        foreach (var tab in new[] { _mainTab, _sideTab })
+        foreach (var tab in new[] { _commanderTab, _mainTab, _sideTab })
         {
             tab.ToggleMode = true;
-            tab.CustomMinimumSize = new Vector2(150, 38);
+            tab.CustomMinimumSize = new Vector2(140, 38);
             tabs.AddChild(tab);
         }
-        _mainTab.Pressed += () => { _editingSideboard = false; RefreshDeck(); };
-        _sideTab.Pressed += () => { _editingSideboard = true; RefreshDeck(); };
+        _commanderTab.TooltipText = "Commander-style formats: add your commander here";
+        _commanderTab.Pressed += () => { _editingCommander = true; _editingSideboard = false; RefreshDeck(); };
+        _mainTab.Pressed += () => { _editingCommander = false; _editingSideboard = false; RefreshDeck(); };
+        _sideTab.Pressed += () => { _editingCommander = false; _editingSideboard = true; RefreshDeck(); };
         right.AddChild(tabs);
 
         var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
@@ -329,7 +333,7 @@ public partial class DeckBuilder : Control
 
     // ---------------------------------------------------------------- deck editing
 
-    private List<DeckEntry> Section => _editingSideboard ? _deck.Sideboard : _deck.Main;
+    private List<DeckEntry> Section => _editingCommander ? _deck.Commander : _editingSideboard ? _deck.Sideboard : _deck.Main;
 
     private void Add(string name, int delta)
     {
@@ -355,10 +359,15 @@ public partial class DeckBuilder : Control
 
     private void RefreshDeck()
     {
+        bool commanderFormat = App.Instance.Formats.Count > 0 && Format.Commander;
+        if (!commanderFormat && _editingCommander) _editingCommander = false;
+        _commanderTab.Visible = commanderFormat || _deck.Commander.Count > 0;
+        _commanderTab.Text = $"Commander ({_deck.Commander.Sum(e => e.Count)})";
         _mainTab.Text = $"Main ({_deck.Main.Sum(e => e.Count)})";
         _sideTab.Text = $"Sideboard ({_deck.Sideboard.Sum(e => e.Count)})";
-        _mainTab.SetPressedNoSignal(!_editingSideboard);
-        _sideTab.SetPressedNoSignal(_editingSideboard);
+        _commanderTab.SetPressedNoSignal(_editingCommander);
+        _mainTab.SetPressedNoSignal(!_editingSideboard && !_editingCommander);
+        _sideTab.SetPressedNoSignal(_editingSideboard && !_editingCommander);
 
         foreach (var child in _list.GetChildren()) child.QueueFree();
         var groups = Section
@@ -371,7 +380,9 @@ public partial class DeckBuilder : Control
             foreach (var (entry, card) in group.OrderBy(x => x.Card?.ManaValue ?? 99).ThenBy(x => x.Entry.Name))
                 _list.AddChild(DeckRow(entry, card));
         }
-        if (Section.Count == 0) _list.AddChild(MenuKit.Hint(_editingSideboard ? "Sideboard is empty." : "Click cards on the left to add them."));
+        if (Section.Count == 0)
+            _list.AddChild(MenuKit.Hint(_editingCommander ? "Click a legendary creature on the left to make it your commander."
+                : _editingSideboard ? "Sideboard is empty." : "Click cards on the left to add them."));
 
         RefreshCurve();
         RefreshValidation();
@@ -490,6 +501,7 @@ public partial class DeckBuilder : Control
         _info = null;
         _name.Text = "New deck";
         _editingSideboard = false;
+        _editingCommander = false;
         _dirty = false;
         SelectCurrentInPicker();
         RefreshDeck();
@@ -506,6 +518,7 @@ public partial class DeckBuilder : Control
         int formatIndex = App.Instance.Formats.FindIndex(f => f.Id == info.FormatId);
         _format.Selected = Math.Max(0, formatIndex);
         _editingSideboard = false;
+        _editingCommander = false;
         _dirty = false;
         SelectCurrentInPicker();
         RefreshDeck();

@@ -53,6 +53,9 @@ public sealed class UiPlayerController(PlayerId player, DecisionHub hub, Decisio
     public Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) =>
         Ask(new DamageAssignmentDecision { Player = player, Request = request });
 
+    public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) =>
+        Ask(new YesNoDecision { Player = player, Request = request });
+
     public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) =>
         Ask(new SelectCardsDecision { Player = player, Count = count, Reason = SelectCardsReason.Discard });
 }

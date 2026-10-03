@@ -6,8 +6,9 @@ using Godot;
 
 namespace Arcanum.Client;
 
-/// <summary>A match chosen on the play screen, picked up by the game board (Second.IsBot: against the computer).</summary>
-public sealed record MatchSetup(GameSession.Seat First, GameSession.Seat Second, int StartingLife, bool Sandbox = false);
+/// <summary>A match chosen on the play screen, picked up by the game board.</summary>
+/// <param name="Seats">Seat 0 is the person in front of the screen; later seats are opponents (people or the computer).</param>
+public sealed record MatchSetup(IReadOnlyList<GameSession.Seat> Seats, int StartingLife, bool Commander = false, bool Sandbox = false);
 
 /// <summary>
 /// Autoload that owns app-wide services: content (module, cards, formats), settings, saved decks and navigation

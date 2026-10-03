@@ -16,12 +16,12 @@ namespace Arcanum.UI.Board;
 /// </summary>
 public partial class GameBoard : Control
 {
+    /// <summary>The seat shown at the bottom: the person in front of the screen.</summary>
     private static readonly PlayerId Bottom = new(0);
-    private static readonly PlayerId Top = new(1);
 
     private GameSession _session = null!;
-    private readonly PlayerArea _topArea = new() { Player = Top };
-    private readonly PlayerArea _bottomArea = new() { Player = Bottom };
+    /// <summary>One area per player: seat 0 across the bottom half, opponents side by side across the top half.</summary>
+    private readonly List<PlayerArea> _areas = new();
     private readonly CardNode _preview = new();
     private readonly Label _turnNumber = BoardStyle.MakeLabel("1", 22, bold: true);
     private readonly Label _stepLabel = BoardStyle.MakeLabel("", 12, BoardStyle.TextDim);
@@ -37,6 +37,8 @@ public partial class GameBoard : Control
 
     // In-progress choices for the pending decision.
     private readonly HashSet<CardId> _selected = new();
+    private readonly Dictionary<CardId, PlayerId> _attackTargets = new(); // attacker -> player it attacks
+    private PlayerId? _attackDefender;                                    // where newly picked attackers go
     private readonly Dictionary<CardId, CardId> _blocks = new(); // blocker -> attacker
     private CardId? _pendingBlocker;
     private readonly List<ManaTap> _staged = new();  // sources picked for an unconfirmed payment
@@ -71,9 +73,6 @@ public partial class GameBoard : Control
         SetAnchorsPreset(LayoutPreset.FullRect);
         BuildLayout();
         BuildMenu();
-        var settings = Settings.Current;
-        _topArea.SetPlaymatStyle(settings.Playmats.ElementAtOrDefault(1) ?? "grid");
-        _bottomArea.SetPlaymatStyle(settings.Playmats.ElementAtOrDefault(0) ?? "grid");
 
         // The board can open before card data is ready (e.g. launched directly); wait for it.
         _loading.SetAnchorsPreset(LayoutPreset.Center);
@@ -106,19 +105,19 @@ public partial class GameBoard : Control
         return policy;
     }
 
-    private Func<ulong, GameSession> HotseatFactory(GameSession.Seat first, GameSession.Seat second, int life, Action<Arcanum.Engine.Game>? setup) =>
+    private Func<ulong, GameSession> MatchFactory(IReadOnlyList<GameSession.Seat> seats, int life, bool commander, Action<Arcanum.Engine.Game>? setup) =>
         seed =>
         {
-            var session = GameSession.CreateHotseat(seed, first, second, setup, life, PolicyFromSettings(), Settings.Current.ConfirmManaPayment);
-            // Against the computer its hand stays hidden; in hotseat it's the player's choice.
-            session.RevealAll = !second.IsBot && Settings.Current.RevealHandsInHotseat;
+            var session = GameSession.CreateMatch(seed, seats, setup, life, PolicyFromSettings(), Settings.Current.ConfirmManaPayment, commander);
+            // The computer's hand stays hidden; with only people at the table it's the players' choice.
+            session.RevealAll = !seats.Any(s => s.IsBot) && Settings.Current.RevealHandsInHotseat;
             return session;
         };
 
     private void UseMatch(MatchSetup match)
     {
         var setup = match.Sandbox && App.Instance.Cards is { } cards ? SandboxSetup(cards) : null;
-        _newSession = HotseatFactory(match.First, match.Second, match.StartingLife, setup);
+        _newSession = MatchFactory(match.Seats, match.StartingLife, match.Commander, setup);
     }
 
     /// <summary>Hotseat with the module's sample decks; falls back to generic cards if they can't be built.</summary>
@@ -126,6 +125,7 @@ public partial class GameBoard : Control
     {
         var module = App.Instance.Module!;
         var cards = App.Instance.Cards!;
+        if (OS.GetEnvironment("ARCANUM_COMMANDER") == "1" && UseCommanderDecks(module, cards)) return;
         var names = module.DeckNames().Take(2).ToList();
         if (names.Count < 2) return;
 
@@ -140,7 +140,30 @@ public partial class GameBoard : Control
             seats.Add(new GameSession.Seat(bot ? "Computer" : Settings.Current.PlayerNames.ElementAtOrDefault(index) ?? $"Player {index + 1}", deck, bot));
         }
         var setup = OS.GetEnvironment("ARCANUM_SANDBOX") == "1" ? SandboxSetup(cards) : null;
-        _newSession = HotseatFactory(seats[0], seats[1], 20, setup);
+        _newSession = MatchFactory(seats, 20, commander: false, setup);
+    }
+
+    /// <summary>
+    /// ARCANUM_COMMANDER=1 (with ARCANUM_PLAYERS=2..4, default 4): a commander game with the module's commander
+    /// decks; with ARCANUM_VS_BOT=1 every seat but the first is the computer. For quick testing without the menus.
+    /// </summary>
+    private bool UseCommanderDecks(Arcanum.Data.Modules.ContentModule module, Arcanum.Data.CardData.CardDatabase cards)
+    {
+        var names = module.DeckNames().Where(n => n.StartsWith("commander")).ToList();
+        int players = int.TryParse(OS.GetEnvironment("ARCANUM_PLAYERS"), out int n) ? Math.Clamp(n, 2, 4) : 4;
+        if (names.Count == 0) return false;
+        bool vsBot = OS.GetEnvironment("ARCANUM_VS_BOT") == "1";
+        var seats = new List<GameSession.Seat>();
+        for (int i = 0; i < players; i++)
+        {
+            var list = Arcanum.Data.Decks.DeckList.Parse(module.ReadDeck(names[i % names.Count]));
+            var (deck, _) = list.Resolve(cards);
+            var commanders = list.Commander.Select(e => cards.TryGet(e.Name, out var d) ? d : null).OfType<Arcanum.Engine.Cards.CardDefinition>().ToList();
+            bool bot = vsBot && i > 0;
+            seats.Add(new GameSession.Seat(bot ? $"Computer {i}" : $"Player {i + 1}", deck, bot, commanders));
+        }
+        _newSession = MatchFactory(seats, 40, commander: true, setup: null);
+        return true;
     }
 
     /// <summary>
@@ -194,6 +217,7 @@ public partial class GameBoard : Control
     private void StartSession(GameSession session)
     {
         _session = session;
+        ConfigureAreas(session.PlayerCount);
         _session.Changed += Refresh;
         _session.Failed += e => ShowGameOver($"Engine error:\n{e.Message}");
         _session.Game.EventRaised += OnGameEvent;
@@ -218,17 +242,6 @@ public partial class GameBoard : Control
     {
         AddChild(new ColorRect { Color = BoardStyle.Background, MouseFilter = MouseFilterEnum.Ignore, AnchorRight = 1, AnchorBottom = 1 });
 
-        _topArea.AnchorRight = 1; _topArea.AnchorBottom = 0.5f;
-        _topArea.FacesDown = true;
-        _bottomArea.AnchorTop = 0.5f; _bottomArea.AnchorRight = 1; _bottomArea.AnchorBottom = 1;
-        foreach (var area in new[] { _topArea, _bottomArea })
-        {
-            area.CardClicked += OnCardClicked;
-            area.PlayerClicked += OnPlayerClicked;
-            area.CardHoverStarted += ShowPreview;
-            area.CardHoverEnded += HidePreview;
-            AddChild(area);
-        }
 
         AddChild(_arrows);
 
@@ -267,9 +280,11 @@ public partial class GameBoard : Control
         AddChild(corner);
 
         // Phase bar on the divider, left of the top player's hand.
+        // Just below the divider, so it never covers an opponent's hand (they sit along the divider's top side).
         _phaseBar.AnchorTop = 0.5f; _phaseBar.AnchorBottom = 0.5f;
         _phaseBar.OffsetLeft = 110;
-        _phaseBar.GrowVertical = GrowDirection.Both;
+        _phaseBar.OffsetTop = 8;
+        _phaseBar.GrowVertical = GrowDirection.End;
         AddChild(_phaseBar);
 
         // Stack: right of center, clear of the zone piles.
@@ -393,9 +408,39 @@ public partial class GameBoard : Control
 
     // ---------------------------------------------------------------- refresh
 
-    private PlayerArea AreaOf(PlayerId player) => player == Top ? _topArea : _bottomArea;
+    private PlayerArea AreaOf(PlayerId player) => _areas[player.Value];
 
-    private CardNode? FindCard(CardId id) => _bottomArea.FindCard(id) ?? _topArea.FindCard(id);
+    private CardNode? FindCard(CardId id) => _areas.Select(a => a.FindCard(id)).FirstOrDefault(n => n is not null);
+
+    /// <summary>(Re)creates the player areas for <paramref name="count"/> players.</summary>
+    private void ConfigureAreas(int count)
+    {
+        if (_areas.Count == count) return;
+        foreach (var old in _areas) old.QueueFree();
+        _areas.Clear();
+        int opponents = count - 1;
+        for (int i = 0; i < count; i++)
+        {
+            var area = new PlayerArea { Player = new PlayerId(i), Compact = count > 2 };
+            if (i == 0)
+            {
+                area.AnchorTop = 0.5f; area.AnchorRight = 1; area.AnchorBottom = 1;
+            }
+            else
+            {
+                area.AnchorLeft = (i - 1) / (float)opponents; area.AnchorRight = i / (float)opponents; area.AnchorBottom = 0.5f;
+                area.FacesDown = true;
+            }
+            area.CardClicked += OnCardClicked;
+            area.PlayerClicked += OnPlayerClicked;
+            area.CardHoverStarted += ShowPreview;
+            area.CardHoverEnded += HidePreview;
+            AddChild(area);
+            MoveChild(area, 1 + i); // above the background, below arrows and overlays
+            area.SetPlaymatStyle(Settings.Current.Playmats.ElementAtOrDefault(i == 0 ? 0 : 1) ?? "grid");
+            _areas.Add(area);
+        }
+    }
 
     private void Refresh()
     {
@@ -403,6 +448,8 @@ public partial class GameBoard : Control
         if (decision is not null && !ReferenceEquals(decision, _lastDecision))
         {
             _selected.Clear();
+            _attackTargets.Clear();
+            _attackDefender = decision is AttackDecision ad ? ad.Defenders[0] : null;
             _blocks.Clear();
             _pendingBlocker = null;
             _abilityChoiceSource = null;
@@ -416,10 +463,9 @@ public partial class GameBoard : Control
         var view = _session.ViewFor(Bottom);
         var staged = _staged.Select(t => t.Source).ToHashSet();
         var attacking = view.Attacks.Select(a => a.Attacker).ToHashSet();
-        if (decision is AttackDecision) attacking.UnionWith(_selected);
+        if (decision is AttackDecision) attacking.UnionWith(_attackTargets.Keys);
         // The active player's side is laid out first so blockers can line up with where attackers will be.
         var activeArea = AreaOf(view.ActivePlayer);
-        var otherArea = activeArea == _topArea ? _bottomArea : _topArea;
         activeArea.Refresh(view, true, staged, attacking);
         var blockerAlign = new Dictionary<CardId, float>();
         void Align(CardId blocker, CardId attacker)
@@ -430,7 +476,7 @@ public partial class GameBoard : Control
             foreach (var blocker in attack.Blockers) Align(blocker, attack.Attacker);
         if (decision is BlockDecision)
             foreach (var (blocker, attacker) in _blocks) Align(blocker, attacker);
-        otherArea.Refresh(view, false, staged, attacking, blockerAlign);
+        foreach (var area in _areas.Where(a => a != activeArea)) area.Refresh(view, false, staged, attacking, blockerAlign);
         _turnNumber.Text = Math.Max(1, view.TurnNumber).ToString();
         _stepLabel.Text = view.TurnNumber == 0 ? "Mulligan" : EventLogFormatter.StepName(view.Step);
         _phaseBar.SetCurrentStep(view.TurnNumber == 0 ? null : view.Step);
@@ -487,6 +533,7 @@ public partial class GameBoard : Control
             case PriorityDecision p: p.Answer(p.Legal.FirstOrDefault(a => a is PlayLand or CastSpell) ?? PassPriority.Instance); break;
             case TargetDecision t: t.Answer(t.Request.Legal.Select(choices => choices[0]).ToList()); break;
             case ManaPaymentDecision pay: pay.Answer(pay.Request.SuggestedTaps); break;
+            case YesNoDecision yn: yn.Answer(true); break;
             case DamageAssignmentDecision dmg: dmg.Answer(dmg.Request.Suggested); break;
             case BlockDecision b when b.Request.MinimumBlockers.Count > 0:
                 b.Answer(Array.Empty<BlockDeclaration>()); // keep autoplay simple around menace
@@ -508,8 +555,7 @@ public partial class GameBoard : Control
 
     private void ApplyHighlights(GameView view, Decision? decision)
     {
-        _topArea.SetPlayerTargetable(false);
-        _bottomArea.SetPlayerTargetable(false);
+        foreach (var area in _areas) area.SetPlayerTargetable(false);
         foreach (var attack in view.Attacks)
         {
             FindCard(attack.Attacker)?.SetHighlight(CardHighlight.Attacking);
@@ -561,7 +607,7 @@ public partial class GameBoard : Control
                 break;
             case AttackDecision a:
                 foreach (var id in a.PossibleAttackers)
-                    FindCard(id)?.SetHighlight(_selected.Contains(id) ? CardHighlight.Attacking : CardHighlight.Playable);
+                    FindCard(id)?.SetHighlight(_attackTargets.ContainsKey(id) ? CardHighlight.Attacking : CardHighlight.Playable);
                 break;
             case BlockDecision b:
                 foreach (var id in b.Attackers)
@@ -599,6 +645,16 @@ public partial class GameBoard : Control
 
         foreach (var attack in view.Attacks)
             foreach (var blocker in attack.Blockers) Add(blocker, attack.Attacker, BoardStyle.Blocking);
+
+        // With several opponents, show who each attacker goes after.
+        if (_areas.Count > 2)
+        {
+            var targets = decision is AttackDecision
+                ? _attackTargets.Select(kv => (kv.Key, kv.Value))
+                : view.Attacks.Where(at => !at.IsBlocked).Select(at => (at.Attacker, at.Defender));
+            foreach (var (attacker, defender) in targets)
+                if (FindCard(attacker) is { } node) arrows.Add(new(node, AreaOf(defender).LifeBox, BoardStyle.Attacking));
+        }
 
         // Spells and abilities on the stack point at their targets.
         for (int i = 0; i < view.Stack.Count; i++)
@@ -662,6 +718,12 @@ public partial class GameBoard : Control
                 break;
             }
 
+            case YesNoDecision yn:
+                _prompt.Text = $"{who}: {yn.Request.Prompt}";
+                AddButton("No", () => yn.Answer(false));
+                AddButton("Yes", () => yn.Answer(true), primary: true);
+                break;
+
             case TargetDecision t:
             {
                 var source = view.FindCard(t.Request.Source)?.Name ?? "spell";
@@ -722,10 +784,31 @@ public partial class GameBoard : Control
 
             case AttackDecision a:
                 _prompt.Text = $"{who}: choose attackers";
-                if (_selected.Count < a.PossibleAttackers.Count)
-                    AddButton("All", () => { _selected.UnionWith(a.PossibleAttackers); Refresh(); });
-                AddButton(_selected.Count == 0 ? "No attacks" : $"Attack ({_selected.Count})", () =>
-                    a.Answer(_selected.Select(id => new AttackDeclaration(id, a.Defenders[0])).ToList()), primary: true);
+                if (a.Defenders.Count > 1)
+                {
+                    // Several opponents: pick who the next attackers go after.
+                    _actionExtra.Visible = true;
+                    var targets = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+                    targets.AddThemeConstantOverride("separation", 6);
+                    targets.AddChild(BoardStyle.MakeLabel("Attack:", 13, BoardStyle.TextDim));
+                    foreach (var defender in a.Defenders)
+                    {
+                        bool current = defender == _attackDefender;
+                        var pick = current ? BoardStyle.MakePrimaryButton(view.Players[defender.Value].Name, 14) : BoardStyle.MakeButton(view.Players[defender.Value].Name, 14);
+                        pick.CustomMinimumSize = new Vector2(0, 34);
+                        pick.Pressed += () => { _attackDefender = defender; Refresh(); };
+                        targets.AddChild(pick);
+                    }
+                    _actionExtra.AddChild(targets);
+                }
+                if (_attackTargets.Count < a.PossibleAttackers.Count)
+                    AddButton("All", () =>
+                    {
+                        foreach (var id in a.PossibleAttackers) _attackTargets.TryAdd(id, _attackDefender ?? a.Defenders[0]);
+                        Refresh();
+                    });
+                AddButton(_attackTargets.Count == 0 ? "No attacks" : $"Attack ({_attackTargets.Count})", () =>
+                    a.Answer(_attackTargets.Select(kv => new AttackDeclaration(kv.Key, kv.Value)).ToList()), primary: true);
                 break;
 
             case BlockDecision b:
@@ -960,7 +1043,7 @@ public partial class GameBoard : Control
                 break;
 
             case AttackDecision a when a.PossibleAttackers.Contains(id):
-                if (!_selected.Remove(id)) _selected.Add(id);
+                if (!_attackTargets.Remove(id)) _attackTargets[id] = _attackDefender ?? a.Defenders[0];
                 break;
 
             case BlockDecision b:

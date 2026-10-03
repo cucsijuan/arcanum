@@ -7,11 +7,12 @@ namespace Arcanum.UI.Board;
 /// <summary>A labelled stack (Library, Graveyard, Exile, Commander) showing its top card.</summary>
 public partial class ZonePile : Control
 {
-    private readonly string _title;
+    private string _title;
     private readonly Label _label;
     private readonly Panel _slot = new();
     private readonly CardNode _top = new();
 
+    public event Action<CardNode>? CardClicked;
     public event Action<CardNode>? CardHoverStarted;
     public event Action<CardNode>? CardHoverEnded;
 
@@ -35,14 +36,36 @@ public partial class ZonePile : Control
         _top.Size = Size;
         _top.Visible = false;
         _top.HoverStarted += c => CardHoverStarted?.Invoke(c);
+        _top.Clicked += c => CardClicked?.Invoke(c);
         _top.HoverEnded += c => CardHoverEnded?.Invoke(c);
         AddChild(_top);
     }
 
-    /// <param name="topCard">Card to show face up/down on top, or null for an empty slot.</param>
-    public void Refresh(int count, CardView? topCard)
+    /// <summary>Resizes the pile (compact player areas use smaller cards).</summary>
+    public void SetCardSize(Vector2 size)
     {
-        _label.Text = $"{_title} ({count})";
+        Size = size;
+        _slot.Size = size;
+        _top.Size = size;
+        _label.Size = new Vector2(size.X + 40, 20);
+    }
+
+    public CardNode TopCard => _top;
+
+    /// <summary>Short title and smaller font for compact areas, where full labels would overlap.</summary>
+    public void UseCompactLabel(string shortTitle)
+    {
+        _title = shortTitle;
+        _label.AddThemeFontSizeOverride("font_size", 11);
+        _label.Position = new Vector2(-6, -18);
+        _label.Size = new Vector2(Size.X + 12, 18);
+    }
+
+    /// <param name="topCard">Card to show face up/down on top, or null for an empty slot.</param>
+    /// <param name="note">Extra text after the count, e.g. commander tax.</param>
+    public void Refresh(int count, CardView? topCard, string note = "")
+    {
+        _label.Text = $"{_title} ({count}){note}";
         _top.Visible = topCard is not null;
         if (topCard is not null) _top.Setup(topCard, showCostPips: false);
     }

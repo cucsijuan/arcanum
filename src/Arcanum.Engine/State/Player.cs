@@ -25,6 +25,12 @@ public sealed class Player
 
     public bool HasLost { get; set; }
 
+    /// <summary>Times each of this player's commanders has been cast from the command zone (commander tax).</summary>
+    public Dictionary<CardId, int> CommanderCasts { get; } = new();
+
+    /// <summary>Combat damage this player has taken from each commander (rule 903.10a).</summary>
+    public Dictionary<CardId, int> CommanderDamageTaken { get; } = new();
+
     public Player(PlayerId id, string name, int life)
     {
         Id = id;

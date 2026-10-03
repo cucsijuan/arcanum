@@ -31,6 +31,8 @@ Environment variables useful while developing and testing:
 | `ARCANUM_SEED=<n>` | Reproducible first game |
 | `ARCANUM_VS_BOT=1` | The demo game's second player is the computer |
 | `ARCANUM_SANDBOX=1` | Demo game starts from the prepared sandbox board |
+| `ARCANUM_COMMANDER=1` | Demo game is a commander game with the module's commander decks |
+| `ARCANUM_PLAYERS=<2-4>` | Number of players for `ARCANUM_COMMANDER` (default 4) |
 | `ARCANUM_AUTOPLAY=1` | Local seats play themselves (smoke tests) |
 | `ARCANUM_AUTOPLAY=showcase:<Decision>` | Autoplay until the first decision of that type, then freeze (screenshots) |
 | `ARCANUM_TEST_UNDO=1` | With autoplay, undo now and then to exercise replay |

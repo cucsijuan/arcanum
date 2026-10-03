@@ -45,6 +45,13 @@ public sealed partial class Game
                 State.Cards.Add(card.Id, card);
                 statePlayers[i].Library.Add(card.Id);
             }
+            // Commanders begin the game in the command zone (rule 903.6).
+            foreach (var def in players[i].Commanders ?? Array.Empty<CardDefinition>())
+            {
+                var card = new Card(new CardId(nextId++), def, statePlayers[i].Id) { Zone = Zone.Command, IsCommander = true };
+                State.Cards.Add(card.Id, card);
+                statePlayers[i].Command.Add(card.Id);
+            }
         }
     }
 
@@ -74,7 +81,8 @@ public sealed partial class Game
         return card.Id;
     }
 
-    public GameView ViewFor(PlayerId player, bool revealAll = false) => ViewBuilder.Build(State, player, revealAll);
+    public GameView ViewFor(PlayerId player, bool revealAll = false) =>
+        ViewBuilder.Build(State, player, revealAll, Config.Commander?.TaxPerCast ?? 0);
 
     private IPlayerController ControllerOf(PlayerId player) => _controllers[player.Value];
 

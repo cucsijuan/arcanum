@@ -7,7 +7,8 @@ namespace Arcanum.Engine.Views;
 public static class ViewBuilder
 {
     /// <param name="revealAll">Show every hidden card (deck-test / hotseat / spectator-with-cheats).</param>
-    public static GameView Build(GameState state, PlayerId viewer, bool revealAll = false)
+    /// <param name="commanderTaxPerCast">Commander tax per previous cast (0 outside commander games).</param>
+    public static GameView Build(GameState state, PlayerId viewer, bool revealAll = false, int commanderTaxPerCast = 0)
     {
         CardView View(CardId id)
         {
@@ -40,6 +41,8 @@ public static class ViewBuilder
                 MinusOneCounters = card.CounterCount(Abilities.CounterKind.MinusOneMinusOne),
                 IsToken = card.Definition.IsToken,
                 AttachedTo = card.AttachedTo,
+                IsCommander = card.IsCommander,
+                CommanderTax = card.IsCommander ? commanderTaxPerCast * state.GetPlayer(card.Owner).CommanderCasts.GetValueOrDefault(card.Id) : 0,
                 BasePower = card.Definition.Power,
                 BaseToughness = card.Definition.Toughness,
                 AbilityTexts = card.Definition.Abilities.Select(a => a.Text).ToList(),
@@ -67,6 +70,7 @@ public static class ViewBuilder
                 Exile = Views(p.Exile),
                 Command = Views(p.Command),
                 ManaPoolTotal = p.ManaPool.Total,
+                CommanderDamage = new Dictionary<CardId, int>(p.CommanderDamageTaken),
                 ManaPool = Enum.GetValues<Mana.ManaType>().Where(t => p.ManaPool[t] > 0).ToDictionary(t => t, t => p.ManaPool[t]),
             }).ToList(),
             Battlefield = Views(state.Battlefield),

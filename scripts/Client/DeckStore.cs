@@ -25,7 +25,12 @@ public sealed class DeckStore
         if (module is not null)
         {
             foreach (var name in module.DeckNames())
-                decks.Add(new DeckInfo(Pretty(name), "casual", System.IO.Path.Combine(module.Directory, "decks", name + ".txt"), IsStarter: true));
+            {
+                var path = System.IO.Path.Combine(module.Directory, "decks", name + ".txt");
+                // Starter decks with a Commander section are commander decks.
+                bool commander = File.ReadLines(path).Any(l => l.Trim().Equals("Commander", StringComparison.OrdinalIgnoreCase));
+                decks.Add(new DeckInfo(Pretty(name), commander ? "commander" : "casual", path, IsStarter: true));
+            }
         }
         return decks;
     }

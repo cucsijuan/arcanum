@@ -29,6 +29,9 @@ public sealed record CardView
     /// <summary>Rules text of each of the card's abilities, indexed like <c>ActivateAbility.Index</c>.</summary>
     public IReadOnlyList<string> AbilityTexts { get; init; } = Array.Empty<string>();
     public CardId? AttachedTo { get; init; }
+    public bool IsCommander { get; init; }
+    /// <summary>For a commander in the command zone: extra generic mana it costs to cast now.</summary>
+    public int CommanderTax { get; init; }
     /// <summary>Printed power/toughness, to show when continuous effects or counters change them.</summary>
     public int? BasePower { get; init; }
     public int? BaseToughness { get; init; }
@@ -49,6 +52,9 @@ public sealed record PlayerView
     public required IReadOnlyList<CardView> Exile { get; init; }
     public required IReadOnlyList<CardView> Command { get; init; }
     public required int ManaPoolTotal { get; init; }
+
+    /// <summary>Combat damage taken from each commander (commander games).</summary>
+    public IReadOnlyDictionary<CardId, int> CommanderDamage { get; init; } = new Dictionary<CardId, int>();
 
     /// <summary>Floating mana by type (only types with a non-zero amount).</summary>
     public required IReadOnlyDictionary<Mana.ManaType, int> ManaPool { get; init; }

@@ -362,19 +362,36 @@ public sealed class BotController : IPlayerController
     public async Task<IReadOnlyList<AttackDeclaration>> DeclareAttackersAsync(
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders)
     {
-        var defender = defenders.OrderBy(d => view.Players[d.Value].Life).First();
-        var opponentLife = view.Players[defender.Value].Life;
-        var blockers = view.Battlefield.Where(c => c.Controller == defender && (c.Types & CardType.Creature) != 0 && !c.Tapped && !Has(c, "Can't block")).ToList();
         var attackers = possibleAttackers.Select(view.FindCard).OfType<CardView>().ToList();
+        List<CardView> BlockersOf(PlayerId p) =>
+            view.Battlefield.Where(c => c.Controller == p && (c.Types & CardType.Creature) != 0 && !c.Tapped && !Has(c, "Can't block")).ToList();
 
-        // Alpha strike when the unblockable part of our attack is already lethal, or when they can't block enough.
-        int totalPower = attackers.Sum(a => a.Power ?? 0);
-        int biggestBlocks = blockers.Count >= attackers.Count ? attackers.OrderByDescending(a => a.Power ?? 0).Take(blockers.Count).Sum(a => a.Power ?? 0) : 0;
-        bool lethal = totalPower - biggestBlocks >= opponentLife || (blockers.Count == 0 && totalPower >= opponentLife);
+        // Alpha strike at an opponent our whole attack can finish (power beyond what their blockers can stop).
+        foreach (var defender in defenders.OrderBy(d => view.Players[d.Value].Life))
+        {
+            var blockers = BlockersOf(defender);
+            int totalPower = attackers.Sum(a => a.Power ?? 0);
+            int stopped = attackers.OrderByDescending(a => a.Power ?? 0).Take(blockers.Count).Sum(a => a.Power ?? 0);
+            if (totalPower - stopped >= view.Players[defender.Value].Life)
+            {
+                await PaceAsync();
+                return attackers.Select(a => new AttackDeclaration(a.Id, defender)).ToList();
+            }
+        }
 
-        var chosen = attackers.Where(a => lethal || SafeToAttack(a, blockers)).ToList();
-        if (chosen.Count > 0) await PaceAsync();
-        return chosen.Select(a => new AttackDeclaration(a.Id, defender)).ToList();
+        // Otherwise each attacker goes after the weakest opponent it can attack safely.
+        var declarations = new List<AttackDeclaration>();
+        foreach (var attacker in attackers)
+        {
+            foreach (var defender in defenders.OrderBy(d => view.Players[d.Value].Life))
+            {
+                if (!SafeToAttack(attacker, BlockersOf(defender))) continue;
+                declarations.Add(new AttackDeclaration(attacker.Id, defender));
+                break;
+            }
+        }
+        if (declarations.Count > 0) await PaceAsync();
+        return declarations;
     }
 
     /// <summary>No blocker can kill it without dying in return, or nothing can block it at all.</summary>
@@ -428,6 +445,9 @@ public sealed class BotController : IPlayerController
         if (blocks.Count > 0) await PaceAsync();
         return blocks;
     }
+
+    /// <summary>Always takes the commander back to the command zone; no other yes/no choices exist yet.</summary>
+    public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) => Task.FromResult(true);
 
     public Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) =>
         Task.FromResult(request.Suggested);

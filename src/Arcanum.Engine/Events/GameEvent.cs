@@ -41,6 +41,7 @@ public sealed record SpellCountered(CardId Card) : GameEvent;
 public sealed record CountersPlaced(CardId Card, Abilities.CounterKind Kind, int Count) : GameEvent;
 public sealed record TokenCreated(CardId Card, PlayerId Controller) : GameEvent;
 public sealed record PermanentDestroyed(CardId Card) : GameEvent;
+public sealed record CommanderReturned(CardId Card, PlayerId Owner) : GameEvent;
 public sealed record LifeChanged(PlayerId Player, int OldLife, int NewLife) : GameEvent;
 public sealed record CreatureDied(CardId Card) : GameEvent;
 

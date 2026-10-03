@@ -37,6 +37,8 @@ public interface IPlayerController
     /// <summary>Divide an attacker's combat damage among its blockers (and the player, with trample).</summary>
     Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request);
 
+    Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request);
+
     Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count);
 }
 

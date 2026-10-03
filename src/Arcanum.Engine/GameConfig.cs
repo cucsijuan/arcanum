@@ -14,6 +14,9 @@ public sealed record GameConfig
     public int MaxHandSize { get; init; } = 7;
     public int LandsPerTurn { get; init; } = 1;
 
+    /// <summary>Commander variant rules; null for other games.</summary>
+    public CommanderRules? Commander { get; init; }
+
     /// <summary>Who takes the first turn. Null = chosen at random from the seed.</summary>
     public PlayerId? StartingPlayer { get; init; }
 
@@ -24,4 +27,17 @@ public sealed record GameConfig
     public bool? StartingPlayerSkipsDraw { get; init; }
 }
 
-public sealed record PlayerSetup(string Name, IPlayerController Controller, IReadOnlyList<CardDefinition> Deck);
+/// <param name="Commanders">The player's commander(s) in a commander game; they start in the command zone.</param>
+public sealed record PlayerSetup(string Name, IPlayerController Controller, IReadOnlyList<CardDefinition> Deck,
+    IReadOnlyList<CardDefinition>? Commanders = null);
+
+/// <summary>
+/// Rules of the commander variant (rule 903): commanders start in the command zone, can be cast from there for
+/// an additional {2} per previous cast, may return there instead of going to a graveyard, exile, hand or library,
+/// and 21 combat damage from a single commander makes a player lose.
+/// </summary>
+public sealed record CommanderRules
+{
+    public int CommanderDamageToLose { get; init; } = 21;
+    public int TaxPerCast { get; init; } = 2;
+}

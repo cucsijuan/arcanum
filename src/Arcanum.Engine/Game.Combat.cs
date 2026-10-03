@@ -171,6 +171,7 @@ public sealed partial class Game
         {
             Emit(new DamageDealt(source.Id, null, target, amount, IsCombat: true));
             ChangeLife(target, -amount);
+            RecordCommanderDamage(source, target, amount);
             if (source.Has(Keyword.Lifelink)) lifeGained[source.Controller] = lifeGained.GetValueOrDefault(source.Controller) + amount;
         }
         foreach (var (player, amount) in lifeGained) ChangeLife(player, amount); // lifelink (702.15b)

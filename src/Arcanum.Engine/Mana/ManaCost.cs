@@ -24,6 +24,9 @@ public sealed record ManaCost
 
     public int ManaValue => Generic + Pips.Count;
 
+    /// <summary>This cost plus extra generic mana (cost increases such as commander tax).</summary>
+    public ManaCost PlusGeneric(int extra) => extra == 0 ? this : new ManaCost(Generic + extra, Pips);
+
     public static ManaCost Parse(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return Zero;

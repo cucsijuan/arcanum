@@ -43,6 +43,17 @@ public partial class PlayerArea : Control
 
     public PlayerId Player { get; set; }
 
+    /// <summary>Smaller cards and margins, for tables with three or four players.</summary>
+    public bool Compact { get; init; }
+
+    private float Scale => Compact ? 0.7f : 1f;
+    private Vector2 HandSize => BoardStyle.HandCardSize * Scale;
+    private Vector2 FieldSize => BoardStyle.BattlefieldCardSize * Scale;
+    private Vector2 PileSize => BoardStyle.PileCardSize * Scale;
+    private float Peek => PilePeek * Scale;
+
+    private readonly Label _commanderDamage = BoardStyle.MakeLabel("", 13, BoardStyle.Attacking);
+
     public event Action<CardNode>? CardClicked;
     public event Action<CardNode>? CardHoverStarted;
     public event Action<CardNode>? CardHoverEnded;
@@ -81,6 +92,8 @@ public partial class PlayerArea : Control
         };
 
         // Floating mana, shown under the life total while the pool is not empty.
+        _commanderDamage.Position = new Vector2(8, 84);
+        AddChild(_commanderDamage);
         _pool.MouseFilter = MouseFilterEnum.Ignore;
         _pool.Position = new Vector2(8, 58);
         _pool.AddThemeConstantOverride("separation", 6);
@@ -94,6 +107,7 @@ public partial class PlayerArea : Control
         AddChild(_handLabel);
         foreach (var pile in new[] { _library, _graveyard, _exile, _command })
         {
+            pile.CardClicked += c => CardClicked?.Invoke(c); // e.g. casting a commander from the command zone
             pile.CardHoverStarted += c => CardHoverStarted?.Invoke(c);
             pile.CardHoverEnded += c => CardHoverEnded?.Invoke(c);
             AddChild(pile);
@@ -110,6 +124,17 @@ public partial class PlayerArea : Control
         AddChild(_activeBorder);
 
         Resized += LayoutStatic;
+    }
+
+    public override void _Ready()
+    {
+        foreach (var pile in new[] { _library, _graveyard, _exile, _command }) pile.SetCardSize(PileSize);
+        if (!Compact) return;
+        _library.UseCompactLabel("Library");
+        _graveyard.UseCompactLabel("Grave");
+        _exile.UseCompactLabel("Exile");
+        _command.UseCompactLabel("Cmdr");
+        _handLabel.AddThemeFontSizeOverride("font_size", 11);
     }
 
     public void SetPlaymat(Texture2D? texture)
@@ -134,12 +159,13 @@ public partial class PlayerArea : Control
         if (_grid.Material is ShaderMaterial gridMaterial) gridMaterial.SetShaderParameter("rect_size", Size);
         _nameBadge.Position = new Vector2((Size.X - _nameBadge.Size.X) / 2, 6);
 
-        float x = Size.X - SideMargin - BoardStyle.PileCardSize.X;
-        float y = Size.Y - PilePeek;
+        float gap = PileGap * Scale;
+        float x = Size.X - SideMargin - PileSize.X;
+        float y = Size.Y - Peek;
         foreach (var pile in new[] { _command, _exile, _graveyard, _library })
         {
             pile.Position = new Vector2(x, y);
-            x -= BoardStyle.PileCardSize.X + PileGap;
+            x -= PileSize.X + gap;
         }
         _handLabel.Position = new Vector2(_library.Position.X - 78, Size.Y - 22);
     }
@@ -169,7 +195,11 @@ public partial class PlayerArea : Control
         _library.Refresh(me.LibraryCount, libraryTop);
         _graveyard.Refresh(me.Graveyard.Count, me.Graveyard.LastOrDefault());
         _exile.Refresh(me.Exile.Count, me.Exile.LastOrDefault());
-        _command.Refresh(me.Command.Count, me.Command.LastOrDefault());
+        var commanderCard = me.Command.LastOrDefault();
+        _command.Refresh(me.Command.Count, commanderCard, commanderCard is { CommanderTax: > 0 } c ? $" +{{{c.CommanderTax}}}" : "");
+        _commanderDamage.Text = string.Join("\n", me.CommanderDamage.Where(kv => kv.Value > 0)
+            .Select(kv => $"\u2694 {view.FindCard(kv.Key)?.Name ?? "Commander"}: {kv.Value}/21"));
+        _commanderDamage.Position = new Vector2(8, me.ManaPool.Count > 0 ? 84 : 58);
         LayoutStatic();
 
         var battlefield = view.Battlefield.Where(c => c.Controller == Player).ToList();
@@ -213,7 +243,7 @@ public partial class PlayerArea : Control
         if (pile is not null)
         {
             tween.TweenProperty(node, "position", pile.Position, 0.4 * k);
-            tween.TweenProperty(node, "size", BoardStyle.PileCardSize, 0.4 * k);
+            tween.TweenProperty(node, "size", pile.Size, 0.4 * k);
             tween.TweenProperty(node, "rotation_degrees", 0f, 0.4 * k);
             tween.TweenProperty(node, "modulate:a", 0.0f, 0.15 * k).SetDelay(0.3 * k);
         }
@@ -273,7 +303,7 @@ public partial class PlayerArea : Control
     {
         var node = new CardNode();
         // New cards slide in from the library pile.
-        node.Size = view.Zone == Zone.Hand ? BoardStyle.HandCardSize : BoardStyle.BattlefieldCardSize;
+        node.Size = view.Zone == Zone.Hand ? HandSize : FieldSize;
         node.Position = _library.Position;
         node.Clicked += c => CardClicked?.Invoke(c);
         node.HoverStarted += c =>
@@ -294,8 +324,8 @@ public partial class PlayerArea : Control
     {
         int n = _handOrder.Count;
         if (n == 0) return;
-        var size = BoardStyle.HandCardSize;
-        float spacing = Mathf.Min(size.X - 8, 640f / n);
+        var size = HandSize;
+        float spacing = Mathf.Min(size.X - 8, Mathf.Min(640f, Size.X * 0.5f) / n);
         float totalWidth = spacing * (n - 1) + size.X;
         float startX = (Size.X - totalWidth) / 2;
 
@@ -304,7 +334,7 @@ public partial class PlayerArea : Control
             var node = _handOrder[i];
             float t = n == 1 ? 0 : (i / (float)(n - 1)) * 2 - 1; // -1 .. 1 across the fan
             bool hovered = node.IsHovered;
-            var target = new Vector2(startX + i * spacing, Size.Y - PilePeek + t * t * 8);
+            var target = new Vector2(startX + i * spacing, Size.Y - Peek + t * t * 8);
             float rotation = t * 6f;
             if (hovered)
             {
@@ -320,8 +350,8 @@ public partial class PlayerArea : Control
     {
         var lands = battlefield.Where(c => (c.Types & CardType.Land) != 0).ToList();
         var others = battlefield.Where(c => (c.Types & CardType.Land) == 0).ToList();
-        float creatureY = 62;
-        float landY = creatureY + BoardStyle.BattlefieldCardSize.Y + 22;
+        float creatureY = Compact ? 56 : 62;
+        float landY = creatureY + FieldSize.Y + (Compact ? 14 : 22);
 
         // Auras and Equipment attached to one of our permanents sit tucked behind it instead of taking a slot.
         var hosts = battlefield.Select(c => c.Id).ToHashSet();
@@ -340,9 +370,9 @@ public partial class PlayerArea : Control
     private void LayoutRow(IReadOnlyList<CardView> row, float y)
     {
         if (row.Count == 0) return;
-        var size = BoardStyle.BattlefieldCardSize;
+        var size = FieldSize;
         float slot = size.Y + 6; // tapped cards are rotated, so reserve their full height
-        float available = Size.X - 2 * 230;
+        float available = Size.X - 2 * (Compact ? 40 : 230);
         float spacing = Mathf.Min(slot, available / row.Count);
         float totalWidth = spacing * (row.Count - 1) + slot;
         float startX = (Size.X - totalWidth) / 2 + (slot - size.X) / 2;
@@ -353,7 +383,7 @@ public partial class PlayerArea : Control
             node.ZIndex = 10 + i; // room below for attachments tucked behind their host
             bool tapped = row[i].Tapped || _staged.Contains(row[i].Id);
             // Attackers step forward towards the opponent.
-            float forward = _attacking.Contains(row[i].Id) ? (FacesDown ? 28 : -28) : 0;
+            float forward = _attacking.Contains(row[i].Id) ? (FacesDown ? 28 : -28) * Scale : 0;
             MoveTo(node, new Vector2(startX + i * spacing, y + forward), size, tapped ? 90 : 0);
         }
     }
@@ -369,7 +399,7 @@ public partial class PlayerArea : Control
                 var node = _cards[card.Id];
                 node.ZIndex = host.ZIndex - 1;
                 // Peek out above the host so the attachment stays visible and hoverable.
-                MoveTo(node, host.TargetPosition + new Vector2(10 * i, -22 * i), BoardStyle.BattlefieldCardSize, 0);
+                MoveTo(node, host.TargetPosition + new Vector2(10 * i, -22 * i), FieldSize, 0);
                 i++;
             }
         }
@@ -377,8 +407,8 @@ public partial class PlayerArea : Control
 
     private void LayoutBlockers(IReadOnlyList<CardView> blockers, float y)
     {
-        var size = BoardStyle.BattlefieldCardSize;
-        float forward = FacesDown ? 40 : -40;
+        var size = FieldSize;
+        float forward = (FacesDown ? 40 : -40) * Scale;
         // Several blockers on the same attacker stand side by side, centered on it.
         foreach (var group in blockers.GroupBy(b => _blockerAlign[b.Id]))
         {

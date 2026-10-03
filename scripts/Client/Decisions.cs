@@ -61,6 +61,11 @@ public sealed class DamageAssignmentDecision : Decision<DamageAssignment>
     public required DamageAssignmentRequest Request { get; init; }
 }
 
+public sealed class YesNoDecision : Decision<bool>
+{
+    public required YesNoRequest Request { get; init; }
+}
+
 public enum SelectCardsReason { MulliganBottom, Discard }
 
 public sealed class SelectCardsDecision : Decision<IReadOnlyList<CardId>>
