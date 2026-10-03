@@ -56,7 +56,7 @@ public sealed class Card
 
     public string Name => Definition.Name;
 
-    // Characteristics are read through these so continuous effects (layers, M4) can hook in later.
+    // Characteristics are read through these so continuous effects (layers) apply everywhere.
     public CardType Types => Definition.Types;
     public int Power => (Definition.Power ?? 0) + PowerBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne);
     public int Toughness => (Definition.Toughness ?? 0) + ToughnessBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne);

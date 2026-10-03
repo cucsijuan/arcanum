@@ -70,7 +70,7 @@ public sealed partial class Game
                 break;
             case Step.Cleanup:
                 await CleanupAsync();
-                givesPriority = false; // rule 514.3, unless SBAs or triggers happen (handled with triggers in M4)
+                givesPriority = false; // rule 514.3; a cleanup with pending SBAs or triggers isn't handled yet
                 break;
         }
 

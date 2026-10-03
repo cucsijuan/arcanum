@@ -14,7 +14,7 @@ public sealed class UiPlayerController(PlayerId player, DecisionHub hub, Decisio
 {
     /// <summary>
     /// Ask the player to confirm (or change) which sources pay for each spell. When false, the engine's
-    /// auto-pay suggestion is used directly. Will become a user setting (M5).
+    /// auto-pay suggestion is used directly (the "Confirm mana payment" setting).
     /// </summary>
     public bool ConfirmManaPayment { get; set; } = true;
 

@@ -4,7 +4,7 @@ using System.Text;
 namespace Arcanum.Engine.Mana;
 
 /// <summary>
-/// A mana cost such as {2}{G}{G}. Hybrid, Phyrexian and X costs arrive with the ability system (M4).
+/// A mana cost such as {2}{G}{G}. Hybrid, Phyrexian and X costs aren't supported yet.
 /// </summary>
 public sealed record ManaCost
 {

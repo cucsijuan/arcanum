@@ -9,7 +9,7 @@ Arcanum is a rules engine and client; it ships no card content. Card data source
 formats and sample decks come from a content module installed at runtime (see `docs/card-scripts.md`).
 
 ## Status
-Early development. See the roadmap (M0 setup → M1 rules engine core → M2 board UI → …).
+Early development. See [docs/roadmap.md](docs/roadmap.md) for milestones and what comes next.
 
 ## Layout
 | Path | What |

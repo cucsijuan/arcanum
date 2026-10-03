@@ -26,7 +26,7 @@ public sealed record CardDefinition
 
     /// <summary>
     /// Mana this permanent can add with an intrinsic "{T}: Add one mana of these types" ability.
-    /// Placeholder for basic land mana abilities until the ability system lands (M4).
+    /// Card data fills it from basic land types and simple "{T}: Add ..." rules text.
     /// </summary>
     public IReadOnlyList<ManaType> TapForMana { get; init; } = Array.Empty<ManaType>();
 
