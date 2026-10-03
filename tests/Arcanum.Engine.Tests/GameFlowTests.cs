@@ -9,9 +9,9 @@ namespace Arcanum.Engine.Tests;
 public class GameFlowTests
 {
     [Fact]
-    public async Task ForestBearsGamePlaysToAWinner()
+    public async Task ForestCubsGamePlaysToAWinner()
     {
-        var game = Decks.NewGame(1, (Decks.ForestBears, new TestController()), (Decks.ForestBears, new TestController()));
+        var game = Decks.NewGame(1, (Decks.ForestCubs, new TestController()), (Decks.ForestCubs, new TestController()));
         await game.RunWithTimeout();
 
         Assert.True(game.State.IsGameOver);
@@ -29,7 +29,7 @@ public class GameFlowTests
     {
         async Task<string> Play()
         {
-            var game = Decks.NewGame(seed, (Decks.ForestBears, new TestController()), (Decks.ForestBears, new TestController()));
+            var game = Decks.NewGame(seed, (Decks.ForestCubs, new TestController()), (Decks.ForestCubs, new TestController()));
             await game.RunWithTimeout();
             return string.Join("\n", game.Log);
         }
@@ -39,7 +39,7 @@ public class GameFlowTests
     [Fact]
     public async Task StartingPlayerSkipsFirstDrawInTwoPlayerGames()
     {
-        var game = Decks.NewGame(5, (Decks.ForestBears, new TestController()), (Decks.ForestBears, new TestController()));
+        var game = Decks.NewGame(5, (Decks.ForestCubs, new TestController()), (Decks.ForestCubs, new TestController()));
         await game.RunWithTimeout();
 
         var firstTurnSteps = game.Log.SkipWhile(e => e is not TurnBegan).Skip(1).TakeWhile(e => e is not TurnBegan)
@@ -55,7 +55,7 @@ public class GameFlowTests
     [Fact]
     public async Task CreaturesCannotAttackTheTurnTheyEnter()
     {
-        var game = Decks.NewGame(3, (Decks.ForestBears, new TestController()), (Decks.ForestBears, new TestController()));
+        var game = Decks.NewGame(3, (Decks.ForestCubs, new TestController()), (Decks.ForestCubs, new TestController()));
         int turn = 0;
         var enteredOnTurn = new Dictionary<Core.CardId, int>();
         game.EventRaised += e =>
@@ -74,7 +74,7 @@ public class GameFlowTests
     [Fact]
     public async Task DrawingFromEmptyLibraryLoses()
     {
-        var tinyDeck = Decks.Of((CoreCards.Forest, 7));
+        var tinyDeck = Decks.Of((GenericCards.Forest, 7));
         var game = Decks.NewGame(2, (tinyDeck, new TestController()), (tinyDeck, new TestController()));
         await game.RunWithTimeout();
 
@@ -90,7 +90,7 @@ public class GameFlowTests
     public async Task LondonMulliganPutsCardsOnBottom()
     {
         var mulliganer = new TestController { Keep = (_, taken) => taken >= 2 };
-        var game = Decks.NewGame(4, (Decks.ForestBears, mulliganer), (Decks.ForestBears, new TestController()));
+        var game = Decks.NewGame(4, (Decks.ForestCubs, mulliganer), (Decks.ForestCubs, new TestController()));
         await game.RunWithTimeout();
 
         var kept = game.Log.OfType<HandKept>().ToDictionary(k => k.Player, k => k.HandSize);
@@ -105,9 +105,9 @@ public class GameFlowTests
         var mulliganer = new TestController { Keep = (_, taken) => taken >= 1 };
         var game = new Game(new GameConfig { Seed = 8 }, new[]
         {
-            new PlayerSetup("A", mulliganer, Decks.ForestBears),
-            new PlayerSetup("B", new TestController(), Decks.ForestBears),
-            new PlayerSetup("C", new TestController(), Decks.ForestBears),
+            new PlayerSetup("A", mulliganer, Decks.ForestCubs),
+            new PlayerSetup("B", new TestController(), Decks.ForestCubs),
+            new PlayerSetup("C", new TestController(), Decks.ForestCubs),
         });
         await game.RunWithTimeout();
         Assert.Equal(7, game.Log.OfType<HandKept>().Single(k => k.Player.Value == 0).HandSize);
@@ -118,9 +118,9 @@ public class GameFlowTests
     {
         var game = new Game(new GameConfig { Seed = 11 }, new[]
         {
-            new PlayerSetup("A", new TestController(), Decks.ForestBears),
-            new PlayerSetup("B", new TestController(), Decks.ForestBears),
-            new PlayerSetup("C", new TestController(), Decks.ForestBears),
+            new PlayerSetup("A", new TestController(), Decks.ForestCubs),
+            new PlayerSetup("B", new TestController(), Decks.ForestCubs),
+            new PlayerSetup("C", new TestController(), Decks.ForestCubs),
         });
         await game.RunWithTimeout();
 
@@ -140,7 +140,7 @@ public class GameFlowTests
             Block = (_, blockers, attackers) =>
                 blockers.Zip(attackers, (b, a) => new BlockDeclaration(b, a)).ToList(),
         };
-        var game = Decks.NewGame(6, (Decks.ForestBears, new TestController()), (Decks.ForestBears, blocker));
+        var game = Decks.NewGame(6, (Decks.ForestCubs, new TestController()), (Decks.ForestCubs, blocker));
         var blocks = new List<BlockerDeclared>();
         game.EventRaised += e => { if (e is BlockerDeclared b) blocks.Add(b); };
         await game.RunWithTimeout();
@@ -156,7 +156,7 @@ public class GameFlowTests
     public async Task IllegalDecisionIsRejected()
     {
         var cheater = new TestController { Act = (_, _) => new PlayLand(new Core.CardId(9999)) };
-        var game = Decks.NewGame(1, (Decks.ForestBears, cheater), (Decks.ForestBears, cheater));
+        var game = Decks.NewGame(1, (Decks.ForestCubs, cheater), (Decks.ForestCubs, cheater));
         await Assert.ThrowsAsync<InvalidDecisionException>(() => game.RunWithTimeout());
     }
 
@@ -168,7 +168,7 @@ public class GameFlowTests
         {
             Act = (view, legal) => { seen ??= view; return TestController.Greedy(view, legal); },
         };
-        var game = Decks.NewGame(1, (Decks.ForestBears, spy), (Decks.ForestBears, new TestController()));
+        var game = Decks.NewGame(1, (Decks.ForestCubs, spy), (Decks.ForestCubs, new TestController()));
         await game.RunWithTimeout();
 
         Assert.NotNull(seen);
@@ -183,7 +183,7 @@ public class LosingTests
     [Fact]
     public async Task TwoPlayerLoserKeepsTheirBoardWhenTheGameEnds()
     {
-        var game = Decks.NewGame(1, (Decks.ForestBears, new TestController()), (Decks.ForestBears, new TestController()));
+        var game = Decks.NewGame(1, (Decks.ForestCubs, new TestController()), (Decks.ForestCubs, new TestController()));
         await game.RunWithTimeout();
         var loser = game.State.Players.Single(p => p.Id != game.State.Winner);
         Assert.Empty(loser.Exile);

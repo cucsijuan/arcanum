@@ -5,10 +5,10 @@ using Arcanum.Engine.Mana;
 namespace Arcanum.Cards;
 
 /// <summary>
-/// Hand-written definitions for the M1 card pool: basic lands and vanilla creatures.
-/// Replaced by the Scryfall import + ability DSL in M4.
+/// Original, generic cards used by tests and the offline demo. Real card content is never part of this
+/// repository: it comes from a card module downloaded at runtime.
 /// </summary>
-public static class CoreCards
+public static class GenericCards
 {
     private static CardDefinition Basic(string name, string subtype, ManaType mana) => new()
     {
@@ -35,20 +35,20 @@ public static class CoreCards
     public static readonly CardDefinition Swamp = Basic("Swamp", "Swamp", ManaType.Black);
     public static readonly CardDefinition Mountain = Basic("Mountain", "Mountain", ManaType.Red);
     public static readonly CardDefinition Forest = Basic("Forest", "Forest", ManaType.Green);
-    public static readonly CardDefinition Wastes = Basic("Wastes", "", ManaType.Colorless) with { Subtypes = Array.Empty<string>() };
+    public static readonly CardDefinition BarrenFlats = Basic("Barren Flats", "", ManaType.Colorless) with { Subtypes = Array.Empty<string>() };
 
-    public static readonly CardDefinition SavannahLions = Vanilla("Savannah Lions", "{W}", "Cat", 2, 1);
-    public static readonly CardDefinition GrizzlyBears = Vanilla("Grizzly Bears", "{1}{G}", "Bear", 2, 2);
-    public static readonly CardDefinition GrayOgre = Vanilla("Gray Ogre", "{2}{R}", "Ogre", 2, 2);
-    public static readonly CardDefinition HillGiant = Vanilla("Hill Giant", "{3}{R}", "Giant", 3, 3);
-    public static readonly CardDefinition CrawWurm = Vanilla("Craw Wurm", "{4}{G}{G}", "Wurm", 6, 4);
-    public static readonly CardDefinition EarthElemental = Vanilla("Earth Elemental", "{3}{R}{R}", "Elemental", 4, 5);
-    public static readonly CardDefinition MerfolkOfThePearlTrident = Vanilla("Merfolk of the Pearl Trident", "{U}", "Merfolk", 1, 1);
+    public static readonly CardDefinition PlainsLion = Vanilla("Plains Lion", "{W}", "Cat", 2, 1);
+    public static readonly CardDefinition BearCub = Vanilla("Bear Cub", "{1}{G}", "Bear", 2, 2);
+    public static readonly CardDefinition OgreBrute = Vanilla("Ogre Brute", "{2}{R}", "Ogre", 2, 2);
+    public static readonly CardDefinition HillBrute = Vanilla("Hill Brute", "{3}{R}", "Giant", 3, 3);
+    public static readonly CardDefinition GreatWurm = Vanilla("Great Wurm", "{4}{G}{G}", "Wurm", 6, 4);
+    public static readonly CardDefinition StoneElemental = Vanilla("Stone Elemental", "{3}{R}{R}", "Elemental", 4, 5);
+    public static readonly CardDefinition RiverScout = Vanilla("River Scout", "{U}", "Merfolk", 1, 1);
 
     public static IReadOnlyList<CardDefinition> All { get; } = new[]
     {
-        Plains, Island, Swamp, Mountain, Forest, Wastes,
-        SavannahLions, GrizzlyBears, GrayOgre, HillGiant, CrawWurm, EarthElemental, MerfolkOfThePearlTrident,
+        Plains, Island, Swamp, Mountain, Forest, BarrenFlats,
+        PlainsLion, BearCub, OgreBrute, HillBrute, GreatWurm, StoneElemental, RiverScout,
     };
 }
 
@@ -61,7 +61,7 @@ public sealed class InMemoryCardDatabase : ICardDatabase
         _byName = cards.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
     }
 
-    public static InMemoryCardDatabase Core { get; } = new(CoreCards.All);
+    public static InMemoryCardDatabase Core { get; } = new(GenericCards.All);
 
     public bool TryGet(string name, out CardDefinition definition) => _byName.TryGetValue(name, out definition!);
 }

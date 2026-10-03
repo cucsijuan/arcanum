@@ -9,7 +9,7 @@ public static class Decks
     public static IReadOnlyList<CardDefinition> Of(params (CardDefinition Card, int Count)[] entries) =>
         entries.SelectMany(e => Enumerable.Repeat(e.Card, e.Count)).ToList();
 
-    public static IReadOnlyList<CardDefinition> ForestBears => Of((CoreCards.Forest, 20), (CoreCards.GrizzlyBears, 20));
+    public static IReadOnlyList<CardDefinition> ForestCubs => Of((GenericCards.Forest, 20), (GenericCards.BearCub, 20));
 
     public static Game NewGame(ulong seed, params (IReadOnlyList<CardDefinition> Deck, TestController Controller)[] players) =>
         new(new GameConfig { Seed = seed },

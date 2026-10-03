@@ -9,7 +9,7 @@ namespace Arcanum.Engine.Tests;
 public class CombatDamageTests
 {
     // Wurms (6/4) attack into a Bears deck that double-blocks whenever it can.
-    private static readonly IReadOnlyList<Cards.CardDefinition> Wurms = Decks.Of((CoreCards.Forest, 22), (CoreCards.CrawWurm, 18));
+    private static readonly IReadOnlyList<Cards.CardDefinition> Wurms = Decks.Of((GenericCards.Forest, 22), (GenericCards.GreatWurm, 18));
 
     private static TestController DoubleBlocker() => new()
     {
@@ -24,7 +24,7 @@ public class CombatDamageTests
     {
         var requests = new List<DamageAssignmentRequest>();
         var attacker = new TestController { AssignDamage = (_, r) => { requests.Add(r); return r.Suggested; } };
-        var game = Decks.NewGame(31, (Wurms, attacker), (Decks.ForestBears, DoubleBlocker()));
+        var game = Decks.NewGame(31, (Wurms, attacker), (Decks.ForestCubs, DoubleBlocker()));
         await game.RunWithTimeout(20);
 
         var request = Assert.IsType<DamageAssignmentRequest>(requests.FirstOrDefault());
@@ -47,7 +47,7 @@ public class CombatDamageTests
                 return new Dictionary<CardId, int> { [r.Blockers[0]] = 0, [r.Blockers[1]] = r.Power };
             },
         };
-        var game = Decks.NewGame(31, (Wurms, attacker), (Decks.ForestBears, DoubleBlocker()));
+        var game = Decks.NewGame(31, (Wurms, attacker), (Decks.ForestCubs, DoubleBlocker()));
         var died = new List<CardId>();
         game.EventRaised += e => { if (e is CreatureDied d) died.Add(d.Card); };
         await game.RunWithTimeout(20);
@@ -65,7 +65,7 @@ public class CombatDamageTests
         {
             AssignDamage = (_, r) => new Dictionary<CardId, int> { [r.Blockers[0]] = 1 },
         };
-        var game = Decks.NewGame(31, (Wurms, attacker), (Decks.ForestBears, DoubleBlocker()));
+        var game = Decks.NewGame(31, (Wurms, attacker), (Decks.ForestCubs, DoubleBlocker()));
         await Assert.ThrowsAsync<InvalidDecisionException>(() => game.RunWithTimeout(20));
     }
 
@@ -79,7 +79,7 @@ public class CombatDamageTests
             Attack = (_, _, _) => Array.Empty<AttackDeclaration>(),
             Block = (_, blockers, attackers) => new[] { new BlockDeclaration(blockers[0], attackers[0]) },
         };
-        var game = Decks.NewGame(32, (Wurms, attacker), (Decks.ForestBears, singleBlocker));
+        var game = Decks.NewGame(32, (Wurms, attacker), (Decks.ForestCubs, singleBlocker));
         await game.RunWithTimeout(20);
         Assert.Equal(0, asked);
         Assert.Contains(game.Log, e => e is BlockerDeclared);

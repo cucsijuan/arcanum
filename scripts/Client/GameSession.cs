@@ -39,10 +39,10 @@ public sealed class GameSession
         static IReadOnlyList<CardDefinition> Deck(params (CardDefinition Card, int Count)[] entries) =>
             entries.SelectMany(e => Enumerable.Repeat(e.Card, e.Count)).ToList();
 
-        var green = Deck((CoreCards.Forest, 17), (CoreCards.GrizzlyBears, 14), (CoreCards.CrawWurm, 4),
-            (CoreCards.Mountain, 3), (CoreCards.GrayOgre, 2));
-        var red = Deck((CoreCards.Mountain, 17), (CoreCards.GrayOgre, 10), (CoreCards.HillGiant, 8),
-            (CoreCards.EarthElemental, 5));
+        var green = Deck((GenericCards.Forest, 17), (GenericCards.BearCub, 14), (GenericCards.GreatWurm, 4),
+            (GenericCards.Mountain, 3), (GenericCards.OgreBrute, 2));
+        var red = Deck((GenericCards.Mountain, 17), (GenericCards.OgreBrute, 10), (GenericCards.HillBrute, 8),
+            (GenericCards.StoneElemental, 5));
 
         var hub = new DecisionHub();
         var game = new Game(new GameConfig { Seed = seed }, new[]

@@ -50,7 +50,7 @@ public class ManaTests
     [Fact]
     public void PaysColoredPipsWithMatchingSources()
     {
-        var state = StateWithLands(CoreCards.Mountain, CoreCards.Forest, CoreCards.Forest);
+        var state = StateWithLands(GenericCards.Mountain, GenericCards.Forest, GenericCards.Forest);
         var plan = ManaPayment.FindPlan(state, new PlayerId(0), ManaCost.Parse("{1}{G}{G}"));
         Assert.NotNull(plan);
         Assert.Equal(3, plan!.Taps.Count);
@@ -60,14 +60,14 @@ public class ManaTests
     [Fact]
     public void FailsWhenColorsAreMissing()
     {
-        var state = StateWithLands(CoreCards.Mountain, CoreCards.Mountain, CoreCards.Forest);
+        var state = StateWithLands(GenericCards.Mountain, GenericCards.Mountain, GenericCards.Forest);
         Assert.Null(ManaPayment.FindPlan(state, new PlayerId(0), ManaCost.Parse("{G}{G}")));
     }
 
     [Fact]
     public void IgnoresTappedSources()
     {
-        var state = StateWithLands(CoreCards.Forest, CoreCards.Forest);
+        var state = StateWithLands(GenericCards.Forest, GenericCards.Forest);
         state.GetCard(new CardId(1)).Tapped = true;
         Assert.Null(ManaPayment.FindPlan(state, new PlayerId(0), ManaCost.Parse("{1}{G}")));
     }
@@ -75,7 +75,7 @@ public class ManaTests
     [Fact]
     public void UsesFloatingManaFirst()
     {
-        var state = StateWithLands(CoreCards.Forest);
+        var state = StateWithLands(GenericCards.Forest);
         state.GetPlayer(new PlayerId(0)).ManaPool.Add(ManaType.Red);
         var plan = ManaPayment.FindPlan(state, new PlayerId(0), ManaCost.Parse("{1}{G}"));
         Assert.NotNull(plan);

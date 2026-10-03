@@ -11,7 +11,7 @@ namespace Arcanum.Engine.Tests;
 public class ManaFlowTests
 {
     private static readonly IReadOnlyList<Cards.CardDefinition> RedGreen =
-        Decks.Of((CoreCards.Forest, 10), (CoreCards.Mountain, 10), (CoreCards.GrizzlyBears, 20));
+        Decks.Of((GenericCards.Forest, 10), (GenericCards.Mountain, 10), (GenericCards.BearCub, 20));
 
     [Fact]
     public void ApplyReportsRemainingAndExcess()
@@ -113,7 +113,7 @@ public class ManaFlowTests
             Pay = (_, request) => request.Sources.Select(s => new ManaTap(s.Source, s.Types[0])).ToList(),
         };
         // Give P1 enough lands that "tap everything" overpays at some point.
-        var game = Decks.NewGame(24, (Decks.Of((CoreCards.Forest, 30), (CoreCards.GrizzlyBears, 10)), p1), (RedGreen, new TestController()));
+        var game = Decks.NewGame(24, (Decks.Of((GenericCards.Forest, 30), (GenericCards.BearCub, 10)), p1), (RedGreen, new TestController()));
         await Assert.ThrowsAsync<InvalidDecisionException>(() => game.RunWithTimeout());
     }
 
@@ -124,7 +124,7 @@ public class ManaFlowTests
         {
             Pay = (_, request) => request.SuggestedTaps.Select(t => t with { Type = ManaType.Red }).ToList(),
         };
-        var game = Decks.NewGame(25, (Decks.ForestBears, p1), (RedGreen, new TestController()));
+        var game = Decks.NewGame(25, (Decks.ForestCubs, p1), (RedGreen, new TestController()));
         await Assert.ThrowsAsync<InvalidDecisionException>(() => game.RunWithTimeout());
     }
 
@@ -141,7 +141,7 @@ public class ManaFlowTests
             if (cancels > cancelsAtLastAct) { cancelsAtLastAct = cancels; return PassPriority.Instance; }
             return TestController.Greedy(view, legal);
         };
-        var game = Decks.NewGame(26, (Decks.ForestBears, p1), (Decks.ForestBears, new TestController()));
+        var game = Decks.NewGame(26, (Decks.ForestCubs, p1), (Decks.ForestCubs, new TestController()));
         await game.RunWithTimeout();
 
         Assert.True(cancels > 0);
