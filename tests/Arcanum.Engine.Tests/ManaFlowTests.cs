@@ -11,7 +11,7 @@ namespace Arcanum.Engine.Tests;
 public class ManaFlowTests
 {
     private static readonly IReadOnlyList<Cards.CardDefinition> RedGreen =
-        Decks.Of((GenericCards.Forest, 10), (GenericCards.Mountain, 10), (GenericCards.BearCub, 20));
+        Decks.Of((GenericCards.Forest, 10), (GenericCards.Mountain, 10), (GenericCards.GladeCub, 20));
 
     [Fact]
     public void ApplyReportsRemainingAndExcess()
@@ -113,7 +113,7 @@ public class ManaFlowTests
             Pay = (_, request) => request.Sources.Select(s => new ManaTap(s.Source, s.Types[0])).ToList(),
         };
         // Give P1 enough lands that "tap everything" overpays at some point.
-        var game = Decks.NewGame(24, (Decks.Of((GenericCards.Forest, 30), (GenericCards.BearCub, 10)), p1), (RedGreen, new TestController()));
+        var game = Decks.NewGame(24, (Decks.Of((GenericCards.Forest, 30), (GenericCards.GladeCub, 10)), p1), (RedGreen, new TestController()));
         await Assert.ThrowsAsync<InvalidDecisionException>(() => game.RunWithTimeout());
     }
 

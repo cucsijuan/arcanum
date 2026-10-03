@@ -4,6 +4,7 @@ using Arcanum.Engine;
 using Arcanum.Engine.Cards;
 using Arcanum.Engine.Core;
 using Arcanum.Engine.Events;
+using Arcanum.Engine.Players;
 using Arcanum.Engine.Views;
 using Godot;
 
@@ -11,12 +12,21 @@ namespace Arcanum.Client;
 
 /// <summary>
 /// Bridges the engine and the Godot UI: builds a game, runs it on the main thread (decisions are awaited,
-/// so the engine never blocks a frame) and tells the board when to redraw.
+/// so the engine never blocks a frame), tells the board when to redraw and supports undo by replay.
 /// </summary>
 public sealed class GameSession
 {
+    public sealed record Seat(string Name, IReadOnlyList<CardDefinition> Deck);
+
+    private readonly GameConfig _config;
+    private readonly IReadOnlyList<Seat> _seats;
+
     public Game Game { get; }
-    public DecisionHub Hub { get; }
+    public DecisionHub Hub { get; } = new();
+    public DecisionLog Log { get; }
+
+    /// <summary>Stop settings; shared by both seats in hotseat, since one person controls both.</summary>
+    public AutoPassPolicy Policy { get; }
 
     /// <summary>Show every hidden card (deck-test / hotseat mode).</summary>
     public bool RevealAll { get; set; } = true;
@@ -26,12 +36,16 @@ public sealed class GameSession
 
     public event Action<Exception>? Failed;
 
-    private GameSession(Game game, DecisionHub hub)
+    private GameSession(GameConfig config, IReadOnlyList<Seat> seats, AutoPassPolicy policy, IEnumerable<DecisionLog.Entry>? replay)
     {
-        Game = game;
-        Hub = hub;
-        hub.DecisionRequested += _ => Changed?.Invoke();
-        game.EventRaised += e => { if (e is GameEnded) Changed?.Invoke(); };
+        _config = config;
+        _seats = seats;
+        Policy = policy;
+        Log = new DecisionLog(replay);
+        Game = new Game(config, seats.Select((s, i) =>
+            new PlayerSetup(s.Name, new UiPlayerController(new PlayerId(i), Hub, Log, policy), s.Deck)).ToList());
+        Hub.DecisionRequested += _ => Changed?.Invoke();
+        Game.EventRaised += e => { if (e is GameEnded) Changed?.Invoke(); };
     }
 
     public static GameSession CreateHotseatDemo(ulong seed)
@@ -39,23 +53,32 @@ public sealed class GameSession
         static IReadOnlyList<CardDefinition> Deck(params (CardDefinition Card, int Count)[] entries) =>
             entries.SelectMany(e => Enumerable.Repeat(e.Card, e.Count)).ToList();
 
-        var green = Deck((GenericCards.Forest, 17), (GenericCards.BearCub, 14), (GenericCards.GreatWurm, 4),
+        var green = Deck((GenericCards.Forest, 17), (GenericCards.GladeCub, 14), (GenericCards.GreatWurm, 4),
             (GenericCards.Mountain, 3), (GenericCards.OgreBrute, 2));
         var red = Deck((GenericCards.Mountain, 17), (GenericCards.OgreBrute, 10), (GenericCards.HillBrute, 8),
             (GenericCards.StoneElemental, 5));
 
-        var hub = new DecisionHub();
-        var game = new Game(new GameConfig { Seed = seed }, new[]
-        {
-            new PlayerSetup("Player 1", new UiPlayerController(new PlayerId(0), hub), green),
-            new PlayerSetup("Player 2", new UiPlayerController(new PlayerId(1), hub), red),
-        });
-        return new GameSession(game, hub);
+        return new GameSession(new GameConfig { Seed = seed },
+            new[] { new Seat("Player 1", green), new Seat("Player 2", red) }, new AutoPassPolicy(), replay: null);
     }
 
     public Decision? CurrentDecision => Hub.Current is { IsAnswered: false } d ? d : null;
 
     public GameView ViewFor(PlayerId viewer) => Game.ViewFor(viewer, RevealAll);
+
+    public bool CanUndo => Log.Entries.Exists(e => e.Manual);
+
+    /// <summary>
+    /// A new session at the moment the last decision made by a person was asked: same seed, every earlier answer
+    /// replayed. Returns null if nothing can be undone.
+    /// </summary>
+    public GameSession? CreateUndo()
+    {
+        int last = Log.Entries.FindLastIndex(e => e.Manual);
+        if (last < 0) return null;
+        Policy.CancelPassTurn();
+        return new GameSession(_config, _seats, Policy, Log.Entries.Take(last).ToList()) { RevealAll = RevealAll };
+    }
 
     public async void Start()
     {

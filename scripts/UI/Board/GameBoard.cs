@@ -27,7 +27,6 @@ public partial class GameBoard : Control
     private readonly Label _stepLabel = BoardStyle.MakeLabel("", 12, BoardStyle.TextDim);
     private readonly PanelContainer _actionPanel = new();
     private readonly Label _prompt = BoardStyle.MakeLabel("", 15);
-    private readonly Label _stackLabel = BoardStyle.MakeLabel("", 12, BoardStyle.TextDim);
     private readonly HBoxContainer _actionButtons = new();
     private readonly PanelContainer _logPanel = new();
     private readonly RichTextLabel _log = new();
@@ -45,6 +44,9 @@ public partial class GameBoard : Control
     private readonly VBoxContainer _actionExtra = new();
     private readonly Dictionary<CardId, int> _damageSplit = new(); // blocker -> damage, for an unconfirmed assignment
     private readonly ArrowLayer _arrows = new();
+    private readonly PhaseBar _phaseBar = new();
+    private readonly StackView _stackView = new();
+    private Button _undoButton = null!;
 
     public override void _Ready()
     {
@@ -54,16 +56,27 @@ public partial class GameBoard : Control
         StartNewGame(ulong.TryParse(OS.GetEnvironment("ARCANUM_SEED"), out var seed) ? seed : (ulong)Time.GetTicksUsec());
     }
 
-    private void StartNewGame(ulong seed)
+    private void StartNewGame(ulong seed) => StartSession(GameSession.CreateHotseatDemo(seed));
+
+    private void StartSession(GameSession session)
     {
-        _session = GameSession.CreateHotseatDemo(seed);
+        _session = session;
         _session.Changed += Refresh;
         _session.Failed += e => ShowGameOver($"Engine error:\n{e.Message}");
         _session.Game.EventRaised += OnGameEvent;
+        _phaseBar.Bind(session.Policy);
         _log.Clear();
         _unreadLog = 0;
+        UpdateLogBadge();
         _gameOver.Visible = false;
+        _lastDecision = null;
         _session.Start();
+    }
+
+    /// <summary>Test-mode undo: rebuild the game up to the last decision a person made and ask it again.</summary>
+    private void Undo()
+    {
+        if (_session.CreateUndo() is { } previous) StartSession(previous);
     }
 
     // ---------------------------------------------------------------- layout
@@ -106,12 +119,31 @@ public partial class GameBoard : Control
         turnBox.AddChild(turnStack);
         corner.AddChild(turnBox);
 
+        _undoButton = BoardStyle.MakeButton("↶", 22);
+        _undoButton.CustomMinimumSize = new Vector2(48, 40);
+        _undoButton.TooltipText = "Undo (Ctrl+Z)";
+        _undoButton.Pressed += Undo;
+        corner.AddChild(_undoButton);
+
         var logToggle = BoardStyle.MakeButton("▤", 18);
         logToggle.CustomMinimumSize = new Vector2(48, 40);
         logToggle.TooltipText = "Game log";
         logToggle.Pressed += ToggleLog;
         corner.AddChild(logToggle);
         AddChild(corner);
+
+        // Phase bar on the divider, left of the top player's hand.
+        _phaseBar.AnchorTop = 0.5f; _phaseBar.AnchorBottom = 0.5f;
+        _phaseBar.OffsetLeft = 110;
+        _phaseBar.GrowVertical = GrowDirection.Both;
+        AddChild(_phaseBar);
+
+        // Stack: right of center, clear of the zone piles.
+        _stackView.AnchorLeft = 1; _stackView.AnchorRight = 1; _stackView.AnchorTop = 0.5f; _stackView.AnchorBottom = 0.5f;
+        _stackView.OffsetLeft = -560; _stackView.OffsetTop = -120;
+        _stackView.CardHoverStarted += ShowPreview;
+        _stackView.CardHoverEnded += HidePreview;
+        AddChild(_stackView);
 
         // Action panel: right side of the bottom half, clear of both players' zone piles.
         _actionPanel.AnchorLeft = 1; _actionPanel.AnchorRight = 1; _actionPanel.AnchorTop = 0.75f; _actionPanel.AnchorBottom = 0.75f;
@@ -123,12 +155,10 @@ public partial class GameBoard : Control
         actionBox.AddThemeConstantOverride("separation", 6);
         _stepLabel.HorizontalAlignment = HorizontalAlignment.Right;
         _prompt.HorizontalAlignment = HorizontalAlignment.Right;
-        _stackLabel.HorizontalAlignment = HorizontalAlignment.Right;
         _actionButtons.Alignment = BoxContainer.AlignmentMode.End;
         _actionButtons.AddThemeConstantOverride("separation", 8);
         actionBox.AddChild(_stepLabel);
         actionBox.AddChild(_prompt);
-        actionBox.AddChild(_stackLabel);
         _actionExtra.AddThemeConstantOverride("separation", 6);
         actionBox.AddChild(_actionExtra);
         actionBox.AddChild(_actionButtons);
@@ -218,8 +248,9 @@ public partial class GameBoard : Control
         _bottomArea.Refresh(view, view.ActivePlayer == Bottom, staged, attacking);
         _turnNumber.Text = Math.Max(1, view.TurnNumber).ToString();
         _stepLabel.Text = view.TurnNumber == 0 ? "Mulligan" : EventLogFormatter.StepName(view.Step);
-        _stackLabel.Text = view.Stack.Count > 0 ? "Stack: " + string.Join(", ", view.Stack.Select(s => s.Card.Name ?? "?").Reverse()) : "";
-        _stackLabel.Visible = view.Stack.Count > 0;
+        _phaseBar.SetCurrentStep(view.TurnNumber == 0 ? null : view.Step);
+        _stackView.Refresh(view.Stack);
+        _undoButton.Disabled = !_session.CanUndo;
 
         if (view.IsGameOver)
         {
@@ -240,11 +271,22 @@ public partial class GameBoard : Control
                 if (decision is ManaPaymentDecision pay && FindCard(pay.Request.Spell) is { } spellNode) ShowPreview(spellNode);
                 return;
             }
+            // ARCANUM_TEST_UNDO=1: every 7th manual decision, undo once first (exercises replay end to end).
+            int manual = _session.Log.Entries.Count(e => e.Manual);
+            if (_testUndo && manual > 0 && manual % 7 == 0 && _undoneAt.Add(manual))
+            {
+                GD.Print($"TEST_UNDO at {manual} manual decisions (log {_session.Log.Entries.Count})");
+                GetTree().CreateTimer(0.2).Timeout += Undo;
+                return;
+            }
             GetTree().CreateTimer(0.35).Timeout += () => AutoAnswer(decision, view);
         }
     }
 
     /// <summary>Debug autopilot (ARCANUM_AUTOPLAY=1): plays both seats greedily for smoke tests and screenshots.</summary>
+    private readonly bool _testUndo = OS.GetEnvironment("ARCANUM_TEST_UNDO") == "1";
+    private readonly HashSet<int> _undoneAt = new();
+
     private static readonly string AutoplayEnv = OS.GetEnvironment("ARCANUM_AUTOPLAY");
     private readonly bool _autoplay = AutoplayEnv == "1" || AutoplayEnv.StartsWith("showcase");
     private readonly string? _showcase = AutoplayEnv.StartsWith("showcase")
@@ -394,6 +436,11 @@ public partial class GameBoard : Control
 
             case PriorityDecision p:
                 _prompt.Text = $"{who}: your move";
+                AddButton("End turn", () =>
+                {
+                    _session.Policy.PassTurn(view.TurnNumber); // skip the rest of the turn unless an opponent acts
+                    p.Answer(PassPriority.Instance);
+                });
                 AddButton(view.Stack.Count > 0 ? "Resolve" : "Next", () => p.Answer(PassPriority.Instance), primary: true);
                 break;
 
@@ -506,7 +553,14 @@ public partial class GameBoard : Control
 
     public override void _UnhandledInput(InputEvent @event)
     {
-        // Space confirms the primary action, as in other digital card clients.
+        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Z, CtrlPressed: true })
+        {
+            Undo();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        // Space confirms the primary action.
         if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Space } && _actionPanel.Visible)
         {
             var primary = _actionButtons.GetChildren().OfType<Button>().LastOrDefault();

@@ -38,7 +38,7 @@ public static class GenericCards
     public static readonly CardDefinition BarrenFlats = Basic("Barren Flats", "", ManaType.Colorless) with { Subtypes = Array.Empty<string>() };
 
     public static readonly CardDefinition PlainsLion = Vanilla("Plains Lion", "{W}", "Cat", 2, 1);
-    public static readonly CardDefinition BearCub = Vanilla("Bear Cub", "{1}{G}", "Bear", 2, 2);
+    public static readonly CardDefinition GladeCub = Vanilla("Glade Cub", "{1}{G}", "Bear", 2, 2);
     public static readonly CardDefinition OgreBrute = Vanilla("Ogre Brute", "{2}{R}", "Ogre", 2, 2);
     public static readonly CardDefinition HillBrute = Vanilla("Hill Brute", "{3}{R}", "Giant", 3, 3);
     public static readonly CardDefinition GreatWurm = Vanilla("Great Wurm", "{4}{G}{G}", "Wurm", 6, 4);
@@ -48,7 +48,7 @@ public static class GenericCards
     public static IReadOnlyList<CardDefinition> All { get; } = new[]
     {
         Plains, Island, Swamp, Mountain, Forest, BarrenFlats,
-        PlainsLion, BearCub, OgreBrute, HillBrute, GreatWurm, StoneElemental, RiverScout,
+        PlainsLion, GladeCub, OgreBrute, HillBrute, GreatWurm, StoneElemental, RiverScout,
     };
 }
 
