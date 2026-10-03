@@ -46,8 +46,13 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>"Exile this card from your graveyard" / "Return this card from your graveyard": the ability works from the graveyard.</summary>
     public bool FromGraveyard { get; init; }
 
-    /// <summary>Remove this many +1/+1 (or other) counters from the source.</summary>
+    /// <summary>Remove this many counters (of <see cref="RemoveCounterKind"/>) from the source.</summary>
     public int RemoveCounters { get; init; }
+
+    public CounterKind RemoveCounterKind { get; init; } = CounterKind.PlusOnePlusOne;
+
+    /// <summary>"Exile this [permanent]" as a cost.</summary>
+    public bool ExileSelf { get; init; }
 
     public static readonly AbilityCost TapOnly = new(ManaCost.Zero, Tap: true);
 }
@@ -122,6 +127,10 @@ public enum TriggerEvent
     CountersPlaced,
     /// <summary>"Whenever this creature becomes tapped".</summary>
     BecomesTapped,
+    /// <summary>"Whenever an opponent draws a card".</summary>
+    OpponentDrawsCard,
+    /// <summary>"At the beginning of each player's draw step".</summary>
+    EachDrawStep,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -137,6 +146,9 @@ public sealed record TriggeredAbility : AbilityDefinition
 
     /// <summary>For <see cref="TriggerEvent.CountersPlaced"/>: only counters put on the source itself.</summary>
     public bool OnSelf { get; init; }
+
+    /// <summary>"This ability triggers only once each turn."</summary>
+    public bool OncePerTurn { get; init; }
 }
 
 /// <summary>
@@ -169,7 +181,11 @@ public sealed record ObjectFilter(
     bool? InCombat = null,
     bool? Attacking = null,
     Cards.Supertype Supertype = 0,
-    string? ExcludedSubtype = null)
+    string? ExcludedSubtype = null,
+    string? Name = null,
+    bool? HasCounters = null,
+    IReadOnlyList<ObjectFilter>? AnyOf = null,
+    bool AttachedToSource = false)
 {
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 

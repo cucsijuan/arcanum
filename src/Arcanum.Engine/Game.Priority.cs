@@ -85,7 +85,8 @@ public sealed partial class Game
                 if (card.Zone == Zone.Hand && sorcerySpeed && player.LandsPlayedThisTurn < Config.LandsPerTurn) actions.Add(new PlayLand(card.Id));
                 continue;
             }
-            bool timingOk = card.Is(CardType.Instant) || card.Definition.KeywordAbilities.Contains(Keyword.Flash) || sorcerySpeed;
+            bool timingOk = card.Is(CardType.Instant) || card.Definition.KeywordAbilities.Contains(Keyword.Flash) || sorcerySpeed
+                            || Has(playerId, Replacements.YourSpellsHaveFlash);
             if (timingOk && HasLegalTargets(CastingTargets(card.Definition), playerId, card.Id)
                 && CanPayExtra(playerId, card.Definition.AdditionalCost, card.Id)
                 && CastingCost(card).WithX(0).Variants().Any(v => ManaPayment.FindPlan(State, playerId, v) is not null))
@@ -114,7 +115,7 @@ public sealed partial class Game
         if (ability.OncePerTurn && source.ActivatedThisTurn.Contains(index)) return false;
         if (ability.ActivationCondition is { } condition && !Holds(condition, player, source)) return false;
         if (ability.Cost.Tap && (source.Tapped || source.IsSummoningSick)) return false;
-        if (ability.Cost.RemoveCounters > 0 && source.CounterCount(CounterKind.PlusOnePlusOne) < ability.Cost.RemoveCounters) return false;
+        if (ability.Cost.RemoveCounters > 0 && source.CounterCount(ability.Cost.RemoveCounterKind) < ability.Cost.RemoveCounters) return false;
         if (!CanPayExtra(player, ability.Cost.Extra, source.Id)) return false;
         if (!HasLegalTargets(ability, player, source.Id)) return false;
         return ability.Cost.Mana.WithX(0).Variants().Any(v => ManaPayment.FindPlan(State, player, v, exclude: ability.Cost.Tap ? source.Id : null) is not null);
@@ -235,7 +236,8 @@ public sealed partial class Game
             Emit(new PermanentTapped(source.Id));
         }
         if (ability.Cost.RemoveCounters > 0)
-            source.Counters[CounterKind.PlusOnePlusOne] = source.CounterCount(CounterKind.PlusOnePlusOne) - ability.Cost.RemoveCounters;
+            source.Counters[ability.Cost.RemoveCounterKind] = source.CounterCount(ability.Cost.RemoveCounterKind) - ability.Cost.RemoveCounters;
+        if (ability.Cost.ExileSelf) MoveCard(source.Id, Zone.Exile);
         await PayExtraAsync(player.Id, ability.Cost.Extra, source.Id);
         if (ability.OncePerTurn) source.ActivatedThisTurn.Add(action.Index);
         if (ability.Cost.SacrificeSelf)
@@ -385,6 +387,8 @@ public sealed partial class Game
             else if (self.PerGraveyardCard is { } perCard)
                 total += self.Amount * State.GetPlayer(caster).Graveyard.Select(State.GetCard)
                     .Count(c => Matches(perCard with { Controller = ControllerFilter.Any }, c, caster, card, caster));
+            else if (self.ByTotalPower)
+                total += self.Amount * State.PermanentsControlledBy(caster).Where(c => c.IsCreature).Sum(c => Math.Max(0, c.Power));
             else if (self.Condition is null || Holds(self.Condition, caster, card))
                 total += self.Amount;
         }

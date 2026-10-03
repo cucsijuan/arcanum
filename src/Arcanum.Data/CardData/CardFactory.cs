@@ -32,7 +32,7 @@ public static partial class CardFactory
     private static readonly string[] ScriptedKeywords =
     {
         "Scry", "Surveil", "Fight", "Mill", "Treasure", "Food", "Investigate",
-        "Raid", "Landfall", "Morbid", "Threshold", "Ferocious", "Hexproof from",
+        "Raid", "Landfall", "Morbid", "Threshold", "Ferocious", "Hexproof from", "Affinity", "Double", "Formidable", "Alliance",
     };
 
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
@@ -81,6 +81,9 @@ public static partial class CardFactory
         };
         if (script is not null) definition = script.ApplyTo(definition);
 
+        // "*" power/toughness is fine when the script defines it (characteristic-defining ability).
+        powerOk |= script?.PowerFrom is not null;
+        toughnessOk |= script?.ToughnessFrom is not null;
         bool supported = costOk && powerOk && toughnessOk
                          && SingleFaceLayouts.Contains(record.Layout)
                          && record.Keywords.All(SupportedKeywords.Contains)

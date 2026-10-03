@@ -14,7 +14,7 @@ public sealed record CreatureDiedThisTurn : Condition;
 public sealed record GainedLifeThisTurn(int AtLeast = 1) : Condition;
 
 /// <summary>"If there are N or more cards in your graveyard" (threshold: seven).</summary>
-public sealed record CardsInGraveyard(int AtLeast) : Condition;
+public sealed record CardsInGraveyard(int AtLeast, ObjectFilter? Filter = null) : Condition;
 
 /// <summary>"If you control [N or more] [objects]" — e.g. ferocious is a creature with power 4 or greater.</summary>
 public sealed record YouControl(ObjectFilter Filter, int AtLeast = 1) : Condition;
@@ -36,3 +36,21 @@ public sealed record YourTurn : Condition;
 
 /// <summary>"If the source has N or more +1/+1 counters on it".</summary>
 public sealed record SourceHasCounters(int AtLeast) : Condition;
+
+/// <summary>"As long as it's attacking".</summary>
+public sealed record SourceAttacking : Condition;
+
+/// <summary>"If it's a Zombie card" / "if it was a creature card": the target at <paramref name="Index"/> matches.</summary>
+public sealed record TargetMatches(int Index, ObjectFilter Filter) : Condition;
+
+/// <summary>"As long as your life total is at least N greater than your starting life total".</summary>
+public sealed record LifeAboveStarting(int AtLeast) : Condition;
+
+/// <summary>"If [condition A] and [condition B]".</summary>
+public sealed record All(IReadOnlyList<Condition> Conditions) : Condition;
+
+/// <summary>"If creatures you control have total power N or greater".</summary>
+public sealed record TotalPowerAtLeast(int Amount) : Condition;
+
+/// <summary>"If you attacked with N or more creatures" (counts creatures you control that are attacking).</summary>
+public sealed record AttackingCreatures(int AtLeast) : Condition;

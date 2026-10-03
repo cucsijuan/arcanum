@@ -44,6 +44,10 @@ public sealed class Card
     internal int PowerBonus { get; set; }
     internal int ToughnessBonus { get; set; }
     internal HashSet<Keyword> GrantedKeywords { get; } = new();
+    internal HashSet<string> GrantedSubtypes { get; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Base power/toughness from a characteristic-defining ability (rule 604.3).</summary>
+    internal int? BasePowerOverride { get; set; }
+    internal int? BaseToughnessOverride { get; set; }
 
     public Card(CardId id, CardDefinition definition, PlayerId owner)
     {
@@ -58,8 +62,8 @@ public sealed class Card
 
     // Characteristics are read through these so continuous effects (layers) apply everywhere.
     public CardType Types => Definition.Types;
-    public int Power => (Definition.Power ?? 0) + PowerBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne);
-    public int Toughness => (Definition.Toughness ?? 0) + ToughnessBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne);
+    public int Power => (BasePowerOverride ?? Definition.Power ?? 0) + PowerBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne);
+    public int Toughness => (BaseToughnessOverride ?? Definition.Toughness ?? 0) + ToughnessBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne);
 
     public int CounterCount(CounterKind kind) => Counters.GetValueOrDefault(kind);
 
@@ -69,13 +73,16 @@ public sealed class Card
 
     /// <summary>Has this subtype (changelings have every creature type).</summary>
     public bool HasSubtype(string subtype) =>
-        Definition.Subtypes.Contains(subtype, StringComparer.OrdinalIgnoreCase) || (Has(Keyword.Changeling) && subtype is not ("Equipment" or "Aura" or "Treasure" or "Food" or "Clue"));
+        Definition.Subtypes.Contains(subtype, StringComparer.OrdinalIgnoreCase) || GrantedSubtypes.Contains(subtype) || (Has(Keyword.Changeling) && subtype is not ("Equipment" or "Aura" or "Treasure" or "Food" or "Clue"));
 
     /// <summary>Cast with its kicker cost paid (kept as the spell becomes a permanent, rule 702.33).</summary>
     public bool Kicked { get; set; }
 
     /// <summary>Indices of "activate only once each turn" abilities already activated this turn.</summary>
     public HashSet<int> ActivatedThisTurn { get; } = new();
+
+    /// <summary>"Triggers only once each turn" abilities that already triggered this turn.</summary>
+    public HashSet<AbilityDefinition> TriggeredThisTurn { get; } = new(ReferenceEqualityComparer.Instance);
 
     public bool Has(Keyword keyword) => Definition.KeywordAbilities.Contains(keyword) || GrantedKeywords.Contains(keyword);
 
@@ -94,8 +101,12 @@ public sealed class Card
         PowerBonus = 0;
         ToughnessBonus = 0;
         GrantedKeywords.Clear();
+        GrantedSubtypes.Clear();
+        BasePowerOverride = null;
+        BaseToughnessOverride = null;
         Kicked = false;
         ActivatedThisTurn.Clear();
+        TriggeredThisTurn.Clear();
         Version++;
         Controller = Owner;
     }

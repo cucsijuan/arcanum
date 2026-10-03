@@ -23,7 +23,11 @@ public sealed partial class Game
             player.LifeGainsThisTurn = 0;
         }
         foreach (var permanent in State.PermanentsControlledBy(active.Id)) permanent.ControlledSinceTurnStart = true;
-        foreach (var card in State.Cards.Values) card.ActivatedThisTurn.Clear();
+        foreach (var card in State.Cards.Values)
+        {
+            card.ActivatedThisTurn.Clear();
+            card.TriggeredThisTurn.Clear();
+        }
         Emit(new TurnBegan(State.TurnNumber, active.Id));
 
         _skipCombatDamageSteps = false;
@@ -56,8 +60,14 @@ public sealed partial class Game
         switch (step)
         {
             case Step.Untap:
-                foreach (var permanent in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Tapped && !c.Definition.DoesntUntap).ToList())
+                foreach (var permanent in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Tapped && !c.Definition.DoesntUntap && !c.Has(Cards.Keyword.DoesntUntap)).ToList())
                 {
+                    // A stun counter is removed instead of untapping (rule 122.1d).
+                    if (permanent.CounterCount(Abilities.CounterKind.Stun) > 0)
+                    {
+                        permanent.Counters[Abilities.CounterKind.Stun]--;
+                        continue;
+                    }
                     permanent.Tapped = false;
                     Emit(new PermanentUntapped(permanent.Id));
                 }
@@ -93,7 +103,7 @@ public sealed partial class Game
     private async Task CleanupAsync()
     {
         var active = State.GetPlayer(State.ActivePlayer);
-        int excess = active.Hand.Count - Config.MaxHandSize;
+        int excess = Has(active.Id, Cards.Replacements.NoMaximumHandSize) ? 0 : active.Hand.Count - Config.MaxHandSize;
         if (excess > 0)
         {
             var chosen = await ControllerOf(active.Id).ChooseDiscardAsync(ViewFor(active.Id), excess);
@@ -113,6 +123,8 @@ public sealed partial class Game
             Emit(new ControlChanged(card.Id, control.Original));
         }
         State.TemporaryControl.Clear();
+        State.ExileIfDies.Clear();
+        State.CombatDamagePrevented.Clear();
         RecomputeContinuousEffects();
     }
 }

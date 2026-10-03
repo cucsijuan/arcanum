@@ -14,4 +14,8 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
 /// matching <see cref="PerPermanent"/> (or each card in your graveyard matching <see cref="PerGraveyardCard"/>).
 /// Only generic mana is reduced (rule 601.2f).
 /// </summary>
-public sealed record CostReduction(int Amount, Condition? Condition = null, ObjectFilter? PerPermanent = null, ObjectFilter? PerGraveyardCard = null);
+public sealed record CostReduction(int Amount, Condition? Condition = null, ObjectFilter? PerPermanent = null, ObjectFilter? PerGraveyardCard = null)
+{
+    /// <summary>"Costs {X} less, where X is the total power of creatures you control."</summary>
+    public bool ByTotalPower { get; init; }
+}

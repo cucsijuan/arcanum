@@ -9,6 +9,12 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
 /// <summary>Control gained "until end of turn": returned to <paramref name="Original"/> at cleanup.</summary>
 public sealed record TemporaryControlEffect(CardId Card, int Version, PlayerId Original);
 
+/// <summary>A card exiled until a source leaves the battlefield.</summary>
+public sealed record LinkedExile(CardId Source, int SourceVersion, CardId Exiled, int ExiledVersion);
+
+/// <summary>A delayed action: return a card to the battlefield, or sacrifice a permanent.</summary>
+public sealed record DelayedAction(CardId Card, int Version, bool Return, PlayerId Controller);
+
 /// <summary>Complete, authoritative state of a game. Only the engine mutates it.</summary>
 public sealed class GameState
 {
@@ -23,6 +29,18 @@ public sealed class GameState
     public List<UntilEndOfTurnEffect> UntilEndOfTurn { get; } = new();
 
     public List<TemporaryControlEffect> TemporaryControl { get; } = new();
+
+    /// <summary>Cards exiled "until [source] leaves the battlefield".</summary>
+    public List<LinkedExile> LinkedExiles { get; } = new();
+
+    /// <summary>Things to do at the beginning of the next end step (delayed triggered abilities, rule 603.7).</summary>
+    public List<DelayedAction> AtNextEndStep { get; } = new();
+
+    /// <summary>Objects that are exiled instead if they would die this turn.</summary>
+    public HashSet<(CardId Card, int Version)> ExileIfDies { get; } = new();
+
+    /// <summary>Objects combat damage to which is prevented this turn.</summary>
+    public HashSet<(CardId Card, int Version)> CombatDamagePrevented { get; } = new();
 
     public int TurnNumber { get; set; }
     public PlayerId ActivePlayer { get; set; }

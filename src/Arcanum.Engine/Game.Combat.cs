@@ -58,12 +58,14 @@ public sealed partial class Game
     }
 
     private static bool CanAttack(Card c) =>
-        c.IsCreature && !c.Tapped && !c.IsSummoningSick && !c.Has(Keyword.Defender);
+        c.IsCreature && !c.Tapped && !c.IsSummoningSick && !c.Has(Keyword.Defender) && !c.Has(Keyword.CantAttack);
 
-    /// <summary>Evasion: flying can only be blocked by flying or reach (702.9b).</summary>
-    private static bool CanBlock(Card blocker, Card attacker) =>
+    /// <summary>Evasion: flying can only be blocked by flying or reach (702.9b); "can't be blocked by ..." restrictions.</summary>
+    private bool CanBlock(Card blocker, Card attacker) =>
         !blocker.Has(Keyword.CantBlock) && !attacker.Has(Keyword.CantBeBlocked)
-        && (!attacker.Has(Keyword.Flying) || blocker.Has(Keyword.Flying) || blocker.Has(Keyword.Reach));
+        && (!attacker.Has(Keyword.Flying) || blocker.Has(Keyword.Flying) || blocker.Has(Keyword.Reach))
+        && !(attacker.Definition.CantBeBlockedBy is { } restriction
+             && Matches(restriction with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, attacker, attacker.Controller));
 
     private async Task DeclareBlockersAsync()
     {
@@ -168,21 +170,25 @@ public sealed partial class Game
 
         // All combat damage is dealt simultaneously (rule 510.2).
         var lifeGained = new Dictionary<PlayerId, int>();
-        foreach (var (source, target, amount) in toCards)
+        foreach (var (source, target, dealt) in toCards)
         {
+            int amount = ModifyDamage(source, target, null, dealt, combat: true);
+            if (amount <= 0) continue;
             target.Damage += amount;
             if (source.Has(Keyword.Deathtouch)) target.DamagedByDeathtouch = true;
             Emit(new DamageDealt(source.Id, target.Id, null, amount, IsCombat: true));
             if (source.Has(Keyword.Lifelink)) lifeGained[source.Controller] = lifeGained.GetValueOrDefault(source.Controller) + amount;
         }
-        foreach (var (source, target, amount) in toPlayers)
+        foreach (var (source, target, dealt) in toPlayers)
         {
+            int amount = ModifyDamage(source, null, target, dealt, combat: true);
+            if (amount <= 0) continue;
             Emit(new DamageDealt(source.Id, null, target, amount, IsCombat: true));
             ChangeLife(target, -amount);
             RecordCommanderDamage(source, target, amount);
             if (source.Has(Keyword.Lifelink)) lifeGained[source.Controller] = lifeGained.GetValueOrDefault(source.Controller) + amount;
         }
-        foreach (var (player, amount) in lifeGained) ChangeLife(player, amount); // lifelink (702.15b)
+        foreach (var (player, amount) in lifeGained) GainLifeFor(player, amount); // lifelink (702.15b)
     }
 
     private async Task<DamageAssignment> AssignDamageAsync(Card attacker, PlayerId defender, List<Card> blockers, int power, bool trample)

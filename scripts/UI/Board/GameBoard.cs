@@ -136,7 +136,9 @@ public partial class GameBoard : Control
         var module = App.Instance.Module!;
         var cards = App.Instance.Cards!;
         if (OS.GetEnvironment("ARCANUM_COMMANDER") == "1" && UseCommanderDecks(module, cards)) return;
-        var names = module.DeckNames().Take(2).ToList();
+        // ARCANUM_DECKS=first,second picks the module decks to play (quick testing without the menus).
+        var chosen = OS.GetEnvironment("ARCANUM_DECKS");
+        var names = chosen.Length > 0 ? chosen.Split(',').Select(n => n.Trim()).ToList() : module.DeckNames().Take(2).ToList();
         if (names.Count < 2) return;
 
         var seats = new List<GameSession.Seat>();

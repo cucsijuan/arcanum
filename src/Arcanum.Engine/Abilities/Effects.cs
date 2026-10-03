@@ -27,7 +27,7 @@ public sealed record AddCounters(Quantity Count, Subject What, CounterKind Kind 
 /// <param name="Tapped">The tokens enter tapped.</param>
 public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject Controller, bool Tapped = false) : Effect;
 
-public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne }
+public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect;
@@ -63,10 +63,67 @@ public sealed record Sacrifice(Quantity Count, ObjectFilter Filter, Subject Who)
 public sealed record PutIntoLibrary(Subject What, bool Bottom = false) : Effect;
 
 /// <summary>The spell's controller gains control of the subject (until end of turn when <paramref name="UntilEndOfTurn"/>).</summary>
-public sealed record GainControl(Subject What, bool UntilEndOfTurn = false) : Effect;
+public sealed record GainControl(Subject What, bool UntilEndOfTurn = false, Subject? NewController = null) : Effect;
 
 /// <summary>
 /// Effects of one chosen mode of a modal spell: their target indices start at <paramref name="TargetOffset"/> in the
 /// stack object's targets. Built by the engine when modes are chosen.
 /// </summary>
 public sealed record ModeEffects(int TargetOffset, IReadOnlyList<Effect> Effects) : Effect;
+
+/// <summary>Exile until the source leaves the battlefield ("until this enchantment leaves the battlefield").</summary>
+public sealed record ExileUntilSourceLeaves(Subject What) : Effect;
+
+/// <summary>Exile, then return to the battlefield at the beginning of the next end step (under its owner's control, or yours).</summary>
+public sealed record ExileAndReturnAtEndStep(Subject What, bool UnderYourControl = false) : Effect;
+
+/// <summary>Create token copies of a permanent, optionally with haste and "sacrifice it at the beginning of the next end step".</summary>
+public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = false, bool SacrificeAtEndStep = false) : Effect;
+
+/// <summary>Sacrifice the subject (usually the source itself).</summary>
+public sealed record SacrificeIt(Subject What) : Effect;
+
+/// <summary>If the subject would die this turn, exile it instead.</summary>
+public sealed record ExileIfDiesThisTurn(Subject What) : Effect;
+
+/// <summary>Prevent all combat damage that would be dealt to the subject this turn.</summary>
+public sealed record PreventCombatDamageTo(Subject What) : Effect;
+
+/// <summary>Look at the top cards of your library; take up to <paramref name="Take"/> matching ones, the rest go to the bottom (or graveyard).</summary>
+public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, State.Zone TakeTo, bool RestToGraveyard = false) : Effect;
+
+/// <summary>"[Player] reveals their hand; you choose a [filter] card from it; they discard it."</summary>
+public sealed record DiscardChosenByYou(Subject Who, ObjectFilter? Filter, int Count = 1) : Effect;
+
+/// <summary>Exile every card in the subject players' graveyards.</summary>
+public sealed record ExileGraveyard(Subject Who) : Effect;
+
+/// <summary>Double the number of +1/+1 counters on the subject.</summary>
+public sealed record DoubleCounters(Subject What) : Effect;
+
+/// <summary>Remove counters from the subject.</summary>
+public sealed record RemoveCounters(Quantity Count, Subject What, CounterKind Kind = CounterKind.PlusOnePlusOne) : Effect;
+
+/// <summary>Shuffle the subject players' graveyards into their libraries.</summary>
+public sealed record ShuffleGraveyardIntoLibrary(Subject Who) : Effect;
+
+/// <summary>Add mana to the controller's pool.</summary>
+public sealed record AddMana(IReadOnlyList<Mana.ManaType> Types) : Effect;
+
+/// <summary>The subject (a creature) deals damage equal to its power to the other subject ("bite").</summary>
+public sealed record DealsDamageEqualToPower(Subject Source, Subject To) : Effect;
+
+/// <summary>Put cards from the subject players' graveyards matching the filter onto the battlefield under your control.</summary>
+public sealed record ReanimateAll(Subject Who, ObjectFilter Filter) : Effect;
+
+/// <summary>Return every permanent matching the filter to its owner's hand (filter controller relative to <paramref name="RelativeTo"/>).</summary>
+public sealed record BounceAll(ObjectFilter Filter, Subject? RelativeTo = null) : Effect;
+
+/// <summary>"You may [pay a cost]. If you do, [effects]."</summary>
+public sealed record MayPay(string Prompt, Mana.ManaCost? Mana, ExtraCost? Extra, IReadOnlyList<Effect> Effects) : Effect;
+
+/// <summary>Choose cards (not targeted) from your graveyard and put them into <paramref name="To"/> ("return an instant or sorcery card from your graveyard to your hand").</summary>
+public sealed record ReturnFromGraveyard(ObjectFilter? Filter, int Count, State.Zone To, bool UpTo = false) : Effect;
+
+/// <summary>"[Players] discard their hand."</summary>
+public sealed record DiscardHand(Subject Who) : Effect;

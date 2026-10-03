@@ -46,6 +46,7 @@ public sealed record PermanentDestroyed(CardId Card) : GameEvent;
 public sealed record CommanderReturned(CardId Card, PlayerId Owner) : GameEvent;
 public sealed record LifeChanged(PlayerId Player, int OldLife, int NewLife) : GameEvent;
 public sealed record CreatureDied(CardId Card) : GameEvent;
+public sealed record HandRevealed(PlayerId Player, IReadOnlyList<CardId> Cards) : GameEvent;
 public sealed record PermanentSacrificed(CardId Card) : GameEvent;
 public sealed record ControlChanged(CardId Card, PlayerId NewController) : GameEvent;
 public sealed record CardDiscarded(PlayerId Player, CardId Card) : GameEvent;

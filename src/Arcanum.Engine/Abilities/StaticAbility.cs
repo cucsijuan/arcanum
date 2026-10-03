@@ -18,6 +18,8 @@ public enum AffectedScope
     Enchanted,
     /// <summary>The creature this Equipment is attached to.</summary>
     Equipped,
+    /// <summary>Permanents the source's controller controls.</summary>
+    YourPermanents,
 }
 
 /// <summary>Filter for a static ability: scope, "other" (excludes the source) and an optional subtype.</summary>
@@ -32,6 +34,19 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     : AbilityDefinition
 {
     public IReadOnlyList<Keyword> GrantedKeywords => Keywords ?? Array.Empty<Keyword>();
+
+    /// <summary>Further requirements on the affected objects ("with flying", "attacking", "green", "with +1/+1 counters").</summary>
+    public ObjectFilter? Filter { get; init; }
+
+    /// <summary>The ability applies only while this holds ("as long as you have 25 or more life", "during your turn").</summary>
+    public Condition? While { get; init; }
+
+    /// <summary>Extra P/T worked out continuously ("+1/+1 for each Forest you control").</summary>
+    public Quantity? PowerBonus { get; init; }
+    public Quantity? ToughnessBonus { get; init; }
+
+    /// <summary>Creature types added ("is an Angel in addition to its other types").</summary>
+    public IReadOnlyList<string>? AddSubtypes { get; init; }
 }
 
 /// <summary>Attach the source Aura/Equipment to a permanent ("Equip {2}").</summary>

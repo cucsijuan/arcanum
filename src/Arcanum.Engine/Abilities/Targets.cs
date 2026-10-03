@@ -82,6 +82,8 @@ public enum SubjectKind
     Triggered,
     /// <summary>The player the trigger event was about ("that player").</summary>
     TriggeredPlayer,
+    /// <summary>The permanent the source Aura/Equipment is attached to ("enchanted creature", "equipped creature").</summary>
+    Attached,
 }
 
 public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filter = null)
@@ -89,6 +91,7 @@ public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filt
     public static Subject Each(ObjectFilter filter) => new(SubjectKind.Each, Filter: filter);
     public static readonly Subject Triggered = new(SubjectKind.Triggered);
     public static readonly Subject TriggeredPlayer = new(SubjectKind.TriggeredPlayer);
+    public static readonly Subject Attached = new(SubjectKind.Attached);
 
     public static readonly Subject You = new(SubjectKind.You);
     public static readonly Subject Self = new(SubjectKind.Self);

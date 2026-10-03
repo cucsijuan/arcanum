@@ -28,6 +28,10 @@ public enum Keyword
     CantBlock,
     /// <summary>"This creature can't be blocked."</summary>
     CantBeBlocked,
+    /// <summary>"This creature can't attack."</summary>
+    CantAttack,
+    /// <summary>"This permanent doesn't untap during its controller's untap step."</summary>
+    DoesntUntap,
 }
 
 public static class Keywords
@@ -54,6 +58,8 @@ public static class Keywords
         Keyword.DoubleStrike => "Double strike",
         Keyword.CantBlock => "Can't block",
         Keyword.CantBeBlocked => "Can't be blocked",
+        Keyword.CantAttack => "Can't attack",
+        Keyword.DoesntUntap => "Doesn't untap",
         _ => keyword.ToString(),
     };
 

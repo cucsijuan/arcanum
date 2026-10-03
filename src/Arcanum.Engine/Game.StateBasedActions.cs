@@ -20,6 +20,7 @@ public sealed partial class Game
 
         foreach (var player in State.LivingPlayers.ToList())
         {
+            if (Has(player.Id, Cards.Replacements.YouCantLose)) continue;
             if (player.Life <= 0) { Lose(player.Id, "life total 0 or less"); any = true; }               // 704.5a
             else if (player.AttemptedDrawFromEmptyLibrary) { Lose(player.Id, "drew from an empty library"); any = true; } // 704.5b
             else if (CommanderDamageLoss(player)) { Lose(player.Id, "21 combat damage from a commander"); any = true; } // 704.6c
