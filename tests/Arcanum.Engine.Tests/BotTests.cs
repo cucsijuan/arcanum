@@ -248,3 +248,73 @@ public class BotDefenseTests
         Assert.Equal(new[] { "Raider" }, attackers);
     }
 }
+
+public class BotMultiplayerTests
+{
+    private static Game ThreePlayers(BotController bot, out PlayerId weak, out PlayerId strong)
+    {
+        weak = new PlayerId(1);
+        strong = new PlayerId(2);
+        TestController Passive() => new() { Act = (_, _) => PassPriority.Instance, Attack = (_, _, _) => Array.Empty<AttackDeclaration>() };
+        var game = new Game(new GameConfig { Seed = 1, StartingPlayer = Scenario.P0, StartingLife = 40 }, new[]
+        {
+            new PlayerSetup("Bot", bot, Decks.Of((GenericCards.Forest, 30))),
+            new PlayerSetup("Weak", Passive(), Decks.Of((GenericCards.Forest, 30))),
+            new PlayerSetup("Strong", Passive(), Decks.Of((GenericCards.Forest, 30))),
+        });
+        bot.UseCardRules(id => game.State.Cards.TryGetValue(id, out var c) ? c.Definition : null);
+        return game;
+    }
+
+    private static async Task RunTurn(Game game)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        game.EventRaised += e => { if (e is TurnBegan { TurnNumber: 2 }) cts.Cancel(); };
+        try { await game.RunAsync(cts.Token); } catch (OperationCanceledException) { }
+    }
+
+    [Fact]
+    public async Task AttacksTheBiggestThreatInsteadOfTheWeakestPlayer()
+    {
+        var bot = new BotController(Scenario.P0);
+        var game = ThreePlayers(bot, out var weak, out var strong);
+        game.SetupPermanent(Scenario.P0, Scenario.Creature("Drake", 3, 3, Keyword.Flying));
+        // The strong player has a big ground board (no flyers, so the drake attacks safely); the weak one has nothing.
+        for (int i = 0; i < 3; i++) game.SetupPermanent(strong, Scenario.Creature("Giant", 5, 5));
+        game.State.GetPlayer(weak).Life = 12;
+        await RunTurn(game);
+
+        var attack = Assert.Single(game.Log.OfType<AttackerDeclared>());
+        Assert.Equal(strong, attack.Defender);
+    }
+
+    [Fact]
+    public async Task StillFinishesOffAPlayerItCanKill()
+    {
+        var bot = new BotController(Scenario.P0);
+        var game = ThreePlayers(bot, out var weak, out var strong);
+        game.SetupPermanent(Scenario.P0, Scenario.Creature("Drake", 3, 3, Keyword.Flying));
+        for (int i = 0; i < 3; i++) game.SetupPermanent(strong, Scenario.Creature("Giant", 5, 5));
+        game.State.GetPlayer(weak).Life = 3;
+        await RunTurn(game);
+
+        Assert.Equal(weak, Assert.Single(game.Log.OfType<AttackerDeclared>()).Defender);
+        Assert.True(game.State.GetPlayer(weak).HasLost);
+    }
+
+    [Fact]
+    public async Task KeepsABlockerHomeWhenSomeoneCouldHitHard()
+    {
+        var bot = new BotController(Scenario.P0);
+        var game = ThreePlayers(bot, out _, out var strong);
+        var drake = game.SetupPermanent(Scenario.P0, Scenario.Creature("Drake", 3, 3, Keyword.Flying));
+        var guard = game.SetupPermanent(Scenario.P0, Scenario.Creature("Guard", 3, 4, Keyword.Flying));
+        // Five 3/2 attackers threaten 15 damage; the 3/4 guard blocks them well, so it stays home.
+        for (int i = 0; i < 5; i++) game.SetupPermanent(strong, Scenario.Creature("Raider", 3, 2));
+        await RunTurn(game);
+
+        var attackers = game.Log.OfType<AttackerDeclared>().Select(a => a.Attacker).ToList();
+        Assert.DoesNotContain(guard, attackers);
+        Assert.Contains(drake, attackers);
+    }
+}

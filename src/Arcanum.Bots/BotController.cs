@@ -17,6 +17,9 @@ namespace Arcanum.Bots;
 public sealed class BotController : IPlayerController
 {
     private readonly PlayerId _me;
+
+    /// <summary>Turn number when each opponent last attacked us: recent attackers are treated as bigger threats.</summary>
+    private readonly Dictionary<PlayerId, int> _lastAttackedUs = new();
     private Func<CardId, CardDefinition?> _definitions = _ => null;
 
     /// <summary>Keep any opening hand (prepared scenarios and the sandbox, where hands are set up on purpose).</summary>
@@ -79,8 +82,35 @@ public sealed class BotController : IPlayerController
         return action;
     }
 
+    private void RememberAttacks(GameView view)
+    {
+        foreach (var attack in view.Attacks.Where(a => a.Defender == _me))
+            if (view.FindCard(attack.Attacker) is { } attacker) _lastAttackedUs[attacker.Controller] = view.TurnNumber;
+    }
+
+    /// <summary>
+    /// How dangerous an opponent is to us: their board, cards in hand, whether they attacked us recently and the
+    /// commander damage they've dealt us. Low life slightly lowers it (they're closer to being out anyway).
+    /// </summary>
+    private double Threat(GameView view, PlayerId opponent)
+    {
+        var p = view.Players[opponent.Value];
+        double board = view.Battlefield.Where(c => c.Controller == opponent && (c.Types & CardType.Creature) != 0).Sum(CreatureValue);
+        double threat = board + 0.7 * p.Hand.Count;
+        if (_lastAttackedUs.TryGetValue(opponent, out int turn) && view.TurnNumber - turn <= 4) threat += 6;
+        threat += view.Self.CommanderDamage.Where(kv => view.FindCard(kv.Key)?.Controller == opponent).Sum(kv => kv.Value) * 0.5;
+        threat += Math.Min(p.Life, 40) * 0.05;
+        return threat;
+    }
+
+    /// <summary>Total power an opponent could swing at us next turn with their creatures.</summary>
+    private static int PotentialAttack(GameView view, PlayerId opponent) =>
+        view.Battlefield.Where(c => c.Controller == opponent && (c.Types & CardType.Creature) != 0 && !Has(c, "Defender"))
+            .Sum(c => c.Power ?? 0);
+
     private PlayerAction Decide(GameView view, IReadOnlyList<PlayerAction> legal)
     {
+        RememberAttacks(view);
         bool myTurn = view.ActivePlayer == _me;
         bool emptyStack = view.Stack.Count == 0;
 
@@ -169,11 +199,10 @@ public sealed class BotController : IPlayerController
         if (!TargetIsHarmed(spell, 0)) return spell.Effects.OfType<DrawCards>().Sum(d => 1.5 * d.Count);
         var target = BestHarmTarget(view, spell, 0, LegalHarmTargets(view, spell.Targets[0]));
         if (target is null) return 0;
-        if (target.Value.Player is not null)
+        if (target.Value.Player is { } facePlayer)
         {
             int damage = DamageTo(spell, 0);
-            var opponent = view.Players.First(p => p.Id != _me);
-            return damage >= opponent.Life ? 100 : 0; // burn to the face only to finish the game
+            return damage >= view.Players[facePlayer.Value].Life ? 100 : 0; // burn to the face only to finish a player
         }
         return view.FindCard(target.Value.Card!.Value) is { } victim ? 1 + CreatureValue(victim) : 0;
     }
@@ -329,16 +358,22 @@ public sealed class BotController : IPlayerController
             .Where(t => t.Card is { } c && view.FindCard(c) is { } card && card.Controller != _me)
             .Select(t => (Target: t, Card: view.FindCard(t.Card!.Value)!))
             .ToList();
+        // In multiplayer, a creature matters more when its controller is the biggest threat to us.
+        double Weight(CardView c) => CreatureValue(c) * (view.Players.Count(p => !p.HasLost) > 2 ? 1 + Threat(view, c.Controller) / 30 : 1);
         if (damage > 0)
         {
             var killable = creatures.Where(x => damage >= RemainingToughness(x.Card) && !Has(x.Card, "Indestructible"))
-                .OrderByDescending(x => CreatureValue(x.Card)).FirstOrDefault();
+                .OrderByDescending(x => Weight(x.Card)).FirstOrDefault();
             if (killable.Card is not null && CreatureValue(killable.Card) >= 2) return killable.Target;
-            var face = options.FirstOrDefault(t => t.Player is { } p && p != _me);
+            // To the face: a player it finishes off first, otherwise the biggest threat.
+            var face = options.Where(t => t.Player is { } p && p != _me)
+                .OrderBy(t => view.Players[t.Player!.Value.Value].Life <= damage ? 0 : 1)
+                .ThenByDescending(t => Threat(view, t.Player!.Value))
+                .FirstOrDefault();
             if (face.Player is not null) return face;
             return killable.Card is not null ? killable.Target : null;
         }
-        var best = creatures.OrderByDescending(x => CreatureValue(x.Card)).FirstOrDefault();
+        var best = creatures.OrderByDescending(x => Weight(x.Card)).FirstOrDefault();
         if (best.Card is not null) return best.Target;
         var opponent = options.FirstOrDefault(t => t.Player is { } pl && pl != _me);
         return opponent.Player is not null ? opponent : null;
@@ -379,12 +414,30 @@ public sealed class BotController : IPlayerController
             }
         }
 
-        // Otherwise each attacker goes after the weakest opponent it can attack safely. Creatures that only defend
-        // well (no power, or small power on a big body) stay home to block.
-        var declarations = new List<AttackDeclaration>();
-        foreach (var attacker in attackers.Where(a => !IsDefensive(a)))
+        // Otherwise pressure the biggest threat rather than the weakest player: hitting someone who is no danger
+        // spends creatures we may need against the strong ones. Creatures that only defend well stay home.
+        var candidates = attackers.Where(a => !IsDefensive(a)).ToList();
+        if (defenders.Count > 1)
         {
-            foreach (var defender in defenders.OrderBy(d => view.Players[d.Value].Life))
+            // Keep blockers back against whoever could hit us hardest next turn: creatures that block their attackers
+            // well (survive or trade up), or anything at all if their swing would be lethal.
+            var dangerous = defenders.OrderByDescending(d => PotentialAttack(view, d)).First();
+            int danger = PotentialAttack(view, dangerous);
+            var theirAttackers = view.Battlefield.Where(c => c.Controller == dangerous && (c.Types & CardType.Creature) != 0 && !Has(c, "Defender")).ToList();
+            bool BlocksWell(CardView guard) => theirAttackers.Any(a =>
+                CanBlock(guard, a) && ((guard.Toughness ?? 0) > (a.Power ?? 0) || (guard.Power ?? 0) >= RemainingToughness(a) || Has(guard, "Deathtouch")));
+            var guards = danger >= view.Self.Life
+                ? candidates.OrderByDescending(c => c.Toughness ?? 0).Take(2).ToList()
+                : danger >= view.Self.Life / 3
+                    ? candidates.Where(BlocksWell).OrderByDescending(c => c.Toughness ?? 0).Take(1).ToList()
+                    : new List<CardView>();
+            foreach (var guard in guards) candidates.Remove(guard);
+        }
+        var byThreat = defenders.OrderByDescending(d => Threat(view, d)).ToList();
+        var declarations = new List<AttackDeclaration>();
+        foreach (var attacker in candidates)
+        {
+            foreach (var defender in byThreat)
             {
                 if (!SafeToAttack(attacker, BlockersOf(defender))) continue;
                 declarations.Add(new AttackDeclaration(attacker.Id, defender));
@@ -423,6 +476,7 @@ public sealed class BotController : IPlayerController
 
     public async Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(GameView view, BlockRequest request)
     {
+        RememberAttacks(view);
         var attackers = request.Attackers.Select(view.FindCard).OfType<CardView>().OrderByDescending(a => a.Power ?? 0).ToList();
         var free = request.Blockers.Select(view.FindCard).OfType<CardView>().ToList();
         int incoming = attackers.Where(a => !request.MinimumBlockers.ContainsKey(a.Id)).Sum(a => a.Power ?? 0)
