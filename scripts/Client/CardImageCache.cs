@@ -5,13 +5,12 @@ using FileAccess = Godot.FileAccess;
 namespace Arcanum.Client;
 
 /// <summary>
-/// Autoload that downloads card images from Scryfall on demand and caches them under user://.
-/// Images are never bundled with the app. Requests are throttled to respect Scryfall's rate limits.
+/// Autoload that downloads card images on demand from the source configured by the content module and caches
+/// them under user://. Images are never bundled with the app. Requests are throttled as the module asks.
 /// </summary>
 public partial class CardImageCache : Node
 {
     private const string CacheDir = "user://card_cache";
-    private const double RequestInterval = 0.12; // Scryfall asks for 50–100 ms between requests
 
     private static CardImageCache? _instance;
 
@@ -22,6 +21,15 @@ public partial class CardImageCache : Node
     private HttpRequest _http = null!;
     private string? _inFlight;
     private double _cooldown;
+    private Arcanum.Data.Modules.ContentModule? _module;
+
+    /// <summary>Sets where images come from. Until a module is configured no images are requested.</summary>
+    public static void Configure(Arcanum.Data.Modules.ContentModule module)
+    {
+        if (_instance is null) return;
+        _instance._module = module;
+        _instance._failed.Clear();
+    }
 
     public override void _Ready()
     {
@@ -58,7 +66,7 @@ public partial class CardImageCache : Node
     private void RequestInternal(string cardName, Action<Texture2D> onLoaded)
     {
         if (_memory.TryGetValue(cardName, out var cached)) { onLoaded(cached); return; }
-        if (_failed.Contains(cardName)) return;
+        if (_failed.Contains(cardName) || _module is null) return;
 
         var path = CachePath(cardName);
         if (FileAccess.FileExists(path) && TryCreateTexture(FileAccess.GetFileAsBytes(path)) is { } fromDisk)
@@ -82,8 +90,8 @@ public partial class CardImageCache : Node
         if (_inFlight is not null || _cooldown > 0 || _queue.Count == 0) return;
 
         _inFlight = _queue.Dequeue();
-        var url = "https://api.scryfall.com/cards/named?format=image&version=large&exact=" + Uri.EscapeDataString(_inFlight);
-        var err = _http.Request(url, new[] { "User-Agent: Arcanum/0.1 (open-source card game client)", "Accept: image/*" });
+        var url = _module!.ImageUrl(_inFlight);
+        var err = _http.Request(url, new[] { $"User-Agent: {_module.Sources.UserAgent}", "Accept: image/*" });
         if (err != Error.Ok) Fail(_inFlight);
     }
 
@@ -91,7 +99,7 @@ public partial class CardImageCache : Node
     {
         var name = _inFlight!;
         _inFlight = null;
-        _cooldown = RequestInterval;
+        _cooldown = (_module?.Sources.Images.MinIntervalMs ?? 100) / 1000.0;
 
         if (result != (long)HttpRequest.Result.Success || responseCode != 200 || TryCreateTexture(body) is not { } texture)
         {

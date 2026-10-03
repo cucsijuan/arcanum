@@ -48,6 +48,11 @@ public sealed class GameSession
         Game.EventRaised += e => { if (e is GameEnded) Changed?.Invoke(); };
     }
 
+    /// <summary>Two local seats sharing one screen, with the given decks.</summary>
+    public static GameSession CreateHotseat(ulong seed, Seat first, Seat second) =>
+        new(new GameConfig { Seed = seed }, new[] { first, second }, new AutoPassPolicy(), replay: null);
+
+    /// <summary>Offline demo with Arcanum's generic cards, used when no content module is available.</summary>
     public static GameSession CreateHotseatDemo(ulong seed)
     {
         static IReadOnlyList<CardDefinition> Deck(params (CardDefinition Card, int Count)[] entries) =>

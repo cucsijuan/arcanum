@@ -10,7 +10,7 @@ namespace Arcanum.UI.Board;
 public enum CardHighlight { None, Playable, Selected, Attacking, Blocking }
 
 /// <summary>
-/// Visual for one card: Scryfall image when cached, a text frame while it loads (or offline),
+/// Visual for one card: its image when available, a text frame while it loads (or offline),
 /// or Arcanum's card back when the card is hidden.
 /// </summary>
 public partial class CardNode : Control

@@ -60,15 +60,57 @@ public partial class GameBoard : Control
         public bool Dragging { get; set; }
     }
 
-    public override void _Ready()
+    private readonly ContentLoader _content = new();
+    private readonly Label _loading = BoardStyle.MakeLabel("", 22);
+    private Func<ulong, GameSession> _newSession = GameSession.CreateHotseatDemo;
+
+    public override async void _Ready()
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
         BuildLayout();
+        AddChild(_content);
+
+        // First run downloads and prepares card data; show progress instead of an empty board.
+        _loading.SetAnchorsPreset(LayoutPreset.Center);
+        _loading.GrowHorizontal = GrowDirection.Both;
+        _loading.GrowVertical = GrowDirection.Both;
+        _loading.ZIndex = 400;
+        AddChild(_loading);
+        _content.Progress += message => _loading.Text = message;
+        try
+        {
+            if (await _content.LoadAsync()) UseModuleDecks();
+        }
+        catch (Exception e)
+        {
+            GD.PushError($"Could not load content module: {e}");
+        }
+        _loading.Visible = false;
+
         // ARCANUM_SEED makes the first game reproducible (debugging, screenshots).
         StartNewGame(ulong.TryParse(OS.GetEnvironment("ARCANUM_SEED"), out var seed) ? seed : (ulong)Time.GetTicksUsec());
     }
 
-    private void StartNewGame(ulong seed) => StartSession(GameSession.CreateHotseatDemo(seed));
+    /// <summary>Hotseat with the module's sample decks; falls back to generic cards if they can't be built.</summary>
+    private void UseModuleDecks()
+    {
+        var module = _content.Module!;
+        var cards = _content.Cards!;
+        var names = module.DeckNames().Take(2).ToList();
+        if (names.Count < 2) return;
+
+        var seats = new List<GameSession.Seat>();
+        foreach (var (name, index) in names.Select((n, i) => (n, i)))
+        {
+            var (deck, unknown) = Arcanum.Data.Decks.DeckList.Parse(module.ReadDeck(name)).Resolve(cards);
+            if (unknown.Count > 0) GD.PushWarning($"Deck '{name}': unknown cards {string.Join(", ", unknown)}");
+            if (deck.Count == 0) return;
+            seats.Add(new GameSession.Seat($"Player {index + 1}", deck));
+        }
+        _newSession = seed => GameSession.CreateHotseat(seed, seats[0], seats[1]);
+    }
+
+    private void StartNewGame(ulong seed) => StartSession(_newSession(seed));
 
     private void StartSession(GameSession session)
     {
@@ -719,13 +761,14 @@ public partial class GameBoard : Control
                 break;
             case DamageDealt { TargetPlayer: { } player } d:
                 var area = AreaOf(player);
-                SpawnFloatingText($"-{d.Amount}", area.LifeGlobalCenter + new Vector2(80, 0), BoardStyle.Attacking); // beside the counter, not over it
+                // Beside the counter and rising only a little, so it stays on screen for the top player too.
+                SpawnFloatingText($"-{d.Amount}", area.LifeGlobalCenter + new Vector2(100, 45), BoardStyle.Attacking, rise: 40);
                 area.FlashLife(BoardStyle.Attacking);
                 break;
         }
     }
 
-    private void SpawnFloatingText(string text, Vector2 globalCenter, Color color)
+    private void SpawnFloatingText(string text, Vector2 globalCenter, Color color, float rise = 60)
     {
         var label = BoardStyle.MakeLabel(text, 34, color);
         label.AddThemeConstantOverride("outline_size", 8);
@@ -735,7 +778,7 @@ public partial class GameBoard : Control
         label.ResetSize();
         label.GlobalPosition = globalCenter - label.Size / 2;
         var tween = label.CreateTween().SetParallel();
-        tween.TweenProperty(label, "position:y", label.Position.Y - 60, 1.1).SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Cubic);
+        tween.TweenProperty(label, "position:y", label.Position.Y - rise, 1.1).SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Cubic);
         tween.TweenProperty(label, "modulate:a", 0.0f, 0.5).SetDelay(0.6);
         tween.Chain().TweenCallback(Callable.From(label.QueueFree));
     }
