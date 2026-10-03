@@ -1,0 +1,12 @@
+# Godot 4+
+.godot/
+/android/
+export_presets.cfg
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+.idea/
+TestResults/

@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+using Arcanum.Engine.Cards;
+using Arcanum.Engine.Core;
+using Arcanum.Engine.State;
+
+namespace Arcanum.Engine.Views;
+
+/// <summary>
+/// What a specific player is allowed to know about a card. Hidden cards only expose their id,
+/// owner and zone, so a client (or a cheating remote peer) never receives hidden information.
+/// </summary>
+public sealed record CardView
+{
+    public required CardId Id { get; init; }
+    public required PlayerId Owner { get; init; }
+    public required PlayerId Controller { get; init; }
+    public required Zone Zone { get; init; }
+    public required bool IsHidden { get; init; }
+
+    public string? Name { get; init; }
+    public string? ManaCost { get; init; }
+    public CardType Types { get; init; }
+    public int? Power { get; init; }
+    public int? Toughness { get; init; }
+    public bool Tapped { get; init; }
+    public int Damage { get; init; }
+    public bool SummoningSick { get; init; }
+}
+
+public sealed record PlayerView
+{
+    public required PlayerId Id { get; init; }
+    public required string Name { get; init; }
+    public required int Life { get; init; }
+    public required bool HasLost { get; init; }
+    public required int LibraryCount { get; init; }
+    public required IReadOnlyList<CardView> Hand { get; init; }
+    public required IReadOnlyList<CardView> Graveyard { get; init; }
+    public required IReadOnlyList<CardView> Exile { get; init; }
+    public required IReadOnlyList<CardView> Command { get; init; }
+    public required int ManaPoolTotal { get; init; }
+
+    /// <summary>Floating mana by type (only types with a non-zero amount).</summary>
+    public required IReadOnlyDictionary<Mana.ManaType, int> ManaPool { get; init; }
+}
+
+public sealed record StackItemView(CardView Card, PlayerId Controller);
+
+public sealed record AttackView(CardId Attacker, PlayerId Defender, IReadOnlyList<CardId> Blockers, bool IsBlocked);
+
+/// <summary>Snapshot of the game from one player's perspective.</summary>
+public sealed record GameView
+{
+    public required PlayerId Viewer { get; init; }
+    public required int TurnNumber { get; init; }
+    public required PlayerId ActivePlayer { get; init; }
+    public required PlayerId? PriorityPlayer { get; init; }
+    public required Step Step { get; init; }
+    public required IReadOnlyList<PlayerView> Players { get; init; }
+    public required IReadOnlyList<CardView> Battlefield { get; init; }
+    public required IReadOnlyList<StackItemView> Stack { get; init; }
+    public required IReadOnlyList<AttackView> Attacks { get; init; }
+    public required bool IsGameOver { get; init; }
+    public required PlayerId? Winner { get; init; }
+
+    public PlayerView Self => Players[Viewer.Value];
+
+    public CardView? FindCard(CardId id) =>
+        Battlefield.FirstOrDefault(c => c.Id == id)
+        ?? Players.SelectMany(p => p.Hand.Concat(p.Graveyard).Concat(p.Exile).Concat(p.Command))
+            .FirstOrDefault(c => c.Id == id)
+        ?? Stack.Select(s => s.Card).FirstOrDefault(c => c.Id == id);
+}

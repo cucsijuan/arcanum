@@ -1,0 +1,18 @@
+<Project Sdk="Godot.NET.Sdk/4.6.3">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Arcanum</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Engine libraries live in their own projects; keep them out of the Godot assembly glob. -->
+    <Compile Remove="src/**" />
+    <Compile Remove="tests/**" />
+    <None Remove="src/**;tests/**" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="src/Arcanum.Engine/Arcanum.Engine.csproj" />
+    <ProjectReference Include="src/Arcanum.Cards/Arcanum.Cards.csproj" />
+  </ItemGroup>
+</Project>
