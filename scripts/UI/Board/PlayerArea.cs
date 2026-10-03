@@ -34,6 +34,8 @@ public partial class PlayerArea : Control
     private readonly Dictionary<CardId, CardNode> _cards = new();
     private IReadOnlySet<CardId> _staged = new HashSet<CardId>();
     private IReadOnlySet<CardId> _attacking = new HashSet<CardId>();
+    private IReadOnlyDictionary<CardId, float> _blockerAlign = new Dictionary<CardId, float>();
+    private Panel _lifeBox = null!;
 
     /// <summary>True for the top half: its creatures attack downwards, towards the opponent.</summary>
     public bool FacesDown { get; set; }
@@ -63,7 +65,7 @@ public partial class PlayerArea : Control
         _playmat.Visible = false;
         AddChild(_playmat);
 
-        var lifeBox = new Panel { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(6, 6), Size = new Vector2(92, 46) };
+        var lifeBox = _lifeBox = new Panel { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(6, 6), Size = new Vector2(92, 46) };
         lifeBox.AddThemeStyleboxOverride("panel", BoardStyle.Box(BoardStyle.Panel, 6, BoardStyle.PanelBorder, 1));
         _life.HorizontalAlignment = HorizontalAlignment.Center;
         _life.VerticalAlignment = VerticalAlignment.Center;
@@ -130,10 +132,13 @@ public partial class PlayerArea : Control
 
     /// <param name="stagedTaps">Sources picked in an unconfirmed mana payment; drawn as tapped.</param>
     /// <param name="attacking">Creatures shown stepped forward towards the opponent (declared or being declared).</param>
-    public void Refresh(GameView view, bool isActive, IReadOnlySet<CardId>? stagedTaps = null, IReadOnlySet<CardId>? attacking = null)
+    /// <param name="blockerAlign">Blockers to place in front of their attacker: blocker → attacker's global center X.</param>
+    public void Refresh(GameView view, bool isActive, IReadOnlySet<CardId>? stagedTaps = null, IReadOnlySet<CardId>? attacking = null,
+        IReadOnlyDictionary<CardId, float>? blockerAlign = null)
     {
         _staged = stagedTaps ?? new HashSet<CardId>();
         _attacking = attacking ?? new HashSet<CardId>();
+        _blockerAlign = blockerAlign ?? new Dictionary<CardId, float>();
         var me = view.Players[Player.Value];
         RefreshPool(me);
         _life.Text = me.Life.ToString();
@@ -159,8 +164,11 @@ public partial class PlayerArea : Control
 
         foreach (var stale in _cards.Keys.Where(id => !wantedIds.Contains(id)).ToList())
         {
-            _cards[stale].QueueFree();
+            var node = _cards[stale];
             _cards.Remove(stale);
+            // Cards that went to one of our piles fly there; anything else just fades out.
+            Control? pile = me.Graveyard.Any(c => c.Id == stale) ? _graveyard : me.Exile.Any(c => c.Id == stale) ? _exile : null;
+            AnimateAway(node, pile);
         }
 
         foreach (var cardView in wanted)
@@ -180,6 +188,45 @@ public partial class PlayerArea : Control
         LayoutHand();
         LayoutBattlefield(battlefield);
     }
+
+    private static void AnimateAway(CardNode node, Control? pile)
+    {
+        node.LayoutTween?.Kill();
+        node.MouseFilter = MouseFilterEnum.Ignore;
+        node.ZIndex = 150;
+        var tween = node.CreateTween().SetParallel().SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.InOut);
+        if (pile is not null)
+        {
+            tween.TweenProperty(node, "position", pile.Position, 0.4);
+            tween.TweenProperty(node, "size", BoardStyle.PileCardSize, 0.4);
+            tween.TweenProperty(node, "rotation_degrees", 0f, 0.4);
+            tween.TweenProperty(node, "modulate:a", 0.0f, 0.15).SetDelay(0.3);
+        }
+        else
+        {
+            tween.TweenProperty(node, "modulate:a", 0.0f, 0.35);
+            tween.TweenProperty(node, "scale", new Vector2(0.8f, 0.8f), 0.35);
+        }
+        tween.Chain().TweenCallback(Callable.From(node.QueueFree));
+    }
+
+    /// <summary>Global center of the life counter, where damage to this player is shown.</summary>
+    public Vector2 LifeGlobalCenter => _lifeBox.GetGlobalRect().GetCenter();
+
+    /// <summary>Brief red flash of the life counter.</summary>
+    public void FlashLife(Color color)
+    {
+        _lifeBox.Modulate = color;
+        _lifeBox.CreateTween().TweenProperty(_lifeBox, "modulate", Colors.White, 0.5);
+    }
+
+    /// <summary>Whether a global point is over this player's hand strip (dropping a card there cancels a drag).</summary>
+    public bool IsOverHand(Vector2 globalPoint) =>
+        GetGlobalRect().HasPoint(globalPoint) && globalPoint.Y > GlobalPosition.Y + Size.Y - 150;
+
+    /// <summary>Where a card's current layout animation will end, as a global center point.</summary>
+    public Vector2? TargetGlobalCenter(CardId id) =>
+        _cards.TryGetValue(id, out var node) ? GlobalPosition + node.TargetPosition + node.TargetSize / 2 : null;
 
     private void RefreshPool(PlayerView me)
     {
@@ -248,8 +295,12 @@ public partial class PlayerArea : Control
         var others = battlefield.Where(c => (c.Types & CardType.Land) == 0).ToList();
         float creatureY = 62;
         float landY = creatureY + BoardStyle.BattlefieldCardSize.Y + 22;
-        LayoutRow(others, creatureY);
+
+        // Blockers leave their row and stand in front of the attacker they block.
+        var blockers = others.Where(c => _blockerAlign.ContainsKey(c.Id)).ToList();
+        LayoutRow(others.Except(blockers).ToList(), creatureY);
         LayoutRow(lands, landY);
+        LayoutBlockers(blockers, creatureY);
     }
 
     private void LayoutRow(IReadOnlyList<CardView> row, float y)
@@ -273,8 +324,32 @@ public partial class PlayerArea : Control
         }
     }
 
+    private void LayoutBlockers(IReadOnlyList<CardView> blockers, float y)
+    {
+        var size = BoardStyle.BattlefieldCardSize;
+        float forward = FacesDown ? 40 : -40;
+        // Several blockers on the same attacker stand side by side, centered on it.
+        foreach (var group in blockers.GroupBy(b => _blockerAlign[b.Id]))
+        {
+            var list = group.ToList();
+            float slot = size.Y + 6;
+            float localCenter = group.Key - GlobalPosition.X;
+            for (int i = 0; i < list.Count; i++)
+            {
+                float x = localCenter + (i - (list.Count - 1) / 2f) * slot - size.X / 2;
+                var node = _cards[list[i].Id];
+                node.ZIndex = 50 + i;
+                bool tapped = list[i].Tapped || _staged.Contains(list[i].Id);
+                MoveTo(node, new Vector2(x, y + forward), size, tapped ? 90 : 0);
+            }
+        }
+    }
+
     private static void MoveTo(CardNode node, Vector2 position, Vector2 size, float rotationDegrees)
     {
+        node.TargetPosition = position;
+        node.TargetSize = size;
+        if (node.IsDragging) return;
         node.LayoutTween?.Kill(); // a newer layout always wins over one still animating
         var tween = node.LayoutTween = node.CreateTween().SetParallel().SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
         tween.TweenProperty(node, "position", position, 0.18);

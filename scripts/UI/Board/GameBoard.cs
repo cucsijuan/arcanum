@@ -47,6 +47,18 @@ public partial class GameBoard : Control
     private readonly PhaseBar _phaseBar = new();
     private readonly StackView _stackView = new();
     private Button _undoButton = null!;
+    private DragState? _drag;
+
+    /// <summary>A hand card held with the mouse: played on release unless dropped back onto the hand.</summary>
+    private sealed class DragState
+    {
+        public required CardNode Node { get; init; }
+        public required PlayerArea Area { get; init; }
+        public required Vector2 Start { get; init; }
+        public required PriorityDecision Decision { get; init; }
+        public required PlayerAction Action { get; init; }
+        public bool Dragging { get; set; }
+    }
 
     public override void _Ready()
     {
@@ -244,8 +256,20 @@ public partial class GameBoard : Control
         var staged = _staged.Select(t => t.Source).ToHashSet();
         var attacking = view.Attacks.Select(a => a.Attacker).ToHashSet();
         if (decision is AttackDecision) attacking.UnionWith(_selected);
-        _topArea.Refresh(view, view.ActivePlayer == Top, staged, attacking);
-        _bottomArea.Refresh(view, view.ActivePlayer == Bottom, staged, attacking);
+        // The active player's side is laid out first so blockers can line up with where attackers will be.
+        var activeArea = AreaOf(view.ActivePlayer);
+        var otherArea = activeArea == _topArea ? _bottomArea : _topArea;
+        activeArea.Refresh(view, true, staged, attacking);
+        var blockerAlign = new Dictionary<CardId, float>();
+        void Align(CardId blocker, CardId attacker)
+        {
+            if (activeArea.TargetGlobalCenter(attacker) is { } center) blockerAlign[blocker] = center.X;
+        }
+        foreach (var attack in view.Attacks)
+            foreach (var blocker in attack.Blockers) Align(blocker, attack.Attacker);
+        if (decision is BlockDecision)
+            foreach (var (blocker, attacker) in _blocks) Align(blocker, attacker);
+        otherArea.Refresh(view, false, staged, attacking, blockerAlign);
         _turnNumber.Text = Math.Max(1, view.TurnNumber).ToString();
         _stepLabel.Text = view.TurnNumber == 0 ? "Mulligan" : EventLogFormatter.StepName(view.Step);
         _phaseBar.SetCurrentStep(view.TurnNumber == 0 ? null : view.Step);
@@ -551,6 +575,32 @@ public partial class GameBoard : Control
 
     // ---------------------------------------------------------------- input
 
+    public override void _Input(InputEvent @event)
+    {
+        if (_drag is not { } drag) return;
+        switch (@event)
+        {
+            case InputEventMouseMotion motion:
+                if (!drag.Dragging && motion.GlobalPosition.DistanceTo(drag.Start) > 10)
+                {
+                    drag.Dragging = drag.Node.IsDragging = true;
+                    drag.Node.LayoutTween?.Kill();
+                    drag.Node.ZIndex = 300;
+                    drag.Node.RotationDegrees = 0;
+                }
+                if (drag.Dragging) drag.Node.GlobalPosition = motion.GlobalPosition - drag.Node.Size / 2;
+                break;
+
+            case InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false } release:
+                _drag = null;
+                drag.Node.IsDragging = false;
+                bool cancelled = drag.Dragging && drag.Area.IsOverHand(release.GlobalPosition);
+                if (!cancelled && !drag.Decision.IsAnswered) drag.Decision.Answer(drag.Action);
+                else Refresh(); // dropped back onto the hand: snap into place
+                break;
+        }
+    }
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Z, CtrlPressed: true })
@@ -577,6 +627,13 @@ public partial class GameBoard : Control
             case PriorityDecision p:
             {
                 var action = p.Legal.FirstOrDefault(a => a is PlayLand l && l.Card == id || a is CastSpell c && c.Card == id);
+                if (action is not null && node.View?.Zone == Arcanum.Engine.State.Zone.Hand)
+                {
+                    // Click plays it on release; dragging it out of the hand plays it too.
+                    var area = AreaOf(node.View.Owner);
+                    _drag = new DragState { Node = node, Area = area, Start = GetGlobalMousePosition(), Decision = p, Action = action };
+                    return;
+                }
                 if (action is not null) { p.Answer(action); return; }
                 // Clicking an untapped mana source floats its mana.
                 var manaOptions = p.Legal.OfType<ActivateManaAbility>().Where(a => a.Source == id).ToList();
@@ -641,11 +698,46 @@ public partial class GameBoard : Control
 
     private void OnGameEvent(GameEvent e)
     {
+        if (!_session.Log.IsReplaying) PlayEffect(e);
         var line = EventLogFormatter.Format(_session.Game, e, _session.RevealAll);
         if (line is null) return;
         _log.AppendText((e is TurnBegan ? "\n[b]" + line + "[/b]" : line) + "\n");
         if (!_logPanel.Visible) _unreadLog++;
         UpdateLogBadge();
+    }
+
+    /// <summary>
+    /// Visual feedback for an event. Runs while the engine is mid-resolution, before the board redraws, so card
+    /// nodes are still where the player last saw them.
+    /// </summary>
+    private void PlayEffect(GameEvent e)
+    {
+        switch (e)
+        {
+            case DamageDealt { TargetCard: { } card } d when FindCard(card) is { } node:
+                SpawnFloatingText($"-{d.Amount}", node.GetGlobalTransform() * (node.Size / 2), BoardStyle.Attacking);
+                break;
+            case DamageDealt { TargetPlayer: { } player } d:
+                var area = AreaOf(player);
+                SpawnFloatingText($"-{d.Amount}", area.LifeGlobalCenter + new Vector2(80, 0), BoardStyle.Attacking); // beside the counter, not over it
+                area.FlashLife(BoardStyle.Attacking);
+                break;
+        }
+    }
+
+    private void SpawnFloatingText(string text, Vector2 globalCenter, Color color)
+    {
+        var label = BoardStyle.MakeLabel(text, 34, color);
+        label.AddThemeConstantOverride("outline_size", 8);
+        label.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 0.85f));
+        label.ZIndex = 250;
+        AddChild(label);
+        label.ResetSize();
+        label.GlobalPosition = globalCenter - label.Size / 2;
+        var tween = label.CreateTween().SetParallel();
+        tween.TweenProperty(label, "position:y", label.Position.Y - 60, 1.1).SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Cubic);
+        tween.TweenProperty(label, "modulate:a", 0.0f, 0.5).SetDelay(0.6);
+        tween.Chain().TweenCallback(Callable.From(label.QueueFree));
     }
 
     private void ToggleLog()

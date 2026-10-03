@@ -46,6 +46,13 @@ public partial class CardNode : Control
     /// <summary>Running move/rotate animation, killed when a new layout starts.</summary>
     public Tween? LayoutTween { get; set; }
 
+    /// <summary>End state of the current layout animation (local to the parent).</summary>
+    public Vector2 TargetPosition { get; set; }
+    public Vector2 TargetSize { get; set; }
+
+    /// <summary>Being dragged by the player; layout leaves it alone until released.</summary>
+    public bool IsDragging { get; set; }
+
     public CardNode()
     {
         _roundedShader ??= GD.Load<Shader>("res://shaders/rounded_card.gdshader");
