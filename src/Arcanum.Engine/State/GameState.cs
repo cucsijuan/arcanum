@@ -12,6 +12,9 @@ public sealed record TemporaryControlEffect(CardId Card, int Version, PlayerId O
 /// <summary>A card exiled until a source leaves the battlefield.</summary>
 public sealed record LinkedExile(CardId Source, int SourceVersion, CardId Exiled, int ExiledVersion);
 
+/// <summary>A card in exile <paramref name="Player"/> may play until turn <paramref name="UntilTurn"/> ends (free when <paramref name="WithoutPaying"/>).</summary>
+public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player, int UntilTurn, bool WithoutPaying = false);
+
 /// <summary>A delayed action: return a card to the battlefield, or sacrifice a permanent.</summary>
 public sealed record DelayedAction(CardId Card, int Version, bool Return, PlayerId Controller);
 
@@ -35,6 +38,15 @@ public sealed class GameState
 
     /// <summary>Things to do at the beginning of the next end step (delayed triggered abilities, rule 603.7).</summary>
     public List<DelayedAction> AtNextEndStep { get; } = new();
+
+    /// <summary>Cards in exile their controller may play for a while (until <c>UntilTurn</c> ends).</summary>
+    public List<PlayableFromExile> PlayableFromExile { get; } = new();
+
+    /// <summary>Emblems in the command zone (rule 114).</summary>
+    public List<CardId> Emblems { get; } = new();
+
+    /// <summary>Permanents that entered and still need their "as this enters, choose..." choice.</summary>
+    public List<(CardId Card, int Version)> PendingEnterChoices { get; } = new();
 
     /// <summary>Objects that are exiled instead if they would die this turn.</summary>
     public HashSet<(CardId Card, int Version)> ExileIfDies { get; } = new();

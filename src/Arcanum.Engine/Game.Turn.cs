@@ -27,7 +27,9 @@ public sealed partial class Game
         {
             card.ActivatedThisTurn.Clear();
             card.TriggeredThisTurn.Clear();
+            card.LoyaltyActivatedThisTurn = false;
         }
+        State.PlayableFromExile.RemoveAll(p => p.UntilTurn < State.TurnNumber);
         Emit(new TurnBegan(State.TurnNumber, active.Id));
 
         _skipCombatDamageSteps = false;

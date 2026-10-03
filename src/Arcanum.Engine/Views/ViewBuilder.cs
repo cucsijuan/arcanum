@@ -40,7 +40,7 @@ public static class ViewBuilder
             Stack = state.Stack.Select(s => new StackItemView(
                 View(s.SourceCard), s.Controller, (s as AbilityOnStack)?.Ability.Text, s.Targets.Select(t => t.Target).ToList())).ToList(),
             Attacks = state.Combat?.Attacks
-                .Select(a => new AttackView(a.Attacker, a.Defender, a.Blockers.ToList(), a.IsBlocked)).ToList()
+                .Select(a => new AttackView(a.Attacker, a.Defender, a.Blockers.ToList(), a.IsBlocked, a.Planeswalker)).ToList()
                 ?? (IReadOnlyList<AttackView>)Array.Empty<AttackView>(),
             IsGameOver = state.IsGameOver,
             Winner = state.Winner,
@@ -77,6 +77,7 @@ public static class ViewBuilder
             Keywords = Enum.GetValues<Cards.Keyword>().Where(card.Has).Select(Cards.Keywords.DisplayName).ToList(),
             PlusOneCounters = card.CounterCount(Abilities.CounterKind.PlusOnePlusOne),
             MinusOneCounters = card.CounterCount(Abilities.CounterKind.MinusOneMinusOne),
+            Loyalty = card.CounterCount(Abilities.CounterKind.Loyalty),
             IsToken = card.Definition.IsToken,
             OracleText = card.Definition.OracleText,
             Colors = card.Definition.Colors,

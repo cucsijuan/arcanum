@@ -47,6 +47,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
 
     /// <summary>Creature types added ("is an Angel in addition to its other types").</summary>
     public IReadOnlyList<string>? AddSubtypes { get; init; }
+
+    /// <summary>Adds the creature type chosen as the source entered ("is the chosen type in addition to its other types").</summary>
+    public bool AddChosenType { get; init; }
 }
 
 /// <summary>Attach the source Aura/Equipment to a permanent ("Equip {2}").</summary>

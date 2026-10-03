@@ -95,4 +95,8 @@ public sealed class TestController : IPlayerController
     public Func<GameView, NumberRequest, int> Number { get; set; } = (_, request) => request.Max;
 
     public Task<int> ChooseNumberAsync(GameView view, NumberRequest request) => Task.FromResult(Number(view, request));
+
+    public Func<GameView, OptionRequest, int> Option { get; set; } = (_, _) => 0;
+
+    public Task<int> ChooseOptionAsync(GameView view, OptionRequest request) => Task.FromResult(Option(view, request));
 }

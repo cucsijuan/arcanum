@@ -65,6 +65,7 @@ public static partial class CardFactory
             Subtypes = subtypes,
             Power = power,
             Toughness = toughness,
+            Loyalty = int.TryParse(record.Loyalty, out int loyalty) ? loyalty : null,
             OracleText = record.OracleText,
             Keywords = record.Keywords,
             TapForMana = tapForMana,

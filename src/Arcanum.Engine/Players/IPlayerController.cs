@@ -49,7 +49,15 @@ public interface IPlayerController
 
     /// <summary>Choose a number between the request's bounds (the value of X, for example).</summary>
     Task<int> ChooseNumberAsync(GameView view, NumberRequest request);
+
+    /// <summary>Pick one of several named options (a color, a creature type...); returns its index.</summary>
+    Task<int> ChooseOptionAsync(GameView view, OptionRequest request);
 }
+
+public enum OptionKind { Color, CreatureType, Other }
+
+/// <summary>Choose one of <see cref="Options"/>.</summary>
+public sealed record OptionRequest(string Prompt, CardId? Source, IReadOnlyList<string> Options, OptionKind Kind);
 
 /// <summary>Choose a number from <see cref="Min"/> to <see cref="Max"/>.</summary>
 public sealed record NumberRequest(string Prompt, CardId? Source, int Min, int Max);

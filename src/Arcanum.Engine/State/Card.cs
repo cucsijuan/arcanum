@@ -75,11 +75,29 @@ public sealed class Card
     public bool HasSubtype(string subtype) =>
         Definition.Subtypes.Contains(subtype, StringComparer.OrdinalIgnoreCase) || GrantedSubtypes.Contains(subtype) || (Has(Keyword.Changeling) && subtype is not ("Equipment" or "Aura" or "Treasure" or "Food" or "Clue"));
 
+    /// <summary>Color chosen as it entered ("As this enters, choose a color"): W, U, B, R or G.</summary>
+    public string? ChosenColor { get; set; }
+
+    /// <summary>Creature type chosen as it entered.</summary>
+    public string? ChosenType { get; set; }
+
+    /// <summary>Types of mana its mana ability can add (the chosen color for "Add one mana of the chosen color").</summary>
+    public IReadOnlyList<Mana.ManaType> ManaTypes =>
+        Definition.ManaFromChosenColor && ChosenColor is { } color && Mana.ManaTypeExtensions.TryParse(color[0], out var type)
+            ? new[] { type }
+            : Definition.TapForMana;
+
+    /// <summary>Mana its mana ability adds per activation (recomputed for "Add {G} for each Elf you control").</summary>
+    public int ManaAmount { get; internal set; } = 1;
+
     /// <summary>Cast with its kicker cost paid (kept as the spell becomes a permanent, rule 702.33).</summary>
     public bool Kicked { get; set; }
 
     /// <summary>Indices of "activate only once each turn" abilities already activated this turn.</summary>
     public HashSet<int> ActivatedThisTurn { get; } = new();
+
+    /// <summary>A loyalty ability of this planeswalker was activated this turn (one per turn, rule 606.3).</summary>
+    public bool LoyaltyActivatedThisTurn { get; set; }
 
     /// <summary>"Triggers only once each turn" abilities that already triggered this turn.</summary>
     public HashSet<AbilityDefinition> TriggeredThisTurn { get; } = new(ReferenceEqualityComparer.Instance);
@@ -105,8 +123,11 @@ public sealed class Card
         BasePowerOverride = null;
         BaseToughnessOverride = null;
         Kicked = false;
+        ChosenColor = null;
+        ChosenType = null;
         ActivatedThisTurn.Clear();
         TriggeredThisTurn.Clear();
+        LoyaltyActivatedThisTurn = false;
         Version++;
         Controller = Owner;
     }

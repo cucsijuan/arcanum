@@ -16,6 +16,11 @@ public enum TargetKind
     Land,
     /// <summary>A spell on the stack.</summary>
     Spell,
+    Planeswalker,
+    /// <summary>"Target creature or planeswalker".</summary>
+    CreatureOrPlaneswalker,
+    /// <summary>"Target player or planeswalker".</summary>
+    PlayerOrPlaneswalker,
     /// <summary>A card in a graveyard ("target creature card from your graveyard": controller filter = owner).</summary>
     GraveyardCard,
 }
@@ -36,6 +41,8 @@ public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = C
         if (Text is not null) return Text;
         if (Kind == TargetKind.GraveyardCard) return Controller == ControllerFilter.You ? "target card in your graveyard" : "target card in a graveyard";
         if (Kind == TargetKind.Any) return "any target";
+        if (Kind == TargetKind.CreatureOrPlaneswalker) return Controller == ControllerFilter.Opponent ? "target creature or planeswalker an opponent controls" : "target creature or planeswalker";
+        if (Kind == TargetKind.PlayerOrPlaneswalker) return "target player or planeswalker";
         if (Kind == TargetKind.Player && Controller == ControllerFilter.Opponent) return "target opponent";
         var noun = Kind.ToString().ToLowerInvariant();
         return Controller switch

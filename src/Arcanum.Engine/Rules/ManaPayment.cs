@@ -18,7 +18,7 @@ public static class ManaPayment
     /// <param name="exclude">A permanent that can't be tapped for mana here (it is tapping for an ability's cost).</param>
     public static IEnumerable<Card> AvailableSources(GameState state, PlayerId player, CardId? exclude = null) =>
         state.PermanentsControlledBy(player)
-            .Where(c => !c.Tapped && c.Definition.TapForMana.Count > 0 && c.Id != exclude)
+            .Where(c => !c.Tapped && c.ManaTypes.Count > 0 && c.ManaAmount > 0 && c.Id != exclude)
             // Creatures can't use {T} abilities while summoning sick (rule 302.6).
             .Where(c => !c.IsSummoningSick);
 
@@ -68,12 +68,42 @@ public static class ManaPayment
     public static PaymentPlan? FindPlan(GameState state, PlayerId player, ManaCost cost, CardId? exclude = null)
     {
         var (fromPool, rest) = ApplyPool(cost, state.GetPlayer(player).ManaPool);
-
-        var sources = AvailableSources(state, player, exclude)
+        var all = AvailableSources(state, player, exclude).ToList();
+        // Sources that add several mana per activation are decided first (skip, or each of their types); the
+        // single-mana sources then pay what is left with the fast pip solver below.
+        var multi = all.Where(c => c.ManaAmount > 1).ToList();
+        var single = all.Where(c => c.ManaAmount == 1)
             .OrderBy(c => c.Definition.SacrificeForMana) // keep one-shot sources (Treasure) for last
-            .ThenBy(c => c.Definition.TapForMana.Count)
+            .ThenBy(c => c.ManaTypes.Count)
             .ThenBy(c => c.Id.Value)
             .ToList();
+        return SolveMulti(multi, 0, rest, new List<ManaTap>(), single) is { } taps ? new PaymentPlan(fromPool, taps) : null;
+    }
+
+    private static List<ManaTap>? SolveMulti(List<Card> multi, int index, ManaCost remaining, List<ManaTap> chosen, List<Card> single)
+    {
+        if (remaining.ManaValue == 0) return chosen.ToList();
+        if (index == multi.Count)
+        {
+            var taps = SolveSingle(single, remaining);
+            return taps is null ? null : chosen.Concat(taps).ToList();
+        }
+        // Prefer not to use a big source when the rest can pay (saves it for later), then try each of its types.
+        if (SolveMulti(multi, index + 1, remaining, chosen, single) is { } without) return without;
+        var source = multi[index];
+        foreach (var type in source.ManaTypes.Distinct())
+        {
+            var (left, _) = Apply(remaining, Enumerable.Repeat(type, source.ManaAmount));
+            chosen.Add(new ManaTap(source.Id, type));
+            var result = SolveMulti(multi, index + 1, left, chosen, single);
+            chosen.RemoveAt(chosen.Count - 1);
+            if (result is not null) return result;
+        }
+        return null;
+    }
+
+    private static List<ManaTap>? SolveSingle(List<Card> sources, ManaCost rest)
+    {
         var used = new bool[sources.Count];
         var taps = new List<ManaTap>();
         if (!AssignPips(rest.Pips, 0, sources, used, taps)) return null;
@@ -83,11 +113,15 @@ public static class ManaPayment
         {
             if (used[i]) continue;
             used[i] = true;
-            taps.Add(new ManaTap(sources[i].Id, sources[i].Definition.TapForMana[0]));
+            taps.Add(new ManaTap(sources[i].Id, sources[i].ManaTypes[0]));
             generic--;
         }
-        return generic > 0 ? null : new PaymentPlan(fromPool, taps);
+        return generic > 0 ? null : taps;
     }
+
+    /// <summary>Every mana a set of taps adds (sources that add several mana count each one).</summary>
+    public static IEnumerable<ManaType> Produced(GameState state, IEnumerable<ManaTap> taps) =>
+        taps.SelectMany(t => Enumerable.Repeat(t.Type, state.GetCard(t.Source).ManaAmount));
 
     private static bool AssignPips(IReadOnlyList<ManaType> pips, int index, List<Card> sources, bool[] used, List<ManaTap> taps)
     {
@@ -95,7 +129,7 @@ public static class ManaPayment
         var pip = pips[index];
         for (int i = 0; i < sources.Count; i++)
         {
-            if (used[i] || !sources[i].Definition.TapForMana.Contains(pip)) continue;
+            if (used[i] || !sources[i].ManaTypes.Contains(pip)) continue;
             used[i] = true;
             taps.Add(new ManaTap(sources[i].Id, pip));
             if (AssignPips(pips, index + 1, sources, used, taps)) return true;

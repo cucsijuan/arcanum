@@ -54,6 +54,9 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>"Exile this [permanent]" as a cost.</summary>
     public bool ExileSelf { get; init; }
 
+    /// <summary>A loyalty ability's cost: +N / −N loyalty counters (null: not a loyalty ability, rule 606).</summary>
+    public int? Loyalty { get; init; }
+
     public static readonly AbilityCost TapOnly = new(ManaCost.Zero, Tap: true);
 }
 
@@ -127,6 +130,8 @@ public enum TriggerEvent
     CountersPlaced,
     /// <summary>"Whenever this creature becomes tapped".</summary>
     BecomesTapped,
+    /// <summary>"Whenever a player casts a spell" (any player, including you).</summary>
+    AnyPlayerCastsSpell,
     /// <summary>"Whenever an opponent draws a card".</summary>
     OpponentDrawsCard,
     /// <summary>"At the beginning of each player's draw step".</summary>
@@ -185,7 +190,9 @@ public sealed record ObjectFilter(
     string? Name = null,
     bool? HasCounters = null,
     IReadOnlyList<ObjectFilter>? AnyOf = null,
-    bool AttachedToSource = false)
+    bool AttachedToSource = false,
+    bool ChosenColor = false,
+    bool ChosenType = false)
 {
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 

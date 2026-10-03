@@ -4,6 +4,9 @@ using Arcanum.Engine.Mana;
 
 namespace Arcanum.Engine.Cards;
 
+/// <summary>A choice made as a permanent enters (rule 614.12).</summary>
+public enum EnterChoice { None, Color, CreatureType }
+
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]
 public enum Replacements
@@ -60,6 +63,12 @@ public sealed record CardDefinition
     public IReadOnlyList<string> Subtypes { get; init; } = Array.Empty<string>();
     public int? Power { get; init; }
     public int? Toughness { get; init; }
+
+    /// <summary>Printed loyalty (planeswalkers): it enters with that many loyalty counters (rule 306.5b).</summary>
+    public int? Loyalty { get; init; }
+
+    /// <summary>An emblem: an object in the command zone with abilities that work from there (rule 114).</summary>
+    public bool IsEmblem { get; init; }
     public string OracleText { get; init; } = "";
 
     /// <summary>Keyword abilities printed on the card (e.g. "Flying"), as listed by the card data source.</summary>
@@ -76,6 +85,21 @@ public sealed record CardDefinition
     /// Card data fills it from basic land types and simple "{T}: Add ..." rules text.
     /// </summary>
     public IReadOnlyList<ManaType> TapForMana { get; init; } = Array.Empty<ManaType>();
+
+    /// <summary>Mana added per activation of its mana ability, all of one chosen type ("{T}: Add {C}{C}").</summary>
+    public int ManaAmount { get; init; } = 1;
+
+    /// <summary>Mana added per activation, worked out continuously ("Add {G} for each Elf you control").</summary>
+    public Quantity? ManaAmountFrom { get; init; }
+
+    /// <summary>Its mana ability adds mana of the color chosen as it entered.</summary>
+    public bool ManaFromChosenColor { get; init; }
+
+    /// <summary>"As this enters, choose a color / creature type."</summary>
+    public EnterChoice ChooseOnEnter { get; init; }
+
+    /// <summary>"This enters with a [kind] counter for each creature you control of the chosen type."</summary>
+    public Abilities.CounterKind? CountersPerChosenType { get; init; }
 
     /// <summary>Its mana ability also sacrifices it: "{T}, Sacrifice this artifact: Add one mana of any color."</summary>
     public bool SacrificeForMana { get; init; }
@@ -94,6 +118,9 @@ public sealed record CardDefinition
 
     /// <summary>Replacement effect "This creature enters with N +1/+1 counters on it" (rule 614.1c).</summary>
     public int EntersWithCounters { get; init; }
+
+    /// <summary>"Enters with X +1/+1 counters, where X is ..." worked out as it enters.</summary>
+    public Quantity? EntersWithCountersFrom { get; init; }
 
     /// <summary>The <see cref="EntersWithCounters"/> replacement applies only if this holds ("if you attacked this turn", "if it was kicked").</summary>
     public Condition? EntersWithCountersIf { get; init; }

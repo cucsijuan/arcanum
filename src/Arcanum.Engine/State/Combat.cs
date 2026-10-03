@@ -8,6 +8,9 @@ public sealed class AttackInfo
     public required CardId Attacker { get; init; }
     public required PlayerId Defender { get; init; }
 
+    /// <summary>The planeswalker being attacked, if it isn't the player.</summary>
+    public CardId? Planeswalker { get; init; }
+
     /// <summary>Blockers in damage assignment order.</summary>
     public List<CardId> Blockers { get; } = new();
 

@@ -77,6 +77,27 @@ public sealed class BotController : IPlayerController
         return Task.FromResult<IReadOnlyList<int>?>(chosen);
     }
 
+    /// <summary>The color or creature type most common among the bot's own visible cards.</summary>
+    public Task<int> ChooseOptionAsync(GameView view, OptionRequest request)
+    {
+        var mine = view.Battlefield.Where(c => c.Controller == _me).Concat(view.Self.Hand).Where(c => !c.IsHidden).ToList();
+        int best = 0, bestScore = -1;
+        for (int i = 0; i < request.Options.Count; i++)
+        {
+            var option = request.Options[i];
+            int score = request.Kind switch
+            {
+                OptionKind.Color => mine.Count(c => c.ManaCost?.Contains("{" + ColorLetter(option) + "}") == true || c.Colors.Contains(ColorLetter(option))),
+                OptionKind.CreatureType => mine.Count(c => _definitions(c.Id)?.Subtypes.Contains(option) == true),
+                _ => 0,
+            };
+            if (score > bestScore) { best = i; bestScore = score; }
+        }
+        return Task.FromResult(best);
+    }
+
+    private static string ColorLetter(string color) => color switch { "Blue" => "U", _ => color[..1] };
+
     /// <summary>Use everything available for X.</summary>
     public Task<int> ChooseNumberAsync(GameView view, NumberRequest request) => Task.FromResult(request.Max);
 
@@ -165,6 +186,7 @@ public sealed class BotController : IPlayerController
         {
             if (legal.OfType<PlayLand>().FirstOrDefault() is { } land) return land;
             if (BestSpell(view, legal, mainPhase: true) is { } spell) return spell;
+            if (LoyaltyAbility(view, legal) is { } loyalty) return loyalty;
             if (view.Step == Step.PrecombatMain && Equip(view, legal) is { } equip) return equip;
             if (view.Step == Step.PostcombatMain && UsefulActivation(view, legal) is { } ping) return ping;
             return PassPriority.Instance;
@@ -286,12 +308,37 @@ public sealed class BotController : IPlayerController
     }
 
     /// <summary>Tap/sacrifice abilities that harm something worthwhile, or gain value with no target.</summary>
+    /// <summary>
+    /// A planeswalker ability: the ultimate when affordable, otherwise a minus ability worth its loyalty when it
+    /// leaves the planeswalker alive and has a good effect, otherwise the plus ability.
+    /// </summary>
+    private PlayerAction? LoyaltyAbility(GameView view, IReadOnlyList<PlayerAction> legal)
+    {
+        var options = legal.OfType<ActivateAbility>()
+            .Select(a => (Action: a, Ability: Rules(view, a.Source)?.Abilities.ElementAtOrDefault(a.Index) as ActivatedAbility, Card: view.FindCard(a.Source)))
+            .Where(o => o.Ability?.Cost.Loyalty is not null && o.Card is not null)
+            .ToList();
+        if (options.Count == 0) return null;
+        foreach (var group in options.GroupBy(o => o.Action.Source))
+        {
+            int loyalty = group.First().Card!.Loyalty;
+            var ultimate = group.Where(o => o.Ability!.Cost.Loyalty! < 0).OrderBy(o => o.Ability!.Cost.Loyalty).FirstOrDefault();
+            if (ultimate.Ability is not null && -ultimate.Ability.Cost.Loyalty! >= 6) return ultimate.Action;
+            var minus = group.Where(o => o.Ability!.Cost.Loyalty! < 0 && loyalty + o.Ability.Cost.Loyalty! > 0)
+                .OrderByDescending(o => SpellScore(view, o.Ability!)).FirstOrDefault();
+            if (minus.Ability is not null && SpellScore(view, minus.Ability) >= 4) return minus.Action;
+            var plus = group.Where(o => o.Ability!.Cost.Loyalty! >= 0).OrderByDescending(o => o.Ability!.Cost.Loyalty).FirstOrDefault();
+            if (plus.Ability is not null) return plus.Action;
+        }
+        return null;
+    }
+
     private PlayerAction? UsefulActivation(GameView view, IReadOnlyList<PlayerAction> legal)
     {
         foreach (var activate in legal.OfType<ActivateAbility>())
         {
             var ability = Rules(view, activate.Source)?.Abilities.ElementAtOrDefault(activate.Index) as ActivatedAbility;
-            if (ability is null || ability.Effects.Any(e => e is AttachSelf)) continue;
+            if (ability is null || ability.Effects.Any(e => e is AttachSelf) || ability.Cost.Loyalty is not null) continue;
             if (ability.Cost.SacrificeSelf) continue; // keep sacrifice outlets for emergencies
             if (ability.Targets.Count == 0)
             {
@@ -391,7 +438,7 @@ public sealed class BotController : IPlayerController
     private List<Target> LegalHarmTargets(GameView view, TargetSpec spec)
     {
         var targets = new List<Target>();
-        if (spec.Kind is TargetKind.Any or TargetKind.Player)
+        if (spec.Kind is TargetKind.Any or TargetKind.Player or TargetKind.PlayerOrPlaneswalker)
             targets.AddRange(view.Players.Where(p => p.Id != _me && !p.HasLost).Select(p => Target.Of(p.Id)));
         if (spec.Kind != TargetKind.Player)
             targets.AddRange(view.Battlefield.Where(c => c.Controller != _me && !Has(c, "Hexproof") && !Has(c, "Shroud") && Matches(c, spec.Kind)).Select(c => Target.Of(c.Id)));
@@ -401,6 +448,8 @@ public sealed class BotController : IPlayerController
     private static bool Matches(CardView c, TargetKind kind) => kind switch
     {
         TargetKind.Any or TargetKind.Creature => (c.Types & CardType.Creature) != 0,
+        TargetKind.CreatureOrPlaneswalker => (c.Types & (CardType.Creature | CardType.Planeswalker)) != 0,
+        TargetKind.Planeswalker or TargetKind.PlayerOrPlaneswalker => (c.Types & CardType.Planeswalker) != 0,
         TargetKind.Artifact => (c.Types & CardType.Artifact) != 0,
         TargetKind.Enchantment => (c.Types & CardType.Enchantment) != 0,
         TargetKind.Land => (c.Types & CardType.Land) != 0,
@@ -497,6 +546,23 @@ public sealed class BotController : IPlayerController
         }
         var byThreat = defenders.OrderByDescending(d => Threat(view, d)).ToList();
         var declarations = new List<AttackDeclaration>();
+        // Opposing planeswalkers: attack one with enough safe power to finish it.
+        foreach (var walker in view.Battlefield.Where(c => (c.Types & CardType.Planeswalker) != 0 && defenders.Contains(c.Controller)).OrderByDescending(c => c.Loyalty))
+        {
+            var safe = candidates.Where(a => SafeToAttack(a, BlockersOf(walker.Controller))).OrderByDescending(a => a.Power ?? 0).ToList();
+            var sent = new List<CardView>();
+            foreach (var a in safe)
+            {
+                if (sent.Sum(x => x.Power ?? 0) >= walker.Loyalty) break;
+                sent.Add(a);
+            }
+            if (sent.Sum(x => x.Power ?? 0) < walker.Loyalty) continue;
+            foreach (var a in sent)
+            {
+                declarations.Add(new AttackDeclaration(a.Id, walker.Controller, walker.Id));
+                candidates.Remove(a);
+            }
+        }
         foreach (var attacker in candidates)
         {
             foreach (var defender in byThreat)

@@ -92,6 +92,12 @@ public sealed class ChooseNumberDecision : Decision<int>
     public required NumberRequest Request { get; init; }
 }
 
+/// <summary>Pick one of several named options (a color, a creature type).</summary>
+public sealed class ChooseOptionDecision : Decision<int>
+{
+    public required OptionRequest Request { get; init; }
+}
+
 /// <summary>Single queue point for decisions of every local seat (hotseat shares one screen).</summary>
 public sealed class DecisionHub
 {

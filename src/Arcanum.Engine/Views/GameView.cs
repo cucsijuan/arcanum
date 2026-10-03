@@ -37,6 +37,8 @@ public sealed record CardView
     public int? BaseToughness { get; init; }
     public int PlusOneCounters { get; init; }
     public int MinusOneCounters { get; init; }
+    /// <summary>Loyalty counters (planeswalkers).</summary>
+    public int Loyalty { get; init; }
     public bool IsToken { get; init; }
     public string OracleText { get; init; } = "";
     public IReadOnlyList<string> Colors { get; init; } = Array.Empty<string>();
@@ -68,7 +70,7 @@ public sealed record PlayerView
 /// <param name="AbilityText">Rules text of the ability, or null for a spell.</param>
 public sealed record StackItemView(CardView Card, PlayerId Controller, string? AbilityText, IReadOnlyList<Abilities.Target> Targets);
 
-public sealed record AttackView(CardId Attacker, PlayerId Defender, IReadOnlyList<CardId> Blockers, bool IsBlocked);
+public sealed record AttackView(CardId Attacker, PlayerId Defender, IReadOnlyList<CardId> Blockers, bool IsBlocked, CardId? Planeswalker = null);
 
 /// <summary>Snapshot of the game from one player's perspective.</summary>
 public sealed record GameView

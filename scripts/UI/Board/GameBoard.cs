@@ -42,6 +42,8 @@ public partial class GameBoard : Control
     private int _number;
     private readonly Dictionary<CardId, PlayerId> _attackTargets = new(); // attacker -> player it attacks
     private PlayerId? _attackDefender;                                    // where newly picked attackers go
+    private readonly Dictionary<CardId, CardId> _attackWalkers = new();   // attacker -> planeswalker it attacks
+    private CardId? _attackWalker;                                        // planeswalker newly picked attackers go after
     private readonly HashSet<CardId> _attackGroup = new();                // picked since the last change of target
     private readonly Dictionary<CardId, CardId> _blocks = new(); // blocker -> attacker
     private CardId? _pendingBlocker;
@@ -480,6 +482,8 @@ public partial class GameBoard : Control
         {
             _selected.Clear();
             _attackTargets.Clear();
+            _attackWalkers.Clear();
+            _attackWalker = null;
             _attackGroup.Clear();
             _attackDefender = decision is AttackDecision ad ? ad.Defenders[0] : null;
             _blocks.Clear();
@@ -587,6 +591,7 @@ public partial class GameBoard : Control
             case SelectCardsDecision s: s.Answer(view.Players[s.Player.Value].Hand.Take(s.Count).Select(c => c.Id).ToList()); break;
             case ChooseModesDecision md: md.Answer(md.Request.Possible.Take(Math.Max(1, md.Request.Min)).ToList()); break;
             case ChooseNumberDecision nd: nd.Answer(nd.Request.Max); break;
+            case ChooseOptionDecision od: od.Answer(0); break;
             case ChooseCardsDecision c: c.Answer(c.Request.Options.Take(Math.Max(c.Request.Min, 1)).Take(c.Request.Max).Select(o => o.Id).ToList()); break;
         }
     }
@@ -650,8 +655,12 @@ public partial class GameBoard : Control
                 {
                     bool attacking = _attackTargets.TryGetValue(id, out var target);
                     FindCard(id)?.SetHighlight(attacking ? CardHighlight.Attacking : CardHighlight.Playable);
-                    if (attacking && a.Defenders.Count > 1) FindCard(id)?.SetCaption("\u2192 " + view.Players[target.Value].Name);
+                    if (attacking && _attackWalkers.TryGetValue(id, out var walker)) FindCard(id)?.SetCaption("\u2192 " + (view.FindCard(walker)?.Name ?? "planeswalker"));
+                    else if (attacking && a.Defenders.Count > 1) FindCard(id)?.SetCaption("\u2192 " + view.Players[target.Value].Name);
                 }
+                // Opponents' planeswalkers can be attacked too: click one to send the selected attackers at it.
+                foreach (var walker in view.Battlefield.Where(c => (c.Types & Arcanum.Engine.Cards.CardType.Planeswalker) != 0 && a.Defenders.Contains(c.Controller)))
+                    FindCard(walker.Id)?.SetHighlight(_attackWalker == walker.Id ? CardHighlight.Selected : CardHighlight.Playable);
                 foreach (var defender in a.Defenders) AreaOf(defender).SetPlayerTargetable(defender == _attackDefender);
                 break;
             case BlockDecision b:
@@ -698,7 +707,15 @@ public partial class GameBoard : Control
                 ? _attackTargets.Select(kv => (kv.Key, kv.Value))
                 : view.Attacks.Where(at => !at.IsBlocked).Select(at => (at.Attacker, at.Defender));
             foreach (var (attacker, defender) in targets)
-                if (FindCard(attacker) is { } node) arrows.Add(new(node, AreaOf(defender).LifeBox, BoardStyle.Attacking));
+                if (FindCard(attacker) is { } node && !_attackWalkers.ContainsKey(attacker)) arrows.Add(new(node, AreaOf(defender).LifeBox, BoardStyle.Attacking));
+        }
+        // Attacks on planeswalkers point at the planeswalker.
+        {
+            var walkerTargets = decision is AttackDecision
+                ? _attackWalkers.Select(kv => (kv.Key, kv.Value))
+                : view.Attacks.Where(at => at.Planeswalker is not null && !at.IsBlocked).Select(at => (at.Attacker, at.Planeswalker!.Value));
+            foreach (var (attacker, walker) in walkerTargets)
+                if (FindCard(attacker) is { } from && FindCard(walker) is { } to) arrows.Add(new(from, to, BoardStyle.Attacking));
         }
 
         // Spells and abilities on the stack point at their targets.
@@ -803,6 +820,30 @@ public partial class GameBoard : Control
                 {
                     var done = AddButton($"Confirm ({_chosenModes.Count})", () => md.Answer(_chosenModes.OrderBy(m => m).ToList()), primary: true);
                     done.Disabled = _chosenModes.Count < md.Request.Min || _chosenModes.Count > md.Request.Max;
+                }
+                break;
+            }
+
+            case ChooseOptionDecision od:
+            {
+                _prompt.Text = $"{who}: {od.Request.Prompt}";
+                var grid = new GridContainer { Columns = od.Request.Options.Count > 6 ? 3 : 1 };
+                grid.AddThemeConstantOverride("h_separation", 6);
+                grid.AddThemeConstantOverride("v_separation", 6);
+                _actionExtra.Visible = true;
+                _actionExtra.AddChild(grid);
+                for (int i = 0; i < od.Request.Options.Count; i++)
+                {
+                    int option = i;
+                    var button = BoardStyle.MakeButton(od.Request.Options[i], 14);
+                    button.CustomMinimumSize = new Vector2(od.Request.Options.Count > 6 ? 110 : 220, 34);
+                    button.Pressed += () =>
+                    {
+                        if (_session.CurrentDecision is null) return;
+                        od.Answer(option);
+                        _actionPanel.Visible = false;
+                    };
+                    grid.AddChild(button);
                 }
                 break;
             }
@@ -933,7 +974,8 @@ public partial class GameBoard : Control
                         Refresh();
                     });
                 AddButton(_attackTargets.Count == 0 ? "No attacks" : $"Attack ({_attackTargets.Count})", () =>
-                    a.Answer(_attackTargets.Select(kv => new AttackDeclaration(kv.Key, kv.Value)).ToList()), primary: true);
+                    a.Answer(_attackTargets.Select(kv => new AttackDeclaration(kv.Key, kv.Value, _attackWalkers.TryGetValue(kv.Key, out var w) ? w : null)).ToList()),
+                    primary: true);
                 break;
 
             case BlockDecision b:
@@ -1040,7 +1082,8 @@ public partial class GameBoard : Control
 
     /// <summary>What the staged taps still leave unpaid.</summary>
     private ManaCost RemainingCost(ManaPaymentDecision pay) =>
-        ManaPayment.Apply(pay.Request.RemainingAfterPool, _staged.Select(t => t.Type)).Remaining;
+        ManaPayment.Apply(pay.Request.RemainingAfterPool, _staged.SelectMany(t =>
+            Enumerable.Repeat(t.Type, pay.Request.Sources.FirstOrDefault(s => s.Source == t.Source)?.Amount ?? 1))).Remaining;
 
     /// <summary>A mana type this source can add that still helps pay <paramref name="remaining"/>, preferring colored pips.</summary>
     private static ManaType? UsefulType(ManaSourceOption source, ManaCost remaining)
@@ -1149,9 +1192,15 @@ public partial class GameBoard : Control
     /// New attack target: attackers picked since the last change follow it, later picks go to it too. So "pick A
     /// and B, then choose Computer 3" sends both there, and "pick A, choose P2, pick B, choose P3" splits them.
     /// </summary>
-    private void ChooseAttackTarget(PlayerId defender)
+    private void ChooseAttackTarget(PlayerId defender, CardId? walker = null)
     {
-        foreach (var id in _attackGroup) _attackTargets[id] = defender;
+        foreach (var id in _attackGroup)
+        {
+            _attackTargets[id] = defender;
+            if (walker is { } w) _attackWalkers[id] = w;
+            else _attackWalkers.Remove(id);
+        }
+        _attackWalker = walker;
         _attackGroup.Clear();
         _attackDefender = defender;
         Refresh();
@@ -1210,13 +1259,22 @@ public partial class GameBoard : Control
                 break;
 
             case AttackDecision a when a.PossibleAttackers.Contains(id):
-                if (_attackTargets.Remove(id)) _attackGroup.Remove(id);
+                if (_attackTargets.Remove(id))
+                {
+                    _attackGroup.Remove(id);
+                    _attackWalkers.Remove(id);
+                }
                 else
                 {
                     _attackTargets[id] = _attackDefender ?? a.Defenders[0];
+                    if (_attackWalker is { } w) _attackWalkers[id] = w;
                     _attackGroup.Add(id);
                 }
                 break;
+
+            case AttackDecision a when node.View is { } pw && (pw.Types & Arcanum.Engine.Cards.CardType.Planeswalker) != 0 && a.Defenders.Contains(pw.Controller):
+                ChooseAttackTarget(pw.Controller, pw.Id);
+                return;
 
             case BlockDecision b:
                 if (b.PossibleBlockers.Contains(id))

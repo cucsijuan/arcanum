@@ -127,3 +127,18 @@ public sealed record ReturnFromGraveyard(ObjectFilter? Filter, int Count, State.
 
 /// <summary>"[Players] discard their hand."</summary>
 public sealed record DiscardHand(Subject Who) : Effect;
+
+/// <summary>"[Players] reveal cards from the top of their library until they reveal a [filter] card, then put those cards into their graveyard."</summary>
+public sealed record MillUntil(Subject Who, ObjectFilter Until) : Effect;
+
+/// <summary>Create an emblem for the controller: an object in the command zone with these abilities.</summary>
+public sealed record CreateEmblem(string Name, IReadOnlyList<AbilityDefinition> Abilities) : Effect;
+
+/// <summary>Exile the top N cards of your library; you choose one (or all with <paramref name="ChooseOne"/> false) and may play it this turn.</summary>
+public sealed record ExileTopPlayable(int Count, bool ChooseOne = true, bool UntilEndOfNextTurn = false, bool WithoutPaying = false) : Effect;
+
+/// <summary>Divide damage as you choose among the chosen targets (at least 1 to each, rule 601.2d).</summary>
+public sealed record DealDamageDivided(int Total) : Effect;
+
+/// <summary>"Each [player] chooses a permanent they control of each permanent type and sacrifices the rest."</summary>
+public sealed record KeepOneOfEachType(Subject Who) : Effect;

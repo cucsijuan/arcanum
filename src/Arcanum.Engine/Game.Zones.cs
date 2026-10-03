@@ -56,7 +56,14 @@ public sealed partial class Game
                 if (card.Definition.EntersWithCounters > 0
                     && (card.Definition.EntersWithCountersIf is not { } cond || Holds(cond, card.Controller, card)))
                     card.Counters[Abilities.CounterKind.PlusOnePlusOne] = card.Definition.EntersWithCounters;
+                if (card.Definition.EntersWithCountersFrom is { } countFrom)
+                {
+                    int n = Eval(countFrom, new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>()));
+                    if (n > 0) card.Counters[Abilities.CounterKind.PlusOnePlusOne] = card.CounterCount(Abilities.CounterKind.PlusOnePlusOne) + n;
+                }
                 State.Battlefield.Add(id);
+                if (card.Definition.ChooseOnEnter != Cards.EnterChoice.None) State.PendingEnterChoices.Add((id, card.Version));
+                if (card.Definition.Loyalty is { } loyalty) card.Counters[Abilities.CounterKind.Loyalty] = loyalty; // 306.5b
                 break;
             case Zone.Stack:
                 card.Controller = controller ?? card.Owner;

@@ -31,13 +31,20 @@ public enum QuantityKind
     TriggeredPower,
     /// <summary>The number of matching permanents among the attacking creatures ("for each attacking creature").</summary>
     AttackingCount,
+    /// <summary>The number of <see cref="Quantity.Counter"/> counters on the source.</summary>
+    SourceCounters,
+    /// <summary>The number of cards in opponents' graveyards.</summary>
+    OpponentsGraveyardCount,
+    /// <summary>The greatest power among other creatures you control.</summary>
+    GreatestOtherPower,
 }
 
 /// <summary>
 /// A number an effect uses: printed ("3"), or worked out on resolution ("X", "for each creature you control",
 /// "equal to its power"), times <see cref="Multiplier"/> (use -1 for "-X/-X").
 /// </summary>
-public sealed record Quantity(int Value, QuantityKind Kind = QuantityKind.Fixed, ObjectFilter? Filter = null, int Multiplier = 1, int Index = 0)
+public sealed record Quantity(int Value, QuantityKind Kind = QuantityKind.Fixed, ObjectFilter? Filter = null, int Multiplier = 1, int Index = 0,
+    CounterKind Counter = CounterKind.PlusOnePlusOne)
 {
     public static implicit operator Quantity(int value) => new(value);
 

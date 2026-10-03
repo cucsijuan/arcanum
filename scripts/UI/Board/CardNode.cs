@@ -240,7 +240,15 @@ public partial class CardNode : Control
         // Creatures on the battlefield always show P/T in their bottom-right corner (it rotates with the card):
         // gray as printed, green when raised, red when lowered.
         bool showPt = !view.IsHidden && view.Zone == Arcanum.Engine.State.Zone.Battlefield && view.Power is not null && view.Toughness is not null;
-        _ptBadge.Visible = showPt;
+        bool showLoyalty = !showPt && !view.IsHidden && view.Zone == Arcanum.Engine.State.Zone.Battlefield
+                           && (view.Types & Arcanum.Engine.Cards.CardType.Planeswalker) != 0;
+        _ptBadge.Visible = showPt || showLoyalty;
+        if (showLoyalty)
+        {
+            // Planeswalkers show their loyalty in the same corner.
+            _ptBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color("5a4a1e"), 6, new Color("0b0b0d"), 1));
+            _ptLabel.Text = $"\u25c6 {view.Loyalty}";
+        }
         if (showPt)
         {
             int now = view.Power!.Value + view.Toughness!.Value, printed = (view.BasePower ?? 0) + (view.BaseToughness ?? 0);

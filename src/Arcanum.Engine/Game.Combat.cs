@@ -32,6 +32,9 @@ public sealed partial class Game
             var declared = await ControllerOf(active).DeclareAttackersAsync(ViewFor(active), possible, defenders);
             Require(declared.Select(d => d.Attacker).Distinct().Count() == declared.Count, "A creature can attack only once.");
             Require(declared.All(d => possible.Contains(d.Attacker) && defenders.Contains(d.Defender)), "Illegal attacker or defender.");
+            Require(declared.All(d => d.Planeswalker is not { } pw
+                                      || State.GetCard(pw) is { Zone: Zone.Battlefield } w && w.Is(CardType.Planeswalker) && w.Controller == d.Defender),
+                "A planeswalker can only be attacked through its controller.");
             // "Attacks each combat if able" (508.1d): such creatures left out attack anyway.
             var mustAttack = possible.Where(id => State.GetCard(id).Definition.AttacksEachCombat && declared.All(d => d.Attacker != id)).ToList();
             if (mustAttack.Count > 0)
@@ -42,7 +45,7 @@ public sealed partial class Game
 
             foreach (var d in declared)
             {
-                combat.Attacks.Add(new AttackInfo { Attacker = d.Attacker, Defender = d.Defender });
+                combat.Attacks.Add(new AttackInfo { Attacker = d.Attacker, Defender = d.Defender, Planeswalker = d.Planeswalker });
                 var attacker = State.GetCard(d.Attacker);
                 if (!attacker.Has(Keyword.Vigilance))
                 {
@@ -129,6 +132,12 @@ public sealed partial class Game
 
         var toCards = new List<(Card Source, Card Target, int Amount)>();
         var toPlayers = new List<(Card Source, PlayerId Target, int Amount)>();
+        // Damage to the attacked player, or to the attacked planeswalker if there is one (still there, rule 506.4c).
+        void ToDefender(Card attacker, AttackInfo attack, int amount)
+        {
+            if (attack.Planeswalker is not { } pw) toPlayers.Add((attacker, attack.Defender, amount));
+            else if (State.GetCard(pw) is { Zone: Zone.Battlefield } walker && walker.Is(CardType.Planeswalker)) toCards.Add((attacker, walker, amount));
+        }
 
         // 510.1: attackers assign first (the attacking player's choices), then blockers.
         foreach (var attack in combat.Attacks)
@@ -140,7 +149,7 @@ public sealed partial class Game
 
             if (!attack.IsBlocked)
             {
-                toPlayers.Add((attacker, attack.Defender, power));
+                ToDefender(attacker, attack, power);
                 continue;
             }
 
@@ -149,14 +158,14 @@ public sealed partial class Game
             if (blockers.Count == 0)
             {
                 // Blocked but every blocker is gone: only trample still deals damage (702.19e).
-                if (trample) toPlayers.Add((attacker, attack.Defender, power));
+                if (trample) ToDefender(attacker, attack, power);
                 continue;
             }
 
             var assignment = await AssignDamageAsync(attacker, attack.Defender, blockers, power, trample);
             foreach (var (blockerId, amount) in assignment.ToBlockers)
                 if (amount > 0) toCards.Add((attacker, State.GetCard(blockerId), amount));
-            if (assignment.ToPlayer > 0) toPlayers.Add((attacker, attack.Defender, assignment.ToPlayer));
+            if (assignment.ToPlayer > 0) ToDefender(attacker, attack, assignment.ToPlayer);
         }
 
         foreach (var attack in combat.Attacks)
@@ -174,6 +183,13 @@ public sealed partial class Game
         {
             int amount = ModifyDamage(source, target, null, dealt, combat: true);
             if (amount <= 0) continue;
+            if (!target.IsCreature)
+            {
+                target.Counters[Abilities.CounterKind.Loyalty] = Math.Max(0, target.CounterCount(Abilities.CounterKind.Loyalty) - amount);
+                Emit(new DamageDealt(source.Id, target.Id, null, amount, IsCombat: true));
+                if (source.Has(Keyword.Lifelink)) lifeGained[source.Controller] = lifeGained.GetValueOrDefault(source.Controller) + amount;
+                continue;
+            }
             target.Damage += amount;
             if (source.Has(Keyword.Deathtouch)) target.DamagedByDeathtouch = true;
             Emit(new DamageDealt(source.Id, target.Id, null, amount, IsCombat: true));

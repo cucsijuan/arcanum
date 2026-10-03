@@ -73,4 +73,7 @@ public sealed class UiPlayerController(PlayerId player, DecisionHub hub, Decisio
 
     public Task<int> ChooseNumberAsync(GameView view, NumberRequest request) =>
         Ask(new ChooseNumberDecision { Player = player, Request = request });
+
+    public Task<int> ChooseOptionAsync(GameView view, OptionRequest request) =>
+        Ask(new ChooseOptionDecision { Player = player, Request = request });
 }

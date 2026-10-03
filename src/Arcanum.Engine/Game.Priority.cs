@@ -62,11 +62,54 @@ public sealed partial class Game
     {
         do
         {
+            await ResolveEnterChoicesAsync();
             CheckStateBasedActions();
             if (State.IsGameOver) return;
             await OfferCommanderReturnsAsync();
         }
         while (await PutPendingTriggersOnStackAsync());
+    }
+
+    private static readonly string[] ColorNames = { "White", "Blue", "Black", "Red", "Green" };
+    private static readonly string[] ColorLetters = { "W", "U", "B", "R", "G" };
+
+    /// <summary>"As this enters, choose a color / creature type" (rule 614.12), made before anything else happens.</summary>
+    private async Task ResolveEnterChoicesAsync()
+    {
+        while (State.PendingEnterChoices.Count > 0)
+        {
+            var (id, version) = State.PendingEnterChoices[0];
+            State.PendingEnterChoices.RemoveAt(0);
+            var card = State.GetCard(id);
+            if (card.Version != version || card.Zone != Zone.Battlefield) continue;
+            var who = card.Controller;
+            if (card.Definition.ChooseOnEnter == EnterChoice.Color)
+            {
+                int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose a color", id, ColorNames, OptionKind.Color));
+                Require(i >= 0 && i < ColorNames.Length, "Choose one of the colors.");
+                card.ChosenColor = ColorLetters[i];
+            }
+            else
+            {
+                var types = CreatureTypeOptions(who);
+                int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose a creature type", id, types, OptionKind.CreatureType));
+                Require(i >= 0 && i < types.Count, "Choose one of the creature types.");
+                card.ChosenType = types[i];
+                if (card.Definition.CountersPerChosenType is { } kind)
+                    PutCounters(card, kind, State.PermanentsControlledBy(who).Count(c => c.IsCreature && c.HasSubtype(types[i])));
+            }
+            Emit(new ChoiceMade(id, card.ChosenColor is { } c ? ColorNames[Array.IndexOf(ColorLetters, c)] : card.ChosenType!));
+            RecomputeContinuousEffects();
+        }
+    }
+
+    /// <summary>Creature types worth offering: those among the player's cards first, then common ones.</summary>
+    private List<string> CreatureTypeOptions(PlayerId player)
+    {
+        var own = State.Cards.Values.Where(c => c.Owner == player && c.Definition.Is(CardType.Creature))
+            .SelectMany(c => c.Definition.Subtypes).GroupBy(t => t).OrderByDescending(g => g.Count()).Select(g => g.Key);
+        var common = new[] { "Human", "Elf", "Goblin", "Zombie", "Vampire", "Cat", "Dragon", "Angel", "Wizard", "Soldier", "Knight", "Merfolk", "Beast", "Spirit", "Warrior" };
+        return own.Concat(common).Distinct().Take(40).ToList();
     }
 
     public IReadOnlyList<PlayerAction> GetLegalActions(PlayerId playerId)
@@ -75,14 +118,16 @@ public sealed partial class Game
         var actions = new List<PlayerAction> { PassPriority.Instance };
         bool sorcerySpeed = playerId == State.ActivePlayer && State.Step.IsMain() && State.Stack.Count == 0;
 
-        // Cards in hand, commanders in the command zone (rule 903.8) and cards with flashback in the graveyard.
+        // Cards in hand, commanders in the command zone (rule 903.8), cards with flashback in the graveyard and
+        // exiled cards the player may play this turn.
         var castable = player.Hand.Concat(player.Command)
-            .Concat(player.Graveyard.Where(id => State.GetCard(id).Definition.Flashback is not null));
+            .Concat(player.Graveyard.Where(id => State.GetCard(id).Definition.Flashback is not null))
+            .Concat(PlayableExile(playerId));
         foreach (var card in castable.Select(State.GetCard))
         {
             if (card.Is(CardType.Land))
             {
-                if (card.Zone == Zone.Hand && sorcerySpeed && player.LandsPlayedThisTurn < Config.LandsPerTurn) actions.Add(new PlayLand(card.Id));
+                if (card.Zone is Zone.Hand or Zone.Exile && sorcerySpeed && player.LandsPlayedThisTurn < Config.LandsPerTurn) actions.Add(new PlayLand(card.Id));
                 continue;
             }
             bool timingOk = card.Is(CardType.Instant) || card.Definition.KeywordAbilities.Contains(Keyword.Flash) || sorcerySpeed
@@ -104,13 +149,25 @@ public sealed partial class Game
 
         // Mana abilities can be activated any time the player has priority (rule 605.3a).
         foreach (var source in ManaPayment.AvailableSources(State, playerId))
-            foreach (var type in source.Definition.TapForMana.Distinct())
+            foreach (var type in source.ManaTypes.Distinct())
                 actions.Add(new ActivateManaAbility(source.Id, type));
         return actions;
     }
 
+    /// <summary>Exiled cards <paramref name="player"/> may currently play.</summary>
+    private IEnumerable<CardId> PlayableExile(PlayerId player) =>
+        State.PlayableFromExile.Where(p => p.Player == player && p.UntilTurn >= State.TurnNumber
+                                           && State.GetCard(p.Card) is { Zone: Zone.Exile } c && c.Version == p.Version)
+            .Select(p => p.Card).Distinct().ToList();
+
     private bool CanActivate(Card source, ActivatedAbility ability, int index, PlayerId player, bool sorcerySpeed)
     {
+        if (ability.Cost.Loyalty is { } loyalty)
+        {
+            // Loyalty abilities: sorcery timing, one per planeswalker per turn, and enough loyalty to pay (606.3).
+            if (!sorcerySpeed || source.LoyaltyActivatedThisTurn) return false;
+            if (loyalty < 0 && source.CounterCount(CounterKind.Loyalty) < -loyalty) return false;
+        }
         if (ability.SorcerySpeed && !sorcerySpeed) return false;
         if (ability.OncePerTurn && source.ActivatedThisTurn.Contains(index)) return false;
         if (ability.ActivationCondition is { } condition && !Holds(condition, player, source)) return false;
@@ -240,6 +297,12 @@ public sealed partial class Game
         if (ability.Cost.ExileSelf) MoveCard(source.Id, Zone.Exile);
         await PayExtraAsync(player.Id, ability.Cost.Extra, source.Id);
         if (ability.OncePerTurn) source.ActivatedThisTurn.Add(action.Index);
+        if (ability.Cost.Loyalty is { } loyalty)
+        {
+            source.LoyaltyActivatedThisTurn = true;
+            if (loyalty > 0) PutCounters(source, CounterKind.Loyalty, loyalty);
+            else if (loyalty < 0) source.Counters[CounterKind.Loyalty] = source.CounterCount(CounterKind.Loyalty) + loyalty;
+        }
         if (ability.Cost.SacrificeSelf)
         {
             if (source.Zone == Zone.Graveyard) MoveCard(source.Id, Zone.Exile); // "Exile this card from your graveyard"
@@ -336,7 +399,7 @@ public sealed partial class Game
         var plan = ManaPayment.FindPlan(State, player.Id, cost, exclude)!;
         var (fromPool, remaining) = ManaPayment.ApplyPool(cost, player.ManaPool);
         var sources = ManaPayment.AvailableSources(State, player.Id, exclude)
-            .Select(c => new ManaSourceOption(c.Id, c.Definition.TapForMana))
+            .Select(c => new ManaSourceOption(c.Id, c.ManaTypes, c.ManaAmount))
             .ToList();
         var request = new ManaPaymentRequest(source, cost, fromPool, remaining, plan.Taps, sources);
 
@@ -345,12 +408,17 @@ public sealed partial class Game
 
         Require(taps.Select(t => t.Source).Distinct().Count() == taps.Count, "Each source can be tapped only once.");
         Require(taps.All(t => sources.Any(s => s.Source == t.Source && s.Types.Contains(t.Type))), "Illegal mana source.");
-        var (owed, excess) = ManaPayment.Apply(remaining, taps.Select(t => t.Type));
+        var produced = ManaPayment.Produced(State, taps).ToList();
+        var (owed, excess) = ManaPayment.Apply(remaining, produced);
         Require(owed.ManaValue == 0, $"Payment is short by {owed}.");
-        Require(excess == 0, "Payment taps more mana than the cost.");
+        // No pointless taps: surplus is only allowed when a source adds more mana than is still needed.
+        Require(excess == 0 || taps.Any(t => State.GetCard(t.Source).ManaAmount > 1), "Payment taps more mana than the cost.");
 
         foreach (var tap in taps) TapForMana(player, tap);
-        foreach (var type in fromPool.Concat(taps.Select(t => t.Type))) player.ManaPool.Remove(type);
+        // Pay the whole cost from the pool; any surplus keeps floating (rule 106.4).
+        var (paid, left) = ManaPayment.ApplyPool(cost, player.ManaPool);
+        Require(left.ManaValue == 0, "Payment is short.");
+        foreach (var type in paid) player.ManaPool.Remove(type);
         return true;
     }
 
@@ -359,8 +427,11 @@ public sealed partial class Game
         var source = State.GetCard(tap.Source);
         source.Tapped = true;
         Emit(new PermanentTapped(tap.Source));
-        player.ManaPool.Add(tap.Type);
-        Emit(new ManaAdded(player.Id, tap.Type, tap.Source));
+        for (int i = 0; i < Math.Max(1, source.ManaAmount); i++)
+        {
+            player.ManaPool.Add(tap.Type);
+            Emit(new ManaAdded(player.Id, tap.Type, tap.Source));
+        }
         if (source.Definition.SacrificeForMana) MoveCard(source.Id, Zone.Graveyard);
     }
 
@@ -370,6 +441,8 @@ public sealed partial class Game
     /// </summary>
     public ManaCost CastingCost(Card card)
     {
+        if (card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.WithoutPaying))
+            return ManaCost.Zero; // "without paying its mana cost"
         var cost = card.Zone == Zone.Graveyard && card.Definition.Flashback is { } flashback ? flashback : card.Definition.ManaCost;
         if (card.Zone == Zone.Command && Config.Commander is { } rules)
             cost = cost.PlusGeneric(rules.TaxPerCast * State.GetPlayer(card.Owner).CommanderCasts.GetValueOrDefault(card.Id));

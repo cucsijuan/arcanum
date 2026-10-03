@@ -54,6 +54,13 @@ public sealed partial class Game
             any = true;
         }
 
+        // A planeswalker with no loyalty goes to its owner's graveyard (704.5i).
+        foreach (var walker in State.Battlefield.Select(State.GetCard).Where(c => c.Is(CardType.Planeswalker) && c.CounterCount(Abilities.CounterKind.Loyalty) <= 0).ToList())
+        {
+            MoveCard(walker.Id, Zone.Graveyard);
+            any = true;
+        }
+
         var dying = State.Battlefield.Select(State.GetCard)
             .Where(c => c.IsCreature && (
                 c.Toughness <= 0 // 704.5f: put into the graveyard, even if indestructible
