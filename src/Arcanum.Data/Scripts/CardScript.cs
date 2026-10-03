@@ -193,7 +193,7 @@ public static class CardScriptParser
                     o.TryGetProperty("cost", out var oc) ? ParseExtraCost(oc) : null)).ToList()
                 : null,
             AlternativeCost = root.TryGetProperty("alternativeCost", out var alt)
-                ? new AlternativeCost(ManaCost.Parse(alt.GetProperty("cost").GetString()!), alt.TryGetProperty("if", out var ai) ? ParseCondition(ai) : null)
+                ? new AlternativeCost(ManaCost.Parse(alt.GetProperty("cost").GetString()!), alt.TryGetProperty("if", out var altIf) ? ParseCondition(altIf) : null)
                 : null,
             FlashExtraCost = root.TryGetProperty("flashExtraCost", out var fec) ? ManaCost.Parse(fec.GetString()!) : null,
             StartsOnBattlefield = Bool(root, "startsOnBattlefield"),
