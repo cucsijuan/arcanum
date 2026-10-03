@@ -20,6 +20,7 @@ public sealed class GameSession
 
     private readonly GameConfig _config;
     private readonly IReadOnlyList<Seat> _seats;
+    private readonly Action<Game>? _setup;
 
     public Game Game { get; }
     public DecisionHub Hub { get; } = new();
@@ -36,21 +37,26 @@ public sealed class GameSession
 
     public event Action<Exception>? Failed;
 
-    private GameSession(GameConfig config, IReadOnlyList<Seat> seats, AutoPassPolicy policy, IEnumerable<DecisionLog.Entry>? replay)
+    private GameSession(GameConfig config, IReadOnlyList<Seat> seats, AutoPassPolicy policy, IEnumerable<DecisionLog.Entry>? replay,
+        Action<Game>? setup)
     {
         _config = config;
         _seats = seats;
+        _setup = setup;
         Policy = policy;
         Log = new DecisionLog(replay);
         Game = new Game(config, seats.Select((s, i) =>
             new PlayerSetup(s.Name, new UiPlayerController(new PlayerId(i), Hub, Log, policy), s.Deck)).ToList());
+        setup?.Invoke(Game); // sandbox: pre-placed permanents and cards, re-applied identically on undo
         Hub.DecisionRequested += _ => Changed?.Invoke();
         Game.EventRaised += e => { if (e is GameEnded) Changed?.Invoke(); };
     }
 
     /// <summary>Two local seats sharing one screen, with the given decks.</summary>
-    public static GameSession CreateHotseat(ulong seed, Seat first, Seat second) =>
-        new(new GameConfig { Seed = seed }, new[] { first, second }, new AutoPassPolicy(), replay: null);
+    /// <param name="setup">Optional sandbox setup run on the new game before it starts.</param>
+    public static GameSession CreateHotseat(ulong seed, Seat first, Seat second, Action<Game>? setup = null) =>
+        new(new GameConfig { Seed = seed, StartingPlayer = setup is null ? null : new PlayerId(0) },
+            new[] { first, second }, new AutoPassPolicy(), replay: null, setup);
 
     /// <summary>Offline demo with Arcanum's generic cards, used when no content module is available.</summary>
     public static GameSession CreateHotseatDemo(ulong seed)
@@ -64,7 +70,7 @@ public sealed class GameSession
             (GenericCards.StoneElemental, 5));
 
         return new GameSession(new GameConfig { Seed = seed },
-            new[] { new Seat("Player 1", green), new Seat("Player 2", red) }, new AutoPassPolicy(), replay: null);
+            new[] { new Seat("Player 1", green), new Seat("Player 2", red) }, new AutoPassPolicy(), replay: null, setup: null);
     }
 
     public Decision? CurrentDecision => Hub.Current is { IsAnswered: false } d ? d : null;
@@ -82,7 +88,7 @@ public sealed class GameSession
         int last = Log.Entries.FindLastIndex(e => e.Manual);
         if (last < 0) return null;
         Policy.CancelPassTurn();
-        return new GameSession(_config, _seats, Policy, Log.Entries.Take(last).ToList()) { RevealAll = RevealAll };
+        return new GameSession(_config, _seats, Policy, Log.Entries.Take(last).ToList(), _setup) { RevealAll = RevealAll };
     }
 
     public async void Start()

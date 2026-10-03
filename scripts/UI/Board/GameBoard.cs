@@ -109,7 +109,54 @@ public partial class GameBoard : Control
             if (deck.Count == 0) return;
             seats.Add(new GameSession.Seat($"Player {index + 1}", deck));
         }
-        _newSession = seed => GameSession.CreateHotseat(seed, seats[0], seats[1]);
+        var setup = OS.GetEnvironment("ARCANUM_SANDBOX") == "1" ? SandboxSetup(cards) : null;
+        _newSession = seed => GameSession.CreateHotseat(seed, seats[0], seats[1], setup);
+    }
+
+    /// <summary>
+    /// ARCANUM_SANDBOX=1: start from a prepared board for manual testing of attachments, static abilities,
+    /// counters, targeted spells and activated abilities. Card names come from the module's card data.
+    /// </summary>
+    private static Action<Arcanum.Engine.Game>? SandboxSetup(Arcanum.Engine.Cards.ICardDatabase cards)
+    {
+        Arcanum.Engine.Cards.CardDefinition? Get(string name) => cards.TryGet(name, out var d) ? d : null;
+        var p1 = new PlayerId(0);
+        var p2 = new PlayerId(1);
+        return game =>
+        {
+            void Put(PlayerId owner, string name, int count = 1)
+            {
+                if (Get(name) is { } d) for (int i = 0; i < count; i++) game.SetupPermanent(owner, d);
+            }
+            void Hand(PlayerId owner, string name)
+            {
+                if (Get(name) is { } d) game.SetupInHand(owner, d);
+            }
+
+            Put(p1, "Forest", 3);
+            Put(p1, "Mountain", 2);
+            if (Get("Grizzly Bears") is { } bears)
+            {
+                var bear = game.SetupPermanent(p1, bears);
+                if (Get("Leonin Scimitar") is { } scimitar) game.SetupPermanent(p1, scimitar, attachTo: bear);
+                if (Get("Giant Strength") is { } strength) game.SetupPermanent(p1, strength, attachTo: bear);
+            }
+            Put(p1, "Bonesplitter");
+            Put(p1, "Prodigal Sorcerer");
+            Put(p1, "Giant Spider");
+            Hand(p1, "Shock");
+            Hand(p1, "Giant Growth");
+            Hand(p1, "Timberland Guide");
+            Hand(p1, "Murder");
+
+            Put(p2, "Mountain", 3);
+            Put(p2, "Goblin Chieftain");
+            Put(p2, "Raging Goblin", 2);
+            Put(p2, "Mogg Fanatic");
+            Put(p2, "Glorious Anthem");
+            Hand(p2, "Lightning Strike");
+            Hand(p2, "Unsummon");
+        };
     }
 
     private void StartNewGame(ulong seed) => StartSession(_newSession(seed));

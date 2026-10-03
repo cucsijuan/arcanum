@@ -25,6 +25,23 @@ public sealed partial class Game
         }
         if (State.IsGameOver) return any;
 
+        // Auras attached to nothing legal go to the graveyard (704.5m); Equipment just becomes unattached (704.5n).
+        foreach (var card in State.Battlefield.Select(State.GetCard).ToList())
+        {
+            if (card.Definition.EnchantTarget is { } enchant)
+            {
+                bool legal = card.AttachedTo is { } host && State.GetCard(host) is { Zone: Zone.Battlefield } h
+                             && (enchant.Kind != Abilities.TargetKind.Creature || h.IsCreature);
+                if (!legal) { MoveCard(card.Id, Zone.Graveyard); any = true; }
+            }
+            else if (card.AttachedTo is { } equipped && State.GetCard(equipped) is not { Zone: Zone.Battlefield, IsCreature: true })
+            {
+                card.AttachedTo = null;
+                RecomputeContinuousEffects();
+                any = true;
+            }
+        }
+
         // +1/+1 and -1/-1 counters on the same permanent cancel out (704.5q).
         foreach (var card in State.Battlefield.Select(State.GetCard))
         {

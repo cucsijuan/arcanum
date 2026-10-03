@@ -36,6 +36,15 @@ public sealed record CardDefinition
     /// <summary>Activated and triggered abilities of the permanent.</summary>
     public IReadOnlyList<AbilityDefinition> Abilities { get; init; } = Array.Empty<AbilityDefinition>();
 
+    /// <summary>For an Aura: what it can enchant; casting it targets one such object (rule 303.4a).</summary>
+    public TargetSpec? EnchantTarget { get; init; }
+
+    /// <summary>Replacement effect "This permanent enters tapped" (rule 614.1c).</summary>
+    public bool EntersTapped { get; init; }
+
+    /// <summary>Replacement effect "This creature enters with N +1/+1 counters on it" (rule 614.1c).</summary>
+    public int EntersWithCounters { get; init; }
+
     /// <summary>Marks a token definition (tokens cease to exist outside the battlefield, rule 111.7).</summary>
     public bool IsToken { get; init; }
 

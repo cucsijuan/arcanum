@@ -34,6 +34,9 @@ public sealed class Card
 
     public Dictionary<CounterKind, int> Counters { get; } = new();
 
+    /// <summary>The permanent this Aura or Equipment is attached to (rule 701.3).</summary>
+    public CardId? AttachedTo { get; set; }
+
     // Continuous-effect modifications, recomputed by the engine (layer 7c and keyword grants in layer 6).
     internal int PowerBonus { get; set; }
     internal int ToughnessBonus { get; set; }
@@ -74,6 +77,7 @@ public sealed class Card
         DamagedByDeathtouch = false;
         ControlledSinceTurnStart = false;
         Counters.Clear();
+        AttachedTo = null;
         PowerBonus = 0;
         ToughnessBonus = 0;
         GrantedKeywords.Clear();

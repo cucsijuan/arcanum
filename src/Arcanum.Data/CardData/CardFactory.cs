@@ -37,6 +37,7 @@ public static partial class CardFactory
         tapForMana = tapForMana.Distinct().ToList();
 
         bool costOk = TryParseCost(record.ManaCost, out var cost);
+        var (derivedAbilities, enchant, entersTapped) = DeriveFromText(record.OracleText);
         int? power = ParseStat(record.Power, out bool powerOk);
         int? toughness = ParseStat(record.Toughness, out bool toughnessOk);
 
@@ -54,7 +55,10 @@ public static partial class CardFactory
             Keywords = record.Keywords,
             TapForMana = tapForMana,
             Spell = script?.Spell,
-            Abilities = script?.Abilities ?? Array.Empty<Engine.Abilities.AbilityDefinition>(),
+            Abilities = derivedAbilities.Concat(script?.Abilities ?? Array.Empty<Engine.Abilities.AbilityDefinition>()).ToList(),
+            EnchantTarget = script?.Aura ?? enchant,
+            EntersTapped = entersTapped || (script?.EntersTapped ?? false),
+            EntersWithCounters = script?.EntersWithCounters ?? 0,
         };
 
         bool supported = costOk && powerOk && toughnessOk
@@ -76,11 +80,48 @@ public static partial class CardFactory
             var line = rawLine.Trim().TrimEnd('.');
             if (line.Length == 0) continue;
             if (TapForManaLine().IsMatch(line) || AnyColorManaLine().IsMatch(line)) continue;
+            if (EntersTappedLine().IsMatch(line)) continue;
             // A keyword line: "Flying" or "Flying, trample".
             if (line.Split(',').Select(k => k.Trim()).All(k => record.Keywords.Contains(k, StringComparer.OrdinalIgnoreCase))) continue;
             return false;
         }
         return true;
+    }
+
+    /// <summary>
+    /// Abilities written in a fixed form the engine understands without a script: "Equip {N}" (sorcery-speed
+    /// attach to a creature you control), "Enchant creature/land/..." (an Aura's target) and "enters tapped".
+    /// </summary>
+    private static (List<Engine.Abilities.AbilityDefinition> Abilities, Engine.Abilities.TargetSpec? Enchant, bool EntersTapped) DeriveFromText(string oracleText)
+    {
+        var abilities = new List<Engine.Abilities.AbilityDefinition>();
+        Engine.Abilities.TargetSpec? enchant = null;
+        bool entersTapped = false;
+        foreach (var rawLine in ReminderText().Replace(oracleText, "").Split('\n'))
+        {
+            var line = rawLine.Trim().TrimEnd('.');
+            var equip = EquipLine().Match(line);
+            if (equip.Success)
+            {
+                abilities.Add(new Engine.Abilities.ActivatedAbility
+                {
+                    Cost = new Engine.Abilities.AbilityCost(ManaCost.Parse(equip.Groups[1].Value)),
+                    SorcerySpeed = true,
+                    Targets = new[] { new Engine.Abilities.TargetSpec(Engine.Abilities.TargetKind.Creature, Engine.Abilities.ControllerFilter.You) },
+                    Effects = new Engine.Abilities.Effect[] { new Engine.Abilities.AttachSelf(Engine.Abilities.Subject.TargetAt(0)) },
+                    Text = line,
+                });
+            }
+            var enchantMatch = EnchantLine().Match(line);
+            if (enchantMatch.Success)
+            {
+                var kind = Enum.Parse<Engine.Abilities.TargetKind>(enchantMatch.Groups[1].Value, ignoreCase: true);
+                var controller = enchantMatch.Groups[2].Success ? Engine.Abilities.ControllerFilter.You : Engine.Abilities.ControllerFilter.Any;
+                enchant = new Engine.Abilities.TargetSpec(kind, controller);
+            }
+            if (EntersTappedLine().IsMatch(line)) entersTapped = true;
+        }
+        return (abilities, enchant, entersTapped);
     }
 
     /// <summary>Mana from "{T}: Add {G}", "{T}: Add {R} or {G}" and "{T}: Add one mana of any color" lines.</summary>
@@ -135,4 +176,13 @@ public static partial class CardFactory
 
     [GeneratedRegex(@"\{([WUBRGC])\}")]
     private static partial Regex ManaSymbol();
+
+    [GeneratedRegex(@"^Equip ((\{[0-9WUBRGC]+\})+)$")]
+    private static partial Regex EquipLine();
+
+    [GeneratedRegex(@"^Enchant (creature|land|artifact|enchantment|permanent)( you control)?$")]
+    private static partial Regex EnchantLine();
+
+    [GeneratedRegex(@"^(This land|This creature|This artifact|This permanent) enters tapped$")]
+    private static partial Regex EntersTappedLine();
 }

@@ -315,11 +315,18 @@ public partial class PlayerArea : Control
         float creatureY = 62;
         float landY = creatureY + BoardStyle.BattlefieldCardSize.Y + 22;
 
+        // Auras and Equipment attached to one of our permanents sit tucked behind it instead of taking a slot.
+        var hosts = battlefield.Select(c => c.Id).ToHashSet();
+        var attached = battlefield.Where(c => c.AttachedTo is { } host && hosts.Contains(host)).ToList();
+        others = others.Except(attached).ToList();
+        lands = lands.Except(attached).ToList();
+
         // Blockers leave their row and stand in front of the attacker they block.
         var blockers = others.Where(c => _blockerAlign.ContainsKey(c.Id)).ToList();
         LayoutRow(others.Except(blockers).ToList(), creatureY);
         LayoutRow(lands, landY);
         LayoutBlockers(blockers, creatureY);
+        LayoutAttachments(attached);
     }
 
     private void LayoutRow(IReadOnlyList<CardView> row, float y)
@@ -335,11 +342,28 @@ public partial class PlayerArea : Control
         for (int i = 0; i < row.Count; i++)
         {
             var node = _cards[row[i].Id];
-            node.ZIndex = i;
+            node.ZIndex = 10 + i; // room below for attachments tucked behind their host
             bool tapped = row[i].Tapped || _staged.Contains(row[i].Id);
             // Attackers step forward towards the opponent.
             float forward = _attacking.Contains(row[i].Id) ? (FacesDown ? 28 : -28) : 0;
             MoveTo(node, new Vector2(startX + i * spacing, y + forward), size, tapped ? 90 : 0);
+        }
+    }
+
+    private void LayoutAttachments(IReadOnlyList<CardView> attached)
+    {
+        foreach (var group in attached.GroupBy(c => c.AttachedTo!.Value))
+        {
+            var host = _cards[group.Key];
+            int i = 1;
+            foreach (var card in group)
+            {
+                var node = _cards[card.Id];
+                node.ZIndex = host.ZIndex - 1;
+                // Peek out above the host so the attachment stays visible and hoverable.
+                MoveTo(node, host.TargetPosition + new Vector2(10 * i, -22 * i), BoardStyle.BattlefieldCardSize, 0);
+                i++;
+            }
         }
     }
 

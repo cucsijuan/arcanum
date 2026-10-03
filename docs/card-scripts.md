@@ -7,12 +7,19 @@ engine derives from card data: type line, power/toughness, supported keywords an
 
 Comments (`//`) and trailing commas are allowed.
 
+Also derived from rules text without a script: `Equip {N}`, `Enchant creature` (and land, artifact,
+enchantment, permanent, "... you control") and "This land/creature enters tapped".
+
 ## Structure
 
 ```json
 {
   "spell":     { "targets": [...], "effects": [...], "text": "..." },
+  "aura": "creature",
+  "entersTapped": false,
+  "entersWithCounters": 0,
   "abilities": [
+    { "static": { ... }, "text": "..." },
     { "trigger": "enters", "targets": [...], "effects": [...], "text": "..." },
     { "cost": "{1}{R}, {T}", "targets": [...], "effects": [...], "sorcery": false, "text": "..." }
   ]
@@ -20,8 +27,28 @@ Comments (`//`) and trailing commas are allowed.
 ```
 
 - `spell`: what an instant or sorcery does when it resolves.
-- `abilities`: a permanent's abilities. An entry with `trigger` is a triggered ability; one with `cost` is an
-  activated ability (`"sorcery": true` limits it to sorcery timing).
+- `aura`: for an Aura, what it enchants (same values as targets). Usually read from the "Enchant ..." line.
+- `entersTapped` / `entersWithCounters`: replacement effects applied as the permanent enters.
+- `abilities`: a permanent's abilities. An entry with `static` is a static ability; one with `trigger` is a
+  triggered ability; one with `cost` is an activated ability (`"sorcery": true` limits it to sorcery timing).
+
+## Static abilities
+
+```json
+{ "static": { "affects": "creatures:you", "other": true, "subtype": "Goblin", "pump": [1, 1], "keywords": ["Haste"] } }
+```
+
+| `affects` | Applies to |
+|-----------|------------|
+| `self` | The permanent itself |
+| `creatures:you` | Creatures you control |
+| `creatures:opponents` | Creatures your opponents control |
+| `creatures` | All creatures |
+| `enchanted` | The permanent this Aura is attached to |
+| `equipped` | The creature this Equipment is attached to |
+
+`other` excludes the source itself; `subtype` limits it to one creature type. `pump` adds power/toughness and
+`keywords` grants keyword abilities while the source is on the battlefield.
 - `text`: rules text shown to players for this ability (on the stack, in ability choosers and the log).
 
 ## Targets
@@ -66,6 +93,7 @@ Effects say who or what they affect with these values:
 | Counter a spell | `{ "counter": "target" }` |
 | Until end of turn | `{ "pump": [3, 3], "what": "target", "keywords": ["Trample"] }` |
 | Counters | `{ "counters": 1, "what": "self" }` / `{ "counters": 1, "what": "target", "kind": "-1/-1" }` |
+| Attach this Aura/Equipment | `{ "attach": "target" }` |
 | Tokens | `{ "tokens": 2, "token": { "name": "Soldier", "types": "Creature — Soldier", "power": 1, "toughness": 1, "keywords": [] } }` |
 
 ## Triggers

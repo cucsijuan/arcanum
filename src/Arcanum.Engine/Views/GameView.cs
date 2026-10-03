@@ -28,6 +28,10 @@ public sealed record CardView
     public IReadOnlyList<string> Keywords { get; init; } = Array.Empty<string>();
     /// <summary>Rules text of each of the card's abilities, indexed like <c>ActivateAbility.Index</c>.</summary>
     public IReadOnlyList<string> AbilityTexts { get; init; } = Array.Empty<string>();
+    public CardId? AttachedTo { get; init; }
+    /// <summary>Printed power/toughness, to show when continuous effects or counters change them.</summary>
+    public int? BasePower { get; init; }
+    public int? BaseToughness { get; init; }
     public int PlusOneCounters { get; init; }
     public int MinusOneCounters { get; init; }
     public bool IsToken { get; init; }

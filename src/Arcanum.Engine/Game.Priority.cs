@@ -81,7 +81,7 @@ public sealed partial class Game
                 continue;
             }
             bool timingOk = card.Is(CardType.Instant) || sorcerySpeed;
-            if (timingOk && HasLegalTargets(card.Definition.Spell, playerId, card.Id)
+            if (timingOk && HasLegalTargets(CastingTargets(card.Definition), playerId, card.Id)
                 && ManaPayment.FindPlan(State, playerId, card.Definition.ManaCost) is not null)
                 actions.Add(new CastSpell(card.Id));
         }
@@ -140,7 +140,7 @@ public sealed partial class Game
     private async Task<bool> CastSpellAsync(Player player, CardId cardId)
     {
         var card = State.GetCard(cardId);
-        var targets = await ChooseTargetsAsync(player.Id, card.Definition.Spell, cardId, card.Name, canCancel: true);
+        var targets = await ChooseTargetsAsync(player.Id, CastingTargets(card.Definition), cardId, card.Name, canCancel: true);
         if (targets is null) return false;
 
         if (!await PayManaAsync(player, cardId, card.Definition.ManaCost, exclude: null)) return false;
@@ -206,6 +206,10 @@ public sealed partial class Game
         Emit(new ManaAdded(player.Id, tap.Type, tap.Source));
     }
 
+    /// <summary>What a spell targets when cast: an instant/sorcery's targets, or an Aura's enchant target.</summary>
+    private static AbilityDefinition? CastingTargets(CardDefinition definition) =>
+        definition.Spell ?? (definition.EnchantTarget is { } enchant ? new SpellAbility { Targets = new[] { enchant } } : null);
+
     private void ResolveTopOfStack()
     {
         var item = State.Stack[^1];
@@ -215,13 +219,15 @@ public sealed partial class Game
             case SpellOnStack spell:
             {
                 var card = State.GetCard(spell.Card);
-                if (card.Definition.Spell is { } effect && !ApplyResolution(item, effect, card))
+                if (CastingTargets(card.Definition) is { } effect && !ApplyResolution(item, effect, card))
                 {
                     MoveCard(spell.Card, Zone.Graveyard);
                     Emit(new FizzledOnResolution(spell.Card));
                     break;
                 }
-                MoveCard(spell.Card, card.Types.IsPermanent() ? Zone.Battlefield : Zone.Graveyard, controller: spell.Controller);
+                // An Aura spell enters attached to the object it targeted (rule 303.4f).
+                var attachTo = card.Definition.EnchantTarget is not null ? item.Targets[0].Target.Card : null;
+                MoveCard(spell.Card, card.Types.IsPermanent() ? Zone.Battlefield : Zone.Graveyard, controller: spell.Controller, attachTo: attachTo);
                 Emit(new SpellResolved(spell.Card));
                 break;
             }

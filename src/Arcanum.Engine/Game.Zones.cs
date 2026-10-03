@@ -8,7 +8,7 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>Moves a card between zones. Cards always go to their owner's per-player zones (rule 400.3).</summary>
-    private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null)
+    private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null)
     {
         var card = State.GetCard(id);
         var from = card.Zone;
@@ -35,6 +35,10 @@ public sealed partial class Game
         {
             case Zone.Battlefield:
                 card.Controller = controller ?? card.Owner;
+                card.AttachedTo = attachTo;
+                // Replacement effects that modify how the permanent enters (rule 614.1c).
+                if (card.Definition.EntersTapped) card.Tapped = true;
+                if (card.Definition.EntersWithCounters > 0) card.Counters[Abilities.CounterKind.PlusOnePlusOne] = card.Definition.EntersWithCounters;
                 State.Battlefield.Add(id);
                 break;
             case Zone.Stack:
@@ -48,6 +52,7 @@ public sealed partial class Game
                 owner.GetZone(to).Add(id);
                 break;
         }
+        RecomputeContinuousEffects();
         Emit(new CardMoved(id, card.Owner, from, to, lastController));
 
         // A token that leaves the battlefield ceases to exist (rule 111.7, 704.5d).

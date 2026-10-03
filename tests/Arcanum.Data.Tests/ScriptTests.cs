@@ -99,3 +99,56 @@ public class ScriptTests
         Assert.Equal(CardSupport.Full, support);
     }
 }
+
+public class StaticScriptTests
+{
+    [Fact]
+    public void ParsesStaticAbilitiesAndAuras()
+    {
+        var script = CardScriptParser.Parse("""
+            {
+              "aura": "creature",
+              "entersWithCounters": 1,
+              "abilities": [
+                { "static": { "affects": "enchanted", "pump": [2, 0], "keywords": ["Trample"] }, "text": "Enchanted creature gets +2/+0 and has trample." },
+                { "static": { "affects": "creatures:you", "other": true, "subtype": "Goblin", "pump": [1, 1] } }
+              ]
+            }
+            """);
+        Assert.Equal(new TargetSpec(TargetKind.Creature), script.Aura);
+        Assert.Equal(1, script.EntersWithCounters);
+        var aura = Assert.IsType<StaticAbility>(script.Abilities[0]);
+        Assert.Equal(AffectedScope.Enchanted, aura.Affects.Scope);
+        Assert.Equal(new[] { Keyword.Trample }, aura.GrantedKeywords);
+        var lord = Assert.IsType<StaticAbility>(script.Abilities[1]);
+        Assert.True(lord.Affects.Other);
+        Assert.Equal("Goblin", lord.Affects.Subtype);
+    }
+
+    private static CardRecord Record(string name, string type, string text, string? p = null, string? t = null) => new()
+    {
+        OracleId = "o-" + name, Name = name, Layout = "normal", ManaCost = "{1}", TypeLine = type, OracleText = text, Power = p, Toughness = t,
+    };
+
+    [Fact]
+    public void EquipAndEnchantAreReadFromRulesText()
+    {
+        var (sword, _) = CardFactory.Create(Record("Test Blade", "Artifact — Equipment", "Equipped creature gets +1/+1.\nEquip {2}"));
+        var equip = Assert.IsType<ActivatedAbility>(Assert.Single(sword.Abilities));
+        Assert.True(equip.SorcerySpeed);
+        Assert.Equal(ManaCost.Parse("{2}"), equip.Cost.Mana);
+        Assert.IsType<AttachSelf>(Assert.Single(equip.Effects));
+
+        var (aura, _) = CardFactory.Create(Record("Test Aura", "Enchantment — Aura", "Enchant creature you control\nEnchanted creature gets +1/+1."));
+        Assert.Equal(new TargetSpec(TargetKind.Creature, ControllerFilter.You), aura.EnchantTarget);
+    }
+
+    [Fact]
+    public void EntersTappedLandsAreFullySupported()
+    {
+        var (land, support) = CardFactory.Create(Record("Test Vale", "Land", "This land enters tapped.\n{T}: Add {G} or {W}."));
+        Assert.True(land.EntersTapped);
+        Assert.Equal(new[] { ManaType.Green, ManaType.White }, land.TapForMana);
+        Assert.Equal(CardSupport.Full, support);
+    }
+}

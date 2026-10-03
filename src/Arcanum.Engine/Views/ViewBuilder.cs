@@ -39,6 +39,9 @@ public static class ViewBuilder
                 PlusOneCounters = card.CounterCount(Abilities.CounterKind.PlusOnePlusOne),
                 MinusOneCounters = card.CounterCount(Abilities.CounterKind.MinusOneMinusOne),
                 IsToken = card.Definition.IsToken,
+                AttachedTo = card.AttachedTo,
+                BasePower = card.Definition.Power,
+                BaseToughness = card.Definition.Toughness,
                 AbilityTexts = card.Definition.Abilities.Select(a => a.Text).ToList(),
             };
         }

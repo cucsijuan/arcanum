@@ -8,7 +8,12 @@ using Arcanum.Engine.Mana;
 namespace Arcanum.Data.Scripts;
 
 /// <summary>Abilities parsed from a card script: the spell effect and the permanent's abilities.</summary>
-public sealed record CardScript(SpellAbility? Spell, IReadOnlyList<AbilityDefinition> Abilities);
+public sealed record CardScript(
+    SpellAbility? Spell,
+    IReadOnlyList<AbilityDefinition> Abilities,
+    TargetSpec? Aura = null,
+    bool EntersTapped = false,
+    int EntersWithCounters = 0);
 
 /// <summary>
 /// Parses card scripts: small JSON documents describing what a card does. Example:
@@ -34,7 +39,11 @@ public static class CardScriptParser
         {
             foreach (var a in list.EnumerateArray())
             {
-                if (a.TryGetProperty("trigger", out var trigger))
+                if (a.TryGetProperty("static", out var st))
+                {
+                    abilities.Add(ParseStatic(st) with { Text = Text(a) });
+                }
+                else if (a.TryGetProperty("trigger", out var trigger))
                 {
                     abilities.Add(new TriggeredAbility
                     {
@@ -52,8 +61,39 @@ public static class CardScriptParser
                 else throw new FormatException("An ability needs a \"trigger\" or a \"cost\".");
             }
         }
-        return new CardScript(spell, abilities);
+        return new CardScript(
+            spell,
+            abilities,
+            root.TryGetProperty("aura", out var aura) ? ParseTarget(aura.GetString()!) : null,
+            root.TryGetProperty("entersTapped", out var tapped) && tapped.GetBoolean(),
+            root.TryGetProperty("entersWithCounters", out var counters) ? counters.GetInt32() : 0);
     }
+
+    /// <summary>{ "affects": "creatures:you", "other": true, "subtype": "Goblin", "pump": [1, 1], "keywords": ["Flying"] }</summary>
+    private static StaticAbility ParseStatic(JsonElement s)
+    {
+        var scope = s.GetProperty("affects").GetString() switch
+        {
+            "self" => AffectedScope.Self,
+            "creatures:you" => AffectedScope.YourCreatures,
+            "creatures:opponents" => AffectedScope.OpponentsCreatures,
+            "creatures" => AffectedScope.AllCreatures,
+            "enchanted" => AffectedScope.Enchanted,
+            "equipped" => AffectedScope.Equipped,
+            var unknown => throw new FormatException($"Unknown static scope '{unknown}'."),
+        };
+        var filter = new AffectedFilter(
+            scope,
+            s.TryGetProperty("other", out var other) && other.GetBoolean(),
+            s.TryGetProperty("subtype", out var subtype) ? subtype.GetString() : null);
+        var pt = s.TryGetProperty("pump", out var pump) ? pump.EnumerateArray().Select(x => x.GetInt32()).ToArray() : new[] { 0, 0 };
+        return new StaticAbility(filter, pt[0], pt[1], ParseKeywords(s));
+    }
+
+    private static IReadOnlyList<Keyword>? ParseKeywords(JsonElement e) =>
+        e.TryGetProperty("keywords", out var k)
+            ? k.EnumerateArray().Select(x => Keywords.TryParse(x.GetString()!, out var kw) ? kw : throw new FormatException($"Unknown keyword '{x}'.")).ToList()
+            : null;
 
     private static string Text(JsonElement e) => e.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
 
@@ -133,13 +173,11 @@ public static class CardScriptParser
         if (Str("tap") is { } tap) return new TapIt(ParseSubject(tap));
         if (Str("untap") is { } untap) return new UntapIt(ParseSubject(untap));
         if (Str("counter") is { } counter) return new CounterSpell(ParseSubject(counter));
+        if (Str("attach") is { } attach) return new AttachSelf(ParseSubject(attach));
         if (e.TryGetProperty("pump", out var pump))
         {
             var pt = pump.EnumerateArray().Select(x => x.GetInt32()).ToArray();
-            var keywords = e.TryGetProperty("keywords", out var k)
-                ? k.EnumerateArray().Select(x => Keywords.TryParse(x.GetString()!, out var kw) ? kw : throw new FormatException($"Unknown keyword '{x}'.")).ToList()
-                : null;
-            return new PumpUntilEndOfTurn(pt[0], pt[1], ParseSubject(Str("what") ?? "target"), keywords);
+            return new PumpUntilEndOfTurn(pt[0], pt[1], ParseSubject(Str("what") ?? "target"), ParseKeywords(e));
         }
         if (e.TryGetProperty("counters", out _))
         {

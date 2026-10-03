@@ -30,6 +30,10 @@ public partial class CardNode : Control
     private readonly Panel _selectedOverlay = new();
     private readonly HBoxContainer _pips = new();
     private readonly Label _damage = BoardStyle.MakeLabel("", 13, Colors.White);
+    private readonly PanelContainer _ptBadge = new();
+    private readonly Label _ptLabel = BoardStyle.MakeLabel("", 13, Colors.White, bold: true);
+    private readonly PanelContainer _counterBadge = new();
+    private readonly Label _counterLabel = BoardStyle.MakeLabel("", 11, Colors.White);
     private readonly Panel _assigned = new();
     private readonly Label _assignedLabel = BoardStyle.MakeLabel("", 22, new Color("16171a"), bold: true);
     private string? _requestedImage;
@@ -116,6 +120,17 @@ public partial class CardNode : Control
         damageBg.AddChild(_damage);
         AddChild(damageBg);
 
+        // Current power/toughness when it differs from the printed values (effects, counters).
+        _ptBadge.MouseFilter = MouseFilterEnum.Ignore;
+        _ptBadge.AddChild(_ptLabel);
+        _ptBadge.Visible = false;
+        AddChild(_ptBadge);
+        _counterBadge.MouseFilter = MouseFilterEnum.Ignore;
+        _counterBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.1f, 0.1f, 0.12f, 0.9f), 8, BoardStyle.Playable, 1));
+        _counterBadge.AddChild(_counterLabel);
+        _counterBadge.Visible = false;
+        AddChild(_counterBadge);
+
         // Big badge for damage being assigned to this card (damage assignment UI).
         _assigned.MouseFilter = MouseFilterEnum.Ignore;
         _assigned.Size = new Vector2(40, 40);
@@ -187,6 +202,21 @@ public partial class CardNode : Control
             }
         }
 
+        bool modified = view.Zone == Arcanum.Engine.State.Zone.Battlefield && view.Power is { } pow && view.Toughness is { } tou
+                        && (pow != view.BasePower || tou != view.BaseToughness);
+        _ptBadge.Visible = modified;
+        if (modified)
+        {
+            bool better = view.Power + view.Toughness >= (view.BasePower ?? 0) + (view.BaseToughness ?? 0);
+            _ptBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(better ? new Color("1f7a43") : new Color("a3302a"), 5, new Color("0b0b0d"), 1));
+            _ptLabel.Text = $"{view.Power}/{view.Toughness}";
+        }
+        var counters = new List<string>();
+        if (view.PlusOneCounters > 0) counters.Add($"+1/+1 \u00d7{view.PlusOneCounters}");
+        if (view.MinusOneCounters > 0) counters.Add($"-1/-1 \u00d7{view.MinusOneCounters}");
+        _counterBadge.Visible = counters.Count > 0 && view.Zone == Arcanum.Engine.State.Zone.Battlefield;
+        _counterLabel.Text = string.Join("  ", counters);
+
         var damageBadge = GetNode<Panel>("DamageBadge");
         damageBadge.Visible = view.Damage > 0;
         _damage.Text = view.Damage.ToString();
@@ -221,6 +251,10 @@ public partial class CardNode : Control
 
     private void ApplySize()
     {
+        _ptBadge.ResetSize();
+        _ptBadge.Position = new Vector2(Size.X - _ptBadge.Size.X - 2, Size.Y - _ptBadge.Size.Y - 2);
+        _counterBadge.ResetSize();
+        _counterBadge.Position = new Vector2(2, Size.Y * 0.35f);
         _assigned.Position = Size / 2 - _assigned.Size / 2;
         _assigned.PivotOffset = _assigned.Size / 2;
         _assigned.Rotation = -Rotation; // stays upright on tapped cards

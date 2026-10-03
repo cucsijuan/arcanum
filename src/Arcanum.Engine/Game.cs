@@ -53,7 +53,12 @@ public sealed partial class Game
     /// <summary>
     /// Puts a permanent onto the battlefield before the game starts (deck-test sandbox, rules scenarios).
     /// </summary>
-    public CardId SetupPermanent(PlayerId owner, CardDefinition definition) => Setup(owner, definition, Zone.Battlefield);
+    public CardId SetupPermanent(PlayerId owner, CardDefinition definition, CardId? attachTo = null)
+    {
+        var id = Setup(owner, definition, Zone.Battlefield);
+        State.GetCard(id).AttachedTo = attachTo;
+        return id;
+    }
 
     /// <summary>Puts a card into a player's hand before the game starts, on top of the normal opening hand.</summary>
     public CardId SetupInHand(PlayerId owner, CardDefinition definition) => Setup(owner, definition, Zone.Hand);
@@ -88,6 +93,7 @@ public sealed partial class Game
         Emit(new GameStarted(startingPlayer, Config.Seed));
 
         foreach (var player in State.Players) Shuffle(player);
+        RecomputeContinuousEffects(); // permanents set up before the game may have static abilities
         State.ActivePlayer = startingPlayer;
         foreach (var playerId in State.ApnapOrder().ToList()) await ResolveMulliganAsync(playerId);
 

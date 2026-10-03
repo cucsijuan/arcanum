@@ -7,7 +7,7 @@ namespace Arcanum.Engine.Abilities;
 public abstract record AbilityDefinition
 {
     public IReadOnlyList<TargetSpec> Targets { get; init; } = Array.Empty<TargetSpec>();
-    public required IReadOnlyList<Effect> Effects { get; init; }
+    public IReadOnlyList<Effect> Effects { get; init; } = Array.Empty<Effect>();
 
     /// <summary>Rules text shown to players (e.g. on the stack).</summary>
     public string Text { get; init; } = "";

@@ -186,6 +186,10 @@ public sealed partial class Game
                     Emit(new CountersPlaced(card.Id, a.Kind, a.Count));
                 }
                 break;
+            case AttachSelf a:
+                if (ctx.Source.Zone == Zone.Battlefield)
+                    foreach (var card in CardsFor(a.To, ctx)) ctx.Source.AttachedTo = card.Id;
+                break;
             case CreateTokens t:
                 foreach (var player in PlayersFor(t.Controller, ctx))
                     for (int i = 0; i < t.Count; i++) CreateToken(t.Token, player);
@@ -226,14 +230,31 @@ public sealed partial class Game
 
     // ------------------------------------------------------------------ continuous effects (rule 611, 613)
 
-    /// <summary>Re-applies "until end of turn" changes to the objects they still refer to.</summary>
+    /// <summary>
+    /// Recomputes characteristics changed by continuous effects: static abilities of permanents on the battlefield,
+    /// then "until end of turn" effects. Only additive P/T changes (layer 7c) and keyword grants (layer 6) exist so
+    /// far, so the order within a layer doesn't change the result.
+    /// </summary>
     private void RecomputeContinuousEffects()
     {
-        foreach (var card in State.Battlefield.Select(State.GetCard))
+        var battlefield = State.Battlefield.Select(State.GetCard).ToList();
+        foreach (var card in battlefield)
         {
             card.PowerBonus = 0;
             card.ToughnessBonus = 0;
             card.GrantedKeywords.Clear();
+        }
+        foreach (var source in battlefield)
+        {
+            foreach (var ability in source.Definition.Abilities.OfType<StaticAbility>())
+            {
+                foreach (var affected in Affected(source, ability.Affects, battlefield))
+                {
+                    affected.PowerBonus += ability.Power;
+                    affected.ToughnessBonus += ability.Toughness;
+                    affected.GrantedKeywords.UnionWith(ability.GrantedKeywords);
+                }
+            }
         }
         State.UntilEndOfTurn.RemoveAll(e => State.GetCard(e.Card).Version != e.Version);
         foreach (var effect in State.UntilEndOfTurn)
@@ -244,6 +265,23 @@ public sealed partial class Game
             card.ToughnessBonus += effect.Toughness;
             card.GrantedKeywords.UnionWith(effect.Keywords);
         }
+    }
+
+    private IEnumerable<Card> Affected(Card source, AffectedFilter filter, IReadOnlyList<Card> battlefield)
+    {
+        IEnumerable<Card> candidates = filter.Scope switch
+        {
+            AffectedScope.Self => new[] { source },
+            AffectedScope.YourCreatures => battlefield.Where(c => c.IsCreature && c.Controller == source.Controller),
+            AffectedScope.OpponentsCreatures => battlefield.Where(c => c.IsCreature && c.Controller != source.Controller),
+            AffectedScope.AllCreatures => battlefield.Where(c => c.IsCreature),
+            AffectedScope.Enchanted or AffectedScope.Equipped when source.AttachedTo is { } host
+                => battlefield.Where(c => c.Id == host),
+            _ => Array.Empty<Card>(),
+        };
+        if (filter.Other) candidates = candidates.Where(c => c.Id != source.Id);
+        if (filter.Subtype is { } subtype) candidates = candidates.Where(c => c.Definition.Subtypes.Contains(subtype, StringComparer.OrdinalIgnoreCase));
+        return candidates;
     }
 
     // ------------------------------------------------------------------ triggers (rule 603)
