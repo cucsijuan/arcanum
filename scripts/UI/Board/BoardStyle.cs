@@ -18,6 +18,12 @@ public static class BoardStyle
     public static readonly Color Blocking = new("4c8dff");
     public static readonly Color Selected = new("2ec4e6");
 
+    /// <summary>Multiplier for animation durations (from the animation speed setting).</summary>
+    public static float AnimationScale { get; set; } = 1f;
+
+    /// <summary>Selected card back design (see <see cref="CardBackColors"/>).</summary>
+    public static string CardBack { get; set; } = "arcane";
+
     public static readonly Vector2 HandCardSize = new(84, 117);
     public static readonly Vector2 BattlefieldCardSize = new(92, 128);
     public static readonly Vector2 PileCardSize = new(84, 117);
@@ -72,6 +78,37 @@ public static class BoardStyle
         button.AddThemeStyleboxOverride("pressed", Box(ActiveBorder.Darkened(0.15f), 8));
         return button;
     }
+
+    public static readonly (string Id, string Label)[] CardBacks =
+    {
+        ("arcane", "Arcane (violet)"), ("tide", "Tide (blue)"), ("ember", "Ember (red)"), ("grove", "Grove (green)"), ("obsidian", "Obsidian (black)"),
+    };
+
+    /// <summary>Background, glow and accent colors of a card back design.</summary>
+    public static (Color A, Color B, Color Accent) CardBackColors(string id) => id switch
+    {
+        "tide" => (new Color("0b1a33"), new Color("1d4e80"), new Color("9fd3ff")),
+        "ember" => (new Color("2a0b0b"), new Color("7a2416"), new Color("ffbf6b")),
+        "grove" => (new Color("0b2414"), new Color("2b6a3a"), new Color("d8e8a0")),
+        "obsidian" => (new Color("0c0c0f"), new Color("2b2b33"), new Color("c8c8d0")),
+        _ => (new Color(0.13f, 0.09f, 0.22f), new Color(0.30f, 0.18f, 0.45f), new Color(0.85f, 0.70f, 0.35f)),
+    };
+
+    public static readonly (string Id, string Label)[] Playmats =
+    {
+        ("grid", "Grid (default)"), ("slate", "Slate"), ("felt", "Green felt"), ("ocean", "Deep ocean"), ("crimson", "Crimson"), ("nebula", "Nebula"),
+    };
+
+    /// <summary>Grid playmat colors for a built-in playmat, or null for the nebula shader.</summary>
+    public static (Color Base, Color Line)? PlaymatColors(string id) => id switch
+    {
+        "grid" => (new Color(0.125f, 0.129f, 0.145f), new Color(0.165f, 0.169f, 0.188f)),
+        "slate" => (new Color("2a2e35"), new Color("2f343c")),
+        "felt" => (new Color("143a26"), new Color("18432c")),
+        "ocean" => (new Color("0e2236"), new Color("132b43")),
+        "crimson" => (new Color("2e1215"), new Color("37171b")),
+        _ => null,
+    };
 
     /// <summary>Color for a mana symbol badge, as in the hand cost pips.</summary>
     public static (Color Bg, Color Fg) PipColors(char symbol) => symbol switch

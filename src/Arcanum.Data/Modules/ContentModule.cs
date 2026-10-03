@@ -91,6 +91,20 @@ public sealed class ContentModule
         return scripts;
     }
 
+    /// <summary>Deck construction formats in formats/*.json.</summary>
+    public List<Formats.FormatRules> LoadFormats(List<string>? errors = null)
+    {
+        var formats = new List<Formats.FormatRules>();
+        var dir = Path.Combine(Directory, "formats");
+        if (!System.IO.Directory.Exists(dir)) return formats;
+        foreach (var file in System.IO.Directory.EnumerateFiles(dir, "*.json").Order())
+        {
+            try { formats.Add(Formats.FormatRules.Parse(File.ReadAllText(file))); }
+            catch (Exception e) when (e is FormatException or JsonException) { errors?.Add($"{Path.GetFileName(file)}: {e.Message}"); }
+        }
+        return formats;
+    }
+
     public string ImageUrl(string cardName) => Sources.Images.UrlTemplate.Replace("{name}", Uri.EscapeDataString(cardName));
 
     private string DecksDirectory => Path.Combine(Directory, "decks");

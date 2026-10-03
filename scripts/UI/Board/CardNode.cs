@@ -42,6 +42,7 @@ public partial class CardNode : Control
     public CardView? View { get; private set; }
 
     public event Action<CardNode>? Clicked;
+    public event Action<CardNode>? RightClicked;
     public event Action<CardNode>? HoverStarted;
     public event Action<CardNode>? HoverEnded;
 
@@ -154,6 +155,11 @@ public partial class CardNode : Control
             Clicked?.Invoke(this);
             AcceptEvent();
         }
+        else if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right })
+        {
+            RightClicked?.Invoke(this);
+            AcceptEvent();
+        }
     }
 
     /// <summary>Use a Lanczos-resampled texture at this node's exact size (for the large hover preview).</summary>
@@ -165,6 +171,15 @@ public partial class CardNode : Control
         View = view;
 
         _back.Visible = view.IsHidden;
+        if (view.IsHidden)
+        {
+            // Applied on every setup so the current card back setting is used even by nodes created earlier.
+            var (backA, backB, accent) = BoardStyle.CardBackColors(BoardStyle.CardBack);
+            var back = (ShaderMaterial)_back.Material;
+            back.SetShaderParameter("color_a", backA);
+            back.SetShaderParameter("color_b", backB);
+            back.SetShaderParameter("accent", accent);
+        }
         _face.Visible = false;
         _fallback.Visible = !view.IsHidden;
         _pips.Visible = showCostPips && !view.IsHidden;

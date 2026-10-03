@@ -11,7 +11,8 @@ config_version=5
 [application]
 
 config/name="Arcanum"
-run/main_scene="res://scenes/game_board/GameBoard.tscn"
+config/version="0.5.0"
+run/main_scene="res://scenes/main_menu/MainMenu.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
@@ -29,6 +30,7 @@ project/assembly_name="Arcanum"
 [autoload]
 
 CardImageCache="*res://scripts/Client/CardImageCache.cs"
+App="*res://scripts/Client/App.cs"
 
 [physics]
 

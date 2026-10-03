@@ -62,42 +62,69 @@ public partial class GameBoard : Control
         public bool Dragging { get; set; }
     }
 
-    private readonly ContentLoader _content = new();
     private readonly Label _loading = BoardStyle.MakeLabel("", 22);
+    private readonly Control _menu = new();
     private Func<ulong, GameSession> _newSession = GameSession.CreateHotseatDemo;
 
     public override async void _Ready()
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
         BuildLayout();
-        AddChild(_content);
+        BuildMenu();
+        var settings = Settings.Current;
+        _topArea.SetPlaymatStyle(settings.Playmats.ElementAtOrDefault(1) ?? "grid");
+        _bottomArea.SetPlaymatStyle(settings.Playmats.ElementAtOrDefault(0) ?? "grid");
 
-        // First run downloads and prepares card data; show progress instead of an empty board.
+        // The board can open before card data is ready (e.g. launched directly); wait for it.
         _loading.SetAnchorsPreset(LayoutPreset.Center);
         _loading.GrowHorizontal = GrowDirection.Both;
         _loading.GrowVertical = GrowDirection.Both;
         _loading.ZIndex = 400;
+        _loading.Text = App.Instance.ContentStatus;
         AddChild(_loading);
-        _content.Progress += message => _loading.Text = message;
-        try
-        {
-            if (await _content.LoadAsync()) UseModuleDecks();
-        }
-        catch (Exception e)
-        {
-            GD.PushError($"Could not load content module: {e}");
-        }
+        void OnProgress(string message) => _loading.Text = message;
+        App.Instance.ContentProgress += OnProgress;
+        bool loaded = await App.Instance.ContentReady;
+        App.Instance.ContentProgress -= OnProgress;
         _loading.Visible = false;
+
+        var match = App.Instance.PendingMatch;
+        if (match is not null) UseMatch(match);
+        else if (loaded) UseModuleDecks();
 
         // ARCANUM_SEED makes the first game reproducible (debugging, screenshots).
         StartNewGame(ulong.TryParse(OS.GetEnvironment("ARCANUM_SEED"), out var seed) ? seed : (ulong)Time.GetTicksUsec());
     }
 
+    private static AutoPassPolicy PolicyFromSettings()
+    {
+        var policy = new AutoPassPolicy();
+        policy.OwnTurnStops.Clear();
+        policy.OwnTurnStops.UnionWith(Settings.ParseSteps(Settings.Current.OwnTurnStops));
+        policy.OpponentTurnStops.UnionWith(Settings.ParseSteps(Settings.Current.OpponentTurnStops));
+        policy.FullControl = Settings.Current.FullControl;
+        return policy;
+    }
+
+    private Func<ulong, GameSession> HotseatFactory(GameSession.Seat first, GameSession.Seat second, int life, Action<Arcanum.Engine.Game>? setup) =>
+        seed =>
+        {
+            var session = GameSession.CreateHotseat(seed, first, second, setup, life, PolicyFromSettings(), Settings.Current.ConfirmManaPayment);
+            session.RevealAll = Settings.Current.RevealHandsInHotseat;
+            return session;
+        };
+
+    private void UseMatch(MatchSetup match)
+    {
+        var setup = match.Sandbox && App.Instance.Cards is { } cards ? SandboxSetup(cards) : null;
+        _newSession = HotseatFactory(match.First, match.Second, match.StartingLife, setup);
+    }
+
     /// <summary>Hotseat with the module's sample decks; falls back to generic cards if they can't be built.</summary>
     private void UseModuleDecks()
     {
-        var module = _content.Module!;
-        var cards = _content.Cards!;
+        var module = App.Instance.Module!;
+        var cards = App.Instance.Cards!;
         var names = module.DeckNames().Take(2).ToList();
         if (names.Count < 2) return;
 
@@ -107,10 +134,10 @@ public partial class GameBoard : Control
             var (deck, unknown) = Arcanum.Data.Decks.DeckList.Parse(module.ReadDeck(name)).Resolve(cards);
             if (unknown.Count > 0) GD.PushWarning($"Deck '{name}': unknown cards {string.Join(", ", unknown)}");
             if (deck.Count == 0) return;
-            seats.Add(new GameSession.Seat($"Player {index + 1}", deck));
+            seats.Add(new GameSession.Seat(Settings.Current.PlayerNames.ElementAtOrDefault(index) ?? $"Player {index + 1}", deck));
         }
         var setup = OS.GetEnvironment("ARCANUM_SANDBOX") == "1" ? SandboxSetup(cards) : null;
-        _newSession = seed => GameSession.CreateHotseat(seed, seats[0], seats[1], setup);
+        _newSession = HotseatFactory(seats[0], seats[1], 20, setup);
     }
 
     /// <summary>
@@ -207,8 +234,8 @@ public partial class GameBoard : Control
         corner.AddThemeConstantOverride("separation", 8);
         var menu = BoardStyle.MakeButton("≡", 22);
         menu.CustomMinimumSize = new Vector2(48, 40);
-        menu.Pressed += () => StartNewGame((ulong)Time.GetTicksUsec()); // placeholder until the in-game menu (M5)
-        menu.TooltipText = "New game";
+        menu.Pressed += () => _menu.Visible = true;
+        menu.TooltipText = "Menu";
         corner.AddChild(menu);
 
         var turnBox = new PanelContainer { CustomMinimumSize = new Vector2(48, 48) };
@@ -315,10 +342,50 @@ public partial class GameBoard : Control
         again.CustomMinimumSize = new Vector2(220, 52);
         again.Pressed += () => StartNewGame((ulong)Time.GetTicksUsec());
         overBox.AddChild(again);
+        var toMenu = BoardStyle.MakeButton("Main menu", 18);
+        toMenu.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
+        toMenu.CustomMinimumSize = new Vector2(220, 46);
+        toMenu.Pressed += () => App.Instance.GoTo(App.MainMenuScene);
+        overBox.AddChild(toMenu);
         _gameOver.AddChild(overBox);
         AddChild(_gameOver);
 
         UpdateLogBadge();
+    }
+
+    /// <summary>In-game menu opened from the ≡ button (or Escape).</summary>
+    private void BuildMenu()
+    {
+        _menu.SetAnchorsPreset(LayoutPreset.FullRect);
+        _menu.ZIndex = 350;
+        _menu.Visible = false;
+        var shade = new ColorRect { Color = new Color(0, 0, 0, 0.6f), AnchorRight = 1, AnchorBottom = 1 };
+        shade.GuiInput += e => { if (e is InputEventMouseButton { Pressed: true }) _menu.Visible = false; };
+        _menu.AddChild(shade);
+
+        var panel = new PanelContainer();
+        panel.SetAnchorsPreset(LayoutPreset.Center);
+        panel.GrowHorizontal = GrowDirection.Both;
+        panel.GrowVertical = GrowDirection.Both;
+        panel.AddThemeStyleboxOverride("panel", BoardStyle.Box(BoardStyle.Panel, 12, BoardStyle.PanelBorder, 1));
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 12);
+        var title = BoardStyle.MakeLabel("Menu", 22, bold: true);
+        title.HorizontalAlignment = HorizontalAlignment.Center;
+        box.AddChild(title);
+        void Item(string text, Action action, bool primary = false)
+        {
+            var button = primary ? BoardStyle.MakePrimaryButton(text, 18) : BoardStyle.MakeButton(text, 18);
+            button.CustomMinimumSize = new Vector2(280, 48);
+            button.Pressed += () => { _menu.Visible = false; action(); };
+            box.AddChild(button);
+        }
+        Item("Resume", () => { }, primary: true);
+        Item("New game (same decks)", () => StartNewGame((ulong)Time.GetTicksUsec()));
+        Item("Main menu", () => App.Instance.GoTo(App.MainMenuScene));
+        panel.AddChild(box);
+        _menu.AddChild(panel);
+        AddChild(_menu);
     }
 
     // ---------------------------------------------------------------- refresh
@@ -806,6 +873,13 @@ public partial class GameBoard : Control
 
     public override void _UnhandledInput(InputEvent @event)
     {
+        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
+        {
+            _menu.Visible = !_menu.Visible;
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Z, CtrlPressed: true })
         {
             Undo();
@@ -964,8 +1038,9 @@ public partial class GameBoard : Control
         label.ResetSize();
         label.GlobalPosition = globalCenter - label.Size / 2;
         var tween = label.CreateTween().SetParallel();
-        tween.TweenProperty(label, "position:y", label.Position.Y - rise, 1.1).SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Cubic);
-        tween.TweenProperty(label, "modulate:a", 0.0f, 0.5).SetDelay(0.6);
+        float k = BoardStyle.AnimationScale;
+        tween.TweenProperty(label, "position:y", label.Position.Y - rise, 1.1 * k).SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Cubic);
+        tween.TweenProperty(label, "modulate:a", 0.0f, 0.5 * k).SetDelay(0.6 * k);
         tween.Chain().TweenCallback(Callable.From(label.QueueFree));
     }
 

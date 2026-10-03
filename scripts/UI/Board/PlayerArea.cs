@@ -118,13 +118,20 @@ public partial class PlayerArea : Control
         _playmat.Visible = texture is not null;
     }
 
+
+    /// <summary>Applies a playmat setting: a built-in style id, or "custom:&lt;image path&gt;".</summary>
+    public void SetPlaymatStyle(string id)
+    {
+        Playmat.Apply(_grid, _playmat, id, Player.Value);
+    }
+
     public CardNode? FindCard(CardId id) => _cards.GetValueOrDefault(id);
 
     public IEnumerable<CardNode> Cards => _cards.Values;
 
     private void LayoutStatic()
     {
-        ((ShaderMaterial)_grid.Material).SetShaderParameter("rect_size", Size);
+        if (_grid.Material is ShaderMaterial gridMaterial) gridMaterial.SetShaderParameter("rect_size", Size);
         _nameBadge.Position = new Vector2((Size.X - _nameBadge.Size.X) / 2, 6);
 
         float x = Size.X - SideMargin - BoardStyle.PileCardSize.X;
@@ -202,17 +209,18 @@ public partial class PlayerArea : Control
         node.MouseFilter = MouseFilterEnum.Ignore;
         node.ZIndex = 150;
         var tween = node.CreateTween().SetParallel().SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.InOut);
+        float k = BoardStyle.AnimationScale;
         if (pile is not null)
         {
-            tween.TweenProperty(node, "position", pile.Position, 0.4);
-            tween.TweenProperty(node, "size", BoardStyle.PileCardSize, 0.4);
-            tween.TweenProperty(node, "rotation_degrees", 0f, 0.4);
-            tween.TweenProperty(node, "modulate:a", 0.0f, 0.15).SetDelay(0.3);
+            tween.TweenProperty(node, "position", pile.Position, 0.4 * k);
+            tween.TweenProperty(node, "size", BoardStyle.PileCardSize, 0.4 * k);
+            tween.TweenProperty(node, "rotation_degrees", 0f, 0.4 * k);
+            tween.TweenProperty(node, "modulate:a", 0.0f, 0.15 * k).SetDelay(0.3 * k);
         }
         else
         {
-            tween.TweenProperty(node, "modulate:a", 0.0f, 0.35);
-            tween.TweenProperty(node, "scale", new Vector2(0.8f, 0.8f), 0.35);
+            tween.TweenProperty(node, "modulate:a", 0.0f, 0.35 * k);
+            tween.TweenProperty(node, "scale", new Vector2(0.8f, 0.8f), 0.35 * k);
         }
         tween.Chain().TweenCallback(Callable.From(node.QueueFree));
     }
@@ -395,8 +403,9 @@ public partial class PlayerArea : Control
         if (node.IsDragging) return;
         node.LayoutTween?.Kill(); // a newer layout always wins over one still animating
         var tween = node.LayoutTween = node.CreateTween().SetParallel().SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
-        tween.TweenProperty(node, "position", position, 0.18);
-        tween.TweenProperty(node, "size", size, 0.18);
-        tween.TweenProperty(node, "rotation_degrees", rotationDegrees, 0.18);
+        float duration = 0.18f * BoardStyle.AnimationScale;
+        tween.TweenProperty(node, "position", position, duration);
+        tween.TweenProperty(node, "size", size, duration);
+        tween.TweenProperty(node, "rotation_degrees", rotationDegrees, duration);
     }
 }

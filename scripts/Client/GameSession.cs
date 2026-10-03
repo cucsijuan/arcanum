@@ -46,7 +46,11 @@ public sealed class GameSession
         Policy = policy;
         Log = new DecisionLog(replay);
         Game = new Game(config, seats.Select((s, i) =>
-            new PlayerSetup(s.Name, new UiPlayerController(new PlayerId(i), Hub, Log, policy), s.Deck)).ToList());
+        {
+            var controller = new UiPlayerController(new PlayerId(i), Hub, Log, policy);
+            _controllers.Add(controller);
+            return new PlayerSetup(s.Name, controller, s.Deck);
+        }).ToList());
         setup?.Invoke(Game); // sandbox: pre-placed permanents and cards, re-applied identically on undo
         Hub.DecisionRequested += _ => Changed?.Invoke();
         Game.EventRaised += e => { if (e is GameEnded) Changed?.Invoke(); };
@@ -54,9 +58,24 @@ public sealed class GameSession
 
     /// <summary>Two local seats sharing one screen, with the given decks.</summary>
     /// <param name="setup">Optional sandbox setup run on the new game before it starts.</param>
-    public static GameSession CreateHotseat(ulong seed, Seat first, Seat second, Action<Game>? setup = null) =>
-        new(new GameConfig { Seed = seed, StartingPlayer = setup is null ? null : new PlayerId(0) },
-            new[] { first, second }, new AutoPassPolicy(), replay: null, setup);
+    public static GameSession CreateHotseat(ulong seed, Seat first, Seat second, Action<Game>? setup = null,
+        int startingLife = 20, AutoPassPolicy? policy = null, bool confirmManaPayment = true) =>
+        new(new GameConfig { Seed = seed, StartingLife = startingLife, StartingPlayer = setup is null ? null : new PlayerId(0) },
+            new[] { first, second }, policy ?? new AutoPassPolicy(), replay: null, setup) { ConfirmManaPayment = confirmManaPayment };
+
+    /// <summary>Ask players to confirm each mana payment (applies to every local seat).</summary>
+    public bool ConfirmManaPayment
+    {
+        get => _confirmManaPayment;
+        init
+        {
+            _confirmManaPayment = value;
+            foreach (var controller in _controllers) controller.ConfirmManaPayment = value;
+        }
+    }
+
+    private readonly bool _confirmManaPayment = true;
+    private readonly List<UiPlayerController> _controllers = new();
 
     /// <summary>Offline demo with Arcanum's generic cards, used when no content module is available.</summary>
     public static GameSession CreateHotseatDemo(ulong seed)
@@ -88,7 +107,11 @@ public sealed class GameSession
         int last = Log.Entries.FindLastIndex(e => e.Manual);
         if (last < 0) return null;
         Policy.CancelPassTurn();
-        return new GameSession(_config, _seats, Policy, Log.Entries.Take(last).ToList(), _setup) { RevealAll = RevealAll };
+        return new GameSession(_config, _seats, Policy, Log.Entries.Take(last).ToList(), _setup)
+        {
+            RevealAll = RevealAll,
+            ConfirmManaPayment = ConfirmManaPayment,
+        };
     }
 
     public async void Start()
