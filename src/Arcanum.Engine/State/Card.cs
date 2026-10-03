@@ -81,7 +81,7 @@ public sealed class Card
     internal string? NameOverride { get; set; }
     internal bool LosesAbilities { get; set; }
     internal List<AbilityDefinition> GrantedAbilities { get; } = new();
-    internal IReadOnlyList<Mana.ManaType>? ManaTypesOverride { get; set; }
+    internal List<ManaOption> GrantedManaOptions { get; } = new();
 
     /// <summary>Keywords, creature types and abilities given "permanently" by resolved effects (until it leaves the battlefield).</summary>
     public HashSet<Keyword> PermanentKeywords { get; } = new();
@@ -96,6 +96,9 @@ public sealed class Card
 
     /// <summary>The permanent (id, version) that exiled this card "with it" (for "the exiled card").</summary>
     public (CardId Source, int Version)? ExiledWith { get; set; }
+
+    /// <summary>Turn number when it last changed zones.</summary>
+    public int ZoneChangedTurn { get; set; }
 
     /// <summary>Was attacking when it last left the battlefield.</summary>
     public bool WasAttacking { get; set; }
@@ -140,7 +143,18 @@ public sealed class Card
 
     /// <summary>Has this subtype (changelings have every creature type).</summary>
     public bool HasSubtype(string subtype) =>
-        (SubtypesOverride ?? Definition.Subtypes).Contains(subtype, StringComparer.OrdinalIgnoreCase) || GrantedSubtypes.Contains(subtype) || (Has(Keyword.Changeling) && subtype is not ("Equipment" or "Aura" or "Treasure" or "Food" or "Clue"));
+        (SubtypesOverride ?? Definition.Subtypes).Contains(subtype, StringComparer.OrdinalIgnoreCase) || GrantedSubtypes.Contains(subtype)
+        || (Has(Keyword.Changeling) && !NonCreatureSubtypes.Contains(subtype));
+
+    /// <summary>Subtypes that aren't creature types (changeling grants only creature types, rule 702.73a).</summary>
+    private static readonly HashSet<string> NonCreatureSubtypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Plains", "Island", "Swamp", "Mountain", "Forest", "Desert", "Gate", "Lair", "Locus", "Mine", "Power-Plant", "Tower", "Urza's", "Cave", "Sphere", "Town",
+        "Equipment", "Vehicle", "Treasure", "Food", "Clue", "Blood", "Gold", "Fortification", "Contraption", "Attraction", "Powerstone", "Map",
+        "Incubator", "Book", "Junk", "Spacecraft", "Bobblehead", "Lander",
+        "Aura", "Saga", "Shrine", "Curse", "Cartouche", "Class", "Room", "Rune", "Background", "Case", "Role", "Shard",
+        "Adventure", "Arcane", "Lesson", "Trap", "Omen",
+    };
 
     /// <summary>Color chosen as it entered ("As this enters, choose a color"): W, U, B, R or G.</summary>
     public string? ChosenColor { get; set; }
@@ -148,15 +162,29 @@ public sealed class Card
     /// <summary>Creature type chosen as it entered.</summary>
     public string? ChosenType { get; set; }
 
-    /// <summary>Types of mana its mana ability can add (the chosen color for "Add one mana of the chosen color").</summary>
-    public IReadOnlyList<Mana.ManaType> ManaTypes =>
-        ManaTypesOverride is { } overridden ? overridden
-        : LosesAbilities ? Array.Empty<Mana.ManaType>()
-        : Definition.ManaFromChosenColor && ChosenColor is { } color && Mana.ManaTypeExtensions.TryParse(color[0], out var type)
-            ? new[] { type }
-            : Definition.TapForMana;
+    /// <summary>Its mana abilities now: printed ones (unless lost), with the chosen color, plus granted ones.</summary>
+    public IReadOnlyList<ManaOption> ManaOptions
+    {
+        get
+        {
+            var options = new List<ManaOption>();
+            if (!LosesAbilities)
+            {
+                var types = Definition.ManaFromChosenColor && ChosenColor is { } color && Mana.ManaTypeExtensions.TryParse(color[0], out var type)
+                    ? new[] { type }
+                    : Definition.TapForMana;
+                if (types.Count > 0 && ManaAmount > 0) options.Add(new ManaOption(types, ManaAmount, Definition.ManaOnlyFor));
+                options.AddRange(Definition.ExtraManaOptions);
+            }
+            options.AddRange(GrantedManaOptions);
+            return options;
+        }
+    }
 
-    /// <summary>Mana its mana ability adds per activation (recomputed for "Add {G} for each Elf you control").</summary>
+    /// <summary>Types of mana its first mana ability can add.</summary>
+    public IReadOnlyList<Mana.ManaType> ManaTypes => ManaOptions.FirstOrDefault()?.Types ?? Array.Empty<Mana.ManaType>();
+
+    /// <summary>Mana its printed mana ability adds per activation (recomputed for "Add {G} for each Elf you control").</summary>
     public int ManaAmount { get; internal set; } = 1;
 
     /// <summary>Cast with its kicker cost paid (kept as the spell becomes a permanent, rule 702.33).</summary>
@@ -205,7 +233,7 @@ public sealed class Card
         ColorsOverride = null;
         NameOverride = null;
         LosesAbilities = false;
-        ManaTypesOverride = null;
+        GrantedManaOptions.Clear();
         CastFromHand = false;
         BasePowerOverride = null;
         BaseToughnessOverride = null;

@@ -67,7 +67,7 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>Card types added ("is an artifact in addition").</summary>
     public Cards.CardType AddTypes { get; init; }
 
-    /// <summary>Grants a mana ability replacing any other: "{T}: Add [types]" (amount mana of one of them).</summary>
+    /// <summary>Grants a mana ability: "{T}: Add [types]" (amount mana of one of them), in addition to its own.</summary>
     public IReadOnlyList<Mana.ManaType>? GrantsMana { get; init; }
     public int GrantsManaAmount { get; init; } = 1;
 

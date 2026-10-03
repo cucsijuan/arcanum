@@ -37,6 +37,8 @@ public sealed record CardView
     public int? BaseToughness { get; init; }
     public int PlusOneCounters { get; init; }
     public int MinusOneCounters { get; init; }
+    /// <summary>"Attacks each combat if able."</summary>
+    public bool AttacksEachCombat { get; init; }
     /// <summary>Loyalty counters (planeswalkers).</summary>
     public int Loyalty { get; init; }
     public bool IsToken { get; init; }
@@ -53,6 +55,9 @@ public sealed record PlayerView
     public required int Life { get; init; }
     public required bool HasLost { get; init; }
     public required int LibraryCount { get; init; }
+
+    /// <summary>The top card of the library when the viewer may look at it ("You may look at the top card of your library any time").</summary>
+    public CardView? LibraryTop { get; init; }
     public required IReadOnlyList<CardView> Hand { get; init; }
     public required IReadOnlyList<CardView> Graveyard { get; init; }
     public required IReadOnlyList<CardView> Exile { get; init; }
@@ -68,7 +73,7 @@ public sealed record PlayerView
 
 /// <param name="Card">The spell, or the source of the ability.</param>
 /// <param name="AbilityText">Rules text of the ability, or null for a spell.</param>
-public sealed record StackItemView(CardView Card, PlayerId Controller, string? AbilityText, IReadOnlyList<Abilities.Target> Targets);
+public sealed record StackItemView(CardView Card, PlayerId Controller, string? AbilityText, IReadOnlyList<Abilities.Target> Targets, int Id = 0);
 
 public sealed record AttackView(CardId Attacker, PlayerId Defender, IReadOnlyList<CardId> Blockers, bool IsBlocked, CardId? Planeswalker = null);
 

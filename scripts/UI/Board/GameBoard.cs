@@ -321,6 +321,7 @@ public partial class GameBoard : Control
         _stackView.ZIndex = BoardStyle.Z.Stack;
         _stackView.CardHoverStarted += ShowPreview;
         _stackView.CardHoverEnded += HidePreview;
+        _stackView.ItemClicked += OnStackItemClicked;
         AddChild(_stackView);
 
         // Action panel: right side of the bottom half, clear of both players' zone piles.
@@ -486,6 +487,13 @@ public partial class GameBoard : Control
             _attackWalker = null;
             _attackGroup.Clear();
             _attackDefender = decision is AttackDecision ad ? ad.Defenders[0] : null;
+            // Creatures that attack each combat if able start selected (their target can still be changed).
+            if (decision is AttackDecision forced)
+                foreach (var id in forced.PossibleAttackers.Where(id => _session.Game.ViewFor(forced.Player).FindCard(id)?.AttacksEachCombat == true))
+                {
+                    _attackTargets[id] = forced.Defenders[0];
+                    _attackGroup.Add(id);
+                }
             _blocks.Clear();
             _pendingBlocker = null;
             _abilityChoiceSource = null;
@@ -572,12 +580,22 @@ public partial class GameBoard : Control
         {
             case MulliganDecision m: m.Answer(true); break;
             case PriorityDecision p: p.Answer(p.Legal.FirstOrDefault(a => a is PlayLand or CastSpell) ?? PassPriority.Instance); break;
-            case TargetDecision t: t.Answer(t.Request.Legal.Select(choices => choices.FirstOrDefault(c => !c.IsNone) is { } c && !c.IsNone ? c : choices[0]).ToList()); break;
+            case TargetDecision t:
+            {
+                var picks = new List<Arcanum.Engine.Abilities.Target>();
+                for (int i = 0; i < t.Request.Specs.Count; i++)
+                {
+                    var options = t.Request.LegalAt(i).Where(o => t.Request.IsAllowed(i, o, picks)).ToList();
+                    picks.Add(options.FirstOrDefault(o => !o.IsNone) is { } o && !o.IsNone ? o : options.FirstOrDefault());
+                }
+                t.Answer(picks);
+                break;
+            }
             case ManaPaymentDecision pay: pay.Answer(pay.Request.SuggestedTaps); break;
             case YesNoDecision yn: yn.Answer(true); break;
             case DamageAssignmentDecision dmg: dmg.Answer(dmg.Request.Suggested); break;
-            case BlockDecision b when b.Request.MinimumBlockers.Count > 0:
-                b.Answer(Array.Empty<BlockDeclaration>()); // keep autoplay simple around menace
+            case BlockDecision b when b.Request.MinimumBlockers.Count > 0 || b.Request.MustBeBlocked.Count > 0:
+                b.Answer(b.Request.WithRequirements(Array.Empty<BlockDeclaration>())); // keep autoplay simple around menace
                 break;
             case AttackDecision a: a.Answer(a.PossibleAttackers.Select(id => new AttackDeclaration(id, a.Defenders[0])).ToList()); break;
             // Double-block the first attacker when possible so damage assignment gets exercised too.
@@ -621,13 +639,17 @@ public partial class GameBoard : Control
                 FindCard(t.Request.Source)?.SetHighlight(CardHighlight.Selected);
                 foreach (var chosen in _chosenTargets)
                     if (chosen.Card is { } c) FindCard(c)?.SetHighlight(CardHighlight.Selected);
-                if (_chosenTargets.Count < t.Request.Legal.Count)
+                if (_chosenTargets.Count < t.Request.Legal.Count || t.Request.LastIsAnyNumber)
                 {
-                    foreach (var option in t.Request.Legal[_chosenTargets.Count])
+                    foreach (var option in t.Request.LegalAt(_chosenTargets.Count).Where(o => t.Request.IsAllowed(_chosenTargets.Count, o, _chosenTargets)))
                     {
                         if (option.Card is { } c) FindCard(c)?.SetHighlight(CardHighlight.Playable);
                         if (option.Player is { } pl) AreaOf(pl).SetPlayerTargetable(true);
                     }
+                    // Spells and abilities on the stack that can be targeted.
+                    for (int i = 0; i < view.Stack.Count; i++)
+                        if (t.Request.IsAllowed(_chosenTargets.Count, StackTarget(view.Stack[i]), _chosenTargets))
+                            _stackView.NodeAt(i)?.SetHighlight(CardHighlight.Playable);
                 }
                 break;
             }
@@ -731,7 +753,7 @@ public partial class GameBoard : Control
         {
             foreach (var chosen in _chosenTargets)
                 if (TargetControl(chosen) is { } to) arrows.Add(new(sourceNode, to, BoardStyle.Selected));
-            if (_chosenTargets.Count < td.Request.Legal.Count) arrows.Add(new(sourceNode, null, BoardStyle.Playable));
+            if (_chosenTargets.Count < td.Request.Legal.Count || td.Request.LastIsAnyNumber) arrows.Add(new(sourceNode, null, BoardStyle.Playable));
         }
 
         if (decision is BlockDecision)
@@ -789,12 +811,19 @@ public partial class GameBoard : Control
             case TargetDecision t:
             {
                 var source = view.FindCard(t.Request.Source)?.Name ?? "spell";
-                int index = Math.Min(_chosenTargets.Count, t.Request.Specs.Count - 1);
-                var spec = t.Request.Specs[index];
-                _prompt.Text = $"{who}: choose {(spec.Optional ? "up to one " : "")}{spec.Describe()} for {source}";
+                var spec = t.Request.SpecAt(_chosenTargets.Count);
+                bool more = spec.AnyNumber && _chosenTargets.Count >= t.Request.Specs.Count - 1;
+                _prompt.Text = more
+                    ? $"{who}: choose any number of {spec.Describe()} for {source} ({_chosenTargets.Count - (t.Request.Specs.Count - 1)} chosen)"
+                    : $"{who}: choose {(spec.Optional ? "up to one " : "")}{spec.Describe()} for {source}";
                 if (t.Request.CanCancel) AddButton("Cancel", () => t.Answer(null));
                 if (_chosenTargets.Count > 0) AddButton("Back", () => { _chosenTargets.RemoveAt(_chosenTargets.Count - 1); Refresh(); });
-                if (spec.Optional) AddButton("None", () => PickTarget(Arcanum.Engine.Abilities.Target.None), primary: true);
+                if (more)
+                {
+                    var done = AddButton("Done", () => t.Answer(_chosenTargets.ToList()), primary: true);
+                    done.Disabled = !t.Request.IsComplete(_chosenTargets.Count);
+                }
+                else if (spec.Optional) AddButton("None", () => PickTarget(Arcanum.Engine.Abilities.Target.None), primary: true);
                 break;
             }
 
@@ -1083,7 +1112,7 @@ public partial class GameBoard : Control
     /// <summary>What the staged taps still leave unpaid.</summary>
     private ManaCost RemainingCost(ManaPaymentDecision pay) =>
         ManaPayment.Apply(pay.Request.RemainingAfterPool, _staged.SelectMany(t =>
-            Enumerable.Repeat(t.Type, pay.Request.Sources.FirstOrDefault(s => s.Source == t.Source)?.Amount ?? 1))).Remaining;
+            Enumerable.Repeat(t.Type, pay.Request.Sources.FirstOrDefault(s => s.Source == t.Source && s.Option == t.Option)?.Amount ?? 1))).Remaining;
 
     /// <summary>A mana type this source can add that still helps pay <paramref name="remaining"/>, preferring colored pips.</summary>
     private static ManaType? UsefulType(ManaSourceOption source, ManaCost remaining)
@@ -1206,13 +1235,23 @@ public partial class GameBoard : Control
         Refresh();
     }
 
+    /// <summary>How a stack item is targeted: a spell by its card, an ability by its stack object.</summary>
+    private static Arcanum.Engine.Abilities.Target StackTarget(StackItemView item) =>
+        item.AbilityText is null ? Arcanum.Engine.Abilities.Target.Of(item.Card.Id) : Arcanum.Engine.Abilities.Target.OfStack(item.Id);
+
+    private void OnStackItemClicked(int index)
+    {
+        var view = _session.Game.ViewFor(_session.CurrentDecision?.Player ?? new PlayerId(0), _session.RevealAll);
+        if (index < view.Stack.Count && _session.CurrentDecision is TargetDecision) PickTarget(StackTarget(view.Stack[index]));
+    }
+
     /// <summary>Adds a target if it is legal for the next requirement; answers once every target is chosen.</summary>
     private void PickTarget(Arcanum.Engine.Abilities.Target target)
     {
-        if (_session.CurrentDecision is not TargetDecision t || _chosenTargets.Count >= t.Request.Legal.Count) return;
-        if (!t.Request.Legal[_chosenTargets.Count].Contains(target)) return;
+        if (_session.CurrentDecision is not TargetDecision t || (_chosenTargets.Count >= t.Request.Legal.Count && !t.Request.LastIsAnyNumber)) return;
+        if (!t.Request.IsAllowed(_chosenTargets.Count, target, _chosenTargets)) return;
         _chosenTargets.Add(target);
-        if (_chosenTargets.Count == t.Request.Legal.Count) t.Answer(_chosenTargets.ToList());
+        if (!t.Request.LastIsAnyNumber && _chosenTargets.Count == t.Request.Legal.Count) t.Answer(_chosenTargets.ToList());
         else Refresh();
     }
 
@@ -1247,9 +1286,9 @@ public partial class GameBoard : Control
             {
                 int staged = _staged.FindIndex(t => t.Source == id);
                 if (staged >= 0) _staged.RemoveAt(staged); // untap: pick something else instead
-                else if (pay.Request.Sources.FirstOrDefault(s => s.Source == id) is { } source
-                         && UsefulType(source, RemainingCost(pay)) is { } type)
-                    _staged.Add(new ManaTap(id, type)); // can never tap more than what is still needed
+                else if (pay.Request.Sources.Where(s => s.Source == id).Select(s => (Source: s, Type: UsefulType(s, RemainingCost(pay))))
+                             .FirstOrDefault(x => x.Type is not null) is { Type: { } type } useful)
+                    _staged.Add(new ManaTap(id, type, useful.Source.Option)); // can never tap more than what is still needed
                 break;
             }
 

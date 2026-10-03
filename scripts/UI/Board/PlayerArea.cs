@@ -189,9 +189,9 @@ public partial class PlayerArea : Control
         _handLabel.Text = $"⌄ Hand ({me.Hand.Count})";
 
         // The library always shows the card back; we build a hidden view rather than reveal its top.
-        CardView? libraryTop = me.LibraryCount > 0
+        CardView? libraryTop = me.LibraryTop ?? (me.LibraryCount > 0
             ? new CardView { Id = new CardId(-1 - Player.Value), Owner = Player, Controller = Player, Zone = Zone.Library, IsHidden = true }
-            : null;
+            : null);
         _library.Refresh(me.LibraryCount, libraryTop);
         _graveyard.Refresh(me.Graveyard.Count, me.Graveyard.LastOrDefault());
         _exile.Refresh(me.Exile.Count, me.Exile.LastOrDefault());

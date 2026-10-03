@@ -90,3 +90,6 @@ public sealed record TargetAttachedTo(int Attached, int To) : Condition;
 
 /// <summary>The source currently matches the filter ("if Kellan is a Scout").</summary>
 public sealed record SourceIs(ObjectFilter Filter) : Condition;
+
+/// <summary>A quantity is at least <paramref name="AtLeast"/> ("if at least one creature card was exiled this way").</summary>
+public sealed record QuantityAtLeast(Quantity Quantity, int AtLeast) : Condition;

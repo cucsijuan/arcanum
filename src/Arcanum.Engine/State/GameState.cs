@@ -42,6 +42,9 @@ public sealed class GameState
     /// <summary>Last element is the top of the stack.</summary>
     public List<StackItem> Stack { get; } = new();
 
+    /// <summary>Next stack object id.</summary>
+    public int NextStackId { get; set; } = 1;
+
     /// <summary>"Until end of turn" modifications, removed in the cleanup step (rule 514.2).</summary>
     public List<UntilEndOfTurnEffect> UntilEndOfTurn { get; } = new();
 

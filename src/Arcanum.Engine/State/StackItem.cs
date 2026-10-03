@@ -10,6 +10,9 @@ public readonly record struct ChosenTarget(Target Target, int Version);
 /// <summary>An object on the stack: a spell or an activated/triggered ability.</summary>
 public abstract record StackItem(PlayerId Controller, IReadOnlyList<ChosenTarget> Targets)
 {
+    /// <summary>Identifies the object on the stack (abilities can be targeted by it).</summary>
+    public int Id { get; init; }
+
     /// <summary>The value chosen for X.</summary>
     public int X { get; init; }
 

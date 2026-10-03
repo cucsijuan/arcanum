@@ -44,6 +44,7 @@ public sealed partial class Game
         }
 
         card.ResetStatus();
+        card.ZoneChangedTurn = State.TurnNumber;
         card.Kicked = kicked;
         card.CastFromHand = castFromHand;
         card.Zone = to;

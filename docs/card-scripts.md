@@ -213,3 +213,55 @@ permanent), `sacrifice:creature` (sacrifice another creature), `discard`, `disca
 `removeCounters:3` (+1/+1 counters from this permanent) and `exileFromGraveyard` (the ability is activated
 from your graveyard, exiling this card). An activated ability can add `"oncePerTurn": true` and
 `"activateIf": condition`.
+
+## More vocabulary
+
+### Card-wide rules
+`hexproofFromTypes`, `additionalCostOptions` (`[{ "cost": extra }, { "mana": "{3}{B}" }]`, pay one), `alternativeCost`
+(`{ "cost": "{B}", "if": condition }`), `flashExtraCost`, `startsOnBattlefield` (from the opening hand),
+`manaRider` (`HasteForDragonCreatureSpells`, `CopyRedInstantOrSorcery`), `manaOnlyFor` (filter: spells its mana can pay
+for), `extraMana` (`[{ "types": "any", "amount": 1, "onlyFor": filter, "abilitiesToo": true }]`), `tapForMana`,
+`manaAmount`, `manaAmountFrom`, `manaFromChosenColor`, `chooseOnEnter` (`color`, `creatureType`, `cardName`),
+`countersPerChosenType`, `entersWithCounterKind`, `entersWithCountersIf`, `graveyardCastCost`, `powerFrom` /
+`toughnessFrom` (quantities), `cantBeBlockedBy` (filter), `ontoBattlefieldIfDiscarded`, and `replaces`: a list of
+`DoubleDamageToOpponents`, `DoubleCreatureDamage`, `DoubleTokens`, `DoubleCounters`, `PreventCombatDamageToAndBySelf`,
+`PreventNoncombatDamageToYourOtherCreatures`, `ExtraLifeGain`, `YouCantLose`, `ExileInstantsAndSorceries`,
+`OpponentsCreaturesEnterTapped`, `ShuffleIntoLibraryInsteadOfGraveyard`, `YourSpellsHaveFlash`,
+`YourInstantsAndSorceriesCantBeCountered`, `NoMaximumHandSize`, `CastFromHandFree`, `CreaturesFromLibraryTop`,
+`PlayStashedCards`, `PermanentsFromGraveyard`, `StopsChosenNameAbilities`, `AngelsEnterWithCounters`,
+`AdditionalLandPlay`.
+
+### Static abilities
+Besides `affects`/`pump`/`keywords`: `filter`, `while` (condition), quantities in `pump`, `addSubtypes`, `addChosenType`,
+`addTypes`, `grants` (abilities), `losesAbilities`, `setPower`, `setToughness`, `setTypes`, `setSubtypes`, `setColors`,
+`setName`, `grantsMana` / `grantsManaAmount`, `givesControl`. Scope `permanents:you` affects all your permanents.
+
+### Targets and spells
+Target objects also take `anyNumber` (last requirement only), `attachedToTarget: "target"`, `singleTarget` (stack objects)
+and `controlledByTriggeredPlayer`. Kinds: `planeswalker`, `creatureOrPlaneswalker`, `playerOrPlaneswalker`,
+`spellOrAbility`. A spell or ability can set `targetRule` (`allDifferent`, `differentControllers`, `sameGraveyard`),
+`whenKicked` (a replacement spell definition used when kicked), `modesOnce`, and a spell `exileAfter`.
+Subjects: `eachTarget`, `granter` (in granted abilities: who granted it), `granterPermanent`.
+
+### Costs and triggers
+Costs: loyalty `+1` / `-3`, `addCounters:1:page`, `removeCounters:3:incubation`, `returnToHand`, `exile`, `tapGranter`,
+`tapCreatures:10:Elf`, `crew:3`. Abilities: `onlyOnce`. Triggers also: `selfSacrificed`, `noncombatDamageToOpponent`,
+`creatureCombatDamage`, `dealsCombatDamage`, `opponentDiscards`, `becomesUntapped`, `opponentDraws`, `eachDrawStep`,
+`anyPlayerCastsSpell`, with `targetsSource`, `fromGraveyard`, `counterKind`, `oncePerTurn`.
+
+### Effects
+`become`, `exileUntilLeaves`, `flicker`, `copy`, `sacrificeIt`, `exileIfDies`, `preventCombatDamage`, `lookAtTop`,
+`discardChosen`, `exileGraveyard`, `doubleCounters`, `removeCounters`, `shuffleGraveyard`, `addMana`,
+`addManaAnyColor`, `addManaUntilEndOfTurn`, `bite`, `reanimateAll`, `bounceAll`, `mayPay`, `mayPayX`,
+`returnFromGraveyard`, `discardHand`, `millUntil`, `revealUntil`, `emblem`, `exileTopPlayable`, `divideDamage`,
+`distributeCounters`, `keepOneOfEachType`, `destroySameName`, `unless`, `opponentMaySacrifice`, `piles`, `winGame`,
+`loseGame`, `untapUpTo`, `poison`, `endTurn`, `additionalCombat`, `copySpell`, `copyNextInstantOrSorcery`,
+`castFromLibraryTopsFree`, `returnExiledWithThis`, `searchExileWithThis`, `grantFlashback`,
+`castFromGraveyardThisTurn`, `noMaxHandSize`, `returnNextEndStepOneFewer`, `destroyManaValueXDamaged`, `changeTarget`.
+Quantities also: `sacrificedToughness`, `lifeLostThisWay`, `destroyedThisWay`, `excessDamage`, `triggeredColors`,
+`opponentsGraveyards`, `greatestOtherPower`, `{ "milled": f }`, `{ "exiled": f }`, `{ "distinctManaValues": f }`,
+`{ "spellsCast": f, "offset": -1 }`, `{ "counters": "soul" }`. Conditions also: `castFromHand`, `youSacrificed`,
+`triggeredWasAttacking`, `{ "targetLifeExactly": 10 }`, `{ "xAtLeast": 10 }`, `{ "sourceWas": "Demon" }`,
+`{ "sourceHadCounters": "revival" }`, `{ "differentNames": f, "count": 10 }`, `{ "resolvedThisTurn": 2 }`,
+`{ "triggeredCounters": 3 }`, `{ "targetAttachedTo": "target2", "to": "target" }`, `{ "sourceIs": f }`,
+`{ "atLeast": quantity, "value": 1 }`, `{ "lifeAboveStarting": 10 }`, `{ "totalPower": 8 }`, `{ "attackers": 3 }`.

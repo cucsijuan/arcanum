@@ -25,8 +25,16 @@ public sealed class TestController : IPlayerController
     public Func<GameView, ManaPaymentRequest, IReadOnlyList<ManaTap>?> Pay { get; set; } = (_, request) => request.SuggestedTaps;
 
     /// <summary>Default picks the first legal choice for each target.</summary>
-    public Func<GameView, TargetRequest, IReadOnlyList<Abilities.Target>?> Targets { get; set; } =
-        (_, request) => request.Legal.Select(choices => choices[0]).ToList();
+    public Func<GameView, TargetRequest, IReadOnlyList<Abilities.Target>?> Targets { get; set; } = FirstAllowed;
+
+    /// <summary>The first allowed choice for each requirement (one target for an "any number" requirement).</summary>
+    public static IReadOnlyList<Abilities.Target>? FirstAllowed(GameView view, TargetRequest request)
+    {
+        var chosen = new List<Abilities.Target>();
+        for (int i = 0; i < request.Specs.Count; i++)
+            chosen.Add(request.LegalAt(i).FirstOrDefault(t => request.IsAllowed(i, t, chosen)));
+        return chosen;
+    }
 
     public Func<GameView, DamageAssignmentRequest, DamageAssignment> AssignDamage { get; set; } =
         (_, request) => request.Suggested;

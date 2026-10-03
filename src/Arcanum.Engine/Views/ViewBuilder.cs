@@ -28,6 +28,10 @@ public static class ViewBuilder
                 Life = p.Life,
                 HasLost = p.HasLost,
                 LibraryCount = p.Library.Count,
+                LibraryTop = p.Id == viewer && p.Library.Count > 0
+                             && state.PermanentsControlledBy(p.Id).Any(c => (c.Definition.Replaces & Cards.Replacements.CreaturesFromLibraryTop) != 0)
+                    ? Card(state, p.Library[0], viewer, reveal: true)
+                    : null,
                 Hand = Views(p.Hand),
                 Graveyard = Views(p.Graveyard),
                 Exile = Views(p.Exile),
@@ -38,7 +42,7 @@ public static class ViewBuilder
             }).ToList(),
             Battlefield = Views(state.Battlefield),
             Stack = state.Stack.Select(s => new StackItemView(
-                View(s.SourceCard), s.Controller, (s as AbilityOnStack)?.Ability.Text, s.Targets.Select(t => t.Target).ToList())).ToList(),
+                View(s.SourceCard), s.Controller, (s as AbilityOnStack)?.Ability.Text, s.Targets.Select(t => t.Target).ToList(), s.Id)).ToList(),
             Attacks = state.Combat?.Attacks
                 .Select(a => new AttackView(a.Attacker, a.Defender, a.Blockers.ToList(), a.IsBlocked, a.Planeswalker)).ToList()
                 ?? (IReadOnlyList<AttackView>)Array.Empty<AttackView>(),
@@ -78,6 +82,7 @@ public static class ViewBuilder
             PlusOneCounters = card.CounterCount(Abilities.CounterKind.PlusOnePlusOne),
             MinusOneCounters = card.CounterCount(Abilities.CounterKind.MinusOneMinusOne),
             Loyalty = card.CounterCount(Abilities.CounterKind.Loyalty),
+            AttacksEachCombat = card.Definition.AttacksEachCombat,
             IsToken = card.Definition.IsToken,
             OracleText = card.Definition.OracleText,
             Colors = card.Colors,

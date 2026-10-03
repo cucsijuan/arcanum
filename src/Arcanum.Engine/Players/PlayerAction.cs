@@ -23,4 +23,4 @@ public sealed record CastSpell(CardId Card) : PlayerAction;
 /// <summary>Activate the <paramref name="Index"/>-th activated ability of a permanent (rule 602).</summary>
 public sealed record ActivateAbility(CardId Source, int Index) : PlayerAction;
 
-public sealed record ActivateManaAbility(CardId Source, Mana.ManaType Type) : PlayerAction;
+public sealed record ActivateManaAbility(CardId Source, Mana.ManaType Type, int Option = 0) : PlayerAction;

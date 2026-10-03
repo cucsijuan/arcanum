@@ -68,12 +68,14 @@ public sealed partial class Game
                 || (!c.Has(Keyword.Indestructible) && (c.Damage >= c.Toughness || c.DamagedByDeathtouch)))) // 704.5g, 704.5h
             .ToList();
         foreach (var survivor in State.Battlefield.Select(State.GetCard)) survivor.DamagedByDeathtouch = false;
+        BeginSimultaneous(); // they all die at once (rule 704.3)
         foreach (var creature in dying)
         {
             MoveCard(creature.Id, Zone.Graveyard);
             Emit(new CreatureDied(creature.Id));
             any = true;
         }
+        EndSimultaneous();
         return any;
     }
 

@@ -19,6 +19,8 @@ public enum CardChoicePurpose
     ToBattlefield,
     /// <summary>The chosen permanents are sacrificed.</summary>
     Sacrifice,
+    /// <summary>Choose the next card in an order (e.g. which card goes on top of the library next).</summary>
+    Order,
 }
 
 /// <summary>

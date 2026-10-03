@@ -115,6 +115,9 @@ public sealed record CardDefinition
     /// <summary>"This enters with a [kind] counter for each creature you control of the chosen type."</summary>
     public Abilities.CounterKind? CountersPerChosenType { get; init; }
 
+    /// <summary>Further mana abilities besides <see cref="TapForMana"/> (e.g. a restricted "Add one mana of any color").</summary>
+    public IReadOnlyList<ManaOption> ExtraManaOptions { get; init; } = Array.Empty<ManaOption>();
+
     /// <summary>Its mana ability also sacrifices it: "{T}, Sacrifice this artifact: Add one mana of any color."</summary>
     public bool SacrificeForMana { get; init; }
 

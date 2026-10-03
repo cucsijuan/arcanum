@@ -12,6 +12,9 @@ public abstract record AbilityDefinition
     /// <summary>Rules text shown to players (e.g. on the stack).</summary>
     public string Text { get; init; } = "";
 
+    /// <summary>For an ability granted by another permanent ("Equipped creature has ..."): that permanent.</summary>
+    public Core.CardId? GrantedBy { get; init; }
+
     /// <summary>
     /// For a triggered ability, an intervening "if" clause (rule 603.4): it triggers only if the condition holds,
     /// and does nothing on resolution unless it still holds. Null: unconditional.
@@ -32,6 +35,24 @@ public abstract record AbilityDefinition
 
     /// <summary>"Choose one that hasn't been chosen": each mode can be chosen only once for this object.</summary>
     public bool ModesOncePerObject { get; init; }
+
+    /// <summary>A rule tying the targets together.</summary>
+    public TargetRule TargetRule { get; init; }
+
+    /// <summary>What this spell does when kicked, when that changes its targets ("instead any number of target creatures").</summary>
+    public AbilityDefinition? WhenKicked { get; init; }
+}
+
+/// <summary>Constraints between the targets of one spell or ability.</summary>
+public enum TargetRule
+{
+    None,
+    /// <summary>Every target is a different object or player ("each of up to two other targets").</summary>
+    AllDifferent,
+    /// <summary>The targets are controlled by different players.</summary>
+    DifferentControllers,
+    /// <summary>Every target card is in the same graveyard ("from a single graveyard").</summary>
+    SameGraveyard,
 }
 
 /// <summary>One mode of a modal spell or ability.</summary>
@@ -70,6 +91,9 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
 
     /// <summary>"Return this [permanent] to its owner's hand" as a cost.</summary>
     public bool ReturnSelfToHand { get; init; }
+
+    /// <summary>"Tap [the permanent that granted this ability]" as a cost ("Tap Fishing Pole").</summary>
+    public bool TapGranter { get; init; }
 
     public static readonly AbilityCost TapOnly = new(ManaCost.Zero, Tap: true);
 }
@@ -235,7 +259,9 @@ public sealed record ObjectFilter(
     bool MaxManaValueSourcePower = false,
     bool? Attached = null,
     Cards.Supertype ExcludedSupertype = 0,
-    bool MaxManaValueLandCount = false)
+    bool MaxManaValueLandCount = false,
+    bool OwnedByYou = false,
+    bool PutIntoZoneThisTurn = false)
 {
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 

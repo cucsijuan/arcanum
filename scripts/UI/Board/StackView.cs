@@ -15,6 +15,9 @@ public partial class StackView : Control
     public event Action<CardNode>? CardHoverStarted;
     public event Action<CardNode>? CardHoverEnded;
 
+    /// <summary>A stack item was clicked (index 0 = bottom), e.g. to target it.</summary>
+    public event Action<int>? ItemClicked;
+
     public StackView()
     {
         MouseFilter = MouseFilterEnum.Ignore;
@@ -34,6 +37,8 @@ public partial class StackView : Control
             var node = new CardNode { Size = BoardStyle.BattlefieldCardSize };
             node.HoverStarted += c => CardHoverStarted?.Invoke(c);
             node.HoverEnded += c => CardHoverEnded?.Invoke(c);
+            int index = _cards.Count;
+            node.Clicked += _ => ItemClicked?.Invoke(index);
             AddChild(node);
             _cards.Add(node);
             var label = BoardStyle.MakeLabel("", 11, BoardStyle.Text);

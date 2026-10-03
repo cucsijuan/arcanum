@@ -400,21 +400,41 @@ public sealed class BotController : IPlayerController
     {
         var ability = FindAbility(view, request);
         var chosen = new List<Target>();
-        for (int i = 0; i < request.Specs.Count; i++)
+        int specIndex(int i) => Math.Min(i, request.Specs.Count - 1);
+        for (int i = 0; ; i++)
         {
-            var legal = request.Legal[i].Where(t => !chosen.Contains(t) && !t.IsNone).ToList();
-            if (legal.Count == 0) legal = request.Legal[i].ToList();
-            Target pick;
-            if (ability is not null && TargetIsHarmed(ability, i))
+            bool extra = i >= request.Specs.Count; // more targets for an "any number" requirement
+            if (extra && !request.LastIsAnyNumber) break;
+            var allowed = request.LegalAt(i).Where(t => request.IsAllowed(i, t, chosen)).ToList();
+            var real = allowed.Where(t => !t.IsNone).ToList();
+            if (extra)
             {
-                pick = BestHarmTarget(view, ability, i, legal) ?? legal[0];
+                // Helpful "any number" effects take everything useful; harmful ones spread over a few of the best targets.
+                bool harmful = ability is not null && TargetIsHarmed(ability, specIndex(i));
+                if (real.Count == 0 || (harmful && chosen.Count >= 3)) break;
+                var next = harmful ? BestHarmTarget(view, ability!, specIndex(i), real) : BestHelpTarget(view, real) ?? real[0];
+                if (next is not { } n || (harmful && n.Player is not null)) break;
+                chosen.Add(n);
+                continue;
+            }
+            if (real.Count == 0)
+            {
+                if (allowed.Count == 0) return Task.FromResult<IReadOnlyList<Target>?>(request.CanCancel ? null : chosen.Append(request.LegalAt(i)[0]).ToList());
+                chosen.Add(Target.None);
+                continue;
+            }
+            Target pick;
+            if (ability is not null && TargetIsHarmed(ability, specIndex(i)))
+            {
+                pick = BestHarmTarget(view, ability, specIndex(i), real) ?? real[0];
             }
             else
             {
-                var pump = ability?.Effects.OfType<PumpUntilEndOfTurn>().FirstOrDefault(p => RefersToTarget(p, i));
-                pick = (pump is not null ? FightToWin(view, pump) is { } fighter ? Target.Of(fighter.Id) : (Target?)null : null)
-                       ?? BestHelpTarget(view, legal) ?? legal[0];
+                var pump = ability?.Effects.OfType<PumpUntilEndOfTurn>().FirstOrDefault(p => RefersToTarget(p, specIndex(i)));
+                pick = (pump is not null ? FightToWin(view, pump) is { } fighter && real.Contains(Target.Of(fighter.Id)) ? Target.Of(fighter.Id) : (Target?)null : null)
+                       ?? BestHelpTarget(view, real) ?? real[0];
             }
+            if (!request.IsAllowed(i, pick, chosen)) pick = real[0];
             chosen.Add(pick);
         }
         return Task.FromResult<IReadOnlyList<Target>?>(chosen);
@@ -572,6 +592,9 @@ public sealed class BotController : IPlayerController
                 break;
             }
         }
+        // Creatures that attack each combat if able always go (at the biggest threat).
+        foreach (var forced in attackers.Where(a => a.AttacksEachCombat && declarations.All(d => d.Attacker != a.Id)))
+            declarations.Add(new AttackDeclaration(forced.Id, byThreat[0]));
         if (declarations.Count > 0) await PaceAsync();
         return declarations;
     }
@@ -631,10 +654,12 @@ public sealed class BotController : IPlayerController
             free.Remove(pick);
             incoming -= attacker.Power ?? 0;
         }
-        if (!request.IsLegal(blocks, out _)) blocks.Clear();
+        if (!request.IsLegal(blocks, out _)) blocks = request.WithRequirements(blocks).ToList();
+        if (!request.IsLegal(blocks, out _)) blocks = request.WithRequirements(Array.Empty<BlockDeclaration>()).ToList();
         if (blocks.Count > 0) await PaceAsync();
         return blocks;
     }
+
 
     /// <summary>Always takes the commander back to the command zone; no other yes/no choices exist yet.</summary>
     public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) => Task.FromResult(true);

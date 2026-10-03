@@ -15,6 +15,9 @@ public sealed record ExileIt(Subject What) : Effect
 {
     /// <summary>"Exile it with a [kind] counter on it."</summary>
     public CounterKind? WithCounter { get; init; }
+
+    /// <summary>"All other ...": skip tokens this spell or ability created.</summary>
+    public bool ExceptCreatedThisWay { get; init; }
 }
 public sealed record ReturnToHand(Subject What) : Effect;
 public sealed record TapIt(Subject What) : Effect;
@@ -104,7 +107,11 @@ public sealed record ExileUntilSourceLeaves(Subject What) : Effect;
 public sealed record ExileAndReturnAtEndStep(Subject What, bool UnderYourControl = false) : Effect;
 
 /// <summary>Create token copies of a permanent, optionally with haste and "sacrifice it at the beginning of the next end step".</summary>
-public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = false, bool SacrificeAtEndStep = false) : Effect;
+public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = false, bool SacrificeAtEndStep = false) : Effect
+{
+    /// <summary>"Except it's a Nightmare in addition to its other types."</summary>
+    public IReadOnlyList<string>? AddSubtypes { get; init; }
+}
 
 /// <summary>Sacrifice the subject (usually the source itself).</summary>
 public sealed record SacrificeIt(Subject What) : Effect;
@@ -269,3 +276,9 @@ public sealed record PlayableFromGraveyardThisTurn(Subject What) : Effect;
 
 /// <summary>"You lose the game."</summary>
 public sealed record LoseGame : Effect;
+
+/// <summary>"Change the target of target spell or ability with a single target" (to another legal one, chosen by the controller).</summary>
+public sealed record ChangeTarget(Subject What) : Effect;
+
+/// <summary>"Counter it unless its controller pays [cost]" for the stack object <paramref name="StackObject"/> (ward).</summary>
+public sealed record CounterUnlessPays(int StackObject, Mana.ManaCost Mana, int Life) : Effect;

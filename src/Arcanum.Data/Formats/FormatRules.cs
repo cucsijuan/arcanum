@@ -97,7 +97,8 @@ public static class DeckValidator
                 issues.Add(new(IssueSeverity.Error, $"{name} is {(status == "banned" ? "banned" : "not legal")} in {format.Name}.", name));
             else if (status == "restricted" && copies > 1)
                 issues.Add(new(IssueSeverity.Error, $"{name} is restricted to one copy in {format.Name}.", name));
-            else if (!(basic && format.BasicLandsUnlimited) && copies > format.MaxCopies)
+            else if (!(basic && format.BasicLandsUnlimited) && copies > format.MaxCopies
+                     && !entry.Record.OracleText.Contains("A deck can have any number of cards named", StringComparison.Ordinal))
                 issues.Add(new(IssueSeverity.Error, $"{copies} copies of {name}; at most {format.MaxCopies}.", name));
 
             if (entry.Support != CardSupport.Full)

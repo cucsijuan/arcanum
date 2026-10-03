@@ -88,7 +88,10 @@ public sealed partial class Game
                 attackers.Select(a => a.Id).ToList(),
                 possible,
                 canBlock.Where(kv => kv.Value.Count > 0).ToDictionary(kv => kv.Key, kv => kv.Value),
-                attackers.Where(a => a.Has(Keyword.Menace)).ToDictionary(a => a.Id, _ => 2)); // 702.111b
+                attackers.Where(a => a.Has(Keyword.Menace)).ToDictionary(a => a.Id, _ => 2)) // 702.111b
+            {
+                MustBeBlocked = attackers.Where(a => a.Has(Keyword.MustBeBlocked)).Select(a => a.Id).ToList(),
+            };
 
             var declared = await ControllerOf(defender).DeclareBlockersAsync(ViewFor(defender), request);
             Require(request.IsLegal(declared, out var reason), reason ?? "Illegal blocks.");

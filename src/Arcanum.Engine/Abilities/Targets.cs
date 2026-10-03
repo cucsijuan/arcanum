@@ -21,6 +21,8 @@ public enum TargetKind
     CreatureOrPlaneswalker,
     /// <summary>"Target player or planeswalker".</summary>
     PlayerOrPlaneswalker,
+    /// <summary>A spell or an activated/triggered ability on the stack.</summary>
+    SpellOrAbility,
     /// <summary>A card in a graveyard ("target creature card from your graveyard": controller filter = owner).</summary>
     GraveyardCard,
 }
@@ -33,6 +35,18 @@ public enum ControllerFilter { Any, You, Opponent }
 /// <param name="Optional">"Up to one target ...": the player may choose no object (<see cref="Target.None"/>).</param>
 public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = ControllerFilter.Any, ObjectFilter? Filter = null, bool Optional = false)
 {
+    /// <summary>"Any number of target ..." (only as the last requirement): the player picks as many different ones as they like (at least one unless optional).</summary>
+    public bool AnyNumber { get; init; }
+
+    /// <summary>The chosen object must be attached to the target chosen for requirement N ("Equipment attached to that creature").</summary>
+    public int? AttachedToTarget { get; init; }
+
+    /// <summary>For stack objects: only ones with a single target.</summary>
+    public bool SingleTargetOnly { get; init; }
+
+    /// <summary>The controller must be the player the trigger event was about ("that player controls").</summary>
+    public bool ControlledByTriggeredPlayer { get; init; }
+
     /// <summary>Text shown when choosing; set by card scripts so the player sees the printed wording.</summary>
     public string? Text { get; init; }
 
@@ -55,17 +69,20 @@ public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = C
 }
 
 /// <summary>A chosen target: a card (permanent or spell) or a player.</summary>
-public readonly record struct Target(CardId? Card, PlayerId? Player)
+public readonly record struct Target(CardId? Card, PlayerId? Player, int? StackObject = null)
 {
     public static Target Of(CardId card) => new(card, null);
     public static Target Of(PlayerId player) => new(null, player);
 
+    /// <summary>An ability on the stack (by its stack object id).</summary>
+    public static Target OfStack(int stackObject) => new(null, null, stackObject);
+
     /// <summary>No object chosen for an optional ("up to one") target.</summary>
     public static readonly Target None = new(null, null);
 
-    public bool IsNone => Card is null && Player is null;
+    public bool IsNone => Card is null && Player is null && StackObject is null;
 
-    public override string ToString() => Card is { } c ? c.ToString() : Player is { } p ? p.ToString() : "none";
+    public override string ToString() => Card is { } c ? c.ToString() : Player is { } p ? p.ToString() : StackObject is { } s ? $"stack#{s}" : "none";
 }
 
 /// <summary>Who or what an effect applies to.</summary>
@@ -91,10 +108,21 @@ public enum SubjectKind
     TriggeredPlayer,
     /// <summary>The permanent the source Aura/Equipment is attached to ("enchanted creature", "equipped creature").</summary>
     Attached,
+    /// <summary>Every chosen target (from <see cref="Subject.Index"/> on): "each of those creatures".</summary>
+    EachTarget,
+    /// <summary>A specific player fixed when an ability was granted ("you" of the spell that granted it).</summary>
+    FixedPlayer,
+    /// <summary>In a granted ability: the controller of the spell or ability that granted it (bound when granted).</summary>
+    Granter,
+    /// <summary>In a granted ability: the permanent that grants it.</summary>
+    GranterPermanent,
 }
 
 public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filter = null)
 {
+    /// <summary>For <see cref="SubjectKind.FixedPlayer"/>.</summary>
+    public PlayerId? Player { get; init; }
+
     public static Subject Each(ObjectFilter filter) => new(SubjectKind.Each, Filter: filter);
     public static readonly Subject Triggered = new(SubjectKind.Triggered);
     public static readonly Subject TriggeredPlayer = new(SubjectKind.TriggeredPlayer);
