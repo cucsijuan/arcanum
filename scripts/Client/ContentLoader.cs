@@ -35,10 +35,12 @@ public partial class ContentLoader : Node
 
         var dataDir = ProjectSettings.GlobalizePath($"user://card_data/{Module.Manifest.Id}");
         Directory.CreateDirectory(dataDir);
-        var compact = Path.Combine(dataDir, "cards.jsonl.gz");
+        // Bump the version when import rules change so existing installs re-import.
+        var compact = Path.Combine(dataDir, $"cards.v2-{Module.Manifest.Version}.jsonl.gz");
 
         if (!File.Exists(compact))
         {
+            foreach (var old in Directory.EnumerateFiles(dataDir, "cards*.jsonl.gz")) File.Delete(old);
             var source = Path.Combine(dataDir, "source.download");
             Report("Looking up card data…");
             var downloadUrl = await ResolveDownloadUrlAsync(Module);
@@ -50,7 +52,7 @@ public partial class ContentLoader : Node
             {
                 using var input = File.OpenRead(source);
                 var temp = compact + ".tmp";
-                using (var output = File.Create(temp)) OracleJsonl.WriteCompact(OracleJsonl.Import(input), output);
+                using (var output = File.Create(temp)) OracleJsonl.WriteCompact(OracleJsonl.Import(input, Module.Sources.Cards.ToFilter()), output);
                 File.Move(temp, compact, overwrite: true);
             });
             File.Delete(source);

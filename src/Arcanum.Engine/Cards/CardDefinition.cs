@@ -30,4 +30,9 @@ public sealed record CardDefinition
     public IReadOnlyList<ManaType> TapForMana { get; init; } = Array.Empty<ManaType>();
 
     public bool Is(CardType type) => (Types & type) != 0;
+
+    private IReadOnlySet<Keyword>? _parsedKeywords;
+
+    /// <summary>Engine-supported keywords among <see cref="Keywords"/>.</summary>
+    public IReadOnlySet<Keyword> KeywordAbilities => _parsedKeywords ??= Cards.Keywords.ParseAll(Keywords);
 }

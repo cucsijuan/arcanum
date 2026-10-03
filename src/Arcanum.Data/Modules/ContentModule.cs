@@ -5,7 +5,14 @@ namespace Arcanum.Data.Modules;
 
 public sealed record ModuleManifest(string Id, string Name, string Version, int ApiVersion, string License, string Description);
 
-public sealed record CardSource(string Format, string Index, string DownloadField, string UpdatedField);
+/// <param name="IncludeIfLegalIn">Keep a card only if it is legal, restricted or banned in one of these formats (empty: keep all).</param>
+/// <param name="ExcludeLayouts">Card layouts that are not playable cards and are skipped on import.</param>
+public sealed record CardSource(
+    string Format, string Index, string DownloadField, string UpdatedField,
+    IReadOnlyList<string> IncludeIfLegalIn, IReadOnlyList<string> ExcludeLayouts)
+{
+    public Arcanum.Data.CardData.ImportFilter ToFilter() => new(IncludeIfLegalIn, ExcludeLayouts);
+}
 
 public sealed record ImageSource(string UrlTemplate, int MinIntervalMs);
 
@@ -47,7 +54,8 @@ public sealed class ContentModule
         var images = s.GetProperty("images");
         var sources = new ModuleSources(
             Optional(s, "userAgent") ?? "Arcanum",
-            new CardSource(Required(cards, "format"), Required(cards, "index"), Required(cards, "downloadField"), Required(cards, "updatedField")),
+            new CardSource(Required(cards, "format"), Required(cards, "index"), Required(cards, "downloadField"), Required(cards, "updatedField"),
+                StringList(cards, "includeIfLegalIn"), StringList(cards, "excludeLayouts")),
             new ImageSource(Required(images, "urlTemplate"), images.TryGetProperty("minIntervalMs", out var ms) ? ms.GetInt32() : 100));
 
         return new ContentModule(directory, manifest, sources);
@@ -69,4 +77,9 @@ public sealed class ContentModule
             ? s : throw new InvalidDataException($"Missing '{name}' in module file.");
 
     private static string? Optional(JsonElement e, string name) => e.TryGetProperty(name, out var v) ? v.GetString() : null;
+
+    private static IReadOnlyList<string> StringList(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array
+            ? v.EnumerateArray().Select(x => x.GetString() ?? "").ToList()
+            : Array.Empty<string>();
 }

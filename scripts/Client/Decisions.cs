@@ -46,11 +46,12 @@ public sealed class AttackDecision : Decision<IReadOnlyList<AttackDeclaration>>
 
 public sealed class BlockDecision : Decision<IReadOnlyList<BlockDeclaration>>
 {
-    public required IReadOnlyList<CardId> PossibleBlockers { get; init; }
-    public required IReadOnlyList<CardId> Attackers { get; init; }
+    public required BlockRequest Request { get; init; }
+    public IReadOnlyList<CardId> PossibleBlockers => Request.Blockers;
+    public IReadOnlyList<CardId> Attackers => Request.Attackers;
 }
 
-public sealed class DamageAssignmentDecision : Decision<IReadOnlyDictionary<CardId, int>>
+public sealed class DamageAssignmentDecision : Decision<DamageAssignment>
 {
     public required DamageAssignmentRequest Request { get; init; }
 }

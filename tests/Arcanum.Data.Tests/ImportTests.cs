@@ -12,12 +12,12 @@ public class ImportTests
 {
     // Invented cards in the card source's JSON Lines shape.
     private const string Fixture = """
-        {"oracle_id":"o-1","name":"Glade Cub","layout":"normal","mana_cost":"{1}{G}","type_line":"Creature — Bear","oracle_text":"","power":"2","toughness":"2","colors":["G"],"keywords":[],"games":["paper"],"legalities":{"standard":"legal"}}
+        {"oracle_id":"o-1","name":"Glade Cub","layout":"normal","mana_cost":"{1}{G}","type_line":"Creature — Bear","oracle_text":"","power":"2","toughness":"2","colors":["G"],"keywords":[],"games":["digital"],"legalities":{"standard":"legal","eternal":"legal"}}
         {"oracle_id":"o-2","name":"Forest","layout":"normal","mana_cost":"","type_line":"Basic Land — Forest","oracle_text":"({T}: Add {G}.)","games":["paper"]}
         {"oracle_id":"o-3","name":"Sky Lancer","layout":"normal","mana_cost":"{2}{W}","type_line":"Creature — Bird Soldier","oracle_text":"Flying","power":"2","toughness":"2","keywords":["Flying"],"games":["paper"]}
         {"oracle_id":"o-4","name":"Ember Sage","layout":"normal","mana_cost":"{1}{R}","type_line":"Creature — Human Shaman","oracle_text":"When this creature enters, it deals 1 damage to any target.","power":"1","toughness":"1","games":["paper"]}
         {"oracle_id":"o-5","name":"Old Art","layout":"art_series","type_line":"Card","games":["paper"]}
-        {"oracle_id":"o-6","name":"Online Only","layout":"normal","type_line":"Creature","power":"1","toughness":"1","games":["digital"]}
+        {"oracle_id":"o-6","name":"Online Only","layout":"normal","type_line":"Creature","power":"1","toughness":"1","games":["digital"],"legalities":{"eternal":"not_legal"}}
         {"oracle_id":"o-7","name":"Twin Paths","layout":"modal_dfc","type_line":"Sorcery // Land","games":["paper"],"card_faces":[{"name":"Twin","mana_cost":"{G}","type_line":"Sorcery","oracle_text":"Draw a card."},{"name":"Paths","type_line":"Land","oracle_text":"{T}: Add {G}."}]}
         {"oracle_id":"o-8","name":"Wild Shape","layout":"normal","mana_cost":"{2}{G}","type_line":"Creature — Shapeshifter","power":"*","toughness":"*","games":["paper"]}
         {"oracle_id":"o-9","name":"Glade Cub Token","layout":"token","type_line":"Token Creature — Bear","power":"2","toughness":"2","games":["paper"]}
@@ -31,12 +31,16 @@ public class ImportTests
         return ms;
     }
 
+    // Module-provided rules: keep cards legal somewhere in "eternal" (cards without legality data pass) and skip art cards.
+    private static readonly ImportFilter Filter = new(new[] { "eternal" }, new[] { "art_series" });
+
     [Fact]
-    public void ImportSkipsNonPlayableAndDigitalOnlyCards()
+    public void ImportAppliesTheModuleFilter()
     {
-        var records = OracleJsonl.Import(Gzip(Fixture)).ToList();
+        var records = OracleJsonl.Import(Gzip(Fixture), Filter).ToList();
         Assert.DoesNotContain(records, r => r.Name == "Old Art");
         Assert.DoesNotContain(records, r => r.Name == "Online Only");
+        Assert.Contains(records, r => r.Name == "Glade Cub"); // the printing doesn't matter, the card's legality does
         Assert.Equal(7, records.Count);
         Assert.True(records.Single(r => r.Name == "Glade Cub Token").IsToken);
         Assert.Equal(2, records.Single(r => r.Name == "Twin Paths").Faces.Count);
@@ -45,7 +49,7 @@ public class ImportTests
     [Fact]
     public void ImportAcceptsUncompressedInput()
     {
-        var records = OracleJsonl.Import(new MemoryStream(Encoding.UTF8.GetBytes(Fixture))).ToList();
+        var records = OracleJsonl.Import(new MemoryStream(Encoding.UTF8.GetBytes(Fixture)), Filter).ToList();
         Assert.Equal(7, records.Count);
     }
 

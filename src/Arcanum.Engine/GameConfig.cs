@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using Arcanum.Engine.Cards;
+using Arcanum.Engine.Core;
 using Arcanum.Engine.Players;
 
 namespace Arcanum.Engine;
@@ -12,6 +13,9 @@ public sealed record GameConfig
     public int StartingHandSize { get; init; } = 7;
     public int MaxHandSize { get; init; } = 7;
     public int LandsPerTurn { get; init; } = 1;
+
+    /// <summary>Who takes the first turn. Null = chosen at random from the seed.</summary>
+    public PlayerId? StartingPlayer { get; init; }
 
     /// <summary>Multiplayer games give one free mulligan (rule 103.5c). Null = decide by player count.</summary>
     public bool? FreeFirstMulligan { get; init; }

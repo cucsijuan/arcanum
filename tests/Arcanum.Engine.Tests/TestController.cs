@@ -24,7 +24,7 @@ public sealed class TestController : IPlayerController
     /// <summary>Default accepts the engine's auto-pay suggestion.</summary>
     public Func<GameView, ManaPaymentRequest, IReadOnlyList<ManaTap>?> Pay { get; set; } = (_, request) => request.SuggestedTaps;
 
-    public Func<GameView, DamageAssignmentRequest, IReadOnlyDictionary<CardId, int>> AssignDamage { get; set; } =
+    public Func<GameView, DamageAssignmentRequest, DamageAssignment> AssignDamage { get; set; } =
         (_, request) => request.Suggested;
 
     public static PlayerAction Greedy(GameView view, IReadOnlyList<PlayerAction> legal) =>
@@ -47,11 +47,16 @@ public sealed class TestController : IPlayerController
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders) =>
         Task.FromResult(Attack(view, possibleAttackers, defenders));
 
-    public Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(
-        GameView view, IReadOnlyList<CardId> possibleBlockers, IReadOnlyList<CardId> attackers) =>
-        Task.FromResult(Block(view, possibleBlockers, attackers));
+    /// <summary>Last block request received, for assertions about block legality.</summary>
+    public BlockRequest? LastBlockRequest { get; private set; }
 
-    public Task<IReadOnlyDictionary<CardId, int>> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) =>
+    public Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(GameView view, BlockRequest request)
+    {
+        LastBlockRequest = request;
+        return Task.FromResult(Block(view, request.Blockers, request.Attackers));
+    }
+
+    public Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) =>
         Task.FromResult(AssignDamage(view, request));
 
     public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) =>

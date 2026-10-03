@@ -22,6 +22,9 @@ public sealed class Card
     /// </summary>
     public bool ControlledSinceTurnStart { get; set; }
 
+    /// <summary>Dealt damage by a source with deathtouch since the last state-based action check (rule 704.5h).</summary>
+    public bool DamagedByDeathtouch { get; set; }
+
     public Card(CardId id, CardDefinition definition, PlayerId owner)
     {
         Id = id;
@@ -42,11 +45,17 @@ public sealed class Card
 
     public bool IsCreature => Is(CardType.Creature);
 
+    public bool Has(Keyword keyword) => Definition.KeywordAbilities.Contains(keyword);
+
+    /// <summary>A creature that can't attack or use {T} abilities yet (rule 302.6); haste removes the restriction.</summary>
+    public bool IsSummoningSick => IsCreature && !ControlledSinceTurnStart && !Has(Keyword.Haste);
+
     /// <summary>Clears per-object status when the card changes zones (rule 400.7: it becomes a new object).</summary>
     internal void ResetStatus()
     {
         Tapped = false;
         Damage = 0;
+        DamagedByDeathtouch = false;
         ControlledSinceTurnStart = false;
         Controller = Owner;
     }

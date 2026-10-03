@@ -19,7 +19,7 @@ public static class ManaPayment
         state.PermanentsControlledBy(player)
             .Where(c => !c.Tapped && c.Definition.TapForMana.Count > 0)
             // Creatures can't use {T} abilities while summoning sick (rule 302.6).
-            .Where(c => !c.IsCreature || c.ControlledSinceTurnStart);
+            .Where(c => !c.IsSummoningSick);
 
     /// <summary>Spends floating mana on <paramref name="cost"/>: specific pips first, then generic.</summary>
     public static (List<ManaType> FromPool, ManaCost Remaining) ApplyPool(ManaCost cost, ManaPool pool)

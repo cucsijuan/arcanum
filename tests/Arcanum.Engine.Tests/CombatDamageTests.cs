@@ -30,8 +30,8 @@ public class CombatDamageTests
         var request = Assert.IsType<DamageAssignmentRequest>(requests.FirstOrDefault());
         Assert.Equal(6, request.Power);
         Assert.Equal(2, request.Blockers.Count);
-        Assert.Equal(6, request.Suggested.Values.Sum());
-        Assert.Equal(2, request.Suggested[request.Blockers[0]]); // lethal to the first bear
+        Assert.Equal(6, request.Suggested.Total);
+        Assert.Equal(2, request.Suggested.ToBlockers[request.Blockers[0]]); // lethal to the first bear
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public class CombatDamageTests
             AssignDamage = (_, r) =>
             {
                 first ??= r;
-                return new Dictionary<CardId, int> { [r.Blockers[0]] = 0, [r.Blockers[1]] = r.Power };
+                return new DamageAssignment(new Dictionary<CardId, int> { [r.Blockers[0]] = 0, [r.Blockers[1]] = r.Power });
             },
         };
         var game = Decks.NewGame(31, (Wurms, attacker), (Decks.ForestCubs, DoubleBlocker()));
@@ -63,7 +63,7 @@ public class CombatDamageTests
     {
         var attacker = new TestController
         {
-            AssignDamage = (_, r) => new Dictionary<CardId, int> { [r.Blockers[0]] = 1 },
+            AssignDamage = (_, r) => new DamageAssignment(new Dictionary<CardId, int> { [r.Blockers[0]] = 1 }),
         };
         var game = Decks.NewGame(31, (Wurms, attacker), (Decks.ForestCubs, DoubleBlocker()));
         await Assert.ThrowsAsync<InvalidDecisionException>(() => game.RunWithTimeout(20));

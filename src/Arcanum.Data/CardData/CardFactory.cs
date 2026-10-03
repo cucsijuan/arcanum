@@ -26,7 +26,7 @@ public static partial class CardFactory
     private static readonly HashSet<string> SingleFaceLayouts = new(StringComparer.Ordinal) { "normal", "token" };
 
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
-    public static ISet<string> SupportedKeywords { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    public static ISet<string> SupportedKeywords { get; } = new HashSet<string>(Engine.Cards.Keywords.SupportedNames, StringComparer.OrdinalIgnoreCase);
 
     public static (CardDefinition Definition, CardSupport Support) Create(CardRecord record)
     {

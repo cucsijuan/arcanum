@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using Arcanum.Engine.Cards;
 using Arcanum.Engine.Core;
 using Arcanum.Engine.Events;
 using Arcanum.Engine.State;
@@ -25,8 +26,11 @@ public sealed partial class Game
         if (State.IsGameOver) return any;
 
         var dying = State.Battlefield.Select(State.GetCard)
-            .Where(c => c.IsCreature && (c.Toughness <= 0 || c.Damage >= c.Toughness)) // 704.5f, 704.5g
+            .Where(c => c.IsCreature && (
+                c.Toughness <= 0 // 704.5f: put into the graveyard, even if indestructible
+                || (!c.Has(Keyword.Indestructible) && (c.Damage >= c.Toughness || c.DamagedByDeathtouch)))) // 704.5g, 704.5h
             .ToList();
+        foreach (var survivor in State.Battlefield.Select(State.GetCard)) survivor.DamagedByDeathtouch = false;
         foreach (var creature in dying)
         {
             MoveCard(creature.Id, Zone.Graveyard);

@@ -157,7 +157,7 @@ public partial class CardNode : Control
         if (!view.IsHidden)
         {
             _fallbackName.Text = view.Name;
-            _fallbackType.Text = TypeLine(view);
+            _fallbackType.Text = view.Keywords.Count > 0 ? $"{TypeLine(view)}\n{string.Join(", ", view.Keywords)}" : TypeLine(view);
             _fallbackPt.Text = view.Power is { } p && view.Toughness is { } t ? $"{p}/{t}" : "";
             _fallback.AddThemeStyleboxOverride("panel", BoardStyle.Box(FrameColor(view), 6, new Color("0b0b0d"), 2));
             BuildPips(view.ManaCost);

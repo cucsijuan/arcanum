@@ -25,6 +25,7 @@ public sealed record CardView
     public bool Tapped { get; init; }
     public int Damage { get; init; }
     public bool SummoningSick { get; init; }
+    public IReadOnlyList<string> Keywords { get; init; } = Array.Empty<string>();
 }
 
 public sealed record PlayerView

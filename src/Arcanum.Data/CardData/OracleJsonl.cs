@@ -5,18 +5,26 @@ using System.Text.Json;
 
 namespace Arcanum.Data.CardData;
 
+/// <summary>Which imported cards to keep; the rules come from the content module.</summary>
+public sealed record ImportFilter(IReadOnlyList<string> IncludeIfLegalIn, IReadOnlyList<string> ExcludeLayouts)
+{
+    public static readonly ImportFilter All = new(Array.Empty<string>(), Array.Empty<string>());
+
+    public bool Accepts(CardRecord record)
+    {
+        if (ExcludeLayouts.Contains(record.Layout)) return false;
+        // Tokens and cards without legality data are kept: the filter only drops cards known to be unplayable.
+        if (record.IsToken || IncludeIfLegalIn.Count == 0 || record.Legalities.Count == 0) return true;
+        return IncludeIfLegalIn.Any(format => record.Legalities.TryGetValue(format, out var status) && status != "not_legal");
+    }
+}
+
 /// <summary>
 /// Reads and writes card records as JSON Lines (one card object per line), optionally gzip-compressed.
 /// Parsing is manual (JsonDocument per line) so it works with ahead-of-time compilation on every platform.
 /// </summary>
 public static class OracleJsonl
 {
-    /// <summary>Layouts that are not playable cards (art cards, planes, schemes...).</summary>
-    private static readonly HashSet<string> SkippedLayouts = new(StringComparer.Ordinal)
-    {
-        "art_series", "planar", "scheme", "vanguard", "emblem", "front_card", "augment", "host", "double_faced_token",
-    };
-
     public static Stream OpenMaybeGzip(Stream raw)
     {
         var buffered = new BufferedStream(raw);
@@ -28,9 +36,10 @@ public static class OracleJsonl
         return read == 2 && header[0] == 0x1f && header[1] == 0x8b ? new GZipStream(joined, CompressionMode.Decompress) : joined;
     }
 
-    /// <summary>Imports the card source's JSON Lines file, keeping only playable cards and tokens.</summary>
-    public static IEnumerable<CardRecord> Import(Stream source)
+    /// <summary>Imports the card source's JSON Lines file, keeping the cards <paramref name="filter"/> accepts.</summary>
+    public static IEnumerable<CardRecord> Import(Stream source, ImportFilter? filter = null)
     {
+        filter ??= ImportFilter.All;
         using var reader = new StreamReader(OpenMaybeGzip(source), Encoding.UTF8);
         string? line;
         while ((line = reader.ReadLine()) is not null)
@@ -38,15 +47,13 @@ public static class OracleJsonl
             if (string.IsNullOrWhiteSpace(line)) continue;
             using var doc = JsonDocument.Parse(line);
             var record = FromSource(doc.RootElement);
-            if (record is not null) yield return record;
+            if (record is not null && filter.Accepts(record)) yield return record;
         }
     }
 
     private static CardRecord? FromSource(JsonElement c)
     {
         string layout = Str(c, "layout") ?? "normal";
-        if (SkippedLayouts.Contains(layout)) return null;
-        if (c.TryGetProperty("games", out var games) && !games.EnumerateArray().Any(g => g.GetString() == "paper")) return null;
         if (Str(c, "oracle_id") is not { } oracleId || Str(c, "name") is not { } name) return null;
 
         var faces = c.TryGetProperty("card_faces", out var f)

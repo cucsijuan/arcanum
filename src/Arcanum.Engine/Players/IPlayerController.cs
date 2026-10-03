@@ -28,11 +28,10 @@ public interface IPlayerController
     Task<IReadOnlyList<AttackDeclaration>> DeclareAttackersAsync(
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders);
 
-    Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(
-        GameView view, IReadOnlyList<CardId> possibleBlockers, IReadOnlyList<CardId> attackers);
+    Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(GameView view, BlockRequest request);
 
-    /// <summary>Divide an attacker's combat damage among its blockers. Amounts must add up to the attacker's power.</summary>
-    Task<IReadOnlyDictionary<CardId, int>> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request);
+    /// <summary>Divide an attacker's combat damage among its blockers (and the player, with trample).</summary>
+    Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request);
 
     Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count);
 }

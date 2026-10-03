@@ -44,11 +44,10 @@ public sealed class UiPlayerController(PlayerId player, DecisionHub hub, Decisio
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders) =>
         Ask(new AttackDecision { Player = player, PossibleAttackers = possibleAttackers, Defenders = defenders });
 
-    public Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(
-        GameView view, IReadOnlyList<CardId> possibleBlockers, IReadOnlyList<CardId> attackers) =>
-        Ask(new BlockDecision { Player = player, PossibleBlockers = possibleBlockers, Attackers = attackers });
+    public Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(GameView view, BlockRequest request) =>
+        Ask(new BlockDecision { Player = player, Request = request });
 
-    public Task<IReadOnlyDictionary<CardId, int>> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) =>
+    public Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) =>
         Ask(new DamageAssignmentDecision { Player = player, Request = request });
 
     public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) =>

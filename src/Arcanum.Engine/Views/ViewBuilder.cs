@@ -34,7 +34,8 @@ public static class ViewBuilder
                 Toughness = card.Definition.Toughness is null ? null : card.Toughness,
                 Tapped = card.Tapped,
                 Damage = card.Damage,
-                SummoningSick = card.IsCreature && card.Zone == Zone.Battlefield && !card.ControlledSinceTurnStart,
+                SummoningSick = card.Zone == Zone.Battlefield && card.IsSummoningSick,
+                Keywords = card.Definition.KeywordAbilities.Select(Cards.Keywords.DisplayName).ToList(),
             };
         }
 

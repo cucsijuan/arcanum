@@ -22,6 +22,17 @@ public sealed partial class Game
             if (State.IsGameOver) return;
             if (step == Step.Draw && skipDraw) continue;
             if (_skipCombatDamageSteps && step is Step.DeclareBlockers or Step.CombatDamage) continue;
+            if (step == Step.CombatDamage && CombatHasFirstStrike())
+            {
+                // First or double strike: an extra combat damage step before the regular one (rule 510.4).
+                _damagePass = DamagePass.FirstStrike;
+                await RunStepAsync(step);
+                if (State.IsGameOver) return;
+                _damagePass = DamagePass.Regular;
+                await RunStepAsync(step);
+                _damagePass = DamagePass.Only;
+                continue;
+            }
             await RunStepAsync(step);
         }
     }

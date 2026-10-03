@@ -43,6 +43,7 @@ public partial class GameBoard : Control
     private CardId? _manaChoiceSource;                 // multi-type source waiting for a color choice
     private readonly VBoxContainer _actionExtra = new();
     private readonly Dictionary<CardId, int> _damageSplit = new(); // blocker -> damage, for an unconfirmed assignment
+    private int _damageToPlayer;                                   // trample damage to the defending player
     private readonly ArrowLayer _arrows = new();
     private readonly PhaseBar _phaseBar = new();
     private readonly StackView _stackView = new();
@@ -288,9 +289,7 @@ public partial class GameBoard : Control
             _manaChoiceSource = null;
             _staged.Clear();
             if (decision is ManaPaymentDecision pay) _staged.AddRange(pay.Request.SuggestedTaps);
-            _damageSplit.Clear();
-            if (decision is DamageAssignmentDecision dmg)
-                foreach (var (blocker, amount) in dmg.Request.Suggested) _damageSplit[blocker] = amount;
+            if (decision is DamageAssignmentDecision dmg) ResetDamage(dmg);
             _lastDecision = decision;
         }
 
@@ -368,9 +367,18 @@ public partial class GameBoard : Control
             case PriorityDecision p: p.Answer(p.Legal.FirstOrDefault(a => a is PlayLand or CastSpell) ?? PassPriority.Instance); break;
             case ManaPaymentDecision pay: pay.Answer(pay.Request.SuggestedTaps); break;
             case DamageAssignmentDecision dmg: dmg.Answer(dmg.Request.Suggested); break;
+            case BlockDecision b when b.Request.MinimumBlockers.Count > 0:
+                b.Answer(Array.Empty<BlockDeclaration>()); // keep autoplay simple around menace
+                break;
             case AttackDecision a: a.Answer(a.PossibleAttackers.Select(id => new AttackDeclaration(id, a.Defenders[0])).ToList()); break;
             // Double-block the first attacker when possible so damage assignment gets exercised too.
-            case BlockDecision b: b.Answer(b.PossibleBlockers.Take(2).Select(bl => new BlockDeclaration(bl, b.Attackers[0])).ToList()); break;
+            case BlockDecision b:
+            {
+                var target = b.Attackers[0];
+                b.Answer(b.PossibleBlockers.Where(bl => b.Request.CanBlock[bl].Contains(target)).Take(2)
+                    .Select(bl => new BlockDeclaration(bl, target)).ToList());
+                break;
+            }
             case SelectCardsDecision s: s.Answer(view.Players[s.Player.Value].Hand.Take(s.Count).Select(c => c.Id).ToList()); break;
         }
     }
@@ -418,7 +426,12 @@ public partial class GameBoard : Control
                     FindCard(id)?.SetHighlight(_selected.Contains(id) ? CardHighlight.Attacking : CardHighlight.Playable);
                 break;
             case BlockDecision b:
-                foreach (var id in b.Attackers) FindCard(id)?.SetHighlight(CardHighlight.Attacking);
+                foreach (var id in b.Attackers)
+                {
+                    // With a blocker picked, only the attackers it may legally block light up.
+                    bool target = _pendingBlocker is { } picked && b.Request.CanBlock[picked].Contains(id);
+                    FindCard(id)?.SetHighlight(target ? CardHighlight.Playable : CardHighlight.Attacking);
+                }
                 foreach (var id in b.PossibleBlockers)
                 {
                     var h = _pendingBlocker == id ? CardHighlight.Selected
@@ -513,15 +526,18 @@ public partial class GameBoard : Control
             case DamageAssignmentDecision dmg:
             {
                 var attackerName = view.FindCard(dmg.Request.Attacker)?.Name ?? "Attacker";
-                int remaining = dmg.Request.Power - _damageSplit.Values.Sum();
+                int remaining = dmg.Request.Power - _damageSplit.Values.Sum() - _damageToPlayer;
                 _prompt.Text = $"{who}: assign {dmg.Request.Power} damage from {attackerName}";
                 _actionExtra.Visible = true;
                 foreach (var blocker in dmg.Request.Blockers) _actionExtra.AddChild(DamageRow(view, dmg, blocker, remaining));
+                bool lethalToAll = dmg.Request.Lethal.All(kv => _damageSplit.GetValueOrDefault(kv.Key) >= kv.Value);
+                if (dmg.Request.Trample) _actionExtra.AddChild(PlayerDamageRow(view, dmg, remaining, lethalToAll));
                 _actionExtra.AddChild(BoardStyle.MakeLabel(remaining == 0 ? "All damage assigned \u2713" : $"Left to assign: {remaining}", 14,
                     remaining == 0 ? new Color("6fd08c") : BoardStyle.Attacking));
-                AddButton("Auto", () => { _damageSplit.Clear(); foreach (var (b, n) in dmg.Request.Suggested) _damageSplit[b] = n; Refresh(); });
-                var confirmDamage = AddButton("Confirm", () => dmg.Answer(new Dictionary<CardId, int>(_damageSplit)), primary: true);
-                confirmDamage.Disabled = remaining != 0;
+                AddButton("Auto", () => { ResetDamage(dmg); Refresh(); });
+                var confirmDamage = AddButton("Confirm", () =>
+                    dmg.Answer(new DamageAssignment(new Dictionary<CardId, int>(_damageSplit), _damageToPlayer)), primary: true);
+                confirmDamage.Disabled = remaining != 0 || (_damageToPlayer > 0 && !lethalToAll);
                 break;
             }
 
@@ -534,10 +550,15 @@ public partial class GameBoard : Control
                 break;
 
             case BlockDecision b:
-                _prompt.Text = _pendingBlocker is null ? $"{who}: choose a blocker" : $"{who}: choose what it blocks";
-                AddButton(_blocks.Count == 0 ? "No blocks" : $"Confirm blocks ({_blocks.Count})", () =>
-                    b.Answer(_blocks.Select(kv => new BlockDeclaration(kv.Key, kv.Value)).ToList()), primary: true);
+            {
+                var blocks = _blocks.Select(kv => new BlockDeclaration(kv.Key, kv.Value)).ToList();
+                bool legal = b.Request.IsLegal(blocks, out var reason);
+                _prompt.Text = !legal ? $"{who}: {reason}"
+                    : _pendingBlocker is null ? $"{who}: choose a blocker" : $"{who}: choose what it blocks";
+                var confirmBlocks = AddButton(_blocks.Count == 0 ? "No blocks" : $"Confirm blocks ({_blocks.Count})", () => b.Answer(blocks), primary: true);
+                confirmBlocks.Disabled = !legal;
                 break;
+            }
 
             case SelectCardsDecision s:
                 string what = s.Reason == SelectCardsReason.MulliganBottom ? "put on the bottom" : "discard";
@@ -552,7 +573,7 @@ public partial class GameBoard : Control
     private Control DamageRow(GameView view, DamageAssignmentDecision dmg, CardId blocker, int remaining)
     {
         var card = view.FindCard(blocker);
-        int lethal = Math.Max(0, (card?.Toughness ?? 0) - (card?.Damage ?? 0));
+        int lethal = dmg.Request.Lethal[blocker];
         int amount = _damageSplit.GetValueOrDefault(blocker);
 
         var row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End, MouseFilter = MouseFilterEnum.Pass };
@@ -575,6 +596,37 @@ public partial class GameBoard : Control
         plus.Disabled = remaining == 0;
         plus.Pressed += () => { _damageSplit[blocker] = amount + 1; Refresh(); };
 
+        row.AddChild(minus);
+        row.AddChild(value);
+        row.AddChild(plus);
+        return row;
+    }
+
+    private void ResetDamage(DamageAssignmentDecision dmg)
+    {
+        _damageSplit.Clear();
+        foreach (var (blocker, amount) in dmg.Request.Suggested.ToBlockers) _damageSplit[blocker] = amount;
+        _damageToPlayer = dmg.Request.Suggested.ToPlayer;
+    }
+
+    /// <summary>Trample row: damage to the defending player, only allowed once every blocker has lethal damage.</summary>
+    private Control PlayerDamageRow(GameView view, DamageAssignmentDecision dmg, int remaining, bool lethalToAll)
+    {
+        var row = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        row.AddThemeConstantOverride("separation", 6);
+        row.AddChild(BoardStyle.MakeLabel(view.Players[dmg.Request.Defender.Value].Name, 14));
+        row.AddChild(BoardStyle.MakeLabel("trample", 12, lethalToAll ? new Color("6fd08c") : BoardStyle.TextDim));
+        var minus = BoardStyle.MakeButton("\u2212", 16);
+        minus.CustomMinimumSize = new Vector2(34, 32);
+        minus.Disabled = _damageToPlayer == 0;
+        minus.Pressed += () => { _damageToPlayer--; Refresh(); };
+        var value = BoardStyle.MakeLabel(_damageToPlayer.ToString(), 18, bold: true);
+        value.CustomMinimumSize = new Vector2(28, 0);
+        value.HorizontalAlignment = HorizontalAlignment.Center;
+        var plus = BoardStyle.MakeButton("+", 16);
+        plus.CustomMinimumSize = new Vector2(34, 32);
+        plus.Disabled = remaining == 0 || !lethalToAll;
+        plus.Pressed += () => { _damageToPlayer++; Refresh(); };
         row.AddChild(minus);
         row.AddChild(value);
         row.AddChild(plus);
@@ -696,7 +748,7 @@ public partial class GameBoard : Control
 
             case DamageAssignmentDecision dmg when dmg.Request.Blockers.Contains(id):
                 // Clicking a blocker adds one damage to it.
-                if (_damageSplit.Values.Sum() < dmg.Request.Power) _damageSplit[id] = _damageSplit.GetValueOrDefault(id) + 1;
+                if (_damageSplit.Values.Sum() + _damageToPlayer < dmg.Request.Power) _damageSplit[id] = _damageSplit.GetValueOrDefault(id) + 1;
                 break;
 
             case AttackDecision a when a.PossibleAttackers.Contains(id):
@@ -709,7 +761,7 @@ public partial class GameBoard : Control
                     if (_blocks.Remove(id) || _pendingBlocker == id) _pendingBlocker = null;
                     else _pendingBlocker = id;
                 }
-                else if (b.Attackers.Contains(id) && _pendingBlocker is { } blocker)
+                else if (b.Attackers.Contains(id) && _pendingBlocker is { } blocker && b.Request.CanBlock[blocker].Contains(id))
                 {
                     _blocks[blocker] = id;
                     _pendingBlocker = null;

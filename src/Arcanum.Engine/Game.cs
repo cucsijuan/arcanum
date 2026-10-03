@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using Arcanum.Engine.Cards;
 using Arcanum.Engine.Core;
 using Arcanum.Engine.Events;
 using Arcanum.Engine.Players;
@@ -49,6 +50,19 @@ public sealed partial class Game
 
     private bool IsMultiplayer => State.Players.Count > 2;
 
+    /// <summary>
+    /// Puts a permanent onto the battlefield before the game starts (deck-test sandbox, rules scenarios).
+    /// </summary>
+    public CardId SetupPermanent(PlayerId owner, CardDefinition definition)
+    {
+        if (State.TurnNumber > 0) throw new InvalidOperationException("Permanents can only be set up before the game starts.");
+        var nextId = State.Cards.Count == 0 ? 1 : State.Cards.Keys.Max(k => k.Value) + 1;
+        var card = new Card(new CardId(nextId), definition, owner) { Zone = Zone.Battlefield };
+        State.Cards.Add(card.Id, card);
+        State.Battlefield.Add(card.Id);
+        return card.Id;
+    }
+
     public GameView ViewFor(PlayerId player, bool revealAll = false) => ViewBuilder.Build(State, player, revealAll);
 
     private IPlayerController ControllerOf(PlayerId player) => _controllers[player.Value];
@@ -63,7 +77,7 @@ public sealed partial class Game
     public async Task RunAsync(CancellationToken ct = default)
     {
         _ct = ct;
-        var startingPlayer = new PlayerId(Rng.Next(State.Players.Count));
+        var startingPlayer = Config.StartingPlayer ?? new PlayerId(Rng.Next(State.Players.Count));
         Emit(new GameStarted(startingPlayer, Config.Seed));
 
         foreach (var player in State.Players) Shuffle(player);
