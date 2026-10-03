@@ -40,7 +40,8 @@ public partial class GameBoard : Control
     private readonly Dictionary<CardId, CardId> _blocks = new(); // blocker -> attacker
     private CardId? _pendingBlocker;
     private readonly List<ManaTap> _staged = new();  // sources picked for an unconfirmed payment
-    private CardId? _manaChoiceSource;                 // multi-type source waiting for a color choice
+    private CardId? _abilityChoiceSource;              // permanent with several abilities waiting for a choice
+    private readonly List<Arcanum.Engine.Abilities.Target> _chosenTargets = new(); // targets picked so far
     private readonly VBoxContainer _actionExtra = new();
     private readonly Dictionary<CardId, int> _damageSplit = new(); // blocker -> damage, for an unconfirmed assignment
     private int _damageToPlayer;                                   // trample damage to the defending player
@@ -146,6 +147,7 @@ public partial class GameBoard : Control
         foreach (var area in new[] { _topArea, _bottomArea })
         {
             area.CardClicked += OnCardClicked;
+            area.PlayerClicked += OnPlayerClicked;
             area.CardHoverStarted += ShowPreview;
             area.CardHoverEnded += HidePreview;
             AddChild(area);
@@ -286,7 +288,8 @@ public partial class GameBoard : Control
             _selected.Clear();
             _blocks.Clear();
             _pendingBlocker = null;
-            _manaChoiceSource = null;
+            _abilityChoiceSource = null;
+            _chosenTargets.Clear();
             _staged.Clear();
             if (decision is ManaPaymentDecision pay) _staged.AddRange(pay.Request.SuggestedTaps);
             if (decision is DamageAssignmentDecision dmg) ResetDamage(dmg);
@@ -333,7 +336,7 @@ public partial class GameBoard : Control
             if (_showcase is { } freezeOn && decision.GetType().Name == freezeOn)
             {
                 GD.Print($"SHOWCASE frozen on {freezeOn}");
-                if (decision is ManaPaymentDecision pay && FindCard(pay.Request.Spell) is { } spellNode) ShowPreview(spellNode);
+                if (decision is ManaPaymentDecision pay && FindCard(pay.Request.Source) is { } spellNode) ShowPreview(spellNode);
                 return;
             }
             // ARCANUM_TEST_UNDO=1: every 7th manual decision, undo once first (exercises replay end to end).
@@ -365,6 +368,7 @@ public partial class GameBoard : Control
         {
             case MulliganDecision m: m.Answer(true); break;
             case PriorityDecision p: p.Answer(p.Legal.FirstOrDefault(a => a is PlayLand or CastSpell) ?? PassPriority.Instance); break;
+            case TargetDecision t: t.Answer(t.Request.Legal.Select(choices => choices[0]).ToList()); break;
             case ManaPaymentDecision pay: pay.Answer(pay.Request.SuggestedTaps); break;
             case DamageAssignmentDecision dmg: dmg.Answer(dmg.Request.Suggested); break;
             case BlockDecision b when b.Request.MinimumBlockers.Count > 0:
@@ -387,6 +391,8 @@ public partial class GameBoard : Control
 
     private void ApplyHighlights(GameView view, Decision? decision)
     {
+        _topArea.SetPlayerTargetable(false);
+        _bottomArea.SetPlayerTargetable(false);
         foreach (var attack in view.Attacks)
         {
             FindCard(attack.Attacker)?.SetHighlight(CardHighlight.Attacking);
@@ -398,13 +404,28 @@ public partial class GameBoard : Control
             case PriorityDecision p:
                 foreach (var action in p.Legal)
                 {
-                    var id = action switch { PlayLand l => l.Card, CastSpell c => c.Card, _ => (CardId?)null };
+                    var id = action switch { PlayLand l => l.Card, CastSpell c => c.Card, ActivateAbility a => a.Source, _ => (CardId?)null };
                     if (id is { } cardId) FindCard(cardId)?.SetHighlight(CardHighlight.Playable);
                 }
                 break;
+            case TargetDecision t:
+            {
+                FindCard(t.Request.Source)?.SetHighlight(CardHighlight.Selected);
+                foreach (var chosen in _chosenTargets)
+                    if (chosen.Card is { } c) FindCard(c)?.SetHighlight(CardHighlight.Selected);
+                if (_chosenTargets.Count < t.Request.Legal.Count)
+                {
+                    foreach (var option in t.Request.Legal[_chosenTargets.Count])
+                    {
+                        if (option.Card is { } c) FindCard(c)?.SetHighlight(CardHighlight.Playable);
+                        if (option.Player is { } pl) AreaOf(pl).SetPlayerTargetable(true);
+                    }
+                }
+                break;
+            }
             case ManaPaymentDecision pay:
             {
-                FindCard(pay.Request.Spell)?.SetHighlight(CardHighlight.Selected);
+                FindCard(pay.Request.Source)?.SetHighlight(CardHighlight.Selected);
                 var remaining = RemainingCost(pay);
                 foreach (var source in pay.Request.Sources)
                 {
@@ -461,6 +482,23 @@ public partial class GameBoard : Control
 
         foreach (var attack in view.Attacks)
             foreach (var blocker in attack.Blockers) Add(blocker, attack.Attacker, BoardStyle.Blocking);
+
+        // Spells and abilities on the stack point at their targets.
+        for (int i = 0; i < view.Stack.Count; i++)
+        {
+            if (_stackView.NodeAt(i) is not { } stackNode) continue;
+            foreach (var target in view.Stack[i].Targets)
+                if (TargetControl(target) is { } to) arrows.Add(new(stackNode, to, BoardStyle.Selected));
+        }
+
+        // While choosing targets: arrows to the ones picked so far and one following the mouse.
+        if (decision is TargetDecision td && FindCard(td.Request.Source) is { } sourceNode)
+        {
+            foreach (var chosen in _chosenTargets)
+                if (TargetControl(chosen) is { } to) arrows.Add(new(sourceNode, to, BoardStyle.Selected));
+            if (_chosenTargets.Count < td.Request.Legal.Count) arrows.Add(new(sourceNode, null, BoardStyle.Playable));
+        }
+
         if (decision is BlockDecision)
         {
             foreach (var (blocker, attacker) in _blocks) Add(blocker, attacker, BoardStyle.Blocking);
@@ -468,6 +506,9 @@ public partial class GameBoard : Control
         }
         _arrows.SetArrows(arrows);
     }
+
+    private Control? TargetControl(Arcanum.Engine.Abilities.Target target) =>
+        target.Card is { } c ? FindCard(c) : target.Player is { } p ? AreaOf(p).LifeBox : null;
 
     private void BuildActionPanel(GameView view, Decision? decision)
     {
@@ -486,16 +527,37 @@ public partial class GameBoard : Control
                 AddButton("Keep", () => m.Answer(true), primary: true);
                 break;
 
-            case PriorityDecision p when _manaChoiceSource is { } source:
-                _prompt.Text = $"{who}: add which mana?";
-                AddButton("Cancel", () => { _manaChoiceSource = null; Refresh(); });
-                foreach (var tap in p.Legal.OfType<ActivateManaAbility>().Where(a => a.Source == source))
-                    AddButton(tap.Type.ToSymbol().ToString(), () => p.Answer(tap));
+            case PriorityDecision p when _abilityChoiceSource is { } source:
+            {
+                var card = view.FindCard(source);
+                _prompt.Text = $"{who}: use {card?.Name ?? "permanent"}";
+                AddButton("Cancel", () => { _abilityChoiceSource = null; Refresh(); });
+                foreach (var option in SourceActions(p, source))
+                {
+                    var label = option switch
+                    {
+                        ActivateManaAbility m => $"Add {{{m.Type.ToSymbol()}}}",
+                        ActivateAbility a when card is not null && a.Index < card.AbilityTexts.Count => Shorten(card.AbilityTexts[a.Index]),
+                        _ => "Activate",
+                    };
+                    AddButton(label, () => p.Answer(option));
+                }
                 break;
+            }
+
+            case TargetDecision t:
+            {
+                var source = view.FindCard(t.Request.Source)?.Name ?? "spell";
+                int index = Math.Min(_chosenTargets.Count, t.Request.Specs.Count - 1);
+                _prompt.Text = $"{who}: choose {t.Request.Specs[index].Describe()} for {source}";
+                if (t.Request.CanCancel) AddButton("Cancel", () => t.Answer(null));
+                if (_chosenTargets.Count > 0) AddButton("Back", () => { _chosenTargets.RemoveAt(_chosenTargets.Count - 1); Refresh(); });
+                break;
+            }
 
             case ManaPaymentDecision pay:
             {
-                var spell = view.FindCard(pay.Request.Spell)?.Name ?? "spell";
+                var spell = view.FindCard(pay.Request.Source)?.Name ?? "spell";
                 var remaining = RemainingCost(pay);
                 _prompt.Text = $"{who}: cast {spell}";
                 _actionExtra.Visible = true;
@@ -713,11 +775,33 @@ public partial class GameBoard : Control
         }
     }
 
+    /// <summary>Activated and mana abilities a click on <paramref name="source"/> could mean.</summary>
+    private static List<PlayerAction> SourceActions(PriorityDecision p, CardId source) =>
+        p.Legal.Where(a => a is ActivateAbility aa && aa.Source == source || a is ActivateManaAbility m && m.Source == source).ToList();
+
+    private static string Shorten(string text) => text.Length <= 28 ? text : text[..27] + "\u2026";
+
+    private void OnPlayerClicked(PlayerId player) => PickTarget(Arcanum.Engine.Abilities.Target.Of(player));
+
+    /// <summary>Adds a target if it is legal for the next requirement; answers once every target is chosen.</summary>
+    private void PickTarget(Arcanum.Engine.Abilities.Target target)
+    {
+        if (_session.CurrentDecision is not TargetDecision t || _chosenTargets.Count >= t.Request.Legal.Count) return;
+        if (!t.Request.Legal[_chosenTargets.Count].Contains(target)) return;
+        _chosenTargets.Add(target);
+        if (_chosenTargets.Count == t.Request.Legal.Count) t.Answer(_chosenTargets.ToList());
+        else Refresh();
+    }
+
     private void OnCardClicked(CardNode node)
     {
         var id = node.Id;
         switch (_session.CurrentDecision)
         {
+            case TargetDecision:
+                PickTarget(Arcanum.Engine.Abilities.Target.Of(id));
+                return;
+
             case PriorityDecision p:
             {
                 var action = p.Legal.FirstOrDefault(a => a is PlayLand l && l.Card == id || a is CastSpell c && c.Card == id);
@@ -729,10 +813,10 @@ public partial class GameBoard : Control
                     return;
                 }
                 if (action is not null) { p.Answer(action); return; }
-                // Clicking an untapped mana source floats its mana.
-                var manaOptions = p.Legal.OfType<ActivateManaAbility>().Where(a => a.Source == id).ToList();
-                if (manaOptions.Count == 1) { p.Answer(manaOptions[0]); return; }
-                if (manaOptions.Count > 1) _manaChoiceSource = id;
+                // Clicking a permanent uses its ability (or floats its mana); several options open a chooser.
+                var options = SourceActions(p, id);
+                if (options.Count == 1) { p.Answer(options[0]); return; }
+                if (options.Count > 1) _abilityChoiceSource = id;
                 break;
             }
 
@@ -810,6 +894,9 @@ public partial class GameBoard : Control
         {
             case DamageDealt { TargetCard: { } card } d when FindCard(card) is { } node:
                 SpawnFloatingText($"-{d.Amount}", node.GetGlobalTransform() * (node.Size / 2), BoardStyle.Attacking);
+                break;
+            case LifeChanged { NewLife: var now, OldLife: var before } l when now > before:
+                SpawnFloatingText($"+{now - before}", AreaOf(l.Player).LifeGlobalCenter + new Vector2(100, 45), new Color("6fd08c"), rise: 40);
                 break;
             case DamageDealt { TargetPlayer: { } player } d:
                 var area = AreaOf(player);

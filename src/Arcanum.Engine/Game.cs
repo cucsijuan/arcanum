@@ -53,13 +53,19 @@ public sealed partial class Game
     /// <summary>
     /// Puts a permanent onto the battlefield before the game starts (deck-test sandbox, rules scenarios).
     /// </summary>
-    public CardId SetupPermanent(PlayerId owner, CardDefinition definition)
+    public CardId SetupPermanent(PlayerId owner, CardDefinition definition) => Setup(owner, definition, Zone.Battlefield);
+
+    /// <summary>Puts a card into a player's hand before the game starts, on top of the normal opening hand.</summary>
+    public CardId SetupInHand(PlayerId owner, CardDefinition definition) => Setup(owner, definition, Zone.Hand);
+
+    private CardId Setup(PlayerId owner, CardDefinition definition, Zone zone)
     {
-        if (State.TurnNumber > 0) throw new InvalidOperationException("Permanents can only be set up before the game starts.");
+        if (State.TurnNumber > 0) throw new InvalidOperationException("Cards can only be set up before the game starts.");
         var nextId = State.Cards.Count == 0 ? 1 : State.Cards.Keys.Max(k => k.Value) + 1;
-        var card = new Card(new CardId(nextId), definition, owner) { Zone = Zone.Battlefield };
+        var card = new Card(new CardId(nextId), definition, owner) { Zone = zone };
         State.Cards.Add(card.Id, card);
-        State.Battlefield.Add(card.Id);
+        if (zone == Zone.Battlefield) State.Battlefield.Add(card.Id);
+        else State.GetPlayer(owner).Hand.Add(card.Id);
         return card.Id;
     }
 
@@ -70,6 +76,7 @@ public sealed partial class Game
     private void Emit(GameEvent e)
     {
         _log.Add(e);
+        CollectTriggers(e);
         EventRaised?.Invoke(e);
     }
 

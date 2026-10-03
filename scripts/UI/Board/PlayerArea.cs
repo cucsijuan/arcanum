@@ -47,6 +47,9 @@ public partial class PlayerArea : Control
     public event Action<CardNode>? CardHoverStarted;
     public event Action<CardNode>? CardHoverEnded;
 
+    /// <summary>The life counter or name badge was clicked (choosing this player as a target).</summary>
+    public event Action<PlayerId>? PlayerClicked;
+
     public PlayerArea()
     {
         ClipContents = true;
@@ -65,13 +68,17 @@ public partial class PlayerArea : Control
         _playmat.Visible = false;
         AddChild(_playmat);
 
-        var lifeBox = _lifeBox = new Panel { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(6, 6), Size = new Vector2(92, 46) };
+        var lifeBox = _lifeBox = new Panel { MouseFilter = MouseFilterEnum.Stop, Position = new Vector2(6, 6), Size = new Vector2(92, 46) };
         lifeBox.AddThemeStyleboxOverride("panel", BoardStyle.Box(BoardStyle.Panel, 6, BoardStyle.PanelBorder, 1));
         _life.HorizontalAlignment = HorizontalAlignment.Center;
         _life.VerticalAlignment = VerticalAlignment.Center;
         _life.SetAnchorsPreset(LayoutPreset.FullRect);
         lifeBox.AddChild(_life);
         AddChild(lifeBox);
+        lifeBox.GuiInput += e =>
+        {
+            if (e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left }) PlayerClicked?.Invoke(Player);
+        };
 
         // Floating mana, shown under the life total while the pool is not empty.
         _pool.MouseFilter = MouseFilterEnum.Ignore;
@@ -210,8 +217,20 @@ public partial class PlayerArea : Control
         tween.Chain().TweenCallback(Callable.From(node.QueueFree));
     }
 
+    /// <summary>The life counter, also the click target for choosing this player.</summary>
+    public Control LifeBox => _lifeBox;
+
     /// <summary>Global center of the life counter, where damage to this player is shown.</summary>
     public Vector2 LifeGlobalCenter => _lifeBox.GetGlobalRect().GetCenter();
+
+    /// <summary>Glows the life counter while this player is a legal target.</summary>
+    public void SetPlayerTargetable(bool targetable)
+    {
+        _lifeBox.AddThemeStyleboxOverride("panel", targetable
+            ? BoardStyle.Box(BoardStyle.Panel, 6, BoardStyle.Playable, 3)
+            : BoardStyle.Box(BoardStyle.Panel, 6, BoardStyle.PanelBorder, 1));
+        _lifeBox.MouseDefaultCursorShape = targetable ? CursorShape.PointingHand : CursorShape.Arrow;
+    }
 
     /// <summary>Brief red flash of the life counter.</summary>
     public void FlashLife(Color color)

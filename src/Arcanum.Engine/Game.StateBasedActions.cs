@@ -25,6 +25,16 @@ public sealed partial class Game
         }
         if (State.IsGameOver) return any;
 
+        // +1/+1 and -1/-1 counters on the same permanent cancel out (704.5q).
+        foreach (var card in State.Battlefield.Select(State.GetCard))
+        {
+            int pairs = Math.Min(card.CounterCount(Abilities.CounterKind.PlusOnePlusOne), card.CounterCount(Abilities.CounterKind.MinusOneMinusOne));
+            if (pairs == 0) continue;
+            card.Counters[Abilities.CounterKind.PlusOnePlusOne] -= pairs;
+            card.Counters[Abilities.CounterKind.MinusOneMinusOne] -= pairs;
+            any = true;
+        }
+
         var dying = State.Battlefield.Select(State.GetCard)
             .Where(c => c.IsCreature && (
                 c.Toughness <= 0 // 704.5f: put into the graveyard, even if indestructible

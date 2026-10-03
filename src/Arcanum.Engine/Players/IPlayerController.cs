@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using Arcanum.Engine.Abilities;
 using Arcanum.Engine.Core;
 using Arcanum.Engine.Views;
 
@@ -24,6 +25,9 @@ public interface IPlayerController
     /// exactly (no surplus taps). Return null to cancel casting; the card stays in hand.
     /// </summary>
     Task<IReadOnlyList<ManaTap>?> ChooseManaPaymentAsync(GameView view, ManaPaymentRequest request);
+
+    /// <summary>Pick one target per requirement from the legal choices; null cancels (only if allowed).</summary>
+    Task<IReadOnlyList<Target>?> ChooseTargetsAsync(GameView view, TargetRequest request);
 
     Task<IReadOnlyList<AttackDeclaration>> DeclareAttackersAsync(
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders);

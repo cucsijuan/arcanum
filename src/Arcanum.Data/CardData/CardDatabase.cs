@@ -8,11 +8,12 @@ public sealed class CardDatabase : ICardDatabase
 {
     private readonly Dictionary<string, (CardDefinition Definition, CardSupport Support)> _byName;
 
-    public CardDatabase(IEnumerable<CardRecord> records)
+    /// <param name="scripts">Card scripts by oracle id (from the content module).</param>
+    public CardDatabase(IEnumerable<CardRecord> records, IReadOnlyDictionary<string, Scripts.CardScript>? scripts = null)
     {
         _byName = new Dictionary<string, (CardDefinition, CardSupport)>(StringComparer.OrdinalIgnoreCase);
         foreach (var record in records.Where(r => !r.IsToken))
-            _byName.TryAdd(record.Name, CardFactory.Create(record));
+            _byName.TryAdd(record.Name, CardFactory.Create(record, scripts?.GetValueOrDefault(record.OracleId)));
     }
 
     public int Count => _byName.Count;

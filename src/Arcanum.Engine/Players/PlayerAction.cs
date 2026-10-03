@@ -20,4 +20,7 @@ public sealed record CastSpell(CardId Card) : PlayerAction;
 /// Activate a mana ability, e.g. tap a land for mana (rule 605). Mana abilities don't use the stack;
 /// the mana floats in the pool until spent or until the step ends.
 /// </summary>
+/// <summary>Activate the <paramref name="Index"/>-th activated ability of a permanent (rule 602).</summary>
+public sealed record ActivateAbility(CardId Source, int Index) : PlayerAction;
+
 public sealed record ActivateManaAbility(CardId Source, Mana.ManaType Type) : PlayerAction;

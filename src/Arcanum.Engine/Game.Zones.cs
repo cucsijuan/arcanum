@@ -13,6 +13,7 @@ public sealed partial class Game
         var card = State.GetCard(id);
         var from = card.Zone;
         var owner = State.GetPlayer(card.Owner);
+        var lastController = card.Controller;
 
         switch (from)
         {
@@ -47,7 +48,10 @@ public sealed partial class Game
                 owner.GetZone(to).Add(id);
                 break;
         }
-        Emit(new CardMoved(id, card.Owner, from, to));
+        Emit(new CardMoved(id, card.Owner, from, to, lastController));
+
+        // A token that leaves the battlefield ceases to exist (rule 111.7, 704.5d).
+        if (card.Definition.IsToken && to != Zone.Battlefield && to != Zone.Stack) owner.GetZone(to).Remove(id);
     }
 
     private void Draw(PlayerId playerId, int count = 1)

@@ -40,6 +40,9 @@ public sealed class UiPlayerController(PlayerId player, DecisionHub hub, Decisio
             return (await hub.Ask(new ManaPaymentDecision { Player = player, Request = request }), true);
         });
 
+    public Task<IReadOnlyList<Arcanum.Engine.Abilities.Target>?> ChooseTargetsAsync(GameView view, TargetRequest request) =>
+        Ask(new TargetDecision { Player = player, Request = request });
+
     public Task<IReadOnlyList<AttackDeclaration>> DeclareAttackersAsync(
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders) =>
         Ask(new AttackDecision { Player = player, PossibleAttackers = possibleAttackers, Defenders = defenders });

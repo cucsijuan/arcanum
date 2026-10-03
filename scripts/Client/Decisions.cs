@@ -38,6 +38,11 @@ public sealed class ManaPaymentDecision : Decision<IReadOnlyList<ManaTap>?>
     public required ManaPaymentRequest Request { get; init; }
 }
 
+public sealed class TargetDecision : Decision<IReadOnlyList<Arcanum.Engine.Abilities.Target>?>
+{
+    public required TargetRequest Request { get; init; }
+}
+
 public sealed class AttackDecision : Decision<IReadOnlyList<AttackDeclaration>>
 {
     public required IReadOnlyList<CardId> PossibleAttackers { get; init; }

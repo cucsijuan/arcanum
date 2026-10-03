@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using Arcanum.Engine.Abilities;
 using Arcanum.Engine.Mana;
 
 namespace Arcanum.Engine.Cards;
@@ -28,6 +29,15 @@ public sealed record CardDefinition
     /// Placeholder for basic land mana abilities until the ability system lands (M4).
     /// </summary>
     public IReadOnlyList<ManaType> TapForMana { get; init; } = Array.Empty<ManaType>();
+
+    /// <summary>What an instant or sorcery does (null for permanents and spells without effects).</summary>
+    public SpellAbility? Spell { get; init; }
+
+    /// <summary>Activated and triggered abilities of the permanent.</summary>
+    public IReadOnlyList<AbilityDefinition> Abilities { get; init; } = Array.Empty<AbilityDefinition>();
+
+    /// <summary>Marks a token definition (tokens cease to exist outside the battlefield, rule 111.7).</summary>
+    public bool IsToken { get; init; }
 
     public bool Is(CardType type) => (Types & type) != 0;
 

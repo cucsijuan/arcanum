@@ -16,6 +16,8 @@ public enum Keyword
     FirstStrike,
     DoubleStrike,
     Indestructible,
+    Hexproof,
+    Shroud,
 }
 
 public static class Keywords

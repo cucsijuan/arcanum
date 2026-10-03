@@ -35,7 +35,11 @@ public static class ViewBuilder
                 Tapped = card.Tapped,
                 Damage = card.Damage,
                 SummoningSick = card.Zone == Zone.Battlefield && card.IsSummoningSick,
-                Keywords = card.Definition.KeywordAbilities.Select(Cards.Keywords.DisplayName).ToList(),
+                Keywords = Enum.GetValues<Cards.Keyword>().Where(card.Has).Select(Cards.Keywords.DisplayName).ToList(),
+                PlusOneCounters = card.CounterCount(Abilities.CounterKind.PlusOnePlusOne),
+                MinusOneCounters = card.CounterCount(Abilities.CounterKind.MinusOneMinusOne),
+                IsToken = card.Definition.IsToken,
+                AbilityTexts = card.Definition.Abilities.Select(a => a.Text).ToList(),
             };
         }
 
@@ -63,7 +67,8 @@ public static class ViewBuilder
                 ManaPool = Enum.GetValues<Mana.ManaType>().Where(t => p.ManaPool[t] > 0).ToDictionary(t => t, t => p.ManaPool[t]),
             }).ToList(),
             Battlefield = Views(state.Battlefield),
-            Stack = state.Stack.OfType<SpellOnStack>().Select(s => new StackItemView(View(s.Card), s.Controller)).ToList(),
+            Stack = state.Stack.Select(s => new StackItemView(
+                View(s.SourceCard), s.Controller, (s as AbilityOnStack)?.Ability.Text, s.Targets.Select(t => t.Target).ToList())).ToList(),
             Attacks = state.Combat?.Attacks
                 .Select(a => new AttackView(a.Attacker, a.Defender, a.Blockers.ToList(), a.IsBlocked)).ToList()
                 ?? (IReadOnlyList<AttackView>)Array.Empty<AttackView>(),

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using Arcanum.Engine.Abilities;
 using Arcanum.Engine.Cards;
 using Arcanum.Engine.Core;
 using Arcanum.Engine.Events;
+using Arcanum.Engine.Mana;
 using Arcanum.Engine.Players;
 using Arcanum.Engine.Rules;
 using Arcanum.Engine.State;
@@ -22,7 +24,7 @@ public sealed partial class Game
         while (true)
         {
             _ct.ThrowIfCancellationRequested();
-            CheckStateBasedActions();
+            await SettleBeforePriorityAsync();
             if (State.IsGameOver) return;
             if (State.GetPlayer(player).HasLost) player = State.NextLivingPlayer(player);
 
@@ -49,10 +51,20 @@ public sealed partial class Game
                 continue;
             }
 
-            await PerformAsync(player, action);
-            consecutivePasses = 0; // rule 117.3c: the acting player receives priority again
+            if (await PerformAsync(player, action)) consecutivePasses = 0; // rule 117.3c
         }
         State.PriorityPlayer = null;
+    }
+
+    /// <summary>State-based actions and pending triggers, repeated until neither applies (rule 117.5).</summary>
+    private async Task SettleBeforePriorityAsync()
+    {
+        do
+        {
+            CheckStateBasedActions();
+            if (State.IsGameOver) return;
+        }
+        while (await PutPendingTriggersOnStackAsync());
     }
 
     public IReadOnlyList<PlayerAction> GetLegalActions(PlayerId playerId)
@@ -69,8 +81,17 @@ public sealed partial class Game
                 continue;
             }
             bool timingOk = card.Is(CardType.Instant) || sorcerySpeed;
-            if (timingOk && ManaPayment.FindPlan(State, playerId, card.Definition.ManaCost) is not null)
+            if (timingOk && HasLegalTargets(card.Definition.Spell, playerId, card.Id)
+                && ManaPayment.FindPlan(State, playerId, card.Definition.ManaCost) is not null)
                 actions.Add(new CastSpell(card.Id));
+        }
+
+        foreach (var permanent in State.PermanentsControlledBy(playerId))
+        {
+            var abilities = permanent.Definition.Abilities;
+            for (int i = 0; i < abilities.Count; i++)
+                if (abilities[i] is ActivatedAbility ability && CanActivate(permanent, ability, playerId, sorcerySpeed))
+                    actions.Add(new ActivateAbility(permanent.Id, i));
         }
 
         // Mana abilities can be activated any time the player has priority (rule 605.3a).
@@ -80,7 +101,16 @@ public sealed partial class Game
         return actions;
     }
 
-    private async Task PerformAsync(PlayerId playerId, PlayerAction action)
+    private bool CanActivate(Card source, ActivatedAbility ability, PlayerId player, bool sorcerySpeed)
+    {
+        if (ability.SorcerySpeed && !sorcerySpeed) return false;
+        if (ability.Cost.Tap && (source.Tapped || source.IsSummoningSick)) return false;
+        if (!HasLegalTargets(ability, player, source.Id)) return false;
+        return ManaPayment.FindPlan(State, player, ability.Cost.Mana, exclude: ability.Cost.Tap ? source.Id : null) is not null;
+    }
+
+    /// <returns>False if the action was cancelled and nothing happened.</returns>
+    private async Task<bool> PerformAsync(PlayerId playerId, PlayerAction action)
     {
         var player = State.GetPlayer(playerId);
         switch (action)
@@ -89,46 +119,83 @@ public sealed partial class Game
                 player.LandsPlayedThisTurn++;
                 MoveCard(play.Card, Zone.Battlefield);
                 Emit(new LandPlayed(playerId, play.Card));
-                break;
+                return true;
 
             case ActivateManaAbility mana:
                 TapForMana(player, new ManaTap(mana.Source, mana.Type));
-                break;
+                return true;
 
             case CastSpell cast:
-                await CastSpellAsync(player, cast.Card);
-                break;
+                return await CastSpellAsync(player, cast.Card);
+
+            case ActivateAbility activate:
+                return await ActivateAbilityAsync(player, activate);
 
             default:
                 throw new InvalidDecisionException($"Unsupported action {action}.");
         }
     }
 
-    private async Task CastSpellAsync(Player player, CardId cardId)
+    /// <summary>Casting (rule 601.2): choose targets, then pay; either step can be cancelled with nothing changed.</summary>
+    private async Task<bool> CastSpellAsync(Player player, CardId cardId)
     {
-        var cost = State.GetCard(cardId).Definition.ManaCost;
-        var plan = ManaPayment.FindPlan(State, player.Id, cost)
-                   ?? throw new InvalidOperationException("Legal spell became unpayable.");
+        var card = State.GetCard(cardId);
+        var targets = await ChooseTargetsAsync(player.Id, card.Definition.Spell, cardId, card.Name, canCancel: true);
+        if (targets is null) return false;
+
+        if (!await PayManaAsync(player, cardId, card.Definition.ManaCost, exclude: null)) return false;
+
+        MoveCard(cardId, Zone.Stack);
+        State.Stack.Add(new SpellOnStack(cardId, player.Id, targets));
+        Emit(new SpellCast(player.Id, cardId));
+        return true;
+    }
+
+    /// <summary>Activating (rule 602.2): choose targets, pay every cost, put the ability on the stack.</summary>
+    private async Task<bool> ActivateAbilityAsync(Player player, ActivateAbility action)
+    {
+        var source = State.GetCard(action.Source);
+        var ability = (ActivatedAbility)source.Definition.Abilities[action.Index];
+        var targets = await ChooseTargetsAsync(player.Id, ability, source.Id, ability.Text, canCancel: true);
+        if (targets is null) return false;
+
+        if (!await PayManaAsync(player, source.Id, ability.Cost.Mana, exclude: ability.Cost.Tap ? source.Id : null)) return false;
+        if (ability.Cost.Tap)
+        {
+            source.Tapped = true;
+            Emit(new PermanentTapped(source.Id));
+        }
+        if (ability.Cost.SacrificeSelf) MoveCard(source.Id, Zone.Graveyard);
+
+        State.Stack.Add(new AbilityOnStack(source.Id, ability, player.Id, targets));
+        Emit(new AbilityActivated(player.Id, source.Id, ability.Text));
+        return true;
+    }
+
+    /// <summary>Asks the player how to pay a mana cost (floating mana first). Returns false if they cancel.</summary>
+    private async Task<bool> PayManaAsync(Player player, CardId source, ManaCost cost, CardId? exclude)
+    {
+        if (cost.ManaValue == 0) return true;
+        var plan = ManaPayment.FindPlan(State, player.Id, cost, exclude)
+                   ?? throw new InvalidOperationException("Legal action became unpayable.");
         var (fromPool, remaining) = ManaPayment.ApplyPool(cost, player.ManaPool);
-        var sources = ManaPayment.AvailableSources(State, player.Id)
+        var sources = ManaPayment.AvailableSources(State, player.Id, exclude)
             .Select(c => new ManaSourceOption(c.Id, c.Definition.TapForMana))
             .ToList();
-        var request = new ManaPaymentRequest(cardId, cost, fromPool, remaining, plan.Taps, sources);
+        var request = new ManaPaymentRequest(source, cost, fromPool, remaining, plan.Taps, sources);
 
         var taps = await ControllerOf(player.Id).ChooseManaPaymentAsync(ViewFor(player.Id), request);
-        if (taps is null) return; // cancelled: nothing was paid, the card never left the hand
+        if (taps is null) return false;
 
         Require(taps.Select(t => t.Source).Distinct().Count() == taps.Count, "Each source can be tapped only once.");
         Require(taps.All(t => sources.Any(s => s.Source == t.Source && s.Types.Contains(t.Type))), "Illegal mana source.");
         var (owed, excess) = ManaPayment.Apply(remaining, taps.Select(t => t.Type));
         Require(owed.ManaValue == 0, $"Payment is short by {owed}.");
-        Require(excess == 0, "Payment taps more mana than the spell costs.");
+        Require(excess == 0, "Payment taps more mana than the cost.");
 
         foreach (var tap in taps) TapForMana(player, tap);
         foreach (var type in fromPool.Concat(taps.Select(t => t.Type))) player.ManaPool.Remove(type);
-        MoveCard(cardId, Zone.Stack);
-        State.Stack.Add(new SpellOnStack(cardId, player.Id));
-        Emit(new SpellCast(player.Id, cardId));
+        return true;
     }
 
     private void TapForMana(Player player, ManaTap tap)
@@ -146,10 +213,25 @@ public sealed partial class Game
         switch (item)
         {
             case SpellOnStack spell:
+            {
                 var card = State.GetCard(spell.Card);
-                // Instant/sorcery effects arrive with the ability system (M4).
+                if (card.Definition.Spell is { } effect && !ApplyResolution(item, effect, card))
+                {
+                    MoveCard(spell.Card, Zone.Graveyard);
+                    Emit(new FizzledOnResolution(spell.Card));
+                    break;
+                }
                 MoveCard(spell.Card, card.Types.IsPermanent() ? Zone.Battlefield : Zone.Graveyard, controller: spell.Controller);
                 Emit(new SpellResolved(spell.Card));
+                break;
+            }
+            case AbilityOnStack ability:
+                if (!ApplyResolution(item, ability.Ability, State.GetCard(ability.Source)))
+                {
+                    Emit(new FizzledOnResolution(ability.Source));
+                    break;
+                }
+                Emit(new AbilityResolved(ability.Source, ability.Ability.Text));
                 break;
         }
     }

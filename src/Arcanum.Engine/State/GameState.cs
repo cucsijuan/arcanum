@@ -3,6 +3,9 @@ using Arcanum.Engine.Core;
 
 namespace Arcanum.Engine.State;
 
+/// <summary>A temporary P/T change and/or keyword grant on one specific object (card + version).</summary>
+public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, int Toughness, IReadOnlyList<Cards.Keyword> Keywords);
+
 /// <summary>Complete, authoritative state of a game. Only the engine mutates it.</summary>
 public sealed class GameState
 {
@@ -12,6 +15,9 @@ public sealed class GameState
 
     /// <summary>Last element is the top of the stack.</summary>
     public List<StackItem> Stack { get; } = new();
+
+    /// <summary>"Until end of turn" modifications, removed in the cleanup step (rule 514.2).</summary>
+    public List<UntilEndOfTurnEffect> UntilEndOfTurn { get; } = new();
 
     public int TurnNumber { get; set; }
     public PlayerId ActivePlayer { get; set; }

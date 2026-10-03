@@ -26,6 +26,11 @@ public sealed record CardView
     public int Damage { get; init; }
     public bool SummoningSick { get; init; }
     public IReadOnlyList<string> Keywords { get; init; } = Array.Empty<string>();
+    /// <summary>Rules text of each of the card's abilities, indexed like <c>ActivateAbility.Index</c>.</summary>
+    public IReadOnlyList<string> AbilityTexts { get; init; } = Array.Empty<string>();
+    public int PlusOneCounters { get; init; }
+    public int MinusOneCounters { get; init; }
+    public bool IsToken { get; init; }
 }
 
 public sealed record PlayerView
@@ -45,7 +50,9 @@ public sealed record PlayerView
     public required IReadOnlyDictionary<Mana.ManaType, int> ManaPool { get; init; }
 }
 
-public sealed record StackItemView(CardView Card, PlayerId Controller);
+/// <param name="Card">The spell, or the source of the ability.</param>
+/// <param name="AbilityText">Rules text of the ability, or null for a spell.</param>
+public sealed record StackItemView(CardView Card, PlayerId Controller, string? AbilityText, IReadOnlyList<Abilities.Target> Targets);
 
 public sealed record AttackView(CardId Attacker, PlayerId Defender, IReadOnlyList<CardId> Blockers, bool IsBlocked);
 

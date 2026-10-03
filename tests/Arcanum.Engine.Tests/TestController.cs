@@ -24,6 +24,10 @@ public sealed class TestController : IPlayerController
     /// <summary>Default accepts the engine's auto-pay suggestion.</summary>
     public Func<GameView, ManaPaymentRequest, IReadOnlyList<ManaTap>?> Pay { get; set; } = (_, request) => request.SuggestedTaps;
 
+    /// <summary>Default picks the first legal choice for each target.</summary>
+    public Func<GameView, TargetRequest, IReadOnlyList<Abilities.Target>?> Targets { get; set; } =
+        (_, request) => request.Legal.Select(choices => choices[0]).ToList();
+
     public Func<GameView, DamageAssignmentRequest, DamageAssignment> AssignDamage { get; set; } =
         (_, request) => request.Suggested;
 
@@ -42,6 +46,9 @@ public sealed class TestController : IPlayerController
 
     public Task<IReadOnlyList<ManaTap>?> ChooseManaPaymentAsync(GameView view, ManaPaymentRequest request) =>
         Task.FromResult(Pay(view, request));
+
+    public Task<IReadOnlyList<Abilities.Target>?> ChooseTargetsAsync(GameView view, TargetRequest request) =>
+        Task.FromResult(Targets(view, request));
 
     public Task<IReadOnlyList<AttackDeclaration>> DeclareAttackersAsync(
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders) =>

@@ -163,12 +163,12 @@ public sealed partial class Game
         {
             target.Damage += amount;
             if (source.Has(Keyword.Deathtouch)) target.DamagedByDeathtouch = true;
-            Emit(new DamageDealt(source.Id, target.Id, null, amount));
+            Emit(new DamageDealt(source.Id, target.Id, null, amount, IsCombat: true));
             if (source.Has(Keyword.Lifelink)) lifeGained[source.Controller] = lifeGained.GetValueOrDefault(source.Controller) + amount;
         }
         foreach (var (source, target, amount) in toPlayers)
         {
-            Emit(new DamageDealt(source.Id, null, target, amount));
+            Emit(new DamageDealt(source.Id, null, target, amount, IsCombat: true));
             ChangeLife(target, -amount);
             if (source.Has(Keyword.Lifelink)) lifeGained[source.Controller] = lifeGained.GetValueOrDefault(source.Controller) + amount;
         }

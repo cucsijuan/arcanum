@@ -14,8 +14,9 @@ public sealed record ManaSourceOption(CardId Source, IReadOnlyList<ManaType> Typ
 /// automatically; the player chooses which sources to tap for the rest. <see cref="SuggestedTaps"/> is the
 /// engine's auto-pay solution, which controllers can accept as-is.
 /// </summary>
+/// <param name="Source">The spell being cast, or the permanent whose ability is being activated.</param>
 public sealed record ManaPaymentRequest(
-    CardId Spell,
+    CardId Source,
     ManaCost Cost,
     IReadOnlyList<ManaType> FromPool,
     ManaCost RemainingAfterPool,

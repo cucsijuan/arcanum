@@ -59,10 +59,13 @@ public partial class ContentLoader : Node
         }
 
         Report("Loading cards…");
+        var scriptErrors = new List<string>();
+        var scripts = Module.LoadScripts(scriptErrors);
+        foreach (var error in scriptErrors) GD.PushWarning($"Card script: {error}");
         Cards = await Task.Run(() =>
         {
             using var input = File.OpenRead(compact);
-            return new CardDatabase(OracleJsonl.ReadCompact(input));
+            return new CardDatabase(OracleJsonl.ReadCompact(input), scripts);
         });
         GD.Print($"Loaded {Cards.Count} cards from module '{Module.Manifest.Id}'.");
         return true;

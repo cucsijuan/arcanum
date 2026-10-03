@@ -18,7 +18,8 @@ public sealed record TurnBegan(int TurnNumber, PlayerId ActivePlayer) : GameEven
 public sealed record StepBegan(Step Step, PlayerId ActivePlayer) : GameEvent;
 public sealed record PriorityGiven(PlayerId Player) : GameEvent;
 
-public sealed record CardMoved(CardId Card, PlayerId Owner, Zone From, Zone To) : GameEvent;
+/// <param name="LastController">Who controlled the card just before it moved (for "dies" triggers).</param>
+public sealed record CardMoved(CardId Card, PlayerId Owner, Zone From, Zone To, PlayerId LastController) : GameEvent;
 public sealed record CardDrawn(PlayerId Player, CardId Card) : GameEvent;
 public sealed record LibraryShuffled(PlayerId Player) : GameEvent;
 public sealed record LandPlayed(PlayerId Player, CardId Card) : GameEvent;
@@ -30,7 +31,16 @@ public sealed record ManaAdded(PlayerId Player, ManaType Type, CardId? Source) :
 
 public sealed record AttackerDeclared(CardId Attacker, PlayerId Defender) : GameEvent;
 public sealed record BlockerDeclared(CardId Blocker, CardId Attacker) : GameEvent;
-public sealed record DamageDealt(CardId Source, CardId? TargetCard, PlayerId? TargetPlayer, int Amount) : GameEvent;
+public sealed record DamageDealt(CardId Source, CardId? TargetCard, PlayerId? TargetPlayer, int Amount, bool IsCombat = false) : GameEvent;
+public sealed record AbilityActivated(PlayerId Player, CardId Source, string Text) : GameEvent;
+public sealed record AbilityTriggered(PlayerId Controller, CardId Source, string Text) : GameEvent;
+public sealed record AbilityResolved(CardId Source, string Text) : GameEvent;
+/// <summary>A spell or ability whose targets all became illegal does nothing (rule 608.2b).</summary>
+public sealed record FizzledOnResolution(CardId Source) : GameEvent;
+public sealed record SpellCountered(CardId Card) : GameEvent;
+public sealed record CountersPlaced(CardId Card, Abilities.CounterKind Kind, int Count) : GameEvent;
+public sealed record TokenCreated(CardId Card, PlayerId Controller) : GameEvent;
+public sealed record PermanentDestroyed(CardId Card) : GameEvent;
 public sealed record LifeChanged(PlayerId Player, int OldLife, int NewLife) : GameEvent;
 public sealed record CreatureDied(CardId Card) : GameEvent;
 

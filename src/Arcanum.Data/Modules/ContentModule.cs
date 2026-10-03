@@ -68,6 +68,29 @@ public sealed class ContentModule
 
     public string ReadDeck(string name) => File.ReadAllText(Path.Combine(DecksDirectory, name + ".txt"));
 
+    /// <summary>
+    /// Card scripts in scripts/*.json, keyed by oracle id (the file name). Scripts that fail to parse are reported
+    /// through <paramref name="errors"/> and skipped, so one bad script never breaks the whole module.
+    /// </summary>
+    public Dictionary<string, Scripts.CardScript> LoadScripts(List<string>? errors = null)
+    {
+        var scripts = new Dictionary<string, Scripts.CardScript>(StringComparer.OrdinalIgnoreCase);
+        var dir = Path.Combine(Directory, "scripts");
+        if (!System.IO.Directory.Exists(dir)) return scripts;
+        foreach (var file in System.IO.Directory.EnumerateFiles(dir, "*.json"))
+        {
+            try
+            {
+                scripts[Path.GetFileNameWithoutExtension(file)] = Scripts.CardScriptParser.Parse(File.ReadAllText(file));
+            }
+            catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException)
+            {
+                errors?.Add($"{Path.GetFileName(file)}: {e.Message}");
+            }
+        }
+        return scripts;
+    }
+
     public string ImageUrl(string cardName) => Sources.Images.UrlTemplate.Replace("{name}", Uri.EscapeDataString(cardName));
 
     private string DecksDirectory => Path.Combine(Directory, "decks");

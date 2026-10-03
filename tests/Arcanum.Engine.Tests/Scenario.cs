@@ -34,6 +34,14 @@ public sealed class Scenario
 
     public CardId Add(PlayerId owner, CardDefinition card) => Game.SetupPermanent(owner, card);
 
+    public CardId InHand(PlayerId owner, CardDefinition card) => Game.SetupInHand(owner, card);
+
+    /// <summary>Gives a player untapped lands so they can pay for spells on their first turn.</summary>
+    public void Lands(PlayerId owner, int count)
+    {
+        for (int i = 0; i < count; i++) Add(owner, GenericCards.Mountain);
+    }
+
     public State.Card Card(CardId id) => Game.State.GetCard(id);
 
     /// <summary>Runs until <paramref name="turn"/> begins (default: the end of player 0's first turn).</summary>

@@ -91,6 +91,9 @@ public sealed partial class Game
                 $"Must discard exactly {excess} distinct cards from hand.");
             foreach (var card in chosen) MoveCard(card, Zone.Graveyard);
         }
+        // Damage wears off and "until end of turn" effects end at the same time (rule 514.2).
         foreach (var permanent in State.Battlefield.Select(State.GetCard)) permanent.Damage = 0;
+        State.UntilEndOfTurn.Clear();
+        RecomputeContinuousEffects();
     }
 }

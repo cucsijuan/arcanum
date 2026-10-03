@@ -16,7 +16,7 @@ public class AutoPassPolicyTests
     private static GameView View(Step step, PlayerId active, int turn = 3, PlayerId? stackTop = null)
     {
         var stack = stackTop is { } controller
-            ? new[] { new StackItemView(new CardView { Id = new CardId(9), Owner = controller, Controller = controller, Zone = Zone.Stack, IsHidden = false }, controller) }
+            ? new[] { new StackItemView(new CardView { Id = new CardId(9), Owner = controller, Controller = controller, Zone = Zone.Stack, IsHidden = false }, controller, null, Array.Empty<Abilities.Target>()) }
             : Array.Empty<StackItemView>();
         return new GameView
         {

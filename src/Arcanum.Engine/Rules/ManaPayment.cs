@@ -15,9 +15,10 @@ public sealed record PaymentPlan(IReadOnlyList<ManaType> FromPool, IReadOnlyList
 /// </summary>
 public static class ManaPayment
 {
-    public static IEnumerable<Card> AvailableSources(GameState state, PlayerId player) =>
+    /// <param name="exclude">A permanent that can't be tapped for mana here (it is tapping for an ability's cost).</param>
+    public static IEnumerable<Card> AvailableSources(GameState state, PlayerId player, CardId? exclude = null) =>
         state.PermanentsControlledBy(player)
-            .Where(c => !c.Tapped && c.Definition.TapForMana.Count > 0)
+            .Where(c => !c.Tapped && c.Definition.TapForMana.Count > 0 && c.Id != exclude)
             // Creatures can't use {T} abilities while summoning sick (rule 302.6).
             .Where(c => !c.IsSummoningSick);
 
@@ -64,11 +65,11 @@ public static class ManaPayment
         return (new ManaCost(generic, pips), excess);
     }
 
-    public static PaymentPlan? FindPlan(GameState state, PlayerId player, ManaCost cost)
+    public static PaymentPlan? FindPlan(GameState state, PlayerId player, ManaCost cost, CardId? exclude = null)
     {
         var (fromPool, rest) = ApplyPool(cost, state.GetPlayer(player).ManaPool);
 
-        var sources = AvailableSources(state, player)
+        var sources = AvailableSources(state, player, exclude)
             .OrderBy(c => c.Definition.TapForMana.Count)
             .ThenBy(c => c.Id.Value)
             .ToList();
