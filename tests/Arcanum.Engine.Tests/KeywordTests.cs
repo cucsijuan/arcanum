@@ -191,3 +191,19 @@ public class KeywordTests
         Assert.Single(s.Game.Log.OfType<DamageDealt>(), d => d.Source == bear);
     }
 }
+
+public class BlockRestrictionTests
+{
+    [Fact]
+    public async Task CantBlockAndCantBeBlocked()
+    {
+        var s = new Scenario();
+        var sneak = s.Add(P0, Creature("Sneak", 1, 1, Keyword.CantBeBlocked));
+        s.Add(P1, Creature("Bear", 2, 2));
+        s.Add(P1, Creature("Coward", 3, 3, Keyword.CantBlock));
+        await s.RunUntilTurn();
+        Assert.Null(s.Defender.LastBlockRequest); // nobody could block anything
+        Assert.Equal(19, s.Game.State.GetPlayer(P1).Life);
+        Assert.Contains(s.Game.Log, e => e is AttackerDeclared a && a.Attacker == sneak);
+    }
+}

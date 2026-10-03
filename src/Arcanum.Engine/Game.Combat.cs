@@ -54,7 +54,8 @@ public sealed partial class Game
 
     /// <summary>Evasion: flying can only be blocked by flying or reach (702.9b).</summary>
     private static bool CanBlock(Card blocker, Card attacker) =>
-        !attacker.Has(Keyword.Flying) || blocker.Has(Keyword.Flying) || blocker.Has(Keyword.Reach);
+        !blocker.Has(Keyword.CantBlock) && !attacker.Has(Keyword.CantBeBlocked)
+        && (!attacker.Has(Keyword.Flying) || blocker.Has(Keyword.Flying) || blocker.Has(Keyword.Reach));
 
     private async Task DeclareBlockersAsync()
     {

@@ -26,7 +26,9 @@ public static partial class CardFactory
     private static readonly HashSet<string> SingleFaceLayouts = new(StringComparer.Ordinal) { "normal", "token" };
 
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
-    public static ISet<string> SupportedKeywords { get; } = new HashSet<string>(Engine.Cards.Keywords.SupportedNames, StringComparer.OrdinalIgnoreCase);
+    /// <remarks>Includes keywords whose rules this factory derives from rules text (Equip, Enchant).</remarks>
+    public static ISet<string> SupportedKeywords { get; } =
+        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant" }), StringComparer.OrdinalIgnoreCase);
 
     /// <param name="script">The card's ability script from the content module, if it has one.</param>
     public static (CardDefinition Definition, CardSupport Support) Create(CardRecord record, Scripts.CardScript? script = null)

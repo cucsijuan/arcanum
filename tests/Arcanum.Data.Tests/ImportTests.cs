@@ -153,3 +153,29 @@ public class ImportTests
         Assert.True(records.Count > 1000);
     }
 }
+
+public class ModuleTests
+{
+    /// <summary>
+    /// Optional check of a real content module: set ARCANUM_MODULE_PATH (and optionally ARCANUM_CARD_FILE to also
+    /// report coverage). Every script must parse.
+    /// </summary>
+    [Fact]
+    public void ModuleScriptsParseWhenProvided()
+    {
+        var dir = Environment.GetEnvironmentVariable("ARCANUM_MODULE_PATH");
+        if (string.IsNullOrEmpty(dir)) return;
+        var module = Arcanum.Data.Modules.ContentModule.Load(dir);
+        var errors = new List<string>();
+        var scripts = module.LoadScripts(errors);
+        Assert.True(errors.Count == 0, string.Join("\n", errors.Take(20)));
+        Console.WriteLine($"scripts={scripts.Count}");
+
+        var cardFile = Environment.GetEnvironmentVariable("ARCANUM_CARD_FILE");
+        if (string.IsNullOrEmpty(cardFile)) return;
+        using var file = File.OpenRead(cardFile);
+        var db = new CardDatabase(OracleJsonl.Import(file, module.Sources.Cards.ToFilter()), scripts);
+        int supported = db.All.Count(d => db.SupportOf(d.Name) == CardSupport.Full);
+        Console.WriteLine($"cards={db.Count} supported={supported}");
+    }
+}

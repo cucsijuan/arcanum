@@ -18,6 +18,10 @@ public enum Keyword
     Indestructible,
     Hexproof,
     Shroud,
+    /// <summary>"This creature can't block." (not a printed keyword; used by static abilities).</summary>
+    CantBlock,
+    /// <summary>"This creature can't be blocked."</summary>
+    CantBeBlocked,
 }
 
 public static class Keywords
@@ -42,8 +46,10 @@ public static class Keywords
     {
         Keyword.FirstStrike => "First strike",
         Keyword.DoubleStrike => "Double strike",
+        Keyword.CantBlock => "Can't block",
+        Keyword.CantBeBlocked => "Can't be blocked",
         _ => keyword.ToString(),
     };
 
-    private static string Normalize(string name) => name.Replace(" ", "").Replace("-", "").ToLowerInvariant();
+    private static string Normalize(string name) => name.Replace(" ", "").Replace("-", "").Replace("'", "").ToLowerInvariant();
 }
