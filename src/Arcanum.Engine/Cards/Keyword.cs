@@ -32,6 +32,8 @@ public enum Keyword
     CantAttack,
     /// <summary>"This permanent doesn't untap during its controller's untap step."</summary>
     DoesntUntap,
+    /// <summary>Protection from everything (rule 702.16): can't be targeted, blocked, damaged, enchanted or equipped.</summary>
+    ProtectionFromEverything,
 }
 
 public static class Keywords
@@ -60,6 +62,7 @@ public static class Keywords
         Keyword.CantBeBlocked => "Can't be blocked",
         Keyword.CantAttack => "Can't attack",
         Keyword.DoesntUntap => "Doesn't untap",
+        Keyword.ProtectionFromEverything => "Protection from everything",
         _ => keyword.ToString(),
     };
 

@@ -16,9 +16,11 @@ public sealed record PaymentPlan(IReadOnlyList<ManaType> FromPool, IReadOnlyList
 public static class ManaPayment
 {
     /// <param name="exclude">A permanent that can't be tapped for mana here (it is tapping for an ability's cost).</param>
-    public static IEnumerable<Card> AvailableSources(GameState state, PlayerId player, CardId? exclude = null) =>
+    /// <param name="forSpell">The spell being paid for: sources whose mana can only be spent on certain spells are usable only for those.</param>
+    public static IEnumerable<Card> AvailableSources(GameState state, PlayerId player, CardId? exclude = null, Card? forSpell = null) =>
         state.PermanentsControlledBy(player)
             .Where(c => !c.Tapped && c.ManaTypes.Count > 0 && c.ManaAmount > 0 && c.Id != exclude)
+            .Where(c => c.Definition.ManaOnlyFor is not { } only || (forSpell is not null && MatchesSpell(only, forSpell)))
             // Creatures can't use {T} abilities while summoning sick (rule 302.6).
             .Where(c => !c.IsSummoningSick);
 
@@ -65,10 +67,14 @@ public static class ManaPayment
         return (new ManaCost(generic, pips), excess);
     }
 
-    public static PaymentPlan? FindPlan(GameState state, PlayerId player, ManaCost cost, CardId? exclude = null)
+    /// <summary>A rough spell filter check for mana restrictions (types and subtype).</summary>
+    private static bool MatchesSpell(Abilities.ObjectFilter filter, Card spell) =>
+        (filter.Types == 0 || (spell.Types & filter.Types) != 0) && (filter.Subtype is null || spell.HasSubtype(filter.Subtype));
+
+    public static PaymentPlan? FindPlan(GameState state, PlayerId player, ManaCost cost, CardId? exclude = null, Card? forSpell = null)
     {
         var (fromPool, rest) = ApplyPool(cost, state.GetPlayer(player).ManaPool);
-        var all = AvailableSources(state, player, exclude).ToList();
+        var all = AvailableSources(state, player, exclude, forSpell).ToList();
         // Sources that add several mana per activation are decided first (skip, or each of their types); the
         // single-mana sources then pay what is left with the fast pip solver below.
         var multi = all.Where(c => c.ManaAmount > 1).ToList();

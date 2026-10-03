@@ -26,6 +26,18 @@ public sealed class Player
     /// <summary>Total life gained this turn.</summary>
     public int LifeGainedThisTurn { get; set; }
 
+    /// <summary>Permanent types already used this turn to play cards from the graveyard ("a permanent spell of each permanent type").</summary>
+    public Cards.CardType GraveyardTypesUsedThisTurn { get; set; }
+
+    /// <summary>"You have no maximum hand size for the rest of the game."</summary>
+    public bool NoMaximumHandSize { get; set; }
+
+    /// <summary>Poison counters (ten or more: the player loses, rule 704.5c).</summary>
+    public int Poison { get; set; }
+
+    /// <summary>Spells this player cast this turn, in order.</summary>
+    public List<CardId> SpellsCastThisTurn { get; } = new();
+
     /// <summary>Cards drawn this turn.</summary>
     public int CardsDrawnThisTurn { get; set; }
 

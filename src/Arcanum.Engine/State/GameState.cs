@@ -4,7 +4,17 @@ using Arcanum.Engine.Core;
 namespace Arcanum.Engine.State;
 
 /// <summary>A temporary P/T change and/or keyword grant on one specific object (card + version).</summary>
-public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, int Toughness, IReadOnlyList<Cards.Keyword> Keywords);
+public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, int Toughness, IReadOnlyList<Cards.Keyword> Keywords)
+{
+    /// <summary>"Becomes a 3/3 creature": card types added and base power/toughness set (layers 4, 7b).</summary>
+    public Cards.CardType AddTypes { get; init; }
+    public int? SetPower { get; init; }
+    public int? SetToughness { get; init; }
+    public IReadOnlyList<string>? AddSubtypes { get; init; }
+
+    /// <summary>Abilities gained until end of turn ("gains 'When this creature dies, ...'").</summary>
+    public IReadOnlyList<Abilities.AbilityDefinition>? Abilities { get; init; }
+}
 
 /// <summary>Control gained "until end of turn": returned to <paramref name="Original"/> at cleanup.</summary>
 public sealed record TemporaryControlEffect(CardId Card, int Version, PlayerId Original);
@@ -16,7 +26,11 @@ public sealed record LinkedExile(CardId Source, int SourceVersion, CardId Exiled
 public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player, int UntilTurn, bool WithoutPaying = false);
 
 /// <summary>A delayed action: return a card to the battlefield, or sacrifice a permanent.</summary>
-public sealed record DelayedAction(CardId Card, int Version, bool Return, PlayerId Controller);
+public sealed record DelayedAction(CardId Card, int Version, bool Return, PlayerId Controller)
+{
+    /// <summary>Counters it returns with.</summary>
+    public (Abilities.CounterKind Kind, int Count)? Counters { get; init; }
+}
 
 /// <summary>Complete, authoritative state of a game. Only the engine mutates it.</summary>
 public sealed class GameState
@@ -41,6 +55,13 @@ public sealed class GameState
 
     /// <summary>Cards in exile their controller may play for a while (until <c>UntilTurn</c> ends).</summary>
     public List<PlayableFromExile> PlayableFromExile { get; } = new();
+
+    /// <summary>Cards in graveyards that can be cast this turn (flashback granted, or cast from the graveyard).</summary>
+    public List<PlayableFromExile> PlayableFromGraveyard { get; } = new();
+    public List<PlayableFromExile> FlashbackGranted { get; } = new();
+
+    /// <summary>"When you next cast an instant or sorcery spell this turn, copy that spell" (player, turn).</summary>
+    public List<(PlayerId Player, int Turn)> CopyNextInstantOrSorcery { get; } = new();
 
     /// <summary>Emblems in the command zone (rule 114).</summary>
     public List<CardId> Emblems { get; } = new();

@@ -23,6 +23,7 @@ public sealed partial class Game
             if (Has(player.Id, Cards.Replacements.YouCantLose)) continue;
             if (player.Life <= 0) { Lose(player.Id, "life total 0 or less"); any = true; }               // 704.5a
             else if (player.AttemptedDrawFromEmptyLibrary) { Lose(player.Id, "drew from an empty library"); any = true; } // 704.5b
+            else if (player.Poison >= 10) { Lose(player.Id, "ten poison counters"); any = true; } // 704.5c
             else if (CommanderDamageLoss(player)) { Lose(player.Id, "21 combat damage from a commander"); any = true; } // 704.6c
         }
         if (State.IsGameOver) return any;
@@ -33,10 +34,10 @@ public sealed partial class Game
             if (card.Definition.EnchantTarget is { } enchant)
             {
                 bool legal = card.AttachedTo is { } host && State.GetCard(host) is { Zone: Zone.Battlefield } h
-                             && (enchant.Kind != Abilities.TargetKind.Creature || h.IsCreature);
+                             && (enchant.Kind != Abilities.TargetKind.Creature || h.IsCreature) && !h.Has(Keyword.ProtectionFromEverything);
                 if (!legal) { MoveCard(card.Id, Zone.Graveyard); any = true; }
             }
-            else if (card.AttachedTo is { } equipped && State.GetCard(equipped) is not { Zone: Zone.Battlefield, IsCreature: true })
+            else if (card.AttachedTo is { } equipped && (State.GetCard(equipped) is not { Zone: Zone.Battlefield, IsCreature: true } eq || eq.Has(Keyword.ProtectionFromEverything)))
             {
                 card.AttachedTo = null;
                 RecomputeContinuousEffects();

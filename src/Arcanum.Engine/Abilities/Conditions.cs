@@ -35,7 +35,7 @@ public sealed record OpponentLostLifeThisTurn : Condition;
 public sealed record YourTurn : Condition;
 
 /// <summary>"If the source has N or more +1/+1 counters on it".</summary>
-public sealed record SourceHasCounters(int AtLeast) : Condition;
+public sealed record SourceHasCounters(int AtLeast, CounterKind Kind = CounterKind.PlusOnePlusOne) : Condition;
 
 /// <summary>"As long as it's attacking".</summary>
 public sealed record SourceAttacking : Condition;
@@ -54,3 +54,39 @@ public sealed record TotalPowerAtLeast(int Amount) : Condition;
 
 /// <summary>"If you attacked with N or more creatures" (counts creatures you control that are attacking).</summary>
 public sealed record AttackingCreatures(int AtLeast) : Condition;
+
+/// <summary>The target player at <paramref name="Index"/> has exactly <paramref name="Life"/> life.</summary>
+public sealed record TargetLifeExactly(int Index, int Life) : Condition;
+
+/// <summary>The value chosen for X is at least <paramref name="AtLeast"/>.</summary>
+public sealed record XAtLeast(int AtLeast) : Condition;
+
+/// <summary>The object the trigger was about was attacking when it left the battlefield.</summary>
+public sealed record TriggeredWasAttacking : Condition;
+
+/// <summary>The source had the subtype when it was last on the battlefield ("if it wasn't a Demon").</summary>
+public sealed record SourceWasSubtype(string Subtype) : Condition;
+
+/// <summary>The source had counters of a kind when it was last on the battlefield.</summary>
+public sealed record SourceHadCounters(CounterKind Kind) : Condition;
+
+/// <summary>This effect sacrificed at least one permanent of yours.</summary>
+public sealed record YouSacrificedThisWay : Condition;
+
+/// <summary>You control at least <paramref name="AtLeast"/> matching permanents with different names.</summary>
+public sealed record DifferentNames(ObjectFilter Filter, int AtLeast) : Condition;
+
+/// <summary>This ability has resolved at least <paramref name="Times"/> times this turn (including now).</summary>
+public sealed record ResolvedThisTurn(int Times) : Condition;
+
+/// <summary>"If you cast it from your hand" / "if you cast it".</summary>
+public sealed record WasCastFromHand : Condition;
+
+/// <summary>The object the trigger was about has at least <paramref name="AtLeast"/> +1/+1 counters.</summary>
+public sealed record TriggeredHasCounters(int AtLeast) : Condition;
+
+/// <summary>The target at <paramref name="Attached"/> is attached to the target at <paramref name="To"/>.</summary>
+public sealed record TargetAttachedTo(int Attached, int To) : Condition;
+
+/// <summary>The source currently matches the filter ("if Kellan is a Scout").</summary>
+public sealed record SourceIs(ObjectFilter Filter) : Condition;

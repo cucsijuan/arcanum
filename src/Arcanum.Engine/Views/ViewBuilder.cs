@@ -80,14 +80,14 @@ public static class ViewBuilder
             Loyalty = card.CounterCount(Abilities.CounterKind.Loyalty),
             IsToken = card.Definition.IsToken,
             OracleText = card.Definition.OracleText,
-            Colors = card.Definition.Colors,
+            Colors = card.Colors,
             ImageKey = card.Definition.ImageKey,
             AttachedTo = card.AttachedTo,
             IsCommander = card.IsCommander,
             CommanderTax = card.IsCommander ? commanderTaxPerCast * state.GetPlayer(card.Owner).CommanderCasts.GetValueOrDefault(card.Id) : 0,
             BasePower = card.Definition.Power,
             BaseToughness = card.Definition.Toughness,
-            AbilityTexts = card.Definition.Abilities.Select(a => a.Text).ToList(),
+            AbilityTexts = card.Abilities.Select(a => a.Text).ToList(),
         };
     }
 }

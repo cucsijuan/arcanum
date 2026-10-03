@@ -16,6 +16,9 @@ public abstract record StackItem(PlayerId Controller, IReadOnlyList<ChosenTarget
     /// <summary>The kicker cost was paid.</summary>
     public bool Kicked { get; init; }
 
+    /// <summary>Permanents sacrificed to pay its costs (for "the sacrificed creature's toughness").</summary>
+    public IReadOnlyList<CardId> SacrificedForCost { get; init; } = Array.Empty<CardId>();
+
     /// <summary>The card the spell is, or the source of the ability.</summary>
     public abstract CardId SourceCard { get; }
 }

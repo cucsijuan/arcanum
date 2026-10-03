@@ -29,13 +29,20 @@ public abstract record AbilityDefinition
 
     /// <summary>"Choose one or more" / "choose one or both": fewer modes than <see cref="ModeCount"/> may be picked.</summary>
     public bool UpToModes { get; init; }
+
+    /// <summary>"Choose one that hasn't been chosen": each mode can be chosen only once for this object.</summary>
+    public bool ModesOncePerObject { get; init; }
 }
 
 /// <summary>One mode of a modal spell or ability.</summary>
 public sealed record Mode(string Text, IReadOnlyList<TargetSpec> Targets, IReadOnlyList<Effect> Effects);
 
 /// <summary>What an instant or sorcery does when it resolves.</summary>
-public sealed record SpellAbility : AbilityDefinition;
+public sealed record SpellAbility : AbilityDefinition
+{
+    /// <summary>"Exile [this spell]" as its last instruction: it goes to exile instead of the graveyard.</summary>
+    public bool ExileAfterResolving { get; init; }
+}
 
 /// <summary>Costs of an activated ability, e.g. "{1}{R}, {T}, Sacrifice this".</summary>
 public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool SacrificeSelf = false)
@@ -57,6 +64,13 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>A loyalty ability's cost: +N / −N loyalty counters (null: not a loyalty ability, rule 606).</summary>
     public int? Loyalty { get; init; }
 
+    /// <summary>"Put a [kind] counter on this" as a cost.</summary>
+    public int AddCounters { get; init; }
+    public CounterKind AddCounterKind { get; init; } = CounterKind.PlusOnePlusOne;
+
+    /// <summary>"Return this [permanent] to its owner's hand" as a cost.</summary>
+    public bool ReturnSelfToHand { get; init; }
+
     public static readonly AbilityCost TapOnly = new(ManaCost.Zero, Tap: true);
 }
 
@@ -70,6 +84,9 @@ public sealed record ActivatedAbility : AbilityDefinition
 
     /// <summary>"Activate only once each turn."</summary>
     public bool OncePerTurn { get; init; }
+
+    /// <summary>"Activate only once" (for as long as the permanent stays on the battlefield).</summary>
+    public bool OnlyOnce { get; init; }
 
     /// <summary>"Activate only if [condition]."</summary>
     public Condition? ActivationCondition { get; init; }
@@ -132,6 +149,18 @@ public enum TriggerEvent
     BecomesTapped,
     /// <summary>"Whenever a player casts a spell" (any player, including you).</summary>
     AnyPlayerCastsSpell,
+    /// <summary>"When you sacrifice this [permanent]".</summary>
+    SelfSacrificed,
+    /// <summary>"Whenever a source you control deals noncombat damage to an opponent".</summary>
+    YourSourceDealsNoncombatDamageToOpponent,
+    /// <summary>"Whenever a [filter] creature deals combat damage" (to anything).</summary>
+    CreatureDealsCombatDamage,
+    /// <summary>"Whenever this creature deals combat damage" (to anything).</summary>
+    DealsCombatDamage,
+    /// <summary>"Whenever an opponent discards a card".</summary>
+    OpponentDiscards,
+    /// <summary>"Whenever this permanent becomes untapped" / "Whenever [filter] becomes untapped".</summary>
+    BecomesUntapped,
     /// <summary>"Whenever an opponent draws a card".</summary>
     OpponentDrawsCard,
     /// <summary>"At the beginning of each player's draw step".</summary>
@@ -154,6 +183,15 @@ public sealed record TriggeredAbility : AbilityDefinition
 
     /// <summary>"This ability triggers only once each turn."</summary>
     public bool OncePerTurn { get; init; }
+
+    /// <summary>For spell-cast triggers: only spells that target the source ("a spell that targets this creature").</summary>
+    public bool TargetsSource { get; init; }
+
+    /// <summary>The ability works while its card is in its owner's graveyard (and not on the battlefield).</summary>
+    public bool FromGraveyard { get; init; }
+
+    /// <summary>For counter triggers: the kind of counters (default +1/+1).</summary>
+    public CounterKind CounterKind { get; init; } = CounterKind.PlusOnePlusOne;
 }
 
 /// <summary>
@@ -192,7 +230,12 @@ public sealed record ObjectFilter(
     IReadOnlyList<ObjectFilter>? AnyOf = null,
     bool AttachedToSource = false,
     bool ChosenColor = false,
-    bool ChosenType = false)
+    bool ChosenType = false,
+    bool DamagedBySource = false,
+    bool MaxManaValueSourcePower = false,
+    bool? Attached = null,
+    Cards.Supertype ExcludedSupertype = 0,
+    bool MaxManaValueLandCount = false)
 {
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 

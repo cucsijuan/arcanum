@@ -46,6 +46,8 @@ public sealed record PermanentDestroyed(CardId Card) : GameEvent;
 public sealed record CommanderReturned(CardId Card, PlayerId Owner) : GameEvent;
 public sealed record LifeChanged(PlayerId Player, int OldLife, int NewLife) : GameEvent;
 public sealed record CreatureDied(CardId Card) : GameEvent;
+public sealed record SpellCopied(CardId Copy, CardId Original, PlayerId Controller) : GameEvent;
+public sealed record PoisonGiven(PlayerId Player, int Count) : GameEvent;
 public sealed record EmblemCreated(CardId Emblem, PlayerId Owner) : GameEvent;
 public sealed record ChoiceMade(CardId Card, string Choice) : GameEvent;
 public sealed record HandRevealed(PlayerId Player, IReadOnlyList<CardId> Cards) : GameEvent;

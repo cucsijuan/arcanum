@@ -48,6 +48,32 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>Creature types added ("is an Angel in addition to its other types").</summary>
     public IReadOnlyList<string>? AddSubtypes { get; init; }
 
+    /// <summary>Abilities granted ("Enchanted creature has '{T}: ...'", "Equipped creature has '...'").</summary>
+    public IReadOnlyList<AbilityDefinition>? GrantsAbilities { get; init; }
+
+    /// <summary>"Loses all abilities" (layer 6).</summary>
+    public bool LosesAllAbilities { get; init; }
+
+    /// <summary>Sets base power/toughness ("with base power and toughness 1/1", layer 7b).</summary>
+    public int? SetPower { get; init; }
+    public int? SetToughness { get; init; }
+
+    /// <summary>Replaces card types / creature types / colors / name (layers 4, 5, 1-ish).</summary>
+    public Cards.CardType? SetTypes { get; init; }
+    public IReadOnlyList<string>? SetSubtypes { get; init; }
+    public IReadOnlyList<string>? SetColors { get; init; }
+    public string? SetName { get; init; }
+
+    /// <summary>Card types added ("is an artifact in addition").</summary>
+    public Cards.CardType AddTypes { get; init; }
+
+    /// <summary>Grants a mana ability replacing any other: "{T}: Add [types]" (amount mana of one of them).</summary>
+    public IReadOnlyList<Mana.ManaType>? GrantsMana { get; init; }
+    public int GrantsManaAmount { get; init; } = 1;
+
+    /// <summary>"You control enchanted permanent" (layer 2).</summary>
+    public bool GivesControl { get; init; }
+
     /// <summary>Adds the creature type chosen as the source entered ("is the chosen type in addition to its other types").</summary>
     public bool AddChosenType { get; init; }
 }

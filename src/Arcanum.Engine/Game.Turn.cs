@@ -7,6 +7,8 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     private bool _skipCombatDamageSteps;
+    private bool _endTurnRequested;
+    private int _extraCombats;
 
     private async Task RunTurnAsync(bool skipDraw)
     {
@@ -21,6 +23,8 @@ public sealed partial class Game
             player.LifeLostThisTurn = 0;
             player.CardsDrawnThisTurn = 0;
             player.LifeGainsThisTurn = 0;
+            player.SpellsCastThisTurn.Clear();
+            player.GraveyardTypesUsedThisTurn = 0;
         }
         foreach (var permanent in State.PermanentsControlledBy(active.Id)) permanent.ControlledSinceTurnStart = true;
         foreach (var card in State.Cards.Values)
@@ -28,14 +32,33 @@ public sealed partial class Game
             card.ActivatedThisTurn.Clear();
             card.TriggeredThisTurn.Clear();
             card.LoyaltyActivatedThisTurn = false;
+            card.ResolvedThisTurn.Clear();
+            card.DamagedThisTurnBy.Clear();
+            card.CombatDamagedPlayers.Clear();
+            card.AttacksThisTurn = 0;
         }
+        State.PlayableFromGraveyard.RemoveAll(p => p.UntilTurn < State.TurnNumber);
+        State.FlashbackGranted.RemoveAll(p => p.UntilTurn < State.TurnNumber);
         State.PlayableFromExile.RemoveAll(p => p.UntilTurn < State.TurnNumber);
         Emit(new TurnBegan(State.TurnNumber, active.Id));
 
         _skipCombatDamageSteps = false;
-        foreach (var step in StepExtensions.TurnOrder)
+        _endTurnRequested = false;
+        _extraCombats = 0;
+        var order = StepExtensions.TurnOrder.ToList();
+        for (int index = 0; index < order.Count; index++)
         {
+            var step = order[index];
             if (State.IsGameOver) return;
+            if (_endTurnRequested && step != Step.Cleanup) continue; // "end the turn": straight to cleanup
+            // An additional combat phase repeats the combat steps (rule 506.1).
+            if (step == Step.PostcombatMain && _extraCombats > 0 && order[index - 1] == Step.EndCombat)
+            {
+                _extraCombats--;
+                _skipCombatDamageSteps = false;
+                index = order.IndexOf(Step.BeginCombat) - 1;
+                continue;
+            }
             if (step == Step.Draw && skipDraw) continue;
             if (_skipCombatDamageSteps && step is Step.DeclareBlockers or Step.CombatDamage) continue;
             if (step == Step.CombatDamage && CombatHasFirstStrike())
@@ -99,13 +122,13 @@ public sealed partial class Game
         if (givesPriority && !State.IsGameOver) await RunPriorityAsync();
 
         if (step == Step.EndCombat) State.Combat = null;
-        foreach (var player in State.Players) player.ManaPool.Clear(); // rule 500.4
+        foreach (var player in State.Players) player.ManaPool.Clear(endOfTurn: step == Step.Cleanup); // rule 500.4
     }
 
     private async Task CleanupAsync()
     {
         var active = State.GetPlayer(State.ActivePlayer);
-        int excess = Has(active.Id, Cards.Replacements.NoMaximumHandSize) ? 0 : active.Hand.Count - Config.MaxHandSize;
+        int excess = Has(active.Id, Cards.Replacements.NoMaximumHandSize) || active.NoMaximumHandSize ? 0 : active.Hand.Count - Config.MaxHandSize;
         if (excess > 0)
         {
             var chosen = await ControllerOf(active.Id).ChooseDiscardAsync(ViewFor(active.Id), excess);
@@ -121,6 +144,7 @@ public sealed partial class Game
             var card = State.GetCard(control.Card);
             if (card.Version != control.Version || card.Zone != Zone.Battlefield) continue;
             card.Controller = control.Original;
+            card.BaseController = control.Original;
             card.ControlledSinceTurnStart = false;
             Emit(new ControlChanged(card.Id, control.Original));
         }

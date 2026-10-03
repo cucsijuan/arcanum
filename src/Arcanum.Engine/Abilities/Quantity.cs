@@ -37,6 +37,25 @@ public enum QuantityKind
     OpponentsGraveyardCount,
     /// <summary>The greatest power among other creatures you control.</summary>
     GreatestOtherPower,
+    /// <summary>Toughness / power of the permanent sacrificed by this spell or ability (cost or effect).</summary>
+    SacrificedToughness,
+    SacrificedPower,
+    /// <summary>Life lost by players through this effect ("life lost this way").</summary>
+    LifeLostThisWay,
+    /// <summary>Cards put into graveyards from libraries by this effect that match the filter.</summary>
+    MilledThisWay,
+    /// <summary>Permanents destroyed by this effect.</summary>
+    DestroyedThisWay,
+    /// <summary>Damage dealt beyond lethal to the creature by this effect.</summary>
+    ExcessDamage,
+    /// <summary>Cards exiled by this effect that match the filter.</summary>
+    ExiledThisWay,
+    /// <summary>The number of different mana values among matching permanents you control.</summary>
+    DistinctManaValues,
+    /// <summary>Colors of the spell or object the trigger was about.</summary>
+    TriggeredColors,
+    /// <summary>Spells matching the filter the controller cast this turn.</summary>
+    SpellsCastThisTurn,
 }
 
 /// <summary>
@@ -44,7 +63,7 @@ public enum QuantityKind
 /// "equal to its power"), times <see cref="Multiplier"/> (use -1 for "-X/-X").
 /// </summary>
 public sealed record Quantity(int Value, QuantityKind Kind = QuantityKind.Fixed, ObjectFilter? Filter = null, int Multiplier = 1, int Index = 0,
-    CounterKind Counter = CounterKind.PlusOnePlusOne)
+    CounterKind Counter = CounterKind.PlusOnePlusOne, int Offset = 0)
 {
     public static implicit operator Quantity(int value) => new(value);
 

@@ -9,7 +9,8 @@ public sealed partial class Game
 {
     /// <summary>Moves a card between zones. Cards always go to their owner's per-player zones (rule 400.3).</summary>
     /// <param name="kicked">A spell cast with kicker becoming a permanent: it remembers it was kicked (for "if it was kicked").</param>
-    private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false)
+    private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
+        bool castFromHand = false)
     {
         bool shuffleAfter = false;
         var card = State.GetCard(id);
@@ -30,6 +31,7 @@ public sealed partial class Game
         switch (from)
         {
             case Zone.Battlefield:
+                card.WasAttacking = State.Combat?.FindAttack(id) is not null;
                 State.Battlefield.Remove(id);
                 State.Combat?.Remove(id);
                 break;
@@ -43,19 +45,21 @@ public sealed partial class Game
 
         card.ResetStatus();
         card.Kicked = kicked;
+        card.CastFromHand = castFromHand;
         card.Zone = to;
         NoteCommanderMove(card, to);
         switch (to)
         {
             case Zone.Battlefield:
                 card.Controller = controller ?? card.Owner;
+                card.BaseController = card.Controller;
                 card.AttachedTo = attachTo;
                 // Replacement effects that modify how the permanent enters (rule 614.1c).
                 if (card.Definition.EntersTapped) card.Tapped = true;
                 if (card.IsCreature && OpponentsCreaturesEnterTapped(card.Controller)) card.Tapped = true;
                 if (card.Definition.EntersWithCounters > 0
                     && (card.Definition.EntersWithCountersIf is not { } cond || Holds(cond, card.Controller, card)))
-                    card.Counters[Abilities.CounterKind.PlusOnePlusOne] = card.Definition.EntersWithCounters;
+                    card.Counters[card.Definition.EntersWithCounterKind] = card.Definition.EntersWithCounters;
                 if (card.Definition.EntersWithCountersFrom is { } countFrom)
                 {
                     int n = Eval(countFrom, new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>()));
@@ -64,6 +68,14 @@ public sealed partial class Game
                 State.Battlefield.Add(id);
                 if (card.Definition.ChooseOnEnter != Cards.EnterChoice.None) State.PendingEnterChoices.Add((id, card.Version));
                 if (card.Definition.Loyalty is { } loyalty) card.Counters[Abilities.CounterKind.Loyalty] = loyalty; // 306.5b
+                // "Each other Angel you control enters with an additional +1/+1 counter for each Angel you already control."
+                if (card.HasSubtype("Angel"))
+                {
+                    int angels = State.Battlefield.Where(b => b != id).Select(State.GetCard).Count(c => c.Controller == card.Controller && c.HasSubtype("Angel"));
+                    int giadas = State.Battlefield.Where(b => b != id).Select(State.GetCard)
+                        .Count(c => c.Controller == card.Controller && (c.Definition.Replaces & Cards.Replacements.AngelsEnterWithCounters) != 0);
+                    if (angels * giadas > 0) card.Counters[Abilities.CounterKind.PlusOnePlusOne] = card.CounterCount(Abilities.CounterKind.PlusOnePlusOne) + angels * giadas;
+                }
                 break;
             case Zone.Stack:
                 card.Controller = controller ?? card.Owner;

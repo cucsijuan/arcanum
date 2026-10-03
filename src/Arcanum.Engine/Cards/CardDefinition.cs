@@ -5,7 +5,7 @@ using Arcanum.Engine.Mana;
 namespace Arcanum.Engine.Cards;
 
 /// <summary>A choice made as a permanent enters (rule 614.12).</summary>
-public enum EnterChoice { None, Color, CreatureType }
+public enum EnterChoice { None, Color, CreatureType, CardName }
 
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]
@@ -40,6 +40,20 @@ public enum Replacements
     YourInstantsAndSorceriesCantBeCountered = 4096,
     /// <summary>You have no maximum hand size.</summary>
     NoMaximumHandSize = 8192,
+    /// <summary>You may cast spells from your hand without paying their mana costs.</summary>
+    CastFromHandFree = 16384,
+    /// <summary>You may cast creature spells from the top of your library (and look at it any time), spending mana of any type on them.</summary>
+    CreaturesFromLibraryTop = 32768,
+    /// <summary>During your turn, you may play cards you don't own with stash counters from exile, spending mana of any type.</summary>
+    PlayStashedCards = 65536,
+    /// <summary>During each of your turns, you may play a land and cast a permanent spell of each permanent type from your graveyard.</summary>
+    PermanentsFromGraveyard = 131072,
+    /// <summary>Activated abilities of sources with the name chosen as this entered can't be activated unless they're mana abilities.</summary>
+    StopsChosenNameAbilities = 262144,
+    /// <summary>Each other Angel you control enters with an additional +1/+1 counter for each Angel you already control.</summary>
+    AngelsEnterWithCounters = 524288,
+    /// <summary>You may play an additional land on each of your turns.</summary>
+    AdditionalLandPlay = 1048576,
 }
 
 /// <summary>
@@ -181,6 +195,33 @@ public sealed record CardDefinition
 
     /// <summary>"This creature doesn't untap during your untap step."</summary>
     public bool DoesntUntap { get; init; }
+
+    /// <summary>"Hexproof from instants" and similar: card types of opponents' sources that can't target it.</summary>
+    public CardType HexproofFromTypes { get; init; }
+
+    /// <summary>Additional costs of which the caster pays exactly one ("sacrifice a creature or pay {3}{B}").</summary>
+    public IReadOnlyList<CostOption>? AdditionalCostOptions { get; init; }
+
+    /// <summary>An alternative cost ("You may pay {B} rather than pay this spell's mana cost if ...").</summary>
+    public AlternativeCost? AlternativeCost { get; init; }
+
+    /// <summary>"You may cast this spell as though it had flash if you pay {2} more to cast it."</summary>
+    public ManaCost? FlashExtraCost { get; init; }
+
+    /// <summary>"If this card is in your opening hand, you may begin the game with it on the battlefield."</summary>
+    public bool StartsOnBattlefieldFromOpeningHand { get; init; }
+
+    /// <summary>What happens when mana from this source is spent.</summary>
+    public ManaRider ManaRider { get; init; }
+
+    /// <summary>Mana from this source can only be spent on spells matching this filter (rule 106.6).</summary>
+    public ObjectFilter? ManaOnlyFor { get; init; }
+
+    /// <summary>Counter kind for <see cref="EntersWithCounters"/> (default +1/+1).</summary>
+    public CounterKind EntersWithCounterKind { get; init; } = CounterKind.PlusOnePlusOne;
+
+    /// <summary>Extra cost to cast it from your graveyard ("by removing six counters from among creatures you control").</summary>
+    public ExtraCost? GraveyardCastCost { get; init; }
 
     /// <summary>Characteristic-defining power/toughness ("equal to the number of creatures you control").</summary>
     public Quantity? PowerFrom { get; init; }

@@ -115,6 +115,13 @@ public sealed partial class Game
             case AttacksDeclared a:
                 State.GetPlayer(a.Player).AttackedThisTurn = true;
                 break;
+            case AttackerDeclared ad:
+                State.GetCard(ad.Attacker).AttacksThisTurn++;
+                break;
+            case DamageDealt dd:
+                if (dd.TargetCard is { } hurt) State.GetCard(hurt).DamagedThisTurnBy.Add(dd.Source);
+                if (dd.IsCombat && dd.TargetPlayer is { } player) State.GetCard(dd.Source).CombatDamagedPlayers.Add(player);
+                break;
         }
     }
 
@@ -129,6 +136,11 @@ public sealed partial class Game
         RecomputeContinuousEffects(); // permanents set up before the game may have static abilities
         State.ActivePlayer = startingPlayer;
         foreach (var playerId in State.ApnapOrder().ToList()) await ResolveMulliganAsync(playerId);
+        // "If this card is in your opening hand, you may begin the game with it on the battlefield."
+        foreach (var playerId in State.ApnapOrder().ToList())
+            foreach (var id in State.GetPlayer(playerId).Hand.Where(c => State.GetCard(c).Definition.StartsOnBattlefieldFromOpeningHand).ToList())
+                if (await ControllerOf(playerId).ChooseYesNoAsync(ViewFor(playerId), new YesNoRequest($"Begin the game with {State.GetCard(id).Name} on the battlefield?", id)))
+                    MoveCard(id, Zone.Battlefield);
 
         bool firstTurn = true;
         while (!State.IsGameOver)
