@@ -17,7 +17,22 @@ public abstract record AbilityDefinition
     /// and does nothing on resolution unless it still holds. Null: unconditional.
     /// </summary>
     public Condition? Condition { get; init; }
+
+    /// <summary>
+    /// For a modal spell or ability ("Choose one —"): the modes. The controller picks <see cref="ModeCount"/>
+    /// of them (or between 1 and that many when <see cref="UpToModes"/>) as it is cast, activated or put on the
+    /// stack; <see cref="Targets"/> and <see cref="Effects"/> are then the chosen modes' ones, in order.
+    /// </summary>
+    public IReadOnlyList<Mode>? Modes { get; init; }
+
+    public int ModeCount { get; init; } = 1;
+
+    /// <summary>"Choose one or more" / "choose one or both": fewer modes than <see cref="ModeCount"/> may be picked.</summary>
+    public bool UpToModes { get; init; }
 }
+
+/// <summary>One mode of a modal spell or ability.</summary>
+public sealed record Mode(string Text, IReadOnlyList<TargetSpec> Targets, IReadOnlyList<Effect> Effects);
 
 /// <summary>What an instant or sorcery does when it resolves.</summary>
 public sealed record SpellAbility : AbilityDefinition;
@@ -25,6 +40,15 @@ public sealed record SpellAbility : AbilityDefinition;
 /// <summary>Costs of an activated ability, e.g. "{1}{R}, {T}, Sacrifice this".</summary>
 public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool SacrificeSelf = false)
 {
+    /// <summary>Other costs: discard, sacrifice another permanent, pay life.</summary>
+    public ExtraCost? Extra { get; init; }
+
+    /// <summary>"Exile this card from your graveyard" / "Return this card from your graveyard": the ability works from the graveyard.</summary>
+    public bool FromGraveyard { get; init; }
+
+    /// <summary>Remove this many +1/+1 (or other) counters from the source.</summary>
+    public int RemoveCounters { get; init; }
+
     public static readonly AbilityCost TapOnly = new(ManaCost.Zero, Tap: true);
 }
 
@@ -35,7 +59,16 @@ public sealed record ActivatedAbility : AbilityDefinition
 
     /// <summary>"Activate only as a sorcery."</summary>
     public bool SorcerySpeed { get; init; }
+
+    /// <summary>"Activate only once each turn."</summary>
+    public bool OncePerTurn { get; init; }
+
+    /// <summary>"Activate only if [condition]."</summary>
+    public Condition? ActivationCondition { get; init; }
 }
+
+/// <summary>"[Spells matching the filter] you cast cost {N} less to cast" while the source is on the battlefield.</summary>
+public sealed record SpellCostReduction(ObjectFilter Spells, int Amount) : AbilityDefinition;
 
 public enum TriggerEvent
 {
@@ -69,6 +102,26 @@ public enum TriggerEvent
     YourBeginCombat,
     /// <summary>"Whenever you attack" (one or more creatures you control attack).</summary>
     YouAttack,
+    /// <summary>"Whenever an opponent casts a [filter] spell" (the filter's controller is ignored).</summary>
+    OpponentCastsSpell,
+    /// <summary>"Whenever a [filter] creature attacks" (another creature, usually one you control).</summary>
+    CreatureAttacks,
+    /// <summary>"Whenever an opponent loses life".</summary>
+    OpponentLosesLife,
+    /// <summary>"Whenever you draw a card" (with <see cref="TriggeredAbility.NthOfTurn"/>: "your second card each turn").</summary>
+    YouDrawCard,
+    /// <summary>"Whenever a [filter] creature deals combat damage to a player".</summary>
+    CreatureDealsCombatDamageToPlayer,
+    /// <summary>"At the beginning of each end step" / "the end step".</summary>
+    EachEndStep,
+    /// <summary>"At the beginning of each combat".</summary>
+    EachBeginCombat,
+    /// <summary>"At the beginning of each upkeep".</summary>
+    EachUpkeep,
+    /// <summary>"Whenever one or more +1/+1 counters are put on [filter]" (this creature: filter "self").</summary>
+    CountersPlaced,
+    /// <summary>"Whenever this creature becomes tapped".</summary>
+    BecomesTapped,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -78,6 +131,12 @@ public sealed record TriggeredAbility : AbilityDefinition
 
     /// <summary>Which objects the event must involve, for events about other objects (creature enters, spell cast...).</summary>
     public ObjectFilter? Filter { get; init; }
+
+    /// <summary>Only the Nth such event of the turn counts ("your second card each turn", "for the first time each turn").</summary>
+    public int? NthOfTurn { get; init; }
+
+    /// <summary>For <see cref="TriggerEvent.CountersPlaced"/>: only counters put on the source itself.</summary>
+    public bool OnSelf { get; init; }
 }
 
 /// <summary>
@@ -87,6 +146,10 @@ public sealed record TriggeredAbility : AbilityDefinition
 /// <param name="Types">The object must have at least one of these types (no restriction when 0).</param>
 /// <param name="ExcludedTypes">The object must have none of these types ("noncreature").</param>
 /// <param name="Other">Excludes the source itself ("another").</param>
+/// <param name="Colors">The object must have at least one of these colors (W, U, B, R, G).</param>
+/// <param name="Keyword">The object must have this keyword ability ("creature with flying").</param>
+/// <param name="WithoutKeyword">The object must not have this keyword ability ("creature without flying").</param>
+/// <param name="InCombat">Attacking or blocking.</param>
 public sealed record ObjectFilter(
     Cards.CardType Types = 0,
     Cards.CardType ExcludedTypes = 0,
@@ -94,7 +157,21 @@ public sealed record ObjectFilter(
     ControllerFilter Controller = ControllerFilter.You,
     bool Other = false,
     int? MinPower = null,
-    bool? Token = null)
+    bool? Token = null,
+    int? MaxPower = null,
+    int? MinToughness = null,
+    int? MinManaValue = null,
+    int? MaxManaValue = null,
+    IReadOnlyList<string>? Colors = null,
+    Cards.Keyword? Keyword = null,
+    Cards.Keyword? WithoutKeyword = null,
+    bool? Tapped = null,
+    bool? InCombat = null,
+    bool? Attacking = null,
+    Cards.Supertype Supertype = 0,
+    string? ExcludedSubtype = null)
 {
+    public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
+
     public static readonly ObjectFilter YourCreatures = new(Cards.CardType.Creature);
 }

@@ -34,7 +34,7 @@ public static class Evaluation
     {
         DealDamage or Destroy or ExileIt or TapIt or CounterSpell or LoseLife or Mill => true,
         ReturnToHand => true,
-        PumpUntilEndOfTurn p => p.Power + p.Toughness < 0,
+        PumpUntilEndOfTurn p => p.Power.Estimate + p.Toughness.Estimate < 0,
         AddCounters a => a.Kind == CounterKind.MinusOneMinusOne,
         _ => false,
     };
@@ -66,7 +66,7 @@ public static class Evaluation
 
     /// <summary>Damage an ability deals to target <paramref name="index"/>, if any.</summary>
     public static int DamageTo(AbilityDefinition ability, int index) =>
-        ability.Effects.OfType<DealDamage>().Where(d => d.To.Kind == SubjectKind.Target && d.To.Index == index).Sum(d => d.Amount);
+        ability.Effects.OfType<DealDamage>().Where(d => d.To.Kind == SubjectKind.Target && d.To.Index == index).Sum(d => d.Amount.Estimate);
 
     public static int ManaValue(string? cost)
     {

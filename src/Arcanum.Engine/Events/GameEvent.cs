@@ -46,6 +46,8 @@ public sealed record PermanentDestroyed(CardId Card) : GameEvent;
 public sealed record CommanderReturned(CardId Card, PlayerId Owner) : GameEvent;
 public sealed record LifeChanged(PlayerId Player, int OldLife, int NewLife) : GameEvent;
 public sealed record CreatureDied(CardId Card) : GameEvent;
+public sealed record PermanentSacrificed(CardId Card) : GameEvent;
+public sealed record ControlChanged(CardId Card, PlayerId NewController) : GameEvent;
 public sealed record CardDiscarded(PlayerId Player, CardId Card) : GameEvent;
 /// <summary>Scry (<paramref name="Scry"/> true) or surveil: <paramref name="Moved"/> of the <paramref name="Looked"/> cards left the top.</summary>
 public sealed record LookedAtTop(PlayerId Player, int Looked, int Moved, bool Scry) : GameEvent;

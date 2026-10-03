@@ -48,6 +48,9 @@ public sealed record CardDefinition
     /// <summary>Replacement effect "This creature enters with N +1/+1 counters on it" (rule 614.1c).</summary>
     public int EntersWithCounters { get; init; }
 
+    /// <summary>"This creature enters with X +1/+1 counters on it" (X as chosen when it was cast).</summary>
+    public bool EntersWithXCounters { get; init; }
+
     /// <summary>Colors for objects without a mana cost to derive them from (tokens). Letters W, U, B, R, G.</summary>
     public IReadOnlyList<string> Colors { get; init; } = Array.Empty<string>();
 
@@ -57,10 +60,51 @@ public sealed record CardDefinition
     /// </summary>
     public string? ImageKey { get; init; }
 
+    /// <summary>"This spell can't be countered."</summary>
+    public bool CantBeCountered { get; init; }
+
+    /// <summary>"You have hexproof." (while this permanent is on the battlefield)</summary>
+    public bool GivesControllerHexproof { get; init; }
+
+    /// <summary>"Hexproof from [color]": colors (W, U, B, R, G) of opponents' sources that can't target it.</summary>
+    public IReadOnlyList<string> HexproofFromColors { get; init; } = Array.Empty<string>();
+
+    /// <summary>"Players can't gain life." (while this permanent is on the battlefield)</summary>
+    public bool PlayersCantGainLife { get; init; }
+
+    /// <summary>Kicker cost: an optional additional cost paid as the spell is cast (rule 702.33).</summary>
+    public ManaCost? Kicker { get; init; }
+
+    /// <summary>Flashback cost: the card may be cast from the graveyard for it, then exiled (rule 702.34).</summary>
+    public ManaCost? Flashback { get; init; }
+
+    /// <summary>Ward: opponents' spells and abilities that target it are countered unless they pay this (rule 702.21).</summary>
+    public ManaCost? WardMana { get; init; }
+
+    /// <summary>Ward life payment ("Ward—Pay 3 life"); combined with <see cref="WardMana"/> when both are printed.</summary>
+    public int WardLife { get; init; }
+
+    /// <summary>Costs paid in addition to the mana cost ("As an additional cost to cast this spell, discard a card").</summary>
+    public ExtraCost? AdditionalCost { get; init; }
+
+    /// <summary>"This spell costs {N} less to cast if [condition]" — or for each matching object, see <see cref="CostReduction"/>.</summary>
+    public CostReduction? SelfCostReduction { get; init; }
+
+    /// <summary>"This creature attacks each combat if able."</summary>
+    public bool AttacksEachCombat { get; init; }
+
+    /// <summary>"This creature doesn't untap during your untap step."</summary>
+    public bool DoesntUntap { get; init; }
+
     /// <summary>Marks a token definition (tokens cease to exist outside the battlefield, rule 111.7).</summary>
     public bool IsToken { get; init; }
 
     public bool Is(CardType type) => (Types & type) != 0;
+
+    private IReadOnlyList<string>? _colorList;
+
+    /// <summary>Colors: the explicit <see cref="Colors"/>, otherwise those of the mana cost's colored symbols.</summary>
+    public IReadOnlyList<string> ColorList => _colorList ??= Colors.Count > 0 ? Colors : ManaCost.Colors();
 
     private IReadOnlySet<Keyword>? _parsedKeywords;
 

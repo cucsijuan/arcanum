@@ -35,6 +35,8 @@ public static class EventLogFormatter
             TokenCreated t => $"{P(t.Controller)} creates a {C(t.Card)} token.",
             PermanentDestroyed d when !game.State.GetCard(d.Card).IsCreature => $"{C(d.Card)} is destroyed.",
             LifeChanged { NewLife: var now, OldLife: var before } l when now > before => $"{P(l.Player)} gains {now - before} life.",
+            PermanentSacrificed sac when !game.State.GetCard(sac.Card).IsCreature => $"{C(sac.Card)} is sacrificed.",
+            ControlChanged cc => $"{P(cc.NewController)} gains control of {C(cc.Card)}.",
             CardDiscarded d => $"{P(d.Player)} discards {C(d.Card)}.",
             LookedAtTop { Scry: true } l => $"{P(l.Player)} scries {l.Looked} ({l.Moved} to the bottom).",
             LookedAtTop l => $"{P(l.Player)} surveils {l.Looked} ({l.Moved} to the graveyard).",

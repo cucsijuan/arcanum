@@ -85,4 +85,14 @@ public sealed class TestController : IPlayerController
         LastChoice = request;
         return Task.FromResult(Choose(view, request));
     }
+
+    /// <summary>Default picks the first possible modes.</summary>
+    public Func<GameView, ModeRequest, IReadOnlyList<int>?> Modes { get; set; } = (_, request) => request.Possible.Take(request.Min).ToList();
+
+    public Task<IReadOnlyList<int>?> ChooseModesAsync(GameView view, ModeRequest request) => Task.FromResult(Modes(view, request));
+
+    /// <summary>Default picks the largest number.</summary>
+    public Func<GameView, NumberRequest, int> Number { get; set; } = (_, request) => request.Max;
+
+    public Task<int> ChooseNumberAsync(GameView view, NumberRequest request) => Task.FromResult(Number(view, request));
 }

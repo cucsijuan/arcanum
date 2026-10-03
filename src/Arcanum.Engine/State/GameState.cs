@@ -6,6 +6,9 @@ namespace Arcanum.Engine.State;
 /// <summary>A temporary P/T change and/or keyword grant on one specific object (card + version).</summary>
 public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, int Toughness, IReadOnlyList<Cards.Keyword> Keywords);
 
+/// <summary>Control gained "until end of turn": returned to <paramref name="Original"/> at cleanup.</summary>
+public sealed record TemporaryControlEffect(CardId Card, int Version, PlayerId Original);
+
 /// <summary>Complete, authoritative state of a game. Only the engine mutates it.</summary>
 public sealed class GameState
 {
@@ -18,6 +21,8 @@ public sealed class GameState
 
     /// <summary>"Until end of turn" modifications, removed in the cleanup step (rule 514.2).</summary>
     public List<UntilEndOfTurnEffect> UntilEndOfTurn { get; } = new();
+
+    public List<TemporaryControlEffect> TemporaryControl { get; } = new();
 
     public int TurnNumber { get; set; }
     public PlayerId ActivePlayer { get; set; }

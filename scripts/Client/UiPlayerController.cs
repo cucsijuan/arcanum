@@ -67,4 +67,10 @@ public sealed class UiPlayerController(PlayerId player, DecisionHub hub, Decisio
 
     public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request) =>
         Ask(new ChooseCardsDecision { Player = player, Request = request });
+
+    public Task<IReadOnlyList<int>?> ChooseModesAsync(GameView view, ModeRequest request) =>
+        Ask(new ChooseModesDecision { Player = player, Request = request });
+
+    public Task<int> ChooseNumberAsync(GameView view, NumberRequest request) =>
+        Ask(new ChooseNumberDecision { Player = player, Request = request });
 }

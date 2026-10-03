@@ -24,3 +24,15 @@ public sealed record LifeAtLeast(int Amount) : Condition;
 
 /// <summary>"If [condition] isn't true" / "unless".</summary>
 public sealed record Not(Condition Inner) : Condition;
+
+/// <summary>"If it was kicked" / "if this spell was kicked".</summary>
+public sealed record WasKicked : Condition;
+
+/// <summary>"If an opponent lost life this turn".</summary>
+public sealed record OpponentLostLifeThisTurn : Condition;
+
+/// <summary>"If it's your turn" / "during your turn".</summary>
+public sealed record YourTurn : Condition;
+
+/// <summary>"If the source has N or more +1/+1 counters on it".</summary>
+public sealed record SourceHasCounters(int AtLeast) : Condition;

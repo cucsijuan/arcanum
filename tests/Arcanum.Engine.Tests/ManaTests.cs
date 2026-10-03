@@ -28,10 +28,21 @@ public class ManaTests
     public void RoundTripsToString() => Assert.Equal("{3}{R}{R}", ManaCost.Parse("{3}{R}{R}").ToString());
 
     [Theory]
-    [InlineData("{X}")]
-    [InlineData("{G/W}")]
+    [InlineData("{G/P}")]
+    [InlineData("{Q}")]
     [InlineData("2G")]
     public void RejectsUnsupportedSymbols(string text) => Assert.Throws<FormatException>(() => ManaCost.Parse(text));
+
+    [Fact]
+    public void ParsesXAndHybrid()
+    {
+        var cost = ManaCost.Parse("{X}{1}{G/W}{G}");
+        Assert.Equal(1, cost.XCount);
+        Assert.Equal(3, cost.ManaValue);
+        Assert.Equal("{X}{1}{G/W}{G}", cost.ToString());
+        Assert.Equal(ManaCost.Parse("{4}{G}{W}"), cost.WithX(3).Variants().ElementAt(1));
+        Assert.Equal(new[] { "W", "G" }, cost.Colors());
+    }
 
     private static GameState StateWithLands(params CardDefinition[] lands)
     {

@@ -32,6 +32,13 @@ public sealed partial class Game
             var declared = await ControllerOf(active).DeclareAttackersAsync(ViewFor(active), possible, defenders);
             Require(declared.Select(d => d.Attacker).Distinct().Count() == declared.Count, "A creature can attack only once.");
             Require(declared.All(d => possible.Contains(d.Attacker) && defenders.Contains(d.Defender)), "Illegal attacker or defender.");
+            // "Attacks each combat if able" (508.1d): such creatures left out attack anyway.
+            var mustAttack = possible.Where(id => State.GetCard(id).Definition.AttacksEachCombat && declared.All(d => d.Attacker != id)).ToList();
+            if (mustAttack.Count > 0)
+            {
+                var defender = declared.Count > 0 ? declared[0].Defender : defenders[0];
+                declared = declared.Concat(mustAttack.Select(id => new AttackDeclaration(id, defender))).ToList();
+            }
 
             foreach (var d in declared)
             {

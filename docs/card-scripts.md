@@ -29,6 +29,12 @@ enchantment, permanent, "... you control") and "This land/creature enters tapped
 - `spell`: what an instant or sorcery does when it resolves.
 - `aura`: for an Aura, what it enchants (same values as targets). Usually read from the "Enchant ..." line.
 - `entersTapped` / `entersWithCounters`: replacement effects applied as the permanent enters.
+- Card-wide rules (all optional): `"uncounterable": true`, `"kicker": "{2}"`, `"flashback": "{1}{R}"`,
+  `"ward": "{2}"`, `"wardLife": 2`, `"givesHexproof": true` ("You have hexproof"), `"hexproofFrom": ["B"]`,
+  `"playersCantGainLife": true`, `"attacksEachCombat": true`, `"doesntUntap": true`,
+  `"additionalCost": { "discard": 1, "sacrifice": filter, "life": 2 }`,
+  `"costReduction": { "amount": 3, "if": condition }` (or `"perPermanent": filter` / `"perGraveyardCard": filter`),
+  `"entersWithCounters": "X"`. Kicker, flashback, ward and "can't be countered" are also read from the rules text.
 - `abilities`: a permanent's abilities. An entry with `static` is a static ability; one with `trigger` is a
   triggered ability; one with `cost` is an activated ability (`"sorcery": true` limits it to sorcery timing).
 
@@ -51,6 +57,24 @@ enchantment, permanent, "... you control") and "This land/creature enters tapped
 `keywords` grants keyword abilities while the source is on the battlefield.
 - `text`: rules text shown to players for this ability (on the stack, in ability choosers and the log).
 
+## Modal spells and abilities
+
+Instead of `targets`/`effects`, a spell or ability can list `modes`:
+
+```json
+{ "spell": { "chooseCount": 1, "upTo": false, "modes": [
+    { "text": "Deals 4 damage to target player.", "targets": ["player"], "effects": [{ "damage": 4, "to": "target" }] },
+    { "text": "Draw a card.", "effects": [{ "draw": 1 }] } ] } }
+```
+
+Each mode's effects refer to its own targets (`"target"` is the mode's first target). Modes without legal
+targets can't be chosen.
+
+## Cost reductions
+
+`{ "spellCost": { "spells": { "types": ["instant", "sorcery"] }, "amount": 1 } }` in `abilities`: spells you cast
+matching the filter cost that much less (generic mana only).
+
 ## Targets
 
 Each entry adds one target, chosen when the spell is cast or the ability is put on the stack. Effects refer
@@ -64,6 +88,10 @@ to them as `"target"` (first), `"target2"`, `"target3"`, ...
 | `opponent` | An opponent |
 | `spell` | A spell on the stack |
 | `<kind>:you` / `<kind>:opponent` | Restricted by controller, e.g. `creature:you` |
+| `graveyardCard` / `graveyardCard:you` | A card in a graveyard / in your graveyard |
+
+A target can also be an object: `{ "kind": "permanent", "controller": "opponent", "filter": { "types": ["artifact", "enchantment"] }, "optional": true }`.
+`filter` adds requirements (see Filters); `optional` makes it "up to one" (the player may choose none).
 
 ## Subjects
 
@@ -77,6 +105,15 @@ Effects say who or what they affect with these values:
 | `everyone` | Each player |
 | `self` | The source permanent |
 | `targetController` | The controller of the first target |
+| `targetOwner` | The owner of the first target |
+| `triggered` / `triggeredPlayer` | The object / player the trigger event was about ("that creature", "that player") |
+| `{ "each": filter }` | Every permanent matching the filter (controller defaults to any) |
+
+## Quantities
+
+Numbers in effects can be `3`, `"X"`, `"-X"`, `"lifeGained"`, `"life"`, `"handSize"`, `"triggerAmount"`
+("that much"), `"triggeredPower"`, or `{ "count": filter, "times": 2 }` (permanents), `{ "graveyard": filter }`,
+`{ "attacking": filter }`, `{ "power": "self" | "target" }`, `{ "toughness": "target" }`, `{ "manaValue": "target" }`.
 
 ## Effects
 
@@ -101,6 +138,11 @@ Effects say who or what they affect with these values:
 | Discard (the player chooses) | `{ "discard": 1, "who": "opponents" }` |
 | Only if a condition holds | `{ "if": "raid", "then": [ ... ], "else": [ ... ] }` |
 | Optional | `{ "may": "Draw a card?", "effects": [ ... ] }` |
+| Put onto the battlefield | `{ "reanimate": "target", "tapped": true }` (under your control; `"ownerControl": true` for its owner's) |
+| Search your library | `{ "search": filter, "count": 1, "to": "hand" \| "battlefield" \| "graveyard" \| "top", "tapped": true }` |
+| Sacrifice | `{ "sacrifice": 1, "filter": { "types": ["creature"] }, "who": "opponents" }` |
+| Top or bottom of library | `{ "toLibrary": "target" }` (its owner chooses) / `"bottom": true` |
+| Gain control | `{ "gainControl": "target", "untilEndOfTurn": true }` |
 
 ## Triggers
 
@@ -120,6 +162,16 @@ Effects say who or what they affect with these values:
 | `castSpell` | You cast a spell matching `filter` |
 | `beginCombat` | At the beginning of combat on your turn |
 | `youAttack` | You attack with one or more creatures |
+| `opponentCastsSpell` | An opponent casts a spell matching `filter` |
+| `creatureAttacks` | A creature matching `filter` attacks |
+| `creatureCombatDamageToPlayer` | A creature matching `filter` deals combat damage to a player |
+| `opponentLosesLife` | An opponent loses life |
+| `draw` | You draw a card |
+| `countersPlaced` | +1/+1 counters are put on a creature matching `filter` (`"onSelf": true`: on this one) |
+| `becomesTapped` | This permanent becomes tapped |
+| `eachUpkeep` / `eachBeginCombat` / `eachEndStep` | At the beginning of each upkeep / combat / end step |
+
+`"nth": 2` limits a trigger to the Nth such event of the turn ("your second card each turn").
 
 A trigger can have an intervening condition, `"if": ...`: it triggers only if the condition holds, and does
 nothing on resolution unless it still holds.
@@ -129,6 +181,9 @@ nothing on resolution unless it still holds.
 ```json
 { "types": ["instant", "sorcery"], "not": ["creature"], "subtype": "Elf", "controller": "you", "other": true, "minPower": 4, "token": false }
 ```
+
+Also: `maxPower`, `minToughness`, `minManaValue`, `maxManaValue`, `colors` (any of), `keyword` / `without`,
+`tapped`, `inCombat` (attacking or blocking), `attacking`, `supertype` (`"basic"`), `notSubtype`.
 
 Every field is optional. `types` matches any of the listed card types, `not` excludes types, `controller` is
 `you` (default), `opponent` or `any`, `other` excludes the source itself and `token` limits to (or excludes)
@@ -146,7 +201,15 @@ tokens.
 | `{ "control": filter, "count": 2 }` | You control at least that many permanents matching the filter |
 | `{ "life": 10 }` | You have at least that much life |
 | `{ "not": condition }` | The condition is false |
+| `"kicked"` | The spell (or the permanent, as it entered) was kicked |
+| `"opponentLostLife"` | An opponent lost life this turn |
+| `"yourTurn"` | It's your turn |
+| `{ "counters": 3 }` | The source has at least that many +1/+1 counters |
 
 ## Costs
 
-Comma-separated: mana symbols (`{2}{R}`), `{T}` (tap this permanent) and `sacrifice` (sacrifice this permanent).
+Comma-separated: mana symbols (`{2}{R}`, `{X}`), `{T}` (tap this permanent), `sacrifice` (sacrifice this
+permanent), `sacrifice:creature` (sacrifice another creature), `discard`, `discard:2`, `life:2`,
+`removeCounters:3` (+1/+1 counters from this permanent) and `exileFromGraveyard` (the ability is activated
+from your graveyard, exiling this card). An activated ability can add `"oncePerTurn": true` and
+`"activateIf": condition`.

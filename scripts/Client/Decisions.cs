@@ -80,6 +80,18 @@ public sealed class ChooseCardsDecision : Decision<IReadOnlyList<CardId>>
     public required CardChoiceRequest Request { get; init; }
 }
 
+/// <summary>Pick modes of a modal spell or ability.</summary>
+public sealed class ChooseModesDecision : Decision<IReadOnlyList<int>?>
+{
+    public required ModeRequest Request { get; init; }
+}
+
+/// <summary>Choose a number (the value of X).</summary>
+public sealed class ChooseNumberDecision : Decision<int>
+{
+    public required NumberRequest Request { get; init; }
+}
+
 /// <summary>Single queue point for decisions of every local seat (hotseat shares one screen).</summary>
 public sealed class DecisionHub
 {

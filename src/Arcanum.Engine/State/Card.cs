@@ -67,6 +67,16 @@ public sealed class Card
 
     public bool IsCreature => Is(CardType.Creature);
 
+    /// <summary>Has this subtype (changelings have every creature type).</summary>
+    public bool HasSubtype(string subtype) =>
+        Definition.Subtypes.Contains(subtype, StringComparer.OrdinalIgnoreCase) || (Has(Keyword.Changeling) && subtype is not ("Equipment" or "Aura" or "Treasure" or "Food" or "Clue"));
+
+    /// <summary>Cast with its kicker cost paid (kept as the spell becomes a permanent, rule 702.33).</summary>
+    public bool Kicked { get; set; }
+
+    /// <summary>Indices of "activate only once each turn" abilities already activated this turn.</summary>
+    public HashSet<int> ActivatedThisTurn { get; } = new();
+
     public bool Has(Keyword keyword) => Definition.KeywordAbilities.Contains(keyword) || GrantedKeywords.Contains(keyword);
 
     /// <summary>A creature that can't attack or use {T} abilities yet (rule 302.6); haste removes the restriction.</summary>
@@ -84,6 +94,8 @@ public sealed class Card
         PowerBonus = 0;
         ToughnessBonus = 0;
         GrantedKeywords.Clear();
+        Kicked = false;
+        ActivatedThisTurn.Clear();
         Version++;
         Controller = Owner;
     }

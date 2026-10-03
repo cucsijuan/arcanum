@@ -8,7 +8,8 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>Moves a card between zones. Cards always go to their owner's per-player zones (rule 400.3).</summary>
-    private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null)
+    /// <param name="kicked">A spell cast with kicker becoming a permanent: it remembers it was kicked (for "if it was kicked").</param>
+    private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false)
     {
         var card = State.GetCard(id);
         var from = card.Zone;
@@ -30,6 +31,7 @@ public sealed partial class Game
         }
 
         card.ResetStatus();
+        card.Kicked = kicked;
         card.Zone = to;
         NoteCommanderMove(card, to);
         switch (to)

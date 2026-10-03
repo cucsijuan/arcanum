@@ -43,6 +43,15 @@ public interface IPlayerController
 
     /// <summary>Pick cards among the request's options (scry, surveil, search...); the engine checks the count.</summary>
     Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request);
+
+    /// <summary>Pick modes of a modal spell or ability; null cancels (only if allowed).</summary>
+    Task<IReadOnlyList<int>?> ChooseModesAsync(GameView view, ModeRequest request);
+
+    /// <summary>Choose a number between the request's bounds (the value of X, for example).</summary>
+    Task<int> ChooseNumberAsync(GameView view, NumberRequest request);
 }
+
+/// <summary>Choose a number from <see cref="Min"/> to <see cref="Max"/>.</summary>
+public sealed record NumberRequest(string Prompt, CardId? Source, int Min, int Max);
 
 public sealed class InvalidDecisionException(string message) : Exception(message);

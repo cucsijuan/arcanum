@@ -10,6 +10,12 @@ public readonly record struct ChosenTarget(Target Target, int Version);
 /// <summary>An object on the stack: a spell or an activated/triggered ability.</summary>
 public abstract record StackItem(PlayerId Controller, IReadOnlyList<ChosenTarget> Targets)
 {
+    /// <summary>The value chosen for X.</summary>
+    public int X { get; init; }
+
+    /// <summary>The kicker cost was paid.</summary>
+    public bool Kicked { get; init; }
+
     /// <summary>The card the spell is, or the source of the ability.</summary>
     public abstract CardId SourceCard { get; }
 }
@@ -18,10 +24,22 @@ public sealed record SpellOnStack(CardId Card, PlayerId Controller, IReadOnlyLis
     : StackItem(Controller, ChosenTargets ?? Array.Empty<ChosenTarget>())
 {
     public override CardId SourceCard => Card;
+
+    /// <summary>The spell's ability narrowed to the chosen modes (null: the card's own).</summary>
+    public AbilityDefinition? Ability { get; init; }
+
+    /// <summary>Cast with flashback: exiled instead of going anywhere else when it leaves the stack.</summary>
+    public bool Flashback { get; init; }
 }
 
 public sealed record AbilityOnStack(CardId Source, AbilityDefinition Ability, PlayerId Controller, IReadOnlyList<ChosenTarget> ChosenTargets)
     : StackItem(Controller, ChosenTargets)
 {
     public override CardId SourceCard => Source;
+
+    /// <summary>For a triggered ability: what the trigger event was about.</summary>
+    public TriggerInfo? Trigger { get; init; }
 }
+
+/// <summary>What a trigger event was about: an object (with its version then), a player and an amount.</summary>
+public sealed record TriggerInfo(CardId? Subject = null, int SubjectVersion = 0, PlayerId? Player = null, int Amount = 0);

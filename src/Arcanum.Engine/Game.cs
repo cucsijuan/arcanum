@@ -104,6 +104,13 @@ public sealed partial class Game
                 break;
             case LifeChanged l when l.NewLife > l.OldLife:
                 State.GetPlayer(l.Player).LifeGainedThisTurn += l.NewLife - l.OldLife;
+                State.GetPlayer(l.Player).LifeGainsThisTurn++;
+                break;
+            case CardDrawn d:
+                State.GetPlayer(d.Player).CardsDrawnThisTurn++;
+                break;
+            case LifeChanged l when l.NewLife < l.OldLife:
+                State.GetPlayer(l.Player).LifeLostThisTurn += l.OldLife - l.NewLife;
                 break;
             case AttacksDeclared a:
                 State.GetPlayer(a.Player).AttackedThisTurn = true;

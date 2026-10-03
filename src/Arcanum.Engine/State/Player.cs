@@ -26,6 +26,15 @@ public sealed class Player
     /// <summary>Total life gained this turn.</summary>
     public int LifeGainedThisTurn { get; set; }
 
+    /// <summary>Cards drawn this turn.</summary>
+    public int CardsDrawnThisTurn { get; set; }
+
+    /// <summary>Separate life gain events this turn.</summary>
+    public int LifeGainsThisTurn { get; set; }
+
+    /// <summary>Total life lost this turn.</summary>
+    public int LifeLostThisTurn { get; set; }
+
     /// <summary>Set when the player tried to draw from an empty library; checked as a state-based action.</summary>
     public bool AttemptedDrawFromEmptyLibrary { get; set; }
 

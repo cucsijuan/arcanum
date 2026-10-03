@@ -38,6 +38,8 @@ public partial class GameBoard : Control
 
     // In-progress choices for the pending decision.
     private readonly HashSet<CardId> _selected = new();
+    private readonly List<int> _chosenModes = new();
+    private int _number;
     private readonly Dictionary<CardId, PlayerId> _attackTargets = new(); // attacker -> player it attacks
     private PlayerId? _attackDefender;                                    // where newly picked attackers go
     private readonly HashSet<CardId> _attackGroup = new();                // picked since the last change of target
@@ -482,6 +484,8 @@ public partial class GameBoard : Control
             _pendingBlocker = null;
             _abilityChoiceSource = null;
             _chosenTargets.Clear();
+            _chosenModes.Clear();
+            _number = decision is ChooseNumberDecision nd ? nd.Request.Max : 0;
             _staged.Clear();
             if (decision is ManaPaymentDecision pay) _staged.AddRange(pay.Request.SuggestedTaps);
             if (decision is DamageAssignmentDecision dmg) ResetDamage(dmg);
@@ -562,7 +566,7 @@ public partial class GameBoard : Control
         {
             case MulliganDecision m: m.Answer(true); break;
             case PriorityDecision p: p.Answer(p.Legal.FirstOrDefault(a => a is PlayLand or CastSpell) ?? PassPriority.Instance); break;
-            case TargetDecision t: t.Answer(t.Request.Legal.Select(choices => choices[0]).ToList()); break;
+            case TargetDecision t: t.Answer(t.Request.Legal.Select(choices => choices.FirstOrDefault(c => !c.IsNone) is { } c && !c.IsNone ? c : choices[0]).ToList()); break;
             case ManaPaymentDecision pay: pay.Answer(pay.Request.SuggestedTaps); break;
             case YesNoDecision yn: yn.Answer(true); break;
             case DamageAssignmentDecision dmg: dmg.Answer(dmg.Request.Suggested); break;
@@ -579,6 +583,8 @@ public partial class GameBoard : Control
                 break;
             }
             case SelectCardsDecision s: s.Answer(view.Players[s.Player.Value].Hand.Take(s.Count).Select(c => c.Id).ToList()); break;
+            case ChooseModesDecision md: md.Answer(md.Request.Possible.Take(Math.Max(1, md.Request.Min)).ToList()); break;
+            case ChooseNumberDecision nd: nd.Answer(nd.Request.Max); break;
             case ChooseCardsDecision c: c.Answer(c.Request.Options.Take(Math.Max(c.Request.Min, 1)).Take(c.Request.Max).Select(o => o.Id).ToList()); break;
         }
     }
@@ -765,9 +771,50 @@ public partial class GameBoard : Control
             {
                 var source = view.FindCard(t.Request.Source)?.Name ?? "spell";
                 int index = Math.Min(_chosenTargets.Count, t.Request.Specs.Count - 1);
-                _prompt.Text = $"{who}: choose {t.Request.Specs[index].Describe()} for {source}";
+                var spec = t.Request.Specs[index];
+                _prompt.Text = $"{who}: choose {(spec.Optional ? "up to one " : "")}{spec.Describe()} for {source}";
                 if (t.Request.CanCancel) AddButton("Cancel", () => t.Answer(null));
                 if (_chosenTargets.Count > 0) AddButton("Back", () => { _chosenTargets.RemoveAt(_chosenTargets.Count - 1); Refresh(); });
+                if (spec.Optional) AddButton("None", () => PickTarget(Arcanum.Engine.Abilities.Target.None), primary: true);
+                break;
+            }
+
+            case ChooseModesDecision md:
+            {
+                var source = view.FindCard(md.Request.Source)?.Name ?? "spell";
+                var count = md.Request.Min == md.Request.Max ? $"{md.Request.Max}" : $"{md.Request.Min}–{md.Request.Max}";
+                _prompt.Text = $"{who}: {source} — choose {count}";
+                _actionExtra.Visible = true;
+                foreach (var i in md.Request.Possible)
+                {
+                    int mode = i;
+                    var text = (md.Request.Max > 1 && _chosenModes.Contains(mode) ? "\u2713 " : "") + Shorten(md.Request.Modes[mode]);
+                    AddChoiceButton(text, () =>
+                    {
+                        if (md.Request.Max == 1) { md.Answer(new[] { mode }); return; }
+                        if (!_chosenModes.Remove(mode) && _chosenModes.Count < md.Request.Max) _chosenModes.Add(mode);
+                        Refresh();
+                    });
+                }
+                if (md.Request.CanCancel) AddButton("Cancel", () => md.Answer(null));
+                if (md.Request.Max > 1)
+                {
+                    var done = AddButton($"Confirm ({_chosenModes.Count})", () => md.Answer(_chosenModes.OrderBy(m => m).ToList()), primary: true);
+                    done.Disabled = _chosenModes.Count < md.Request.Min || _chosenModes.Count > md.Request.Max;
+                }
+                break;
+            }
+
+            case ChooseNumberDecision nd:
+            {
+                _prompt.Text = $"{who}: {nd.Request.Prompt} ({nd.Request.Min}–{nd.Request.Max})";
+                var less = AddButton("\u2212", () => { _number = Math.Max(nd.Request.Min, _number - 1); Refresh(); });
+                less.CustomMinimumSize = new Vector2(52, 44);
+                less.Disabled = _number <= nd.Request.Min;
+                var more = AddButton("+", () => { _number = Math.Min(nd.Request.Max, _number + 1); Refresh(); });
+                more.CustomMinimumSize = new Vector2(52, 44);
+                more.Disabled = _number >= nd.Request.Max;
+                AddButton($"X = {_number}", () => nd.Answer(_number), primary: true);
                 break;
             }
 
@@ -818,6 +865,18 @@ public partial class GameBoard : Control
                         var names = top.Targets.Select(t => t.Player is { } pl ? view.Players[pl.Value].Name : view.FindCard(t.Card!.Value)?.Name ?? "?");
                         _actionExtra.AddChild(BoardStyle.MakeLabel("\u2192 " + string.Join(", ", names), 14, BoardStyle.Playable));
                     }
+                }
+                // Cards in the graveyard aren't on the board: flashback and graveyard abilities get their own buttons.
+                foreach (var action in p.Legal)
+                {
+                    var (id, label) = action switch
+                    {
+                        CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Graveyard } g => (c.Card, $"Flashback {g.Name}"),
+                        ActivateAbility a when view.FindCard(a.Source) is { Zone: Arcanum.Engine.State.Zone.Graveyard } g
+                            => (a.Source, $"{g.Name}: {Shorten(a.Index < g.AbilityTexts.Count ? g.AbilityTexts[a.Index] : "activate")}"),
+                        _ => (default(CardId?), ""),
+                    };
+                    if (id is not null) AddChoiceButton(label, () => p.Answer(action));
                 }
                 AddButton("End turn", () =>
                 {
@@ -986,6 +1045,23 @@ public partial class GameBoard : Control
     {
         foreach (var type in source.Types) if (remaining.Pips.Contains(type)) return type;
         return remaining.Generic > 0 ? source.Types[0] : null;
+    }
+
+    /// <summary>A full-width option button in the panel's extra area (modes, long choices).</summary>
+    private Button AddChoiceButton(string text, Action onPressed)
+    {
+        var button = BoardStyle.MakeButton(text, 15);
+        button.CustomMinimumSize = new Vector2(320, 40);
+        button.Alignment = HorizontalAlignment.Left;
+        button.Pressed += () =>
+        {
+            if (_session.CurrentDecision is null) return;
+            onPressed();
+            if (_session.CurrentDecision is null) _actionPanel.Visible = false;
+        };
+        _actionExtra.Visible = true;
+        _actionExtra.AddChild(button);
+        return button;
     }
 
     private Button AddButton(string text, Action onPressed, bool primary = false)
@@ -1211,6 +1287,15 @@ public partial class GameBoard : Control
     /// </summary>
     private void UpdateMulliganView(Decision? decision)
     {
+        if (decision is TargetDecision td && _chosenTargets.Count < td.Request.Specs.Count
+            && td.Request.Specs[_chosenTargets.Count].Kind == Arcanum.Engine.Abilities.TargetKind.GraveyardCard)
+        {
+            // Cards in graveyards aren't on the board: show the legal ones large to pick from.
+            var options = td.Request.Legal[_chosenTargets.Count].Where(t => t.Card is not null)
+                .Select(t => ViewBuilderCard(t.Card!.Value, decision.Player)).ToList();
+            _mulligan.ShowHand(options, $"Choose {td.Request.Specs[_chosenTargets.Count].Describe()}", new HashSet<CardId>(), selectable: true);
+            return;
+        }
         if (decision is ChooseCardsDecision choice)
         {
             var who = _session.Game.State.GetPlayer(choice.Player).Name;
@@ -1235,6 +1320,9 @@ public partial class GameBoard : Control
         };
         _mulligan.ShowHand(view.Players[decision.Player.Value].Hand, title, _selected, selectable: bottom);
     }
+
+    private CardView ViewBuilderCard(CardId id, PlayerId viewer) =>
+        Arcanum.Engine.Views.ViewBuilder.Card(_session.Game.State, id, viewer, _session.RevealAll);
 
     /// <summary>Completes once queued announcements and short holds (e.g. after combat damage) are over.</summary>
     private async Task PresentationAsync()

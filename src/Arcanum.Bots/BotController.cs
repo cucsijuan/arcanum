@@ -60,6 +60,26 @@ public sealed class BotController : IPlayerController
     public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) =>
         Task.FromResult<IReadOnlyList<CardId>>(LeastUseful(view, count));
 
+    /// <summary>Modes picked for each source's latest modal spell or ability, to choose its targets accordingly.</summary>
+    private readonly Dictionary<CardId, IReadOnlyList<int>> _lastModes = new();
+
+    public Task<IReadOnlyList<int>?> ChooseModesAsync(GameView view, ModeRequest request)
+    {
+        var rules = Rules(view, request.Source) ?? _definitions(request.Source);
+        var ability = rules?.Spell?.Modes is not null ? rules.Spell : rules?.Abilities.FirstOrDefault(a => a.Modes is not null);
+        var ranked = request.Possible
+            .Where(i => !request.Modes[i].Contains("lose the game", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(i => ability?.Modes is { } modes ? SpellScore(view, modes[i].AsAbility()) : 0)
+            .ToList();
+        if (ranked.Count < request.Min) ranked = request.Possible.ToList();
+        var chosen = ranked.Take(Math.Max(request.Min, Math.Min(request.Max, ranked.Count))).OrderBy(i => i).ToList();
+        _lastModes[request.Source] = chosen;
+        return Task.FromResult<IReadOnlyList<int>?>(chosen);
+    }
+
+    /// <summary>Use everything available for X.</summary>
+    public Task<int> ChooseNumberAsync(GameView view, NumberRequest request) => Task.FromResult(request.Max);
+
     public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request)
     {
         int lands = view.Battlefield.Count(c => c.Controller == _me && (c.Types & CardType.Land) != 0)
@@ -200,9 +220,19 @@ public sealed class BotController : IPlayerController
         return best;
     }
 
+    /// <summary>Net value of an effect hitting every permanent matching the filter: theirs minus ours.</summary>
+    private double EachValue(GameView view, ObjectFilter filter)
+    {
+        bool Hit(CardView c) => (filter.Types == 0 || (c.Types & filter.Types) != 0)
+                                && (filter.Controller == ControllerFilter.Any || (filter.Controller == ControllerFilter.Opponent) == (c.Controller != _me));
+        var hit = view.Battlefield.Where(Hit).ToList();
+        return hit.Where(c => c.Controller != _me).Sum(CreatureValue) - hit.Where(c => c.Controller == _me).Sum(CreatureValue) - 1;
+    }
+
     /// <summary>Value of casting a non-permanent spell now: removal against the best target, card draw, face damage.</summary>
     private double SpellScore(GameView view, AbilityDefinition spell)
     {
+        if (spell.Modes is { } modes) return modes.Max(m => SpellScore(view, m.AsAbility()));
         if (spell.Targets.Count == 0)
         {
             double value = 0;
@@ -210,16 +240,21 @@ public sealed class BotController : IPlayerController
             {
                 value += effect switch
                 {
-                    DrawCards d when d.Who.Kind == SubjectKind.You => 1.5 * d.Count,
-                    CreateTokens t => 2 * t.Count,
-                    DealDamage { To.Kind: SubjectKind.EachOpponent } d => d.Amount,
-                    GainLife g when g.Who.Kind == SubjectKind.You => 0.3 * g.Amount,
+                    DrawCards d when d.Who.Kind == SubjectKind.You => 1.5 * d.Count.Estimate,
+                    CreateTokens t => 2 * t.Count.Estimate,
+                    DealDamage { To.Kind: SubjectKind.EachOpponent } d => d.Amount.Estimate,
+                    GainLife g when g.Who.Kind == SubjectKind.You => 0.3 * g.Amount.Estimate,
+                    LoseLife { Who.Kind: SubjectKind.You } => -1,
+                    SearchLibrary => 1.5,
+                    Destroy { What.Kind: SubjectKind.Each } d => EachValue(view, d.What.Filter!),
+                    DealDamage { To.Kind: SubjectKind.Each } d => EachValue(view, d.To.Filter! with { MaxPower = null }),
+                    PumpUntilEndOfTurn { What.Kind: SubjectKind.Each } => 0.5,
                     _ => 0.2,
                 };
             }
             return value;
         }
-        if (!TargetIsHarmed(spell, 0)) return spell.Effects.OfType<DrawCards>().Sum(d => 1.5 * d.Count);
+        if (!TargetIsHarmed(spell, 0)) return spell.Effects.OfType<DrawCards>().Sum(d => 1.5 * d.Count.Estimate);
         var target = BestHarmTarget(view, spell, 0, LegalHarmTargets(view, spell.Targets[0]));
         if (target is null) return 0;
         if (target.Value.Player is { } facePlayer)
@@ -277,7 +312,7 @@ public sealed class BotController : IPlayerController
         foreach (var cast in legal.OfType<CastSpell>())
         {
             var spell = Rules(view, cast.Card)?.Spell;
-            var pump = spell?.Effects.OfType<PumpUntilEndOfTurn>().FirstOrDefault(p => p.Power + p.Toughness > 0);
+            var pump = spell?.Effects.OfType<PumpUntilEndOfTurn>().FirstOrDefault(p => p.Power.Estimate + p.Toughness.Estimate > 0);
             if (spell is null || pump is null || spell.Targets.Count != 1) continue;
             if (FightToWin(view, pump) is not null) return cast;
         }
@@ -296,7 +331,7 @@ public sealed class BotController : IPlayerController
             {
                 int incoming = blockers.Sum(b => b.Power ?? 0);
                 bool diesNow = incoming >= RemainingToughness(attacker);
-                bool survivesPumped = incoming < RemainingToughness(attacker) + pump.Toughness;
+                bool survivesPumped = incoming < RemainingToughness(attacker) + pump.Toughness.Estimate;
                 if (diesNow && survivesPumped) return attacker;
             }
             else
@@ -304,7 +339,7 @@ public sealed class BotController : IPlayerController
                 foreach (var blocker in blockers.Where(b => b.Controller == _me))
                 {
                     bool diesNow = (attacker.Power ?? 0) >= RemainingToughness(blocker);
-                    bool survivesPumped = (attacker.Power ?? 0) < RemainingToughness(blocker) + pump.Toughness;
+                    bool survivesPumped = (attacker.Power ?? 0) < RemainingToughness(blocker) + pump.Toughness.Estimate;
                     if (diesNow && survivesPumped) return blocker;
                 }
             }
@@ -320,7 +355,7 @@ public sealed class BotController : IPlayerController
         var chosen = new List<Target>();
         for (int i = 0; i < request.Specs.Count; i++)
         {
-            var legal = request.Legal[i].Where(t => !chosen.Contains(t)).ToList();
+            var legal = request.Legal[i].Where(t => !chosen.Contains(t) && !t.IsNone).ToList();
             if (legal.Count == 0) legal = request.Legal[i].ToList();
             Target pick;
             if (ability is not null && TargetIsHarmed(ability, i))
@@ -342,7 +377,11 @@ public sealed class BotController : IPlayerController
     {
         var rules = Rules(view, request.Source) ?? _definitions(request.Source); // trigger sources may have left play
         if (rules is null) return null;
-        if (rules.Spell is { } spell && request.Text == rules.Name) return spell;
+        if (rules.Spell is { } spell && request.Text == rules.Name)
+            return spell.Modes is not null && _lastModes.TryGetValue(request.Source, out var modes) ? spell.WithModes(modes) : spell;
+        if (_lastModes.TryGetValue(request.Source, out var chosenModes)
+            && rules.Abilities.FirstOrDefault(a => a.Modes is not null && a.Targets.Count == 0) is { } modal)
+            return modal.WithModes(chosenModes);
         if (rules.EnchantTarget is { } enchant && request.Text == rules.Name)
             return rules.Abilities.OfType<StaticAbility>().FirstOrDefault() is { } st ? st with { Targets = new[] { enchant } } : null;
         return rules.Abilities.FirstOrDefault(a => a.Text == request.Text && a.Targets.Count == request.Specs.Count)

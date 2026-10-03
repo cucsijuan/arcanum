@@ -18,8 +18,12 @@ public sealed partial class Game
         {
             player.AttackedThisTurn = false;
             player.LifeGainedThisTurn = 0;
+            player.LifeLostThisTurn = 0;
+            player.CardsDrawnThisTurn = 0;
+            player.LifeGainsThisTurn = 0;
         }
         foreach (var permanent in State.PermanentsControlledBy(active.Id)) permanent.ControlledSinceTurnStart = true;
+        foreach (var card in State.Cards.Values) card.ActivatedThisTurn.Clear();
         Emit(new TurnBegan(State.TurnNumber, active.Id));
 
         _skipCombatDamageSteps = false;
@@ -52,7 +56,7 @@ public sealed partial class Game
         switch (step)
         {
             case Step.Untap:
-                foreach (var permanent in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Tapped).ToList())
+                foreach (var permanent in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Tapped && !c.Definition.DoesntUntap).ToList())
                 {
                     permanent.Tapped = false;
                     Emit(new PermanentUntapped(permanent.Id));
@@ -100,6 +104,15 @@ public sealed partial class Game
         // Damage wears off and "until end of turn" effects end at the same time (rule 514.2).
         foreach (var permanent in State.Battlefield.Select(State.GetCard)) permanent.Damage = 0;
         State.UntilEndOfTurn.Clear();
+        foreach (var control in State.TemporaryControl)
+        {
+            var card = State.GetCard(control.Card);
+            if (card.Version != control.Version || card.Zone != Zone.Battlefield) continue;
+            card.Controller = control.Original;
+            card.ControlledSinceTurnStart = false;
+            Emit(new ControlChanged(card.Id, control.Original));
+        }
+        State.TemporaryControl.Clear();
         RecomputeContinuousEffects();
     }
 }
