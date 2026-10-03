@@ -38,6 +38,8 @@ public static class EventLogFormatter
             PermanentSacrificed sac when !game.State.GetCard(sac.Card).IsCreature => $"{C(sac.Card)} is sacrificed.",
             ControlChanged cc => $"{P(cc.NewController)} gains control of {C(cc.Card)}.",
             ChoiceMade cm => $"{C(cm.Card)}: {cm.Choice} chosen.",
+            CardsRevealed cr => $"{P(cr.Player)} reveals {string.Join(", ", cr.Cards.Select(C))}.",
+            HandRevealed hr => $"{P(hr.Player)} reveals their hand.",
             CardDiscarded d => $"{P(d.Player)} discards {C(d.Card)}.",
             LookedAtTop { Scry: true } l => $"{P(l.Player)} scries {l.Looked} ({l.Moved} to the bottom).",
             LookedAtTop l => $"{P(l.Player)} surveils {l.Looked} ({l.Moved} to the graveyard).",

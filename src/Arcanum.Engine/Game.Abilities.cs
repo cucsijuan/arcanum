@@ -662,7 +662,7 @@ public sealed partial class Game
                         new NumberRequest($"Counters on {chosen[i].Name} ({remaining} left)", ctx.Source.Id, 1, remaining - left));
                     Require(n >= 1 && n <= remaining - left, "Each target gets at least one counter.");
                     remaining -= n;
-                    PutCounters(chosen[i], CounterKind.PlusOnePlusOne, n);
+                    PutCounters(chosen[i], CounterKind.PlusOnePlusOne, n, ctx.Controller);
                 }
                 break;
             }
@@ -676,7 +676,7 @@ public sealed partial class Game
                     if (Matches(ru.Filter with { Controller = ControllerFilter.Any }, State.GetCard(id), ctx.Controller, ctx.Source, ctx.Controller)) { found = id; break; }
                     revealed.Add(id);
                 }
-                Emit(new HandRevealed(ctx.Controller, found is { } f ? revealed.Append(f).ToList() : revealed));
+                Emit(new CardsRevealed(ctx.Controller, found is { } f ? revealed.Append(f).ToList() : revealed));
                 if (found is { } hit) MoveCard(hit, ru.To, controller: ctx.Controller);
                 Rng.Shuffle(revealed);
                 foreach (var id in revealed) { player.Library.Remove(id); player.Library.Add(id); }
@@ -868,7 +868,7 @@ public sealed partial class Game
             case DoubleCounters dbl:
                 foreach (var card in CardsFor(dbl.What, ctx).ToList())
                     foreach (var (kind, have) in card.Counters.Where(kv => kv.Value > 0).ToList())
-                        PutCounters(card, kind, have);
+                        PutCounters(card, kind, have, ctx.Controller);
                 break;
             case RemoveCounters rc:
             {
@@ -924,7 +924,7 @@ public sealed partial class Game
                 {
                     MoveCard(card.Id, Zone.Battlefield, controller: p.UnderOwnersControl ? card.Owner : ctx.Controller);
                     if (p.Tapped && !card.Tapped) card.Tapped = true;
-                    if (p.Counters > 0) PutCounters(card, p.CounterKind, p.Counters);
+                    if (p.Counters > 0) PutCounters(card, p.CounterKind, p.Counters, ctx.Controller);
                     if (p.AddSubtypes is { } subtypes) card.PermanentSubtypes.UnionWith(subtypes);
                     if (p.AddKeywords is { } keywords) card.PermanentKeywords.UnionWith(keywords);
                     RecomputeContinuousEffects();
@@ -1002,7 +1002,9 @@ public sealed partial class Game
                 int amount = Eval(d.Amount, ctx);
                 foreach (var card in CardsFor(d.To, ctx).ToList())
                 {
+                    // Lethal damage is 1 from a deathtouch source (rule 702.2c).
                     int before = card.Damage, lethal = Math.Max(0, card.Toughness - card.Damage);
+                    if (ctx.Source.Has(Keyword.Deathtouch) && lethal > 0) lethal = 1;
                     DamageCreature(ctx.Source, card, amount);
                     if (card.IsCreature) ctx.Results.ExcessDamage += Math.Max(0, card.Damage - before - lethal);
                 }
@@ -1117,7 +1119,7 @@ public sealed partial class Game
             {
                 int count = Eval(a.Count, ctx);
                 if (count <= 0) break;
-                foreach (var card in CardsFor(a.What, ctx)) PutCounters(card, a.Kind, count);
+                foreach (var card in CardsFor(a.What, ctx)) PutCounters(card, a.Kind, count, ctx.Controller);
             }
                 break;
             case AttachSelf a:
@@ -1193,12 +1195,12 @@ public sealed partial class Game
     }
 
     /// <summary>Puts counters on a permanent (doubled by "twice that many counters" effects of its controller).</summary>
-    private void PutCounters(Card card, CounterKind kind, int count)
+    private void PutCounters(Card card, CounterKind kind, int count, PlayerId? placedBy = null)
     {
         if (count <= 0) return;
         if (Has(card.Controller, Replacements.DoubleCounters)) count *= 2;
         card.Counters[kind] = card.CounterCount(kind) + count;
-        Emit(new CountersPlaced(card.Id, kind, count));
+        Emit(new CountersPlaced(card.Id, kind, count, placedBy));
     }
 
     /// <summary>Whether a player controls a permanent with this replacement effect.</summary>
@@ -1278,6 +1280,7 @@ public sealed partial class Game
             var chosen = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), request);
             Require(chosen.Count <= search.Count && chosen.Distinct().Count() == chosen.Count && chosen.All(id => options.Any(o => o.Id == id)),
                 "Choose among the matching cards.");
+            if (search.Reveal && chosen.Count > 0) Emit(new CardsRevealed(who, chosen.ToList()));
             var onTop = new List<CardId>();
             foreach (var id in chosen)
             {
@@ -1379,6 +1382,7 @@ public sealed partial class Game
             chosen = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), request);
             Require(chosen.Count <= look.Take && chosen.Distinct().Count() == chosen.Count && chosen.All(eligible.Contains), "Choose among the matching cards.");
         }
+        if (look.Reveal && chosen.Count > 0) Emit(new CardsRevealed(who, chosen.ToList()));
         foreach (var id in chosen)
         {
             if (look.TakeTo == Zone.Library) continue; // stays on top
@@ -1514,6 +1518,7 @@ public sealed partial class Game
             SourceIs si => source is not null && Matches(si.Filter with { Controller = ControllerFilter.Any }, source, source.Controller, source, controller),
             SourceWasSubtype w => source?.LastKnownInfo?.Subtypes.Contains(w.Subtype, StringComparer.OrdinalIgnoreCase) == true || source?.HasSubtype(w.Subtype) == true && source.Zone == Zone.Battlefield,
             WasCastFromHand => source?.CastFromHand == true,
+            WasCast => source?.WasCast == true,
             SourceHadCounters h => (source?.LastKnownInfo?.Counters.GetValueOrDefault(h.Kind) ?? 0) > 0,
             DifferentNames d => State.PermanentsControlledBy(controller).Where(c => Matches(d.Filter, c, c.Controller, source, controller)).Select(c => c.Name).Distinct().Count() >= d.AtLeast,
             ResolvedThisTurn r => source is not null && source.ResolvedThisTurn.Values.DefaultIfEmpty(0).Max() >= r.Times,
@@ -1790,6 +1795,7 @@ public sealed partial class Game
                     foreach (var ability in observer.Abilities.OfType<TriggeredAbility>())
                     {
                         if (ability.Trigger != TriggerEvent.CountersPlaced || ability.CounterKind != cp.Kind) continue;
+                        if (ability.PlacedByYou && cp.By != observer.Controller) continue;
                         bool hit = ability.OnSelf ? observer.Id == target.Id
                             : Matches(ability.Filter ?? ObjectFilter.YourCreatures, target, target.Controller, observer, observer.Controller);
                         if (hit) AddPending(observer.Id, ability, observer.Controller, About(target, amount: cp.Count));

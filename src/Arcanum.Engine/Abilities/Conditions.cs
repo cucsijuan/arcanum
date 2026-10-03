@@ -93,3 +93,6 @@ public sealed record SourceIs(ObjectFilter Filter) : Condition;
 
 /// <summary>A quantity is at least <paramref name="AtLeast"/> ("if at least one creature card was exiled this way").</summary>
 public sealed record QuantityAtLeast(Quantity Quantity, int AtLeast) : Condition;
+
+/// <summary>"If you cast it" (from anywhere).</summary>
+public sealed record WasCast : Condition;

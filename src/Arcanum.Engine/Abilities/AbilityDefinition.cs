@@ -214,6 +214,9 @@ public sealed record TriggeredAbility : AbilityDefinition
     /// <summary>The ability works while its card is in its owner's graveyard (and not on the battlefield).</summary>
     public bool FromGraveyard { get; init; }
 
+    /// <summary>For counter triggers: only counters put by you ("Whenever you put one or more counters on").</summary>
+    public bool PlacedByYou { get; init; }
+
     /// <summary>For counter triggers: the kind of counters (default +1/+1).</summary>
     public CounterKind CounterKind { get; init; } = CounterKind.PlusOnePlusOne;
 }

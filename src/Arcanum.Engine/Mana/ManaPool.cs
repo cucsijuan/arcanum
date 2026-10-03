@@ -1,16 +1,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 namespace Arcanum.Engine.Mana;
 
+/// <summary>
+/// Mana with strings attached (rule 106.6): it can only be spent on what <see cref="OnlyFor"/> allows (spells, and
+/// abilities too when <see cref="AbilitiesToo"/>), or something happens when it is spent (<see cref="Rider"/>).
+/// </summary>
+public sealed record ManaUnit(ManaType Type, Core.CardId Source, Abilities.ObjectFilter? OnlyFor, bool AbilitiesToo, Abilities.ManaRider Rider);
+
 public sealed class ManaPool
 {
     private readonly int[] _amounts = new int[6];
 
+    /// <summary>Restricted or rider mana, kept apart so it is only spent where it may be.</summary>
+    private readonly List<ManaUnit> _special = new();
+
+    public IReadOnlyList<ManaUnit> Special => _special;
+
+    public void AddSpecial(ManaUnit unit) => _special.Add(unit);
+
+    public void RemoveSpecial(ManaUnit unit)
+    {
+        if (!_special.Remove(unit)) throw new InvalidOperationException("That mana isn't in the pool.");
+    }
+
     /// <summary>Mana that doesn't empty between steps until the end of the turn ("you don't lose this mana").</summary>
     private readonly int[] _untilEndOfTurn = new int[6];
 
+    /// <summary>Ordinary mana of a type (spendable on anything).</summary>
     public int this[ManaType type] => _amounts[(int)type];
 
-    public int Total => _amounts.Sum();
+    /// <summary>All mana of a type, including restricted mana.</summary>
+    public int AllOf(ManaType type) => _amounts[(int)type] + _special.Count(u => u.Type == type);
+
+    public int Total => _amounts.Sum() + _special.Count;
 
     public bool IsEmpty => Total == 0;
 
@@ -35,12 +57,14 @@ public sealed class ManaPool
     {
         if (endOfTurn) Array.Clear(_untilEndOfTurn);
         for (int i = 0; i < _amounts.Length; i++) _amounts[i] = _untilEndOfTurn[i];
+        _special.Clear();
     }
 
     public ManaPool Clone()
     {
         var copy = new ManaPool();
         _amounts.CopyTo(copy._amounts, 0);
+        copy._special.AddRange(_special);
         return copy;
     }
 }

@@ -40,7 +40,10 @@ public sealed record AbilityResolved(CardId Source, string Text) : GameEvent;
 /// <summary>A spell or ability whose targets all became illegal does nothing (rule 608.2b).</summary>
 public sealed record FizzledOnResolution(CardId Source) : GameEvent;
 public sealed record SpellCountered(CardId Card) : GameEvent;
-public sealed record CountersPlaced(CardId Card, Abilities.CounterKind Kind, int Count) : GameEvent;
+/// <param name="By">The player whose spell, ability or cost put them (null: not known).</param>
+public sealed record CountersPlaced(CardId Card, Abilities.CounterKind Kind, int Count, PlayerId? By = null) : GameEvent;
+/// <summary>Cards shown to every player ("reveal it").</summary>
+public sealed record CardsRevealed(PlayerId Player, IReadOnlyList<CardId> Cards) : GameEvent;
 public sealed record TokenCreated(CardId Card, PlayerId Controller) : GameEvent;
 public sealed record PermanentDestroyed(CardId Card) : GameEvent;
 public sealed record CommanderReturned(CardId Card, PlayerId Owner) : GameEvent;

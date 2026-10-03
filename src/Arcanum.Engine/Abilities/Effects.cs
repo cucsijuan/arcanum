@@ -79,6 +79,9 @@ public sealed record SearchLibrary(ObjectFilter Filter, int Count, State.Zone To
 
     /// <summary>"May search": the searching player is asked first.</summary>
     public bool Optional { get; init; }
+
+    /// <summary>"Reveal it": the card found is shown to every player.</summary>
+    public bool Reveal { get; init; }
 }
 
 /// <summary>"[Players] sacrifice N [permanents] of their choice."</summary>
@@ -130,6 +133,9 @@ public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, St
 
     /// <summary>Only cards with mana value X or less qualify.</summary>
     public bool MaxManaValueX { get; init; }
+
+    /// <summary>"Reveal it": the card taken is shown to every player.</summary>
+    public bool Reveal { get; init; }
 }
 
 /// <summary>"[Player] reveals their hand; you choose a [filter] card from it; they discard it."</summary>

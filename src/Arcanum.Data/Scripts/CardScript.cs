@@ -141,6 +141,7 @@ public static class CardScriptParser
                         OnSelf = Bool(a, "onSelf"),
                         OncePerTurn = Bool(a, "oncePerTurn"),
                         TargetsSource = Bool(a, "targetsSource"),
+                        PlacedByYou = Bool(a, "placedByYou"),
                         FromGraveyard = Bool(a, "fromGraveyard"),
                         CounterKind = a.TryGetProperty("counterKind", out var tck) ? ParseCounterKind(tck.GetString()) : CounterKind.PlusOnePlusOne,
                     }));
@@ -495,6 +496,7 @@ public static class CardScriptParser
                 "triggeredWasAttacking" => new TriggeredWasAttacking(),
                 "youSacrificed" => new YouSacrificedThisWay(),
                 "castFromHand" => new WasCastFromHand(),
+                "wasCast" => new WasCast(),
                 var unknown => throw new FormatException($"Unknown condition '{unknown}'."),
             };
         }
@@ -770,6 +772,7 @@ public static class CardScriptParser
             {
                 CountIsX = Flag("countIsX"),
                 MaxManaValueX = Flag("maxManaValueX"),
+                Reveal = Flag("reveal"),
             };
         if (Value("discardChosen") is { } dchosen)
             return new DiscardChosenByYou(dchosen, e.TryGetProperty("filter", out var df) ? ParseFilter(df, ControllerFilter.Any) : null, e.TryGetProperty("count", out var dn) ? dn.GetInt32() : 1);
@@ -795,6 +798,7 @@ public static class CardScriptParser
             {
                 Who = e.TryGetProperty("who", out var sw) ? ParseSubject(sw) : null,
                 Optional = Flag("optional"),
+                Reveal = Flag("reveal"),
             };
         }
         if (e.TryGetProperty("sacrifice", out _))

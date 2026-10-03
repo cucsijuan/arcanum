@@ -33,22 +33,31 @@ public static class ManaPayment
             // Creatures can't use {T} abilities while summoning sick (rule 302.6).
             .Where(c => !c.IsSummoningSick);
 
-    /// <summary>Spends floating mana on <paramref name="cost"/>: specific pips first, then generic.</summary>
-    public static (List<ManaType> FromPool, ManaCost Remaining) ApplyPool(ManaCost cost, ManaPool pool)
+    /// <summary>
+    /// Spends floating mana on <paramref name="cost"/>: specific pips first, then generic. Restricted mana is used only
+    /// where <paramref name="unitUsable"/> allows, and before ordinary mana (it's the less flexible kind).
+    /// <paramref name="plainUsed"/> and <paramref name="specialUsed"/> receive what would be spent.
+    /// </summary>
+    public static (List<ManaType> FromPool, ManaCost Remaining) ApplyPool(ManaCost cost, ManaPool pool, Func<ManaUnit, bool>? unitUsable = null,
+        List<ManaType>? plainUsed = null, List<ManaUnit>? specialUsed = null)
     {
-        var available = pool.Clone();
+        var plain = pool.Clone();
+        var specials = pool.Special.Where(u => unitUsable?.Invoke(u) ?? u.OnlyFor is null).ToList();
         var fromPool = new List<ManaType>();
         var remainingPips = new List<ManaType>();
+        bool Take(ManaType type)
+        {
+            int i = specials.FindIndex(u => u.Type == type);
+            if (i >= 0) { specialUsed?.Add(specials[i]); specials.RemoveAt(i); fromPool.Add(type); return true; }
+            if (plain[type] > 0) { plain.Remove(type); plainUsed?.Add(type); fromPool.Add(type); return true; }
+            return false;
+        }
         foreach (var pip in cost.Pips)
-        {
-            if (available[pip] > 0) { available.Remove(pip); fromPool.Add(pip); }
-            else remainingPips.Add(pip);
-        }
+            if (!Take(pip)) remainingPips.Add(pip);
         int generic = cost.Generic;
+        while (generic > 0 && specials.Count > 0) { Take(specials[0].Type); generic--; }
         foreach (var type in Enum.GetValues<ManaType>())
-        {
-            while (generic > 0 && available[type] > 0) { available.Remove(type); fromPool.Add(type); generic--; }
-        }
+            while (generic > 0 && plain[type] > 0) { Take(type); generic--; }
         return (fromPool, new ManaCost(generic, remainingPips));
     }
 
@@ -76,9 +85,10 @@ public static class ManaPayment
         return (new ManaCost(generic, pips), excess);
     }
 
-    public static PaymentPlan? FindPlan(GameState state, PlayerId player, ManaCost cost, CardId? exclude = null, OptionUsable? usable = null)
+    public static PaymentPlan? FindPlan(GameState state, PlayerId player, ManaCost cost, CardId? exclude = null, OptionUsable? usable = null,
+        Func<ManaUnit, bool>? unitUsable = null)
     {
-        var (fromPool, rest) = ApplyPool(cost, state.GetPlayer(player).ManaPool);
+        var (fromPool, rest) = ApplyPool(cost, state.GetPlayer(player).ManaPool, unitUsable);
         var all = AvailableSources(state, player, exclude, usable).ToList();
         // Sources with an ability that adds several mana are decided first (skip, or each ability and type); the
         // others (one mana per activation, from any of their usable abilities) pay what is left with the pip solver.

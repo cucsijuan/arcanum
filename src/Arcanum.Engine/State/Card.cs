@@ -106,6 +106,9 @@ public sealed class Card
     /// <summary>Resolutions of each of its abilities this turn (for "if this is the second time this ability has resolved").</summary>
     public Dictionary<AbilityDefinition, int> ResolvedThisTurn { get; } = new(ReferenceEqualityComparer.Instance);
 
+    /// <summary>Was cast (from any zone) — for "if you cast it".</summary>
+    public bool WasCast { get; set; }
+
     /// <summary>Was cast from its owner's hand (for "if you cast it from your hand").</summary>
     public bool CastFromHand { get; set; }
 
@@ -235,6 +238,7 @@ public sealed class Card
         LosesAbilities = false;
         GrantedManaOptions.Clear();
         CastFromHand = false;
+        WasCast = false;
         BasePowerOverride = null;
         BaseToughnessOverride = null;
         Kicked = false;

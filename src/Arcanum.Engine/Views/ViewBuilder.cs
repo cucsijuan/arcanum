@@ -38,7 +38,7 @@ public static class ViewBuilder
                 Command = Views(p.Command),
                 ManaPoolTotal = p.ManaPool.Total,
                 CommanderDamage = new Dictionary<CardId, int>(p.CommanderDamageTaken),
-                ManaPool = Enum.GetValues<Mana.ManaType>().Where(t => p.ManaPool[t] > 0).ToDictionary(t => t, t => p.ManaPool[t]),
+                ManaPool = Enum.GetValues<Mana.ManaType>().Where(t => p.ManaPool.AllOf(t) > 0).ToDictionary(t => t, t => p.ManaPool.AllOf(t)),
             }).ToList(),
             Battlefield = Views(state.Battlefield),
             Stack = state.Stack.Select(s => new StackItemView(

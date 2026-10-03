@@ -116,7 +116,7 @@ public sealed partial class Game
                 Require(i >= 0 && i < types.Count, "Choose one of the creature types.");
                 card.ChosenType = types[i];
                 if (card.Definition.CountersPerChosenType is { } kind)
-                    PutCounters(card, kind, State.PermanentsControlledBy(who).Count(c => c.IsCreature && c.HasSubtype(types[i])));
+                    PutCounters(card, kind, State.PermanentsControlledBy(who).Count(c => c.IsCreature && c.HasSubtype(types[i])), who);
             }
             Emit(new ChoiceMade(id, card.ChosenColor is { } c ? ColorNames[Array.IndexOf(ColorLetters, c)] : card.ChosenType!));
             RecomputeContinuousEffects();
@@ -181,8 +181,8 @@ public sealed partial class Game
         }
 
         // Mana abilities can be activated any time the player has priority (rule 605.3a).
-        foreach (var source in ManaPayment.AvailableSources(State, playerId))
-            foreach (var option in ManaPayment.UsableOptions(source, null))
+        foreach (var source in ManaPayment.AvailableSources(State, playerId, usable: (_, _) => true))
+            foreach (var option in ManaPayment.UsableOptions(source, (_, _) => true))
                 foreach (var type in source.ManaOptions[option].Types.Distinct())
                     actions.Add(new ActivateManaAbility(source.Id, type, option));
         return actions;
@@ -219,14 +219,14 @@ public sealed partial class Game
     private bool CanPayFromCostOptions(PlayerId player, Card card, ManaCost cost)
     {
         if (card.Definition.AdditionalCostOptions is not { Count: > 0 } options)
-            return cost.Variants().Any(v => ManaPayment.FindPlan(State, player, v, usable: UsableFor(card, isAbility: false)) is not null);
+            return cost.Variants().Any(v => ManaPayment.FindPlan(State, player, v, usable: UsableFor(card, isAbility: false), unitUsable: UnitUsableFor(card, isAbility: false)) is not null);
         return options.Any(o => CanPayExtra(player, o.Extra, card.Id)
-                                && cost.Plus(o.Mana ?? ManaCost.Zero).Variants().Any(v => ManaPayment.FindPlan(State, player, v, usable: UsableFor(card, isAbility: false)) is not null));
+                                && cost.Plus(o.Mana ?? ManaCost.Zero).Variants().Any(v => ManaPayment.FindPlan(State, player, v, usable: UsableFor(card, isAbility: false), unitUsable: UnitUsableFor(card, isAbility: false)) is not null));
     }
 
     private bool AlternativeCostPayable(PlayerId player, Card card) =>
         card.Definition.AlternativeCost is { } alt && (alt.If is null || Holds(alt.If, player, card))
-        && alt.Cost.Variants().Any(v => ManaPayment.FindPlan(State, player, v, usable: UsableFor(card, isAbility: false)) is not null);
+        && alt.Cost.Variants().Any(v => ManaPayment.FindPlan(State, player, v, usable: UsableFor(card, isAbility: false), unitUsable: UnitUsableFor(card, isAbility: false)) is not null);
 
     /// <summary>Exiled cards <paramref name="player"/> may currently play.</summary>
     private IEnumerable<CardId> PlayableExile(PlayerId player) =>
@@ -256,7 +256,7 @@ public sealed partial class Game
         if (!CanPayExtra(player, ability.Cost.Extra, source.Id)) return false;
         if (!HasLegalTargets(ability, player, source.Id)) return false;
         return ability.Cost.Mana.WithX(0).Variants().Any(v => ManaPayment.FindPlan(State, player, v, exclude: ability.Cost.Tap ? source.Id : null,
-            usable: UsableFor(source, isAbility: true)) is not null);
+            usable: UsableFor(source, isAbility: true), unitUsable: UnitUsableFor(source, isAbility: true)) is not null);
     }
 
     /// <returns>False if the action was cancelled and nothing happened.</returns>
@@ -355,15 +355,16 @@ public sealed partial class Game
 
         // Ward: targeting an opponent's warded permanent costs extra; unpaid, the spell is countered (702.21).
 
-        var taps = await PayManaTapsAsync(player, cardId, cost, exclude: null, UsableFor(card, isAbility: false));
-        if (taps is null) return false;
+        var paidMana = await PayManaTapsAsync(player, cardId, cost, exclude: null, UsableFor(card, isAbility: false), UnitUsableFor(card, isAbility: false));
+        if (paidMana is null) return false;
         await PayExtraAsync(player.Id, card.Definition.AdditionalCost, cardId);
         if (option?.Extra is { } chosenExtra) await PayExtraAsync(player.Id, chosenExtra, cardId);
         if (card.Zone == Zone.Graveyard && GraveyardCost(card) is { } graveyardCost) await PayExtraAsync(player.Id, graveyardCost, cardId);
-        if (card.Zone == Zone.Graveyard && Has(player.Id, Replacements.PermanentsFromGraveyard))
-            player.GraveyardTypesUsedThisTurn |= FirstUnusedPermanentType(player, card);
+        if (card.Zone == Zone.Graveyard && Has(player.Id, Replacements.PermanentsFromGraveyard) && GraveyardCost(card) is null
+            && card.Definition.Flashback is null && !State.PlayableFromGraveyard.Any(p => p.Card == cardId && p.Version == card.Version))
+            player.GraveyardTypesUsedThisTurn |= await ChoosePermanentTypeAsync(player, card);
         // Mana riders: haste for Dragon creature spells, copies of red instants and sorceries.
-        var riders = taps.Select(t => State.GetCard(t.Source).Definition.ManaRider).ToList();
+        var riders = paidMana.SpecialSpent.Select(u => u.Rider).ToList();
         if (riders.Contains(ManaRider.HasteForDragonCreatureSpells) && card.Is(CardType.Creature) && card.HasSubtype("Dragon")) card.HasteOnEnter = true;
         bool copyRider = riders.Contains(ManaRider.CopyRedInstantOrSorcery) && (card.Is(CardType.Instant) || card.Is(CardType.Sorcery)) && card.Colors.Contains("R");
 
@@ -372,6 +373,7 @@ public sealed partial class Game
         MoveCard(cardId, Zone.Stack);
         card.Kicked = kicked;
         card.CastFromHand = fromHand;
+        card.WasCast = true;
         card.HasteOnEnter = haste;
         player.SpellsCastThisTurn.Add(cardId);
         PushStack(new SpellOnStack(cardId, player.Id, targets)
@@ -384,11 +386,16 @@ public sealed partial class Game
         return true;
     }
 
-    private static CardType FirstUnusedPermanentType(Player player, Card card)
+    /// <summary>Which permanent type a card cast from the graveyard uses up ("a permanent spell of each permanent type").</summary>
+    private async Task<CardType> ChoosePermanentTypeAsync(Player player, Card card)
     {
-        foreach (var type in new[] { CardType.Land, CardType.Creature, CardType.Artifact, CardType.Enchantment, CardType.Planeswalker })
-            if (card.Is(type) && (player.GraveyardTypesUsedThisTurn & type) == 0) return type;
-        return 0;
+        var unused = new[] { CardType.Creature, CardType.Artifact, CardType.Enchantment, CardType.Planeswalker }
+            .Where(t => card.Is(t) && (player.GraveyardTypesUsedThisTurn & t) == 0).ToList();
+        if (unused.Count <= 1) return unused.FirstOrDefault();
+        int i = await ControllerOf(player.Id).ChooseOptionAsync(ViewFor(player.Id),
+            new OptionRequest($"Which permanent type does {card.Name} use?", card.Id, unused.Select(t => t.ToString()).ToList(), OptionKind.Other));
+        Require(i >= 0 && i < unused.Count, "Choose one of the types.");
+        return unused[i];
     }
 
     /// <summary>Activating (rule 602.2): choose modes and targets, pay every cost, put the ability on the stack.</summary>
@@ -411,7 +418,7 @@ public sealed partial class Game
         }
         cost = cost.WithX(x);
 
-        if (await PayManaTapsAsync(player, source.Id, cost, exclude, UsableFor(source, isAbility: true)) is null) return false;
+        if (await PayManaTapsAsync(player, source.Id, cost, exclude, UsableFor(source, isAbility: true), UnitUsableFor(source, isAbility: true)) is null) return false;
         if (ability.Cost.Tap)
         {
             source.Tapped = true;
@@ -423,7 +430,7 @@ public sealed partial class Game
         var sacrificed = await PayExtraAsync(player.Id, ability.Cost.Extra, source.Id);
         if (ability.OncePerTurn) source.ActivatedThisTurn.Add(action.Index);
         if (ability.OnlyOnce) source.ActivatedEver.Add(action.Index);
-        if (ability.Cost.AddCounters > 0) PutCounters(source, ability.Cost.AddCounterKind, ability.Cost.AddCounters);
+        if (ability.Cost.AddCounters > 0) PutCounters(source, ability.Cost.AddCounterKind, ability.Cost.AddCounters, player.Id);
         if (ability.Cost.ReturnSelfToHand) MoveCard(source.Id, Zone.Hand);
         if (ability.Cost.TapGranter && ability.GrantedBy is { } granter)
         {
@@ -433,7 +440,7 @@ public sealed partial class Game
         if (ability.Cost.Loyalty is { } loyalty)
         {
             source.LoyaltyActivatedThisTurn = true;
-            if (loyalty > 0) PutCounters(source, CounterKind.Loyalty, loyalty);
+            if (loyalty > 0) PutCounters(source, CounterKind.Loyalty, loyalty, player.Id);
             else if (loyalty < 0) source.Counters[CounterKind.Loyalty] = source.CounterCount(CounterKind.Loyalty) + loyalty;
         }
         if (ability.Cost.SacrificeSelf)
@@ -459,6 +466,11 @@ public sealed partial class Game
 
     private bool Payable(PlayerId player, ManaCost cost, CardId? exclude, ManaPayment.OptionUsable? usable = null) =>
         cost.Variants().Any(v => ManaPayment.FindPlan(State, player, v, exclude, usable) is not null);
+
+    /// <summary>Which restricted mana in the pool can pay for a spell (or an ability of <paramref name="use"/>).</summary>
+    private Func<ManaUnit, bool> UnitUsableFor(Card? use, bool isAbility) => unit =>
+        unit.OnlyFor is not { } only
+        || (use is not null && (!isAbility || unit.AbilitiesToo) && Matches(only with { Controller = ControllerFilter.Any }, use, use.Controller, null, use.Controller));
 
     /// <summary>Which mana abilities can pay for a spell (or an ability of <paramref name="use"/>): restricted mana only for what it allows.</summary>
     private ManaPayment.OptionUsable UsableFor(Card? use, bool isAbility) => (source, option) =>
@@ -525,11 +537,26 @@ public sealed partial class Game
         }
         if (extra.RemoveCountersFromYourCreatures > 0)
         {
-            // Remove from the creatures with the most counters first.
-            int left = extra.RemoveCountersFromYourCreatures;
-            foreach (var creature in State.PermanentsControlledBy(playerId).Where(c => c.IsCreature).OrderByDescending(c => c.Counters.Values.Sum()).ToList())
-                foreach (var kind in creature.Counters.Keys.ToList())
-                    while (left > 0 && creature.Counters[kind] > 0) { creature.Counters[kind]--; left--; }
+            // The player picks each counter to remove (a creature, then the kind when it has several).
+            for (int left = extra.RemoveCountersFromYourCreatures; left > 0; left--)
+            {
+                var holders = State.PermanentsControlledBy(playerId).Where(c => c.IsCreature && c.Counters.Values.Any(v => v > 0)).ToList();
+                var options = holders.Select(c => ViewBuilder.Card(State, c.Id, playerId)).ToList();
+                var pick = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId),
+                    new CardChoiceRequest($"Remove a counter ({left} left)", source, options, 1, 1, CardChoicePurpose.Sacrifice));
+                Require(pick.Count == 1 && holders.Any(c => c.Id == pick[0]), "Choose a creature with counters.");
+                var creature = State.GetCard(pick[0]);
+                var kinds = creature.Counters.Where(kv => kv.Value > 0).Select(kv => kv.Key).ToList();
+                var kind = kinds[0];
+                if (kinds.Count > 1)
+                {
+                    int k = await ControllerOf(playerId).ChooseOptionAsync(ViewFor(playerId),
+                        new OptionRequest($"Which counter from {creature.Name}?", creature.Id, kinds.Select(x => x.ToString()).ToList(), OptionKind.Other));
+                    Require(k >= 0 && k < kinds.Count, "Choose a counter kind.");
+                    kind = kinds[k];
+                }
+                creature.Counters[kind]--;
+            }
         }
         if (extra.Discard > 0)
         {
@@ -556,17 +583,21 @@ public sealed partial class Game
 
     /// <summary>Asks the player how to pay a mana cost (floating mana first). Returns false if they cancel.</summary>
     private async Task<bool> PayManaAsync(Player player, CardId source, ManaCost cost, CardId? exclude) =>
-        await PayManaTapsAsync(player, source, cost, exclude, null) is not null;
+        await PayManaTapsAsync(player, source, cost, exclude, null, null) is not null;
 
-    /// <summary>Like <see cref="PayManaAsync"/>, returning the sources tapped (null if cancelled).</summary>
-    private async Task<IReadOnlyList<ManaTap>?> PayManaTapsAsync(Player player, CardId source, ManaCost cost, CardId? exclude, ManaPayment.OptionUsable? usable)
+    /// <summary>What paid a mana cost: sources tapped and restricted / rider mana spent.</summary>
+    private sealed record ManaPaid(IReadOnlyList<ManaTap> Taps, IReadOnlyList<ManaUnit> SpecialSpent);
+
+    /// <summary>Like <see cref="PayManaAsync"/>, returning what paid (null if cancelled).</summary>
+    private async Task<ManaPaid?> PayManaTapsAsync(Player player, CardId source, ManaCost cost, CardId? exclude, ManaPayment.OptionUsable? usable,
+        Func<ManaUnit, bool>? unitUsable)
     {
-        if (cost.ManaValue == 0) return Array.Empty<ManaTap>();
+        if (cost.ManaValue == 0) return new ManaPaid(Array.Empty<ManaTap>(), Array.Empty<ManaUnit>());
         // Hybrid symbols: pay the first way that works (the payment dialog then works on a concrete cost).
-        cost = cost.Variants().FirstOrDefault(v => ManaPayment.FindPlan(State, player.Id, v, exclude, usable) is not null)
+        cost = cost.Variants().FirstOrDefault(v => ManaPayment.FindPlan(State, player.Id, v, exclude, usable, unitUsable) is not null)
                ?? throw new InvalidOperationException("Legal action became unpayable.");
-        var plan = ManaPayment.FindPlan(State, player.Id, cost, exclude, usable)!;
-        var (fromPool, remaining) = ManaPayment.ApplyPool(cost, player.ManaPool);
+        var plan = ManaPayment.FindPlan(State, player.Id, cost, exclude, usable, unitUsable)!;
+        var (fromPool, remaining) = ManaPayment.ApplyPool(cost, player.ManaPool, unitUsable);
         // One entry per usable mana ability, bigger ones first (a click picks the first that helps).
         var sources = ManaPayment.AvailableSources(State, player.Id, exclude, usable)
             .SelectMany(c => ManaPayment.UsableOptions(c, usable).Select(i => new ManaSourceOption(c.Id, c.ManaOptions[i].Types, c.ManaOptions[i].Amount, i))
@@ -587,10 +618,13 @@ public sealed partial class Game
 
         foreach (var tap in taps) TapForMana(player, tap);
         // Pay the whole cost from the pool; any surplus keeps floating (rule 106.4).
-        var (paid, left) = ManaPayment.ApplyPool(cost, player.ManaPool);
+        var plainUsed = new List<ManaType>();
+        var specialUsed = new List<ManaUnit>();
+        var (_, left) = ManaPayment.ApplyPool(cost, player.ManaPool, unitUsable, plainUsed, specialUsed);
         Require(left.ManaValue == 0, "Payment is short.");
-        foreach (var type in paid) player.ManaPool.Remove(type);
-        return taps;
+        foreach (var type in plainUsed) player.ManaPool.Remove(type);
+        foreach (var unit in specialUsed) player.ManaPool.RemoveSpecial(unit);
+        return new ManaPaid(taps, specialUsed);
     }
 
     private void TapForMana(Player player, ManaTap tap)
@@ -598,9 +632,20 @@ public sealed partial class Game
         var source = State.GetCard(tap.Source);
         source.Tapped = true;
         Emit(new PermanentTapped(tap.Source));
+        var option = tap.Option < source.ManaOptions.Count ? source.ManaOptions[tap.Option] : null;
+        // Restricted mana remembers what it may pay for; the source's "chosen" type or color is fixed now.
+        var onlyFor = option?.OnlyFor is { } only
+            ? only with
+            {
+                Subtype = only.ChosenType ? source.ChosenType : only.Subtype, ChosenType = false,
+                Colors = only.ChosenColor && source.ChosenColor is { } chosen ? new[] { chosen } : only.Colors, ChosenColor = false,
+            }
+            : null;
         for (int i = 0; i < Math.Max(1, ManaPayment.AmountOf(source, tap.Option)); i++)
         {
-            player.ManaPool.Add(tap.Type);
+            if (onlyFor is not null || source.Definition.ManaRider != ManaRider.None)
+                player.ManaPool.AddSpecial(new ManaUnit(tap.Type, source.Id, onlyFor, option?.AbilitiesToo ?? false, source.Definition.ManaRider));
+            else player.ManaPool.Add(tap.Type);
             Emit(new ManaAdded(player.Id, tap.Type, tap.Source));
         }
         if (source.Definition.SacrificeForMana) SacrificePermanent(source.Id);
@@ -624,7 +669,7 @@ public sealed partial class Game
         var caster = card.Zone == Zone.Exile && card.Owner != State.ActivePlayer ? State.ActivePlayer : card.Owner;
         if (card.Zone == Zone.Hand && Has(card.Owner, Replacements.CastFromHandFree) && card.Definition.ManaCost.XCount == 0) return ManaCost.Zero;
         // "Mana of any type can be spent": colored symbols become generic.
-        bool anyType = (card.Zone == Zone.Library && card.Is(CardType.Creature) && Has(card.Owner, Replacements.CreaturesFromLibraryTop))
+        bool anyType = (card.Is(CardType.Creature) && Has(card.Owner, Replacements.CreaturesFromLibraryTop)) // "spend mana of any type to cast creature spells"
                        || (card.Zone == Zone.Exile && card.CounterCount(CounterKind.Stash) > 0 && Has(caster, Replacements.PlayStashedCards));
         if (anyType) cost = new ManaCost(cost.ManaValue, Array.Empty<ManaType>(), null, cost.XCount);
         return cost.MinusGeneric(CostReductionFor(card, targets));
@@ -686,11 +731,12 @@ public sealed partial class Game
                 // An Aura spell enters attached to the object it targeted (rule 303.4f).
                 var attachTo = card.Definition.EnchantTarget is not null ? item.Targets[0].Target.Card : null;
                 MoveCard(spell.Card, card.Types.IsPermanent() ? Zone.Battlefield : discard, controller: spell.Controller, attachTo: attachTo,
-                    kicked: spell.Kicked && card.Types.IsPermanent(), castFromHand: card.CastFromHand && card.Types.IsPermanent());
+                    kicked: spell.Kicked && card.Types.IsPermanent(), castFromHand: card.CastFromHand && card.Types.IsPermanent(),
+                    wasCast: card.Types.IsPermanent() && !card.Definition.IsToken);
                 if (card.Zone == Zone.Battlefield && hasteOnEnter)
                     State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste }));
                 if (card.Zone == Zone.Battlefield && card.Definition.EntersWithXCounters && spell.X > 0)
-                    card.Counters[CounterKind.PlusOnePlusOne] = card.CounterCount(CounterKind.PlusOnePlusOne) + spell.X;
+                    PutCounters(card, CounterKind.PlusOnePlusOne, spell.X, spell.Controller);
                 Emit(new SpellResolved(spell.Card));
                 break;
             }
