@@ -235,4 +235,27 @@ public class ExactRulesTests
         Assert.Equal(1, s.Card(pole).CounterCount(CounterKind.Bait));
         Assert.True(poleTapped);
     }
+
+    [Fact]
+    public async Task AnthemsCanFilterByColorCountAndAttachedAuras()
+    {
+        var s = Casting();
+        static CardDefinition Anthem(string name, ObjectFilter filter) => new()
+        {
+            Name = name, Types = CardType.Enchantment,
+            Abilities = new AbilityDefinition[] { new StaticAbility(new AffectedFilter(AffectedScope.YourCreatures), 1, 1) { Filter = filter } },
+        };
+        s.Add(P0, Anthem("Many Colors", new ObjectFilter(Multicolored: true)));
+        s.Add(P0, Anthem("No Color", new ObjectFilter(Colorless: true)));
+        s.Add(P0, Anthem("Enchanted Ones", new ObjectFilter(Enchanted: true)));
+        var gold = s.Add(P0, Creature("Gold", 2, 2) with { ManaCost = ManaCost.Parse("{W}{U}") });
+        var mono = s.Add(P0, Creature("Mono", 2, 2) with { ManaCost = ManaCost.Parse("{W}") });
+        var golem = s.Add(P0, Creature("Golem", 2, 2) with { ManaCost = ManaCost.Parse("{2}"), Types = CardType.Artifact | CardType.Creature });
+        var aura = s.Add(P0, new CardDefinition { Name = "Charm", Types = CardType.Enchantment, Subtypes = new[] { "Aura" } });
+        s.Card(aura).AttachedTo = mono;
+        await s.RunUntilTurn();
+        Assert.Equal(3, s.Card(gold).Power);
+        Assert.Equal(3, s.Card(mono).Power);
+        Assert.Equal(3, s.Card(golem).Power);
+    }
 }

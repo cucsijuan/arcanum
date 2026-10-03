@@ -264,7 +264,13 @@ public sealed record ObjectFilter(
     Cards.Supertype ExcludedSupertype = 0,
     bool MaxManaValueLandCount = false,
     bool OwnedByYou = false,
-    bool PutIntoZoneThisTurn = false)
+    bool PutIntoZoneThisTurn = false,
+    bool? Blocking = null,
+    bool? Multicolored = null,
+    bool? Colorless = null,
+    bool? Enchanted = null,
+    bool? Equipped = null,
+    bool? Commander = null)
 {
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 

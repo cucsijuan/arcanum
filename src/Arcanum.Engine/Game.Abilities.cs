@@ -1526,6 +1526,10 @@ public sealed partial class Game
         };
     }
 
+    /// <summary>Whether a permanent with the given subtype (an Aura, an Equipment) is attached to <paramref name="obj"/>.</summary>
+    private bool HasAttached(Card obj, string subtype) =>
+        State.Battlefield.Select(State.GetCard).Any(c => c.AttachedTo == obj.Id && c.HasSubtype(subtype));
+
     /// <summary>Mana value; a spell on the stack counts the X chosen for it (rule 202.3e).</summary>
     private int ManaValueOf(Card card)
     {
@@ -1570,12 +1574,18 @@ public sealed partial class Game
         if (filter.ChosenType && (source?.ChosenType is not { } type || !obj.HasSubtype(type))) return false;
         if (filter.AnyOf is { Count: > 0 } anyOf && !anyOf.Any(f => Matches(f with { Controller = ControllerFilter.Any }, obj, objController, source, sourceController))) return false;
         if (filter.HasCounters is { } hasCounters && (obj.CounterCount(CounterKind.PlusOnePlusOne) > 0) != hasCounters) return false;
-        if (filter.InCombat is { } inCombat || filter.Attacking is not null)
+        if (filter.Enchanted is { } enchanted && HasAttached(obj, "Aura") != enchanted) return false;
+        if (filter.Equipped is { } equipped && HasAttached(obj, "Equipment") != equipped) return false;
+        if (filter.Commander is { } commander && obj.IsCommander != commander) return false;
+        if (filter.Multicolored is { } multi && (ColorsOf(obj).Count > 1) != multi) return false;
+        if (filter.Colorless is { } colorless && (ColorsOf(obj).Count == 0) != colorless) return false;
+        if (filter.InCombat is not null || filter.Attacking is not null || filter.Blocking is not null)
         {
             bool attacking = State.Combat?.FindAttack(obj.Id) is not null;
             bool blocking = State.Combat?.IsBlocking(obj.Id) == true;
             if (filter.InCombat is { } wantInCombat && (attacking || blocking) != wantInCombat) return false;
             if (filter.Attacking is { } wantAttacking && attacking != wantAttacking) return false;
+            if (filter.Blocking is { } wantBlocking && blocking != wantBlocking) return false;
         }
         return true;
     }

@@ -183,7 +183,7 @@ nothing on resolution unless it still holds.
 ```
 
 Also: `maxPower`, `minToughness`, `minManaValue`, `maxManaValue`, `colors` (any of), `keyword` / `without`,
-`tapped`, `inCombat` (attacking or blocking), `attacking`, `supertype` (`"basic"`), `notSubtype`.
+`tapped`, `inCombat` (attacking or blocking), `attacking`, `blocking`, `multicolored`, `colorless`, `enchanted` (an Aura is attached), `equipped`, `commander`, `supertype` (`"basic"`), `notSubtype`.
 
 Every field is optional. `types` matches any of the listed card types, `not` excludes types, `controller` is
 `you` (default), `opponent` or `any`, `other` excludes the source itself and `token` limits to (or excludes)

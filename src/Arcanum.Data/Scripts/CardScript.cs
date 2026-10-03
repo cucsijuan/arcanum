@@ -427,7 +427,8 @@ public static class CardScriptParser
     /// <summary>
     /// { "types": ["instant", "sorcery"], "not": ["creature"], "subtype": "Elf", "controller": "you", "other": true,
     ///   "minPower": 4, "maxPower": 2, "minToughness": 4, "minManaValue": 6, "maxManaValue": 2, "colors": ["B", "R"],
-    ///   "keyword": "Flying", "without": "Flying", "tapped": true, "inCombat": true, "attacking": true,
+    ///   "keyword": "Flying", "without": "Flying", "tapped": true, "inCombat": true, "attacking": true, "blocking": true,
+    ///   "multicolored": true, "colorless": true, "enchanted": true, "equipped": true, "commander": true,
     ///   "token": false, "supertype": "basic", "notSubtype": "Human" }
     /// </summary>
     public static ObjectFilter ParseFilter(JsonElement f) => ParseFilter(f, ControllerFilter.You);
@@ -471,7 +472,13 @@ public static class CardScriptParser
             f.TryGetProperty("notSupertype", out var nst) ? Enum.Parse<Supertype>(nst.GetString()!, ignoreCase: true) : 0,
             Bool(f, "maxManaValueLandCount"),
             Bool(f, "ownedByYou"),
-            Bool(f, "putIntoZoneThisTurn"));
+            Bool(f, "putIntoZoneThisTurn"),
+            OptBool("blocking"),
+            OptBool("multicolored"),
+            OptBool("colorless"),
+            OptBool("enchanted"),
+            OptBool("equipped"),
+            OptBool("commander"));
     }
 
     /// <summary>
