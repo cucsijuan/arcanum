@@ -25,6 +25,7 @@ public static class BoardStyle
     public static class Z
     {
         public const int Stack = 400;
+        public const int Mulligan = 440;
         public const int PhaseBar = 410;
         public const int Arrows = 420;
         public const int ActionPanel = 450;

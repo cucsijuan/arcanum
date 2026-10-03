@@ -51,6 +51,7 @@ public partial class GameBoard : Control
     private int _damageToPlayer;                                   // trample damage to the defending player
     private readonly ArrowLayer _arrows = new();
     private readonly Announcer _announcer = new();
+    private readonly MulliganView _mulligan = new();
     private ulong _holdUntilMs;
     private readonly List<AttackerDeclared> _pendingAttacks = new();
     private readonly List<BlockerDeclared> _pendingBlocks = new();
@@ -255,6 +256,11 @@ public partial class GameBoard : Control
 
         _arrows.ZIndex = BoardStyle.Z.Arrows;
         AddChild(_arrows);
+        _mulligan.ZIndex = BoardStyle.Z.Mulligan;
+        _mulligan.CardClicked += OnCardClicked;
+        _mulligan.CardHoverStarted += ShowPreview;
+        _mulligan.CardHoverEnded += HidePreview;
+        AddChild(_mulligan);
         _announcer.ZIndex = BoardStyle.Z.Announcer;
         _announcer.ArrowsChanged += arrows => _arrows.SetOverlayArrows(arrows);
         AddChild(_announcer);
@@ -516,6 +522,7 @@ public partial class GameBoard : Control
         ApplyHighlights(view, decision);
         UpdateArrows(view, decision);
         BuildActionPanel(view, decision);
+        UpdateMulliganView(decision);
         if (_autoplay && decision is not null)
         {
             // ARCANUM_AUTOPLAY=showcase[:DecisionType] freezes on the first decision of that type (default:
@@ -1183,6 +1190,28 @@ public partial class GameBoard : Control
     /// Visual feedback for an event. Runs while the engine is mid-resolution, before the board redraws, so card
     /// nodes are still where the player last saw them.
     /// </summary>
+    /// <summary>The opening hand, large and centered on the local half, while a mulligan is being decided.</summary>
+    private void UpdateMulliganView(Decision? decision)
+    {
+        bool bottom = decision is SelectCardsDecision { Reason: SelectCardsReason.MulliganBottom };
+        if (decision is not (MulliganDecision or SelectCardsDecision { Reason: SelectCardsReason.MulliganBottom }))
+        {
+            _mulligan.HideHand();
+            return;
+        }
+        // The deciding player's own view: in hotseat that's their hand even when hands are hidden from each other.
+        var view = _session.Game.ViewFor(decision.Player, _session.RevealAll);
+        var name = view.Players[decision.Player.Value].Name;
+        var title = decision switch
+        {
+            MulliganDecision { MulligansTaken: 0 } => $"{name}: opening hand",
+            MulliganDecision m => $"{name}: new hand ({m.MulligansTaken} mulligan{(m.MulligansTaken > 1 ? "s" : "")})",
+            SelectCardsDecision s => $"{name}: choose {s.Count} card{(s.Count > 1 ? "s" : "")} to put on the bottom",
+            _ => name,
+        };
+        _mulligan.ShowHand(view.Players[decision.Player.Value].Hand, title, _selected, selectable: bottom);
+    }
+
     /// <summary>Completes once queued announcements and short holds (e.g. after combat damage) are over.</summary>
     private async Task PresentationAsync()
     {
