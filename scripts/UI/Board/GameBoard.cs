@@ -33,12 +33,14 @@ public partial class GameBoard : Control
     private readonly Label _logBadge = BoardStyle.MakeLabel("", 10, Colors.White);
     private readonly Control _gameOver = new();
     private readonly Label _gameOverText = BoardStyle.MakeLabel("", 40, bold: true);
+    private readonly Label _gameOverReasons = BoardStyle.MakeLabel("", 18, BoardStyle.TextDim);
     private int _unreadLog;
 
     // In-progress choices for the pending decision.
     private readonly HashSet<CardId> _selected = new();
     private readonly Dictionary<CardId, PlayerId> _attackTargets = new(); // attacker -> player it attacks
     private PlayerId? _attackDefender;                                    // where newly picked attackers go
+    private readonly HashSet<CardId> _attackGroup = new();                // picked since the last change of target
     private readonly Dictionary<CardId, CardId> _blocks = new(); // blocker -> attacker
     private CardId? _pendingBlocker;
     private readonly List<ManaTap> _staged = new();  // sources picked for an unconfirmed payment
@@ -48,6 +50,11 @@ public partial class GameBoard : Control
     private readonly Dictionary<CardId, int> _damageSplit = new(); // blocker -> damage, for an unconfirmed assignment
     private int _damageToPlayer;                                   // trample damage to the defending player
     private readonly ArrowLayer _arrows = new();
+    private readonly Announcer _announcer = new();
+    private ulong _holdUntilMs;
+    private readonly List<AttackerDeclared> _pendingAttacks = new();
+    private readonly List<BlockerDeclared> _pendingBlocks = new();
+    private bool _combatFlushQueued;
     private readonly PhaseBar _phaseBar = new();
     private readonly StackView _stackView = new();
     private Button _undoButton = null!;
@@ -78,7 +85,7 @@ public partial class GameBoard : Control
         _loading.SetAnchorsPreset(LayoutPreset.Center);
         _loading.GrowHorizontal = GrowDirection.Both;
         _loading.GrowVertical = GrowDirection.Both;
-        _loading.ZIndex = 400;
+        _loading.ZIndex = BoardStyle.Z.Loading;
         _loading.Text = App.Instance.ContentStatus;
         AddChild(_loading);
         void OnProgress(string message) => _loading.Text = message;
@@ -217,6 +224,9 @@ public partial class GameBoard : Control
     private void StartSession(GameSession session)
     {
         _session = session;
+        _announcer.Clear();
+        _holdUntilMs = 0;
+        session.Presentation = PresentationAsync;
         ConfigureAreas(session.PlayerCount);
         _session.Changed += Refresh;
         _session.Failed += e => ShowGameOver($"Engine error:\n{e.Message}");
@@ -243,7 +253,11 @@ public partial class GameBoard : Control
         AddChild(new ColorRect { Color = BoardStyle.Background, MouseFilter = MouseFilterEnum.Ignore, AnchorRight = 1, AnchorBottom = 1 });
 
 
+        _arrows.ZIndex = BoardStyle.Z.Arrows;
         AddChild(_arrows);
+        _announcer.ZIndex = BoardStyle.Z.Announcer;
+        _announcer.ArrowsChanged += arrows => _arrows.SetOverlayArrows(arrows);
+        AddChild(_announcer);
 
         // Top-right: menu, turn counter, log toggle.
         var corner = new VBoxContainer { AnchorLeft = 1, AnchorRight = 1, OffsetLeft = -62, OffsetTop = 14, OffsetRight = -14 };
@@ -285,11 +299,14 @@ public partial class GameBoard : Control
         _phaseBar.OffsetLeft = 110;
         _phaseBar.OffsetTop = 8;
         _phaseBar.GrowVertical = GrowDirection.End;
+        _phaseBar.ZIndex = BoardStyle.Z.PhaseBar;
         AddChild(_phaseBar);
 
         // Stack: right of center, clear of the zone piles.
-        _stackView.AnchorLeft = 1; _stackView.AnchorRight = 1; _stackView.AnchorTop = 0.5f; _stackView.AnchorBottom = 0.5f;
-        _stackView.OffsetLeft = -560; _stackView.OffsetTop = -120;
+        // In the local player's half (left, under the phase bar): same place for any number of players.
+        _stackView.AnchorTop = 0.5f; _stackView.AnchorBottom = 0.5f;
+        _stackView.OffsetLeft = 120; _stackView.OffsetTop = 120;
+        _stackView.ZIndex = BoardStyle.Z.Stack;
         _stackView.CardHoverStarted += ShowPreview;
         _stackView.CardHoverEnded += HidePreview;
         AddChild(_stackView);
@@ -297,6 +314,7 @@ public partial class GameBoard : Control
         // Action panel: right side of the bottom half, clear of both players' zone piles.
         _actionPanel.AnchorLeft = 1; _actionPanel.AnchorRight = 1; _actionPanel.AnchorTop = 0.75f; _actionPanel.AnchorBottom = 0.75f;
         _actionPanel.GrowHorizontal = GrowDirection.Begin;
+        _actionPanel.ZIndex = BoardStyle.Z.ActionPanel;
         _actionPanel.GrowVertical = GrowDirection.Both;
         _actionPanel.OffsetRight = -16;
         _actionPanel.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.06f, 0.06f, 0.07f, 0.92f), 10, BoardStyle.PanelBorder, 1));
@@ -336,6 +354,7 @@ public partial class GameBoard : Control
         _log.AddThemeColorOverride("default_color", BoardStyle.Text);
         _logPanel.AddChild(_log);
         _logPanel.Visible = false;
+        _logPanel.ZIndex = BoardStyle.Z.Log;
         AddChild(_logPanel);
 
         // Hover preview on the left edge.
@@ -343,18 +362,20 @@ public partial class GameBoard : Control
         _preview.SharpImage = true;
         _preview.Size = BoardStyle.PreviewSize;
         _preview.Visible = false;
-        _preview.ZIndex = 200;
+        _preview.ZIndex = BoardStyle.Z.Preview;
         AddChild(_preview);
 
         // Game over overlay.
         _gameOver.SetAnchorsPreset(LayoutPreset.FullRect);
         _gameOver.Visible = false;
-        _gameOver.ZIndex = 300;
+        _gameOver.ZIndex = BoardStyle.Z.GameOver;
         _gameOver.AddChild(new ColorRect { Color = new Color(0, 0, 0, 0.7f), AnchorRight = 1, AnchorBottom = 1 });
         var overBox = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center, AnchorRight = 1, AnchorBottom = 1 };
         overBox.AddThemeConstantOverride("separation", 24);
         _gameOverText.HorizontalAlignment = HorizontalAlignment.Center;
         overBox.AddChild(_gameOverText);
+        _gameOverReasons.HorizontalAlignment = HorizontalAlignment.Center;
+        overBox.AddChild(_gameOverReasons);
         var again = BoardStyle.MakePrimaryButton("New game", 20);
         again.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
         again.CustomMinimumSize = new Vector2(220, 52);
@@ -375,7 +396,7 @@ public partial class GameBoard : Control
     private void BuildMenu()
     {
         _menu.SetAnchorsPreset(LayoutPreset.FullRect);
-        _menu.ZIndex = 350;
+        _menu.ZIndex = BoardStyle.Z.Menu;
         _menu.Visible = false;
         var shade = new ColorRect { Color = new Color(0, 0, 0, 0.6f), AnchorRight = 1, AnchorBottom = 1 };
         shade.GuiInput += e => { if (e is InputEventMouseButton { Pressed: true }) _menu.Visible = false; };
@@ -449,6 +470,7 @@ public partial class GameBoard : Control
         {
             _selected.Clear();
             _attackTargets.Clear();
+            _attackGroup.Clear();
             _attackDefender = decision is AttackDecision ad ? ad.Defenders[0] : null;
             _blocks.Clear();
             _pendingBlocker = null;
@@ -485,8 +507,10 @@ public partial class GameBoard : Control
 
         if (view.IsGameOver)
         {
+            // Say why everyone else lost, so a sudden defeat is never a mystery.
             var winner = view.Winner is { } w ? view.Players[w.Value].Name + " wins!" : "Draw";
-            ShowGameOver(winner);
+            var reasons = _session.Game.Log.OfType<PlayerLost>().Select(l => $"{view.Players[l.Player.Value].Name} lost: {l.Reason}");
+            ShowGameOver(winner + "\n" + string.Join("\n", reasons));
         }
 
         ApplyHighlights(view, decision);
@@ -607,7 +631,12 @@ public partial class GameBoard : Control
                 break;
             case AttackDecision a:
                 foreach (var id in a.PossibleAttackers)
-                    FindCard(id)?.SetHighlight(_attackTargets.ContainsKey(id) ? CardHighlight.Attacking : CardHighlight.Playable);
+                {
+                    bool attacking = _attackTargets.TryGetValue(id, out var target);
+                    FindCard(id)?.SetHighlight(attacking ? CardHighlight.Attacking : CardHighlight.Playable);
+                    if (attacking && a.Defenders.Count > 1) FindCard(id)?.SetCaption("\u2192 " + view.Players[target.Value].Name);
+                }
+                foreach (var defender in a.Defenders) AreaOf(defender).SetPlayerTargetable(defender == _attackDefender);
                 break;
             case BlockDecision b:
                 foreach (var id in b.Attackers)
@@ -755,14 +784,41 @@ public partial class GameBoard : Control
             }
 
             case PriorityDecision p:
+            {
                 _prompt.Text = $"{who}: your move";
+                string resolve = "Next";
+                if (view.Stack.Count > 0)
+                {
+                    // Say exactly what passing lets resolve: name, rules text and targets of the top of the stack.
+                    var top = view.Stack[^1];
+                    var name = top.Card.Name ?? "spell";
+                    resolve = $"Resolve {Shorten(name)}";
+                    _prompt.Text = $"{who}: respond, or let it resolve";
+                    _actionExtra.Visible = true;
+                    var caster = view.Players[top.Controller.Value].Name;
+                    _actionExtra.AddChild(BoardStyle.MakeLabel($"{caster}: {name}{(top.AbilityText is null ? "" : " (ability)")}", 15, BoardStyle.Text, bold: true));
+                    var rules = top.AbilityText ?? top.Card.OracleText;
+                    if (rules.Length > 0)
+                    {
+                        var text = BoardStyle.MakeLabel(rules.Length > 170 ? rules[..167] + "\u2026" : rules, 13, BoardStyle.TextDim);
+                        text.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                        text.CustomMinimumSize = new Vector2(360, 0);
+                        _actionExtra.AddChild(text);
+                    }
+                    if (top.Targets.Count > 0)
+                    {
+                        var names = top.Targets.Select(t => t.Player is { } pl ? view.Players[pl.Value].Name : view.FindCard(t.Card!.Value)?.Name ?? "?");
+                        _actionExtra.AddChild(BoardStyle.MakeLabel("\u2192 " + string.Join(", ", names), 14, BoardStyle.Playable));
+                    }
+                }
                 AddButton("End turn", () =>
                 {
                     _session.Policy.PassTurn(view.TurnNumber); // skip the rest of the turn unless an opponent acts
                     p.Answer(PassPriority.Instance);
                 });
-                AddButton(view.Stack.Count > 0 ? "Resolve" : "Next", () => p.Answer(PassPriority.Instance), primary: true);
+                AddButton(resolve, () => p.Answer(PassPriority.Instance), primary: true);
                 break;
+            }
 
             case DamageAssignmentDecision dmg:
             {
@@ -796,7 +852,7 @@ public partial class GameBoard : Control
                         bool current = defender == _attackDefender;
                         var pick = current ? BoardStyle.MakePrimaryButton(view.Players[defender.Value].Name, 14) : BoardStyle.MakeButton(view.Players[defender.Value].Name, 14);
                         pick.CustomMinimumSize = new Vector2(0, 34);
-                        pick.Pressed += () => { _attackDefender = defender; Refresh(); };
+                        pick.Pressed += () => ChooseAttackTarget(defender);
                         targets.AddChild(pick);
                     }
                     _actionExtra.AddChild(targets);
@@ -988,7 +1044,23 @@ public partial class GameBoard : Control
 
     private static string Shorten(string text) => text.Length <= 28 ? text : text[..27] + "\u2026";
 
-    private void OnPlayerClicked(PlayerId player) => PickTarget(Arcanum.Engine.Abilities.Target.Of(player));
+    private void OnPlayerClicked(PlayerId player)
+    {
+        if (_session.CurrentDecision is AttackDecision a && a.Defenders.Contains(player)) ChooseAttackTarget(player);
+        else PickTarget(Arcanum.Engine.Abilities.Target.Of(player));
+    }
+
+    /// <summary>
+    /// New attack target: attackers picked since the last change follow it, later picks go to it too. So "pick A
+    /// and B, then choose Computer 3" sends both there, and "pick A, choose P2, pick B, choose P3" splits them.
+    /// </summary>
+    private void ChooseAttackTarget(PlayerId defender)
+    {
+        foreach (var id in _attackGroup) _attackTargets[id] = defender;
+        _attackGroup.Clear();
+        _attackDefender = defender;
+        Refresh();
+    }
 
     /// <summary>Adds a target if it is legal for the next requirement; answers once every target is chosen.</summary>
     private void PickTarget(Arcanum.Engine.Abilities.Target target)
@@ -1043,7 +1115,12 @@ public partial class GameBoard : Control
                 break;
 
             case AttackDecision a when a.PossibleAttackers.Contains(id):
-                if (!_attackTargets.Remove(id)) _attackTargets[id] = _attackDefender ?? a.Defenders[0];
+                if (_attackTargets.Remove(id)) _attackGroup.Remove(id);
+                else
+                {
+                    _attackTargets[id] = _attackDefender ?? a.Defenders[0];
+                    _attackGroup.Add(id);
+                }
                 break;
 
             case BlockDecision b:
@@ -1106,20 +1183,127 @@ public partial class GameBoard : Control
     /// Visual feedback for an event. Runs while the engine is mid-resolution, before the board redraws, so card
     /// nodes are still where the player last saw them.
     /// </summary>
+    /// <summary>Completes once queued announcements and short holds (e.g. after combat damage) are over.</summary>
+    private async Task PresentationAsync()
+    {
+        while (IsInstanceValid(this) && (_announcer.Busy || Time.GetTicksMsec() < _holdUntilMs || _combatFlushQueued))
+            await ToSignal(GetTree().CreateTimer(0.05), SceneTreeTimer.SignalName.Timeout);
+    }
+
+    private void Hold(double seconds) =>
+        _holdUntilMs = Math.Max(_holdUntilMs, Time.GetTicksMsec() + (ulong)(seconds * BoardStyle.AnimationScale * 1000));
+
+    /// <summary>Turns what other players (the computer) do into announcements, and holds the game on key moments.</summary>
+    private void Announce(GameEvent e)
+    {
+        var state = _session.Game.State;
+        string Name(PlayerId p) => state.GetPlayer(p).Name;
+        switch (e)
+        {
+            case SpellCast c when _session.IsBot(c.Player):
+                AnnounceStackObject(c.Player, c.Card, "casts", null);
+                break;
+            case AbilityActivated a when _session.IsBot(a.Player):
+                AnnounceStackObject(a.Player, a.Source, "activates", a.Text);
+                break;
+            case AbilityTriggered t when _session.IsBot(t.Controller):
+                AnnounceStackObject(t.Controller, t.Source, "\u2014 triggered:", t.Text);
+                break;
+            case AttackerDeclared a when _session.IsBot(state.GetCard(a.Attacker).Controller):
+                _pendingAttacks.Add(a);
+                QueueCombatFlush();
+                break;
+            case BlockerDeclared b when _session.IsBot(state.GetCard(b.Blocker).Controller):
+                _pendingBlocks.Add(b);
+                QueueCombatFlush();
+                break;
+            case DamageDealt { IsCombat: true }:
+                Hold(1.2); // let the damage numbers be seen before the game moves on
+                break;
+            case PermanentDestroyed d:
+                _announcer.Enqueue(new($"{state.GetCard(d.Card).Name} is destroyed", ViewOf(d.Card), 1.5));
+                break;
+            case CardMoved { From: Arcanum.Engine.State.Zone.Battlefield, To: Arcanum.Engine.State.Zone.Exile } m when !state.GetPlayer(m.Owner).HasLost:
+                _announcer.Enqueue(new($"{state.GetCard(m.Card).Name} is exiled", ViewOf(m.Card), 1.5));
+                break;
+            case CardMoved { From: Arcanum.Engine.State.Zone.Battlefield, To: Arcanum.Engine.State.Zone.Hand } m:
+                _announcer.Enqueue(new($"{state.GetCard(m.Card).Name} returns to {Name(m.Owner)}'s hand", ViewOf(m.Card), 1.5));
+                break;
+            case PlayerLost l:
+                _announcer.Enqueue(new($"{Name(l.Player)} loses: {l.Reason}", null, 2.5));
+                break;
+        }
+    }
+
+    private CardView? ViewOf(CardId id) => _session.ViewFor(Bottom).FindCard(id) is { IsHidden: false } v ? v : null;
+
+    /// <summary>A spell or ability just put on the stack: its card, what it does, and arrows to its targets.</summary>
+    private void AnnounceStackObject(PlayerId player, CardId source, string verb, string? abilityText)
+    {
+        var state = _session.Game.State;
+        var top = state.Stack.LastOrDefault(s => s.SourceCard == source);
+        var targets = top?.Targets.Select(t => t.Target).ToList() ?? new List<Arcanum.Engine.Abilities.Target>();
+        string TargetName(Arcanum.Engine.Abilities.Target t) =>
+            t.Player is { } p ? (p == Bottom ? "you" : state.GetPlayer(p).Name) : state.GetCard(t.Card!.Value).Name;
+        var text = $"{state.GetPlayer(player).Name} {verb} {state.GetCard(source).Name}";
+        if (abilityText is { Length: > 0 }) text += $"\n{abilityText}";
+        if (targets.Count > 0) text += $"\n\u2192 {string.Join(", ", targets.Select(TargetName))}";
+        _announcer.Enqueue(new(text, ViewOf(source), targets.Count > 0 ? 3 : 1.5,
+            card => targets.Select(TargetControl).OfType<Control>().Select(to => new ArrowLayer.Arrow(card, to, BoardStyle.Attacking))));
+    }
+
+    private void QueueCombatFlush()
+    {
+        if (_combatFlushQueued) return;
+        _combatFlushQueued = true;
+        Callable.From(FlushCombat).CallDeferred(); // all declarations of a step arrive in the same frame
+    }
+
+    /// <summary>One announcement per attacking (or blocking) player, with arrows, so attacks are seen before damage.</summary>
+    private void FlushCombat()
+    {
+        _combatFlushQueued = false;
+        var state = _session.Game.State;
+        foreach (var group in _pendingAttacks.GroupBy(a => state.GetCard(a.Attacker).Controller))
+        {
+            var attacks = group.ToList();
+            var defenders = attacks.Select(a => a.Defender).Distinct().Select(d => d == Bottom ? "you" : state.GetPlayer(d).Name);
+            var text = $"{state.GetPlayer(group.Key).Name} attacks {string.Join(" and ", defenders)} with " +
+                       string.Join(", ", attacks.Select(a => state.GetCard(a.Attacker).Name));
+            _announcer.Enqueue(new(text, null, 2, _ => attacks
+                .Select(a => (From: FindCard(a.Attacker), To: (Control)AreaOf(a.Defender).LifeBox))
+                .Where(x => x.From is not null)
+                .Select(x => new ArrowLayer.Arrow(x.From!, x.To, BoardStyle.Attacking))));
+        }
+        foreach (var group in _pendingBlocks.GroupBy(b => state.GetCard(b.Blocker).Controller))
+        {
+            var blocks = group.ToList();
+            var text = $"{state.GetPlayer(group.Key).Name} blocks: " +
+                       string.Join(", ", blocks.Select(b => $"{state.GetCard(b.Blocker).Name} \u2192 {state.GetCard(b.Attacker).Name}"));
+            _announcer.Enqueue(new(text, null, 1.5, _ => blocks
+                .Select(b => (From: FindCard(b.Blocker), To: FindCard(b.Attacker)))
+                .Where(x => x.From is not null && x.To is not null)
+                .Select(x => new ArrowLayer.Arrow(x.From!, x.To!, BoardStyle.Blocking))));
+        }
+        _pendingAttacks.Clear();
+        _pendingBlocks.Clear();
+    }
+
     private void PlayEffect(GameEvent e)
     {
+        Announce(e);
         switch (e)
         {
             case DamageDealt { TargetCard: { } card } d when FindCard(card) is { } node:
                 SpawnFloatingText($"-{d.Amount}", node.GetGlobalTransform() * (node.Size / 2), BoardStyle.Attacking);
                 break;
             case LifeChanged { NewLife: var now, OldLife: var before } l when now > before:
-                SpawnFloatingText($"+{now - before}", AreaOf(l.Player).LifeGlobalCenter + new Vector2(100, 45), new Color("6fd08c"), rise: 40);
+                SpawnFloatingText($"+{now - before}", AreaOf(l.Player).LifeGlobalCenter + new Vector2(0, 62), new Color("6fd08c"), rise: 30);
                 break;
             case DamageDealt { TargetPlayer: { } player } d:
                 var area = AreaOf(player);
                 // Beside the counter and rising only a little, so it stays on screen for the top player too.
-                SpawnFloatingText($"-{d.Amount}", area.LifeGlobalCenter + new Vector2(100, 45), BoardStyle.Attacking, rise: 40);
+                SpawnFloatingText($"-{d.Amount}", area.LifeGlobalCenter + new Vector2(0, 62), BoardStyle.Attacking, rise: 30);
                 area.FlashLife(BoardStyle.Attacking);
                 break;
         }
@@ -1130,7 +1314,7 @@ public partial class GameBoard : Control
         var label = BoardStyle.MakeLabel(text, 34, color);
         label.AddThemeConstantOverride("outline_size", 8);
         label.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 0.85f));
-        label.ZIndex = 250;
+        label.ZIndex = BoardStyle.Z.Floaters;
         AddChild(label);
         label.ResetSize();
         label.GlobalPosition = globalCenter - label.Size / 2;
@@ -1156,7 +1340,9 @@ public partial class GameBoard : Control
 
     private void ShowGameOver(string text)
     {
-        _gameOverText.Text = text;
+        var lines = text.Split('\n', 2);
+        _gameOverText.Text = lines[0];
+        _gameOverReasons.Text = lines.Length > 1 ? lines[1] : "";
         _gameOver.Visible = true;
         _actionPanel.Visible = false;
     }

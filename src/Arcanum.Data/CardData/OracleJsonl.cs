@@ -82,6 +82,12 @@ public static class OracleJsonl
                 : new Dictionary<string, string>(),
             Faces = faces,
             IsToken = layout == "token" || (Str(c, "type_line")?.StartsWith("Token") ?? false),
+            RelatedTokens = c.TryGetProperty("all_parts", out var parts)
+                ? parts.EnumerateArray()
+                    .Where(p => Str(p, "component") == "token" && Str(p, "id") is not null && Str(p, "name") is not null)
+                    .Select(p => new RelatedToken(Str(p, "name")!, Str(p, "id")!, Str(p, "type_line") ?? ""))
+                    .ToList()
+                : new List<RelatedToken>(),
         };
     }
 
@@ -113,6 +119,21 @@ public static class OracleJsonl
                     writer.WriteStartObject("legalities");
                     foreach (var (format, status) in r.Legalities) writer.WriteString(format, status);
                     writer.WriteEndObject();
+                }
+                if (r.RelatedTokens.Count > 0)
+                {
+                    // Same shape as the source's all_parts, so ReadCompact parses it with the same code.
+                    writer.WriteStartArray("all_parts");
+                    foreach (var token in r.RelatedTokens)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteString("component", "token");
+                        writer.WriteString("id", token.Id);
+                        writer.WriteString("name", token.Name);
+                        WriteIf(writer, "type_line", token.TypeLine);
+                        writer.WriteEndObject();
+                    }
+                    writer.WriteEndArray();
                 }
                 if (r.Faces.Count > 0)
                 {

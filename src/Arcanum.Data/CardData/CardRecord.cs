@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 namespace Arcanum.Data.CardData;
 
+/// <summary>A token a card can create, as listed by the card source (with the token's own printing id).</summary>
+public sealed record RelatedToken(string Name, string Id, string TypeLine = "");
+
 /// <summary>One face of a card with several (split, transforming, adventure...).</summary>
 public sealed record CardFaceRecord(string Name, string ManaCost, string TypeLine, string OracleText, string? Power, string? Toughness);
 
@@ -26,4 +29,7 @@ public sealed record CardRecord
     public IReadOnlyDictionary<string, string> Legalities { get; init; } = new Dictionary<string, string>();
     public IReadOnlyList<CardFaceRecord> Faces { get; init; } = Array.Empty<CardFaceRecord>();
     public bool IsToken { get; init; }
+
+    /// <summary>Tokens this card creates, for picking the exact token image.</summary>
+    public IReadOnlyList<RelatedToken> RelatedTokens { get; init; } = Array.Empty<RelatedToken>();
 }

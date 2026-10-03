@@ -152,3 +152,51 @@ public class StaticScriptTests
         Assert.Equal(CardSupport.Full, support);
     }
 }
+
+public class TokenImageTests
+{
+    private const string Line = """
+        {"oracle_id":"o-t","name":"Muster Captain","layout":"normal","mana_cost":"{5}","type_line":"Creature — Human","oracle_text":"{5}: Create a 2/2 red Soldier creature token.","power":"1","toughness":"1","games":["paper"],"all_parts":[{"component":"combo_piece","id":"self","name":"Muster Captain","type_line":"Creature — Human"},{"component":"token","id":"tok-soldier-red","name":"Soldier","type_line":"Token Creature — Soldier"},{"component":"token","id":"tok-goblin","name":"Goblin","type_line":"Token Creature — Goblin"}]}
+        """;
+
+    private static CardRecord Record()
+    {
+        var records = OracleJsonl.Import(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(Line))).ToList();
+        return Assert.Single(records);
+    }
+
+    [Fact]
+    public void RelatedTokensAreImportedAndSurviveTheCompactStore()
+    {
+        var record = Record();
+        Assert.Equal(2, record.RelatedTokens.Count);
+        var ms = new MemoryStream();
+        OracleJsonl.WriteCompact(new[] { record }, ms);
+        ms.Position = 0;
+        var back = Assert.Single(OracleJsonl.ReadCompact(ms));
+        Assert.Equal(record.RelatedTokens, back.RelatedTokens);
+    }
+
+    [Fact]
+    public void CreatedTokensGetTheExactImageOfTheMatchingRelatedToken()
+    {
+        var script = CardScriptParser.Parse("""
+            { "abilities": [{ "cost": "{5}", "effects": [{ "tokens": 1, "token": { "name": "Soldier", "types": "Creature — Soldier", "power": 2, "toughness": 2, "colors": ["R"] } }] }] }
+            """);
+        var (definition, _) = CardFactory.Create(Record(), script);
+        var create = Assert.IsType<CreateTokens>(Assert.Single(definition.Abilities).Effects[0]);
+        Assert.Equal("tok-soldier-red", create.Token.ImageKey);
+        Assert.Equal(new[] { "R" }, create.Token.Colors);
+    }
+
+    [Fact]
+    public void TokensWithoutARelatedPrintingHaveNoImageKey()
+    {
+        var script = CardScriptParser.Parse("""
+            { "abilities": [{ "cost": "{5}", "effects": [{ "tokens": 1, "token": { "name": "Bird", "types": "Creature — Bird", "power": 1, "toughness": 1 } }] }] }
+            """);
+        var (definition, _) = CardFactory.Create(Record(), script);
+        var create = Assert.IsType<CreateTokens>(Assert.Single(definition.Abilities).Effects[0]);
+        Assert.Null(create.Token.ImageKey); // the client shows a text frame rather than guessing by name
+    }
+}

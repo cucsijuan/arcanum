@@ -89,7 +89,9 @@ public partial class SettingsScreen : Control
         box.AddChild(speedRow);
 
         box.AddChild(MenuKit.SectionTitle("Default stops"));
-        box.AddChild(MenuKit.Hint("Where the game stops to let you act when you could play something. You can also change them during a game on the phase bar."));
+        box.AddChild(MenuKit.Hint("Where the game stops to let you act when you could play something. A stop gives you priority after that step's action " +
+            "(at Declare blockers, once blocks are known). Combat damage happens as soon as its step begins, so tricks before damage go at Declare blockers; " +
+            "when your creatures are in combat the game stops there automatically if you can play something. You can also change stops during a game on the phase bar."));
         var grid = new GridContainer { Columns = 3 };
         grid.AddThemeConstantOverride("h_separation", 32);
         grid.AddThemeConstantOverride("v_separation", 6);

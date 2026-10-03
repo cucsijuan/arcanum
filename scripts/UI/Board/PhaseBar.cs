@@ -25,6 +25,12 @@ public partial class PhaseBar : PanelContainer
         (Step.End, "END", "End step"),
     };
 
+    /// <summary>When a stop happens, and how to act before combat damage.</summary>
+    private const string StopHint =
+        "\nA stop gives you priority after that step's action happens (e.g. at BLK, once blockers are declared)." +
+        "\nCombat damage is dealt as soon as DMG begins, so tricks before damage go at BLK." +
+        "\nWhen your creatures are in combat, the game also stops at BLK if you can play something.";
+
     private static readonly Color OwnStop = BoardStyle.Playable;
     private static readonly Color OpponentStop = BoardStyle.Blocking;
 
@@ -52,6 +58,8 @@ public partial class PhaseBar : PanelContainer
             column.AddThemeConstantOverride("separation", 2);
             var opponent = Marker($"Stop at {name} during opponents' turns", () => _policy?.ToggleStop(ownTurn: false, step));
             var own = Marker($"Stop at {name} during your turn", () => _policy?.ToggleStop(ownTurn: true, step));
+            opponent.TooltipText += StopHint;
+            own.TooltipText += StopHint;
             var chip = new Panel { CustomMinimumSize = new Vector2(38, 22), MouseFilter = MouseFilterEnum.Ignore };
             var label = BoardStyle.MakeLabel(shortName, 11);
             label.HorizontalAlignment = HorizontalAlignment.Center;

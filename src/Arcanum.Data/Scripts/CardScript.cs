@@ -200,6 +200,7 @@ public static class CardScriptParser
             Power = t.TryGetProperty("power", out var p) ? p.GetInt32() : null,
             Toughness = t.TryGetProperty("toughness", out var th) ? th.GetInt32() : null,
             Keywords = t.TryGetProperty("keywords", out var k) ? k.EnumerateArray().Select(x => x.GetString()!).ToList() : Array.Empty<string>(),
+            Colors = t.TryGetProperty("colors", out var c) ? c.EnumerateArray().Select(x => x.GetString()!).ToList() : Array.Empty<string>(),
             IsToken = true,
         };
     }

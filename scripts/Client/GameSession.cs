@@ -55,7 +55,7 @@ public sealed class GameSession
                 bots.Add(bot);
                 return new PlayerSetup(s.Name, bot, s.Deck, s.Commanders);
             }
-            var controller = new UiPlayerController(new PlayerId(i), Hub, Log, policy);
+            var controller = new UiPlayerController(new PlayerId(i), Hub, Log, policy, PresentAsync);
             _controllers.Add(controller);
             return new PlayerSetup(s.Name, controller, s.Deck, s.Commanders);
         }).ToList());
@@ -121,10 +121,18 @@ public sealed class GameSession
 
     public bool HasBot { get; }
 
+    /// <summary>Waits until the board has finished presenting recent events (set by the board).</summary>
+    public Func<Task>? Presentation { get; set; }
+
+    public bool IsBot(PlayerId player) => _seats[player.Value].IsBot;
+
+    private Task PresentAsync() => Log.IsReplaying || Presentation is null ? Task.CompletedTask : Presentation();
+
     /// <summary>Short pause before each visible bot action (skipped while replaying for undo).</summary>
     private async Task BotPaceAsync()
     {
         if (Log.IsReplaying || Godot.Engine.GetMainLoop() is not SceneTree tree) return;
+        await PresentAsync(); // let the previous action finish being shown first
         var timer = tree.CreateTimer(0.55 * UI.Board.BoardStyle.AnimationScale);
         await tree.ToSignal(timer, SceneTreeTimer.SignalName.Timeout);
     }

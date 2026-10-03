@@ -45,6 +45,15 @@ public sealed record CardDefinition
     /// <summary>Replacement effect "This creature enters with N +1/+1 counters on it" (rule 614.1c).</summary>
     public int EntersWithCounters { get; init; }
 
+    /// <summary>Colors for objects without a mana cost to derive them from (tokens). Letters W, U, B, R, G.</summary>
+    public IReadOnlyList<string> Colors { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Identifies the exact picture of this object in the content module's image source (e.g. a token's printing),
+    /// for objects whose name alone is ambiguous. Null: look the image up by name.
+    /// </summary>
+    public string? ImageKey { get; init; }
+
     /// <summary>Marks a token definition (tokens cease to exist outside the battlefield, rule 111.7).</summary>
     public bool IsToken { get; init; }
 

@@ -34,6 +34,8 @@ public partial class CardNode : Control
     private readonly Label _ptLabel = BoardStyle.MakeLabel("", 13, Colors.White, bold: true);
     private readonly PanelContainer _counterBadge = new();
     private readonly Label _counterLabel = BoardStyle.MakeLabel("", 11, Colors.White);
+    private readonly PanelContainer _caption = new();
+    private readonly Label _captionLabel = BoardStyle.MakeLabel("", 12, Colors.White, bold: true);
     private readonly Panel _assigned = new();
     private readonly Label _assignedLabel = BoardStyle.MakeLabel("", 22, new Color("16171a"), bold: true);
     private string? _requestedImage;
@@ -68,6 +70,7 @@ public partial class CardNode : Control
         MouseDefaultCursorShape = CursorShape.PointingHand;
 
         _fallback.MouseFilter = MouseFilterEnum.Ignore;
+        _fallback.ClipContents = true; // small cards: text never spills outside the card
         _fallback.SetAnchorsPreset(LayoutPreset.FullRect);
         var fallbackBox = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
         fallbackBox.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -132,6 +135,13 @@ public partial class CardNode : Control
         _counterBadge.Visible = false;
         AddChild(_counterBadge);
 
+        // Short caption over the card, e.g. which player an attacker goes after.
+        _caption.MouseFilter = MouseFilterEnum.Ignore;
+        _caption.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.05f, 0.05f, 0.06f, 0.9f), 6, BoardStyle.Attacking, 1));
+        _caption.AddChild(_captionLabel);
+        _caption.Visible = false;
+        AddChild(_caption);
+
         // Big badge for damage being assigned to this card (damage assignment UI).
         _assigned.MouseFilter = MouseFilterEnum.Ignore;
         _assigned.Size = new Vector2(40, 40);
@@ -191,39 +201,52 @@ public partial class CardNode : Control
             _fallbackPt.Text = view.Power is { } p && view.Toughness is { } t ? $"{p}/{t}" : "";
             _fallback.AddThemeStyleboxOverride("panel", BoardStyle.Box(FrameColor(view), 6, new Color("0b0b0d"), 2));
             BuildPips(view.ManaCost);
-            if (_requestedImage != view.Name)
+            var imageKey = CardImageCache.KeyFor(view);
+            if (imageKey is null)
             {
-                _requestedImage = view.Name;
+                _requestedImage = null;
+                _face.Texture = null;
+                _face.Visible = false; // e.g. a token without an exact picture: keep the text frame
+            }
+            else if (_requestedImage != imageKey)
+            {
+                _requestedImage = imageKey;
                 var name = view.Name!;
                 void Apply(Texture2D texture)
                 {
                     if (!IsInstanceValid(this) || View?.Name != name) return;
                     _face.Texture = texture;
                     _face.Visible = !View.IsHidden;
+                    _fallback.Visible = !_face.Visible; // the picture replaces the text frame entirely
                 }
                 if (SharpImage)
                 {
                     _face.TextureFilter = TextureFilterEnum.Linear;
-                    CardImageCache.RequestSharp(name, new Vector2I((int)Size.X, (int)Size.Y), Apply);
+                    CardImageCache.RequestSharp(imageKey, new Vector2I((int)Size.X, (int)Size.Y), Apply);
                 }
                 else
                 {
-                    CardImageCache.Request(name, Apply);
+                    CardImageCache.Request(imageKey, Apply);
                 }
             }
             else if (_face.Texture is not null)
             {
                 _face.Visible = true;
             }
+            _fallback.Visible = !_face.Visible;
+            _fallbackPt.Visible = view.Zone != Arcanum.Engine.State.Zone.Battlefield; // on the battlefield the corner badge shows P/T
         }
 
-        bool modified = view.Zone == Arcanum.Engine.State.Zone.Battlefield && view.Power is { } pow && view.Toughness is { } tou
-                        && (pow != view.BasePower || tou != view.BaseToughness);
-        _ptBadge.Visible = modified;
-        if (modified)
+        // Creatures on the battlefield always show P/T in their bottom-right corner (it rotates with the card):
+        // gray as printed, green when raised, red when lowered.
+        bool showPt = !view.IsHidden && view.Zone == Arcanum.Engine.State.Zone.Battlefield && view.Power is not null && view.Toughness is not null;
+        _ptBadge.Visible = showPt;
+        if (showPt)
         {
-            bool better = view.Power + view.Toughness >= (view.BasePower ?? 0) + (view.BaseToughness ?? 0);
-            _ptBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(better ? new Color("1f7a43") : new Color("a3302a"), 5, new Color("0b0b0d"), 1));
+            int now = view.Power!.Value + view.Toughness!.Value, printed = (view.BasePower ?? 0) + (view.BaseToughness ?? 0);
+            bool changed = view.Power != view.BasePower || view.Toughness != view.BaseToughness;
+            var color = !changed ? new Color("3a3b42") : now >= printed ? new Color("1f7a43") : new Color("a3302a");
+            _ptBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(color, 6, new Color("0b0b0d"), 1));
             _ptLabel.Text = $"{view.Power}/{view.Toughness}";
         }
         var counters = new List<string>();
@@ -255,6 +278,15 @@ public partial class CardNode : Control
         ((ShaderMaterial)_glow.Material).SetShaderParameter("glow_color", color);
         if (_selectedOverlay.Visible)
             _selectedOverlay.AddThemeStyleboxOverride("panel", BoardStyle.Box(color with { A = 0.28f }, (int)(Size.X * 0.055f)));
+    }
+
+    /// <summary>Shows (or hides with null) a short caption above the card.</summary>
+    public void SetCaption(string? text)
+    {
+        _caption.Visible = text is not null;
+        _captionLabel.Text = text ?? "";
+        _caption.ResetSize();
+        _caption.Position = new Vector2((Size.X - _caption.Size.X) / 2, -_caption.Size.Y - 4);
     }
 
     /// <summary>Shows (or hides with null) the damage currently assigned to this card.</summary>
@@ -303,6 +335,7 @@ public partial class CardNode : Control
     {
         if ((view.Types & CardType.Land) != 0) return new Color("5b4a3a");
         var symbols = BoardStyle.ParseCostSymbols(view.ManaCost).Where(s => s.Length == 1 && "WUBRG".Contains(s[0])).Distinct().ToList();
+        if (symbols.Count == 0) symbols = view.Colors.ToList(); // tokens have colors but no mana cost
         if (symbols.Count == 0) return new Color("6d6f75");
         if (symbols.Count > 1) return new Color("b8973a");
         return BoardStyle.PipColors(symbols[0][0]).Bg.Darkened(0.35f);

@@ -38,6 +38,10 @@ public sealed record CardView
     public int PlusOneCounters { get; init; }
     public int MinusOneCounters { get; init; }
     public bool IsToken { get; init; }
+    public string OracleText { get; init; } = "";
+    public IReadOnlyList<string> Colors { get; init; } = Array.Empty<string>();
+    /// <summary>Exact image identifier when the name is ambiguous (tokens); see <c>CardDefinition.ImageKey</c>.</summary>
+    public string? ImageKey { get; init; }
 }
 
 public sealed record PlayerView

@@ -14,7 +14,8 @@ public sealed record CardSource(
     public Arcanum.Data.CardData.ImportFilter ToFilter() => new(IncludeIfLegalIn, ExcludeLayouts);
 }
 
-public sealed record ImageSource(string UrlTemplate, int MinIntervalMs);
+/// <param name="ByIdTemplate">URL for an exact image id ({id}), used when a name is ambiguous (tokens).</param>
+public sealed record ImageSource(string UrlTemplate, int MinIntervalMs, string? ByIdTemplate = null);
 
 public sealed record ModuleSources(string UserAgent, CardSource Cards, ImageSource Images);
 
@@ -56,7 +57,8 @@ public sealed class ContentModule
             Optional(s, "userAgent") ?? "Arcanum",
             new CardSource(Required(cards, "format"), Required(cards, "index"), Required(cards, "downloadField"), Required(cards, "updatedField"),
                 StringList(cards, "includeIfLegalIn"), StringList(cards, "excludeLayouts")),
-            new ImageSource(Required(images, "urlTemplate"), images.TryGetProperty("minIntervalMs", out var ms) ? ms.GetInt32() : 100));
+            new ImageSource(Required(images, "urlTemplate"), images.TryGetProperty("minIntervalMs", out var ms) ? ms.GetInt32() : 100,
+                Optional(images, "byIdTemplate")));
 
         return new ContentModule(directory, manifest, sources);
     }
@@ -106,6 +108,9 @@ public sealed class ContentModule
     }
 
     public string ImageUrl(string cardName) => Sources.Images.UrlTemplate.Replace("{name}", Uri.EscapeDataString(cardName));
+
+    /// <summary>URL for an exact image id, or null if the module's image source doesn't support it.</summary>
+    public string? ImageUrlById(string id) => Sources.Images.ByIdTemplate?.Replace("{id}", Uri.EscapeDataString(id));
 
     private string DecksDirectory => Path.Combine(Directory, "decks");
 

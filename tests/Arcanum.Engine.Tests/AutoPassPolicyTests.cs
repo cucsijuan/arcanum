@@ -89,3 +89,32 @@ public class AutoPassPolicyTests
         Assert.True(policy.ShouldAutoPass(View(Step.Upkeep, Opponent), OnlyPass));
     }
 }
+
+public class CombatStopTests
+{
+    private static readonly PlayerId Me = new(0), Opponent = new(1);
+
+    private static GameView InBlockers(bool involved)
+    {
+        var attacker = new CardView { Id = new CardId(5), Owner = Opponent, Controller = Opponent, Zone = Zone.Battlefield, IsHidden = false };
+        var attacks = involved
+            ? new[] { new AttackView(new CardId(5), Me, Array.Empty<CardId>(), false) }
+            : new[] { new AttackView(new CardId(5), new PlayerId(2), Array.Empty<CardId>(), false) };
+        return new GameView
+        {
+            Viewer = Me, TurnNumber = 4, ActivePlayer = Opponent, PriorityPlayer = Me, Step = Step.DeclareBlockers,
+            Players = Array.Empty<PlayerView>(), Battlefield = new[] { attacker }, Stack = Array.Empty<StackItemView>(),
+            Attacks = attacks, IsGameOver = false, Winner = null,
+        };
+    }
+
+    private static readonly PlayerAction[] CanCast = { PassPriority.Instance, new CastSpell(new CardId(2)) };
+
+    [Fact]
+    public void StopsAfterBlocksWhenInvolvedInCombat() =>
+        Assert.False(new AutoPassPolicy().ShouldAutoPass(InBlockers(involved: true), CanCast));
+
+    [Fact]
+    public void PassesAfterBlocksInSomeoneElsesCombat() =>
+        Assert.True(new AutoPassPolicy().ShouldAutoPass(InBlockers(involved: false), CanCast));
+}

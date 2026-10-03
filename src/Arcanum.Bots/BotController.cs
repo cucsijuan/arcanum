@@ -375,13 +375,14 @@ public sealed class BotController : IPlayerController
             if (totalPower - stopped >= view.Players[defender.Value].Life)
             {
                 await PaceAsync();
-                return attackers.Select(a => new AttackDeclaration(a.Id, defender)).ToList();
+                return attackers.Where(a => (a.Power ?? 0) > 0).Select(a => new AttackDeclaration(a.Id, defender)).ToList();
             }
         }
 
-        // Otherwise each attacker goes after the weakest opponent it can attack safely.
+        // Otherwise each attacker goes after the weakest opponent it can attack safely. Creatures that only defend
+        // well (no power, or small power on a big body) stay home to block.
         var declarations = new List<AttackDeclaration>();
-        foreach (var attacker in attackers)
+        foreach (var attacker in attackers.Where(a => !IsDefensive(a)))
         {
             foreach (var defender in defenders.OrderBy(d => view.Players[d.Value].Life))
             {
@@ -392,6 +393,13 @@ public sealed class BotController : IPlayerController
         }
         if (declarations.Count > 0) await PaceAsync();
         return declarations;
+    }
+
+    /// <summary>Better kept back as a blocker than sent in: no power, or a wall-like body.</summary>
+    private static bool IsDefensive(CardView c)
+    {
+        int power = c.Power ?? 0, toughness = c.Toughness ?? 0;
+        return power <= 0 || (power <= 2 && toughness >= 2 * Math.Max(1, power) && toughness >= 4);
     }
 
     /// <summary>No blocker can kill it without dying in return, or nothing can block it at all.</summary>

@@ -9,7 +9,8 @@ namespace Arcanum.Client;
 /// Seat controlled by a person on this device. Decisions go to the board UI unless the stop policy passes
 /// priority automatically; every answer is recorded for undo.
 /// </summary>
-public sealed class UiPlayerController(PlayerId player, DecisionHub hub, DecisionLog log, AutoPassPolicy policy) : IPlayerController
+/// <param name="presentation">Waits until the board has finished showing what just happened (opponents' actions).</param>
+public sealed class UiPlayerController(PlayerId player, DecisionHub hub, DecisionLog log, AutoPassPolicy policy, Func<Task> presentation) : IPlayerController
 {
     /// <summary>
     /// Ask the player to confirm (or change) which sources pay for each spell. When false, the engine's
@@ -29,7 +30,12 @@ public sealed class UiPlayerController(PlayerId player, DecisionHub hub, Decisio
     public Task<PlayerAction> ChooseActionAsync(GameView view, IReadOnlyList<PlayerAction> legalActions) =>
         log.Record(async () =>
         {
-            if (policy.ShouldAutoPass(view, legalActions)) return ((PlayerAction)PassPriority.Instance, false);
+            if (policy.ShouldAutoPass(view, legalActions))
+            {
+                // Passing automatically still waits for announcements, so an opponent's play can't rush by unseen.
+                await presentation();
+                return ((PlayerAction)PassPriority.Instance, false);
+            }
             return (await hub.Ask(new PriorityDecision { Player = player, Legal = legalActions }), true);
         });
 

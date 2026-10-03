@@ -225,12 +225,24 @@ public partial class PlayerArea : Control
             node.Setup(cardView, showCostPips: cardView.Zone == Zone.Hand);
             node.SetHighlight(CardHighlight.None);
             node.SetAssignedDamage(null);
+            node.SetCaption(null);
         }
 
         _handOrder.Clear();
         _handOrder.AddRange(me.Hand.Select(c => _cards[c.Id]));
         LayoutHand();
         LayoutBattlefield(battlefield);
+        SortByDrawOrder();
+    }
+
+    /// <summary>
+    /// Mouse input goes to the control that is last in the tree, not to the one with the highest z-index. Keeping the
+    /// tree in z order makes the card drawn on top (e.g. a creature over its aura) the one that gets the hover.
+    /// </summary>
+    private void SortByDrawOrder()
+    {
+        int index = 0;
+        foreach (var node in _cards.Values.OrderBy(n => n.ZIndex)) _cardLayer.MoveChild(node, index++);
     }
 
     private static void AnimateAway(CardNode node, Control? pile)
@@ -309,12 +321,12 @@ public partial class PlayerArea : Control
         node.HoverStarted += c =>
         {
             CardHoverStarted?.Invoke(c);
-            if (_handOrder.Contains(c)) LayoutHand();
+            if (_handOrder.Contains(c)) { LayoutHand(); SortByDrawOrder(); }
         };
         node.HoverEnded += c =>
         {
             CardHoverEnded?.Invoke(c);
-            if (_handOrder.Contains(c)) LayoutHand();
+            if (_handOrder.Contains(c)) { LayoutHand(); SortByDrawOrder(); }
         };
         _cardLayer.AddChild(node);
         return node;

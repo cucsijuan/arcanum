@@ -12,6 +12,7 @@ public partial class ArrowLayer : Control
     public readonly record struct Arrow(Control From, Control? To, Color Color);
 
     private readonly List<Arrow> _arrows = new();
+    private readonly List<Arrow> _overlay = new();
 
     public ArrowLayer()
     {
@@ -26,17 +27,26 @@ public partial class ArrowLayer : Control
         QueueRedraw();
     }
 
+    /// <summary>Extra arrows owned by announcements, kept separate so board refreshes don't wipe them.</summary>
+    public void SetOverlayArrows(IEnumerable<Arrow> arrows)
+    {
+        _overlay.Clear();
+        _overlay.AddRange(arrows);
+        QueueRedraw();
+    }
+
     public override void _Process(double delta)
     {
-        if (_arrows.Count > 0) QueueRedraw();
+        if (_arrows.Count > 0 || _overlay.Count > 0) QueueRedraw();
     }
 
     public override void _Draw()
     {
         var toLocal = GetGlobalTransform().AffineInverse();
         // Several arrows into the same card get spread-out tips so each one stays visible.
-        var byTarget = _arrows.Where(a => a.To is not null).GroupBy(a => a.To!).ToDictionary(g => g.Key, g => g.ToList());
-        foreach (var arrow in _arrows)
+        var all = _arrows.Concat(_overlay).ToList();
+        var byTarget = all.Where(a => a.To is not null).GroupBy(a => a.To!).ToDictionary(g => g.Key, g => g.ToList());
+        foreach (var arrow in all)
         {
             if (!IsInstanceValid(arrow.From) || !arrow.From.IsVisibleInTree()) continue;
             var from = toLocal * Center(arrow.From);

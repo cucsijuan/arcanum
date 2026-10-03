@@ -213,3 +213,38 @@ public class BotStrengthTests
         Assert.True(botWins >= games * 0.7, $"bot won only {botWins}/{games}");
     }
 }
+
+public class BotDefenseTests
+{
+    private static async Task<Game> RunBotTurn(params CardDefinition[] botCreatures)
+    {
+        var bot = new BotController(Scenario.P0);
+        var passive = new TestController { Act = (_, _) => PassPriority.Instance, Attack = (_, _, _) => Array.Empty<AttackDeclaration>() };
+        var game = new Game(new GameConfig { Seed = 1, StartingPlayer = Scenario.P0 }, new[]
+        {
+            new PlayerSetup("Bot", bot, Decks.Of((GenericCards.Forest, 20))),
+            new PlayerSetup("Defender", passive, Decks.Of((GenericCards.Forest, 20))),
+        });
+        bot.UseCardRules(id => game.State.Cards.TryGetValue(id, out var c) ? c.Definition : null);
+        foreach (var c in botCreatures) game.SetupPermanent(Scenario.P0, c);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        game.EventRaised += e => { if (e is TurnBegan { TurnNumber: 2 }) cts.Cancel(); };
+        try { await game.RunAsync(cts.Token); } catch (OperationCanceledException) { }
+        return game;
+    }
+
+    [Fact]
+    public async Task ZeroPowerCreaturesNeverAttack()
+    {
+        var game = await RunBotTurn(Scenario.Creature("Wall", 0, 8));
+        Assert.DoesNotContain(game.Log, e => e is AttackerDeclared);
+    }
+
+    [Fact]
+    public async Task WallLikeCreaturesStayHomeButAttackersGo()
+    {
+        var game = await RunBotTurn(Scenario.Creature("Turtle", 1, 6), Scenario.Creature("Raider", 3, 2));
+        var attackers = game.Log.OfType<AttackerDeclared>().Select(a => game.State.GetCard(a.Attacker).Name).ToList();
+        Assert.Equal(new[] { "Raider" }, attackers);
+    }
+}

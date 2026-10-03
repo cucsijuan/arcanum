@@ -18,6 +18,25 @@ public static class BoardStyle
     public static readonly Color Blocking = new("4c8dff");
     public static readonly Color Selected = new("2ec4e6");
 
+    /// <summary>
+    /// Drawing order of board layers. Cards use 0–300 (hand, rows, attachments, dragged); everything that explains
+    /// what is happening must draw above them.
+    /// </summary>
+    public static class Z
+    {
+        public const int Stack = 400;
+        public const int PhaseBar = 410;
+        public const int Arrows = 420;
+        public const int ActionPanel = 450;
+        public const int Log = 460;
+        public const int Announcer = 480;
+        public const int Floaters = 500;
+        public const int Preview = 550;
+        public const int GameOver = 600;
+        public const int Menu = 650;
+        public const int Loading = 700;
+    }
+
     /// <summary>Multiplier for animation durations (from the animation speed setting).</summary>
     public static float AnimationScale { get; set; } = 1f;
 

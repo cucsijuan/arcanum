@@ -40,6 +40,13 @@ public partial class CardImageCache : Node
         _http.RequestCompleted += OnRequestCompleted;
     }
 
+    /// <summary>
+    /// Image key for a card: its exact image id when it has one ("id:..."), its name otherwise. Tokens without an
+    /// exact id get no key: many tokens share a name, so looking them up by name would show the wrong picture.
+    /// </summary>
+    public static string? KeyFor(Arcanum.Engine.Views.CardView view) =>
+        view.ImageKey is { } id ? "id:" + id : view.IsToken ? null : view.Name;
+
     /// <summary>Calls <paramref name="onLoaded"/> (possibly immediately) once the image for <paramref name="cardName"/> is available.</summary>
     public static void Request(string cardName, Action<Texture2D> onLoaded) => _instance?.RequestInternal(cardName, onLoaded);
 
@@ -90,7 +97,12 @@ public partial class CardImageCache : Node
         if (_inFlight is not null || _cooldown > 0 || _queue.Count == 0) return;
 
         _inFlight = _queue.Dequeue();
-        var url = _module!.ImageUrl(_inFlight);
+        var url = _inFlight.StartsWith("id:") ? _module!.ImageUrlById(_inFlight[3..]) : _module!.ImageUrl(_inFlight);
+        if (url is null)
+        {
+            Fail(_inFlight);
+            return;
+        }
         var err = _http.Request(url, new[] { $"User-Agent: {_module.Sources.UserAgent}", "Accept: image/*" });
         if (err != Error.Ok) Fail(_inFlight);
     }

@@ -61,6 +61,13 @@ public sealed class AutoPassPolicy
         if (FullControl) return false;
         if (!canAct) return true;
         if (view.Stack.Count > 0) return !opponentOnTop; // let our own spells resolve
+        // After blocks, with our creatures fighting: the last chance for tricks before combat damage.
+        if (view.Step == Step.DeclareBlockers && InCombat(view)) return false;
         return !HasStop(view.ActivePlayer == view.Viewer, view.Step);
     }
+
+    private static bool InCombat(GameView view) =>
+        view.Attacks.Any(a => view.FindCard(a.Attacker)?.Controller == view.Viewer
+                              || a.Defender == view.Viewer
+                              || a.Blockers.Any(b => view.FindCard(b)?.Controller == view.Viewer));
 }

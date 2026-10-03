@@ -36,7 +36,7 @@ public partial class ContentLoader : Node
         var dataDir = ProjectSettings.GlobalizePath($"user://card_data/{Module.Manifest.Id}");
         Directory.CreateDirectory(dataDir);
         // Bump the version when import rules change so existing installs re-import.
-        var compact = Path.Combine(dataDir, $"cards.v2-{Module.Manifest.Version}.jsonl.gz");
+        var compact = Path.Combine(dataDir, $"cards.v3-{Module.Manifest.Version}.jsonl.gz");
 
         if (!File.Exists(compact))
         {
