@@ -16,7 +16,8 @@ namespace Arcanum.Client;
 /// </summary>
 public sealed class GameSession
 {
-    public sealed record Seat(string Name, IReadOnlyList<CardDefinition> Deck);
+    /// <param name="IsBot">Played by the computer instead of a person on this device.</param>
+    public sealed record Seat(string Name, IReadOnlyList<CardDefinition> Deck, bool IsBot = false);
 
     private readonly GameConfig _config;
     private readonly IReadOnlyList<Seat> _seats;
@@ -45,12 +46,22 @@ public sealed class GameSession
         _setup = setup;
         Policy = policy;
         Log = new DecisionLog(replay);
+        var bots = new List<Arcanum.Bots.BotController>();
         Game = new Game(config, seats.Select((s, i) =>
         {
+            if (s.IsBot)
+            {
+                var bot = new Arcanum.Bots.BotController(new PlayerId(i)) { Pace = BotPaceAsync, AlwaysKeep = setup is not null };
+                bots.Add(bot);
+                return new PlayerSetup(s.Name, bot, s.Deck);
+            }
             var controller = new UiPlayerController(new PlayerId(i), Hub, Log, policy);
             _controllers.Add(controller);
             return new PlayerSetup(s.Name, controller, s.Deck);
         }).ToList());
+        // Bots read printed rules only for cards they can see (the controller enforces that).
+        foreach (var bot in bots) bot.UseCardRules(id => Game.State.Cards.TryGetValue(id, out var c) ? c.Definition : null);
+        HasBot = bots.Count > 0;
         setup?.Invoke(Game); // sandbox: pre-placed permanents and cards, re-applied identically on undo
         Hub.DecisionRequested += _ => Changed?.Invoke();
         Game.EventRaised += e => { if (e is GameEnded) Changed?.Invoke(); };
@@ -93,6 +104,16 @@ public sealed class GameSession
     }
 
     public Decision? CurrentDecision => Hub.Current is { IsAnswered: false } d ? d : null;
+
+    public bool HasBot { get; }
+
+    /// <summary>Short pause before each visible bot action (skipped while replaying for undo).</summary>
+    private async Task BotPaceAsync()
+    {
+        if (Log.IsReplaying || Godot.Engine.GetMainLoop() is not SceneTree tree) return;
+        var timer = tree.CreateTimer(0.55 * UI.Board.BoardStyle.AnimationScale);
+        await tree.ToSignal(timer, SceneTreeTimer.SignalName.Timeout);
+    }
 
     public GameView ViewFor(PlayerId viewer) => Game.ViewFor(viewer, RevealAll);
 

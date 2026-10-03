@@ -25,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Arcanum.Engine\Arcanum.Engine.csproj" />
     <ProjectReference Include="..\..\src\Arcanum.Cards\Arcanum.Cards.csproj" />
+    <ProjectReference Include="..\..\src\Arcanum.Bots\Arcanum.Bots.csproj" />
   </ItemGroup>
 
 </Project>

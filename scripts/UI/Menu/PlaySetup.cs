@@ -16,6 +16,9 @@ public partial class PlaySetup : Control
     private readonly Label[] _summaries = new Label[2];
     private readonly CheckButton _sandbox = MenuKit.Toggle("Start from the sandbox board (test mode)", false);
     private Button _start = null!;
+    private Button _hotseatMode = null!, _botMode = null!;
+    private bool _vsBot = true;
+    private readonly Label[] _seatTitles = new Label[2];
 
     public override async void _Ready()
     {
@@ -29,16 +32,17 @@ public partial class PlaySetup : Control
 
         var modes = new HBoxContainer();
         modes.AddThemeConstantOverride("separation", 12);
-        var hotseat = BoardStyle.MakePrimaryButton("Hotseat", 18);
-        hotseat.CustomMinimumSize = new Vector2(200, 48);
-        hotseat.TooltipText = "Two players on this device";
-        var bot = BoardStyle.MakeButton("Vs computer", 18);
-        bot.CustomMinimumSize = new Vector2(200, 48);
-        bot.Disabled = true;
-        bot.TooltipText = "Coming soon";
-        modes.AddChild(hotseat);
-        modes.AddChild(bot);
-        modes.AddChild(MenuKit.Hint("Online play and the computer opponent arrive in later versions."));
+        _botMode = BoardStyle.MakePrimaryButton("Vs computer", 18);
+        _botMode.CustomMinimumSize = new Vector2(200, 48);
+        _botMode.TooltipText = "Play against the computer";
+        _botMode.Pressed += () => SetMode(vsBot: true);
+        _hotseatMode = BoardStyle.MakeButton("Hotseat", 18);
+        _hotseatMode.CustomMinimumSize = new Vector2(200, 48);
+        _hotseatMode.TooltipText = "Two players on this device";
+        _hotseatMode.Pressed += () => SetMode(vsBot: false);
+        modes.AddChild(_botMode);
+        modes.AddChild(_hotseatMode);
+        modes.AddChild(MenuKit.Hint("Online play arrives in a later version."));
         root.AddChild(modes);
 
         var seats = new HBoxContainer();
@@ -56,7 +60,8 @@ public partial class PlaySetup : Control
             int seat = i;
             var box = new VBoxContainer();
             box.AddThemeConstantOverride("separation", 12);
-            box.AddChild(MenuKit.SectionTitle($"Player {seat + 1}"));
+            _seatTitles[seat] = MenuKit.SectionTitle($"Player {seat + 1}");
+            box.AddChild(_seatTitles[seat]);
             _names[seat] = MenuKit.TextField(Settings.Current.PlayerNames.ElementAtOrDefault(seat) ?? $"Player {seat + 1}", "Name");
             box.AddChild(MenuKit.Row("Name", _names[seat], 90));
             _deckPickers[seat] = MenuKit.Options(_decks.Select(d => d.Name), Math.Min(seat, Math.Max(0, _decks.Count - 1)));
@@ -86,6 +91,26 @@ public partial class PlaySetup : Control
         }
         UpdateSummary(0);
         UpdateSummary(1);
+        SetMode(_vsBot);
+    }
+
+    private void SetMode(bool vsBot)
+    {
+        _vsBot = vsBot;
+        // Restyle the two mode buttons as a segmented control.
+        foreach (var (button, active) in new[] { (_botMode, vsBot), (_hotseatMode, !vsBot) })
+        {
+            var style = active ? BoardStyle.Box(BoardStyle.ActiveBorder, 8) : BoardStyle.Box(BoardStyle.Panel, 6, BoardStyle.PanelBorder, 1);
+            button.AddThemeStyleboxOverride("normal", style);
+            button.AddThemeStyleboxOverride("hover", style);
+            button.AddThemeColorOverride("font_color", active ? new Color("16171a") : BoardStyle.Text);
+            button.AddThemeColorOverride("font_hover_color", active ? new Color("16171a") : BoardStyle.Text);
+        }
+        if (_seatTitles[1] is null) return;
+        _seatTitles[0].Text = vsBot ? "You" : "Player 1";
+        _seatTitles[1].Text = vsBot ? "Computer" : "Player 2";
+        _names[1].Editable = !vsBot;
+        _names[1].Text = vsBot ? "Computer" : Settings.Current.PlayerNames.ElementAtOrDefault(1) ?? "Player 2";
     }
 
     private DeckInfo? Selected(int seat) =>
@@ -106,7 +131,8 @@ public partial class PlaySetup : Control
 
     private void Start()
     {
-        for (int i = 0; i < 2; i++) Settings.Current.PlayerNames[i] = _names[i]?.Text is { Length: > 0 } n ? n : $"Player {i + 1}";
+        Settings.Current.PlayerNames[0] = _names[0]?.Text is { Length: > 0 } n0 ? n0 : "Player 1";
+        if (!_vsBot) Settings.Current.PlayerNames[1] = _names[1]?.Text is { Length: > 0 } n1 ? n1 : "Player 2";
         Settings.Save();
 
         if (App.Instance.Cards is { } cards && Selected(0) is { } first && Selected(1) is { } second)
@@ -116,7 +142,8 @@ public partial class PlaySetup : Control
                 var (deck, _) = App.Instance.Decks.Load(info);
                 var (definitions, unknown) = deck.Resolve(cards);
                 if (unknown.Count > 0) GD.PushWarning($"Deck '{info.Name}': unknown cards {string.Join(", ", unknown)}");
-                return new GameSession.Seat(Settings.Current.PlayerNames[index], definitions);
+                bool bot = _vsBot && index == 1;
+                return new GameSession.Seat(bot ? "Computer" : Settings.Current.PlayerNames[index], definitions, bot);
             }
             var life = App.Instance.FormatById(first.FormatId).StartingLife;
             App.Instance.PendingMatch = new MatchSetup(Seat(0, first), Seat(1, second), life, _sandbox.ButtonPressed);

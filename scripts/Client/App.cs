@@ -6,7 +6,7 @@ using Godot;
 
 namespace Arcanum.Client;
 
-/// <summary>A hotseat match chosen on the play screen, picked up by the game board.</summary>
+/// <summary>A match chosen on the play screen, picked up by the game board (Second.IsBot: against the computer).</summary>
 public sealed record MatchSetup(GameSession.Seat First, GameSession.Seat Second, int StartingLife, bool Sandbox = false);
 
 /// <summary>

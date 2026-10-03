@@ -110,7 +110,8 @@ public partial class GameBoard : Control
         seed =>
         {
             var session = GameSession.CreateHotseat(seed, first, second, setup, life, PolicyFromSettings(), Settings.Current.ConfirmManaPayment);
-            session.RevealAll = Settings.Current.RevealHandsInHotseat;
+            // Against the computer its hand stays hidden; in hotseat it's the player's choice.
+            session.RevealAll = !second.IsBot && Settings.Current.RevealHandsInHotseat;
             return session;
         };
 
@@ -134,7 +135,9 @@ public partial class GameBoard : Control
             var (deck, unknown) = Arcanum.Data.Decks.DeckList.Parse(module.ReadDeck(name)).Resolve(cards);
             if (unknown.Count > 0) GD.PushWarning($"Deck '{name}': unknown cards {string.Join(", ", unknown)}");
             if (deck.Count == 0) return;
-            seats.Add(new GameSession.Seat(Settings.Current.PlayerNames.ElementAtOrDefault(index) ?? $"Player {index + 1}", deck));
+            // ARCANUM_VS_BOT=1: the second seat is the computer (quick testing without the menus).
+            bool bot = index == 1 && OS.GetEnvironment("ARCANUM_VS_BOT") == "1";
+            seats.Add(new GameSession.Seat(bot ? "Computer" : Settings.Current.PlayerNames.ElementAtOrDefault(index) ?? $"Player {index + 1}", deck, bot));
         }
         var setup = OS.GetEnvironment("ARCANUM_SANDBOX") == "1" ? SandboxSetup(cards) : null;
         _newSession = HotseatFactory(seats[0], seats[1], 20, setup);
@@ -995,9 +998,20 @@ public partial class GameBoard : Control
 
     private void HidePreview(CardNode node) => _preview.Visible = false;
 
+    private bool _refreshQueued;
+
     private void OnGameEvent(GameEvent e)
     {
-        if (!_session.Log.IsReplaying) PlayEffect(e);
+        if (!_session.Log.IsReplaying)
+        {
+            PlayEffect(e);
+            // The board also follows actions taken without a local decision (the computer's turn): redraw once per frame.
+            if (_session.HasBot && !_refreshQueued)
+            {
+                _refreshQueued = true;
+                Callable.From(() => { _refreshQueued = false; Refresh(); }).CallDeferred();
+            }
+        }
         var line = EventLogFormatter.Format(_session.Game, e, _session.RevealAll);
         if (line is null) return;
         _log.AppendText((e is TurnBegan ? "\n[b]" + line + "[/b]" : line) + "\n");
