@@ -165,9 +165,9 @@ public sealed partial class Game
                 return candidate.Card is not { } c || earlier.All(t => t.Card is not { } e || State.GetCard(e).Controller != State.GetCard(c).Controller);
             case TargetRule.SameGraveyard:
                 return candidate.Card is not { } g || earlier.All(t => t.Card is not { } e || State.GetCard(e).Owner == State.GetCard(g).Owner);
-            case TargetRule.ShareCardType:
-                return candidate.Card is not { } s || earlier.All(t => t.Card is not { } e || (State.GetCard(e).Types & State.GetCard(s).Types
-                    & (CardType.Artifact | CardType.Creature | CardType.Enchantment | CardType.Land | CardType.Planeswalker | CardType.Battle)) != 0);
+            case TargetRule.ShareCardType: // different objects that share a card type
+                return !earlier.Contains(candidate) && (candidate.Card is not { } s || earlier.All(t => t.Card is not { } e || (State.GetCard(e).Types & State.GetCard(s).Types
+                    & (CardType.Artifact | CardType.Creature | CardType.Enchantment | CardType.Land | CardType.Planeswalker | CardType.Battle)) != 0));
         }
         return true;
     }
