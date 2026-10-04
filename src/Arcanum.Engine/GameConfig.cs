@@ -5,7 +5,7 @@ using Arcanum.Engine.Players;
 
 namespace Arcanum.Engine;
 
-/// <summary>Rule parameters for a game. Game-mode plugins (M12) will produce these too.</summary>
+/// <summary>Rule parameters for a game. Game-mode plugins (M13) will produce these too.</summary>
 public sealed record GameConfig
 {
     public ulong Seed { get; init; }

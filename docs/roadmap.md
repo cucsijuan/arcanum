@@ -10,9 +10,10 @@
 | M5 | Main menu, deck builder, formats, settings | done |
 | M6 | Computer opponent | done |
 | M7 | Commander rules and multiplayer (up to four players), readable play (announcements, pacing) | done |
-| M8 | Complete support for a first full card set: every card of the set playable (new keywords, keyword actions, conditions, alternative costs, modal spells, library and graveyard effects) | done (in testing) |
-| M9 | Limited: draft and sealed (booster generation, draft bots, cube draft, limited deck building, Swiss rounds); card printings and sets (exact art, set filter in the deck builder) | in progress |
-| M10 | Online play: authoritative server, lobbies, hidden information, reconnection | planned |
-| M11 | Mobile: touch input, responsive layout, Android and iOS builds | planned |
-| M12 | Plugin SDK: sandboxed Lua game-mode plugins distributed with online games | planned |
-| M13+ | More card coverage, stronger computer opponent, puzzles, statistics, visual themes | planned |
+| M8 | Complete support for a first full card set: every card of the set playable (new keywords, keyword actions, conditions, alternative costs, modal spells, library and graveyard effects) | done |
+| M9 | Limited: draft and sealed (booster generation, draft bots, cube draft, limited deck building, Swiss rounds); card printings and sets (exact art, set filter in the deck builder) | done |
+| M10 | Online play, direct connection: a player hosts and shares an address; host-authoritative games with hidden information, every game mode including limited events, reconnection, computer takeover of disconnected seats, resuming after the host drops | in progress |
+| M11 | Online services: lobbies and lobby browser, invite codes, NAT traversal and relay, groundwork for advanced online modes | planned |
+| M12 | Mobile: touch input, responsive layout, Android and iOS builds | planned |
+| M13 | Plugin SDK: sandboxed Lua game-mode plugins distributed with online games | planned |
+| M14+ | Dedicated headless server, more card coverage, stronger computer opponent, puzzles, statistics, visual themes | planned |
