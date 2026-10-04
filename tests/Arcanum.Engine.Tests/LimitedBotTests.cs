@@ -56,3 +56,52 @@ public class LimitedBotTests
         Assert.Equal(4, deck.PoolCards.Count(i => pool[i].Card.Name.StartsWith("Doom")));
     }
 }
+
+/// <summary>How the computer player blocks.</summary>
+public class BotBlockingTests
+{
+    private static Cards.CardDefinition Creature(string name, int power, int toughness, params Cards.Keyword[] keywords) =>
+        Scenario.Creature(name, power, toughness, keywords);
+
+    [Fact]
+    public async Task FacingCertainDeathItStillKillsWhatItCan()
+    {
+        var s = new Scenario();
+        var p0 = Scenario.P0;
+        var p1 = Scenario.P1;
+        var menace = s.Add(p0, Creature("Brute", 5, 3, Cards.Keyword.Menace));
+        var big = s.Add(p0, Creature("Ogre", 3, 4));
+        var flierA = s.Add(p0, Creature("Hawk", 4, 2, Cards.Keyword.Flying));
+        var flierB = s.Add(p0, Creature("Sprite", 1, 3, Cards.Keyword.Flying));
+        foreach (var (name, p, t) in new[] { ("Cat", 1, 1), ("Lion", 2, 2), ("Hare", 2, 2), ("Soldier", 1, 1), ("Pup", 3, 1) })
+            s.Add(p1, Creature(name, p, t));
+        s.Game.State.GetPlayer(p1).Life = 5;
+        s.Attacker.Attack = (_, attackers, defenders) => attackers.Select(a => new Players.AttackDeclaration(a, defenders[0])).ToList();
+        IReadOnlyList<Players.BlockDeclaration>? blocks = null;
+        s.Defender.Block = (view, _, _) => blocks = Arcanum.Bots.BotController.PlanBlocks(view, s.Defender.LastBlockRequest!);
+        await s.RunUntilTurn();
+        Assert.NotNull(blocks);
+        // The fliers can't be blocked and are lethal; it still destroys both ground attackers.
+        Assert.True(blocks!.Count(b => b.Attacker == menace) >= 2);
+        Assert.True(blocks!.Count(b => b.Attacker == big) >= 2);
+        int PowerOn(Core.CardId attacker) => blocks.Where(b => b.Attacker == attacker).Sum(b => s.Card(b.Blocker).Power);
+        Assert.True(PowerOn(menace) >= 3); // enough to destroy the 5/3
+        Assert.True(PowerOn(big) >= 4);    // and the 3/4
+    }
+
+    [Fact]
+    public async Task ItChumpsToSurviveWhenThatsEnough()
+    {
+        var s = new Scenario();
+        var big = s.Add(Scenario.P0, Creature("Giant", 6, 6));
+        var small = s.Add(Scenario.P0, Creature("Bear", 2, 2));
+        s.Add(Scenario.P1, Creature("Squire", 1, 1));
+        s.Game.State.GetPlayer(Scenario.P1).Life = 7;
+        s.Attacker.Attack = (_, attackers, defenders) => attackers.Select(a => new Players.AttackDeclaration(a, defenders[0])).ToList();
+        s.Defender.Block = (view, _, _) => Arcanum.Bots.BotController.PlanBlocks(view, s.Defender.LastBlockRequest!);
+        await s.RunUntilTurn();
+        Assert.Equal(5, s.Game.State.GetPlayer(Scenario.P1).Life); // blocked the 6/6, took 2
+        Assert.Equal(State.Zone.Battlefield, s.Card(big).Zone);
+        Assert.Equal(State.Zone.Battlefield, s.Card(small).Zone);
+    }
+}

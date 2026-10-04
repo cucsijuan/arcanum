@@ -628,38 +628,139 @@ public sealed class BotController : IPlayerController
     public async Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(GameView view, BlockRequest request)
     {
         RememberAttacks(view);
-        var attackers = request.Attackers.Select(view.FindCard).OfType<CardView>().OrderByDescending(a => a.Power ?? 0).ToList();
-        var free = request.Blockers.Select(view.FindCard).OfType<CardView>().ToList();
-        int incoming = attackers.Where(a => !request.MinimumBlockers.ContainsKey(a.Id)).Sum(a => a.Power ?? 0)
-                       + attackers.Where(a => request.MinimumBlockers.ContainsKey(a.Id)).Sum(a => a.Power ?? 0);
-        int life = view.Self.Life;
-        var blocks = new List<BlockDeclaration>();
-
-        foreach (var attacker in attackers)
-        {
-            if (request.MinimumBlockers.TryGetValue(attacker.Id, out int min) && min > 1) continue; // menace: leave it
-            var able = free.Where(b => request.CanBlock.TryGetValue(b.Id, out var list) && list.Contains(attacker.Id)).ToList();
-            if (able.Count == 0) continue;
-            bool BlockerKills(CardView b) => (b.Power ?? 0) >= RemainingToughness(attacker) || Has(b, "Deathtouch");
-            bool BlockerDies(CardView b) => (attacker.Power ?? 0) >= RemainingToughness(b) || Has(attacker, "Deathtouch");
-
-            CardView? pick =
-                able.Where(b => BlockerKills(b) && !BlockerDies(b)).OrderBy(CreatureValue).FirstOrDefault()          // free kill
-                ?? able.Where(b => !BlockerDies(b)).OrderBy(CreatureValue).FirstOrDefault(b => (attacker.Power ?? 0) >= 2) // safe wall
-                ?? able.Where(b => BlockerKills(b) && CreatureValue(b) <= CreatureValue(attacker)).OrderBy(CreatureValue).FirstOrDefault(); // good trade
-            if (pick is null && incoming >= life) pick = able.OrderBy(CreatureValue).First(); // chump to survive
-            if (pick is null) continue;
-
-            blocks.Add(new BlockDeclaration(pick.Id, attacker.Id));
-            free.Remove(pick);
-            incoming -= attacker.Power ?? 0;
-        }
+        var blocks = PlanBlocks(view, request);
         if (!request.IsLegal(blocks, out _)) blocks = request.WithRequirements(blocks).ToList();
         if (!request.IsLegal(blocks, out _)) blocks = request.WithRequirements(Array.Empty<BlockDeclaration>()).ToList();
         if (blocks.Count > 0) await PaceAsync();
         return blocks;
     }
 
+    /// <summary>
+    /// Blocks in three steps: first survive if the attack is lethal (chump the biggest threats, two blockers on a
+    /// menace attacker); if nothing saves us, use every blocker to take as many attackers down as possible; otherwise
+    /// make good blocks (free kills, safe walls, fair trades) and double blocks that kill a big attacker.
+    /// </summary>
+    public static List<BlockDeclaration> PlanBlocks(GameView view, BlockRequest request)
+    {
+        var attackers = request.Attackers.Select(view.FindCard).OfType<CardView>().ToList();
+        var allBlockers = request.Blockers.Select(view.FindCard).OfType<CardView>().ToList();
+        int life = view.Self.Life;
+        bool Able(CardView b, CardView a) => request.CanBlock.TryGetValue(b.Id, out var list) && list.Contains(a.Id);
+        int Needed(CardView a) => Math.Max(1, request.MinimumBlockers.GetValueOrDefault(a.Id, 1));
+
+        // Damage that still reaches us from an attacker with these blockers (trample goes past lethal damage).
+        int Through(CardView a, IReadOnlyList<CardView> by) =>
+            by.Count == 0 ? a.Power ?? 0
+            : Has(a, "Trample") ? Math.Max(0, (a.Power ?? 0) - by.Sum(b => Has(a, "Deathtouch") ? 1 : Math.Max(0, RemainingToughness(b)))) : 0;
+
+        // Whether these blockers together destroy the attacker (a first striker kills what it can before they hit back).
+        bool Kills(CardView a, IReadOnlyList<CardView> by)
+        {
+            var hitting = by.ToList();
+            if (Has(a, "First strike") || Has(a, "Double strike"))
+            {
+                int strike = a.Power ?? 0;
+                foreach (var b in by.Where(b => !Has(b, "First strike") && !Has(b, "Double strike")).OrderBy(RemainingToughness))
+                {
+                    int need = Has(a, "Deathtouch") ? 1 : RemainingToughness(b);
+                    if (strike < need) break;
+                    strike -= need;
+                    hitting.Remove(b);
+                }
+            }
+            if (Has(a, "Indestructible")) return false;
+            return hitting.Any(b => Has(b, "Deathtouch") && (b.Power ?? 0) > 0) || hitting.Sum(b => b.Power ?? 0) >= RemainingToughness(a);
+        }
+
+        bool Dies(CardView b, CardView a) => !Has(b, "Indestructible") && ((a.Power ?? 0) >= RemainingToughness(b) || (Has(a, "Deathtouch") && (a.Power ?? 0) > 0));
+
+        var assigned = attackers.ToDictionary(a => a.Id, _ => new List<CardView>());
+        var free = allBlockers.ToList();
+        int Incoming() => attackers.Sum(a => Through(a, assigned[a.Id]));
+        void Assign(CardView a, IEnumerable<CardView> by)
+        {
+            foreach (var b in by.ToList()) { assigned[a.Id].Add(b); free.Remove(b); }
+        }
+
+        // The cheapest group of free blockers that can legally block this attacker (with the most damage stopped).
+        List<CardView>? CheapestGroup(CardView a, Func<List<CardView>, bool>? goal = null)
+        {
+            var able = free.Where(b => Able(b, a)).OrderBy(CreatureValue).ToList();
+            int need = Needed(a) - assigned[a.Id].Count;
+            if (able.Count < Math.Max(0, need)) return null;
+            var group = able.Take(Math.Max(0, need)).ToList();
+            if (goal is null) return group;
+            foreach (var extra in able.Skip(group.Count))
+            {
+                if (goal(assigned[a.Id].Concat(group).ToList())) return group;
+                group.Add(extra);
+            }
+            return goal(assigned[a.Id].Concat(group).ToList()) ? group : null;
+        }
+
+        // 1. Survive: stop the most damage per blocker spent until the attack isn't lethal.
+        while (Incoming() >= life)
+        {
+            var best = attackers
+                .Where(a => assigned[a.Id].Count == 0)
+                .Select(a => (Attacker: a, Group: CheapestGroup(a)))
+                .Where(x => x.Group is { Count: > 0 })
+                .Select(x => (x.Attacker, Group: x.Group!, Saved: (x.Attacker.Power ?? 0) - Through(x.Attacker, x.Group!)))
+                .Where(x => x.Saved > 0)
+                .OrderByDescending(x => (double)x.Saved / x.Group.Count).ThenBy(x => x.Group.Sum(CreatureValue))
+                .FirstOrDefault();
+            if (best.Attacker is null) break;
+            Assign(best.Attacker, best.Group);
+        }
+
+        if (Incoming() >= life)
+        {
+            // 2. We lose anyway: throw everything in to destroy as many attackers as we can, most valuable first.
+            foreach (var a in attackers) assigned[a.Id].Clear();
+            free = allBlockers.ToList();
+            foreach (var a in attackers.OrderByDescending(CreatureValue))
+                if (CheapestGroup(a, by => Kills(a, by)) is { } group) Assign(a, group);
+            // Whatever is left still blocks (it can't make things worse): pile on blocked attackers that would survive,
+            // then on unblocked ones it can block alone.
+            foreach (var b in free.ToList())
+            {
+                var target = attackers.Where(a => Able(b, a) && assigned[a.Id].Count > 0 && !Kills(a, assigned[a.Id])).OrderByDescending(CreatureValue).FirstOrDefault()
+                             ?? attackers.Where(a => Able(b, a) && assigned[a.Id].Count == 0 && Needed(a) == 1).OrderByDescending(a => a.Power ?? 0).FirstOrDefault();
+                if (target is not null) Assign(target, new[] { b });
+            }
+        }
+        else
+        {
+            // 3. Not lethal: good single blocks, then double blocks that kill a big attacker.
+            foreach (var a in attackers.Where(a => assigned[a.Id].Count == 0 && Needed(a) == 1).OrderByDescending(a => a.Power ?? 0))
+            {
+                var able = free.Where(b => Able(b, a)).ToList();
+                CardView? pick =
+                    able.Where(b => Kills(a, new[] { b }) && !Dies(b, a)).OrderBy(CreatureValue).FirstOrDefault()                       // free kill
+                    ?? able.Where(b => !Dies(b, a)).OrderBy(CreatureValue).FirstOrDefault(b => (a.Power ?? 0) >= 2)                      // safe wall
+                    ?? able.Where(b => Kills(a, new[] { b }) && CreatureValue(b) <= CreatureValue(a)).OrderBy(CreatureValue).FirstOrDefault(); // fair trade
+                if (pick is not null) Assign(a, new[] { pick });
+            }
+            foreach (var a in attackers.Where(a => assigned[a.Id].Count == 0).OrderByDescending(CreatureValue))
+            {
+                var able = free.Where(b => Able(b, a)).OrderByDescending(b => b.Power ?? 0).ToList();
+                (CardView, CardView)? bestPair = null;
+                double bestCost = double.MaxValue;
+                for (int i = 0; i < able.Count; i++)
+                    for (int j = i + 1; j < able.Count; j++)
+                    {
+                        var pair = new[] { able[i], able[j] };
+                        if (!Kills(a, pair)) continue;
+                        // The attacker kills at most one of them (it assigns its damage); count the one we'd lose.
+                        double lost = pair.Where(b => Dies(b, a)).Select(CreatureValue).DefaultIfEmpty(0).Max();
+                        if (lost < CreatureValue(a) && lost < bestCost) { bestCost = lost; bestPair = (able[i], able[j]); }
+                    }
+                if (bestPair is { } p2) Assign(a, new[] { p2.Item1, p2.Item2 });
+            }
+        }
+
+        return assigned.SelectMany(kv => kv.Value.Select(b => new BlockDeclaration(b.Id, kv.Key))).ToList();
+    }
 
     /// <summary>Always takes the commander back to the command zone; no other yes/no choices exist yet.</summary>
     public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) => Task.FromResult(true);
