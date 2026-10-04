@@ -74,6 +74,12 @@ public enum Replacements : long
     ExtraCounterOnArmiesGoblinsOrcs = 1L << 29,
     /// <summary>During your turn, prevent all damage that would be dealt to this permanent.</summary>
     PreventDamageToSelfDuringYourTurn = 1L << 30,
+    /// <summary>During your turn, you may activate equip abilities any time you could cast an instant.</summary>
+    EquipAtInstantSpeedOnYourTurn = 1L << 31,
+    /// <summary>If a legendary permanent or an artifact entering or leaving the battlefield causes a triggered ability of a permanent you control to trigger, it triggers an additional time.</summary>
+    ExtraTriggersFromLegendariesAndArtifactsMoving = 1L << 32,
+    /// <summary>Mana of any type can be spent to activate this permanent's abilities.</summary>
+    AnyManaForItsAbilities = 1L << 33,
 }
 
 /// <summary>

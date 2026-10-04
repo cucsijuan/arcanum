@@ -327,8 +327,13 @@ public sealed partial class Game
             if (!sorcerySpeed || source.LoyaltyActivatedThisTurn) return false;
             if (loyalty < 0 && source.CounterCount(CounterKind.Loyalty) < -loyalty) return false;
         }
-        if (ability.SorcerySpeed && !sorcerySpeed) return false;
+        // "During your turn, you may activate equip abilities any time you could cast an instant."
+        bool instantEquip = ability.IsEquip && State.ActivePlayer == player && Has(player, Replacements.EquipAtInstantSpeedOnYourTurn);
+        if (ability.SorcerySpeed && !sorcerySpeed && !instantEquip) return false;
         if (ability.OncePerTurn && source.ActivatedThisTurn.Contains(index)) return false;
+        // "Activated abilities of lands your opponents control can't be activated unless they're mana abilities."
+        if (source.Is(CardType.Land) && !IsManaAbility(ability) && State.OpponentsOf(source.Controller).Any(o => State.PermanentsControlledBy(o).Any(c => (c.Definition.Replaces & Replacements.AnyManaForItsAbilities) != 0)))
+            return false;
         if (ability.OnlyOnce && source.ActivatedEver.Contains(index)) return false;
         // "Activated abilities of sources with the chosen name can't be activated" (mana abilities aside).
         if (!IsManaAbility(ability) && State.Battlefield.Select(State.GetCard)
@@ -382,6 +387,14 @@ public sealed partial class Game
     private ManaCost ActivationCost(Card source, ActivatedAbility ability, PlayerId player, IReadOnlyList<ChosenTarget>? targets, bool useFreeEquip = true)
     {
         var cost = ability.Cost.Mana;
+        // "Mana of any type can be spent to activate [this]'s abilities": colored symbols can be paid with any mana.
+        if ((source.Definition.Replaces & Replacements.AnyManaForItsAbilities) != 0 && cost.Pips.Count > 0)
+            cost = new ManaCost(cost.Generic + cost.Pips.Count + cost.Hybrid.Count, Array.Empty<ManaType>(), null, cost.XCount);
+        // "Activated abilities of Foods you control cost {1} less", "Equip abilities you activate cost {1} less".
+        foreach (var reducer in State.PermanentsControlledBy(player))
+            foreach (var r in reducer.Abilities.OfType<AbilityCostReduction>())
+                if ((!r.EquipOnly || ability.IsEquip) && Matches(r.Sources with { Controller = ControllerFilter.Any }, source, source.Controller, reducer, player))
+                    cost = cost.MinusGeneric(r.Amount);
         if (ability.CostReductionPer is { } per)
             cost = cost.MinusGeneric(State.Battlefield.Select(State.GetCard).Count(c => Matches(per, c, c.Controller, source, player)));
         if (ability.CostReductionIf is { } reduceIf && Holds(reduceIf, player, source)) cost = cost.MinusGeneric(ability.CostReductionAmount);
@@ -400,6 +413,7 @@ public sealed partial class Game
         switch (action)
         {
             case PlayLand play:
+                NoteExilePlay(State.GetCard(play.Card), playerId);
                 player.LandsPlayedThisTurn++;
                 if (State.GetCard(play.Card).Zone == Zone.Graveyard) player.GraveyardTypesUsedThisTurn |= CardType.Land;
                 MoveCard(play.Card, Zone.Battlefield);
@@ -549,7 +563,15 @@ public sealed partial class Game
 
         if (card.Zone == Zone.Command) player.CommanderCasts[cardId] = player.CommanderCasts.GetValueOrDefault(cardId) + 1;
         bool fromHand = card.CastFromHand, haste = card.HasteOnEnter, asAdventure = card.AsAdventure;
+        NoteExilePlay(card, player.Id);
+        // "When you next cast a creature spell of that type this turn": the spell will enter with an additional +1/+1 counter.
+        var bonus = card.IsCreature ? State.NextCreatureSpellBonus.Where(b => b.Player == player.Id && b.Turn == State.TurnNumber && card.HasSubtype(b.Type)).ToList() : new();
         MoveCard(cardId, Zone.Stack);
+        foreach (var b in bonus)
+        {
+            State.NextCreatureSpellBonus.Remove(b);
+            State.ExtraCountersOnEnter[(card.Id, card.Version)] = State.ExtraCountersOnEnter.GetValueOrDefault((card.Id, card.Version)) + 1;
+        }
         card.AsAdventure = asAdventure;
         card.CastFromGraveyard = fromGraveyard;
         card.ManaSpent = cost.ManaValue;
@@ -592,12 +614,22 @@ public sealed partial class Game
         var ability = await ChooseModesAsync(player.Id, (ActivatedAbility)source.Abilities[action.Index], source.Id, canCancel: true);
         if (ability is null) return false;
         var exclude = ability.Cost.Tap ? source.Id : (CardId?)null;
+        // X is announced before targets are chosen (rule 601.2b): "target creature with power X" needs it.
+        int? announcedX = null;
+        if (ability.Targets.Any(t => t.Filter?.PowerIsX == true) && ActivationCost(source, ability, player.Id, null).XCount > 0)
+        {
+            int maxX = MaxAffordableX(player.Id, ActivationCost(source, ability, player.Id, null), exclude);
+            announcedX = await ControllerOf(player.Id).ChooseNumberAsync(ViewFor(player.Id), new NumberRequest($"{source.Name}: choose X", source.Id, 0, maxX));
+            Require(announcedX >= 0 && announcedX <= maxX, $"X must be between 0 and {maxX}.");
+            _announcedX = announcedX.Value;
+        }
         // Equip discounts depend on the creature targeted: only creatures it can be paid for can be chosen.
         Func<Abilities.Target, bool>? affordable = ability is { IsEquip: true, Targets.Count: 1 }
             ? t => Payable(player.Id, ActivationCost(source, ability, player.Id, new[] { new ChosenTarget(t, VersionOf(t)) }).WithX(0), exclude,
                 UsableFor(source, isAbility: true))
             : null;
         var targets = await ChooseTargetsAsync(player.Id, ability, source.Id, ability.Text, canCancel: true, affordable);
+        _announcedX = -1;
         if (targets is null) return false;
         // The free first equip is an alternative cost the player may choose (or not).
         bool free = ability.IsEquip && FreeEquipAvailable(player.Id)
@@ -605,8 +637,8 @@ public sealed partial class Game
                         || await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Pay {{0}} rather than the equip cost of {source.Name}?", source.Id)));
 
         var cost = ActivationCost(source, ability, player.Id, targets, useFreeEquip: free);
-        int x = 0;
-        if (cost.XCount > 0)
+        int x = announcedX ?? 0;
+        if (cost.XCount > 0 && announcedX is null)
         {
             int max = MaxAffordableX(player.Id, cost, exclude);
             x = await ControllerOf(player.Id).ChooseNumberAsync(ViewFor(player.Id), new NumberRequest($"{source.Name}: choose X", source.Id, 0, max));
@@ -684,6 +716,14 @@ public sealed partial class Game
     }
 
     /// <summary>Whether discard / sacrifice / life costs can be paid (the source itself can't pay them).</summary>
+    /// <summary>"When you play a card this way": a card played from exile with such an ability triggers it.</summary>
+    private void NoteExilePlay(Card card, PlayerId player)
+    {
+        if (card.Zone != Zone.Exile) return;
+        foreach (var entry in State.PlayableFromExile.Where(p => p.Card == card.Id && p.Version == card.Version && p.Player == player && p.WhenPlayed is not null).ToList())
+            _pendingTriggers.Add(new PendingTrigger(entry.WhenPlayed!.Value.Source, entry.WhenPlayed.Value.Ability, player));
+    }
+
     private bool CanPayExtra(PlayerId playerId, ExtraCost? extra, CardId source)
     {
         if (extra is null) return true;
@@ -959,6 +999,7 @@ public sealed partial class Game
                     break;
                 }
                 bool hasteOnEnter = card.HasteOnEnter;
+                int castVersion = card.Version;
                 // An Aura spell enters attached to the object it targeted (rule 303.4f).
                 var attachTo = card.Definition.EnchantTarget is not null ? item.Targets[0].Target.Card : null;
                 MoveCard(spell.Card, card.Types.IsPermanent() ? Zone.Battlefield : discard, controller: spell.Controller, attachTo: attachTo,
@@ -967,6 +1008,8 @@ public sealed partial class Game
                 if (card.Zone == Zone.Battlefield && hasteOnEnter)
                     State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });
                 if (card.Zone == Zone.Battlefield) card.CastX = spell.X;
+                if (card.Zone == Zone.Battlefield && State.ExtraCountersOnEnter.Remove((spell.Card, castVersion), out var extraCounters))
+                    PutCounters(card, CounterKind.PlusOnePlusOne, extraCounters, spell.Controller);
                 if (card.Zone == Zone.Battlefield && card.Definition.EntersWithXCounters && spell.X > 0)
                     PutCounters(card, CounterKind.PlusOnePlusOne, spell.X, spell.Controller);
                 Emit(new SpellResolved(spell.Card));

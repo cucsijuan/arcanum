@@ -81,6 +81,9 @@ public sealed class Player
     /// <summary>Permanents this player sacrificed this turn.</summary>
     public List<Core.CardId> SacrificedThisTurn { get; } = new();
 
+    /// <summary>Players this player attacked this turn (with creatures attacking them, not their planeswalkers).</summary>
+    public HashSet<Core.PlayerId> PlayersAttackedThisTurn { get; } = new();
+
     /// <summary>A permanent this player controlled left the battlefield this turn.</summary>
     public bool PermanentLeftThisTurn { get; set; }
 

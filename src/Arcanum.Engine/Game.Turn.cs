@@ -21,6 +21,7 @@ public sealed partial class Game
         foreach (var player in State.Players)
         {
             player.CreaturesDiedThisTurn = 0;
+            player.PlayersAttackedThisTurn.Clear();
             player.SacrificedThisTurn.Clear();
             player.PermanentLeftThisTurn = false;
             player.AttackedThisTurn = false;

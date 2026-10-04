@@ -52,6 +52,9 @@ public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = C
     /// <summary>Text shown when choosing; set by card scripts so the player sees the printed wording.</summary>
     public string? Text { get; init; }
 
+    /// <summary>"Up to X target …": this requirement is repeated X times (worked out as the ability is put on the stack), all optional and different.</summary>
+    public Quantity? RepeatFrom { get; init; }
+
     public string Describe()
     {
         if (Text is not null) return Text;
@@ -139,6 +142,9 @@ public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filt
 
     /// <summary>For <see cref="SubjectKind.Each"/>: leaves out the chosen targets ("each other creature you control").</summary>
     public bool ExceptTargets { get; init; }
+
+    /// <summary>For <see cref="SubjectKind.Each"/>: only permanents attached to the target at <see cref="Index"/> ("all Equipment attached to that creature").</summary>
+    public bool AttachedToTarget { get; init; }
 
     /// <summary>For <see cref="SubjectKind.FixedPlayer"/>.</summary>
     public PlayerId? Player { get; init; }

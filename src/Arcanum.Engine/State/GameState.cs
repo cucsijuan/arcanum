@@ -74,6 +74,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
 
     /// <summary>Mana of any type can be spent to cast it.</summary>
     public bool AnyManaType { get; init; }
+
+    /// <summary>"When you play a card this way": the source and its ability that triggers then.</summary>
+    public (CardId Source, Abilities.TriggeredAbility Ability)? WhenPlayed { get; init; }
 }
 
 /// <summary>A delayed triggered ability waiting for its moment ("at the beginning of the next upkeep").</summary>
@@ -158,6 +161,18 @@ public sealed class GameState
 
     /// <summary>Delayed abilities that trigger at the beginning of the next upkeep.</summary>
     public List<DelayedTrigger> AtNextUpkeep { get; } = new();
+
+    /// <summary>"At the beginning of the next end step, exile that token unless …": per token made.</summary>
+    public List<(CardId Source, PlayerId Controller, CardId Token, int TokenVersion, IReadOnlyList<Abilities.Effect> Effects, Abilities.Condition? Unless)> AtNextEndStepEffects { get; } = new();
+
+    /// <summary>"When you next cast a creature spell of that type this turn, that creature enters with an additional +1/+1 counter."</summary>
+    public List<(PlayerId Player, string Type, int Turn)> NextCreatureSpellBonus { get; } = new();
+
+    /// <summary>Cast creature spells (card, version on the stack) that enter with additional +1/+1 counters.</summary>
+    public Dictionary<(CardId Card, int Version), int> ExtraCountersOnEnter { get; } = new();
+
+    /// <summary>Delayed abilities waiting for a given player's next end step (and the turn they were made, so it's a later one).</summary>
+    public List<(DelayedTrigger Trigger, PlayerId Whose, int MadeOnTurn, bool MadeDuringEndStep)> AtPlayersNextEndStep { get; } = new();
 
     /// <summary>Permanents whose damage is prevented while a source stays.</summary>
     public List<DamagePrevention> DamagePreventions { get; } = new();

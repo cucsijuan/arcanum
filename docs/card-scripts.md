@@ -401,3 +401,53 @@ Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYo
   `{ "damagedThisWay": filter }`; quantity `"attached"` (Auras and Equipment attached by this effect).
 - The free first equip (`freeFirstEquipIf`) is offered as a choice. Attack taxes are paid as attackers are declared;
   an unpaid declaration is made again, and players see what attacking costs.
+
+## Ring-bearers, keyword counters, lasting control and more
+
+- **The Ring**: trigger `ringBearerChosen` ("whenever you choose a creature as your Ring-bearer"); a `ringTempts` trigger is
+  about the creature chosen that time, so `"if": { "triggered": { "other": true } }` reads "if you chose a creature other
+  than this". Conditions `"ringBearer"` (this is your Ring-bearer) and `"hasRingBearer"`; quantity `"ringBearerPower"`.
+  `ringTempts` and `youScry` triggers also work from the graveyard (`"fromGraveyard": true`).
+- **Counters**: keyword counters `first strike`, `double strike`, `deathtouch`, `flying`, `haste`, `hexproof`, `menace`,
+  `reach`, `vigilance` (and `verse`). `{ "counterChoice": ["first strike", "vigilance"], "what": "self" }` puts the chosen
+  one; `{ "countersOfTriggeredKinds": "target" }` puts one of each kind a batched `countersPlaced` trigger saw.
+- **Durations**: `pump` and `gainControl` take `"whileYouControl": true` ("for as long as you control this Saga/creature");
+  `pump` takes `"untilYourNextTurn": true`.
+- **Choices on resolution**: `{ "chooseEffect": [{ "text": "Lifelink", "effects": [ … ] }, …] }`; `mayPay` takes
+  `"options"` (pay one of several costs) and `"else"`; `may` takes `"oncePerTurn"` ("do this only once each turn").
+- **Library**: `{ "toLibrary": "target", "position": 2 }` (second from the top), `{ "revealTop": filter, "optional": true,
+  "effects": [ … ] }` (the revealed card is `"found"`), `revealUntil` with `"count"`, `"tapped"` and `"rest": "graveyard"`,
+  `{ "piles": 4, "opponentSeparates": true }`, `{ "guessTop": 2, "right": [ … ], "wrong": [ … ] }`,
+  `{ "revealTopPutAny": quantity, "filter": f }`, `lookAtTop` with a quantity.
+- **Damage**: `damage` with `"excessToController": true`, `{ "damageCantBePrevented": true }`; triggers
+  `excessNoncombatDamage` (amount: the excess) and `dealsDamageTo` (this creature dealt damage to a `filter` creature).
+- **Combat**: `{ "goad": "target" }`, `{ "removeFromCombat": "self" }`, keywords `Must be blocked`, `Can't be blocked by more
+  than one`, `Nonbasic landwalk`, `Assigns damage by toughness`, `Untaps by removing counter`; condition
+  `{ "equippedInCombatWith": filter }`; trigger `equippedBlocksOrBlocked` with `{ "loseAllAbilities": "triggered" }`.
+- **Protection**: `{ "protectionFromChosenType": "target" }`, `{ "protectionFromColorsOf": "target", "what": subject }`.
+- **Triggers**: `tokenCreated` (each token), `youAttackPlayer` (once per player attacked; amount: how many attackers matched
+  `filter`), `becomesTargetOfSpell`, `permanentBecomesTarget` (of an opponent's spell or ability), `phasesIn`; cast triggers
+  take `"spellTargets": filter`.
+- **Targets**: `"upTo": quantity` repeats a requirement ("up to X target creatures"), `targetRule: "sameController"`, kind
+  `spellOrPermanent`, filters `historic`, `lesserPower`, `greaterPower`, `powerIsX` (X is announced first),
+  `maxPowerTriggered`, `blockedOrBlockedByLegendary`, `sharesColorWithYourLegendary`, `noSharedCreatureType`,
+  `damagedThisTurnByYourSpider`; subject `{ "each": f, "attachedTo": "target" }`.
+- **Conditions**: `{ "yourCreaturesDied": 1 }`, `{ "sacrificedThisTurn": filter }`, `{ "sacrificed": filter }` (the
+  sacrificed creature), `"yourPermanentLeft"`, `"attackedThisTurn"`, `"greatestPower"`, `"triggeredPlayerAttackedYou"`.
+- **Quantities**: `{ "sum": [ … ] }`, `"permanentsSacrificedThisTurn"`, `"sacrificedThisWay"`, `"amassedPower"`,
+  `{ "graveyard": f, "of": "target" }` / `"of": "affected"` (the player being affected).
+- **Delayed and remembered**: `{ "atNextEndStepOf": "opponents", "effects": [ … ] }` (chooses an opponent; triggers at their
+  next end step), `copy` with `setPower`, `setToughness`, `setColors`, `setTypes`, `setSubtypes`, `addKeywords`,
+  `abilities`, `tapped`, `attacking`, `atNextEndStep` and `atNextEndStepUnless`; `exileTopPlayable` with `"whenPlayed"`;
+  `{ "noteCreatureType": true }`; `{ "moveCounterOfEachMissingKind": … }`, `{ "moveCounters": …, "then": [ … ] }`;
+  `{ "sacrificeAnyNumber": filter }`; `{ "exileHandDownTo": 4, "who": "targetController" }`.
+- **Costs**: `sacrifice:Food*3` (three Foods), `exileGraveyardCards:3`. Abilities: `{ "abilityCost": { "sources": filter,
+  "amount": 1, "equipOnly": true } }` ("activated abilities of Foods you control cost {1} less", "equip abilities you
+  activate cost {1} less").
+- **Card-wide**: `"opponentsCantGainLife"`, `"cantBeCopied"`, `extraMana` with `"colorsAmongGraveyardLegends"`, and
+  `replaces` `ExtraFoodWithTokens`, `DrawTwoWithEmptyHand`, `DoubleLifeGainAtFiveOrLess`, `KeepGreenMana`,
+  `ExtraCounterOnArmiesGoblinsOrcs`, `PreventDamageToSelfDuringYourTurn`, `EquipAtInstantSpeedOnYourTurn`,
+  `ExtraTriggersFromLegendariesAndArtifactsMoving`, `AnyManaForItsAbilities` (also: it has the activated abilities of
+  opponents' lands, which can't be activated unless they're mana abilities).
+- A legendary instant or sorcery can be cast only with a legendary creature or planeswalker. "A deck can have up to nine
+  cards named …" raises the copy limit; enters abilities that refer to X use the X the permanent was cast with.

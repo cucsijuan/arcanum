@@ -281,6 +281,9 @@ public sealed class Card
     /// <summary>Colors among legendary creature cards in its controller's graveyard (worked out with continuous effects).</summary>
     internal IReadOnlyList<Mana.ManaType> ColorsAmongGraveyardLegends { get; set; } = Array.Empty<Mana.ManaType>();
 
+    /// <summary>Creature types noted for this permanent ("a creature type that hasn't been noted for this Saga").</summary>
+    public List<string> NotedTypes { get; } = new();
+
     /// <summary>Card types it has protection from (layer 6, from effects).</summary>
     public CardType ProtectionFromTypes { get; set; }
 

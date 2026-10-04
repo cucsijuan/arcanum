@@ -200,7 +200,43 @@ public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = fa
 
     /// <summary>"Except it's a Nightmare in addition to its other types."</summary>
     public IReadOnlyList<string>? AddSubtypes { get; init; }
+
+    /// <summary>"Except it's a 3/3 black Wraith with menace" / "except it's a Food artifact … and it loses all other card types".</summary>
+    public int? SetPower { get; init; }
+    public int? SetToughness { get; init; }
+    public IReadOnlyList<string>? SetColors { get; init; }
+    public CardType? SetTypes { get; init; }
+    public IReadOnlyList<string>? SetSubtypes { get; init; }
+    public IReadOnlyList<string>? AddKeywords { get; init; }
+    public IReadOnlyList<AbilityDefinition>? AddAbilities { get; init; }
+
+    public bool Tapped { get; init; }
+
+    /// <summary>"Tapped and attacking".</summary>
+    public bool Attacking { get; init; }
+
+    /// <summary>"At the beginning of the next end step, [this effect] to that token" (unless the condition holds then).</summary>
+    public IReadOnlyList<Effect>? AtNextEndStep { get; init; }
+    public Condition? AtNextEndStepUnless { get; init; }
 }
+
+/// <summary>
+/// "Look at the top N cards of your library, put them back in any order, then choose land or nonland. An opponent guesses
+/// whether the top card of your library is the chosen kind. Reveal that card. If they guessed right, [right]. Otherwise, [wrong]."
+/// </summary>
+public sealed record GuessTopCard(int Look, IReadOnlyList<Effect> Right, IReadOnlyList<Effect> Wrong) : Effect;
+
+/// <summary>"Sacrifice any number of [filter]" (the number is counted by "sacrificed this way").</summary>
+public sealed record SacrificeAnyNumber(ObjectFilter Filter) : Effect;
+
+/// <summary>
+/// "Reveal the top X cards. Choose any number of [filter] cards revealed this way. Put all nonland cards chosen onto the
+/// battlefield, then all land cards chosen onto the battlefield tapped, then the rest on the bottom in a random order."
+/// </summary>
+public sealed record RevealTopPutAny(Quantity Count, ObjectFilter Filter) : Effect;
+
+/// <summary>"Note a creature type that hasn't been noted for [this]. When you next cast a creature spell of that type this turn, it enters with an additional +1/+1 counter."</summary>
+public sealed record NoteCreatureType : Effect;
 
 /// <summary>Sacrifice the subject (usually the source itself).</summary>
 public sealed record SacrificeIt(Subject What) : Effect;
@@ -350,6 +386,9 @@ public sealed record CreateEmblem(string Name, IReadOnlyList<AbilityDefinition> 
 /// <summary>Exile the top N cards of your library; you choose one (or all with <paramref name="ChooseOne"/> false) and may play it this turn.</summary>
 public sealed record ExileTopPlayable(int Count, bool ChooseOne = true, bool UntilEndOfNextTurn = false, bool WithoutPaying = false) : Effect
 {
+    /// <summary>"When you play a card this way, …": a triggered ability of the source when one of these cards is played.</summary>
+    public TriggeredAbility? WhenPlayed { get; init; }
+
     /// <summary>Exile this many instead of <see cref="Count"/> (X).</summary>
     public Quantity? CountFrom { get; init; }
 
@@ -493,6 +532,15 @@ public sealed record LoseGame : Effect
     /// <summary>Who loses: the controller by default ("that player loses the game").</summary>
     public Subject? Who { get; init; }
 }
+
+/// <summary>"At the beginning of [that player]'s next end step, …" (a delayed triggered ability, rule 603.7).</summary>
+public sealed record AtPlayersNextEndStep(Subject Whose, TriggeredAbility Ability) : Effect;
+
+/// <summary>"Move a counter of each kind not on [to] from [from] onto [to]".</summary>
+public sealed record MoveCounterOfEachMissingKind(Subject From, Subject To) : Effect;
+
+/// <summary>"Move one or more counters from [from] onto [to]. If you do, [then]".</summary>
+public sealed record MoveChosenCounters(Subject From, Subject To, IReadOnlyList<Effect> Then) : Effect;
 
 /// <summary>"Remove it from combat" (rule 506.4).</summary>
 public sealed record RemoveFromCombat(Subject What) : Effect;

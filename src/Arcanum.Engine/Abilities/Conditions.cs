@@ -157,6 +157,9 @@ public sealed record SourceAttackedThisTurn : Condition;
 /// <summary>"If the sacrificed creature was legendary": a permanent sacrificed for this spell or ability matches (as it last existed).</summary>
 public sealed record SacrificedMatches(ObjectFilter Filter) : Condition;
 
+/// <summary>"If they attacked you that turn": the player the trigger is about attacked the controller this turn.</summary>
+public sealed record TriggeredPlayerAttackedYou : Condition;
+
 /// <summary>"As long as [equipped creature] is blocking or blocked by a [filter]".</summary>
 public sealed record EquippedInCombatWith(ObjectFilter Filter) : Condition;
 

@@ -140,6 +140,9 @@ public sealed record ActivatedAbility : AbilityDefinition
 }
 
 /// <summary>"[Spells matching the filter] you cast cost {N} less to cast" while the source is on the battlefield.</summary>
+/// <summary>"Activated abilities of Foods you control cost {1} less to activate" / "Equip abilities you activate cost {1} less" (generic mana only).</summary>
+public sealed record AbilityCostReduction(ObjectFilter Sources, int Amount, bool EquipOnly) : AbilityDefinition;
+
 public sealed record SpellCostReduction(ObjectFilter Spells, int Amount) : AbilityDefinition
 {
     /// <summary>The amount worked out from the source ("{X} less, where X is equipped creature's power").</summary>
@@ -276,6 +279,8 @@ public enum TriggerEvent
     PhasesIn,
     /// <summary>"Whenever equipped creature blocks or becomes blocked by a creature" (once per such creature; subject: that creature).</summary>
     EquippedBlocksOrBecomesBlocked,
+    /// <summary>"Whenever a [filter] becomes the target of a spell or ability an opponent controls" (subject: that permanent).</summary>
+    PermanentBecomesTargetOfOpponent,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -395,6 +400,9 @@ public sealed record ObjectFilter(
 {
     /// <summary>Power at most that of the object the ability is about ("with power less than or equal to the amassed Army's power").</summary>
     public bool MaxPowerTriggered { get; init; }
+
+    /// <summary>Dealt damage this turn by a Spider its controller controlled.</summary>
+    public bool DamagedThisTurnByYourSpider { get; init; }
 
     /// <summary>Historic: an artifact, a legendary or a Saga (rule 700.6).</summary>
     public bool Historic { get; init; }
