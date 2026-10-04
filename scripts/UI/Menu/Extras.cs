@@ -35,7 +35,16 @@ public partial class Extras : Control
             if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
             MenuKit.Toast(this, "Card data will be downloaded again on the next start.");
         };
-        data.AddChild(refresh);
+        var install = BoardStyle.MakeButton("Install module from zip…", 16);
+        install.CustomMinimumSize = new Vector2(300, 44);
+        install.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+        install.TooltipText = "Choose a content module's zip file (from the module's releases) to install or update it.";
+        install.Pressed += ChooseModuleZip;
+        var buttons = new HBoxContainer();
+        buttons.AddThemeConstantOverride("separation", 12);
+        buttons.AddChild(install);
+        buttons.AddChild(refresh);
+        data.AddChild(buttons);
         root.AddChild(MenuKit.Card(data));
 
         var sandbox = new VBoxContainer();
@@ -67,5 +76,61 @@ public partial class Extras : Control
         source.Pressed += () => OS.ShellOpen(App.SourceUrl);
         about.AddChild(source);
         root.AddChild(MenuKit.Card(about));
+    }
+
+    private void ChooseModuleZip()
+    {
+        var dialog = new FileDialog
+        {
+            FileMode = FileDialog.FileModeEnum.OpenFile,
+            Access = FileDialog.AccessEnum.Filesystem,
+            Filters = new[] { "*.zip ; Content module" },
+            Title = "Install a content module",
+            UseNativeDialog = true,
+            CurrentDir = OS.GetSystemDir(OS.SystemDir.Downloads),
+        };
+        dialog.FileSelected += path =>
+        {
+            dialog.QueueFree();
+            InstallModule(path);
+        };
+        dialog.Canceled += dialog.QueueFree;
+        AddChild(dialog);
+        dialog.PopupCentered(new Vector2I(900, 600));
+    }
+
+    private void InstallModule(string zipPath)
+    {
+        Arcanum.Data.Modules.ModuleManifest manifest;
+        try
+        {
+            manifest = Arcanum.Data.Modules.ModuleInstaller.InstallFromZip(zipPath, ProjectSettings.GlobalizePath("user://modules"));
+        }
+        catch (Exception e)
+        {
+            GD.PushWarning($"Module install failed: {e}");
+            var error = new AcceptDialog { Title = "Install failed", DialogText = $"The module couldn't be installed:\n{e.Message}" };
+            error.Confirmed += error.QueueFree;
+            AddChild(error);
+            error.PopupCentered();
+            return;
+        }
+        // Card data is read when the app starts: restart to use the new module.
+        var done = new ConfirmationDialog
+        {
+            Title = "Module installed",
+            DialogText = $"{manifest.Name} {manifest.Version} is installed. Restart Arcanum to use it?" +
+                         "\n(The first start downloads its card data, which takes a few minutes.)",
+            OkButtonText = "Restart now",
+            CancelButtonText = "Later",
+        };
+        done.Confirmed += () =>
+        {
+            OS.SetRestartOnExit(true);
+            GetTree().Quit();
+        };
+        done.Canceled += done.QueueFree;
+        AddChild(done);
+        done.PopupCentered();
     }
 }

@@ -9,7 +9,8 @@
 - `dotnet test tests/Arcanum.Engine.Tests` and `dotnet test tests/Arcanum.Data.Tests` run the test suites.
 - Open the project folder in Godot .NET and press Play, or run `godot --path .` from a terminal.
 - Content modules: in editor builds a module checked out next to the project folder (`../arcanum-classic`) is
-  found automatically; otherwise set `ARCANUM_MODULE_PATH` or install it under `user://modules/<module-id>`.
+  found automatically; otherwise set `ARCANUM_MODULE_PATH` or install it under `user://modules/<module-id>`
+  (Extras → "Install module from zip…" does this from a module's release zip).
 
 ## Desktop exports
 Create the presets once in Project → Export (they are stored in `export_presets.cfg`, which is not committed
