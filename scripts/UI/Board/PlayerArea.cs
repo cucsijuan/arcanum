@@ -28,6 +28,9 @@ public partial class PlayerArea : Control
     /// <summary>Who plays the seat now, in online games ("computer", "disconnected 1:42"); shown beside the name.</summary>
     public string? SeatNote { get; set; }
     private readonly PanelContainer _nameBadge = new();
+
+    /// <summary>What applies to the player for the rest of the game or for now (Ring, city's blessing, poison…), beside the name.</summary>
+    private readonly HBoxContainer _tags = new();
     private readonly Label _handLabel = BoardStyle.MakeLabel("Hand (0)", 12, BoardStyle.TextDim);
     private readonly ZonePile _library = new("Library");
     private readonly ZonePile _graveyard = new("Graveyard");
@@ -106,6 +109,9 @@ public partial class PlayerArea : Control
         _nameBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color("0e0e10"), 6));
         _nameBadge.AddChild(_name);
         AddChild(_nameBadge);
+        _tags.MouseFilter = MouseFilterEnum.Ignore;
+        _tags.AddThemeConstantOverride("separation", 4);
+        AddChild(_tags);
 
         AddChild(_handLabel);
         foreach (var pile in new[] { _library, _graveyard, _exile, _command })
@@ -161,6 +167,8 @@ public partial class PlayerArea : Control
     {
         if (_grid.Material is ShaderMaterial gridMaterial) gridMaterial.SetShaderParameter("rect_size", Size);
         _nameBadge.Position = new Vector2((Size.X - _nameBadge.Size.X) / 2, 6);
+        _tags.ResetSize();
+        _tags.Position = new Vector2(_nameBadge.Position.X + _nameBadge.Size.X + 6, 6 + (_nameBadge.Size.Y - _tags.Size.Y) / 2);
 
         float gap = PileGap * Scale;
         float x = Size.X - SideMargin - PileSize.X;
@@ -186,10 +194,9 @@ public partial class PlayerArea : Control
         RefreshPool(me);
         _life.Text = me.Life.ToString();
         _life.AddThemeColorOverride("font_color", me.HasLost ? BoardStyle.TextDim : BoardStyle.Text);
-        _name.Text = (me.HasLost ? $"{me.Name} (defeated)" : me.Name) + (me.EnduringStory ? " · Enduring story" : "") + (me.CitysBlessing ? " · City's blessing" : "")
-                     + (me.RingLevel > 0 ? $" · Ring {me.RingLevel}" + (me.RingBearer is { } bearer && view.Battlefield.FirstOrDefault(c => c.Id == bearer) is { } rb ? $" ({rb.Name})" : "") : "")
-                     + (me.Protected ? " · Protection" : "") + (SeatNote is { } note ? $" · {note}" : "");
+        _name.Text = (me.HasLost ? $"{me.Name} (defeated)" : me.Name) + (SeatNote is { } note ? $" · {note}" : "");
         _nameBadge.ResetSize();
+        RefreshTags(me, view);
         _activeBorder.Visible = isActive;
         _handLabel.Text = $"⌄ Hand ({me.Hand.Count})";
 
@@ -240,6 +247,46 @@ public partial class PlayerArea : Control
         LayoutHand();
         LayoutBattlefield(battlefield);
         SortByDrawOrder();
+    }
+
+    private static readonly string[] RingAbilities =
+    {
+        "Your Ring-bearer is legendary and can't be blocked by creatures with greater power.",
+        "Whenever your Ring-bearer attacks, draw a card, then discard a card.",
+        "Whenever your Ring-bearer becomes blocked by a creature, that creature's controller sacrifices it at end of combat.",
+        "Whenever your Ring-bearer deals combat damage to a player, each opponent loses 3 life.",
+    };
+
+    /// <summary>Player-wide states as chips beside the name, each with what it means as its tooltip.</summary>
+    private void RefreshTags(PlayerView me, GameView view)
+    {
+        foreach (var child in _tags.GetChildren()) { _tags.RemoveChild(child); child.QueueFree(); }
+        if (me.RingLevel > 0)
+        {
+            var bearer = me.RingBearer is { } id ? view.FindCard(id)?.Name : null;
+            AddTag($"Ring {Math.Min(me.RingLevel, 4)}" + (bearer is not null ? $" · {bearer}" : ""), new Color("f2c14e"),
+                $"The Ring has tempted {me.Name} {me.RingLevel} time{(me.RingLevel == 1 ? "" : "s")}.\n"
+                + (bearer is not null ? $"Ring-bearer: {bearer}." : "No Ring-bearer right now.") + "\n\n"
+                + string.Join("\n", RingAbilities.Take(Math.Min(me.RingLevel, 4))));
+        }
+        if (me.EnduringStory) AddTag("Enduring story", new Color("b48cff"), $"{me.Name} has an enduring story for the rest of the game.");
+        if (me.CitysBlessing) AddTag("City's blessing", new Color("6fd08c"), $"{me.Name} has the city's blessing for the rest of the game.");
+        if (me.Protected) AddTag("Protection", new Color("7fb2ff"), $"{me.Name} has protection from everything until their next turn.");
+        if (me.NoMaximumHandSize) AddTag("No max hand size", BoardStyle.TextDim, $"{me.Name} has no maximum hand size for the rest of the game.");
+        if (me.Poison > 0) AddTag($"Poison {me.Poison}/10", new Color("8fd14f"), $"{me.Name} has {me.Poison} poison counter{(me.Poison == 1 ? "" : "s")}; ten or more loses the game.");
+    }
+
+    private void AddTag(string text, Color accent, string tooltip)
+    {
+        var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Pass, TooltipText = tooltip };
+        var box = BoardStyle.Box(new Color(0.08f, 0.08f, 0.1f, 0.94f), 6, accent, 1);
+        box.BorderWidthLeft = 4;
+        box.SetContentMarginAll(Compact ? 2 : 3);
+        box.ContentMarginLeft = Compact ? 6 : 8;
+        box.ContentMarginRight = Compact ? 6 : 8;
+        panel.AddThemeStyleboxOverride("panel", box);
+        panel.AddChild(BoardStyle.MakeLabel(text, Compact ? 11 : 12, accent.Lerp(Colors.White, 0.35f), bold: true));
+        _tags.AddChild(panel);
     }
 
     /// <summary>

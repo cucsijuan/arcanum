@@ -103,6 +103,12 @@ public sealed record PlayerView
     /// <summary>Has protection from everything until their next turn.</summary>
     public bool Protected { get; init; }
 
+    /// <summary>Poison counters.</summary>
+    public int Poison { get; init; }
+
+    /// <summary>Has no maximum hand size for the rest of the game.</summary>
+    public bool NoMaximumHandSize { get; init; }
+
     /// <summary>Floating mana by type (only types with a non-zero amount).</summary>
     public required IReadOnlyDictionary<Mana.ManaType, int> ManaPool { get; init; }
 }

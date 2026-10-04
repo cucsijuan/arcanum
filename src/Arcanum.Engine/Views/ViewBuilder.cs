@@ -43,6 +43,8 @@ public static class ViewBuilder
                 RingLevel = p.RingLevel,
                 RingBearer = p.RingBearer is { } bearer && state.GetCard(bearer.Card) is { Zone: Zone.Battlefield } b && b.Version == bearer.Version ? bearer.Card : null,
                 Protected = p.Protected,
+                Poison = p.Poison,
+                NoMaximumHandSize = p.NoMaximumHandSize,
                 ManaPool = Enum.GetValues<Mana.ManaType>().Where(t => p.ManaPool.AllOf(t) > 0).ToDictionary(t => t, t => p.ManaPool.AllOf(t)),
             }).ToList(),
             Battlefield = Views(state.Battlefield),
