@@ -56,7 +56,7 @@ public static class ViewBuilder
     public static CardView Card(GameState state, CardId id, PlayerId viewer, bool reveal = false, int commanderTaxPerCast = 0)
     {
         var card = state.GetCard(id);
-        bool visible = reveal || card.Zone.IsPublic() || (card.Zone == Zone.Hand && card.Owner == viewer);
+        bool visible = reveal || (card.Zone.IsPublic() && !(card.FaceDown && card.Owner != viewer)) || (card.Zone == Zone.Hand && card.Owner == viewer);
         if (!visible)
         {
             return new CardView
@@ -106,6 +106,10 @@ public static class ViewBuilder
                 .ToDictionary(kv => kv.Key.ToString(), kv => kv.Value),
             ChosenColor = card.ChosenColor,
             ChosenType = card.ChosenType,
+            AdventureName = card.PrintedDefinition.Adventure?.Name,
+            AdventureCost = card.PrintedDefinition.Adventure?.ManaCost.ToString(),
+            AdventureText = card.PrintedDefinition.Adventure?.OracleText,
+            OnAdventure = card.OnAdventure,
         };
     }
 }

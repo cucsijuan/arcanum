@@ -44,6 +44,19 @@ public sealed class Scenario
 
     public State.Card Card(CardId id) => Game.State.GetCard(id);
 
+    /// <summary>
+    /// Puts cards set up in a library back on its top, in order (libraries are shuffled and hands drawn as the game
+    /// starts). Call it once the game runs, e.g. from the first action.
+    /// </summary>
+    public void Restack(PlayerId owner, params CardId[] cards)
+    {
+        var player = Game.State.GetPlayer(owner);
+        player.Library.RemoveAll(cards.Contains);
+        player.Hand.RemoveAll(cards.Contains);
+        foreach (var id in cards) Card(id).Zone = State.Zone.Library;
+        player.Library.InsertRange(0, cards);
+    }
+
     /// <summary>Runs until <paramref name="turn"/> begins (default: the end of player 0's first turn).</summary>
     public async Task RunUntilTurn(int turn = 2)
     {

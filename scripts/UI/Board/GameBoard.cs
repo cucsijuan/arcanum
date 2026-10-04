@@ -922,6 +922,9 @@ public partial class GameBoard : Control
                 {
                     var label = option switch
                     {
+                        PlayLand => $"Play {card?.Name}",
+                        CastSpell { Adventure: true } => $"Adventure: {card?.AdventureName} {card?.AdventureCost}",
+                        CastSpell => $"Cast {card?.Name}",
                         ActivateManaAbility m => $"Add {{{m.Type.ToSymbol()}}}",
                         ActivateAbility a when card is not null && a.Index < card.AbilityTexts.Count => Shorten(card.AbilityTexts[a.Index]),
                         _ => "Activate",
@@ -1073,6 +1076,9 @@ public partial class GameBoard : Control
                     var (id, label) = action switch
                     {
                         CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Graveyard } g => (c.Card, $"Flashback {g.Name}"),
+                        CastSpell { Adventure: true } c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (c.Card, $"Adventure: {x.AdventureName} (exile)"),
+                        CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (c.Card, $"Cast {x.Name} (exile)"),
+                        PlayLand l when view.FindCard(l.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (l.Card, $"Play {x.Name} (exile)"),
                         ActivateAbility a when view.FindCard(a.Source) is { Zone: Arcanum.Engine.State.Zone.Graveyard } g
                             => (a.Source, $"{g.Name}: {Shorten(a.Index < g.AbilityTexts.Count ? g.AbilityTexts[a.Index] : "activate")}"),
                         _ => (default(CardId?), ""),
@@ -1353,9 +1359,10 @@ public partial class GameBoard : Control
         }
     }
 
-    /// <summary>Activated and mana abilities a click on <paramref name="source"/> could mean.</summary>
+    /// <summary>Playing or casting <paramref name="source"/> and its activated and mana abilities: what a click on it could mean.</summary>
     private static List<PlayerAction> SourceActions(PriorityDecision p, CardId source) =>
-        p.Legal.Where(a => a is ActivateAbility aa && aa.Source == source || a is ActivateManaAbility m && m.Source == source).ToList();
+        p.Legal.Where(a => a is ActivateAbility aa && aa.Source == source || a is ActivateManaAbility m && m.Source == source
+                           || a is CastSpell c && c.Card == source || a is PlayLand l && l.Card == source).ToList();
 
     private static string Shorten(string text) => text.Length <= 28 ? text : text[..27] + "\u2026";
 
@@ -1414,19 +1421,17 @@ public partial class GameBoard : Control
 
             case PriorityDecision p:
             {
-                var action = p.Legal.FirstOrDefault(a => a is PlayLand l && l.Card == id || a is CastSpell c && c.Card == id);
-                if (action is not null && node.View?.Zone == Arcanum.Engine.State.Zone.Hand)
+                // Everything a click on this card could mean: play or cast it (or its Adventure), or use one of its abilities.
+                var options = SourceActions(p, id);
+                if (options.Count == 1 && options[0] is PlayLand or CastSpell && node.View?.Zone == Arcanum.Engine.State.Zone.Hand)
                 {
                     // Click plays it on release; dragging it out of the hand plays it too.
                     var area = AreaOf(node.View.Owner);
-                    _drag = new DragState { Node = node, Area = area, Start = GetGlobalMousePosition(), Decision = p, Action = action };
+                    _drag = new DragState { Node = node, Area = area, Start = GetGlobalMousePosition(), Decision = p, Action = options[0] };
                     return;
                 }
-                if (action is not null) { p.Answer(action); return; }
-                // Clicking a permanent uses its ability (or floats its mana); several options open a chooser.
-                var options = SourceActions(p, id);
                 if (options.Count == 1) { p.Answer(options[0]); return; }
-                if (options.Count > 1) _abilityChoiceSource = id;
+                if (options.Count > 1) _abilityChoiceSource = id; // several options (a card and its Adventure, cycling, abilities) open a chooser
                 break;
             }
 

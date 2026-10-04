@@ -85,8 +85,10 @@ public sealed class TestController : IPlayerController
 
     public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) => Task.FromResult(YesNo(view, request));
 
-    public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) =>
-        Task.FromResult<IReadOnlyList<CardId>>(view.Self.Hand.TakeLast(count).Select(c => c.Id).ToList());
+    /// <summary>Default discards the last cards in hand.</summary>
+    public Func<GameView, int, IReadOnlyList<CardId>> Discard { get; set; } = (view, count) => view.Self.Hand.TakeLast(count).Select(c => c.Id).ToList();
+
+    public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) => Task.FromResult(Discard(view, count));
 
     public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request)
     {

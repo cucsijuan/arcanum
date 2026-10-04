@@ -69,6 +69,8 @@ public enum QuantityKind
     ReturnedThisWay,
     /// <summary>The power of the creature the source is attached to.</summary>
     AttachedPower,
+    /// <summary>The source's toughness.</summary>
+    SourceToughness,
 }
 
 /// <summary>

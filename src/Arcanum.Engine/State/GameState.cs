@@ -114,6 +114,9 @@ public sealed class GameState
     /// <summary>Emblems in the command zone (rule 114).</summary>
     public List<CardId> Emblems { get; } = new();
 
+    /// <summary>Emblems that end with the turn ("whenever you attack this turn, …").</summary>
+    public List<CardId> EmblemsUntilEndOfTurn { get; } = new();
+
     /// <summary>Permanents that entered and still need their "as this enters, choose..." choice.</summary>
     public List<(CardId Card, int Version)> PendingEnterChoices { get; } = new();
 

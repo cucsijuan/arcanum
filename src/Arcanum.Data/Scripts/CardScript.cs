@@ -444,6 +444,7 @@ public static class CardScriptParser
         {
             Index = e.TryGetProperty("controlledBy", out var cb) ? ParseSubject(cb.GetString()).Index : 0,
             ControlledByTarget = e.TryGetProperty("controlledBy", out _),
+            ExceptTargets = Bool(e, "exceptTargets"),
         }
         : e.TryGetProperty("discarded", out var df) ? new Subject(SubjectKind.Discarded, Filter: ParseFilter(df, ControllerFilter.Any))
         : e.TryGetProperty("choose", out var cf) ? new Subject(SubjectKind.ChooseOne, Filter: ParseFilter(cf, ControllerFilter.You))
@@ -680,7 +681,9 @@ public static class CardScriptParser
                 : new Quantity(0, QuantityKind.TargetPower, Multiplier: times, Index: subject.Index);
         }
         if (e.TryGetProperty("toughness", out var toughness))
-            return new Quantity(0, QuantityKind.TargetToughness, Multiplier: times, Index: ParseSubject(toughness.GetString()).Index);
+            return ParseSubject(toughness.GetString()).Kind == SubjectKind.Self
+                ? new Quantity(0, QuantityKind.SourceToughness, Multiplier: times)
+                : new Quantity(0, QuantityKind.TargetToughness, Multiplier: times, Index: ParseSubject(toughness.GetString()).Index);
         if (e.TryGetProperty("manaValue", out var manaValue))
             return new Quantity(0, QuantityKind.TargetManaValue, Multiplier: times, Index: ParseSubject(manaValue.GetString()).Index);
         throw new FormatException($"Unknown quantity {e.GetRawText()}.");
@@ -840,8 +843,9 @@ public static class CardScriptParser
         if (Flag("additionalCombat")) return new AdditionalCombat(Flag("untapCreatures"));
         if (Value("copySpell") is { } copySpell) return new CopySpell(copySpell, e.TryGetProperty("count", out var csc) ? ParseQuantity(csc) : 1);
         if (e.TryGetProperty("addManaAnyColor", out _)) return new AddManaOfAnyColor(Int("addManaAnyColor"));
-        if (Flag("returnExiledWithThis")) return new ReturnExiledWithThis();
-        if (e.TryGetProperty("searchExileWithThis", out var sew)) return new SearchAndExileWithThis(ParseFilter(sew, ControllerFilter.Any));
+        if (Flag("returnExiledWithThis")) return new ReturnExiledWithThis { Count = e.TryGetProperty("count", out var rewc) ? rewc.GetInt32() : 0 };
+        if (e.TryGetProperty("searchExileWithThis", out var sew))
+            return new SearchAndExileWithThis(ParseFilter(sew, ControllerFilter.Any)) { Count = e.TryGetProperty("count", out var sewc) ? sewc.GetInt32() : 1 };
         if (Value("grantFlashback") is { } gfb) return new GrantFlashback(gfb);
         if (Value("castFromGraveyardThisTurn") is { } cfg) return new PlayableFromGraveyardThisTurn(cfg);
         if (Value("become") is { } become)
@@ -867,7 +871,7 @@ public static class CardScriptParser
         if (Str("returnNextEndStepOneFewer") is { } rnk) return new ReturnAtNextEndStepWithOneFewer(ParseCounterKind(rnk));
         if (Flag("destroyManaValueXDamaged")) return new DestroyManaValueXOfDamagedPlayers();
         if (Str("addManaUntilEndOfTurn") is { } amu) return new AddManaUntilEndOfTurn(ManaCost.Parse(amu).Pips);
-        if (Str("emblem") is { } emblemName) return new CreateEmblem(emblemName, Parse(e.GetRawText()).Abilities);
+        if (Str("emblem") is { } emblemName) return new CreateEmblem(emblemName, Parse(e.GetRawText()).Abilities) { UntilEndOfTurn = Flag("untilEndOfTurn") };
         if (e.TryGetProperty("exileTopPlayable", out var etp))
             return new ExileTopPlayable(etp.ValueKind == JsonValueKind.Number ? etp.GetInt32() : 0, !e.TryGetProperty("chooseOne", out var co) || co.GetBoolean(), Flag("untilNextTurn"), Flag("free"))
             {

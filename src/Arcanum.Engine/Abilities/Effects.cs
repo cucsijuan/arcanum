@@ -253,7 +253,11 @@ public sealed record DiscardHand(Subject Who) : Effect;
 public sealed record MillUntil(Subject Who, ObjectFilter Until) : Effect;
 
 /// <summary>Create an emblem for the controller: an object in the command zone with these abilities.</summary>
-public sealed record CreateEmblem(string Name, IReadOnlyList<AbilityDefinition> Abilities) : Effect;
+public sealed record CreateEmblem(string Name, IReadOnlyList<AbilityDefinition> Abilities) : Effect
+{
+    /// <summary>The emblem lasts only until end of turn (a delayed "whenever … this turn" ability).</summary>
+    public bool UntilEndOfTurn { get; init; }
+}
 
 /// <summary>Exile the top N cards of your library; you choose one (or all with <paramref name="ChooseOne"/> false) and may play it this turn.</summary>
 public sealed record ExileTopPlayable(int Count, bool ChooseOne = true, bool UntilEndOfNextTurn = false, bool WithoutPaying = false) : Effect
@@ -353,10 +357,18 @@ public sealed record CopySpell(Subject What, Quantity Count) : Effect;
 public sealed record AddManaOfAnyColor(int Count = 1) : Effect;
 
 /// <summary>Put cards exiled by this permanent ("with it") into their owners' hands.</summary>
-public sealed record ReturnExiledWithThis : Effect;
+public sealed record ReturnExiledWithThis : Effect
+{
+    /// <summary>Only this many, chosen ("put a card exiled with this Saga into its owner's hand"); 0: all of them.</summary>
+    public int Count { get; init; }
+}
 
 /// <summary>Search your library and exile the card, linked to this permanent (for a later "the exiled card").</summary>
-public sealed record SearchAndExileWithThis(ObjectFilter Filter) : Effect;
+public sealed record SearchAndExileWithThis(ObjectFilter Filter) : Effect
+{
+    /// <summary>Up to this many cards.</summary>
+    public int Count { get; init; } = 1;
+}
 
 /// <summary>The target card in your graveyard gains flashback (cost: its mana cost) until end of turn.</summary>
 public sealed record GrantFlashback(Subject What) : Effect;

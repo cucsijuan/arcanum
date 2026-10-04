@@ -277,3 +277,80 @@ Quantities also: `sacrificedToughness`, `lifeLostThisWay`, `destroyedThisWay`, `
 - `lookAtTop` takes `revealAll` ("reveal the top X cards").
 - Copies of a token (`copy`) with `sacrificeAtEndStep` get the ability "At the beginning of the end step, sacrifice
   this token" as part of the copy.
+
+## Adventures, Sagas and other card frames
+
+- **Adventurer cards** (layout `adventure`): the script describes the card itself as usual and its Adventure under
+  `"adventure": { "spell": { … }, "additionalCost": … }` (a script of its own). The card can be cast as its
+  Adventure; once that spell resolves the card is exiled and its owner may cast the card itself from exile. A
+  countered Adventure goes to the graveyard.
+- **Sagas** (layout `saga`): chapter abilities are triggered abilities with `"trigger": "chapter", "chapters": [3, 4]`.
+  A Saga enters with a lore counter, gets one as its controller's precombat main phase begins, and is sacrificed
+  once it has as many lore counters as its last chapter and no chapter ability is waiting or on the stack.
+- **Cycling and typecycling** (`Cycling {2}`, `Mountaincycling {2}`, …) are read from the rules text: activated from
+  the hand by discarding the card.
+
+## More effects
+
+| Effect | Example |
+|--------|---------|
+| Amass | `{ "amass": 2, "type": "Goblin", "who": "targetController" }` (count can be a quantity) |
+| Recruit | `{ "recruit": true }` (draw, discard, a 1/1 white Human Soldier if a nonland card was discarded) |
+| Attach something | `{ "attach": "created", "to": "target" }`, `{ "attach": { "choose": filter }, "to": "target" }` (chosen, optional) |
+| Cards milled this way to hand | `{ "takeMilled": filter }` (all) / `{ "takeMilled": filter, "count": 2 }` (up to) |
+| Remove every counter | `{ "removeAllCounters": "attached" }` |
+| Exile and return at once | `{ "blink": "eachTarget" }` |
+| Shuffle into its owner's library | `{ "shuffleIntoLibrary": "self" }` |
+| Play an additional land | `{ "additionalLand": true }` |
+| Players can't cast spells this turn | `{ "noSpellsThisTurn": true }` |
+| Exchange control | `{ "exchangeControl": "target", "with": "target2" }` (with `"targetRule": "shareCardType"`) |
+| At the beginning of the next upkeep | `{ "atNextUpkeep": { "effects": [ … ] }, "amount": "returned" }` (`"triggerAmount"` there) |
+| Choose a creature type | `{ "chooseType": true }` (then filters with `"chosenType": true`) |
+| Random card from the top | `{ "revealTopRandom": 13, "filter": f, "to": "battlefield" }` |
+| Search hand and library | `{ "searchHandOrLibrary": f, "to": "battlefield" }` |
+| Mana in any combination of colors | `{ "addManaCombination": 4, "onlyFor": filter }` |
+| Behold | `{ "behold": filter, "effects": [ … ] }` (choose one you control or reveal one from your hand; if you do, …) |
+| Cast from your graveyard now | `{ "castFromGraveyard": filter }` (an instant or sorcery cast this way is exiled afterwards) |
+| Prevent all damage it would deal | `{ "preventDamageBy": "target" }` (while the source stays on the battlefield) |
+
+Existing effects take more options: `counter` (`"unlessPays": "{4}"`, `"exilePermanentPlayable": true`), `search`
+(`"count"` as a quantity, `"split": true` for one onto the battlefield tapped and the rest into the hand), `reanimate`
+and `reanimateAll` (`"attachTo"`, `"setTypes"`, `"setSubtypes"`, `"abilities"`), `lookAtTop` (`"tapped"`,
+`"rest": "shuffle"`), `exileTopPlayable` (a quantity, `"of": "target"`, `"payLife"`, `"forever"`, `"faceDown"`,
+`"while"`), `revealUntil` (`"battlefieldIf": filter`), `copy` (`"notLegendary"`), `become` (`"powerFrom"`,
+`"toughnessFrom"`, `"continuous"`, `"whileSource"`), `pump` (`"whileSource"`), `returnExiledWithThis` and
+`searchExileWithThis` (`"count"`), `emblem` (`"untilEndOfTurn"`), and `whenYouDo` (`"about"`: what "that creature" is,
+`"amount"`: worked out as the reflexive ability is created).
+
+Subjects also: `created`, `found` (cards found by a search), `amassed`, `{ "discarded": filter }`,
+`{ "each": filter, "controlledBy": "target" }`, `{ "each": filter, "exceptTargets": true }`.
+Quantities also: `{ "discarded": f }`, `{ "graveyardsWith": 7 }`, `"manaSpent"`, `"returned"`, `{ "power": "attached" }`,
+`{ "toughness": "self" }`, `{ "count": f, "controlledBy": "target" }`.
+Conditions also: `"enduringStory"`, `"castFromGraveyard"`, `"giftPromised"`, `{ "targetControlledByYou": "target" }`,
+`{ "drawn": 2 }`, `{ "attackingPower": 12 }`, `{ "resolvedThisTurn": 2, "exactly": true }`.
+Filters also: `inHand`, `fromBattlefieldThisTurn`, `paidWithTreasure`, `chosenParity`, `sharesNameWithYourLegendary`.
+
+## More triggers, abilities and card-wide rules
+
+Triggers: `permanentEnters` (any permanent matching `filter`), `leavesGraveyard`, `precombatMain`, `putIntoGraveyard`
+(any permanent), `becomesTarget` (of an opponent's spell or ability), `activateAbility` (you activate an ability of a
+`filter` source), `playerLosesLife`, `youSacrifice`, `creatureExiledInstead` (with the replacement below), `chapter`.
+Trigger options: `"batched": true` ("whenever one or more …"), `"counterKind": "any"`, and `"nth"` also counts
+another player's draws (`opponentDraws`) and spells (`opponentCastsSpell`).
+
+Activated abilities: `"equip": true` marks equip abilities written in a script (`Equip—{2}, Pay 2 life`, `Equip Wizard
+{1}`), `"costReductionPer": filter`, `"discardFilter": filter` (the discarded card must match). Costs:
+`sacrifice:artifact|creature`, `sacrifice:Goblin` (another permanent with that subtype).
+
+Static abilities: `"grantsWard": "{1}"`, `"extraTriggers": true` (triggered abilities of affected permanents trigger an
+additional time), `"graveyardAbilities": filter` (has the activated abilities of matching cards in your graveyard).
+`spellCost` also takes a quantity as `amount`, `"firstOfTurn"` and `"grantsFlash"`.
+
+Card-wide rules: `"gift": "Treasure"` (or a token), `"flashIf": condition`, `"attackTax": "{1}"` with `"attackTaxIf"`,
+`"additionalLandPlayIf"`, `"entersTappedUnless"`, `"equipDiscount": 2`, `"freeFirstEquipIf"`, `"manaOnlyForAbilitiesToo"`,
+`"chooseOnEnter": "oddOrEven"`, `costReduction` with `"powerFilter"`, and `replaces` also `DrawTwoExceptFirstInDrawStep`
+and `OpponentsCreaturesExiledInsteadOfDying`. Storied is a keyword: with three or more artifacts, legendaries and/or
+Sagas, its controller has an enduring story for the rest of the game.
+
+Counters with rules of their own: hone counters on an Equipment give the equipped creature +1/+0; trample counters give
+trample.

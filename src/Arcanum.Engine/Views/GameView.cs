@@ -61,6 +61,14 @@ public sealed record CardView
     public IReadOnlyDictionary<string, int> OtherCounters { get; init; } = new Dictionary<string, int>();
     public string? ChosenColor { get; init; }
     public string? ChosenType { get; init; }
+
+    /// <summary>An adventurer card's Adventure: its name, mana cost and rules text.</summary>
+    public string? AdventureName { get; init; }
+    public string? AdventureCost { get; init; }
+    public string? AdventureText { get; init; }
+
+    /// <summary>In exile after its Adventure: its owner may cast it from there.</summary>
+    public bool OnAdventure { get; init; }
 }
 
 public sealed record PlayerView

@@ -133,6 +133,9 @@ public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filt
     /// <summary>For <see cref="SubjectKind.Each"/>: only permanents the target player at <see cref="Index"/> controls ("creatures target player controls").</summary>
     public bool ControlledByTarget { get; init; }
 
+    /// <summary>For <see cref="SubjectKind.Each"/>: leaves out the chosen targets ("each other creature you control").</summary>
+    public bool ExceptTargets { get; init; }
+
     /// <summary>For <see cref="SubjectKind.FixedPlayer"/>.</summary>
     public PlayerId? Player { get; init; }
 

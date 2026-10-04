@@ -186,7 +186,7 @@ public partial class PlayerArea : Control
         RefreshPool(me);
         _life.Text = me.Life.ToString();
         _life.AddThemeColorOverride("font_color", me.HasLost ? BoardStyle.TextDim : BoardStyle.Text);
-        _name.Text = (me.HasLost ? $"{me.Name} (defeated)" : me.Name) + (SeatNote is { } note ? $" · {note}" : "");
+        _name.Text = (me.HasLost ? $"{me.Name} (defeated)" : me.Name) + (me.EnduringStory ? " · Enduring story" : "") + (SeatNote is { } note ? $" · {note}" : "");
         _nameBadge.ResetSize();
         _activeBorder.Visible = isActive;
         _handLabel.Text = $"⌄ Hand ({me.Hand.Count})";

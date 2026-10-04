@@ -39,6 +39,10 @@ public sealed class BotController : IPlayerController
     private CardDefinition? Rules(GameView view, CardId id) =>
         view.FindCard(id) is { IsHidden: false } ? _definitions(id) : null;
 
+    /// <summary>What casting it means: the card, or its Adventure.</summary>
+    private CardDefinition? SpellRules(GameView view, CastSpell cast) =>
+        Rules(view, cast.Card) is { } rules ? cast.Adventure ? rules.Adventure : rules.Adventure is not null ? rules with { Adventure = null } : rules : null;
+
     private async Task PaceAsync()
     {
         if (Pace is not null) await Pace();
@@ -209,7 +213,7 @@ public sealed class BotController : IPlayerController
         if (!threat) return null;
         foreach (var cast in legal.OfType<CastSpell>())
         {
-            var spell = Rules(view, cast.Card)?.Spell;
+            var spell = SpellRules(view, cast)?.Spell;
             if (spell is not null && spell.Effects.Any(e => e is CounterSpell)) return cast;
         }
         return null;
@@ -222,7 +226,7 @@ public sealed class BotController : IPlayerController
         double bestScore = 0.5;
         foreach (var cast in legal.OfType<CastSpell>())
         {
-            var rules = Rules(view, cast.Card);
+            var rules = SpellRules(view, cast);
             var card = view.FindCard(cast.Card);
             if (rules is null || card is null) continue;
             double score = 0;
@@ -231,6 +235,9 @@ public sealed class BotController : IPlayerController
                 score = SpellScore(view, spell);
                 // Tricks (pump our own creature) are for combat, not the main phase.
                 if (spell.Effects.All(e => !IsHarmful(e)) && spell.Targets.Count > 0) score = 0;
+                // An Adventure is worth a little more: the card can still be cast from exile afterwards.
+                if (cast.Adventure && score > 0) score += 1;
+                else if (cast.Adventure && mainPhase && spell.Targets.Count == 0) score = Math.Max(score, 1);
             }
             else if (mainPhase && rules.Types.IsPermanent())
             {
@@ -358,7 +365,7 @@ public sealed class BotController : IPlayerController
     {
         foreach (var cast in legal.OfType<CastSpell>())
         {
-            var spell = Rules(view, cast.Card)?.Spell;
+            var spell = SpellRules(view, cast)?.Spell;
             var pump = spell?.Effects.OfType<PumpUntilEndOfTurn>().FirstOrDefault(p => p.Power.Estimate + p.Toughness.Estimate > 0);
             if (spell is null || pump is null || spell.Targets.Count != 1) continue;
             if (FightToWin(view, pump) is not null) return cast;

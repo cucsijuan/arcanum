@@ -159,6 +159,12 @@ public sealed partial class Game
         State.TemporaryControl.Clear();
         State.ExileIfDies.Clear();
         State.CombatDamagePrevented.Clear();
+        foreach (var emblem in State.EmblemsUntilEndOfTurn)
+        {
+            State.Emblems.Remove(emblem);
+            State.GetCard(emblem).Zone = Zone.Exile; // gone (an emblem is no card)
+        }
+        State.EmblemsUntilEndOfTurn.Clear();
         RecomputeContinuousEffects();
     }
 }
