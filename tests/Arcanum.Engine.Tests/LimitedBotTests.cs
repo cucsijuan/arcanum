@@ -104,4 +104,36 @@ public class BotBlockingTests
         Assert.Equal(State.Zone.Battlefield, s.Card(big).Zone);
         Assert.Equal(State.Zone.Battlefield, s.Card(small).Zone);
     }
+
+    [Fact]
+    public async Task ItSwingsWithEverythingWhenEvenTheBestBlocksCantSaveThem()
+    {
+        var s = new Scenario();
+        var bot = new Arcanum.Bots.BotController(Scenario.P0);
+        s.Add(Scenario.P0, Creature("Hawk", 3, 1, Cards.Keyword.Flying));
+        s.Add(Scenario.P0, Creature("Roc", 2, 2, Cards.Keyword.Flying));
+        s.Add(Scenario.P0, Creature("Bear", 2, 2));
+        s.Add(Scenario.P1, Creature("Wall", 0, 6));
+        s.Game.State.GetPlayer(Scenario.P1).Life = 5;
+        IReadOnlyList<Players.AttackDeclaration>? chosen = null;
+        s.Attacker.Attack = (view, attackers, defenders) => chosen = bot.DeclareAttackersAsync(view, attackers, defenders).Result;
+        await s.RunUntilTurn();
+        Assert.Equal(3, chosen!.Count); // the fliers alone are lethal past a ground wall
+        Assert.True(s.Game.State.GetPlayer(Scenario.P1).HasLost);
+    }
+
+    [Fact]
+    public async Task ItDoesntAttackIntoADoubleBlockThatKillsItForLess()
+    {
+        var s = new Scenario();
+        var bot = new Arcanum.Bots.BotController(Scenario.P0);
+        s.Add(Scenario.P0, Creature("Ogre", 3, 3));
+        s.Add(Scenario.P1, Creature("Squire A", 2, 2));
+        s.Add(Scenario.P1, Creature("Squire B", 2, 2));
+        IReadOnlyList<Players.AttackDeclaration>? chosen = null;
+        s.Attacker.Attack = (view, attackers, defenders) => chosen = bot.DeclareAttackersAsync(view, attackers, defenders).Result;
+        await s.RunUntilTurn();
+        Assert.NotNull(chosen);
+        Assert.Empty(chosen!);
+    }
 }

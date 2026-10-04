@@ -532,16 +532,17 @@ public sealed class BotController : IPlayerController
         List<CardView> BlockersOf(PlayerId p) =>
             view.Battlefield.Where(c => c.Controller == p && (c.Types & CardType.Creature) != 0 && !c.Tapped && !Has(c, "Can't block")).ToList();
 
-        // Alpha strike at an opponent our whole attack can finish (power beyond what their blockers can stop).
+        // Alpha strike at an opponent our whole attack finishes even after their best blocks (chumps included).
         foreach (var defender in defenders.OrderBy(d => view.Players[d.Value].Life))
         {
-            var blockers = BlockersOf(defender);
-            int totalPower = attackers.Sum(a => a.Power ?? 0);
-            int stopped = attackers.OrderByDescending(a => a.Power ?? 0).Take(blockers.Count).Sum(a => a.Power ?? 0);
-            if (totalPower - stopped >= view.Players[defender.Value].Life)
+            var swing = attackers.Where(a => (a.Power ?? 0) > 0).ToList();
+            if (swing.Count == 0) break;
+            int life = view.Players[defender.Value].Life;
+            var predicted = AssignBlocks(swing, BlockersOf(defender), life, (b, a) => CanBlock(b, a) && !Has(a, "Can't be blocked"), a => Has(a, "Menace") ? 2 : 1);
+            if (swing.Sum(a => Through(a, predicted[a.Id])) >= life)
             {
                 await PaceAsync();
-                return attackers.Where(a => (a.Power ?? 0) > 0).Select(a => new AttackDeclaration(a.Id, defender)).ToList();
+                return swing.Select(a => new AttackDeclaration(a.Id, defender)).ToList();
             }
         }
 
@@ -612,13 +613,23 @@ public sealed class BotController : IPlayerController
         var able = blockers.Where(b => CanBlock(b, attacker)).ToList();
         if (able.Count == 0 || Has(attacker, "Can't be blocked")) return true;
         if (Has(attacker, "Menace") && able.Count < 2) return true;
-        foreach (var b in able)
-        {
-            bool killsAttacker = (b.Power ?? 0) >= RemainingToughness(attacker) || Has(b, "Deathtouch");
-            bool dies = (attacker.Power ?? 0) >= RemainingToughness(b) || Has(attacker, "Deathtouch");
-            if (killsAttacker && !dies) return false;                                         // bad trade for us
-            if (killsAttacker && dies && CreatureValue(attacker) > CreatureValue(b) + 1) return false; // we'd lose more
-        }
+        if (!Has(attacker, "Menace"))
+            foreach (var b in able)
+            {
+                bool killsAttacker = Kills(attacker, new[] { b });
+                bool dies = Dies(b, attacker);
+                if (killsAttacker && !dies) return false;                                         // bad trade for us
+                if (killsAttacker && dies && CreatureValue(attacker) > CreatureValue(b) + 1) return false; // we'd lose more
+            }
+        // Two blockers that kill it while it takes down at most one of them, worth clearly less.
+        for (int i = 0; i < able.Count; i++)
+            for (int j = i + 1; j < able.Count; j++)
+            {
+                var pair = new[] { able[i], able[j] };
+                if (!Kills(attacker, pair)) continue;
+                double lost = pair.Where(b => Dies(b, attacker)).Select(CreatureValue).DefaultIfEmpty(0).Max();
+                if (lost + 1 < CreatureValue(attacker)) return false;
+            }
         return true;
     }
 
@@ -643,37 +654,48 @@ public sealed class BotController : IPlayerController
     public static List<BlockDeclaration> PlanBlocks(GameView view, BlockRequest request)
     {
         var attackers = request.Attackers.Select(view.FindCard).OfType<CardView>().ToList();
-        var allBlockers = request.Blockers.Select(view.FindCard).OfType<CardView>().ToList();
-        int life = view.Self.Life;
-        bool Able(CardView b, CardView a) => request.CanBlock.TryGetValue(b.Id, out var list) && list.Contains(a.Id);
-        int Needed(CardView a) => Math.Max(1, request.MinimumBlockers.GetValueOrDefault(a.Id, 1));
+        var blockers = request.Blockers.Select(view.FindCard).OfType<CardView>().ToList();
+        var assigned = AssignBlocks(attackers, blockers, view.Self.Life,
+            (b, a) => request.CanBlock.TryGetValue(b.Id, out var list) && list.Contains(a.Id),
+            a => Math.Max(1, request.MinimumBlockers.GetValueOrDefault(a.Id, 1)));
+        return assigned.SelectMany(kv => kv.Value.Select(b => new BlockDeclaration(b.Id, kv.Key))).ToList();
+    }
 
-        // Damage that still reaches us from an attacker with these blockers (trample goes past lethal damage).
-        int Through(CardView a, IReadOnlyList<CardView> by) =>
-            by.Count == 0 ? a.Power ?? 0
-            : Has(a, "Trample") ? Math.Max(0, (a.Power ?? 0) - by.Sum(b => Has(a, "Deathtouch") ? 1 : Math.Max(0, RemainingToughness(b)))) : 0;
+    /// <summary>Damage that still gets through from an attacker with these blockers (trample goes past lethal damage).</summary>
+    private static int Through(CardView a, IReadOnlyList<CardView> by) =>
+        by.Count == 0 ? a.Power ?? 0
+        : Has(a, "Trample") ? Math.Max(0, (a.Power ?? 0) - by.Sum(b => Has(a, "Deathtouch") ? 1 : Math.Max(0, RemainingToughness(b)))) : 0;
 
-        // Whether these blockers together destroy the attacker (a first striker kills what it can before they hit back).
-        bool Kills(CardView a, IReadOnlyList<CardView> by)
+    /// <summary>Whether these blockers together destroy the attacker (a first striker kills what it can before they hit back).</summary>
+    private static bool Kills(CardView a, IReadOnlyList<CardView> by)
+    {
+        var hitting = by.ToList();
+        if (Has(a, "First strike") || Has(a, "Double strike"))
         {
-            var hitting = by.ToList();
-            if (Has(a, "First strike") || Has(a, "Double strike"))
+            int strike = a.Power ?? 0;
+            foreach (var b in by.Where(b => !Has(b, "First strike") && !Has(b, "Double strike")).OrderBy(RemainingToughness))
             {
-                int strike = a.Power ?? 0;
-                foreach (var b in by.Where(b => !Has(b, "First strike") && !Has(b, "Double strike")).OrderBy(RemainingToughness))
-                {
-                    int need = Has(a, "Deathtouch") ? 1 : RemainingToughness(b);
-                    if (strike < need) break;
-                    strike -= need;
-                    hitting.Remove(b);
-                }
+                int need = Has(a, "Deathtouch") ? 1 : RemainingToughness(b);
+                if (strike < need) break;
+                strike -= need;
+                hitting.Remove(b);
             }
-            if (Has(a, "Indestructible")) return false;
-            return hitting.Any(b => Has(b, "Deathtouch") && (b.Power ?? 0) > 0) || hitting.Sum(b => b.Power ?? 0) >= RemainingToughness(a);
         }
+        if (Has(a, "Indestructible")) return false;
+        return hitting.Any(b => Has(b, "Deathtouch") && (b.Power ?? 0) > 0) || hitting.Sum(b => b.Power ?? 0) >= RemainingToughness(a);
+    }
 
-        bool Dies(CardView b, CardView a) => !Has(b, "Indestructible") && ((a.Power ?? 0) >= RemainingToughness(b) || (Has(a, "Deathtouch") && (a.Power ?? 0) > 0));
+    /// <summary>Whether a blocker dies to the attacker's damage.</summary>
+    private static bool Dies(CardView b, CardView a) =>
+        !Has(b, "Indestructible") && ((a.Power ?? 0) >= RemainingToughness(b) || (Has(a, "Deathtouch") && (a.Power ?? 0) > 0));
 
+    /// <summary>
+    /// The blocking plan for a defender at <paramref name="life"/>: which blockers go on which attacker. Used for
+    /// our own blocks and to predict an opponent's blocks when deciding how to attack.
+    /// </summary>
+    public static Dictionary<CardId, List<CardView>> AssignBlocks(IReadOnlyList<CardView> attackers, IReadOnlyList<CardView> allBlockers, int life,
+        Func<CardView, CardView, bool> Able, Func<CardView, int> Needed)
+    {
         var assigned = attackers.ToDictionary(a => a.Id, _ => new List<CardView>());
         var free = allBlockers.ToList();
         int Incoming() => attackers.Sum(a => Through(a, assigned[a.Id]));
@@ -758,8 +780,7 @@ public sealed class BotController : IPlayerController
                 if (bestPair is { } p2) Assign(a, new[] { p2.Item1, p2.Item2 });
             }
         }
-
-        return assigned.SelectMany(kv => kv.Value.Select(b => new BlockDeclaration(b.Id, kv.Key))).ToList();
+        return assigned;
     }
 
     /// <summary>Always takes the commander back to the command zone; no other yes/no choices exist yet.</summary>
