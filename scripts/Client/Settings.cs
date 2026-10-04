@@ -14,6 +14,8 @@ public sealed class SettingsData
     public string[] PlayerNames { get; set; } = { "Player 1", "Player 2" };
     /// <summary>Address of the last online game joined.</summary>
     public string LastHostAddress { get; set; } = "";
+    /// <summary>Seat token of the online game in progress (to get back in after this device closed); empty when none.</summary>
+    public string LastSeatToken { get; set; } = "";
     public bool ConfirmManaPayment { get; set; } = true;
     public bool RevealHandsInHotseat { get; set; } = true;
 

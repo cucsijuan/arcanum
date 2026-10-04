@@ -259,6 +259,36 @@ public partial class OnlineService : Node
         }
     }
 
+    /// <summary>A game this device joined is still in progress (as far as it knows): it can get back in.</summary>
+    public static bool CanRejoin => Settings.Current.LastSeatToken.Length > 0 && Settings.Current.LastHostAddress.Length > 0;
+
+    /// <summary>Gets back into the game in progress this device had joined, with its seat's token.</summary>
+    public async void Rejoin(string name)
+    {
+        Leave();
+        if (!CanRejoin || !TryParseAddress(Settings.Current.LastHostAddress, out var host, out int port)) return;
+        _address = host;
+        _port = port;
+        Status?.Invoke($"Reconnecting to {host}:{port}…");
+        try
+        {
+            var connection = await TcpConnection.ConnectAsync(host, port, TimeSpan.FromSeconds(8));
+            StartGameClient(connection, new ClientIdentity(name, Settings.Current.LastSeatToken, Version, ContentId));
+        }
+        catch (Exception e)
+        {
+            Status?.Invoke($"Couldn't connect: {e.Message}");
+        }
+    }
+
+    /// <summary>The game this device joined is over: nothing to get back into.</summary>
+    public static void ForgetSeat()
+    {
+        if (Settings.Current.LastSeatToken.Length == 0) return;
+        Settings.Current.LastSeatToken = "";
+        Settings.Save();
+    }
+
     public static bool TryParseAddress(string text, out string host, out int port)
     {
         text = text.Trim();
@@ -304,9 +334,21 @@ public partial class OnlineService : Node
     private void StartGameClient(IConnection? connection, ClientIdentity identity)
     {
         _identity = identity;
+        if (!IsHosting)
+        {
+            // Remembered so this player can get back in even if this device closes.
+            Settings.Current.LastSeatToken = identity.Token;
+            Settings.Current.LastHostAddress = _address.Contains(':') ? $"[{_address}]:{_port}" : $"{_address}:{_port}";
+            Settings.Save();
+        }
         var client = connection is null ? _lobbyClient!.JoinGame() : new GameClient(connection, identity);
         _gameClient = client;
-        client.Rejected += reason => Status?.Invoke(reason);
+        client.Rejected += reason =>
+        {
+            ForgetSeat(); // the seat is gone (game over or another game)
+            Status?.Invoke(reason);
+        };
+        client.ViewChanged += view => { if (view.IsGameOver) ForgetSeat(); };
         void Ready(Arcanum.Engine.Views.GameView _)
         {
             client.ViewChanged -= Ready;

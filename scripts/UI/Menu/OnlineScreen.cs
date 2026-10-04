@@ -55,12 +55,18 @@ public partial class OnlineScreen : Control
     /// <summary>
     /// Quick testing without the menus: ARCANUM_ONLINE_HOST=port[,players] hosts with the first deck (the computer takes
     /// seats left free after ARCANUM_ONLINE_WAIT seconds, default 20) and starts when the lobby is complete;
-    /// ARCANUM_ONLINE_JOIN=address joins.
+    /// ARCANUM_ONLINE_JOIN=address joins; ARCANUM_ONLINE_REJOIN=1 gets back into the last joined game.
     /// </summary>
     private void AutoStart()
     {
         var host = OS.GetEnvironment("ARCANUM_ONLINE_HOST");
         var join = OS.GetEnvironment("ARCANUM_ONLINE_JOIN");
+        if (OS.GetEnvironment("ARCANUM_ONLINE_REJOIN") == "1")
+        {
+            Online.Status += text => GD.Print($"ONLINE {text}");
+            Online.Rejoin("Guest");
+            return;
+        }
         if (_decks.Count == 0 || (host.Length == 0 && join.Length == 0)) return;
         Online.Status += text => GD.Print($"ONLINE {text}");
         Online.Changed += () => GD.Print($"ONLINE lobby: {Online.HostedLobby?.StartProblem ?? Online.Lobby?.State?.Seats.Count.ToString() ?? "-"}");
@@ -198,6 +204,13 @@ public partial class OnlineScreen : Control
             Online.Join(PlayerName, address.Text, deck);
         };
         join.AddChild(joinButton);
+        if (OnlineService.CanRejoin)
+        {
+            var rejoin = BoardStyle.MakeButton($"Get back into the game at {Settings.Current.LastHostAddress}", 16);
+            rejoin.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
+            rejoin.Pressed += () => Online.Rejoin(PlayerName);
+            join.AddChild(rejoin);
+        }
         var joinCard = MenuKit.Card(join);
         joinCard.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         row.AddChild(joinCard);
