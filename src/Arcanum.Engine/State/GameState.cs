@@ -28,6 +28,9 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
     /// <summary>When the effect began (rule 613.7a).</summary>
     public long Timestamp { get; init; }
 
+    /// <summary>Keywords it loses (layer 6).</summary>
+    public IReadOnlyList<Cards.Keyword>? LoseKeywords { get; init; }
+
     /// <summary>Its card types from now on (layer 4).</summary>
     public Cards.CardType? SetTypes { get; init; }
 
@@ -53,6 +56,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
 
     /// <summary>Playable only while this holds for the player.</summary>
     public Abilities.Condition? While { get; init; }
+
+    /// <summary>Mana of any type can be spent to cast it.</summary>
+    public bool AnyManaType { get; init; }
 }
 
 /// <summary>A delayed triggered ability waiting for its moment ("at the beginning of the next upkeep").</summary>
@@ -122,6 +128,12 @@ public sealed class GameState
 
     /// <summary>Objects that are exiled instead if they would die this turn.</summary>
     public HashSet<(CardId Card, int Version)> ExileIfDies { get; } = new();
+
+    /// <summary>Phased-out permanents (rule 702.26), with the player whose untap step phases them in.</summary>
+    public List<(CardId Card, PlayerId Controller)> PhasedOut { get; } = new();
+
+    /// <summary>Creatures to be sacrificed by their controllers at end of combat (the Ring's third ability).</summary>
+    public List<(CardId Card, int Version)> SacrificeAtEndOfCombat { get; } = new();
 
     /// <summary>Turn in which players can't cast spells (-1: none).</summary>
     public int SpellsForbiddenTurn { get; set; } = -1;

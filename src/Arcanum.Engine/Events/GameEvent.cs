@@ -56,6 +56,13 @@ public sealed record EmblemCreated(CardId Emblem, PlayerId Owner) : GameEvent;
 public sealed record ChoiceMade(CardId Card, string Choice) : GameEvent;
 /// <summary>A player got an enduring story (storied) for the rest of the game.</summary>
 public sealed record EnduringStoryGained(PlayerId Player) : GameEvent;
+/// <summary>A player got the city's blessing (ascend).</summary>
+public sealed record CitysBlessingGained(PlayerId Player) : GameEvent;
+/// <summary>The Ring tempted a player; <paramref name="Bearer"/> is their Ring-bearer now (if any).</summary>
+public sealed record RingTempted(PlayerId Player, int Level, CardId? Bearer) : GameEvent;
+/// <summary>Permanents phased out or in.</summary>
+public sealed record PhasedOut(CardId Card) : GameEvent;
+public sealed record PhasedIn(CardId Card) : GameEvent;
 public sealed record HandRevealed(PlayerId Player, IReadOnlyList<CardId> Cards) : GameEvent;
 public sealed record PermanentSacrificed(CardId Card) : GameEvent;
 public sealed record ControlChanged(CardId Card, PlayerId NewController) : GameEvent;

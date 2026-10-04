@@ -29,7 +29,7 @@ public static class ViewBuilder
                 HasLost = p.HasLost,
                 LibraryCount = p.Library.Count,
                 LibraryTop = p.Id == viewer && p.Library.Count > 0
-                             && state.PermanentsControlledBy(p.Id).Any(c => (c.Definition.Replaces & Cards.Replacements.CreaturesFromLibraryTop) != 0)
+                             && state.PermanentsControlledBy(p.Id).Any(c => (c.Definition.Replaces & (Cards.Replacements.CreaturesFromLibraryTop | Cards.Replacements.CastCreaturesFromLibraryTop)) != 0)
                     ? Card(state, p.Library[0], viewer, reveal: true)
                     : null,
                 Hand = Views(p.Hand),
@@ -39,6 +39,10 @@ public static class ViewBuilder
                 ManaPoolTotal = p.ManaPool.Total,
                 CommanderDamage = new Dictionary<CardId, int>(p.CommanderDamageTaken),
                 EnduringStory = p.HasEnduringStory,
+                CitysBlessing = p.HasCitysBlessing,
+                RingLevel = p.RingLevel,
+                RingBearer = p.RingBearer is { } bearer && state.GetCard(bearer.Card) is { Zone: Zone.Battlefield } b && b.Version == bearer.Version ? bearer.Card : null,
+                Protected = p.Protected,
                 ManaPool = Enum.GetValues<Mana.ManaType>().Where(t => p.ManaPool.AllOf(t) > 0).ToDictionary(t => t, t => p.ManaPool.AllOf(t)),
             }).ToList(),
             Battlefield = Views(state.Battlefield),

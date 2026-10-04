@@ -71,6 +71,21 @@ public enum QuantityKind
     AttachedPower,
     /// <summary>The source's toughness.</summary>
     SourceToughness,
+    /// <summary>The greatest power / toughness among creatures you control.</summary>
+    GreatestPower,
+    GreatestToughness,
+    /// <summary>The greatest number of permanents matching the filter one opponent controls.</summary>
+    GreatestAmongOpponents,
+    /// <summary>Counters of <see cref="Quantity.Counter"/> kind among permanents matching the filter.</summary>
+    CountersAmong,
+    /// <summary>Total mana value of the other spells the controller cast this turn.</summary>
+    ManaValueOfOtherSpellsThisTurn,
+    /// <summary>Total mana value of the cards milled by this effect.</summary>
+    MilledManaValue,
+    /// <summary>Permanents tapped by this effect.</summary>
+    TappedThisWay,
+    /// <summary>Times the Ring has tempted the controller.</summary>
+    RingLevel,
 }
 
 /// <summary>
@@ -82,6 +97,9 @@ public sealed record Quantity(int Value, QuantityKind Kind = QuantityKind.Fixed,
 {
     /// <summary>For <see cref="QuantityKind.PermanentCount"/>: count only what the target player at <see cref="Index"/> controls.</summary>
     public bool ControlledByTarget { get; init; }
+
+    /// <summary>For <see cref="QuantityKind.PermanentCount"/>: count only what the player the trigger was about controls.</summary>
+    public bool ControlledByTriggeredPlayer { get; init; }
 
     public static implicit operator Quantity(int value) => new(value);
 

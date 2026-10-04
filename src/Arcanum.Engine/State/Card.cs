@@ -63,6 +63,12 @@ public sealed class Card
     /// <summary>Exiled face down: only its owner may look at it.</summary>
     public bool FaceDown { get; set; }
 
+    /// <summary>As a spell: it can't be countered (mana with that rider was spent on it).</summary>
+    public bool Uncounterable { get; set; }
+
+    /// <summary>Turn the modes of its "once each turn" modal ability were last chosen.</summary>
+    public int ModesTurn { get; set; } = -1;
+
     /// <summary>Turn number when it last left the battlefield (for "put there from the battlefield this turn").</summary>
     public int LeftBattlefieldTurn { get; set; } = -1;
 
@@ -103,6 +109,7 @@ public sealed class Card
     internal int PowerBonus { get; set; }
     internal int ToughnessBonus { get; set; }
     internal HashSet<Keyword> GrantedKeywords { get; } = new();
+    internal HashSet<Keyword> LostKeywords { get; } = new();
     internal HashSet<string> GrantedSubtypes { get; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Base power/toughness from a characteristic-defining ability (rule 604.3).</summary>
     internal int? BasePowerOverride { get; set; }
@@ -276,7 +283,7 @@ public sealed class Card
     /// <summary>"Triggers only once each turn" abilities that already triggered this turn.</summary>
     public HashSet<AbilityDefinition> TriggeredThisTurn { get; } = new(ReferenceEqualityComparer.Instance);
 
-    public bool Has(Keyword keyword) => (!LosesAbilities && Definition.KeywordAbilities.Contains(keyword)) || GrantedKeywords.Contains(keyword);
+    public bool Has(Keyword keyword) => !LostKeywords.Contains(keyword) && ((!LosesAbilities && Definition.KeywordAbilities.Contains(keyword)) || GrantedKeywords.Contains(keyword));
 
     /// <summary>A creature that can't attack or use {T} abilities yet (rule 302.6); haste removes the restriction.</summary>
     public bool IsSummoningSick => IsCreature && !ControlledSinceTurnStart && !Has(Keyword.Haste);
@@ -308,6 +315,7 @@ public sealed class Card
         PowerBonus = 0;
         ToughnessBonus = 0;
         GrantedKeywords.Clear();
+        LostKeywords.Clear();
         GrantedSubtypes.Clear();
         GrantedAbilities.Clear();
         Timestamp = 0;
@@ -340,6 +348,7 @@ public sealed class Card
         PaidWithTreasure = false;
         GiftPromised = false;
         FaceDown = false;
+        Uncounterable = false;
         GrantedWards.Clear();
         Version++;
         Controller = Owner;

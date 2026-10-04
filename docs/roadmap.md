@@ -13,7 +13,7 @@
 | M8 | Complete support for a first full card set: every card of the set playable (new keywords, keyword actions, conditions, alternative costs, modal spells, library and graveyard effects) | done |
 | M9 | Limited: draft and sealed (booster generation, draft bots, cube draft, limited deck building, Swiss rounds); card printings and sets (exact art, set filter in the deck builder) | done |
 | M10 | Online play, direct connection: a player hosts and shares an address; host-authoritative games with hidden information, every game mode including limited events, reconnection, computer takeover of disconnected seats, resuming after the host drops, decision time limit | done (in testing) |
-| M10.5 | Complete support for a second full card set: adventurer cards, Sagas, amass, storied and enduring stories, recruit, gift, behold, typecycling, hone and keyword counters, attack taxes, abilities that trigger an additional time, and the set's booster | done (in testing) |
+| M10.5 | Complete support for a second full card set and its eternal companion set: adventurer cards, Sagas, amass, storied and enduring stories, recruit, gift, behold, typecycling, hone and keyword counters, attack taxes, abilities that trigger an additional time, the Ring tempting you, phasing, cascade, landwalk and shadow, and the set's booster | done (in testing) |
 | M11 | Online services: lobbies and lobby browser, invite codes, NAT traversal and relay, groundwork for advanced online modes | planned |
 | M12 | Mobile: touch input, responsive layout, Android and iOS builds | planned |
 | M13 | Plugin SDK: sandboxed Lua game-mode plugins distributed with online games | planned |

@@ -118,5 +118,17 @@ public sealed record AttackingPowerAtLeast(int Amount) : Condition;
 /// <summary>"If the gift was promised".</summary>
 public sealed record GiftPromised : Condition;
 
+/// <summary>An opponent has the most life or is tied for it.</summary>
+public sealed record OpponentHasMostLife : Condition;
+
+/// <summary>"If you have the city's blessing" (ascend).</summary>
+public sealed record HasCitysBlessing : Condition;
+
+/// <summary>Exactly N creatures you control are attacking ("attacks alone": 1).</summary>
+public sealed record AttackingCreaturesExactly(int Count) : Condition;
+
+/// <summary>"If you attacked with N or more creatures this turn".</summary>
+public sealed record AttackedWithAtLeast(int Count) : Condition;
+
 /// <summary>"As long as you have an enduring story" (storied).</summary>
 public sealed record HasEnduringStory : Condition;

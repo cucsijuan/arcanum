@@ -89,6 +89,16 @@ public sealed partial class Game
                 Require(i >= 0 && i < ColorNames.Length, "Choose one of the colors.");
                 card.ChosenColor = ColorLetters[i];
             }
+            else if (card.Definition.ChooseOnEnter == EnterChoice.PayLifeOrTapped)
+            {
+                // "As this enters, you may pay N life. If you don't, it enters tapped."
+                int life = Math.Max(card.Definition.EnterLife, 1);
+                bool pay = State.GetPlayer(who).Life >= life
+                           && await ControllerOf(who).ChooseYesNoAsync(ViewFor(who), new YesNoRequest($"Pay {life} life so {card.Name} enters untapped?", id));
+                if (pay) ChangeLife(who, -life);
+                else card.Tapped = true;
+                continue;
+            }
             else if (card.Definition.ChooseOnEnter == EnterChoice.OddOrEven)
             {
                 int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose odd or even", id, new[] { "Odd", "Even" }, OptionKind.Other));
@@ -238,7 +248,8 @@ public sealed partial class Game
     private IEnumerable<CardId> OtherCastableCards(PlayerId playerId)
     {
         var player = State.GetPlayer(playerId);
-        if (Has(playerId, Replacements.CreaturesFromLibraryTop) && player.Library.Count > 0 && State.GetCard(player.Library[0]).Is(CardType.Creature))
+        if ((Has(playerId, Replacements.CreaturesFromLibraryTop) || Has(playerId, Replacements.CastCreaturesFromLibraryTop))
+            && player.Library.Count > 0 && State.GetCard(player.Library[0]).Is(CardType.Creature))
             yield return player.Library[0];
         bool myTurn = State.ActivePlayer == playerId;
         if (myTurn && Has(playerId, Replacements.PlayStashedCards))
@@ -324,7 +335,33 @@ public sealed partial class Game
         if (!CanPayExtra(player, ability.Cost.Extra, source.Id)) return false;
         if (!HasLegalTargets(ability, player, source.Id)) return false;
         return ActivationCost(source, ability, player, null).WithX(0).Variants().Any(v => ManaPayment.FindPlan(State, player, v, exclude: ability.Cost.Tap ? source.Id : null,
-            usable: UsableFor(source, isAbility: true), unitUsable: UnitUsableFor(source, isAbility: true)) is not null);
+            usable: AbilityManaUsable(source, ability, player), unitUsable: UnitUsableFor(source, isAbility: true)) is not null);
+    }
+
+    /// <summary>
+    /// Mana sources usable for an ability, keeping back creatures that tap for mana when they're needed for a "tap an untapped
+    /// creature you control" cost, and permanents that sacrifice themselves for mana when they're needed for a sacrifice.
+    /// </summary>
+    private ManaPayment.OptionUsable AbilityManaUsable(Card source, ActivatedAbility ability, PlayerId player)
+    {
+        var usable = UsableFor(source, isAbility: true);
+        var reserved = new HashSet<CardId>();
+        if (ability.Cost.Extra is { } extra)
+        {
+            if (extra.TapCreatures is { } tapFilter)
+            {
+                var candidates = TapCandidates(player, tapFilter, source.Id);
+                var manaSources = candidates.Where(c => c.ManaOptions.Count > 0).ToList();
+                if (candidates.Count - manaSources.Count < extra.TapCount) reserved.UnionWith(manaSources.Select(c => c.Id));
+            }
+            if (extra.Sacrifice is { } sacrifice)
+            {
+                var candidates = SacrificeCandidates(player, sacrifice, source.Id);
+                var selfSacrificing = candidates.Where(c => c.Definition.SacrificeForMana).ToList();
+                if (candidates.Count - selfSacrificing.Count < extra.SacrificeCount) reserved.UnionWith(selfSacrificing.Select(c => c.Id));
+            }
+        }
+        return reserved.Count == 0 ? usable : (s, o) => !reserved.Contains(s.Id) && usable(s, o);
     }
 
     /// <summary>
@@ -336,6 +373,7 @@ public sealed partial class Game
         var cost = ability.Cost.Mana;
         if (ability.CostReductionPer is { } per)
             cost = cost.MinusGeneric(State.Battlefield.Select(State.GetCard).Count(c => Matches(per, c, c.Controller, source, player)));
+        if (ability.CostReductionIf is { } reduceIf && Holds(reduceIf, player, source)) cost = cost.MinusGeneric(ability.CostReductionAmount);
         if (!ability.IsEquip) return cost;
         if (State.GetPlayer(player).EquipsThisTurn == 0
             && State.PermanentsControlledBy(player).Any(c => c.Definition.FreeFirstEquipIf is { } free && Holds(free, player, c)))
@@ -480,6 +518,7 @@ public sealed partial class Game
         // Mana riders: haste for Dragon creature spells, copies of red instants and sorceries.
         var riders = paidMana.SpecialSpent.Select(u => u.Rider).ToList();
         if (riders.Contains(ManaRider.HasteForDragonCreatureSpells) && card.Is(CardType.Creature) && card.HasSubtype("Dragon")) card.HasteOnEnter = true;
+        bool uncounterable = riders.Contains(ManaRider.LegendaryUncounterable) && (card.Definition.Supertypes & Supertype.Legendary) != 0;
         // "When that mana is spent to cast a red instant or sorcery spell, copy that spell": one trigger of the mana's
         // source for each such mana spent, put on the stack above the spell.
         var copySources = (card.Is(CardType.Instant) || card.Is(CardType.Sorcery)) && card.Colors.Contains("R")
@@ -494,6 +533,7 @@ public sealed partial class Game
         card.ManaSpent = cost.ManaValue;
         card.PaidWithTreasure = treasure;
         card.GiftPromised = giftTo is not null;
+        card.Uncounterable = uncounterable;
         card.Kicked = kicked;
         card.CastFromHand = fromHand;
         card.WasCast = true;
@@ -505,6 +545,8 @@ public sealed partial class Game
             X = x, Kicked = kicked, Flashback = flashback, GiftTo = giftTo,
         });
         Emit(new SpellCast(player.Id, cardId));
+        for (int i = 0; i < card.Definition.Cascade; i++) // cascade triggers as the spell is cast (rule 702.85a)
+            _pendingTriggers.Add(new PendingTrigger(cardId, CascadeTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, card.Definition.ManaCost.ManaValue)));
         foreach (var source in copySources) QueueCopyThatSpell(source, player.Id, card);
         return true;
     }
@@ -546,7 +588,7 @@ public sealed partial class Game
         }
         cost = cost.WithX(x);
 
-        if (await PayManaTapsAsync(player, source.Id, cost, exclude, UsableFor(source, isAbility: true), UnitUsableFor(source, isAbility: true)) is null) return false;
+        if (await PayManaTapsAsync(player, source.Id, cost, exclude, AbilityManaUsable(source, ability, player.Id), UnitUsableFor(source, isAbility: true)) is null) return false;
         if (ability.Cost.Tap)
         {
             source.Tapped = true;
@@ -793,7 +835,7 @@ public sealed partial class Game
 
     private ManaCost CastingCost(Card card, IReadOnlyList<ChosenTarget>? targets)
     {
-        if (card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.WithoutPaying))
+        if ((card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.WithoutPaying)) || _castFree.Contains(card.Id))
             return ManaCost.Zero; // "without paying its mana cost"
         var cost = card.Zone == Zone.Graveyard && card.Definition.Flashback is { } flashback
                    && !State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version)
@@ -804,15 +846,21 @@ public sealed partial class Game
         if (card.Zone == Zone.Hand && Has(card.Owner, Replacements.CastFromHandFree) && card.Definition.ManaCost.XCount == 0) return ManaCost.Zero;
         // "Mana of any type can be spent": colored symbols become generic.
         bool anyType = (card.Is(CardType.Creature) && Has(card.Owner, Replacements.CreaturesFromLibraryTop)) // "spend mana of any type to cast creature spells"
-                       || (card.Zone == Zone.Exile && card.CounterCount(CounterKind.Stash) > 0 && Has(caster, Replacements.PlayStashedCards));
+                       || (card.Zone == Zone.Exile && card.CounterCount(CounterKind.Stash) > 0 && Has(caster, Replacements.PlayStashedCards))
+                       || (card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType));
         if (anyType) cost = new ManaCost(cost.ManaValue, Array.Empty<ManaType>(), null, cost.XCount);
         return cost.MinusGeneric(CostReductionFor(card, targets));
     }
+
+    /// <summary>Cards being cast "without paying their mana cost" from the hand right now.</summary>
+    private readonly HashSet<CardId> _castFree = new();
 
     private int CostReductionFor(Card card, IReadOnlyList<ChosenTarget>? targets = null)
     {
         var caster = card.Owner;
         int total = 0;
+        if (card.Definition.SelfCostReduction is { AmountFrom: { } amountFrom })
+            total += Math.Max(0, Eval(amountFrom, new EffectContext(caster, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>())));
         if (card.Definition.SelfCostReduction is { IfTargets: { } wanted } byTarget)
         {
             // Before targets are chosen, assume the best case when some legal target qualifies.

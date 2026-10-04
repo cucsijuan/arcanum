@@ -354,3 +354,32 @@ Sagas, its controller has an enduring story for the rest of the game.
 
 Counters with rules of their own: hone counters on an Equipment give the equipped creature +1/+0; trample counters give
 trample.
+
+## The Ring, phasing, cascade and evasion
+
+- `{ "ringTempts": true }`: the Ring tempts you; you choose a Ring-bearer. With 1 or more temptations it can't be
+  blocked by creatures with greater power; 2: whenever it attacks, draw then discard; 3: creatures blocking it are
+  sacrificed at end of combat; 4: when it deals combat damage to a player, each opponent loses 3 life. Trigger
+  `ringTempts` ("whenever the Ring tempts you"), quantity `"ringLevel"`.
+- `{ "phaseOut": subject }`: phases out until its controller's next untap step (with what's attached to it).
+- `"cascade": 2` (card-wide): cascade instances. `"minimumBlockers": 3`: can't be blocked except by that many creatures.
+- Keywords `Islandwalk` (and the other landwalks), `Shadow`, `Ascend` (`"citysBlessing"` condition). Indestructible,
+  lifelink and shadow counters give their keyword (a shadow counter also makes it a Wraith).
+- `{ "playerProtection": true }`: you have protection from everything until your next turn.
+
+More effects: `{ "castFromHandFree": filter, "maxManaValue": quantity }`, `{ "putFromHand": filter }`,
+`{ "destroyAllBut": filter, "keep": 2 }`, `{ "handToBottom": 1 }`, `{ "tapAnyNumber": filter }` (then `"tapped"`),
+`{ "opponentChooses": "prompt", "yes": [ … ], "no": [ … ] }`, `{ "castCopy": "target" }` (exile the card, copy it and
+cast the copy free); `revealUntil` with `"from": "triggeredPlayer", "castFree": true`; `exileGraveyard` with
+`"filter"` and `"playable"` (castable with mana of any type); `addMana` with `"times"`; `blink` with `"tapped"`; `pump`
+with `"loseKeywords"`; `tokens` with `"attacking"`.
+Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYou`, `finalChapterResolved`; option
+`"exceptFirstInDrawStep"`. Abilities: `"modesOncePerTurn"`, `"extraModeIf"`, activated `"costReductionIf"` with
+`"costReductionAmount"`. Card-wide: `"wardCost"` (a non-mana ward cost), `"othersEnterWithCounters"`,
+`"chooseOnEnter": "payLifeOrTapped"` with `"enterLife"`, `costReduction` with `"amountFrom"`, `replaces`
+`FoodAlsoTreasure` and `CastCreaturesFromLibraryTop`, `manaRider` `LegendaryUncounterable`. Costs:
+`sacrifice:legendary artifact`. Quantities: `"greatestPower"`, `"greatestToughness"`, `{ "greatestAmongOpponents": f }`,
+`{ "countersAmong": f, "kind": "lore" }`, `"otherSpellsManaValue"`, `"milledManaValue"`, `"tapped"`,
+`{ "count": f, "controlledBy": "triggeredPlayer" }`. Conditions: `"opponentHasMostLife"`, `{ "attackersExactly": 1 }`,
+`{ "attackedWith": 2 }`. Filters: `maxToughness`, `notChosenType`, `leastPower`, `damagedThisTurn`, `blockingSource`,
+`dealtCombatDamageToYou`, `maxManaValueTriggerAmount`.

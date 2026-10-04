@@ -25,11 +25,13 @@ public sealed partial class Game
             player.LifeGainsThisTurn = 0;
             player.SpellsCastThisTurn.Clear();
             player.ExtraLandsThisTurn = 0;
+            player.AttackersThisTurn = 0;
             player.EquipsThisTurn = 0;
             player.DrewInDrawStep = false;
             player.GraveyardTypesUsedThisTurn = 0;
         }
         foreach (var permanent in State.PermanentsControlledBy(active.Id)) permanent.ControlledSinceTurnStart = true;
+        active.Protected = false; // "protection from everything until your next turn"
         foreach (var card in State.Cards.Values)
         {
             card.ActivatedThisTurn.Clear();
@@ -88,6 +90,15 @@ public sealed partial class Game
         switch (step)
         {
             case Step.Untap:
+                // Phased-out permanents of the active player phase in first (rule 502.1).
+                foreach (var phased in State.PhasedOut.Where(p => p.Controller == State.ActivePlayer).ToList())
+                {
+                    State.PhasedOut.Remove(phased);
+                    if (State.GetCard(phased.Card).Zone != Zone.Battlefield) continue;
+                    State.Battlefield.Add(phased.Card);
+                    Emit(new PhasedIn(phased.Card));
+                }
+                RecomputeContinuousEffects();
                 foreach (var permanent in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Tapped && !c.Definition.DoesntUntap && !c.Has(Cards.Keyword.DoesntUntap)).ToList())
                 {
                     // A stun counter is removed instead of untapping (rule 122.1d).
@@ -120,6 +131,12 @@ public sealed partial class Game
                 break;
             case Step.CombatDamage:
                 await DealCombatDamageAsync();
+                break;
+            case Step.EndCombat:
+                // "Sacrifice it at end of combat" (the Ring's third ability).
+                foreach (var (card, version) in State.SacrificeAtEndOfCombat.ToList())
+                    if (State.GetCard(card) is { Zone: Zone.Battlefield } doomed && doomed.Version == version) SacrificePermanent(card);
+                State.SacrificeAtEndOfCombat.Clear();
                 break;
             case Step.Cleanup:
                 await CleanupAsync();

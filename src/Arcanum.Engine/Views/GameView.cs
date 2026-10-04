@@ -93,6 +93,16 @@ public sealed record PlayerView
     /// <summary>Has an enduring story (storied) for the rest of the game.</summary>
     public bool EnduringStory { get; init; }
 
+    /// <summary>Has the city's blessing (ascend).</summary>
+    public bool CitysBlessing { get; init; }
+
+    /// <summary>Times the Ring has tempted this player, and their Ring-bearer.</summary>
+    public int RingLevel { get; init; }
+    public CardId? RingBearer { get; init; }
+
+    /// <summary>Has protection from everything until their next turn.</summary>
+    public bool Protected { get; init; }
+
     /// <summary>Floating mana by type (only types with a non-zero amount).</summary>
     public required IReadOnlyDictionary<Mana.ManaType, int> ManaPool { get; init; }
 }

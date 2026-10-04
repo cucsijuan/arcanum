@@ -534,3 +534,118 @@ public class KeywordActionTests
         Assert.Equal(life - 5, s.Game.State.GetPlayer(P0).Life);
     }
 }
+
+/// <summary>The Ring, phasing, cascade, evasion and other mechanics of the eternal-format cards.</summary>
+public class EternalMechanicsTests
+{
+    private static CardDefinition Sorcery(string name, string cost, params Effect[] effects) => new()
+    {
+        Name = name, ManaCost = ManaCost.Parse(cost), Types = CardType.Sorcery, Spell = new SpellAbility { Effects = effects },
+    };
+
+    private static Scenario Casting()
+    {
+        var s = new Scenario();
+        s.Attacker.Act = (_, legal) => legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        return s;
+    }
+
+    [Fact]
+    public async Task TheRingTemptsYouChoosesARingBearerThatBigCreaturesCantBlock()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        var bearer = s.Add(P0, Creature("Small Hero", 1, 1));
+        s.Add(P1, Creature("Big Guard", 5, 5));
+        s.InHand(P0, Sorcery("Temptation", "{R}", new RingTemptsYou()));
+        bool attacked = false;
+        s.Attacker.Attack = (_, attackers, defenders) => { attacked = true; return attackers.Select(a => new AttackDeclaration(a, defenders[0])).ToList(); };
+        await s.RunUntilTurn(4);
+        var p = s.Game.State.GetPlayer(P0);
+        Assert.Equal(1, p.RingLevel);
+        Assert.Equal(bearer, p.RingBearer?.Card);
+        Assert.True(attacked);
+        Assert.DoesNotContain(s.Defender.LastBlockRequest?.CanBlock.Values.SelectMany(v => v) ?? Array.Empty<CardId>(), a => a == bearer);
+    }
+
+    [Fact]
+    public async Task PhasedOutPermanentsAreGoneUntilTheirControllersNextUntapStep()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        var bear = s.Add(P1, Creature("Fading Bear", 2, 2));
+        s.InHand(P0, new CardDefinition
+        {
+            Name = "Fade", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Instant,
+            Spell = new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Creature) }, Effects = new Effect[] { new PhaseOut(Subject.TargetAt(0)) } },
+        });
+        bool goneDuringTurn = false;
+        s.Game.EventRaised += e => { if (e is PhasedOut) goneDuringTurn = !s.Game.State.Battlefield.Contains(bear); };
+        await s.RunUntilTurn(3);
+        Assert.True(goneDuringTurn);
+        Assert.Contains(bear, s.Game.State.Battlefield);
+        Assert.Contains(s.Game.Log, e => e is PhasedIn p && p.Card == bear);
+    }
+
+    [Fact]
+    public async Task CascadeCastsACheaperCardForFree()
+    {
+        var s = Casting();
+        s.Lands(P0, 4);
+        var cheap = s.Game.SetupInLibrary(P0, Creature("Cascaded Cub", 2, 2) with { ManaCost = ManaCost.Parse("{2}") });
+        s.InHand(P0, Sorcery("Wild Burst", "{3}{R}", new GainLife(1, Subject.You)) with { Cascade = 1 });
+        bool stacked = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!stacked) { stacked = true; s.Restack(P0, cheap); }
+            return legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(cheap).Zone);
+    }
+
+    [Fact]
+    public void EvasionLandwalkShadowAndMinimumBlockers()
+    {
+        var s = new Scenario();
+        var walker = s.Add(P0, Creature("Island Strider", 2, 2, Keyword.Islandwalk));
+        var shade = s.Add(P0, Creature("Shade", 2, 2, Keyword.Shadow));
+        var brute = s.Add(P0, Creature("Huge Troll", 6, 5) with { MinimumBlockers = 3 });
+        s.Add(P1, new CardDefinition { Name = "Island", Types = CardType.Land, Subtypes = new[] { "Island" } });
+        var guard = s.Add(P1, Creature("Guard", 3, 3));
+        s.Attacker.Attack = (_, attackers, defenders) => attackers.Select(a => new AttackDeclaration(a, defenders[0])).ToList();
+        s.RunUntilTurn().Wait();
+        var request = s.Defender.LastBlockRequest!;
+        var canBlock = request.CanBlock.GetValueOrDefault(guard) ?? Array.Empty<CardId>();
+        Assert.DoesNotContain(walker, canBlock);
+        Assert.DoesNotContain(shade, canBlock);
+        Assert.Equal(3, request.MinimumBlockers[brute]);
+    }
+
+    [Fact]
+    public async Task AscendGivesTheCitysBlessingWithTenPermanents()
+    {
+        var s = new Scenario();
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Add(P0, Creature("Watchful Elder", 1, 1, Keyword.Ascend));
+        s.Lands(P0, 9);
+        await s.RunUntilTurn();
+        Assert.True(s.Game.State.GetPlayer(P0).HasCitysBlessing);
+        Assert.False(s.Game.State.GetPlayer(P1).HasCitysBlessing);
+    }
+
+    [Fact]
+    public async Task PlayerProtectionPreventsDamageUntilTheirNextTurn()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.InHand(P0, Sorcery("Ward of Ages", "{R}", new PlayerProtection()));
+        s.Add(P1, Creature("Raider", 3, 3));
+        s.Defender.Attack = (_, attackers, defenders) => attackers.Select(a => new AttackDeclaration(a, defenders[0])).ToList();
+        int life = s.Game.State.GetPlayer(P0).Life;
+        await s.RunUntilTurn(3);
+        Assert.Equal(life, s.Game.State.GetPlayer(P0).Life);
+        Assert.False(s.Game.State.GetPlayer(P0).Protected); // ends as their next turn begins
+    }
+}

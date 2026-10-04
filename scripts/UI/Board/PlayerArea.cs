@@ -186,7 +186,9 @@ public partial class PlayerArea : Control
         RefreshPool(me);
         _life.Text = me.Life.ToString();
         _life.AddThemeColorOverride("font_color", me.HasLost ? BoardStyle.TextDim : BoardStyle.Text);
-        _name.Text = (me.HasLost ? $"{me.Name} (defeated)" : me.Name) + (me.EnduringStory ? " · Enduring story" : "") + (SeatNote is { } note ? $" · {note}" : "");
+        _name.Text = (me.HasLost ? $"{me.Name} (defeated)" : me.Name) + (me.EnduringStory ? " · Enduring story" : "") + (me.CitysBlessing ? " · City's blessing" : "")
+                     + (me.RingLevel > 0 ? $" · Ring {me.RingLevel}" + (me.RingBearer is { } bearer && view.Battlefield.FirstOrDefault(c => c.Id == bearer) is { } rb ? $" ({rb.Name})" : "") : "")
+                     + (me.Protected ? " · Protection" : "") + (SeatNote is { } note ? $" · {note}" : "");
         _nameBadge.ResetSize();
         _activeBorder.Visible = isActive;
         _handLabel.Text = $"⌄ Hand ({me.Hand.Count})";

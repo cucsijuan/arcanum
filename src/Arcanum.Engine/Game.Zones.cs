@@ -77,7 +77,7 @@ public sealed partial class Game
                     && (card.Definition.EntersWithCountersIf is not { } cond || Holds(cond, card.Controller, card)))
                     enterCounters.Add((card.Definition.EntersWithCounterKind, card.Definition.EntersWithCounters));
                 if (card.Definition.EntersWithCountersFrom is { } countFrom)
-                    enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne,
+                    enterCounters.Add((card.Definition.EntersWithCounterKind,
                         Eval(countFrom, new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
                 if (card.Definition.Loyalty is { } loyalty) enterCounters.Add((Abilities.CounterKind.Loyalty, loyalty)); // 306.5b
                 if (card.Definition.FinalChapter > 0) enterCounters.Add((Abilities.CounterKind.Lore, 1)); // a Saga enters with a lore counter (714.3a)
@@ -90,6 +90,7 @@ public sealed partial class Game
                     enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, angels * giadas));
                 }
                 State.Battlefield.Add(id);
+                if (card.IsCreature && ExtraEnterCounters(card) is var extraCounters and > 0) enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, extraCounters));
                 if (card.Definition.ChooseOnEnter != Cards.EnterChoice.None) State.PendingEnterChoices.Add((id, card.Version));
                 break;
             case Zone.Stack:

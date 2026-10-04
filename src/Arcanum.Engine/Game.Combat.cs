@@ -70,7 +70,11 @@ public sealed partial class Game
                     Emit(new PermanentTapped(d.Attacker));
                 }
                 Emit(new AttackerDeclared(d.Attacker, d.Defender));
+                // The Ring, level 2: "Whenever your Ring-bearer attacks, draw a card, then discard a card."
+                if (IsRingBearer(attacker, 2)) _pendingTriggers.Add(new PendingTrigger(attacker.Id, RingLoot, active));
             }
+            var activePlayer = State.GetPlayer(active);
+            activePlayer.AttackersThisTurn = Math.Max(activePlayer.AttackersThisTurn, declared.Count);
             if (declared.Count > 0) Emit(new AttacksDeclared(active, declared.Count));
         }
 
@@ -84,8 +88,23 @@ public sealed partial class Game
     private bool CanBlock(Card blocker, Card attacker) =>
         !blocker.Has(Keyword.CantBlock) && !attacker.Has(Keyword.CantBeBlocked) && !ProtectedFrom(attacker, blocker)
         && (!attacker.Has(Keyword.Flying) || blocker.Has(Keyword.Flying) || blocker.Has(Keyword.Reach))
+        && attacker.Has(Keyword.Shadow) == blocker.Has(Keyword.Shadow) // shadow (702.28b)
+        && !Landwalks.Any(w => attacker.Has(w.Keyword) && State.PermanentsControlledBy(blocker.Controller).Any(c => c.Is(CardType.Land) && c.HasSubtype(w.Land)))
+        && !(IsRingBearer(attacker, 1) && blocker.Power > attacker.Power) // the Ring, level 1
         && !(attacker.Definition.CantBeBlockedBy is { } restriction
              && Matches(restriction with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, attacker, attacker.Controller));
+
+    private static readonly (Keyword Keyword, string Land)[] Landwalks =
+    {
+        (Keyword.Islandwalk, "Island"), (Keyword.Swampwalk, "Swamp"), (Keyword.Forestwalk, "Forest"), (Keyword.Mountainwalk, "Mountain"), (Keyword.Plainswalk, "Plains"),
+    };
+
+    /// <summary>Whether the creature is its controller's Ring-bearer and the Ring has tempted them at least <paramref name="level"/> times.</summary>
+    private bool IsRingBearer(Card card, int level) =>
+        State.GetPlayer(card.Controller) is { RingBearer: { } bearer } p && bearer.Card == card.Id && bearer.Version == card.Version && p.RingLevel >= level;
+
+    /// <summary>Fewest creatures that can block it: two with menace, or more ("except by three or more creatures").</summary>
+    private static int MinimumBlockersOf(Card attacker) => Math.Max(attacker.Has(Keyword.Menace) ? 2 : 1, attacker.Definition.MinimumBlockers);
 
     private async Task DeclareBlockersAsync()
     {
@@ -105,7 +124,7 @@ public sealed partial class Game
                 attackers.Select(a => a.Id).ToList(),
                 possible,
                 canBlock.Where(kv => kv.Value.Count > 0).ToDictionary(kv => kv.Key, kv => kv.Value),
-                attackers.Where(a => a.Has(Keyword.Menace)).ToDictionary(a => a.Id, _ => 2)) // 702.111b
+                attackers.Where(a => MinimumBlockersOf(a) > 1).ToDictionary(a => a.Id, MinimumBlockersOf)) // menace, 702.111b
             {
                 MustBeBlocked = attackers.Where(a => a.Has(Keyword.MustBeBlocked)).Select(a => a.Id).ToList(),
             };
@@ -113,13 +132,18 @@ public sealed partial class Game
             var declared = await ControllerOf(defender).DeclareBlockersAsync(ViewFor(defender), request);
             Require(request.IsLegal(declared, out var reason), reason ?? "Illegal blocks.");
 
+            var newlyBlocked = new List<CardId>();
             foreach (var b in declared)
             {
                 var attack = combat.FindAttack(b.Attacker)!;
                 attack.Blockers.Add(b.Blocker);
+                if (!attack.IsBlocked) newlyBlocked.Add(b.Attacker);
                 attack.IsBlocked = true;
                 Emit(new BlockerDeclared(b.Blocker, b.Attacker));
+                // The Ring, level 3: the blocker's controller sacrifices it at end of combat.
+                if (IsRingBearer(State.GetCard(b.Attacker), 3)) State.SacrificeAtEndOfCombat.Add((b.Blocker, State.GetCard(b.Blocker).Version));
             }
+            foreach (var attacker in newlyBlocked) Queue(attacker, Abilities.TriggerEvent.BecomesBlocked, State.GetCard(attacker).Controller);
         }
     }
 

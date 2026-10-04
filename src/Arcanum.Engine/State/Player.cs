@@ -41,6 +41,19 @@ public sealed class Player
     /// <summary>The first card of this turn's draw step has been drawn.</summary>
     public bool DrewInDrawStep { get; set; }
 
+    /// <summary>Has the city's blessing for the rest of the game (ascend).</summary>
+    public bool HasCitysBlessing { get; set; }
+
+    /// <summary>Times the Ring has tempted this player, and their Ring-bearer (card, version).</summary>
+    public int RingLevel { get; set; }
+    public (Core.CardId Card, int Version)? RingBearer { get; set; }
+
+    /// <summary>Protection from everything until the turn with this number begins for them (-1: none).</summary>
+    public bool Protected { get; set; }
+
+    /// <summary>Most creatures this player attacked with in one combat this turn.</summary>
+    public int AttackersThisTurn { get; set; }
+
     /// <summary>Has an enduring story for the rest of the game (storied).</summary>
     public bool HasEnduringStory { get; set; }
 

@@ -36,6 +36,12 @@ public abstract record AbilityDefinition
     /// <summary>"Choose one that hasn't been chosen": each mode can be chosen only once for this object.</summary>
     public bool ModesOncePerObject { get; init; }
 
+    /// <summary>"Choose one that hasn't been chosen this turn".</summary>
+    public bool ModesOncePerTurn { get; init; }
+
+    /// <summary>One more mode may be chosen if this holds as it is cast ("if you control a Wizard, you may choose two instead").</summary>
+    public Condition? ExtraModeIf { get; init; }
+
     /// <summary>A rule tying the targets together.</summary>
     public TargetRule TargetRule { get; init; }
 
@@ -125,6 +131,10 @@ public sealed record ActivatedAbility : AbilityDefinition
 
     /// <summary>"This ability costs {1} less to activate for each [filter] you control."</summary>
     public ObjectFilter? CostReductionPer { get; init; }
+
+    /// <summary>"This ability costs {N} less to activate if [condition]."</summary>
+    public Condition? CostReductionIf { get; init; }
+    public int CostReductionAmount { get; init; }
 }
 
 /// <summary>"[Spells matching the filter] you cast cost {N} less to cast" while the source is on the battlefield.</summary>
@@ -234,6 +244,18 @@ public enum TriggerEvent
     CreatureExiledInstead,
     /// <summary>A delayed ability: "at the beginning of the next upkeep".</summary>
     NextUpkeep,
+    /// <summary>"Whenever this is dealt noncombat damage" (amount: the damage).</summary>
+    DealtNoncombatDamage,
+    /// <summary>"Whenever this creature becomes blocked".</summary>
+    BecomesBlocked,
+    /// <summary>"Whenever you scry" (amount: cards looked at).</summary>
+    YouScry,
+    /// <summary>"Whenever one or more creatures deal combat damage to you".</summary>
+    CombatDamageToYou,
+    /// <summary>"Whenever the final chapter ability of a Saga you control resolves".</summary>
+    FinalChapterResolved,
+    /// <summary>"Whenever the Ring tempts you".</summary>
+    RingTemptsYou,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -280,6 +302,9 @@ public sealed record TriggeredAbility : AbilityDefinition
 
     /// <summary>For counter triggers: counters of any kind ("one or more counters").</summary>
     public bool AnyCounterKind { get; init; }
+
+    /// <summary>For draw triggers: not the first card a player draws in their own draw step.</summary>
+    public bool ExceptFirstInDrawStep { get; init; }
 }
 
 /// <summary>
@@ -336,7 +361,14 @@ public sealed record ObjectFilter(
     bool FromBattlefieldThisTurn = false,
     bool PaidWithTreasure = false,
     bool ChosenParity = false,
-    bool SharesNameWithYourLegendary = false)
+    bool SharesNameWithYourLegendary = false,
+    int? MaxToughness = null,
+    bool NotChosenType = false,
+    bool LeastPower = false,
+    bool DamagedThisTurn = false,
+    bool BlockingSource = false,
+    bool DealtCombatDamageToYou = false,
+    bool MaxManaValueTriggerAmount = false)
 {
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 

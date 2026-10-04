@@ -44,6 +44,18 @@ public enum Keyword
     ProtectionFromGreen,
     /// <summary>"If you control three or more artifacts, legendaries, and/or Sagas, you have an enduring story for the rest of the game."</summary>
     Storied,
+    /// <summary>"If you control ten or more permanents, you get the city's blessing for the rest of the game" (rule 702.131).</summary>
+    Ascend,
+    /// <summary>Can block or be blocked only by creatures with shadow (rule 702.28).</summary>
+    Shadow,
+    /// <summary>Landwalk (rule 702.14): can't be blocked as long as the defending player controls a land of that type.</summary>
+    Islandwalk,
+    Swampwalk,
+    Forestwalk,
+    Mountainwalk,
+    Plainswalk,
+    /// <summary>When cast, exile cards from the top until a cheaper nonland card, which may be cast free (rule 702.85).</summary>
+    Cascade,
 }
 
 public static class Keywords

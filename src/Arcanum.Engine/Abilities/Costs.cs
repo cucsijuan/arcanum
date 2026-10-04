@@ -33,6 +33,9 @@ public sealed record CostReduction(int Amount, Condition? Condition = null, Obje
     /// <summary>"Costs {N} less to cast if it targets a [filter]."</summary>
     public ObjectFilter? IfTargets { get; init; }
 
+    /// <summary>"Costs {X} less, where X is [quantity]."</summary>
+    public Quantity? AmountFrom { get; init; }
+
     /// <summary>"Costs {X} less, where X is the total power of creatures you control" (those matching <see cref="PowerFilter"/>).</summary>
     public bool ByTotalPower { get; init; }
     public ObjectFilter? PowerFilter { get; init; }
@@ -45,4 +48,4 @@ public sealed record CostOption(Mana.ManaCost? Mana, ExtraCost? Extra);
 public sealed record AlternativeCost(Mana.ManaCost Cost, Condition? If = null);
 
 /// <summary>Riders on mana from a source (rule 106.6): what happens when it's spent on matching spells.</summary>
-public enum ManaRider { None, HasteForDragonCreatureSpells, CopyRedInstantOrSorcery }
+public enum ManaRider { None, HasteForDragonCreatureSpells, CopyRedInstantOrSorcery, LegendaryUncounterable }

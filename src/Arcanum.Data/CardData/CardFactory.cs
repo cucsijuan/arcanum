@@ -33,7 +33,7 @@ public static partial class CardFactory
     {
         "Scry", "Surveil", "Fight", "Mill", "Treasure", "Food", "Investigate",
         "Raid", "Landfall", "Morbid", "Threshold", "Ferocious", "Hexproof from", "Affinity", "Double", "Formidable", "Alliance", "Crew", "Protection", "Vivid",
-        "Amass", "Recruit", "Gift", "Behold",
+        "Amass", "Recruit", "Gift", "Behold", "Landwalk",
     };
 
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>

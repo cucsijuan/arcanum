@@ -5,7 +5,7 @@ using Arcanum.Engine.Mana;
 namespace Arcanum.Engine.Cards;
 
 /// <summary>A choice made as a permanent enters (rule 614.12).</summary>
-public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven }
+public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped }
 
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]
@@ -58,6 +58,10 @@ public enum Replacements
     DrawTwoExceptFirstInDrawStep = 2097152,
     /// <summary>If a creature an opponent controls would die, exile it instead (its "When you do" ability then triggers).</summary>
     OpponentsCreaturesExiledInsteadOfDying = 4194304,
+    /// <summary>If you would create a Food token, instead create a Food token and a Treasure token.</summary>
+    FoodAlsoTreasure = 8388608,
+    /// <summary>You may look at the top card of your library and cast creature spells from there (paying normally).</summary>
+    CastCreaturesFromLibraryTop = 16777216,
 }
 
 /// <summary>
@@ -242,6 +246,21 @@ public sealed record CardDefinition
 
     /// <summary>Marks a token definition (tokens cease to exist outside the battlefield, rule 111.7).</summary>
     public bool IsToken { get; init; }
+
+    /// <summary>Ward paid with a non-mana cost ("Ward—Sacrifice a legendary artifact or legendary creature").</summary>
+    public ExtraCost? WardCost { get; init; }
+
+    /// <summary>"This creature can't be blocked except by N or more creatures."</summary>
+    public int MinimumBlockers { get; init; }
+
+    /// <summary>"Each other creature you control enters with additional +1/+1 counters equal to …".</summary>
+    public Quantity? OthersEnterWithCounters { get; init; }
+
+    /// <summary>Cascade instances (rule 702.85).</summary>
+    public int Cascade { get; init; }
+
+    /// <summary>The life paid with <see cref="EnterChoice.PayLifeOrTapped"/>.</summary>
+    public int EnterLife { get; init; }
 
     /// <summary>"Gift a [token]" (rule 702.174): an opponent the caster promises it to creates this token before the spell's other effects.</summary>
     public CardDefinition? Gift { get; init; }
