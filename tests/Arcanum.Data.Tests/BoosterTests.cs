@@ -134,4 +134,37 @@ public class BoosterTests
         }
         Assert.Empty(errors);
     }
+
+    [Fact]
+    public void OnlyRepeatableSheetsCanRepeatACardInTheBooster()
+    {
+        // Eight commons, then a slot that is a common or (as a foil) any common again.
+        const string json = """
+            {
+              "code": "abc", "name": "Alphabet",
+              "booster": {
+                "name": "Test Booster",
+                "sheets": {
+                  "common": { "rarity": "common", "booster": true, "basic": false, "exclude": ["Card 10"] },
+                  "foilCommon": { "rarity": "common", "booster": true, "basic": false, "exclude": ["Card 10"] }
+                },
+                "slots": [
+                  { "count": 8, "sheet": "common" },
+                  { "count": 1, "sheets": { "common": 1, "foilCommon": 1 }, "repeatSheets": ["foilCommon"] }
+                ]
+              },
+              "cards": ["Card 1"]
+            }
+            """;
+        var gen = new BoosterGenerator(SetDefinition.Parse(json), Database());
+        var random = new Random(3);
+        bool repeated = false;
+        for (int i = 0; i < 500; i++)
+        {
+            var pack = gen.Open(random);
+            Assert.Equal(8, pack.Take(8).Select(c => c.Name).Distinct().Count());
+            repeated |= pack.Take(8).Any(c => c.Name == pack[8].Name);
+        }
+        Assert.True(repeated); // the foil can be a card the booster already has; the commons never repeat
+    }
 }

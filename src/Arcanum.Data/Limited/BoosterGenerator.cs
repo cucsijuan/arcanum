@@ -72,10 +72,11 @@ public sealed class BoosterGenerator : IBoosterSource
         {
             for (int i = 0; i < slot.Count; i++)
             {
-                var sheet = _sheets[PickSheet(slot, random)];
+                var sheetName = PickSheet(slot, random);
+                var sheet = _sheets[sheetName];
                 if (sheet.Count == 0) continue;
-                // Outside wildcard slots a booster never repeats a card.
-                var choices = slot.Wildcard ? sheet : sheet.Where(c => !pack.Any(p => p.Name == c[0].Name)).ToList();
+                // Outside wildcard slots (and sheets that may repeat, like foils) a booster never repeats a card.
+                var choices = slot.Wildcard || slot.RepeatSheets.Contains(sheetName) ? sheet : sheet.Where(c => !pack.Any(p => p.Name == c[0].Name)).ToList();
                 if (choices.Count == 0) choices = sheet;
                 var variants = choices[random.Next(choices.Count)];
                 pack.Add(variants[random.Next(variants.Length)]);

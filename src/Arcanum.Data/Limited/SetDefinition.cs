@@ -32,7 +32,11 @@ public sealed record SheetSpec
 /// A booster slot: <see cref="Count"/> cards, each from one of the sheets, chosen with the given relative weights.
 /// Cards are never repeated within a booster except in wildcard slots, which can repeat what other slots gave.
 /// </summary>
-public sealed record SlotSpec(int Count, IReadOnlyDictionary<string, int> Sheets, bool Wildcard = false);
+public sealed record SlotSpec(int Count, IReadOnlyDictionary<string, int> Sheets, bool Wildcard = false)
+{
+    /// <summary>Sheets of this slot whose card may repeat a card already in the booster (a traditional foil replacing a common).</summary>
+    public IReadOnlyList<string> RepeatSheets { get; init; } = Array.Empty<string>();
+}
 
 public sealed record BoosterSpec(string Name, string Description, IReadOnlyDictionary<string, SheetSpec> Sheets, IReadOnlyList<SlotSpec> Slots)
 {
@@ -102,7 +106,10 @@ public sealed record SetDefinition
             if (weights.Count == 0) throw new FormatException("A booster slot needs a \"sheet\" or \"sheets\".");
             foreach (var name in weights.Keys)
                 if (!sheets.ContainsKey(name)) throw new FormatException($"Booster slot uses unknown sheet '{name}'.");
-            slots.Add(new SlotSpec(count, weights, slot.TryGetProperty("wildcard", out var wc) && wc.GetBoolean()));
+            slots.Add(new SlotSpec(count, weights, slot.TryGetProperty("wildcard", out var wc) && wc.GetBoolean())
+            {
+                RepeatSheets = slot.TryGetProperty("repeatSheets", out var rs) ? rs.EnumerateArray().Select(x => x.GetString()!).ToList() : Array.Empty<string>(),
+            });
         }
         return new BoosterSpec(Str(b, "name") ?? "Booster", Str(b, "description") ?? "", sheets, slots);
     }
