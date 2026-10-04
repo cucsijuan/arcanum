@@ -67,6 +67,9 @@ public partial class PlayerArea : Control
     public event Action<CardNode>? CardHoverStarted;
     public event Action<CardNode>? CardHoverEnded;
 
+    /// <summary>This player's graveyard or exile pile was clicked (to see every card in it).</summary>
+    public event Action<PlayerId, Zone>? ZoneClicked;
+
     /// <summary>The life counter or name badge was clicked (choosing this player as a target).</summary>
     public event Action<PlayerId>? PlayerClicked;
 
@@ -118,9 +121,11 @@ public partial class PlayerArea : Control
 
         AddChild(_handLabel);
         _command2.Visible = false;
+        _graveyard.CardClicked += _ => ZoneClicked?.Invoke(Player, Zone.Graveyard);
+        _exile.CardClicked += _ => ZoneClicked?.Invoke(Player, Zone.Exile);
         foreach (var pile in new[] { _library, _graveyard, _exile, _command, _command2 })
         {
-            pile.CardClicked += c => CardClicked?.Invoke(c); // e.g. casting a commander from the command zone
+            if (pile != _graveyard && pile != _exile) pile.CardClicked += c => CardClicked?.Invoke(c); // e.g. casting a commander from the command zone
             pile.CardHoverStarted += c => CardHoverStarted?.Invoke(c);
             pile.CardHoverEnded += c => CardHoverEnded?.Invoke(c);
             AddChild(pile);

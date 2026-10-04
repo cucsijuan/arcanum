@@ -582,6 +582,7 @@ public partial class GameBoard : Control
                 area.FacesDown = true;
             }
             area.CardClicked += OnCardClicked;
+            area.ZoneClicked += OpenZone;
             area.PlayerClicked += OnPlayerClicked;
             area.CardHoverStarted += ShowPreview;
             area.CardHoverEnded += HidePreview;
@@ -668,6 +669,7 @@ public partial class GameBoard : Control
         }
 
         ApplyHighlights(view, decision);
+        _zoneViewer.Refresh(view, id => UsableNow(decision, id));
         UpdateArrows(view, decision);
         BuildActionPanel(view, decision);
         UpdateMulliganView(decision);
@@ -1392,6 +1394,44 @@ public partial class GameBoard : Control
     }
 
     /// <summary>Playing or casting <paramref name="source"/> and its activated and mana abilities: what a click on it could mean.</summary>
+    /// <summary>Graveyard or exile shown in full (clicking a pile).</summary>
+    private readonly ZoneViewer _zoneViewer = new();
+
+    private void OpenZone(PlayerId player, Arcanum.Engine.State.Zone zone)
+    {
+        if (_zoneViewer.Visible && _zoneViewer.Player == player && _zoneViewer.Zone == zone) { _zoneViewer.Close(); return; }
+        if (_zoneViewer.GetParent() is null)
+        {
+            _zoneViewer.CardClicked += OnZoneCardClicked;
+            _zoneViewer.CardHoverStarted += ShowPreview;
+            _zoneViewer.CardHoverEnded += HidePreview;
+            AddChild(_zoneViewer);
+        }
+        _zoneViewer.Open(player, zone);
+        Refresh();
+    }
+
+    /// <summary>A card in the zone viewer: used like a card on the board; the viewer closes once it starts something.</summary>
+    private void OnZoneCardClicked(CardNode node)
+    {
+        var before = _session.CurrentDecision;
+        bool acts = UsableNow(before, node.Id);
+        OnCardClicked(node);
+        if (acts && (before is PriorityDecision || before is TargetDecision)) _zoneViewer.Close();
+        HidePreview(node);
+    }
+
+    /// <summary>Whether clicking this card does something in the current decision (cast, play, activate, target, choose).</summary>
+    private bool UsableNow(Decision? decision, CardId id) => decision switch
+    {
+        PriorityDecision p => SourceActions(p, id).Count > 0,
+        TargetDecision t => _chosenTargets.Count < t.Request.Specs.Count || t.Request.LastIsAnyNumber
+            ? t.Request.LegalAt(_chosenTargets.Count).Any(o => o.Card == id && t.Request.IsAllowed(_chosenTargets.Count, o, _chosenTargets))
+            : false,
+        ChooseCardsDecision c => c.Request.Options.Any(o => o.Id == id),
+        _ => false,
+    };
+
     private static List<PlayerAction> SourceActions(PriorityDecision p, CardId source) =>
         p.Legal.Where(a => a is ActivateAbility aa && aa.Source == source || a is ActivateManaAbility m && m.Source == source
                            || a is CastSpell c && c.Card == source || a is PlayLand l && l.Card == source).ToList();
