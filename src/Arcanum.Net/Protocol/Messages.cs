@@ -27,6 +27,9 @@ namespace Arcanum.Net.Protocol;
 [JsonDerivedType(typeof(LobbyState), "lobby")]
 [JsonDerivedType(typeof(SubmitDeck), "deck")]
 [JsonDerivedType(typeof(GameStarting), "starting")]
+[JsonDerivedType(typeof(EventUpdate), "event-state")]
+[JsonDerivedType(typeof(DraftPick), "pick")]
+[JsonDerivedType(typeof(EventReady), "ready")]
 public abstract record NetMessage;
 
 // ------------------------------------------------------------------ connection
@@ -57,13 +60,17 @@ public enum LobbySeatKind { Open, Person, Computer }
 public sealed record LobbySeat(string Name, LobbySeatKind Kind, bool Connected, string? Deck, string? Problem);
 
 /// <summary>The lobby as everyone sees it.</summary>
-public sealed record LobbyState(string Format, bool Commander, IReadOnlyList<LobbySeat> Seats) : NetMessage;
+/// <param name="Event">For a limited event (draft, sealed): what it is; players bring no deck.</param>
+public sealed record LobbyState(string Format, bool Commander, IReadOnlyList<LobbySeat> Seats, string? Event = null) : NetMessage;
 
 /// <summary>The deck a player brings, as a deck list (one "count name" per line).</summary>
 public sealed record SubmitDeck(string Name, string List) : NetMessage;
 
-/// <summary>The game begins: the player now says <see cref="Hello"/> to the game with their token.</summary>
-public sealed record GameStarting : NetMessage;
+/// <summary>
+/// The game begins: the player now says <see cref="Hello"/> to the game with their token. For a limited event
+/// (<paramref name="Event"/>), the connection carries the event from now on, without a new greeting.
+/// </summary>
+public sealed record GameStarting(bool Event = false) : NetMessage;
 
 // ------------------------------------------------------------------ game, host to player
 

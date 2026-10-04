@@ -32,6 +32,9 @@ public sealed class LobbyClient
     public LobbyState? State { get; private set; }
     public string? RejectedReason { get; private set; }
     public bool Started { get; private set; }
+
+    /// <summary>What started is a limited event (see <see cref="JoinEvent"/>), not a single game.</summary>
+    public bool IsEvent { get; private set; }
     public bool IsConnected => _peer.IsOpen;
 
     public event Action? Changed;
@@ -44,8 +47,10 @@ public sealed class LobbyClient
     public void Poll()
     {
         if (Started) return;
-        foreach (var message in _peer.Receive())
+        var messages = _peer.Receive();
+        for (int i = 0; i < messages.Count; i++)
         {
+            var message = messages[i];
             switch (message)
             {
                 case Joined j:
@@ -61,10 +66,12 @@ public sealed class LobbyClient
                     RejectedReason = r.Reason;
                     Rejected?.Invoke(r.Reason);
                     break;
-                case Protocol.GameStarting:
+                case Protocol.GameStarting starting:
                     Started = true;
+                    IsEvent = starting.Event;
+                    _peer.Hold(messages.Skip(i + 1)); // the rest belongs to the game or event
                     GameStarting?.Invoke();
-                    return; // the rest belongs to the game
+                    return;
             }
         }
         if (_wasOpen && !_peer.IsOpen)
@@ -75,7 +82,10 @@ public sealed class LobbyClient
     }
 
     /// <summary>After <see cref="GameStarting"/>: the game client for this seat, on the same connection.</summary>
-    public GameClient JoinGame() => new(_connection, Identity, _clock);
+    public GameClient JoinGame() => new(_connection, Identity, _clock, _peer.TakeHeld());
+
+    /// <summary>After <see cref="GameStarting"/> of an event: the event client, on the same connection.</summary>
+    public Events.EventClient JoinEvent() => new(_connection, Identity, greet: false, _clock, _peer.TakeHeld());
 
     public void Close() => _peer.Close();
 }

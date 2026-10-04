@@ -25,9 +25,11 @@ public sealed class GameClient
     private int _currentAsk;
     private bool _wasOpen = true;
 
-    public GameClient(IConnection connection, ClientIdentity identity, Func<DateTime>? clock = null)
+    /// <param name="received">Messages already read from the connection (by the lobby).</param>
+    public GameClient(IConnection connection, ClientIdentity identity, Func<DateTime>? clock = null, IEnumerable<NetMessage>? received = null)
     {
         _peer = new Peer(connection, new WireFormat(), clock ?? (() => DateTime.UtcNow));
+        if (received is not null) _peer.Hold(received);
         _peer.Send(new Hello(WireFormat.ProtocolVersion, identity.Version, identity.Content, identity.Name, identity.Token));
     }
 

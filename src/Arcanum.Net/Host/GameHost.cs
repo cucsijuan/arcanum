@@ -93,7 +93,24 @@ public sealed class GameHost
     public void AddListener(IConnectionListener listener) => _listeners.Add(listener);
 
     /// <summary>A new connection; it must say <see cref="Hello"/> with a seat's token.</summary>
-    public void Accept(IConnection connection) => _greeting.Add(new Peer(connection, new WireFormat(), Options.Clock));
+    /// <param name="received">Messages already read from it (its greeting, when another host routed it here).</param>
+    public void Accept(IConnection connection, IEnumerable<NetMessage>? received = null)
+    {
+        var peer = new Peer(connection, new WireFormat(), Options.Clock);
+        if (received is not null) peer.Hold(received);
+        _greeting.Add(peer);
+    }
+
+    /// <summary>Whether <paramref name="token"/> belongs to a person's seat in this game.</summary>
+    public bool HasToken(string token) => _seats.Any(s => !s.IsComputerSeat && Tokens.Same(s.Token, token));
+
+    /// <summary>Closes every connection (the game is over and its players went back elsewhere).</summary>
+    public void Close()
+    {
+        foreach (var peer in _greeting) peer.Close();
+        _greeting.Clear();
+        foreach (var seat in _seats) seat.Peer?.Close();
+    }
 
     internal bool IsReplaying => _replay.Count > 0;
 

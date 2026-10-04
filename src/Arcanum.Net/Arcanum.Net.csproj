@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Arcanum.Engine\Arcanum.Engine.csproj" />
     <ProjectReference Include="..\Arcanum.Bots\Arcanum.Bots.csproj" />
+    <ProjectReference Include="..\Arcanum.Data\Arcanum.Data.csproj" />
   </ItemGroup>
 
 </Project>

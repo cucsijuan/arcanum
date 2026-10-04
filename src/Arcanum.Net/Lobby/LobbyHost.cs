@@ -15,7 +15,8 @@ public sealed record SeatSetup(string Name, string? DeckName, string DeckList, b
 
 /// <param name="Format">Name of the format, shown to the players.</param>
 /// <param name="Seats">Number of players, the host included.</param>
-public sealed record LobbySettings(string Format, bool Commander, int StartingLife, int Seats, string Version, string Content);
+/// <param name="Event">A limited event (draft, sealed) described for the players; they bring no deck.</param>
+public sealed record LobbySettings(string Format, bool Commander, int StartingLife, int Seats, string Version, string Content, string? Event = null);
 
 /// <summary>
 /// Gathers the players of a hosted game: people take free seats (the host's own player takes seat 0 with
@@ -59,12 +60,18 @@ public sealed class LobbyHost
     /// <summary>The game, once started.</summary>
     public GameHost? Game { get; private set; }
 
+    /// <summary>The limited event, once started.</summary>
+    public Events.EventHost? Event { get; private set; }
+
+    private bool Started => Game is not null || Event is not null;
+
     /// <summary>The lobby changed (someone joined, left, chose a deck).</summary>
     public event Action? Changed;
 
     public LobbyState State => new(_settings.Format, _settings.Commander, _slots.Select(s => new LobbySeat(
         s.Name, s.Kind, s.Kind == LobbySeatKind.Computer || s.Peer is not null, s.DeckName,
-        s.Kind == LobbySeatKind.Open ? null : s.Deck is null ? "No deck chosen yet." : s.Deck.Problem)).ToList());
+        s.Kind == LobbySeatKind.Open || _settings.Event is not null ? null : s.Deck is null ? "No deck chosen yet." : s.Deck.Problem)).ToList(),
+        _settings.Event);
 
     /// <summary>Every seat as set up now (names, deck lists, tokens).</summary>
     public IReadOnlyList<SeatSetup> Setup =>
@@ -79,7 +86,7 @@ public sealed class LobbyHost
     /// <summary>The computer plays <paramref name="seat"/> with this deck list.</summary>
     public void SetComputer(int seat, string name, string deckName, string list)
     {
-        if (seat == 0 || Game is not null) return;
+        if (seat == 0 || Started) return;
         var slot = _slots[seat];
         slot.Peer?.Send(new Rejected("The host gave your seat to the computer."));
         slot.Peer?.Close();
@@ -89,14 +96,14 @@ public sealed class LobbyHost
         slot.Token = Tokens.New();
         slot.DeckName = deckName;
         slot.DeckList = list;
-        slot.Deck = _checkDeck(list);
+        slot.Deck = _settings.Event is null ? _checkDeck(list) : null; // an event's decks come from its boosters
         Broadcast();
     }
 
     /// <summary>Frees a seat (removes the computer, or the person sitting there).</summary>
     public void Open(int seat)
     {
-        if (seat == 0 || Game is not null) return;
+        if (seat == 0 || Started) return;
         var slot = _slots[seat];
         slot.Peer?.Send(new Rejected("The host freed your seat."));
         slot.Peer?.Close();
@@ -115,6 +122,7 @@ public sealed class LobbyHost
                 string who = s.Name.Length > 0 ? s.Name : $"Seat {i + 1}";
                 if (s.Kind == LobbySeatKind.Open) return $"Seat {i + 1} is free: wait for a player or add the computer.";
                 if (s.Kind == LobbySeatKind.Person && s.Peer is null) return $"{who} isn't connected.";
+                if (_settings.Event is not null) continue; // decks come from the event's boosters
                 if (s.Deck is null) return $"{who} hasn't chosen a deck.";
                 if (s.Deck.Problem is { } problem) return $"{who}: {problem}";
             }
@@ -147,8 +155,34 @@ public sealed class LobbyHost
         return Game;
     }
 
+    /// <summary>
+    /// Starts the limited event: <paramref name="create"/> makes it from the seats as set up now; every player's
+    /// connection carries the event from then on.
+    /// </summary>
+    public Events.EventHost StartEvent(Func<IReadOnlyList<SeatSetup>, Events.EventHost> create)
+    {
+        if (StartProblem is { } problem) throw new InvalidOperationException(problem);
+        Event = create(Setup);
+        foreach (var listener in _listeners) Event.AddListener(listener);
+        for (int i = 0; i < _slots.Count; i++)
+        {
+            if (_slots[i].Peer is not { } peer) continue;
+            peer.Send(new GameStarting(Event: true));
+            Event.Attach(i, peer.Connection, peer.TakeHeld());
+        }
+        foreach (var peer in _greeting) peer.Close();
+        _greeting.Clear();
+        Event.Start();
+        return Event;
+    }
+
     public void Poll()
     {
+        if (Event is not null)
+        {
+            Event.Poll();
+            return;
+        }
         if (Game is not null)
         {
             Game.Poll();
