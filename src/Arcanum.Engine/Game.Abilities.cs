@@ -266,6 +266,7 @@ public sealed partial class Game
     {
         _triggeredPlayer = (item as AbilityOnStack)?.Trigger?.Player;
         _triggeredAmount = (item as AbilityOnStack)?.Trigger?.Amount ?? 0;
+        _triggeredSubject = (item as AbilityOnStack)?.Trigger?.Subject;
         var legal = new bool[item.Targets.Count];
         for (int i = 0; i < item.Targets.Count; i++)
             legal[i] = IsStillLegal(item.Targets[i], SpecAt(ability, i), item.Controller, source.Id);
@@ -273,7 +274,7 @@ public sealed partial class Game
         if (item.Targets.Any(t => !t.Target.IsNone) && !legal.Any(l => l)) return false;
 
         // An intervening "if" clause is checked again on resolution (rule 603.4).
-        if (ability is TriggeredAbility { Condition: { } condition } && !Holds(condition, item.Controller, source)) return true;
+        if (ability is TriggeredAbility { Condition: { } condition } && !HoldsAtTrigger(condition, item.Controller, source, (item as AbilityOnStack)?.Trigger)) return true;
 
         var context = new EffectContext(item.Controller, source, item.Targets, legal, item.X, item.Kicked)
         {
@@ -470,7 +471,12 @@ public sealed partial class Game
             QuantityKind.OpponentsGraveyardCount => State.OpponentsOf(ctx.Controller).Sum(o => State.GetPlayer(o).Graveyard.Count),
             QuantityKind.GreatestOtherPower => State.PermanentsControlledBy(ctx.Controller).Where(c => c.IsCreature && c.Id != ctx.Source.Id)
                 .Select(c => c.Power).DefaultIfEmpty(0).Max(),
-            QuantityKind.TriggeredPower => ctx.Trigger?.Subject is { } t ? State.GetCard(t).Power : 0,
+            QuantityKind.TriggeredPower => ctx.Trigger?.Subject is { } t ? PowerOrLastKnown(State.GetCard(t)) : 0,
+            QuantityKind.RingBearerPower => RingBearerOf(ctx.Controller) is { } bearer ? bearer.Power : 0,
+            QuantityKind.Sum => q.Parts?.Sum(part => Eval(part, ctx)) ?? 0,
+            QuantityKind.PermanentsSacrificedThisTurn => State.PermanentsSacrificedThisTurn,
+            QuantityKind.SacrificedThisWay => ctx.Results.Sacrificed.Count,
+            QuantityKind.AmassedPower => ctx.Results.Amassed is { } army ? PowerOrLastKnown(State.GetCard(army)) : 0,
             QuantityKind.AttackingCount => State.Combat?.Attacks.Select(a => State.GetCard(a.Attacker))
                 .Count(c => q.Filter is null || Matches(q.Filter, c, c.Controller, ctx.Source, ctx.Controller)) ?? 0,
             _ => throw new NotSupportedException($"Quantity {q.Kind} is not implemented."),
@@ -1164,6 +1170,15 @@ public sealed partial class Game
             case PutIntoLibrary pl:
                 foreach (var card in (pl.What.Kind == SubjectKind.Self && ctx.Source.Zone == Zone.Graveyard ? new[] { ctx.Source } : CardsFor(pl.What, ctx)).ToList())
                 {
+                    if (pl.Position > 0)
+                    {
+                        // "Second from the top": below that many cards, or at the bottom of a shorter library.
+                        MoveCard(card.Id, Zone.Library);
+                        var library = State.GetPlayer(card.Owner).Library;
+                        library.Remove(card.Id);
+                        library.Insert(Math.Min(pl.Position - 1, library.Count), card.Id);
+                        continue;
+                    }
                     bool bottom = !pl.Top && (pl.Bottom || await ControllerOf(card.Owner).ChooseYesNoAsync(ViewFor(card.Owner),
                         new YesNoRequest($"Put {card.Name} on the bottom of your library? (No: on top)", card.Id)));
                     MoveCard(card.Id, Zone.Library, toBottom: bottom);
@@ -1452,7 +1467,16 @@ public sealed partial class Game
                     player.RingBearer = (pick[0], State.GetCard(pick[0]).Version);
                 }
                 Emit(new RingTempted(ctx.Controller, player.RingLevel, player.RingBearer?.Card));
-                foreach (var card in State.PermanentsControlledBy(ctx.Controller).ToList()) Queue(card.Id, TriggerEvent.RingTemptsYou, ctx.Controller);
+                // "Whenever the Ring tempts you, if you chose a creature other than …": the trigger knows the creature chosen this time.
+                var chosen = creatures.Count > 0 && RingBearerOf(ctx.Controller) is { } bearer ? new TriggerInfo(bearer.Id, bearer.Version, ctx.Controller) : new TriggerInfo(Player: ctx.Controller);
+                foreach (var card in State.PermanentsControlledBy(ctx.Controller).ToList())
+                {
+                    Queue(card.Id, TriggerEvent.RingTemptsYou, ctx.Controller, chosen);
+                    if (creatures.Count > 0) Queue(card.Id, TriggerEvent.RingBearerChosen, ctx.Controller, chosen);
+                }
+                foreach (var card in player.Graveyard.Select(State.GetCard).ToList())
+                    foreach (var ability in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.FromGraveyard && a.Trigger == TriggerEvent.RingTemptsYou))
+                        AddPending(card.Id, ability, ctx.Controller, chosen);
                 break;
             }
             case PlayerProtection:
@@ -1784,6 +1808,31 @@ public sealed partial class Game
                 foreach (var card in CardsFor(pd.What, ctx))
                     State.DamagePreventions.Add(new DamagePrevention(card.Id, card.Version, ctx.Source.Id, ctx.Source.Version));
                 break;
+            case AddChosenCounter acc:
+                foreach (var card in CardsFor(acc.What, ctx).ToList())
+                {
+                    var names = acc.Kinds.Select(CounterName).ToList();
+                    int pick = acc.Kinds.Count == 1 ? 0 : await ControllerOf(ctx.Controller).ChooseOptionAsync(ViewFor(ctx.Controller),
+                        new OptionRequest($"{ctx.Source.Name}: choose a counter to put on {card.Name}", ctx.Source.Id, names, OptionKind.Other));
+                    Require(pick >= 0 && pick < acc.Kinds.Count, "Choose one of the listed counters.");
+                    PutCounters(card, acc.Kinds[pick], 1, ctx.Controller);
+                }
+                break;
+            case AddCountersOfTriggeredKinds act:
+                BeginSimultaneous();
+                foreach (var card in CardsFor(act.What, ctx).ToList())
+                    foreach (var kind in ctx.Trigger?.CounterKinds ?? new List<CounterKind>())
+                        PutCounters(card, kind, 1, ctx.Controller);
+                EndSimultaneous();
+                break;
+            case ChooseOneEffect co:
+            {
+                int pick = await ControllerOf(ctx.Controller).ChooseOptionAsync(ViewFor(ctx.Controller),
+                    new OptionRequest($"{ctx.Source.Name}: choose one", ctx.Source.Id, co.Choices.Select(c => c.Text).ToList(), OptionKind.Other));
+                Require(pick >= 0 && pick < co.Choices.Count, "Choose one of the listed options.");
+                await ApplyAllAsync(co.Choices[pick].Effects, ctx);
+                break;
+            }
             case Amass am:
                 foreach (var player in PlayersFor(am.Who, ctx).ToList())
                     await AmassAsync(player, am, Eval(am.Count, ctx), ctx);
@@ -1916,6 +1965,24 @@ public sealed partial class Game
             .Sum(c => Math.Max(0, Eval(c.Definition.OthersEnterWithCounters!, new EffectContext(c.Controller, c, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
 
     /// <summary>Puts counters on a permanent (doubled by "twice that many counters" effects of its controller).</summary>
+    /// <summary>A counter kind as players read it ("first strike", "+1/+1").</summary>
+    private static string CounterName(CounterKind kind) => kind switch
+    {
+        CounterKind.PlusOnePlusOne => "+1/+1",
+        CounterKind.MinusOneMinusOne => "-1/-1",
+        _ => System.Text.RegularExpressions.Regex.Replace(kind.ToString(), "(?<=[a-z])([A-Z])", " $1").ToLowerInvariant(),
+    };
+
+    /// <summary>Keyword counters and the keyword each gives (rule 122.1b).</summary>
+    private static readonly (CounterKind Counter, Keyword Keyword)[] KeywordCounters =
+    {
+        (CounterKind.Trample, Keyword.Trample), (CounterKind.Indestructible, Keyword.Indestructible), (CounterKind.Lifelink, Keyword.Lifelink),
+        (CounterKind.Shadow, Keyword.Shadow), (CounterKind.FirstStrike, Keyword.FirstStrike), (CounterKind.DoubleStrike, Keyword.DoubleStrike),
+        (CounterKind.Deathtouch, Keyword.Deathtouch), (CounterKind.Flying, Keyword.Flying), (CounterKind.Haste, Keyword.Haste),
+        (CounterKind.Hexproof, Keyword.Hexproof), (CounterKind.Menace, Keyword.Menace), (CounterKind.Reach, Keyword.Reach),
+        (CounterKind.Vigilance, Keyword.Vigilance),
+    };
+
     private void PutCounters(Card card, CounterKind kind, int count, PlayerId? placedBy = null)
     {
         if (count <= 0) return;
@@ -1986,6 +2053,9 @@ public sealed partial class Game
         Emit(new LookedAtTop(who, top.Count, chosen.Count, scry));
         if (scry)
             foreach (var card in State.PermanentsControlledBy(who).ToList()) Queue(card.Id, TriggerEvent.YouScry, who, new TriggerInfo(Player: who, Amount: top.Count));
+            foreach (var card in player.Graveyard.Select(State.GetCard).ToList())
+                foreach (var ability in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.FromGraveyard && a.Trigger == TriggerEvent.YouScry))
+                    AddPending(card.Id, ability, who, new TriggerInfo(Player: who, Amount: top.Count));
     }
 
     private async Task<IReadOnlyList<CardId>> SearchLibraryAsync(PlayerId who, SearchLibrary search, Card source)
@@ -2179,7 +2249,7 @@ public sealed partial class Game
     /// <summary>Life gain, unless something says players can't gain life.</summary>
     private void GainLifeFor(PlayerId player, int amount)
     {
-        if (amount <= 0 || State.Battlefield.Select(State.GetCard).Any(c => c.Definition.PlayersCantGainLife)) return;
+        if (amount <= 0 || State.Battlefield.Select(State.GetCard).Any(c => c.Definition.PlayersCantGainLife || (c.Definition.OpponentsCantGainLife && c.Controller != player))) return;
         amount += State.PermanentsControlledBy(player).Count(c => (c.Definition.Replaces & Replacements.ExtraLifeGain) != 0);
         ChangeLife(player, amount);
     }
@@ -2259,8 +2329,35 @@ public sealed partial class Game
         TriggeredMatches tm => ctx.Trigger?.Subject is { } subject && State.GetCard(subject) is var about
                                && Matches(tm.Filter with { Controller = ControllerFilter.Any }, about, about.Controller, ctx.Source, ctx.Controller, lastKnown: true),
         TargetControlledByYou t => ctx.ChosenAt(t.Index)?.Card is { } owned && ControllerOrLastKnown(State.GetCard(owned), ctx.ChosenVersionAt(t.Index)) == ctx.Controller,
+        SacrificedMatches sm => ctx.Results.Sacrificed.Select(State.GetCard)
+            .Any(c => Matches(sm.Filter with { Controller = ControllerFilter.Any }, c, c.LastKnownInfo?.Controller ?? c.Owner, ctx.Source, ctx.Controller, lastKnown: true)),
+        Not { Inner: SacrificedMatches } n => !HoldsIn(n.Inner, ctx),
+        All a => a.Conditions.All(c => HoldsIn(c, ctx)),
         _ => Holds(condition, ctx.Controller, ctx.Source),
     };
+
+    /// <summary>
+    /// A trigger condition checked as the event happens: what the trigger is about is known then ("if you chose a
+    /// creature other than this", "if no mana was spent to cast it"); targets are not chosen yet.
+    /// </summary>
+    private bool HoldsAtTrigger(Condition condition, PlayerId controller, Card source, TriggerInfo? info)
+    {
+        var ctx = new EffectContext(controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>()) { Trigger = info };
+        static bool AboutTrigger(Quantity q) => q.Kind is QuantityKind.ManaSpent or QuantityKind.TriggerAmount or QuantityKind.TriggeredPower or QuantityKind.TriggeredColors;
+        return condition switch
+        {
+            TriggeredMatches => HoldsIn(condition, ctx),
+            QuantityAtLeast qa when AboutTrigger(qa.Quantity) => HoldsIn(condition, ctx),
+            Not n => !HoldsAtTrigger(n.Inner, controller, source, info),
+            All a => a.Conditions.All(c => HoldsAtTrigger(c, controller, source, info)),
+            _ => Holds(condition, controller, source),
+        };
+    }
+
+    /// <summary>A player's Ring-bearer, if it is still the same object on the battlefield under their control.</summary>
+    private Card? RingBearerOf(PlayerId player) =>
+        State.GetPlayer(player).RingBearer is { } bearer && State.GetCard(bearer.Card) is { Zone: Zone.Battlefield } card && card.Version == bearer.Version
+        && card.Controller == player ? card : null;
 
     private bool Holds(Condition condition, PlayerId controller, Card? source)
     {
@@ -2291,7 +2388,16 @@ public sealed partial class Game
             LifeAboveStarting l => player.Life >= Config.StartingLife + l.AtLeast,
             All a => a.Conditions.All(c => Holds(c, controller, source)),
             TotalPowerAtLeast t => State.PermanentsControlledBy(controller).Where(c => c.IsCreature).Sum(c => c.Power) >= t.Amount,
-            TargetMatches or TargetLifeExactly or XAtLeast or YouSacrificedThisWay or CreatedThisWay or TriggeredWasAttacking or TriggeredHasCounters or TargetAttachedTo or QuantityAtLeast or TargetControlledByYou or TriggeredMatches => true, // checked where known (effects)
+            TargetMatches or TargetLifeExactly or XAtLeast or YouSacrificedThisWay or CreatedThisWay or TriggeredWasAttacking or TriggeredHasCounters or TargetAttachedTo or QuantityAtLeast or TargetControlledByYou or TriggeredMatches or SacrificedMatches => true, // checked where known (effects)
+            Abilities.IsRingBearer => source is not null && RingBearerOf(controller)?.Id == source.Id,
+            HasRingBearer => RingBearerOf(controller) is not null,
+            YourCreaturesDied d => player.CreaturesDiedThisTurn >= d.AtLeast,
+            SacrificedThisTurn st => player.SacrificedThisTurn.Select(State.GetCard)
+                .Count(c => Matches(st.Filter with { Controller = ControllerFilter.Any }, c, controller, source, controller, lastKnown: true)) >= st.AtLeast,
+            YourPermanentLeftThisTurn => player.PermanentLeftThisTurn,
+            SourceAttackedThisTurn => source is not null && source.AttacksThisTurn > 0,
+            YouControlGreatestPower => State.Battlefield.Select(State.GetCard).Where(c => c.IsCreature).ToList() is { Count: > 0 } all
+                                       && all.Where(c => c.Controller == controller).Select(c => c.Power).DefaultIfEmpty(int.MinValue).Max() >= all.Max(c => c.Power),
             WasCastFromGraveyard => source?.CastFromGraveyard == true,
             CardsDrawnThisTurn d => player.CardsDrawnThisTurn >= d.AtLeast,
             AttackingPowerAtLeast ap => State.Combat?.Attacks.Select(a => State.GetCard(a.Attacker)).Where(c => c.Controller == controller).Sum(c => c.Power) >= ap.Amount,
@@ -2316,6 +2422,12 @@ public sealed partial class Game
 
     /// <summary>The amount a pending trigger is about, while its targets are chosen and checked ("with equal or lesser mana value than that spell").</summary>
     private int _triggeredAmount;
+
+    /// <summary>The object a pending or resolving trigger is about, while its targets are chosen and checked.</summary>
+    private CardId? _triggeredSubject;
+
+    /// <summary>A permanent's power, or its power as it last existed on the battlefield.</summary>
+    private int PowerOrLastKnown(Card card) => card.Zone == Zone.Battlefield || card.LastKnownInfo is null ? card.Power : card.LastKnownInfo.Power;
 
     /// <summary>Whether a permanent with the given subtype (an Aura, an Equipment) is attached to <paramref name="obj"/>.</summary>
     private bool HasAttached(Card obj, string subtype) =>
@@ -2388,6 +2500,8 @@ public sealed partial class Game
         if (filter.BlockingSource && (source is null || State.Combat?.FindAttack(source.Id) is not { } blocked || !blocked.Blockers.Contains(obj.Id))) return false;
         if (filter.DealtCombatDamageToYou && (source is null || !obj.CombatDamagedPlayers.Contains(source.Controller))) return false;
         if (filter.MaxManaValueTriggerAmount && ManaValueOf(obj) > _triggeredAmount) return false;
+        if (filter.MaxPowerTriggered && (_triggeredSubject is not { } about || power > PowerOrLastKnown(State.GetCard(about)))) return false;
+        if (filter.Historic && (types & CardType.Artifact) == 0 && (supertypes & Supertype.Legendary) == 0 && !HasSubtype("Saga")) return false;
         if (filter.FromBattlefieldThisTurn && obj.LeftBattlefieldTurn != State.TurnNumber) return false;
         if (filter.PaidWithTreasure && !obj.PaidWithTreasure) return false;
         if (filter.ChosenParity && (source?.ChosenParity is not { } parity || (ManaValueOf(obj) % 2 == 0 ? "even" : "odd") != parity)) return false;
@@ -2650,10 +2764,8 @@ public sealed partial class Game
             // Keyword counters give their keyword (rule 122.1b).
             foreach (var card in battlefield)
             {
-                if (card.CounterCount(CounterKind.Trample) > 0) card.GrantedKeywords.Add(Keyword.Trample);
-                if (card.CounterCount(CounterKind.Indestructible) > 0) card.GrantedKeywords.Add(Keyword.Indestructible);
-                if (card.CounterCount(CounterKind.Lifelink) > 0) card.GrantedKeywords.Add(Keyword.Lifelink);
-                if (card.CounterCount(CounterKind.Shadow) > 0) card.GrantedKeywords.Add(Keyword.Shadow);
+                foreach (var (counter, keyword) in KeywordCounters)
+                    if (card.CounterCount(counter) > 0) card.GrantedKeywords.Add(keyword);
             }
             foreach (var change in changes.OrderBy(x => x.Timestamp)) change.Apply(change.Card);
             if (battlefield.All(c => before[c.Id] == (c.LosesAbilities, c.GrantedAbilities.Count, c.GrantedKeywords.Count))) break;
@@ -2768,7 +2880,7 @@ public sealed partial class Game
                         if (ability.PlacedByYou && cp.By != observer.Controller) continue;
                         bool hit = ability.OnSelf ? observer.Id == target.Id
                             : Matches(ability.Filter ?? ObjectFilter.YourCreatures, target, target.Controller, observer, observer.Controller);
-                        if (hit) AddPending(observer.Id, ability, observer.Controller, About(target, amount: cp.Count));
+                        if (hit) AddPending(observer.Id, ability, observer.Controller, About(target, amount: cp.Count) with { CounterKinds = new() { cp.Kind } });
                     }
                 break;
             }
@@ -3000,12 +3112,18 @@ public sealed partial class Game
     /// <summary>An ability with an intervening "if" clause triggers only if the condition holds now (rule 603.4).</summary>
     private void AddPending(CardId source, TriggeredAbility ability, PlayerId controller, TriggerInfo? info = null)
     {
-        if (ability.Condition is { } condition && !Holds(condition, controller, State.GetCard(source))) return;
-        if (ability.TriggerCondition is { } when && !Holds(when, controller, State.GetCard(source))) return;
+        if (ability.Condition is { } condition && !HoldsAtTrigger(condition, controller, State.GetCard(source), info)) return;
+        if (ability.TriggerCondition is { } when && !HoldsAtTrigger(when, controller, State.GetCard(source), info)) return;
         if (ability.NthOfTurn is { } nth && NthOfTurnFor(ability, State.GetCard(source), controller, info) != nth) return;
         if (ability.ExceptFirstInDrawStep && info?.Player is { } drawer && State.Step == Step.Draw && State.ActivePlayer == drawer
             && State.GetPlayer(drawer).CardsDrawnThisTurn == 1) return; // the first card drawn in their own draw step
-        if (ability.Batched && _lookBack is not null && !_batchTriggered.Add((source, ability))) return; // "one or more": once per simultaneous event
+        if (ability.Batched && _lookBack is not null && !_batchTriggered.Add((source, ability)))
+        {
+            // "One or more": once per simultaneous event; it still learns every kind of counter put on ("those kinds").
+            if (info?.CounterKinds is { } kinds && _pendingTriggers.LastOrDefault(p => p.Source == source && p.Ability == ability)?.Info?.CounterKinds is { } seen)
+                seen.AddRange(kinds.Except(seen));
+            return;
+        }
         if (ability.OncePerTurn && !State.GetCard(source).TriggeredThisTurn.Add(ability)) return;
         var pending = new PendingTrigger(source, ability, controller, info) { SourceVersion = State.GetCard(source).Version };
         _pendingTriggers.Add(pending);
@@ -3207,6 +3325,7 @@ public sealed partial class Game
             {
                 _triggeredPlayer = trigger.Info?.Player;
                 _triggeredAmount = trigger.Info?.Amount ?? 0;
+                _triggeredSubject = trigger.Info?.Subject;
                 if (!HasLegalTargets(trigger.Ability, player, trigger.Source)) continue;
                 var ability = await ChooseModesAsync(player, trigger.Ability, trigger.Source, canCancel: false);
                 if (ability is null) continue;

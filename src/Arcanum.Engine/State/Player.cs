@@ -75,6 +75,15 @@ public sealed class Player
     /// <summary>Set when the player tried to draw from an empty library; checked as a state-based action.</summary>
     public bool AttemptedDrawFromEmptyLibrary { get; set; }
 
+    /// <summary>Creatures that died under this player's control this turn.</summary>
+    public int CreaturesDiedThisTurn { get; set; }
+
+    /// <summary>Permanents this player sacrificed this turn.</summary>
+    public List<Core.CardId> SacrificedThisTurn { get; } = new();
+
+    /// <summary>A permanent this player controlled left the battlefield this turn.</summary>
+    public bool PermanentLeftThisTurn { get; set; }
+
     public bool HasLost { get; set; }
 
     /// <summary>Times each of this player's commanders has been cast from the command zone (commander tax).</summary>

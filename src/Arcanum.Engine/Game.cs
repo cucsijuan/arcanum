@@ -112,6 +112,15 @@ public sealed partial class Game
         {
             case CardMoved { From: Zone.Battlefield, To: Zone.Graveyard } m when WasCreature(State.GetCard(m.Card)):
                 State.CreaturesDiedThisTurn++;
+                State.GetPlayer(m.LastController).CreaturesDiedThisTurn++;
+                State.GetPlayer(m.LastController).PermanentLeftThisTurn = true;
+                break;
+            case CardMoved { From: Zone.Battlefield } left:
+                State.GetPlayer(left.LastController).PermanentLeftThisTurn = true;
+                break;
+            case PermanentSacrificed ps:
+                State.PermanentsSacrificedThisTurn++;
+                State.GetPlayer(State.GetCard(ps.Card).LastKnownInfo?.Controller ?? State.GetCard(ps.Card).Owner).SacrificedThisTurn.Add(ps.Card);
                 break;
             case LifeChanged l when l.NewLife > l.OldLife:
                 State.GetPlayer(l.Player).LifeGainedThisTurn += l.NewLife - l.OldLife;

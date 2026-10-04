@@ -88,6 +88,16 @@ public enum QuantityKind
     RingLevel,
     /// <summary>Auras and Equipment this effect attached.</summary>
     AttachedThisWay,
+    /// <summary>The power of the controller's Ring-bearer.</summary>
+    RingBearerPower,
+    /// <summary>The sum of <see cref="Quantity.Parts"/> ("the number of creatures you control plus the number of Foods you control").</summary>
+    Sum,
+    /// <summary>Permanents sacrificed this turn by all players.</summary>
+    PermanentsSacrificedThisTurn,
+    /// <summary>Permanents sacrificed by this effect ("for each creature sacrificed this way").</summary>
+    SacrificedThisWay,
+    /// <summary>The power of the Army amassed by this effect.</summary>
+    AmassedPower,
 }
 
 /// <summary>
@@ -102,6 +112,9 @@ public sealed record Quantity(int Value, QuantityKind Kind = QuantityKind.Fixed,
 
     /// <summary>For <see cref="QuantityKind.PermanentCount"/>: count only what the player the trigger was about controls.</summary>
     public bool ControlledByTriggeredPlayer { get; init; }
+
+    /// <summary>For <see cref="QuantityKind.Sum"/>: the quantities added together.</summary>
+    public IReadOnlyList<Quantity>? Parts { get; init; }
 
     public static implicit operator Quantity(int value) => new(value);
 

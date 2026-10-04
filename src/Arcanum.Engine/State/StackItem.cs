@@ -57,4 +57,8 @@ public sealed record AbilityOnStack(CardId Source, AbilityDefinition Ability, Pl
 }
 
 /// <summary>What a trigger event was about: an object (with its version then), a player and an amount.</summary>
-public sealed record TriggerInfo(CardId? Subject = null, int SubjectVersion = 0, PlayerId? Player = null, int Amount = 0);
+public sealed record TriggerInfo(CardId? Subject = null, int SubjectVersion = 0, PlayerId? Player = null, int Amount = 0)
+{
+    /// <summary>For counters put on a permanent: each kind put on it in the event ("those kinds of counters").</summary>
+    public List<Abilities.CounterKind>? CounterKinds { get; init; }
+}

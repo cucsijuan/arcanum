@@ -16,8 +16,12 @@ public sealed partial class Game
         var active = State.GetPlayer(State.ActivePlayer);
         active.LandsPlayedThisTurn = 0;
         State.CreaturesDiedThisTurn = 0;
+        State.PermanentsSacrificedThisTurn = 0;
         foreach (var player in State.Players)
         {
+            player.CreaturesDiedThisTurn = 0;
+            player.SacrificedThisTurn.Clear();
+            player.PermanentLeftThisTurn = false;
             player.AttackedThisTurn = false;
             player.LifeGainedThisTurn = 0;
             player.LifeLostThisTurn = 0;

@@ -62,7 +62,8 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
     public bool HasteUntilEndOfTurn { get; init; }
 }
 
-public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden }
+public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect;
@@ -135,7 +136,22 @@ public sealed record PutIntoLibrary(Subject What, bool Bottom = false) : Effect
 {
     /// <summary>Always on top (no choice).</summary>
     public bool Top { get; init; }
+
+    /// <summary>"Second from the top" (2), "fifth from the top" (5): that position, or the bottom of a shorter library.</summary>
+    public int Position { get; init; }
 }
+
+/// <summary>"Put your choice of a counter from among first strike, vigilance, … on it".</summary>
+public sealed record AddChosenCounter(IReadOnlyList<CounterKind> Kinds, Subject What) : Effect;
+
+/// <summary>"Put one of each of those kinds of counters on …": the kinds the trigger was about.</summary>
+public sealed record AddCountersOfTriggeredKinds(Subject What) : Effect;
+
+/// <summary>One of the choices of <see cref="ChooseOneEffect"/>.</summary>
+public sealed record EffectChoice(string Text, IReadOnlyList<Effect> Effects);
+
+/// <summary>"Gains your choice of lifelink or indestructible": the controller chooses one as it resolves (not a modal spell).</summary>
+public sealed record ChooseOneEffect(IReadOnlyList<EffectChoice> Choices) : Effect;
 
 /// <summary>The spell's controller gains control of the subject (until end of turn when <paramref name="UntilEndOfTurn"/>).</summary>
 public sealed record GainControl(Subject What, bool UntilEndOfTurn = false, Subject? NewController = null) : Effect;

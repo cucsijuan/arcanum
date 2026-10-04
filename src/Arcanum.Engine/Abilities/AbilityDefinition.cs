@@ -258,6 +258,8 @@ public enum TriggerEvent
     RingTemptsYou,
     /// <summary>"When this leaves the battlefield" (to any zone).</summary>
     LeavesBattlefield,
+    /// <summary>"Whenever you choose a creature as your Ring-bearer".</summary>
+    RingBearerChosen,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -372,6 +374,15 @@ public sealed record ObjectFilter(
     bool DealtCombatDamageToYou = false,
     bool MaxManaValueTriggerAmount = false)
 {
+    /// <summary>Power at most that of the object the ability is about ("with power less than or equal to the amassed Army's power").</summary>
+    public bool MaxPowerTriggered { get; init; }
+
+    /// <summary>Historic: an artifact, a legendary or a Saga (rule 700.6).</summary>
+    public bool Historic { get; init; }
+
+    /// <summary>Power exactly X ("target creature with power X").</summary>
+    public bool PowerIsX { get; init; }
+
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 
     public static readonly ObjectFilter YourCreatures = new(Cards.CardType.Creature);

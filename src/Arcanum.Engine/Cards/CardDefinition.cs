@@ -183,6 +183,9 @@ public sealed record CardDefinition
     /// <summary>"Players can't gain life." (while this permanent is on the battlefield)</summary>
     public bool PlayersCantGainLife { get; init; }
 
+    /// <summary>"Your opponents can't gain life."</summary>
+    public bool OpponentsCantGainLife { get; init; }
+
     /// <summary>Kicker cost: an optional additional cost paid as the spell is cast (rule 702.33).</summary>
     public ManaCost? Kicker { get; init; }
 

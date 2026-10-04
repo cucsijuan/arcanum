@@ -162,6 +162,9 @@ public sealed class GameState
     /// <summary>Creatures that died this turn (morbid).</summary>
     public int CreaturesDiedThisTurn { get; set; }
 
+    /// <summary>Permanents sacrificed this turn by all players.</summary>
+    public int PermanentsSacrificedThisTurn { get; set; }
+
     public bool IsGameOver { get; set; }
     public PlayerId? Winner { get; set; }
 

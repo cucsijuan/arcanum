@@ -135,3 +135,27 @@ public sealed record AttackedWithAtLeast(int Count) : Condition;
 
 /// <summary>"As long as you have an enduring story" (storied).</summary>
 public sealed record HasEnduringStory : Condition;
+
+/// <summary>The source is its controller's Ring-bearer.</summary>
+public sealed record IsRingBearer : Condition;
+
+/// <summary>"If you control a Ring-bearer" (your Ring-bearer is on the battlefield under your control).</summary>
+public sealed record HasRingBearer : Condition;
+
+/// <summary>"If a creature died under your control this turn" (at least that many).</summary>
+public sealed record YourCreaturesDied(int AtLeast) : Condition;
+
+/// <summary>"If you sacrificed a Food this turn": you sacrificed at least that many permanents matching the filter.</summary>
+public sealed record SacrificedThisTurn(ObjectFilter Filter, int AtLeast = 1) : Condition;
+
+/// <summary>"If a permanent you controlled left the battlefield this turn".</summary>
+public sealed record YourPermanentLeftThisTurn : Condition;
+
+/// <summary>"If this creature attacked this turn".</summary>
+public sealed record SourceAttackedThisTurn : Condition;
+
+/// <summary>"If the sacrificed creature was legendary": a permanent sacrificed for this spell or ability matches (as it last existed).</summary>
+public sealed record SacrificedMatches(ObjectFilter Filter) : Condition;
+
+/// <summary>"If you control a creature with the greatest power among creatures on the battlefield" (ties included).</summary>
+public sealed record YouControlGreatestPower : Condition;
