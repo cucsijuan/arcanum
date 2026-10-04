@@ -54,6 +54,9 @@ public sealed class Card
     /// <summary>As a spell: the mana spent to cast it.</summary>
     public int ManaSpent { get; set; }
 
+    /// <summary>The X chosen when this permanent was cast (its enters abilities use it, rule 107.3m).</summary>
+    public int CastX { get; set; }
+
     /// <summary>As a spell: mana from a Treasure was spent to cast it.</summary>
     public bool PaidWithTreasure { get; set; }
 
@@ -264,7 +267,8 @@ public sealed class Card
                     ? new[] { type }
                     : Definition.TapForMana;
                 if (types.Count > 0 && ManaAmount > 0) options.Add(new ManaOption(types, ManaAmount, Definition.ManaOnlyFor, Definition.ManaOnlyForAbilitiesToo));
-                options.AddRange(Definition.ExtraManaOptions.Select(o => o.ColorsAmongYourPermanents ? o with { Types = ColorsAmongYourPermanents } : o));
+                options.AddRange(Definition.ExtraManaOptions.Select(o => o.ColorsAmongYourPermanents ? o with { Types = ColorsAmongYourPermanents }
+                    : o.ColorsAmongLegendaryCreatureCardsInGraveyard ? o with { Types = ColorsAmongGraveyardLegends } : o));
             }
             options.AddRange(GrantedManaOptions);
             return options;
@@ -273,6 +277,15 @@ public sealed class Card
 
     /// <summary>Colors among permanents its controller controls, as mana types (kept current by the engine).</summary>
     internal IReadOnlyList<Mana.ManaType> ColorsAmongYourPermanents { get; set; } = Array.Empty<Mana.ManaType>();
+
+    /// <summary>Colors among legendary creature cards in its controller's graveyard (worked out with continuous effects).</summary>
+    internal IReadOnlyList<Mana.ManaType> ColorsAmongGraveyardLegends { get; set; } = Array.Empty<Mana.ManaType>();
+
+    /// <summary>Card types it has protection from (layer 6, from effects).</summary>
+    public CardType ProtectionFromTypes { get; set; }
+
+    /// <summary>Optional actions limited to once each turn that were done this turn ("Do this only once each turn").</summary>
+    public HashSet<Abilities.Effect> DoneThisTurn { get; } = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>Types of mana its first mana ability can add.</summary>
     public IReadOnlyList<Mana.ManaType> ManaTypes => ManaOptions.FirstOrDefault()?.Types ?? Array.Empty<Mana.ManaType>();

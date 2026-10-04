@@ -21,6 +21,9 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
 
     /// <summary>The discarded cards must match this ("discard a legendary card with the same name as …").</summary>
     public ObjectFilter? DiscardFilter { get; init; }
+
+    /// <summary>"Exile three cards from your graveyard".</summary>
+    public int ExileFromGraveyard { get; init; }
 }
 
 /// <summary>

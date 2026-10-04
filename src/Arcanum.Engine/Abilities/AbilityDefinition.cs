@@ -61,6 +61,8 @@ public enum TargetRule
     SameGraveyard,
     /// <summary>The targets share a card type ("two target nonland permanents that share a card type").</summary>
     ShareCardType,
+    /// <summary>Different objects controlled by the same player ("another target creature that player controls").</summary>
+    SameController,
 }
 
 /// <summary>One mode of a modal spell or ability.</summary>
@@ -260,11 +262,28 @@ public enum TriggerEvent
     LeavesBattlefield,
     /// <summary>"Whenever you choose a creature as your Ring-bearer".</summary>
     RingBearerChosen,
+    /// <summary>"Whenever you create a token" (once per token).</summary>
+    TokenCreated,
+    /// <summary>"Whenever one or more [filter] you control attack a player": once per player attacked (amount: how many).</summary>
+    YouAttackPlayer,
+    /// <summary>"Whenever this creature deals damage to a [filter]" (subject: the creature dealt damage).</summary>
+    DealsDamageToCreature,
+    /// <summary>"Whenever a [filter] is dealt excess noncombat damage" (amount: the excess).</summary>
+    ExcessNoncombatDamage,
+    /// <summary>"Whenever [filter] becomes the target of a spell" (subject: that permanent).</summary>
+    BecomesTargetOfSpell,
+    /// <summary>"Whenever [filter] phases in".</summary>
+    PhasesIn,
+    /// <summary>"Whenever equipped creature blocks or becomes blocked by a creature" (once per such creature; subject: that creature).</summary>
+    EquippedBlocksOrBecomesBlocked,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
 public sealed record TriggeredAbility : AbilityDefinition
 {
+    /// <summary>For cast triggers: the spell must target something matching ("a spell that targets a creature you don't control").</summary>
+    public ObjectFilter? SpellTargets { get; init; }
+
     public required TriggerEvent Trigger { get; init; }
 
     /// <summary>Which objects the event must involve, for events about other objects (creature enters, spell cast...).</summary>
@@ -382,6 +401,21 @@ public sealed record ObjectFilter(
 
     /// <summary>Power exactly X ("target creature with power X").</summary>
     public bool PowerIsX { get; init; }
+
+    /// <summary>Power less than the source's ("with lesser power").</summary>
+    public bool LesserPowerThanSource { get; init; }
+
+    /// <summary>Power greater than the source's ("with greater power").</summary>
+    public bool GreaterPowerThanSource { get; init; }
+
+    /// <summary>Blocked, or was blocked by, a legendary creature this turn.</summary>
+    public bool BlockedOrBlockedByLegendaryThisTurn { get; init; }
+
+    /// <summary>Shares a color with a legendary creature the ability's controller controls.</summary>
+    public bool SharesColorWithYourLegendaryCreature { get; init; }
+
+    /// <summary>Doesn't share a creature type with a creature the ability's controller controls.</summary>
+    public bool NoSharedCreatureTypeWithYours { get; init; }
 
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 

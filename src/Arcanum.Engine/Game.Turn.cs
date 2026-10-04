@@ -17,6 +17,7 @@ public sealed partial class Game
         active.LandsPlayedThisTurn = 0;
         State.CreaturesDiedThisTurn = 0;
         State.PermanentsSacrificedThisTurn = 0;
+        State.BlocksThisTurn.Clear();
         foreach (var player in State.Players)
         {
             player.CreaturesDiedThisTurn = 0;
@@ -35,11 +36,14 @@ public sealed partial class Game
             player.GraveyardTypesUsedThisTurn = 0;
         }
         foreach (var permanent in State.PermanentsControlledBy(active.Id)) permanent.ControlledSinceTurnStart = true;
+        State.Goads.RemoveAll(g => g.Goader == active.Id); // "until your next turn"
+        State.LastingEffects.RemoveAll(e => e.UntilTurnOf == active.Id);
         active.Protected = false; // "protection from everything until your next turn"
         foreach (var card in State.Cards.Values)
         {
             card.ActivatedThisTurn.Clear();
             card.TriggeredThisTurn.Clear();
+            card.DoneThisTurn.Clear();
             card.LoyaltyActivatedThisTurn = false;
             card.ResolvedThisTurn.Clear();
             card.DamagedThisTurnBy.Clear();
@@ -111,6 +115,12 @@ public sealed partial class Game
                         permanent.Counters[Abilities.CounterKind.Stun]--;
                         continue;
                     }
+                    if (permanent.Has(Cards.Keyword.UntapsByRemovingCounter))
+                    {
+                        // "Remove a +1/+1 counter from it instead. If you do, untap it. (Otherwise, it doesn't untap.)"
+                        if (permanent.CounterCount(Abilities.CounterKind.PlusOnePlusOne) == 0) continue;
+                        permanent.Counters[Abilities.CounterKind.PlusOnePlusOne]--;
+                    }
                     permanent.Tapped = false;
                     Emit(new PermanentUntapped(permanent.Id));
                 }
@@ -151,7 +161,8 @@ public sealed partial class Game
         if (givesPriority && !State.IsGameOver) await RunPriorityAsync();
 
         if (step == Step.EndCombat) State.Combat = null;
-        foreach (var player in State.Players) player.ManaPool.Clear(endOfTurn: step == Step.Cleanup); // rule 500.4
+        foreach (var player in State.Players) // rule 500.4
+            player.ManaPool.Clear(endOfTurn: step == Step.Cleanup, keep: Has(player.Id, Cards.Replacements.KeepGreenMana) ? Mana.ManaType.Green : null);
     }
 
     private async Task CleanupAsync()

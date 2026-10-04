@@ -213,6 +213,10 @@ public sealed partial class Game
                         || (card.Definition.FlashIf is { } flashIf && Holds(flashIf, playerId, card))
                         || GrantedFlash(card, playerId);
         if (PaysLife(card) && State.GetPlayer(playerId).Life < card.Definition.ManaCost.ManaValue) return false;
+        // A legendary instant or sorcery needs a legendary creature or planeswalker (rule 205.4d).
+        if ((card.Definition.Supertypes & Supertype.Legendary) != 0 && (card.Is(CardType.Instant) || card.Is(CardType.Sorcery))
+            && !State.PermanentsControlledBy(playerId).Any(c => (c.Supertypes & Supertype.Legendary) != 0 && (c.IsCreature || c.Is(CardType.Planeswalker))))
+            return false;
         var cost = PaysLife(card) ? ManaCost.Zero : CastingCost(card).WithX(0);
         if (!timingOk && card.Definition.FlashExtraCost is { } flashExtra)
         {
@@ -233,7 +237,8 @@ public sealed partial class Game
 
     /// <summary>"Can be cast as though it had flash" from a permanent the caster controls ("the first creature spell you cast each turn").</summary>
     private bool GrantedFlash(Card card, PlayerId caster) =>
-        State.PermanentsControlledBy(caster).Any(p => p.Abilities.OfType<SpellCostReduction>().Any(r => r.GrantsFlash && ReductionApplies(r, p, card, caster)));
+        State.PermanentsControlledBy(caster).Concat(State.Emblems.Select(State.GetCard).Where(e => e.Owner == caster))
+            .Any(p => p.Abilities.OfType<SpellCostReduction>().Any(r => r.GrantsFlash && ReductionApplies(r, p, card, caster)));
 
     /// <summary>Whether a "spells you cast cost less" ability of <paramref name="permanent"/> applies to <paramref name="card"/>.</summary>
     private bool ReductionApplies(SpellCostReduction reduction, Card permanent, Card card, PlayerId caster) =>
@@ -655,7 +660,7 @@ public sealed partial class Game
 
     /// <summary>An activated ability that only adds mana and has no targets (rule 605.1a).</summary>
     private static bool IsManaAbility(ActivatedAbility ability) =>
-        ability.Targets.Count == 0 && ability.Cost.Loyalty is null && ability.Effects.Count > 0 && ability.Effects.All(e => e is AddMana or AddManaOfAnyColor);
+        ability.Targets.Count == 0 && ability.Cost.Loyalty is null && ability.Effects.Count > 0 && ability.Effects.All(e => e is AddMana or AddManaOfAnyColor or AddManaInAnyCombination);
 
     private bool Payable(PlayerId player, ManaCost cost, CardId? exclude, ManaPayment.OptionUsable? usable = null) =>
         cost.Variants().Any(v => ManaPayment.FindPlan(State, player, v, exclude, usable) is not null);
@@ -685,6 +690,7 @@ public sealed partial class Game
         var player = State.GetPlayer(playerId);
         if (player.Hand.Count(id => id != source && DiscardableFor(extra, id, playerId, source)) < extra.Discard) return false;
         if (extra.PayLife > player.Life) return false;
+        if (player.Graveyard.Count(id => id != source) < extra.ExileFromGraveyard) return false;
         if (extra.Sacrifice is { } filter && SacrificeCandidates(playerId, filter, source).Count < extra.SacrificeCount) return false;
         if (extra.TapCreatures is { } tapFilter && TapCandidates(playerId, tapFilter, source).Count < extra.TapCount) return false;
         if (extra.CrewPower > 0 && TapCandidates(playerId, new ObjectFilter(CardType.Creature, Other: true), source).Sum(c => c.Power) < extra.CrewPower) return false;
@@ -716,6 +722,14 @@ public sealed partial class Game
         if (extra is null) return Array.Empty<CardId>();
         var player = State.GetPlayer(playerId);
         if (extra.PayLife > 0) ChangeLife(playerId, -extra.PayLife);
+        if (extra.ExileFromGraveyard > 0)
+        {
+            var cards = player.Graveyard.Where(id => id != source).ToList();
+            var exiled = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId), new CardChoiceRequest($"Exile {extra.ExileFromGraveyard} cards from your graveyard", source,
+                cards.Select(id => ViewBuilder.Card(State, id, playerId)).ToList(), extra.ExileFromGraveyard, extra.ExileFromGraveyard, CardChoicePurpose.Sacrifice));
+            Require(exiled.Count == extra.ExileFromGraveyard && exiled.Distinct().Count() == exiled.Count && exiled.All(cards.Contains), "Exile cards from your graveyard.");
+            foreach (var id in exiled) MoveCard(id, Zone.Exile);
+        }
         if (extra.TapCreatures is { } tapFilter || extra.CrewPower > 0)
         {
             var candidates = TapCandidates(playerId, extra.TapCreatures ?? new ObjectFilter(CardType.Creature, Other: true), source);
@@ -952,6 +966,7 @@ public sealed partial class Game
                     wasCast: card.Types.IsPermanent() && !card.Definition.IsToken);
                 if (card.Zone == Zone.Battlefield && hasteOnEnter)
                     State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });
+                if (card.Zone == Zone.Battlefield) card.CastX = spell.X;
                 if (card.Zone == Zone.Battlefield && card.Definition.EntersWithXCounters && spell.X > 0)
                     PutCounters(card, CounterKind.PlusOnePlusOne, spell.X, spell.Controller);
                 Emit(new SpellResolved(spell.Card));

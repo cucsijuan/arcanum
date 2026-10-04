@@ -16,6 +16,9 @@ public sealed record BlockRequest(
     /// <summary>Attackers that must be blocked if able (rule 509.1c: obey as many such requirements as possible).</summary>
     public IReadOnlyList<CardId> MustBeBlocked { get; init; } = Array.Empty<CardId>();
 
+    /// <summary>Attackers that can't be blocked by more than this many creatures.</summary>
+    public IReadOnlyDictionary<CardId, int> MaximumBlockers { get; init; } = new Dictionary<CardId, int>();
+
     private int? _maxRequirements;
 
     /// <summary>The most "must be blocked" requirements any legal declaration can obey.</summary>
@@ -88,6 +91,12 @@ public sealed record BlockRequest(
                 return false;
             }
         }
+        foreach (var (attacker, maximum) in MaximumBlockers)
+            if (blocks.Count(b => b.Attacker == attacker) > maximum)
+            {
+                reason = $"That attacker can't be blocked by more than {maximum} creature{(maximum == 1 ? "" : "s")}.";
+                return false;
+            }
         if (MustBeBlocked.Count > 0 && ObeyedRequirements(blocks) < MaxRequirements)
         {
             reason = "Some attackers must be blocked if able.";

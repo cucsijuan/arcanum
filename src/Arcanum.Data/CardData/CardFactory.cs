@@ -33,7 +33,7 @@ public static partial class CardFactory
     {
         "Scry", "Surveil", "Fight", "Mill", "Treasure", "Food", "Investigate",
         "Raid", "Landfall", "Morbid", "Threshold", "Ferocious", "Hexproof from", "Affinity", "Double", "Formidable", "Alliance", "Crew", "Protection", "Vivid",
-        "Amass", "Recruit", "Gift", "Behold", "Landwalk",
+        "Amass", "Recruit", "Gift", "Behold", "Landwalk", "Goad",
         // Pairing rules for two commanders (deck construction); "Partner with" also has a trigger derived below.
         "Partner", "Partner with", "Friends forever", "Choose a background", "Doctor's companion",
     };

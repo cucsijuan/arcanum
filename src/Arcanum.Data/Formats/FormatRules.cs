@@ -104,9 +104,8 @@ public static class DeckValidator
                 issues.Add(new(IssueSeverity.Error, $"{name} is {(status == "banned" ? "banned" : "not legal")} in {format.Name}.", name));
             else if (status == "restricted" && copies > 1)
                 issues.Add(new(IssueSeverity.Error, $"{name} is restricted to one copy in {format.Name}.", name));
-            else if (!(basic && format.BasicLandsUnlimited) && copies > format.MaxCopies
-                     && !entry.Record.OracleText.Contains("A deck can have any number of cards named", StringComparison.Ordinal))
-                issues.Add(new(IssueSeverity.Error, $"{copies} copies of {name}; at most {format.MaxCopies}.", name));
+            else if (!(basic && format.BasicLandsUnlimited) && copies > CopyLimit(entry, format))
+                issues.Add(new(IssueSeverity.Error, $"{copies} copies of {name}; at most {CopyLimit(entry, format)}.", name));
 
             if (entry.Support != CardSupport.Full)
                 issues.Add(new(IssueSeverity.Warning, $"{name} isn't fully supported yet; some of its rules won't work.", name));
@@ -168,6 +167,22 @@ public static class DeckValidator
             if (outside.Count > 0)
                 issues.Add(new(IssueSeverity.Error, $"{card.Name} is outside your commander's color identity ({string.Join("", outside)}).", card.Name));
         }
+    }
+
+    private static readonly string[] NumberWords = { "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten" };
+
+    /// <summary>
+    /// How many copies a deck may have: the format's limit, unless the card says "A deck can have any number of cards
+    /// named …" or "A deck can have up to nine cards named …".
+    /// </summary>
+    private static int CopyLimit(CardEntry entry, FormatRules format)
+    {
+        var text = entry.Record.OracleText;
+        if (text.Contains("A deck can have any number of cards named", StringComparison.Ordinal)) return int.MaxValue;
+        var m = System.Text.RegularExpressions.Regex.Match(text, @"A deck can have up to (\w+) cards named");
+        if (m.Success && Array.IndexOf(NumberWords, m.Groups[1].Value.ToLowerInvariant()) is var n and > 0)
+            return format.MaxCopies == 1 ? 1 : n; // singleton formats still allow one
+        return format.MaxCopies;
     }
 
     /// <summary>Whether two cards can be commanders together (rules 702.124 and 702.124h–k).</summary>

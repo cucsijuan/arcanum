@@ -157,5 +157,8 @@ public sealed record SourceAttackedThisTurn : Condition;
 /// <summary>"If the sacrificed creature was legendary": a permanent sacrificed for this spell or ability matches (as it last existed).</summary>
 public sealed record SacrificedMatches(ObjectFilter Filter) : Condition;
 
+/// <summary>"As long as [equipped creature] is blocking or blocked by a [filter]".</summary>
+public sealed record EquippedInCombatWith(ObjectFilter Filter) : Condition;
+
 /// <summary>"If you control a creature with the greatest power among creatures on the battlefield" (ties included).</summary>
 public sealed record YouControlGreatestPower : Condition;

@@ -23,6 +23,8 @@ public enum TargetKind
     PlayerOrPlaneswalker,
     /// <summary>A spell or an activated/triggered ability on the stack.</summary>
     SpellOrAbility,
+    /// <summary>"Target spell or nonland permanent": a spell on the stack or a permanent.</summary>
+    SpellOrPermanent,
     /// <summary>A card in a graveyard ("target creature card from your graveyard": controller filter = owner).</summary>
     GraveyardCard,
 }

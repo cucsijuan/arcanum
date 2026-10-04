@@ -177,7 +177,8 @@ public sealed partial class Game
             // "If you would draw a card except the first one you draw in each of your draw steps, draw two cards instead."
             bool firstInDrawStep = State.Step == Step.Draw && State.ActivePlayer == playerId && !player.DrewInDrawStep;
             if (State.Step == Step.Draw && State.ActivePlayer == playerId) player.DrewInDrawStep = true;
-            int cards = !firstInDrawStep && Has(playerId, Cards.Replacements.DrawTwoExceptFirstInDrawStep) ? 2 : 1;
+            int cards = (!firstInDrawStep && Has(playerId, Cards.Replacements.DrawTwoExceptFirstInDrawStep))
+                        || (player.Hand.Count == 0 && Has(playerId, Cards.Replacements.DrawTwoWithEmptyHand)) ? 2 : 1;
             for (int n = 0; n < cards; n++)
             {
                 if (player.Library.Count == 0)

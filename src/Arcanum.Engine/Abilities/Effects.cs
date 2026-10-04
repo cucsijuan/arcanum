@@ -6,7 +6,11 @@ namespace Arcanum.Engine.Abilities;
 /// <summary>One instruction carried out when a spell or ability resolves (rule 608.2).</summary>
 public abstract record Effect;
 
-public sealed record DealDamage(Quantity Amount, Subject To) : Effect;
+public sealed record DealDamage(Quantity Amount, Subject To) : Effect
+{
+    /// <summary>"Excess damage is dealt to that creature's controller instead".</summary>
+    public bool ExcessToController { get; init; }
+}
 public sealed record DrawCards(Quantity Count, Subject Who) : Effect;
 public sealed record GainLife(Quantity Amount, Subject Who) : Effect;
 public sealed record LoseLife(Quantity Amount, Subject Who) : Effect;
@@ -47,6 +51,12 @@ public sealed record PumpUntilEndOfTurn(Quantity Power, Quantity Toughness, Subj
 
     /// <summary>Lasts as long as the source stays on the battlefield instead of until end of turn.</summary>
     public bool WhileSourceRemains { get; init; }
+
+    /// <summary>"For as long as you control this Saga": also ends once the ability's controller stops controlling the source.</summary>
+    public bool WhileYouControlSource { get; init; }
+
+    /// <summary>Lasts until the ability's controller's next turn instead of until end of turn.</summary>
+    public bool UntilYourNextTurn { get; init; }
 }
 
 /// <summary>Put +1/+1 (or -1/-1) counters on a creature.</summary>
@@ -55,6 +65,9 @@ public sealed record AddCounters(Quantity Count, Subject What, CounterKind Kind 
 /// <param name="Tapped">The tokens enter tapped.</param>
 public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject Controller, bool Tapped = false) : Effect
 {
+    /// <summary>"Sacrifice that token at end of combat".</summary>
+    public bool SacrificeAtEndOfCombat { get; init; }
+
     /// <summary>"Tapped and attacking": they attack the player (or planeswalker) the triggering creature attacks.</summary>
     public bool Attacking { get; init; }
 
@@ -81,11 +94,18 @@ public sealed record Discard(Quantity Count, Subject Who) : Effect;
 public sealed record IfThen(Condition Condition, IReadOnlyList<Effect> Then, IReadOnlyList<Effect>? Else = null) : Effect;
 
 /// <summary>"You may [effects]": the controller chooses whether to carry them out as the ability resolves.</summary>
-public sealed record MayDo(string Prompt, IReadOnlyList<Effect> Effects) : Effect;
+public sealed record MayDo(string Prompt, IReadOnlyList<Effect> Effects) : Effect
+{
+    /// <summary>"Do this only once each turn": not offered again this turn once done.</summary>
+    public bool OncePerTurn { get; init; }
+}
 
 /// <summary>Put cards (from a graveyard, usually) onto the battlefield; "under your control" unless <paramref name="UnderOwnersControl"/>.</summary>
 public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool UnderOwnersControl = false) : Effect
 {
+    /// <summary>"Tapped and attacking": it attacks a player or planeswalker its controller chooses (rule 508.4).</summary>
+    public bool Attacking { get; init; }
+
     /// <summary>An Aura returned "attached to" this (a target creature).</summary>
     public Subject? AttachTo { get; init; }
 
@@ -154,7 +174,11 @@ public sealed record EffectChoice(string Text, IReadOnlyList<Effect> Effects);
 public sealed record ChooseOneEffect(IReadOnlyList<EffectChoice> Choices) : Effect;
 
 /// <summary>The spell's controller gains control of the subject (until end of turn when <paramref name="UntilEndOfTurn"/>).</summary>
-public sealed record GainControl(Subject What, bool UntilEndOfTurn = false, Subject? NewController = null) : Effect;
+public sealed record GainControl(Subject What, bool UntilEndOfTurn = false, Subject? NewController = null) : Effect
+{
+    /// <summary>"For as long as you control this creature": ends once the source leaves or its controller changes (rule 611.2b).</summary>
+    public bool WhileYouControlSource { get; init; }
+}
 
 /// <summary>
 /// Effects of one chosen mode of a modal spell: their target indices start at <paramref name="TargetOffset"/> in the
@@ -190,6 +214,9 @@ public sealed record PreventCombatDamageTo(Subject What) : Effect;
 /// <summary>Look at the top cards of your library; take up to <paramref name="Take"/> matching ones, the rest go to the bottom (or graveyard).</summary>
 public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, State.Zone TakeTo, bool RestToGraveyard = false) : Effect
 {
+    /// <summary>How many cards, worked out on resolution ("the top X cards, where X is that creature's mana value").</summary>
+    public Quantity? CountFrom { get; init; }
+
     /// <summary>The cards taken onto the battlefield enter tapped.</summary>
     public bool Tapped { get; init; }
 
@@ -252,7 +279,32 @@ public sealed record ReanimateAll(Subject Who, ObjectFilter Filter) : Effect
 public sealed record BounceAll(ObjectFilter Filter, Subject? RelativeTo = null) : Effect;
 
 /// <summary>"You may [pay a cost]. If you do, [effects]."</summary>
-public sealed record MayPay(string Prompt, Mana.ManaCost? Mana, ExtraCost? Extra, IReadOnlyList<Effect> Effects) : Effect;
+public sealed record MayPay(string Prompt, Mana.ManaCost? Mana, ExtraCost? Extra, IReadOnlyList<Effect> Effects) : Effect
+{
+    /// <summary>"You may sacrifice a Food or pay {2}{W}": the player pays one of these instead.</summary>
+    public IReadOnlyList<CostOption>? Options { get; init; }
+
+    /// <summary>"Otherwise, …": what happens when nothing is paid.</summary>
+    public IReadOnlyList<Effect>? Else { get; init; }
+}
+
+/// <summary>"You may reveal the top card of your library. If it's a [filter] card, [effects]" (the card is "found").</summary>
+public sealed record RevealTop(ObjectFilter Filter, bool Optional, IReadOnlyList<Effect> Effects) : Effect;
+
+/// <summary>"Damage can't be prevented this turn."</summary>
+public sealed record DamageCantBePreventedThisTurn : Effect;
+
+/// <summary>"Goad target creature" (rule 701.15): it attacks each combat if able, and a player other than the goader if able, until the goader's next turn.</summary>
+public sealed record Goad(Subject What) : Effect;
+
+/// <summary>"Gains protection from the card type of your choice until end of turn".</summary>
+public sealed record ProtectionFromChosenType(Subject What) : Effect;
+
+/// <summary>"Gain protection from each of that creature's colors until end of turn".</summary>
+public sealed record ProtectionFromColorsOf(Subject Of, Subject What) : Effect;
+
+/// <summary>"If its controller has more than four cards in hand, they exile cards from their hand equal to the difference".</summary>
+public sealed record ExileHandDownTo(int Keep, Subject Who) : Effect;
 
 /// <summary>"You may pay {X}. When you do, [effects]" — the effects use the X paid.</summary>
 public sealed record MayPayX(string Prompt, IReadOnlyList<Effect> Effects) : Effect;
@@ -352,6 +404,15 @@ public sealed record DistributeCounters(int Total) : Effect;
 /// <summary>Reveal cards from the top of your library until a matching card; put it into <paramref name="To"/>, the rest on the bottom in a random order.</summary>
 public sealed record RevealUntil(ObjectFilter Filter, State.Zone To) : Effect
 {
+    /// <summary>Until this many matching cards are revealed ("until you reveal X land cards").</summary>
+    public Quantity? CountFrom { get; init; }
+
+    /// <summary>The cards found enter tapped.</summary>
+    public bool Tapped { get; init; }
+
+    /// <summary>The other revealed cards go to the graveyard (instead of the bottom in a random order).</summary>
+    public bool RestToGraveyard { get; init; }
+
     /// <summary>Whose library ("that player exiles cards from the top of their library"): the controller's by default.</summary>
     public Subject? From { get; init; }
 
@@ -372,7 +433,11 @@ public sealed record Unless(Subject Who, IReadOnlyList<ExtraCost> Options, IRead
 public sealed record OpponentMaySacrifice(ObjectFilter Filter, IReadOnlyList<Effect> Effects) : Effect;
 
 /// <summary>Look at the top N, split them into a face-down and a face-up pile; an opponent picks the pile you put into your hand, the other goes to your graveyard.</summary>
-public sealed record Piles(int Count) : Effect;
+public sealed record Piles(int Count) : Effect
+{
+    /// <summary>An opponent separates the piles and the controller chooses one ("they … separate them … Put one pile into your hand").</summary>
+    public bool OpponentSeparates { get; init; }
+}
 
 /// <summary>"You win the game" (when the condition holds).</summary>
 public sealed record WinGame : Effect;
@@ -393,7 +458,11 @@ public sealed record AdditionalCombat(bool UntapCreatures) : Effect;
 public sealed record ExtraTurn(Subject Who) : Effect;
 
 /// <summary>Copy the target spell (or the spell the trigger was about); the copy's controller may choose new targets.</summary>
-public sealed record CopySpell(Subject What, Quantity Count) : Effect;
+public sealed record CopySpell(Subject What, Quantity Count) : Effect
+{
+    /// <summary>"Except the copy isn't legendary".</summary>
+    public bool NotLegendary { get; init; }
+}
 
 /// <summary>Add one mana of any color (the controller chooses).</summary>
 public sealed record AddManaOfAnyColor(int Count = 1) : Effect;
@@ -419,7 +488,17 @@ public sealed record GrantFlashback(Subject What) : Effect;
 public sealed record PlayableFromGraveyardThisTurn(Subject What) : Effect;
 
 /// <summary>"You lose the game."</summary>
-public sealed record LoseGame : Effect;
+public sealed record LoseGame : Effect
+{
+    /// <summary>Who loses: the controller by default ("that player loses the game").</summary>
+    public Subject? Who { get; init; }
+}
+
+/// <summary>"Remove it from combat" (rule 506.4).</summary>
+public sealed record RemoveFromCombat(Subject What) : Effect;
+
+/// <summary>"It loses all abilities until end of turn".</summary>
+public sealed record LoseAllAbilitiesUntilEndOfTurn(Subject What) : Effect;
 
 /// <summary>"Change the target of target spell or ability with a single target" (to another legal one, chosen by the controller).</summary>
 public sealed record ChangeTarget(Subject What) : Effect;
@@ -489,7 +568,7 @@ public sealed record RevealTopPutRandom(int Count, ObjectFilter Filter, State.Zo
 public sealed record SearchHandOrLibrary(ObjectFilter Filter, State.Zone To) : Effect;
 
 /// <summary>Add mana in any combination of colors, spendable only on spells matching <paramref name="OnlyFor"/>.</summary>
-public sealed record AddManaInAnyCombination(int Count, ObjectFilter? OnlyFor) : Effect;
+public sealed record AddManaInAnyCombination(Quantity Count, ObjectFilter? OnlyFor) : Effect;
 
 /// <summary>"You may behold a [filter]" (choose one you control or reveal one from your hand); if you do, <paramref name="Effects"/>.</summary>
 public sealed record Behold(ObjectFilter Filter, IReadOnlyList<Effect> Effects) : Effect;
@@ -516,7 +595,16 @@ public sealed record CascadeEffect : Effect;
 public sealed record CastFromHandFree(ObjectFilter Filter, Quantity MaxManaValue) : Effect;
 
 /// <summary>"Put any number of [filter] cards from your hand onto the battlefield."</summary>
-public sealed record PutFromHand(ObjectFilter Filter) : Effect;
+public sealed record PutFromHand(ObjectFilter Filter) : Effect
+{
+    /// <summary>At most one card ("you may put a creature card … onto the battlefield").</summary>
+    public bool One { get; init; }
+
+    public bool Tapped { get; init; }
+
+    /// <summary>"Tapped and attacking".</summary>
+    public bool Attacking { get; init; }
+}
 
 /// <summary>"Choose up to N [filter], then destroy the rest."</summary>
 public sealed record DestroyAllButChosen(ObjectFilter Filter, int Keep) : Effect;

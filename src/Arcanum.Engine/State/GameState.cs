@@ -43,7 +43,19 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
 
     /// <summary>Ends when this permanent (id, version) leaves the battlefield ("for as long as this Saga remains").</summary>
     public (CardId Card, int Version)? WhileSource { get; init; }
+
+    /// <summary>Also ends once this player no longer controls <see cref="WhileSource"/> ("for as long as you control").</summary>
+    public PlayerId? WhileControlledBy { get; init; }
+
+    /// <summary>Ends as this player's next turn begins ("until your next turn").</summary>
+    public PlayerId? UntilTurnOf { get; init; }
+
+    /// <summary>Protection from these card types (layer 6).</summary>
+    public Cards.CardType ProtectionFromTypes { get; init; }
 }
+
+/// <summary>"Gain control of it for as long as you control [source]".</summary>
+public sealed record LastingControlEffect(CardId Card, int Version, PlayerId NewController, CardId Source, int SourceVersion);
 
 /// <summary>Control gained "until end of turn": returned to <paramref name="Original"/> at cleanup.</summary>
 public sealed record TemporaryControlEffect(CardId Card, int Version, PlayerId Original);
@@ -164,6 +176,18 @@ public sealed class GameState
 
     /// <summary>Permanents sacrificed this turn by all players.</summary>
     public int PermanentsSacrificedThisTurn { get; set; }
+
+    /// <summary>Blocks declared this turn: (blocker, its version, attacker, its version).</summary>
+    public List<(CardId Blocker, int BlockerVersion, CardId Attacker, int AttackerVersion)> BlocksThisTurn { get; } = new();
+
+    /// <summary>The turn during which damage can't be prevented.</summary>
+    public int DamageCantBePreventedTurn { get; set; } = -1;
+
+    /// <summary>Goaded creatures (card, version) and who goaded them, until that player's next turn (rule 701.15).</summary>
+    public List<(CardId Card, int Version, PlayerId Goader)> Goads { get; } = new();
+
+    /// <summary>Control effects that last as long as a player controls their source.</summary>
+    public List<LastingControlEffect> LastingControl { get; } = new();
 
     public bool IsGameOver { get; set; }
     public PlayerId? Winner { get; set; }

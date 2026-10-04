@@ -113,6 +113,9 @@ public sealed record Quantity(int Value, QuantityKind Kind = QuantityKind.Fixed,
     /// <summary>For <see cref="QuantityKind.PermanentCount"/>: count only what the player the trigger was about controls.</summary>
     public bool ControlledByTriggeredPlayer { get; init; }
 
+    /// <summary>For <see cref="QuantityKind.GraveyardCount"/>: the graveyard of the player the effect is affecting ("in that player's graveyard").</summary>
+    public bool OfAffectedPlayer { get; init; }
+
     /// <summary>For <see cref="QuantityKind.Sum"/>: the quantities added together.</summary>
     public IReadOnlyList<Quantity>? Parts { get; init; }
 

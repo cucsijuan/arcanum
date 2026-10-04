@@ -9,7 +9,7 @@ public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLif
 
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]
-public enum Replacements
+public enum Replacements : long
 {
     None = 0,
     /// <summary>Sources you control deal double damage to opponents and their permanents.</summary>
@@ -62,6 +62,18 @@ public enum Replacements
     FoodAlsoTreasure = 8388608,
     /// <summary>You may look at the top card of your library and cast creature spells from there (paying normally).</summary>
     CastCreaturesFromLibraryTop = 16777216,
+    /// <summary>If one or more tokens would be created under your control, those tokens plus an additional Food token are created instead.</summary>
+    ExtraFoodWithTokens = 1L << 25,
+    /// <summary>If you would draw a card while you have no cards in hand, draw two cards instead.</summary>
+    DrawTwoWithEmptyHand = 1L << 26,
+    /// <summary>If you would gain life while you have 5 or less life, you gain twice that much life instead.</summary>
+    DoubleLifeGainAtFiveOrLess = 1L << 27,
+    /// <summary>You don't lose unspent green mana as steps and phases end.</summary>
+    KeepGreenMana = 1L << 28,
+    /// <summary>If +1/+1 counters would be put on an Army, Goblin, or Orc you control, that many plus one are put on it instead.</summary>
+    ExtraCounterOnArmiesGoblinsOrcs = 1L << 29,
+    /// <summary>During your turn, prevent all damage that would be dealt to this permanent.</summary>
+    PreventDamageToSelfDuringYourTurn = 1L << 30,
 }
 
 /// <summary>
@@ -173,6 +185,9 @@ public sealed record CardDefinition
 
     /// <summary>"This spell can't be countered."</summary>
     public bool CantBeCountered { get; init; }
+
+    /// <summary>"This spell can't be copied."</summary>
+    public bool CantBeCopied { get; init; }
 
     /// <summary>"You have hexproof." (while this permanent is on the battlefield)</summary>
     public bool GivesControllerHexproof { get; init; }

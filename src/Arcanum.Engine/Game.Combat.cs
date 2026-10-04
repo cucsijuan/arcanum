@@ -36,13 +36,22 @@ public sealed partial class Game
             Require(declared.All(d => d.Planeswalker is not { } pw
                                       || State.GetCard(pw) is { Zone: Zone.Battlefield } w && w.Is(CardType.Planeswalker) && w.Controller == d.Defender),
                 "A planeswalker can only be attacked through its controller.");
-            // "Attacks each combat if able" (508.1d): such creatures left out attack anyway.
-            var mustAttack = possible.Where(id => State.GetCard(id).Definition.AttacksEachCombat && declared.All(d => d.Attacker != id)).ToList();
+            // "Attacks each combat if able" (508.1d): such creatures left out attack anyway. A goaded creature also attacks
+            // a player other than the one who goaded it if able (rule 701.15b).
+            List<PlayerId> Goaders(CardId id) => State.Goads.Where(g => g.Card == id && g.Version == State.GetCard(id).Version).Select(g => g.Goader).ToList();
+            PlayerId DefenderFor(CardId id, PlayerId preferred)
+            {
+                var goaders = Goaders(id);
+                if (goaders.Count == 0 || !goaders.Contains(preferred)) return preferred;
+                return defenders.FirstOrDefault(d => !goaders.Contains(d)) is var other && defenders.Any(d => !goaders.Contains(d)) ? other : preferred;
+            }
+            var mustAttack = possible.Where(id => (State.GetCard(id).Definition.AttacksEachCombat || Goaders(id).Count > 0) && declared.All(d => d.Attacker != id)).ToList();
             if (mustAttack.Count > 0)
             {
                 var defender = declared.Count > 0 ? declared[0].Defender : defenders[0];
                 declared = declared.Concat(mustAttack.Select(id => new AttackDeclaration(id, defender))).ToList();
             }
+            declared = declared.Select(d => Goaders(d.Attacker).Count > 0 && d.Planeswalker is null ? d with { Defender = DefenderFor(d.Attacker, d.Defender) } : d).ToList();
 
             // "Creatures can't attack you unless their controller pays {1} for each of those creatures" (rule 508.1g–h): the
             // costs are paid as attackers are declared; a declaration whose costs aren't paid is illegal and is made again.
@@ -120,6 +129,7 @@ public sealed partial class Game
         && !attacker.UnblockableBy.Contains(blocker.Controller)
         && !State.CantBlockThisTurn.Any(r => r.Turn == State.TurnNumber && Matches(r.Filter with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, null, r.Controller))
         && !Landwalks.Any(w => attacker.Has(w.Keyword) && State.PermanentsControlledBy(blocker.Controller).Any(c => c.Is(CardType.Land) && c.HasSubtype(w.Land)))
+        && !(attacker.Has(Keyword.NonbasicLandwalk) && State.PermanentsControlledBy(blocker.Controller).Any(c => c.Is(CardType.Land) && (c.Supertypes & Supertype.Basic) == 0))
         && !(IsRingBearer(attacker, 1) && blocker.Power > attacker.Power) // the Ring, level 1
         && !(attacker.Definition.CantBeBlockedBy is { } restriction
              && Matches(restriction with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, attacker, attacker.Controller));
@@ -132,6 +142,9 @@ public sealed partial class Game
     /// <summary>Whether the creature is its controller's Ring-bearer and the Ring has tempted them at least <paramref name="level"/> times.</summary>
     private bool IsRingBearer(Card card, int level) =>
         State.GetPlayer(card.Controller) is { RingBearer: { } bearer } p && bearer.Card == card.Id && bearer.Version == card.Version && p.RingLevel >= level;
+
+    /// <summary>The combat damage a creature assigns: its power, or its toughness when it says so (rule 510.1c).</summary>
+    private static int CombatDamageOf(Card creature) => creature.Has(Keyword.AssignsDamageByToughness) ? creature.Toughness : creature.Power;
 
     /// <summary>Fewest creatures that can block it: two with menace, or more ("except by three or more creatures").</summary>
     private static int MinimumBlockersOf(Card attacker) => Math.Max(attacker.Has(Keyword.Menace) ? 2 : 1, attacker.Definition.MinimumBlockers);
@@ -157,6 +170,7 @@ public sealed partial class Game
                 attackers.Where(a => MinimumBlockersOf(a) > 1).ToDictionary(a => a.Id, MinimumBlockersOf)) // menace, 702.111b
             {
                 MustBeBlocked = attackers.Where(a => a.Has(Keyword.MustBeBlocked)).Select(a => a.Id).ToList(),
+                MaximumBlockers = attackers.Where(a => a.Has(Keyword.CantBeBlockedByMoreThanOne)).ToDictionary(a => a.Id, _ => 1),
             };
 
             var declared = await ControllerOf(defender).DeclareBlockersAsync(ViewFor(defender), request);
@@ -169,7 +183,13 @@ public sealed partial class Game
                 attack.Blockers.Add(b.Blocker);
                 if (!attack.IsBlocked) newlyBlocked.Add(b.Attacker);
                 attack.IsBlocked = true;
+                State.BlocksThisTurn.Add((b.Blocker, State.GetCard(b.Blocker).Version, b.Attacker, State.GetCard(b.Attacker).Version));
                 Emit(new BlockerDeclared(b.Blocker, b.Attacker));
+                // "Whenever equipped creature blocks or becomes blocked by a creature": once for each creature on the other side.
+                foreach (var (equippedOne, other) in new[] { (b.Blocker, b.Attacker), (b.Attacker, b.Blocker) })
+                    foreach (var equipment in State.Battlefield.Select(State.GetCard).Where(e => e.AttachedTo == equippedOne).ToList())
+                        Queue(equipment.Id, Abilities.TriggerEvent.EquippedBlocksOrBecomesBlocked, equipment.Controller,
+                            new TriggerInfo(other, State.GetCard(other).Version, State.GetCard(other).Controller));
                 // The Ring, level 3: the blocker's controller sacrifices it at end of combat.
                 if (IsRingBearer(State.GetCard(b.Attacker), 3)) State.SacrificeAtEndOfCombat.Add((b.Blocker, State.GetCard(b.Blocker).Version));
             }
@@ -218,7 +238,7 @@ public sealed partial class Game
         {
             var attacker = State.GetCard(attack.Attacker);
             if (attacker.Zone != Zone.Battlefield || !DealsDamageNow(attacker)) continue;
-            int power = attacker.Power;
+            int power = CombatDamageOf(attacker);
             if (power <= 0) continue;
 
             if (!attack.IsBlocked)
@@ -247,8 +267,8 @@ public sealed partial class Game
             var attacker = State.GetCard(attack.Attacker);
             if (attacker.Zone != Zone.Battlefield) continue;
             foreach (var blocker in attack.Blockers.Select(State.GetCard))
-                if (blocker.Zone == Zone.Battlefield && blocker.Power > 0 && DealsDamageNow(blocker))
-                    toCards.Add((blocker, attacker, blocker.Power));
+                if (blocker.Zone == Zone.Battlefield && CombatDamageOf(blocker) > 0 && DealsDamageNow(blocker))
+                    toCards.Add((blocker, attacker, CombatDamageOf(blocker)));
         }
 
         // All combat damage is dealt simultaneously (rule 510.2).

@@ -53,11 +53,13 @@ public sealed class ManaPool
     }
 
     /// <summary>Empties the pool between steps (rule 500.4), keeping mana that lasts until end of turn unless <paramref name="endOfTurn"/>.</summary>
-    public void Clear(bool endOfTurn = true)
+    /// <param name="keep">Mana of this type isn't lost ("you don't lose unspent green mana as steps and phases end").</param>
+    public void Clear(bool endOfTurn = true, ManaType? keep = null)
     {
         if (endOfTurn) Array.Clear(_untilEndOfTurn);
-        for (int i = 0; i < _amounts.Length; i++) _amounts[i] = _untilEndOfTurn[i];
-        _special.Clear();
+        for (int i = 0; i < _amounts.Length; i++)
+            if (keep is not { } kept || (int)kept != i) _amounts[i] = Math.Max(_untilEndOfTurn[i], 0);
+        _special.RemoveAll(u => keep is not { } k || u.Type != k);
     }
 
     public ManaPool Clone()

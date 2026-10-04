@@ -35,6 +35,9 @@ public sealed record ManaOption(IReadOnlyList<ManaType> Types, int Amount = 1, O
     /// <summary>Its types are the colors among permanents its controller controls ("for each color among permanents you control").</summary>
     public bool ColorsAmongYourPermanents { get; init; }
 
+    /// <summary>Its types are the colors among legendary creature cards in its controller's graveyard.</summary>
+    public bool ColorsAmongLegendaryCreatureCardsInGraveyard { get; init; }
+
     /// <summary>How many mana one activation adds.</summary>
     public int Produces => OneOfEach ? Types.Count : Amount;
 }

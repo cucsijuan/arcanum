@@ -56,6 +56,14 @@ public enum Keyword
     Plainswalk,
     /// <summary>When cast, exile cards from the top until a cheaper nonland card, which may be cast free (rule 702.85).</summary>
     Cascade,
+    /// <summary>"Can't be blocked by more than one creature."</summary>
+    CantBeBlockedByMoreThanOne,
+    /// <summary>Nonbasic landwalk (rule 702.14c): can't be blocked as long as the defending player controls a nonbasic land.</summary>
+    NonbasicLandwalk,
+    /// <summary>"If this creature would untap during your untap step, remove a +1/+1 counter from it instead. If you do, untap it."</summary>
+    UntapsByRemovingCounter,
+    /// <summary>"Assigns combat damage equal to its toughness rather than its power" (rule 510.1c).</summary>
+    AssignsDamageByToughness,
 }
 
 public static class Keywords
@@ -91,6 +99,10 @@ public static class Keywords
         Keyword.ProtectionFromRed => "Protection from red",
         Keyword.ProtectionFromGreen => "Protection from green",
         Keyword.MustBeBlocked => "Must be blocked",
+        Keyword.CantBeBlockedByMoreThanOne => "Can't be blocked by more than one creature",
+        Keyword.NonbasicLandwalk => "Nonbasic landwalk",
+        Keyword.UntapsByRemovingCounter => "Untaps only by removing a +1/+1 counter",
+        Keyword.AssignsDamageByToughness => "Assigns combat damage equal to its toughness",
         _ => keyword.ToString(),
     };
 
