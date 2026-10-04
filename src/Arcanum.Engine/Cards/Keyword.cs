@@ -36,6 +36,12 @@ public enum Keyword
     MustBeBlocked,
     /// <summary>Protection from everything (rule 702.16): can't be targeted, blocked, damaged, enchanted or equipped.</summary>
     ProtectionFromEverything,
+    /// <summary>Protection from a color (rule 702.16): the same, against sources of that color.</summary>
+    ProtectionFromWhite,
+    ProtectionFromBlue,
+    ProtectionFromBlack,
+    ProtectionFromRed,
+    ProtectionFromGreen,
 }
 
 public static class Keywords
@@ -65,8 +71,20 @@ public static class Keywords
         Keyword.CantAttack => "Can't attack",
         Keyword.DoesntUntap => "Doesn't untap",
         Keyword.ProtectionFromEverything => "Protection from everything",
+        Keyword.ProtectionFromWhite => "Protection from white",
+        Keyword.ProtectionFromBlue => "Protection from blue",
+        Keyword.ProtectionFromBlack => "Protection from black",
+        Keyword.ProtectionFromRed => "Protection from red",
+        Keyword.ProtectionFromGreen => "Protection from green",
         Keyword.MustBeBlocked => "Must be blocked",
         _ => keyword.ToString(),
+    };
+
+    /// <summary>The protection keyword for a color letter (W, U, B, R, G).</summary>
+    public static Keyword? ProtectionFrom(string color) => color switch
+    {
+        "W" => Keyword.ProtectionFromWhite, "U" => Keyword.ProtectionFromBlue, "B" => Keyword.ProtectionFromBlack,
+        "R" => Keyword.ProtectionFromRed, "G" => Keyword.ProtectionFromGreen, _ => null,
     };
 
     private static string Normalize(string name) => name.Replace(" ", "").Replace("-", "").Replace("'", "").ToLowerInvariant();

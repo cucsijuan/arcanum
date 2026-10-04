@@ -99,3 +99,6 @@ public sealed record QuantityAtLeast(Quantity Quantity, int AtLeast) : Condition
 
 /// <summary>"If you cast it" (from anywhere).</summary>
 public sealed record WasCast : Condition;
+
+/// <summary>"As long as it's untapped": the source permanent is untapped.</summary>
+public sealed record SourceUntapped : Condition;

@@ -65,7 +65,7 @@ public sealed partial class Game
 
     /// <summary>Evasion: flying can only be blocked by flying or reach (702.9b); "can't be blocked by ..." restrictions.</summary>
     private bool CanBlock(Card blocker, Card attacker) =>
-        !blocker.Has(Keyword.CantBlock) && !attacker.Has(Keyword.CantBeBlocked) && !attacker.Has(Keyword.ProtectionFromEverything)
+        !blocker.Has(Keyword.CantBlock) && !attacker.Has(Keyword.CantBeBlocked) && !ProtectedFrom(attacker, blocker)
         && (!attacker.Has(Keyword.Flying) || blocker.Has(Keyword.Flying) || blocker.Has(Keyword.Reach))
         && !(attacker.Definition.CantBeBlockedBy is { } restriction
              && Matches(restriction with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, attacker, attacker.Controller));

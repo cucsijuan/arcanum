@@ -32,7 +32,7 @@ public static partial class CardFactory
     private static readonly string[] ScriptedKeywords =
     {
         "Scry", "Surveil", "Fight", "Mill", "Treasure", "Food", "Investigate",
-        "Raid", "Landfall", "Morbid", "Threshold", "Ferocious", "Hexproof from", "Affinity", "Double", "Formidable", "Alliance", "Crew", "Protection",
+        "Raid", "Landfall", "Morbid", "Threshold", "Ferocious", "Hexproof from", "Affinity", "Double", "Formidable", "Alliance", "Crew", "Protection", "Vivid",
     };
 
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>

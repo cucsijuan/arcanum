@@ -24,7 +24,7 @@ public static class ManaPayment
 
     /// <summary>Indices of the source's mana abilities usable here.</summary>
     public static List<int> UsableOptions(Card source, OptionUsable? usable) =>
-        Enumerable.Range(0, source.ManaOptions.Count).Where(i => (usable ?? Unrestricted)(source, source.ManaOptions[i]) && source.ManaOptions[i].Amount > 0).ToList();
+        Enumerable.Range(0, source.ManaOptions.Count).Where(i => (usable ?? Unrestricted)(source, source.ManaOptions[i]) && source.ManaOptions[i].Produces > 0).ToList();
 
     /// <param name="exclude">A permanent that can't be tapped for mana here (it is tapping for an ability's cost).</param>
     public static IEnumerable<Card> AvailableSources(GameState state, PlayerId player, CardId? exclude = null, OptionUsable? usable = null) =>
@@ -92,7 +92,7 @@ public static class ManaPayment
         var all = AvailableSources(state, player, exclude, usable).ToList();
         // Sources with an ability that adds several mana are decided first (skip, or each ability and type); the
         // others (one mana per activation, from any of their usable abilities) pay what is left with the pip solver.
-        var multi = all.Where(c => UsableOptions(c, usable).Any(i => c.ManaOptions[i].Amount > 1)).ToList();
+        var multi = all.Where(c => UsableOptions(c, usable).Any(i => c.ManaOptions[i].Produces > 1)).ToList();
         var single = all.Except(multi)
             .OrderBy(c => c.Definition.SacrificeForMana) // keep one-shot sources (Treasure) for last
             .ThenBy(c => SingleTypes(c, usable).Count)
@@ -117,9 +117,9 @@ public static class ManaPayment
         if (SolveMulti(multi, index + 1, remaining, chosen, single, usable) is { } without) return without;
         var source = multi[index];
         foreach (var option in UsableOptions(source, usable))
-            foreach (var type in source.ManaOptions[option].Types.Distinct())
+            foreach (var type in source.ManaOptions[option].OneOfEach ? source.ManaOptions[option].Types.Take(1) : source.ManaOptions[option].Types.Distinct())
             {
-                var (left, _) = Apply(remaining, Enumerable.Repeat(type, source.ManaOptions[option].Amount));
+                var (left, _) = Apply(remaining, Produced(source, new ManaTap(source.Id, type, option)));
                 chosen.Add(new ManaTap(source.Id, type, option));
                 var result = SolveMulti(multi, index + 1, left, chosen, single, usable);
                 chosen.RemoveAt(chosen.Count - 1);
@@ -148,9 +148,15 @@ public static class ManaPayment
 
     /// <summary>Every mana a set of taps adds (abilities that add several mana count each one).</summary>
     public static IEnumerable<ManaType> Produced(GameState state, IEnumerable<ManaTap> taps) =>
-        taps.SelectMany(t => Enumerable.Repeat(t.Type, AmountOf(state.GetCard(t.Source), t.Option)));
+        taps.SelectMany(t => Produced(state.GetCard(t.Source), t));
 
-    public static int AmountOf(Card source, int option) => option < source.ManaOptions.Count ? source.ManaOptions[option].Amount : 1;
+    /// <summary>The mana one activation adds: one of each type for "one mana of each color" abilities.</summary>
+    public static IEnumerable<ManaType> Produced(Card source, ManaTap tap) =>
+        tap.Option < source.ManaOptions.Count && source.ManaOptions[tap.Option].OneOfEach
+            ? source.ManaOptions[tap.Option].Types
+            : Enumerable.Repeat(tap.Type, AmountOf(source, tap.Option));
+
+    public static int AmountOf(Card source, int option) => option < source.ManaOptions.Count ? source.ManaOptions[option].Produces : 1;
 
     private static bool AssignPips(IReadOnlyList<ManaType> pips, int index, List<Card> sources, List<List<(ManaType Type, int Option)>> types, bool[] used, List<ManaTap> taps)
     {

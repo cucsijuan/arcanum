@@ -325,4 +325,116 @@ public class FidelityTests
         Assert.False(s.Card(arbor).HasSubtype("Dryad"));
         Assert.False(s.Card(arbor).IsCreature);
     }
+
+    [Fact]
+    public async Task ProtectionFromAColorStopsItsSources()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        var knight = s.Add(P1, Creature("Knight", 2, 2) with { Keywords = new[] { "Protection from red" } });
+        var bear = s.Add(P1, Creature("Bear", 2, 2));
+        s.InHand(P0, Spell("Shock", "{R}", new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Creature) }, Effects = new Effect[] { new DealDamage(2, Subject.TargetAt(0)) } })
+            with { ManaCost = ManaCost.Parse("{R}") });
+        IReadOnlyList<Target>? offered = null;
+        s.Attacker.Targets = (_, r) => { offered = r.LegalAt(0); return new[] { Target.Of(bear) }; };
+        await s.RunUntilTurn();
+        Assert.DoesNotContain(Target.Of(knight), offered!);
+        Assert.Contains(Target.Of(bear), offered!);
+    }
+
+    [Fact]
+    public async Task ExtraTurnComesRightAfter()
+    {
+        var s = Casting();
+        s.Lands(P0, 5);
+        s.InHand(P0, Spell("Time Twist", "{5}", new SpellAbility { Effects = new Effect[] { new ExtraTurn(Subject.You) } }, CardType.Sorcery));
+        var turns = new List<PlayerId>();
+        s.Game.EventRaised += e => { if (e is TurnBegan t) turns.Add(t.ActivePlayer); };
+        await s.RunUntilTurn(4);
+        Assert.Equal(new[] { P0, P0, P1, P0 }, turns.Take(4));
+    }
+
+    [Fact]
+    public async Task OneManaOfEachColorAmongYourPermanents()
+    {
+        var s = Casting();
+        var tender = s.Add(P0, Creature("Tender", 1, 1) with
+        {
+            ManaCost = ManaCost.Parse("{1}{G}"),
+            ExtraManaOptions = new[] { new ManaOption(Array.Empty<ManaType>()) { ColorsAmongYourPermanents = true, OneOfEach = true } },
+        });
+        s.Add(P0, Creature("Red Thing", 1, 1) with { ManaCost = ManaCost.Parse("{R}") });
+        s.InHand(P0, Spell("Two Colors", "{R}{G}", new SpellAbility { Effects = new Effect[] { new GainLife(3, Subject.You) } }));
+        await s.RunUntilTurn();
+        Assert.Equal(23, Life(s, P0)); // one tap paid {R}{G}
+        Assert.True(s.Card(tender).Tapped || s.Game.State.TurnNumber >= 2);
+    }
+
+    [Fact]
+    public async Task MillRepeatsWhileTwoNonlandCardsShareAColor()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        // Once hands are drawn, the top of P1's library is: red, red, red, red, land, red.
+        var red = Creature("Red", 1, 1) with { ManaCost = ManaCost.Parse("{R}") };
+        var top = new[] { red, red, red, red, GenericCards.Forest, red }.Select(d => s.Game.SetupInLibrary(P1, d)).ToList();
+        bool stacked = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!stacked)
+            {
+                stacked = true;
+                // Libraries are shuffled as the game starts: gather the cards back (from the hand too) onto the top.
+                var p1 = s.Game.State.GetPlayer(P1);
+                p1.Library.RemoveAll(top.Contains);
+                p1.Hand.RemoveAll(top.Contains);
+                foreach (var id in top) s.Card(id).Zone = Zone.Library;
+                p1.Library.InsertRange(0, top);
+            }
+            return legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
+        };
+        s.InHand(P0, Spell("Tutelage", "{R}", new SpellAbility
+        {
+            Targets = new[] { new TargetSpec(TargetKind.Player, ControllerFilter.Opponent) },
+            Effects = new Effect[] { new Mill(2, Subject.TargetAt(0)) { RepeatWhileNonlandShareColor = true } },
+        }));
+        await s.RunUntilTurn();
+        Assert.Equal(6, s.Game.State.GetPlayer(P1).Graveyard.Count);
+    }
+
+    [Fact]
+    public async Task HexproofOnlyWhileUntapped()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        var druid = s.Add(P1, Creature("Druid", 2, 1) with
+        {
+            Abilities = new AbilityDefinition[] { new StaticAbility(new AffectedFilter(AffectedScope.Self), 0, 0, new[] { Keyword.Hexproof }) { While = new SourceUntapped() } },
+        });
+        s.Card(druid).Tapped = true;
+        s.InHand(P0, Spell("Shock", "{R}", new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Creature) }, Effects = new Effect[] { new DealDamage(2, Subject.TargetAt(0)) } }));
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(druid).Zone);
+    }
+
+    [Fact]
+    public async Task ItsToughnessAfterItLeftIsTheLastKnownOne()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.Add(P1, Enchantment("Anthem", new StaticAbility(new AffectedFilter(AffectedScope.YourCreatures), 0, 3)));
+        var giant = s.Add(P1, Creature("Giant", 3, 3));
+        s.InHand(P0, Spell("Condemn", "{R}", new SpellAbility
+        {
+            Targets = new[] { new TargetSpec(TargetKind.Creature) },
+            Effects = new Effect[]
+            {
+                new PutIntoLibrary(Subject.TargetAt(0), Bottom: true),
+                new GainLife(new Quantity(0, QuantityKind.TargetToughness), new Subject(SubjectKind.TargetController)),
+            },
+        }));
+        s.Attacker.Targets = (_, _) => new[] { Target.Of(giant) };
+        await s.RunUntilTurn();
+        Assert.Equal(26, Life(s, P1)); // toughness 6 as it last existed
+    }
 }

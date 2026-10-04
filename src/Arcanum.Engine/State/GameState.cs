@@ -64,6 +64,9 @@ public sealed class GameState
     /// <summary>Effects that last as long as their object stays on the battlefield ("it's a Demon in addition to its other types").</summary>
     public List<UntilEndOfTurnEffect> LastingEffects { get; } = new();
 
+    /// <summary>Players who will take extra turns, in the order they were created (the last one is taken first).</summary>
+    public List<PlayerId> ExtraTurns { get; } = new();
+
     /// <summary>The latest timestamp handed out (rule 613.7).</summary>
     public long LastTimestamp { get; set; }
 

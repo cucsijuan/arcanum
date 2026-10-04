@@ -23,6 +23,7 @@ public sealed partial class Game
     private async Task<bool> ApplyStateBasedActionsOnceAsync()
     {
         bool any = false;
+        RecomputeContinuousEffects();
 
         var losers = new List<(PlayerId Player, string Reason)>();
         foreach (var player in State.LivingPlayers)
@@ -47,10 +48,10 @@ public sealed partial class Game
             if (card.Definition.EnchantTarget is { } enchant)
             {
                 bool legal = card.AttachedTo is { } host && State.GetCard(host) is { Zone: Zone.Battlefield } h
-                             && (enchant.Kind != Abilities.TargetKind.Creature || h.IsCreature) && !h.Has(Keyword.ProtectionFromEverything);
+                             && (enchant.Kind != Abilities.TargetKind.Creature || h.IsCreature) && !ProtectedFrom(h, card);
                 if (!legal) toGraveyard.Add(card);
             }
-            else if (card.AttachedTo is { } equipped && (State.GetCard(equipped) is not { Zone: Zone.Battlefield, IsCreature: true } eq || eq.Has(Keyword.ProtectionFromEverything)))
+            else if (card.AttachedTo is { } equipped && (State.GetCard(equipped) is not { Zone: Zone.Battlefield, IsCreature: true } eq || ProtectedFrom(eq, card)))
             {
                 unattach.Add(card);
             }

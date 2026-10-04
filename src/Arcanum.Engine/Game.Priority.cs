@@ -183,7 +183,8 @@ public sealed partial class Game
         // Mana abilities can be activated any time the player has priority (rule 605.3a).
         foreach (var source in ManaPayment.AvailableSources(State, playerId, usable: (_, _) => true))
             foreach (var option in ManaPayment.UsableOptions(source, (_, _) => true))
-                foreach (var type in source.ManaOptions[option].Types.Distinct())
+                // "One mana of each color" is a single activation, not a choice of type.
+                foreach (var type in source.ManaOptions[option].OneOfEach ? source.ManaOptions[option].Types.Take(1) : source.ManaOptions[option].Types.Distinct())
                     actions.Add(new ActivateManaAbility(source.Id, type, option));
         return actions;
     }
@@ -645,12 +646,12 @@ public sealed partial class Game
                 Colors = only.ChosenColor && source.ChosenColor is { } chosen ? new[] { chosen } : only.Colors, ChosenColor = false,
             }
             : null;
-        for (int i = 0; i < Math.Max(1, ManaPayment.AmountOf(source, tap.Option)); i++)
+        foreach (var type in ManaPayment.Produced(source, tap).ToList())
         {
             if (onlyFor is not null || source.Definition.ManaRider != ManaRider.None)
-                player.ManaPool.AddSpecial(new ManaUnit(tap.Type, source.Id, onlyFor, option?.AbilitiesToo ?? false, source.Definition.ManaRider));
-            else player.ManaPool.Add(tap.Type);
-            Emit(new ManaAdded(player.Id, tap.Type, tap.Source));
+                player.ManaPool.AddSpecial(new ManaUnit(type, source.Id, onlyFor, option?.AbilitiesToo ?? false, source.Definition.ManaRider));
+            else player.ManaPool.Add(type);
+            Emit(new ManaAdded(player.Id, type, tap.Source));
         }
         if (source.Definition.SacrificeForMana) SacrificePermanent(source.Id);
     }

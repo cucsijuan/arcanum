@@ -70,6 +70,9 @@ public sealed partial class Game
     /// <summary>Puts a card into a player's hand before the game starts, on top of the normal opening hand.</summary>
     public CardId SetupInHand(PlayerId owner, CardDefinition definition) => Setup(owner, definition, Zone.Hand);
 
+    /// <summary>Puts a card at the bottom of a player's library before the game starts (rules scenarios).</summary>
+    public CardId SetupInLibrary(PlayerId owner, CardDefinition definition) => Setup(owner, definition, Zone.Library);
+
     private CardId Setup(PlayerId owner, CardDefinition definition, Zone zone)
     {
         if (State.TurnNumber > 0) throw new InvalidOperationException("Cards can only be set up before the game starts.");
@@ -77,6 +80,7 @@ public sealed partial class Game
         var card = new Card(new CardId(nextId), definition, owner) { Zone = zone };
         State.Cards.Add(card.Id, card);
         if (zone == Zone.Battlefield) State.Battlefield.Add(card.Id);
+        else if (zone == Zone.Library) State.GetPlayer(owner).Library.Add(card.Id);
         else State.GetPlayer(owner).Hand.Add(card.Id);
         return card.Id;
     }
@@ -93,6 +97,10 @@ public sealed partial class Game
     {
         _log.Add(e);
         TrackTurnHistory(e);
+        // Continuous effects are always current (rule 611.3a): conditions like "as long as it's untapped" or
+        // "as long as you have 30 or more life" change with these events.
+        if (e is PermanentTapped or PermanentUntapped or CountersPlaced or LifeChanged or ControlChanged or AttacksDeclared or AttackerDeclared or BlockerDeclared)
+            RecomputeContinuousEffects();
         CollectTriggers(e);
         EventRaised?.Invoke(e);
     }
@@ -146,9 +154,24 @@ public sealed partial class Game
                     MoveCard(id, Zone.Battlefield);
 
         bool firstTurn = true;
+        var regular = State.ActivePlayer; // whose turn it is in the normal turn order
         while (!State.IsGameOver)
         {
-            if (!firstTurn) State.ActivePlayer = State.NextLivingPlayer(State.ActivePlayer);
+            if (!firstTurn)
+            {
+                // Extra turns come right after the current one, the most recently created first (rule 500.7).
+                State.ExtraTurns.RemoveAll(p => State.GetPlayer(p).HasLost);
+                if (State.ExtraTurns.Count > 0)
+                {
+                    State.ActivePlayer = State.ExtraTurns[^1];
+                    State.ExtraTurns.RemoveAt(State.ExtraTurns.Count - 1);
+                }
+                else
+                {
+                    regular = State.NextLivingPlayer(regular);
+                    State.ActivePlayer = regular;
+                }
+            }
             await RunTurnAsync(skipDraw: firstTurn && (Config.StartingPlayerSkipsDraw ?? !IsMultiplayer));
             firstTurn = false;
         }

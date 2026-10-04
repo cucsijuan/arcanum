@@ -81,10 +81,22 @@ public sealed partial class Game
             if (!ControllerOk(card.Controller) || !MatchesKind(card, spec.Kind) || !FilterOk(card)) continue;
             if (card.Has(Keyword.Shroud) || (card.Has(Keyword.Hexproof) && card.Controller != controller)) continue; // 702.18, 702.11
             if (card.Controller != controller && HexproofFrom(card, sourceCard)) continue;
-            if (card.Has(Keyword.ProtectionFromEverything)) continue; // 702.16b
+            if (ProtectedFrom(card, sourceCard)) continue; // 702.16b
             if (card.Controller != controller && (card.Definition.HexproofFromTypes & sourceCard.Types) != 0) continue;
             yield return Target.Of(card.Id);
         }
+    }
+
+    /// <summary>
+    /// Protection (rule 702.16): from everything, or from a color of <paramref name="source"/> (a source that left the
+    /// battlefield has the colors it last had there).
+    /// </summary>
+    internal static bool ProtectedFrom(Card card, Card? source)
+    {
+        if (card.Has(Keyword.ProtectionFromEverything)) return true;
+        if (source is null) return false;
+        var colors = source.Zone is not (Zone.Battlefield or Zone.Stack) && source.LastKnownInfo is { } lki ? lki.Colors : source.Colors;
+        return colors.Any(c => Keywords.ProtectionFrom(c) is { } protection && card.Has(protection));
     }
 
     /// <summary>"You have hexproof" (a permanent with that static ability) protects a player from opponents' targeting.</summary>
@@ -344,6 +356,10 @@ public sealed partial class Game
     private int Eval(Quantity q, EffectContext ctx)
     {
         Card? TargetCard() => ctx.ChosenAt(q.Index)?.Card is { } id ? State.GetCard(id) : null;
+        // A target that left the battlefield during resolution ("its toughness" after it was moved) is used as it
+        // last existed there (rule 608.2h).
+        LastKnown? TargetLastKnown() => TargetCard() is { } t && ctx.ChosenVersionAt(q.Index) is { } v && v != t.Version
+                                        && t.Zone != Zone.Battlefield ? t.LastKnownInfo : null;
         int value = q.Kind switch
         {
             QuantityKind.Fixed => q.Value,
@@ -353,8 +369,8 @@ public sealed partial class Game
             QuantityKind.GraveyardCount => State.GetPlayer(ctx.Controller).Graveyard.Select(State.GetCard)
                 .Count(c => q.Filter is null || Matches(q.Filter with { Controller = ControllerFilter.Any }, c, ctx.Controller, ctx.Source, ctx.Controller)),
             QuantityKind.SourcePower => ctx.Source.Zone == Zone.Battlefield || ctx.Source.LastKnownInfo is null ? ctx.Source.Power : ctx.Source.LastKnownInfo.Power,
-            QuantityKind.TargetPower => TargetCard()?.Power ?? 0,
-            QuantityKind.TargetToughness => TargetCard()?.Toughness ?? 0,
+            QuantityKind.TargetPower => TargetLastKnown()?.Power ?? TargetCard()?.Power ?? 0,
+            QuantityKind.TargetToughness => TargetLastKnown()?.Toughness ?? TargetCard()?.Toughness ?? 0,
             QuantityKind.TargetManaValue => TargetCard() is { } tmv ? ManaValueOf(tmv) : 0,
             QuantityKind.LifeGainedThisTurn => State.GetPlayer(ctx.Controller).LifeGainedThisTurn,
             QuantityKind.YourLife => State.GetPlayer(ctx.Controller).Life,
@@ -412,6 +428,9 @@ public sealed partial class Game
                     MoveCard(card.Id, Zone.Exile);
                     if (!card.Definition.IsToken) State.AtNextEndStep.Add(new DelayedAction(card.Id, card.Version, Return: true, er.UnderYourControl ? ctx.Controller : card.Owner));
                 }
+                break;
+            case ExtraTurn et:
+                foreach (var player in PlayersFor(et.Who, ctx)) State.ExtraTurns.Add(player);
                 break;
             case ReflexiveTrigger reflexive when reflexive.If is null || HoldsIn(reflexive.If, ctx):
                 // "When you do, …": a new triggered ability, put on the stack the next time a player would receive
@@ -960,7 +979,7 @@ public sealed partial class Game
                 foreach (var searcher in (sl.Who is { } who ? PlayersFor(who, ctx) : new[] { ctx.Controller }).ToList())
                 {
                     if (sl.Optional && !await ControllerOf(searcher).ChooseYesNoAsync(ViewFor(searcher), new YesNoRequest("Search your library?", ctx.Source.Id))) continue;
-                    await SearchLibraryAsync(searcher, sl, ctx.Source);
+                    await SearchLibraryAsync(searcher, sl.MaxManaValueX ? sl with { Filter = sl.Filter with { MaxManaValue = ctx.X } } : sl, ctx.Source);
                 }
                 break;
             case Sacrifice sac:
@@ -1132,13 +1151,26 @@ public sealed partial class Game
                 foreach (var card in CardsFor(u.What, ctx).Where(c => c.Tapped)) { card.Tapped = false; Emit(new PermanentUntapped(card.Id)); }
                 break;
             case Mill m:
-                foreach (var player in PlayersFor(m.Who, ctx))
-                    foreach (var id in State.GetPlayer(player).Library.Take(Eval(m.Count, ctx)).ToList())
+                foreach (var player in PlayersFor(m.Who, ctx).ToList())
+                {
+                    bool again;
+                    do
                     {
-                        MoveCard(id, Zone.Graveyard);
-                        // A card a replacement effect sent elsewhere wasn't put into the graveyard "this way".
-                        if (State.GetCard(id).Zone == Zone.Graveyard) ctx.Results.Milled.Add(id);
+                        var milled = new List<Card>();
+                        foreach (var id in State.GetPlayer(player).Library.Take(Eval(m.Count, ctx)).ToList())
+                        {
+                            MoveCard(id, Zone.Graveyard);
+                            // A card a replacement effect sent elsewhere wasn't put into the graveyard "this way".
+                            if (State.GetCard(id).Zone != Zone.Graveyard) continue;
+                            ctx.Results.Milled.Add(id);
+                            milled.Add(State.GetCard(id));
+                        }
+                        var nonland = milled.Where(c => !c.Is(CardType.Land)).ToList();
+                        again = m.RepeatWhileNonlandShareColor && nonland.Count >= 2
+                                && nonland.SelectMany(c => c.Colors).GroupBy(c => c).Any(g => g.Count() >= 2);
                     }
+                    while (again && State.GetPlayer(player).Library.Count > 0);
+                }
                 break;
             case CounterSpell c:
                 if (c.What.Kind == SubjectKind.Target && ctx.TargetAt(c.What.Index)?.Card is { } spellCard && CanBeCountered(State.GetCard(spellCard)))
@@ -1257,7 +1289,7 @@ public sealed partial class Game
     private int ModifyDamage(Card source, Card? targetCard, PlayerId? targetPlayer, int amount, bool combat)
     {
         if (amount <= 0) return 0;
-        if (targetCard is not null && targetCard.Has(Keyword.ProtectionFromEverything)) return 0; // 702.16e
+        if (targetCard is not null && ProtectedFrom(targetCard, source)) return 0; // 702.16e
         if (combat)
         {
             if ((source.Definition.Replaces & Replacements.PreventCombatDamageToAndBySelf) != 0) return 0;
@@ -1570,6 +1602,7 @@ public sealed partial class Game
             WasKicked => source?.Kicked == true,
             OpponentLostLifeThisTurn => State.OpponentsOf(controller).Any(o => State.GetPlayer(o).LifeLostThisTurn > 0),
             YourTurn => State.ActivePlayer == controller,
+            SourceUntapped => source is { Zone: Zone.Battlefield, Tapped: false },
             SourceHasCounters c => source is not null && source.CounterCount(c.Kind) >= c.AtLeast,
             SourceAttacking => source is not null && State.Combat?.FindAttack(source.Id) is not null,
             LifeAboveStarting l => player.Life >= Config.StartingLife + l.AtLeast,
@@ -1757,6 +1790,11 @@ public sealed partial class Game
 
         // Layer 6 again with the final types (filters such as "artifact creatures" depend on them).
         ApplyAbilityLayer(battlefield, effects, Statics, AffectedBy);
+
+        // "For each color among permanents you control" mana abilities follow the colors settled above.
+        foreach (var card in battlefield.Where(c => c.Definition.ExtraManaOptions.Any(o => o.ColorsAmongYourPermanents)))
+            card.ColorsAmongYourPermanents = battlefield.Where(p => p.Controller == card.Controller).SelectMany(p => p.Colors).Distinct()
+                .Select(c => Mana.ManaTypeExtensions.TryParse(c[0], out var t) ? t : (ManaType?)null).OfType<ManaType>().OrderBy(t => t).ToList();
 
         // Layer 7a: characteristic-defining abilities; 7b: effects that set base power/toughness, in timestamp order.
         foreach (var card in battlefield)

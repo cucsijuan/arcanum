@@ -22,7 +22,11 @@ public sealed record ExileIt(Subject What) : Effect
 public sealed record ReturnToHand(Subject What) : Effect;
 public sealed record TapIt(Subject What) : Effect;
 public sealed record UntapIt(Subject What) : Effect;
-public sealed record Mill(Quantity Count, Subject Who) : Effect;
+public sealed record Mill(Quantity Count, Subject Who) : Effect
+{
+    /// <summary>"If two nonland cards that share a color were milled this way, repeat this process."</summary>
+    public bool RepeatWhileNonlandShareColor { get; init; }
+}
 public sealed record CounterSpell(Subject What) : Effect;
 
 /// <summary>"Target creature gets +N/+N (and gains a keyword) until end of turn."</summary>
@@ -82,6 +86,9 @@ public sealed record SearchLibrary(ObjectFilter Filter, int Count, State.Zone To
 
     /// <summary>"Reveal it": the card found is shown to every player.</summary>
     public bool Reveal { get; init; }
+
+    /// <summary>"With mana value X or less" (the X of the spell or ability).</summary>
+    public bool MaxManaValueX { get; init; }
 }
 
 /// <summary>"[Players] sacrifice N [permanents] of their choice."</summary>
@@ -264,6 +271,9 @@ public sealed record EndTheTurn : Effect;
 
 /// <summary>An additional combat phase after this one; <paramref name="UntapCreatures"/> untaps your creatures first.</summary>
 public sealed record AdditionalCombat(bool UntapCreatures) : Effect;
+
+/// <summary>"Take an extra turn after this one" for the subject players.</summary>
+public sealed record ExtraTurn(Subject Who) : Effect;
 
 /// <summary>Copy the target spell (or the spell the trigger was about); the copy's controller may choose new targets.</summary>
 public sealed record CopySpell(Subject What, Quantity Count) : Effect;

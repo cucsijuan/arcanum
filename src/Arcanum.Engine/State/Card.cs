@@ -202,12 +202,15 @@ public sealed class Card
                     ? new[] { type }
                     : Definition.TapForMana;
                 if (types.Count > 0 && ManaAmount > 0) options.Add(new ManaOption(types, ManaAmount, Definition.ManaOnlyFor));
-                options.AddRange(Definition.ExtraManaOptions);
+                options.AddRange(Definition.ExtraManaOptions.Select(o => o.ColorsAmongYourPermanents ? o with { Types = ColorsAmongYourPermanents } : o));
             }
             options.AddRange(GrantedManaOptions);
             return options;
         }
     }
+
+    /// <summary>Colors among permanents its controller controls, as mana types (kept current by the engine).</summary>
+    internal IReadOnlyList<Mana.ManaType> ColorsAmongYourPermanents { get; set; } = Array.Empty<Mana.ManaType>();
 
     /// <summary>Types of mana its first mana ability can add.</summary>
     public IReadOnlyList<Mana.ManaType> ManaTypes => ManaOptions.FirstOrDefault()?.Types ?? Array.Empty<Mana.ManaType>();
