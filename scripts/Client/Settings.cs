@@ -18,6 +18,8 @@ public sealed class SettingsData
     public string LastSeatToken { get; set; } = "";
     /// <summary>That token is an event's (draft, sealed), not a single game's.</summary>
     public bool LastSeatIsEvent { get; set; }
+    /// <summary>Online games this device hosts: seconds a player has for each decision before the computer makes it (0: no limit).</summary>
+    public int DecisionSeconds { get; set; }
     public bool ConfirmManaPayment { get; set; } = true;
     public bool RevealHandsInHotseat { get; set; } = true;
 

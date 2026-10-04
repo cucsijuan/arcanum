@@ -108,6 +108,14 @@ public partial class SettingsScreen : Control
         var full = MenuKit.Toggle("Full control (stop at every priority, even with nothing to do)", S.FullControl);
         full.Toggled += on => { S.FullControl = on; Settings.Save(); };
         box.AddChild(full);
+
+        box.AddChild(MenuKit.SectionTitle("Online"));
+        box.AddChild(MenuKit.Hint("For games you host: how long each player has for a decision before the computer makes it for them " +
+            "(they keep playing afterwards). Passing priority with your stops never counts. Players who disconnect have their own wait."));
+        var limits = new[] { (0, "No limit"), (30, "30 seconds"), (60, "1 minute"), (120, "2 minutes"), (300, "5 minutes") };
+        var limit = MenuKit.Options(limits.Select(l => l.Item2), Math.Max(0, Array.FindIndex(limits, l => l.Item1 == S.DecisionSeconds)));
+        limit.ItemSelected += i => { S.DecisionSeconds = limits[i].Item1; Settings.Save(); };
+        box.AddChild(MenuKit.Row("Time per decision", limit));
         return box;
     }
 

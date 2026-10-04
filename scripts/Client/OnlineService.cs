@@ -112,7 +112,11 @@ public partial class OnlineService : Node
     private HostOptions HostOptions() => new()
     {
         ComputerPace = ComputerPaceAsync,
+        DecisionTime = DecisionTime,
     };
+
+    /// <summary>The decision time limit chosen in the settings (null: no limit).</summary>
+    private static TimeSpan? DecisionTime => Settings.Current.DecisionSeconds > 0 ? TimeSpan.FromSeconds(Settings.Current.DecisionSeconds) : null;
 
     private async Task ComputerPaceAsync()
     {

@@ -6,7 +6,7 @@
   (Editor → Manage Export Templates).
 
 ## Running from source
-- `dotnet test tests/Arcanum.Engine.Tests` and `dotnet test tests/Arcanum.Data.Tests` run the test suites.
+- `dotnet test Arcanum.sln` runs every test suite (engine, data, network).
 - Open the project folder in Godot .NET and press Play, or run `godot --path .` from a terminal.
 - Content modules: in editor builds a module checked out next to the project folder (`../arcanum-classic`) is
   found automatically; otherwise set `ARCANUM_MODULE_PATH` or install it under `user://modules/<module-id>`
@@ -42,3 +42,20 @@ Environment variables useful while developing and testing:
 | `ARCANUM_TEST_UNDO=1` | With autoplay, undo now and then to exercise replay |
 | `ARCANUM_OPEN_DECK=<n>` | Deck builder opens the n-th deck |
 | `ARCANUM_MODULE_PATH=<dir>` | Use a content module from this folder |
+
+Online play can be tested with two instances on one machine (run `res://scenes/online/Online.tscn`; add
+`ARCANUM_AUTOPLAY=1` so the players play themselves):
+
+| Variable | Effect |
+|----------|--------|
+| `ARCANUM_ONLINE_HOST=<port>[,<players>]` | Hosts at once with the first deck; free seats go to the computer after `ARCANUM_ONLINE_WAIT` seconds (default 20); starts when the lobby is complete |
+| `ARCANUM_ONLINE_EVENT=draft\|sealed` | With `ARCANUM_ONLINE_HOST`: hosts a limited event with the first booster source instead |
+| `ARCANUM_ONLINE_JOIN=<address>` | Joins the game at that address (`127.0.0.1:47013`) |
+| `ARCANUM_ONLINE_DECK=<n>` | Deck to bring (n-th in the list) |
+| `ARCANUM_ONLINE_REJOIN=1` | Gets back into the online game this device last joined |
+
+## Online play
+A player hosts from the Online screen and gives the others an address. The host listens on TCP port 47013 (by
+default): players on the same network join with its local address; players elsewhere need the port forwarded to the
+host (it is tried automatically with UPnP), and a firewall on the host must allow it (on Fedora:
+`sudo firewall-cmd --add-port=47013/tcp`). Every player needs the same game version and content module.

@@ -33,6 +33,12 @@ public sealed record HostOptions
     public string Version { get; init; } = "";
     public string Content { get; init; } = "";
 
+    /// <summary>
+    /// How long a connected player may take over one decision before the computer makes it for them (they keep their
+    /// seat); null for no limit. Priority passed by the player's own stops never waits.
+    /// </summary>
+    public TimeSpan? DecisionTime { get; init; }
+
     /// <summary>Refused answers in a row before a seat is handed to the computer (a broken or hostile client).</summary>
     public int MaxInvalidAnswers { get; init; } = 5;
 

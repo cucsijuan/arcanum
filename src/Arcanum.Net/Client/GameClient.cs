@@ -18,6 +18,7 @@ public sealed record ClientIdentity(string Name, string Token, string Version, s
 public sealed class GameClient
 {
     private readonly Peer _peer;
+    private readonly Func<DateTime> _clock;
     private readonly Dictionary<PlayerId, SeatStatus> _seats = new();
     private readonly Queue<Ask> _unanswered = new();
     private IPlayerController? _controller;
@@ -28,7 +29,8 @@ public sealed class GameClient
     /// <param name="received">Messages already read from the connection (by the lobby).</param>
     public GameClient(IConnection connection, ClientIdentity identity, Func<DateTime>? clock = null, IEnumerable<NetMessage>? received = null)
     {
-        _peer = new Peer(connection, new WireFormat(), clock ?? (() => DateTime.UtcNow));
+        _clock = clock ?? (() => DateTime.UtcNow);
+        _peer = new Peer(connection, new WireFormat(), _clock);
         if (received is not null) _peer.Hold(received);
         _peer.Send(new Hello(WireFormat.ProtocolVersion, identity.Version, identity.Content, identity.Name, identity.Token));
     }
@@ -49,6 +51,12 @@ public sealed class GameClient
     public event Action<SeatStatus>? SeatChanged;
     /// <summary>The host refused the last answer and asks again (the reason is shown to the player).</summary>
     public event Action<string>? AnswerRefused;
+
+    /// <summary>The player ran out of time on the current question: the computer answered it.</summary>
+    public event Action? QuestionExpired;
+
+    /// <summary>When the current question's time runs out (local clock), or null without a limit.</summary>
+    public DateTime? QuestionDeadline { get; private set; }
     public event Action? Disconnected;
     public event Action<Exception>? Failed;
 
@@ -111,8 +119,14 @@ public sealed class GameClient
                     _seats[s.Seat] = s;
                     SeatChanged?.Invoke(s);
                     break;
+                case AskExpired expired when expired.Ask == _currentAsk:
+                    _currentAsk = -1;
+                    QuestionDeadline = null;
+                    QuestionExpired?.Invoke();
+                    break;
                 case Ask ask:
                     _currentAsk = ask.Id;
+                    QuestionDeadline = ask.SecondsLeft >= 0 ? _clock() + TimeSpan.FromSeconds(ask.SecondsLeft) : null;
                     if (ask.Error is not null) AnswerRefused?.Invoke(ask.Error);
                     if (_controller is null) _unanswered.Enqueue(ask);
                     else Answer(ask);

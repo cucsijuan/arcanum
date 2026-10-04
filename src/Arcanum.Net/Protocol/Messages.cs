@@ -21,6 +21,7 @@ namespace Arcanum.Net.Protocol;
 [JsonDerivedType(typeof(Happened), "event")]
 [JsonDerivedType(typeof(Ask), "ask")]
 [JsonDerivedType(typeof(Answer), "answer")]
+[JsonDerivedType(typeof(AskExpired), "expired")]
 [JsonDerivedType(typeof(Stops), "stops")]
 [JsonDerivedType(typeof(SeatStatus), "seat")]
 [JsonDerivedType(typeof(Joined), "joined")]
@@ -81,7 +82,11 @@ public sealed record ViewUpdate(GameView View) : NetMessage;
 public sealed record Happened(EventView Event) : NetMessage;
 
 /// <summary>A decision the player must make. <paramref name="Error"/> explains why a previous answer was refused.</summary>
-public sealed record Ask(int Id, Question Question, string? Error = null) : NetMessage;
+/// <param name="SecondsLeft">Time the player has to answer (the host's decision time limit); -1 when unlimited.</param>
+public sealed record Ask(int Id, Question Question, string? Error = null, int SecondsLeft = -1) : NetMessage;
+
+/// <summary>The player took too long to answer question <paramref name="Ask"/>: the computer answered it for them.</summary>
+public sealed record AskExpired(int Ask) : NetMessage;
 
 public enum SeatState { Connected, Disconnected, Computer }
 

@@ -53,6 +53,7 @@ public sealed class NetSession : IBoardSession
         client.AnswerRefused += OnRefused;
         client.Disconnected += OnDisconnected;
         client.Failed += OnFailed;
+        client.QuestionExpired += OnExpired;
         client.Policy = Policy;
         client.Controller = _controller;
     }
@@ -65,6 +66,7 @@ public sealed class NetSession : IBoardSession
         client.AnswerRefused -= OnRefused;
         client.Disconnected -= OnDisconnected;
         client.Failed -= OnFailed;
+        client.QuestionExpired -= OnExpired;
         client.Policy = null;
         client.Controller = null;
     }
@@ -74,6 +76,17 @@ public sealed class NetSession : IBoardSession
     private void OnRefused(string reason) => Notice?.Invoke(reason);
     private void OnFailed(Exception e) => Failed?.Invoke(e);
     private void OnDisconnected() => ConnectionChanged?.Invoke(false);
+
+    private void OnExpired()
+    {
+        Hub.Clear();
+        Notice?.Invoke("Time ran out: the computer made that choice for you.");
+    }
+
+    /// <summary>Seconds left to answer the pending question (the host's time limit), or -1 without a limit.</summary>
+    public int DecisionSecondsLeft => CurrentDecision is not null && _client.QuestionDeadline is { } d
+        ? Math.Max(0, (int)Math.Ceiling((d - DateTime.UtcNow).TotalSeconds))
+        : -1;
 
     private void OnSeat(SeatStatus status)
     {

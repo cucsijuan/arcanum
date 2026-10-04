@@ -103,7 +103,14 @@ public sealed class DecisionHub
 {
     public Decision? Current { get; private set; }
 
-    public event Action<Decision>? DecisionRequested;
+    public event Action<Decision?>? DecisionRequested;
+
+    /// <summary>The pending decision was made elsewhere (online: time ran out and the computer chose); nothing is pending.</summary>
+    public void Clear()
+    {
+        Current = null;
+        DecisionRequested?.Invoke(null);
+    }
 
     internal Task<T> Ask<T>(Decision<T> decision)
     {

@@ -270,4 +270,57 @@ public class HostedGameTests
         Assert.All(clients, c => Assert.True(c.IsWelcomed));
         Assert.All(clients, c => c.Close());
     }
+
+    /// <summary>A player who never answers anything (until <see cref="WakeUp"/>, which drops every question).</summary>
+    private sealed class Sleeper : IPlayerController
+    {
+        private readonly List<Action> _cancels = new();
+
+        private Task<T> Never<T>()
+        {
+            var tcs = new TaskCompletionSource<T>();
+            _cancels.Add(() => tcs.TrySetCanceled());
+            return tcs.Task;
+        }
+
+        /// <summary>Ends the questions left waiting (the test framework waits for them).</summary>
+        public void WakeUp() => _cancels.ForEach(c => c());
+
+        public Task<bool> KeepHandAsync(GameView view, int mulligansTaken) => Never<bool>();
+        public Task<IReadOnlyList<CardId>> ChooseCardsToBottomAsync(GameView view, int count) => Never<IReadOnlyList<CardId>>();
+        public Task<PlayerAction> ChooseActionAsync(GameView view, IReadOnlyList<PlayerAction> legalActions) => Never<PlayerAction>();
+        public Task<IReadOnlyList<ManaTap>?> ChooseManaPaymentAsync(GameView view, ManaPaymentRequest request) => Never<IReadOnlyList<ManaTap>?>();
+        public Task<IReadOnlyList<Engine.Abilities.Target>?> ChooseTargetsAsync(GameView view, TargetRequest request) => Never<IReadOnlyList<Engine.Abilities.Target>?>();
+        public Task<IReadOnlyList<AttackDeclaration>> DeclareAttackersAsync(GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders) =>
+            Never<IReadOnlyList<AttackDeclaration>>();
+        public Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(GameView view, BlockRequest request) => Never<IReadOnlyList<BlockDeclaration>>();
+        public Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) => Never<DamageAssignment>();
+        public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) => Never<bool>();
+        public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) => Never<IReadOnlyList<CardId>>();
+        public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request) => Never<IReadOnlyList<CardId>>();
+        public Task<IReadOnlyList<int>?> ChooseModesAsync(GameView view, ModeRequest request) => Never<IReadOnlyList<int>?>();
+        public Task<int> ChooseNumberAsync(GameView view, NumberRequest request) => Never<int>();
+        public Task<int> ChooseOptionAsync(GameView view, OptionRequest request) => Never<int>();
+    }
+
+    [Fact]
+    public void ThePlayerWhoTakesTooLongHasTheDecisionMadeForThem()
+    {
+        var table = new NetTable(options: new HostOptions { DecisionTime = TimeSpan.FromSeconds(30) });
+        var sleeper = new Sleeper();
+        var sleepy = table.Connect(P1, _ => sleeper);
+        int expired = 0;
+        sleepy.QuestionExpired += () => expired++;
+        bool sawDeadline = false;
+        table.Host.Start();
+        Assert.True(table.RunUntil(() =>
+        {
+            sawDeadline |= sleepy.QuestionDeadline is not null;
+            return table.Host.Game.State.TurnNumber >= 4;
+        }, 30_000));
+        Assert.True(expired > 0);
+        Assert.Equal(SeatState.Connected, table.Host.StateOf(P1)); // they keep their seat
+        Assert.True(sawDeadline); // the player sees how long they have
+        sleeper.WakeUp();
+    }
 }

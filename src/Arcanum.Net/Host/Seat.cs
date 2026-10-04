@@ -100,7 +100,11 @@ internal sealed class Seat : IPlayerController
         if (!IsComputerSeat) ComputerPlays = false; // back in charge from the next decision
         _host.SendWelcome(this);
         PushView();
-        if (_pending is not null) SendAsk(_pending);
+        if (_pending is not null)
+        {
+            _pending.Deadline = null; // the full time again after reconnecting
+            SendAsk(_pending);
+        }
         _host.NotifySeatChanged(this);
     }
 
@@ -123,6 +127,7 @@ internal sealed class Seat : IPlayerController
                 _disconnectedAt = _host.Options.Clock();
                 _host.NotifySeatChanged(this);
             }
+            else if (_pending is { Deadline: { } deadline } && _host.Options.Clock() >= deadline) Expire();
             return;
         }
         if (!ComputerDecides && _disconnectedAt is { } since && _host.Options.Grace is { } grace && _host.Options.Clock() - since >= grace)
@@ -171,6 +176,9 @@ internal sealed class Seat : IPlayerController
         public Question Question { get; } = question;
         public string? Error { get; set; }
 
+        /// <summary>When the player's time to answer runs out (null: no limit, or not sent to them yet).</summary>
+        public DateTime? Deadline { get; set; }
+
         /// <summary>Reads and checks an answer; null when it's acceptable (then call <see cref="Complete"/>).</summary>
         public string? Check(JsonElement value, WireFormat format) => check(value, format);
 
@@ -183,7 +191,19 @@ internal sealed class Seat : IPlayerController
     {
         if (Peer is null) return;
         PushView();
-        Peer.Send(new Ask(pending.Id, pending.Question, pending.Error));
+        var now = _host.Options.Clock();
+        if (_host.Options.DecisionTime is { } limit) pending.Deadline ??= now + limit;
+        int seconds = pending.Deadline is { } d ? Math.Max(0, (int)Math.Ceiling((d - now).TotalSeconds)) : -1;
+        Peer.Send(new Ask(pending.Id, pending.Question, pending.Error, seconds));
+    }
+
+    /// <summary>The player took too long: the computer makes this one decision for them.</summary>
+    private void Expire()
+    {
+        var pending = _pending!;
+        _pending = null;
+        Peer?.Send(new AskExpired(pending.Id));
+        pending.Abandon();
     }
 
     private void OnAnswer(Answer answer)

@@ -29,6 +29,8 @@ public partial class GameBoard : Control
     private readonly CardStatusPanel _status = new() { Visible = false };
     private readonly Label _turnNumber = BoardStyle.MakeLabel("1", 22, bold: true);
     private readonly Label _stepLabel = BoardStyle.MakeLabel("", 12, BoardStyle.TextDim);
+    /// <summary>Online: time left for the pending decision before the computer makes it.</summary>
+    private readonly Label _decisionTimer = BoardStyle.MakeLabel("", 14, BoardStyle.Attacking, bold: true);
     private readonly PanelContainer _actionPanel = new();
     private readonly Label _prompt = BoardStyle.MakeLabel("", 15);
     private readonly HBoxContainer _actionButtons = new();
@@ -425,6 +427,9 @@ public partial class GameBoard : Control
         _prompt.HorizontalAlignment = HorizontalAlignment.Right;
         _actionButtons.Alignment = BoxContainer.AlignmentMode.End;
         _actionButtons.AddThemeConstantOverride("separation", 8);
+        _decisionTimer.HorizontalAlignment = HorizontalAlignment.Right;
+        _decisionTimer.Visible = false;
+        actionBox.AddChild(_decisionTimer);
         actionBox.AddChild(_stepLabel);
         actionBox.AddChild(_prompt);
         _actionExtra.AddThemeConstantOverride("separation", 6);
@@ -709,9 +714,10 @@ public partial class GameBoard : Control
                 for (int i = 0; i < t.Request.Specs.Count; i++)
                 {
                     var options = t.Request.LegalAt(i).Where(o => t.Request.IsAllowed(i, o, picks)).ToList();
-                    picks.Add(options.FirstOrDefault(o => !o.IsNone) is { } o && !o.IsNone ? o : options.FirstOrDefault());
+                    if (options.Count == 0) break; // no legal combination of targets: cancel below
+                    picks.Add(options.FirstOrDefault(o => !o.IsNone) is { } o && !o.IsNone ? o : options[0]);
                 }
-                t.Answer(picks);
+                t.Answer(picks.Count < t.Request.Specs.Count && t.Request.CanCancel ? null : picks);
                 break;
             }
             case ManaPaymentDecision pay: pay.Answer(pay.Request.SuggestedTaps); break;
@@ -1280,6 +1286,12 @@ public partial class GameBoard : Control
     public override void _Process(double delta)
     {
         _session?.Poll();
+        if (_online is not null)
+        {
+            int left = _online.DecisionSecondsLeft;
+            _decisionTimer.Visible = left >= 0;
+            if (left >= 0) _decisionTimer.Text = $"⏱ {left / 60}:{left % 60:00}";
+        }
         // Count down the seats waiting for a disconnected player.
         if (_online is not null && Time.GetTicksMsec() >= _nextSeatTick && _seatStates.Values.Any(s => s.Deadline is not null))
         {
