@@ -33,6 +33,8 @@ Environment variables useful while developing and testing:
 | `ARCANUM_SANDBOX=1` | Demo game starts from the prepared sandbox board |
 | `ARCANUM_DECKS=<a>,<b>` | Demo game uses these module decks |
 | `ARCANUM_COMMANDER=1` | Demo game is a commander game with the module's commander decks |
+| `ARCANUM_LIMITED=draft\|sealed` | Opening the limited screen runs a whole event on its own (with `ARCANUM_AUTOPLAY=1`) |
+| `ARCANUM_LIMITED_SOURCE=<text>` | That event uses the first set or cube whose id contains the text (`cube`, `set:abc`) |
 | `ARCANUM_PLAYERS=<2-4>` | Number of players for `ARCANUM_COMMANDER` (default 4) |
 | `ARCANUM_AUTOPLAY=1` | Local seats play themselves (smoke tests) |
 | `ARCANUM_AUTOPLAY=showcase:<Decision>` | Autoplay until the first decision of that type, then freeze (screenshots) |

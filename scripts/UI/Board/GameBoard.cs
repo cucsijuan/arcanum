@@ -34,6 +34,11 @@ public partial class GameBoard : Control
     private readonly Control _gameOver = new();
     private readonly Label _gameOverText = BoardStyle.MakeLabel("", 40, bold: true);
     private readonly Label _gameOverReasons = BoardStyle.MakeLabel("", 18, BoardStyle.TextDim);
+
+    // A game that belongs to an event (limited): the result is reported once and the game ends with a way back.
+    private MatchSetup? _match;
+    private bool _resultReported;
+    private Button? _newGameButton, _backToEventButton;
     private int _unreadLog;
 
     // In-progress choices for the pending decision.
@@ -128,6 +133,7 @@ public partial class GameBoard : Control
 
     private void UseMatch(MatchSetup match)
     {
+        _match = match;
         var setup = match.Sandbox && App.Instance.Cards is { } cards ? SandboxSetup(cards) : null;
         _newSession = MatchFactory(match.Seats, match.StartingLife, match.Commander, setup);
     }
@@ -250,6 +256,7 @@ public partial class GameBoard : Control
     /// <summary>Test-mode undo: rebuild the game up to the last decision a person made and ask it again.</summary>
     private void Undo()
     {
+        if (_match?.Event is not null) return; // no take-backs in event games
         if (_session.CreateUndo() is { } previous) StartSession(previous);
     }
 
@@ -394,6 +401,14 @@ public partial class GameBoard : Control
         again.CustomMinimumSize = new Vector2(220, 52);
         again.Pressed += () => StartNewGame((ulong)Time.GetTicksUsec());
         overBox.AddChild(again);
+        _newGameButton = again;
+        var back = BoardStyle.MakePrimaryButton("Back to event", 20);
+        back.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
+        back.CustomMinimumSize = new Vector2(220, 52);
+        back.Visible = false;
+        back.Pressed += () => { if (_match?.Event is { } hook) App.Instance.GoTo(hook.ReturnScene); };
+        overBox.AddChild(back);
+        _backToEventButton = back;
         var toMenu = BoardStyle.MakeButton("Main menu", 18);
         toMenu.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
         toMenu.CustomMinimumSize = new Vector2(220, 46);
@@ -527,14 +542,22 @@ public partial class GameBoard : Control
         _stepLabel.Text = view.TurnNumber == 0 ? "Mulligan" : EventLogFormatter.StepName(view.Step);
         _phaseBar.SetCurrentStep(view.TurnNumber == 0 ? null : view.Step);
         _stackView.Refresh(view.Stack);
-        _undoButton.Disabled = !_session.CanUndo;
+        _undoButton.Disabled = !_session.CanUndo || _match?.Event is not null; // no take-backs in event games
 
         if (view.IsGameOver)
         {
             // Say why everyone else lost, so a sudden defeat is never a mystery.
             var winner = view.Winner is { } w ? view.Players[w.Value].Name + " wins!" : "Draw";
             var reasons = _session.Game.Log.OfType<PlayerLost>().Select(l => $"{view.Players[l.Player.Value].Name} lost: {l.Reason}");
+            if (_match?.Event is { } hook && !_resultReported)
+            {
+                _resultReported = true;
+                hook.RecordWinner(view.Winner?.Value);
+            }
             ShowGameOver(winner + "\n" + string.Join("\n", reasons));
+            // Automatic play of a whole event (smoke tests): go back to the event on its own.
+            if (_autoplay && _match?.Event is { } back)
+                GetTree().CreateTimer(0.5).Timeout += () => App.Instance.GoTo(back.ReturnScene);
         }
 
         ApplyHighlights(view, decision);
@@ -1585,5 +1608,8 @@ public partial class GameBoard : Control
         _gameOverReasons.Text = lines.Length > 1 ? lines[1] : "";
         _gameOver.Visible = true;
         _actionPanel.Visible = false;
+        bool inEvent = _match?.Event is not null;
+        if (_newGameButton is not null) _newGameButton.Visible = !inEvent;
+        if (_backToEventButton is not null) _backToEventButton.Visible = inEvent;
     }
 }

@@ -77,6 +77,16 @@ public sealed class ContentModule
 
     public string ReadDeck(string name) => File.ReadAllText(Path.Combine(DecksDirectory, name + ".txt"));
 
+    /// <summary>Cube lists in cubes/*.txt (deck-list format: one line per card, printing optional).</summary>
+    public IEnumerable<string> CubeNames() =>
+        System.IO.Directory.Exists(CubesDirectory)
+            ? System.IO.Directory.EnumerateFiles(CubesDirectory, "*.txt").Select(Path.GetFileNameWithoutExtension).OfType<string>().Order()
+            : Enumerable.Empty<string>();
+
+    public string ReadCube(string name) => File.ReadAllText(Path.Combine(CubesDirectory, name + ".txt"));
+
+    private string CubesDirectory => Path.Combine(Directory, "cubes");
+
     /// <summary>
     /// Card scripts in scripts/*.json, keyed by oracle id (the file name). Scripts that fail to parse are reported
     /// through <paramref name="errors"/> and skipped, so one bad script never breaks the whole module.

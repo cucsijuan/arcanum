@@ -192,6 +192,17 @@ public class ModuleTests
         int supported = db.All.Count(d => db.SupportOf(d.Name) == CardSupport.Full);
         Console.WriteLine($"cards={db.Count} supported={supported}");
 
+        // Cubes: every card known and fully supported.
+        foreach (var cubeName in module.CubeNames())
+        {
+            var unknown = new List<string>();
+            var cube = Arcanum.Data.Limited.CubeBoosters.CardsFrom(Arcanum.Data.Decks.DeckList.Parse(module.ReadCube(cubeName)), db, unknown);
+            var unsupported = cube.Where(c => db.SupportOf(c.Name) != CardSupport.Full).Select(c => c.Name).ToList();
+            Console.WriteLine($"cube {cubeName}: {cube.Count} cards, unknown {string.Join(", ", unknown)}, unsupported {string.Join(", ", unsupported)}");
+            Assert.Empty(unknown);
+            Assert.Empty(unsupported);
+        }
+
         // Starter decks must be legal in their format (commander decks: the module's commander format).
         var formats = module.LoadFormats();
         foreach (var name in module.DeckNames())

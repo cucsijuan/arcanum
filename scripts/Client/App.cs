@@ -8,7 +8,15 @@ namespace Arcanum.Client;
 
 /// <summary>A match chosen on the play screen, picked up by the game board.</summary>
 /// <param name="Seats">Seat 0 is the person in front of the screen; later seats are opponents (people or the computer).</param>
-public sealed record MatchSetup(IReadOnlyList<GameSession.Seat> Seats, int StartingLife, bool Commander = false, bool Sandbox = false);
+public sealed record MatchSetup(IReadOnlyList<GameSession.Seat> Seats, int StartingLife, bool Commander = false, bool Sandbox = false)
+{
+    /// <summary>A game that is part of an event: who won is reported back, and the game ends with a way back to it.</summary>
+    public EventHook? Event { get; init; }
+}
+
+/// <param name="RecordWinner">Called once when the game ends, with the winning seat index (null for a draw).</param>
+/// <param name="ReturnScene">Where "Back to event" goes.</param>
+public sealed record EventHook(Action<int?> RecordWinner, string ReturnScene, string Title);
 
 /// <summary>
 /// Autoload that owns app-wide services: content (module, cards, formats), settings, saved decks and navigation
@@ -22,6 +30,7 @@ public partial class App : Node
     public const string SettingsScene = "res://scenes/settings/SettingsScreen.tscn";
     public const string ExtrasScene = "res://scenes/extras/Extras.tscn";
     public const string GameBoardScene = "res://scenes/game_board/GameBoard.tscn";
+    public const string LimitedScene = "res://scenes/limited/Limited.tscn";
 
     public const string SourceUrl = "https://github.com/cucsijuan/arcanum";
 
@@ -31,6 +40,7 @@ public partial class App : Node
 
     public ContentLoader Content { get; } = new();
     public DeckStore Decks { get; } = new();
+    public LimitedService Limited { get; } = new();
     public List<FormatRules> Formats { get; } = new();
 
     /// <summary>Latest content loading message, for screens that open while loading is still going on.</summary>
