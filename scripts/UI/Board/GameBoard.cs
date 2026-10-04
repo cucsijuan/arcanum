@@ -17,9 +17,11 @@ namespace Arcanum.UI.Board;
 public partial class GameBoard : Control
 {
     /// <summary>The seat shown at the bottom: the person in front of the screen.</summary>
-    private static readonly PlayerId Bottom = new(0);
+    private PlayerId Bottom => _session.LocalSeat;
 
-    private GameSession _session = null!;
+    private IBoardSession _session = null!;
+    /// <summary>Players who lost so far, and why (shown when the game ends).</summary>
+    private readonly List<PlayerLost> _lost = new();
     /// <summary>One area per player: seat 0 across the bottom half, opponents side by side across the top half.</summary>
     private readonly List<PlayerArea> _areas = new();
     private readonly CardNode _preview = new();
@@ -63,8 +65,8 @@ public partial class GameBoard : Control
     private readonly Announcer _announcer = new();
     private readonly MulliganView _mulligan = new();
     private ulong _holdUntilMs;
-    private readonly List<AttackerDeclared> _pendingAttacks = new();
-    private readonly List<BlockerDeclared> _pendingBlocks = new();
+    private readonly List<EventView> _pendingAttacks = new();
+    private readonly List<EventView> _pendingBlocks = new();
     private bool _combatFlushQueued;
     private readonly PhaseBar _phaseBar = new();
     private readonly StackView _stackView = new();
@@ -84,7 +86,7 @@ public partial class GameBoard : Control
 
     private readonly Label _loading = BoardStyle.MakeLabel("", 22);
     private readonly Control _menu = new();
-    private Func<ulong, GameSession> _newSession = GameSession.CreateHotseatDemo;
+    private Func<ulong, IBoardSession> _newSession = GameSession.CreateHotseatDemo;
 
     public override async void _Ready()
     {
@@ -235,16 +237,18 @@ public partial class GameBoard : Control
 
     private void StartNewGame(ulong seed) => StartSession(_newSession(seed));
 
-    private void StartSession(GameSession session)
+    private void StartSession(IBoardSession session)
     {
+        _session?.Leave();
         _session = session;
+        _lost.Clear();
         _announcer.Clear();
         _holdUntilMs = 0;
         session.Presentation = PresentationAsync;
         ConfigureAreas(session.PlayerCount);
         _session.Changed += Refresh;
         _session.Failed += e => ShowGameOver($"Engine error:\n{e.Message}");
-        _session.Game.EventRaised += OnGameEvent;
+        _session.EventRaised += OnGameEvent;
         _phaseBar.Bind(session.Policy);
         _log.Clear();
         _unreadLog = 0;
@@ -258,7 +262,7 @@ public partial class GameBoard : Control
     private void Undo()
     {
         if (_match?.Event is not null) return; // no take-backs in event games
-        if (_session.CreateUndo() is { } previous) StartSession(previous);
+        if (_session is GameSession local && local.CreateUndo() is { } previous) StartSession(previous);
     }
 
     // ---------------------------------------------------------------- layout
@@ -464,23 +468,30 @@ public partial class GameBoard : Control
 
     private CardNode? FindCard(CardId id) => _areas.Select(a => a.FindCard(id)).FirstOrDefault(n => n is not null);
 
-    /// <summary>(Re)creates the player areas for <paramref name="count"/> players.</summary>
+    private PlayerId _areasBottom;
+
+    /// <summary>
+    /// (Re)creates the player areas for <paramref name="count"/> players: this screen's seat across the bottom half,
+    /// the others in seat order (starting after it) across the top half.
+    /// </summary>
     private void ConfigureAreas(int count)
     {
-        if (_areas.Count == count) return;
+        if (_areas.Count == count && _areasBottom == Bottom) return;
         foreach (var old in _areas) old.QueueFree();
         _areas.Clear();
+        _areasBottom = Bottom;
         int opponents = count - 1;
         for (int i = 0; i < count; i++)
         {
+            int place = (i - Bottom.Value + count) % count; // 0: bottom, then left to right on top
             var area = new PlayerArea { Player = new PlayerId(i), Compact = count > 2 };
-            if (i == 0)
+            if (place == 0)
             {
                 area.AnchorTop = 0.5f; area.AnchorRight = 1; area.AnchorBottom = 1;
             }
             else
             {
-                area.AnchorLeft = (i - 1) / (float)opponents; area.AnchorRight = i / (float)opponents; area.AnchorBottom = 0.5f;
+                area.AnchorLeft = (place - 1) / (float)opponents; area.AnchorRight = place / (float)opponents; area.AnchorBottom = 0.5f;
                 area.FacesDown = true;
             }
             area.CardClicked += OnCardClicked;
@@ -489,7 +500,7 @@ public partial class GameBoard : Control
             area.CardHoverEnded += HidePreview;
             AddChild(area);
             MoveChild(area, 1 + i); // above the background, below arrows and overlays
-            area.SetPlaymatStyle(Settings.Current.Playmats.ElementAtOrDefault(i == 0 ? 0 : 1) ?? "grid");
+            area.SetPlaymatStyle(Settings.Current.Playmats.ElementAtOrDefault(place == 0 ? 0 : 1) ?? "grid");
             _areas.Add(area);
         }
     }
@@ -507,7 +518,7 @@ public partial class GameBoard : Control
             _attackDefender = decision is AttackDecision ad ? ad.Defenders[0] : null;
             // Creatures that attack each combat if able start selected (their target can still be changed).
             if (decision is AttackDecision forced)
-                foreach (var id in forced.PossibleAttackers.Where(id => _session.Game.ViewFor(forced.Player).FindCard(id)?.AttacksEachCombat == true))
+                foreach (var id in forced.PossibleAttackers.Where(id => _session.ViewFor(forced.Player).FindCard(id)?.AttacksEachCombat == true))
                 {
                     _attackTargets[id] = forced.Defenders[0];
                     _attackGroup.Add(id);
@@ -551,7 +562,7 @@ public partial class GameBoard : Control
         {
             // Say why everyone else lost, so a sudden defeat is never a mystery.
             var winner = view.Winner is { } w ? view.Players[w.Value].Name + " wins!" : "Draw";
-            var reasons = _session.Game.Log.OfType<PlayerLost>().Select(l => $"{view.Players[l.Player.Value].Name} lost: {l.Reason}");
+            var reasons = _lost.Select(l => $"{view.Players[l.Player.Value].Name} lost: {l.Reason}");
             if (_match?.Event is { } hook && !_resultReported)
             {
                 _resultReported = true;
@@ -578,10 +589,10 @@ public partial class GameBoard : Control
                 return;
             }
             // ARCANUM_TEST_UNDO=1: every 7th manual decision, undo once first (exercises replay end to end).
-            int manual = _session.Log.Entries.Count(e => e.Manual);
+            int manual = _session is GameSession { Log: var log } ? log.Entries.Count(e => e.Manual) : 0;
             if (_testUndo && manual > 0 && manual % 7 == 0 && _undoneAt.Add(manual))
             {
-                GD.Print($"TEST_UNDO at {manual} manual decisions (log {_session.Log.Entries.Count})");
+                GD.Print($"TEST_UNDO at {manual} manual decisions");
                 GetTree().CreateTimer(0.2).Timeout += Undo;
                 return;
             }
@@ -1180,6 +1191,10 @@ public partial class GameBoard : Control
 
     // ---------------------------------------------------------------- input
 
+    public override void _Process(double delta) => _session?.Poll();
+
+    public override void _ExitTree() => _session?.Leave();
+
     public override void _Input(InputEvent @event)
     {
         if (_drag is not { } drag) return;
@@ -1267,7 +1282,7 @@ public partial class GameBoard : Control
 
     private void OnStackItemClicked(int index)
     {
-        var view = _session.Game.ViewFor(_session.CurrentDecision?.Player ?? new PlayerId(0), _session.RevealAll);
+        var view = _session.ViewFor(_session.CurrentDecision?.Player ?? Bottom);
         if (index < view.Stack.Count && _session.CurrentDecision is TargetDecision) PickTarget(StackTarget(view.Stack[index]));
     }
 
@@ -1390,19 +1405,21 @@ public partial class GameBoard : Control
 
     private bool _refreshQueued;
 
-    private void OnGameEvent(GameEvent e)
+    private void OnGameEvent(EventView ev)
     {
-        if (!_session.Log.IsReplaying)
+        var e = ev.Event;
+        if (e is PlayerLost lost) _lost.Add(lost);
+        if (!_session.IsReplaying)
         {
-            PlayEffect(e);
+            PlayEffect(ev);
             // The board also follows actions taken without a local decision (the computer's turn): redraw once per frame.
-            if (_session.HasBot && !_refreshQueued)
+            if (_session.FollowsOthers && !_refreshQueued)
             {
                 _refreshQueued = true;
                 Callable.From(() => { _refreshQueued = false; Refresh(); }).CallDeferred();
             }
         }
-        var line = EventLogFormatter.Format(_session.Game, e, _session.RevealAll);
+        var line = EventLogFormatter.Format(ev, PlayerName, _session.RevealAll);
         if (line is null) return;
         if (_autoplay && e is TurnBegan or PlayerLost or GameEnded) GD.Print(line); // smoke tests follow the game in the console
         _log.AppendText((e is TurnBegan ? "\n[b]" + line + "[/b]" : line) + "\n");
@@ -1431,7 +1448,7 @@ public partial class GameBoard : Control
         }
         if (decision is ChooseCardsDecision choice)
         {
-            var who = _session.Game.State.GetPlayer(choice.Player).Name;
+            var who = PlayerName(choice.Player);
             _mulligan.ShowHand(choice.Request.Options, $"{who}: {choice.Request.Prompt}", _selected, selectable: true);
             return;
         }
@@ -1442,7 +1459,7 @@ public partial class GameBoard : Control
             return;
         }
         // The deciding player's own view: in hotseat that's their hand even when hands are hidden from each other.
-        var view = _session.Game.ViewFor(decision.Player, _session.RevealAll);
+        var view = _session.ViewFor(decision.Player);
         var name = view.Players[decision.Player.Value].Name;
         var title = decision switch
         {
@@ -1455,7 +1472,9 @@ public partial class GameBoard : Control
     }
 
     private CardView ViewBuilderCard(CardId id, PlayerId viewer) =>
-        Arcanum.Engine.Views.ViewBuilder.Card(_session.Game.State, id, viewer, _session.RevealAll);
+        _session.ViewFor(viewer).FindCard(id) ?? new CardView { Id = id, Owner = viewer, Controller = viewer, Zone = Arcanum.Engine.State.Zone.Graveyard, IsHidden = true };
+
+    private string PlayerName(PlayerId player) => _session.ViewFor(Bottom).Players[player.Value].Name;
 
     /// <summary>Completes once queued announcements and short holds (e.g. after combat damage) are over.</summary>
     private async Task PresentationAsync()
@@ -1467,62 +1486,60 @@ public partial class GameBoard : Control
     private void Hold(double seconds) =>
         _holdUntilMs = Math.Max(_holdUntilMs, Time.GetTicksMsec() + (ulong)(seconds * BoardStyle.AnimationScale * 1000));
 
-    /// <summary>Turns what other players (the computer) do into announcements, and holds the game on key moments.</summary>
-    private void Announce(GameEvent e)
+    /// <summary>Turns what other players (the computer, people elsewhere) do into announcements, and holds the game on key moments.</summary>
+    private void Announce(EventView ev)
     {
-        var state = _session.Game.State;
-        string Name(PlayerId p) => state.GetPlayer(p).Name;
-        switch (e)
+        switch (ev.Event)
         {
-            case SpellCast c when _session.IsBot(c.Player):
-                AnnounceStackObject(c.Player, c.Card, "casts", null);
+            case SpellCast c when _session.Announces(c.Player):
+                AnnounceStackObject(ev, c.Player, c.Card, "casts", null);
                 break;
-            case AbilityActivated a when _session.IsBot(a.Player):
-                AnnounceStackObject(a.Player, a.Source, "activates", a.Text);
+            case AbilityActivated a when _session.Announces(a.Player):
+                AnnounceStackObject(ev, a.Player, a.Source, "activates", a.Text);
                 break;
-            case AbilityTriggered t when _session.IsBot(t.Controller):
-                AnnounceStackObject(t.Controller, t.Source, "\u2014 triggered:", t.Text);
+            case AbilityTriggered t when _session.Announces(t.Controller):
+                AnnounceStackObject(ev, t.Controller, t.Source, "\u2014 triggered:", t.Text);
                 break;
-            case AttackerDeclared a when _session.IsBot(state.GetCard(a.Attacker).Controller):
-                _pendingAttacks.Add(a);
+            case AttackerDeclared a when ev.Card(a.Attacker) is { } attacker && _session.Announces(attacker.Controller):
+                _pendingAttacks.Add(ev);
                 QueueCombatFlush();
                 break;
-            case BlockerDeclared b when _session.IsBot(state.GetCard(b.Blocker).Controller):
-                _pendingBlocks.Add(b);
+            case BlockerDeclared b when ev.Card(b.Blocker) is { } blocker && _session.Announces(blocker.Controller):
+                _pendingBlocks.Add(ev);
                 QueueCombatFlush();
                 break;
             case DamageDealt { IsCombat: true }:
                 Hold(1.2); // let the damage numbers be seen before the game moves on
                 break;
             case PermanentDestroyed d:
-                _announcer.Enqueue(new($"{state.GetCard(d.Card).Name} is destroyed", ViewOf(d.Card), 1.5));
+                _announcer.Enqueue(new($"{ev.Name(d.Card)} is destroyed", ViewOf(ev, d.Card), 1.5));
                 break;
-            case CardMoved { From: Arcanum.Engine.State.Zone.Battlefield, To: Arcanum.Engine.State.Zone.Exile } m when !state.GetPlayer(m.Owner).HasLost:
-                _announcer.Enqueue(new($"{state.GetCard(m.Card).Name} is exiled", ViewOf(m.Card), 1.5));
+            case CardMoved { From: Arcanum.Engine.State.Zone.Battlefield, To: Arcanum.Engine.State.Zone.Exile } m when !_session.ViewFor(Bottom).Players[m.Owner.Value].HasLost:
+                _announcer.Enqueue(new($"{ev.Name(m.Card)} is exiled", ViewOf(ev, m.Card), 1.5));
                 break;
             case CardMoved { From: Arcanum.Engine.State.Zone.Battlefield, To: Arcanum.Engine.State.Zone.Hand } m:
-                _announcer.Enqueue(new($"{state.GetCard(m.Card).Name} returns to {Name(m.Owner)}'s hand", ViewOf(m.Card), 1.5));
+                _announcer.Enqueue(new($"{ev.Name(m.Card)} returns to {PlayerName(m.Owner)}'s hand", ViewOf(ev, m.Card), 1.5));
                 break;
             case PlayerLost l:
-                _announcer.Enqueue(new($"{Name(l.Player)} loses: {l.Reason}", null, 2.5));
+                _announcer.Enqueue(new($"{PlayerName(l.Player)} loses: {l.Reason}", null, 2.5));
                 break;
         }
     }
 
-    private CardView? ViewOf(CardId id) => _session.ViewFor(Bottom).FindCard(id) is { IsHidden: false } v ? v : null;
+    /// <summary>The card as it was when the event happened (falls back to the current view).</summary>
+    private CardView? ViewOf(EventView ev, CardId id) =>
+        ev.Card(id) is { IsHidden: false } v ? v : _session.ViewFor(Bottom).FindCard(id) is { IsHidden: false } now ? now : null;
 
     /// <summary>A spell or ability just put on the stack: its card, what it does, and arrows to its targets.</summary>
-    private void AnnounceStackObject(PlayerId player, CardId source, string verb, string? abilityText)
+    private void AnnounceStackObject(EventView ev, PlayerId player, CardId source, string verb, string? abilityText)
     {
-        var state = _session.Game.State;
-        var top = state.Stack.LastOrDefault(s => s.SourceCard == source);
-        var targets = top?.Targets.Select(t => t.Target).ToList() ?? new List<Arcanum.Engine.Abilities.Target>();
+        var targets = ev.Stack?.Targets ?? (IReadOnlyList<Arcanum.Engine.Abilities.Target>)Array.Empty<Arcanum.Engine.Abilities.Target>();
         string TargetName(Arcanum.Engine.Abilities.Target t) =>
-            t.Player is { } p ? (p == Bottom ? "you" : state.GetPlayer(p).Name) : state.GetCard(t.Card!.Value).Name;
-        var text = $"{state.GetPlayer(player).Name} {verb} {state.GetCard(source).Name}";
+            t.Player is { } p ? (p == Bottom ? "you" : PlayerName(p)) : t.Card is { } c ? ev.Name(c) : "an ability";
+        var text = $"{PlayerName(player)} {verb} {ev.Name(source)}";
         if (abilityText is { Length: > 0 }) text += $"\n{abilityText}";
         if (targets.Count > 0) text += $"\n\u2192 {string.Join(", ", targets.Select(TargetName))}";
-        _announcer.Enqueue(new(text, ViewOf(source), targets.Count > 0 ? 3 : 1.5,
+        _announcer.Enqueue(new(text, ViewOf(ev, source), targets.Count > 0 ? 3 : 1.5,
             card => targets.Select(TargetControl).OfType<Control>().Select(to => new ArrowLayer.Arrow(card, to, BoardStyle.Attacking))));
     }
 
@@ -1537,25 +1554,24 @@ public partial class GameBoard : Control
     private void FlushCombat()
     {
         _combatFlushQueued = false;
-        var state = _session.Game.State;
-        foreach (var group in _pendingAttacks.GroupBy(a => state.GetCard(a.Attacker).Controller))
+        foreach (var group in _pendingAttacks.GroupBy(ev => ev.Card(((AttackerDeclared)ev.Event).Attacker)!.Controller))
         {
-            var attacks = group.ToList();
-            var defenders = attacks.Select(a => a.Defender).Distinct().Select(d => d == Bottom ? "you" : state.GetPlayer(d).Name);
-            var text = $"{state.GetPlayer(group.Key).Name} attacks {string.Join(" and ", defenders)} with " +
-                       string.Join(", ", attacks.Select(a => state.GetCard(a.Attacker).Name));
+            var attacks = group.Select(ev => (Ev: ev, Attack: (AttackerDeclared)ev.Event)).ToList();
+            var defenders = attacks.Select(a => a.Attack.Defender).Distinct().Select(d => d == Bottom ? "you" : PlayerName(d));
+            var text = $"{PlayerName(group.Key)} attacks {string.Join(" and ", defenders)} with " +
+                       string.Join(", ", attacks.Select(a => a.Ev.Name(a.Attack.Attacker)));
             _announcer.Enqueue(new(text, null, 2, _ => attacks
-                .Select(a => (From: FindCard(a.Attacker), To: (Control)AreaOf(a.Defender).LifeBox))
+                .Select(a => (From: FindCard(a.Attack.Attacker), To: (Control)AreaOf(a.Attack.Defender).LifeBox))
                 .Where(x => x.From is not null)
                 .Select(x => new ArrowLayer.Arrow(x.From!, x.To, BoardStyle.Attacking))));
         }
-        foreach (var group in _pendingBlocks.GroupBy(b => state.GetCard(b.Blocker).Controller))
+        foreach (var group in _pendingBlocks.GroupBy(ev => ev.Card(((BlockerDeclared)ev.Event).Blocker)!.Controller))
         {
-            var blocks = group.ToList();
-            var text = $"{state.GetPlayer(group.Key).Name} blocks: " +
-                       string.Join(", ", blocks.Select(b => $"{state.GetCard(b.Blocker).Name} \u2192 {state.GetCard(b.Attacker).Name}"));
+            var blocks = group.Select(ev => (Ev: ev, Block: (BlockerDeclared)ev.Event)).ToList();
+            var text = $"{PlayerName(group.Key)} blocks: " +
+                       string.Join(", ", blocks.Select(b => $"{b.Ev.Name(b.Block.Blocker)} \u2192 {b.Ev.Name(b.Block.Attacker)}"));
             _announcer.Enqueue(new(text, null, 1.5, _ => blocks
-                .Select(b => (From: FindCard(b.Blocker), To: FindCard(b.Attacker)))
+                .Select(b => (From: FindCard(b.Block.Blocker), To: FindCard(b.Block.Attacker)))
                 .Where(x => x.From is not null && x.To is not null)
                 .Select(x => new ArrowLayer.Arrow(x.From!, x.To!, BoardStyle.Blocking))));
         }
@@ -1563,10 +1579,10 @@ public partial class GameBoard : Control
         _pendingBlocks.Clear();
     }
 
-    private void PlayEffect(GameEvent e)
+    private void PlayEffect(EventView ev)
     {
-        Announce(e);
-        switch (e)
+        Announce(ev);
+        switch (ev.Event)
         {
             case DamageDealt { TargetCard: { } card } d when FindCard(card) is { } node:
                 SpawnFloatingText($"-{d.Amount}", node.GetGlobalTransform() * (node.Size / 2), BoardStyle.Attacking);

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-using System.Security.Cryptography;
 using System.Text.Json;
 using Arcanum.Engine;
 using Arcanum.Engine.Cards;
@@ -13,7 +12,9 @@ using Arcanum.Net.Transport;
 namespace Arcanum.Net.Host;
 
 /// <param name="IsComputer">Played by the computer from the start (no person will connect to it).</param>
-public sealed record HostSeat(string Name, IReadOnlyList<CardDefinition> Deck, IReadOnlyList<CardDefinition>? Commanders = null, bool IsComputer = false);
+/// <param name="Token">The secret the player uses to take the seat; null makes a new one.</param>
+public sealed record HostSeat(string Name, IReadOnlyList<CardDefinition> Deck, IReadOnlyList<CardDefinition>? Commanders = null, bool IsComputer = false,
+    string? Token = null);
 
 /// <summary>One answer given during a game (real card ids), in order: replaying them rebuilds the game exactly.</summary>
 public sealed record RecordedAnswer(int Seat, JsonElement Value);
@@ -78,7 +79,7 @@ public sealed class GameHost
         _replay = new Queue<RecordedAnswer>(Options.Replay ?? Array.Empty<RecordedAnswer>());
         _names = seats.Select(s => s.Name).ToList();
         _commander = config.Commander is not null;
-        _seats = seats.Select((s, i) => new Seat(this, new PlayerId(i), s.IsComputer)).ToList();
+        _seats = seats.Select((s, i) => new Seat(this, new PlayerId(i), s.IsComputer, s.Token)).ToList();
         Game = new Game(config, seats.Select((s, i) => new PlayerSetup(s.Name, _seats[i], s.Deck, s.Commanders)).ToList());
         foreach (var seat in _seats) seat.UseCardRules(Game);
         Game.EventRaised += OnEvent;
@@ -151,8 +152,7 @@ public sealed class GameHost
             hello.Version != Options.Version ? $"Different game version (host: {Options.Version}, yours: {hello.Version})." :
             hello.Content != Options.Content ? "Different card content than the host: update your cards." :
             null;
-        var seat = _seats.FirstOrDefault(s => !s.IsComputerSeat && CryptographicOperations.FixedTimeEquals(
-            System.Text.Encoding.UTF8.GetBytes(s.Token), System.Text.Encoding.UTF8.GetBytes(hello.Token)));
+        var seat = _seats.FirstOrDefault(s => !s.IsComputerSeat && Tokens.Same(s.Token, hello.Token));
         refusal ??= seat is null ? "No seat in this game for you." : null;
         if (refusal is not null)
         {

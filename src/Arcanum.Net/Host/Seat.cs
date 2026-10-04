@@ -33,8 +33,7 @@ internal sealed class Seat : IPlayerController
 
     public PlayerId Id { get; }
     public bool IsComputerSeat { get; }
-    public string Token { get; } = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(18))
-        .Replace('+', '-').Replace('/', '_');
+    public string Token { get; }
 
     public Peer? Peer { get; private set; }
     public CardAliases Aliases { get; private set; } = new();
@@ -46,11 +45,12 @@ internal sealed class Seat : IPlayerController
     /// <summary>Priority stops of the person (sent by their client); used to pass priority for them.</summary>
     public AutoPassPolicy Policy { get; } = new();
 
-    public Seat(GameHost host, PlayerId id, bool isComputer)
+    public Seat(GameHost host, PlayerId id, bool isComputer, string? token)
     {
         _host = host;
         Id = id;
         IsComputerSeat = isComputer;
+        Token = token ?? Tokens.New();
         if (!isComputer) _disconnectedAt = host.Options.Clock();
     }
 

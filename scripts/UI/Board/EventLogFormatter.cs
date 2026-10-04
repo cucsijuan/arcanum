@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-using Arcanum.Engine;
+using Arcanum.Engine.Core;
 using Arcanum.Engine.Events;
 using Arcanum.Engine.State;
+using Arcanum.Engine.Views;
 
 namespace Arcanum.UI.Board;
 
 /// <summary>Human-readable lines for the game log. Returns null for events too noisy to show.</summary>
 public static class EventLogFormatter
 {
-    public static string? Format(Game game, GameEvent e, bool revealAll)
+    /// <param name="ev">The event with the cards it mentions, as this screen may see them.</param>
+    public static string? Format(EventView ev, Func<PlayerId, string> playerName, bool revealAll)
     {
-        string P(Arcanum.Engine.Core.PlayerId id) => game.State.GetPlayer(id).Name;
-        string C(Arcanum.Engine.Core.CardId id) => game.State.GetCard(id).Name;
+        string P(PlayerId id) => playerName(id);
+        string C(CardId id) => ev.Name(id);
+        bool IsCreature(CardId id) => ev.Card(id) is { } c && (c.Types & Arcanum.Engine.Cards.CardType.Creature) != 0;
 
-        return e switch
+        return ev.Event switch
         {
             GameStarted s => $"{P(s.StartingPlayer)} goes first.",
             MulliganTaken m => $"{P(m.Player)} mulligans ({m.Count}).",
@@ -33,9 +36,9 @@ public static class EventLogFormatter
             FizzledOnResolution f => $"{C(f.Source)} does nothing (no legal targets).",
             SpellCountered c => $"{C(c.Card)} is countered.",
             TokenCreated t => $"{P(t.Controller)} creates a {C(t.Card)} token.",
-            PermanentDestroyed d when !game.State.GetCard(d.Card).IsCreature => $"{C(d.Card)} is destroyed.",
+            PermanentDestroyed d when !IsCreature(d.Card) => $"{C(d.Card)} is destroyed.",
             LifeChanged { NewLife: var now, OldLife: var before } l when now > before => $"{P(l.Player)} gains {now - before} life.",
-            PermanentSacrificed sac when !game.State.GetCard(sac.Card).IsCreature => $"{C(sac.Card)} is sacrificed.",
+            PermanentSacrificed sac when !IsCreature(sac.Card) => $"{C(sac.Card)} is sacrificed.",
             ControlChanged cc => $"{P(cc.NewController)} gains control of {C(cc.Card)}.",
             ChoiceMade cm => $"{C(cm.Card)}: {cm.Choice} chosen.",
             CardsRevealed cr => $"{P(cr.Player)} reveals {string.Join(", ", cr.Cards.Select(C))}.",

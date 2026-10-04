@@ -23,11 +23,18 @@ namespace Arcanum.Net.Protocol;
 [JsonDerivedType(typeof(Answer), "answer")]
 [JsonDerivedType(typeof(Stops), "stops")]
 [JsonDerivedType(typeof(SeatStatus), "seat")]
+[JsonDerivedType(typeof(Joined), "joined")]
+[JsonDerivedType(typeof(LobbyState), "lobby")]
+[JsonDerivedType(typeof(SubmitDeck), "deck")]
+[JsonDerivedType(typeof(GameStarting), "starting")]
 public abstract record NetMessage;
 
 // ------------------------------------------------------------------ connection
 
-/// <summary>First message of a player. <paramref name="Token"/> identifies their seat (also to reconnect).</summary>
+/// <summary>
+/// First message of a player. <paramref name="Token"/> identifies their seat (also to reconnect); empty to take a free
+/// seat in a lobby.
+/// </summary>
 /// <param name="Content">Identifies the card content (module and card data); both sides must use the same.</param>
 public sealed record Hello(int Protocol, string Version, string Content, string Name, string Token) : NetMessage;
 
@@ -38,6 +45,25 @@ public sealed record Rejected(string Reason) : NetMessage;
 
 /// <summary>Sent regularly both ways so a silent connection is noticed as lost.</summary>
 public sealed record Heartbeat : NetMessage;
+
+// ------------------------------------------------------------------ lobby (before the game)
+
+/// <summary>A player took <paramref name="Seat"/>; <paramref name="Token"/> lets them back in if they drop.</summary>
+public sealed record Joined(int Seat, string Token) : NetMessage;
+
+public enum LobbySeatKind { Open, Person, Computer }
+
+/// <param name="Problem">Why the seat's deck can't be played (missing, illegal in the format...), or null.</param>
+public sealed record LobbySeat(string Name, LobbySeatKind Kind, bool Connected, string? Deck, string? Problem);
+
+/// <summary>The lobby as everyone sees it.</summary>
+public sealed record LobbyState(string Format, bool Commander, IReadOnlyList<LobbySeat> Seats) : NetMessage;
+
+/// <summary>The deck a player brings, as a deck list (one "count name" per line).</summary>
+public sealed record SubmitDeck(string Name, string List) : NetMessage;
+
+/// <summary>The game begins: the player now says <see cref="Hello"/> to the game with their token.</summary>
+public sealed record GameStarting : NetMessage;
 
 // ------------------------------------------------------------------ game, host to player
 

@@ -16,5 +16,6 @@
     <ProjectReference Include="src/Arcanum.Cards/Arcanum.Cards.csproj" />
     <ProjectReference Include="src/Arcanum.Data/Arcanum.Data.csproj" />
     <ProjectReference Include="src/Arcanum.Bots/Arcanum.Bots.csproj" />
+    <ProjectReference Include="src/Arcanum.Net/Arcanum.Net.csproj" />
   </ItemGroup>
 </Project>

@@ -14,7 +14,7 @@ namespace Arcanum.Client;
 /// Bridges the engine and the Godot UI: builds a game, runs it on the main thread (decisions are awaited,
 /// so the engine never blocks a frame), tells the board when to redraw and supports undo by replay.
 /// </summary>
-public sealed class GameSession
+public sealed class GameSession : IBoardSession
 {
     /// <param name="IsBot">Played by the computer instead of a person on this device.</param>
     public sealed record Seat(string Name, IReadOnlyList<CardDefinition> Deck, bool IsBot = false, IReadOnlyList<CardDefinition>? Commanders = null);
@@ -37,6 +37,21 @@ public sealed class GameSession
     public event Action? Changed;
 
     public event Action<Exception>? Failed;
+
+    public event Action<EventView>? EventRaised;
+
+    /// <summary>Seat 0 is shown at the bottom (in hotseat, everyone shares that screen).</summary>
+    public PlayerId LocalSeat => new(0);
+
+    public bool Announces(PlayerId player) => IsBot(player);
+
+    public bool FollowsOthers => HasBot;
+
+    public bool IsReplaying => Log.IsReplaying;
+
+    public void Poll() { }
+
+    public void Leave() { }
 
     private GameSession(GameConfig config, IReadOnlyList<Seat> seats, AutoPassPolicy policy, IEnumerable<DecisionLog.Entry>? replay,
         Action<Game>? setup)
@@ -64,7 +79,11 @@ public sealed class GameSession
         HasBot = bots.Count > 0;
         setup?.Invoke(Game); // sandbox: pre-placed permanents and cards, re-applied identically on undo
         Hub.DecisionRequested += _ => Changed?.Invoke();
-        Game.EventRaised += e => { if (e is GameEnded) Changed?.Invoke(); };
+        Game.EventRaised += e =>
+        {
+            EventRaised?.Invoke(EventViews.Build(Game.State, e, LocalSeat, RevealAll, config.Commander?.TaxPerCast ?? 0));
+            if (e is GameEnded) Changed?.Invoke();
+        };
     }
 
     /// <summary>Two local seats sharing one screen, with the given decks.</summary>
