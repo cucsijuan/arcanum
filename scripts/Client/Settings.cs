@@ -12,6 +12,8 @@ public sealed class SettingsData
 {
     // General
     public string[] PlayerNames { get; set; } = { "Player 1", "Player 2" };
+    /// <summary>Address of the last online game joined.</summary>
+    public string LastHostAddress { get; set; } = "";
     public bool ConfirmManaPayment { get; set; } = true;
     public bool RevealHandsInHotseat { get; set; } = true;
 

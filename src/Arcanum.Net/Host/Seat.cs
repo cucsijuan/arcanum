@@ -87,11 +87,12 @@ internal sealed class Seat : IPlayerController
 
     // ------------------------------------------------------------------ connection
 
-    public void Connect(IConnection connection)
+    public void Connect(IConnection connection, IEnumerable<NetMessage>? early = null)
     {
         Peer?.Close();
         Aliases = new CardAliases(); // a new connection never learns ids given to an earlier one
         Peer = new Peer(connection, new WireFormat(Aliases), _host.Options.Clock);
+        if (early is not null) Peer.Hold(early);
         _disconnectedAt = null;
         _lastView = null;
         _invalidInARow = 0;

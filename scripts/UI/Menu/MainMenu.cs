@@ -37,6 +37,7 @@ public partial class MainMenu : Control
             column.AddChild(button);
         }
         Item("Play", "Start a game", () => App.Instance.GoTo(App.PlaySetupScene), primary: true);
+        Item("Online", "Host a game or join one by address", () => App.Instance.GoTo(App.OnlineScene));
         Item("Limited", "Draft and sealed: open boosters, build a deck, play rounds", () => App.Instance.GoTo(App.LimitedScene));
         Item("Decks", "Build, import and export decks", () => App.Instance.GoTo(App.DeckBuilderScene));
         Item("Settings", "Gameplay, appearance, audio and video", () => App.Instance.GoTo(App.SettingsScene));

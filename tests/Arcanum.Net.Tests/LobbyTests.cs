@@ -41,6 +41,7 @@ public class LobbyTests
         lobby.AddListener(listener);
 
         var host = new LobbyClient(listener.Connect(), Identity("Host", lobby.HostToken), clock.Func);
+        host.SubmitDeck("Red-green", List(NetTable.RedGreen())); // right behind the greeting
         var guest = new LobbyClient(listener.Connect(), Identity("Guest"), clock.Func);
         void Step()
         {
@@ -53,7 +54,7 @@ public class LobbyTests
         Assert.Equal(0, host.Seat);
         Assert.Equal(1, guest.Seat);
         Assert.NotEmpty(guest.Identity.Token);
-        Assert.Contains("hasn't chosen a deck", lobby.StartProblem);
+        Assert.Contains("Guest hasn't chosen a deck", lobby.StartProblem);
 
         // A third player finds the game full once the computer takes the last seat.
         lobby.SetComputer(2, "Computer", "Red-green", List(NetTable.RedGreen()));
@@ -61,7 +62,6 @@ public class LobbyTests
         for (int i = 0; i < 3; i++) { Step(); late.Poll(); }
         Assert.Equal("The game is full.", late.RejectedReason);
 
-        host.SubmitDeck("Red-green", List(NetTable.RedGreen()));
         guest.SubmitDeck("Broken", "40 Mystery Card");
         for (int i = 0; i < 3; i++) Step();
         Assert.Contains("Unknown card", lobby.StartProblem);

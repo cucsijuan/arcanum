@@ -1,0 +1,428 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+using System.Text.Json;
+using Arcanum.Data.Decks;
+using Arcanum.Data.Formats;
+using Arcanum.Engine;
+using Arcanum.Engine.Core;
+using Arcanum.Engine.Players;
+using Arcanum.Net.Client;
+using Arcanum.Net.Host;
+using Arcanum.Net.Lobby;
+using Arcanum.Net.Protocol;
+using Arcanum.Net.Transport;
+using Godot;
+
+namespace Arcanum.Client;
+
+/// <summary>
+/// Online play with a direct connection: hosting (a lobby, then the game, for players who connect to this device's
+/// address) or joining someone else's game. Lives as long as the app, so the game keeps running between screens;
+/// a joined player whose connection drops keeps trying to get back in.
+/// </summary>
+public partial class OnlineService : Node
+{
+    public const int DefaultPort = 47013;
+    private const string SavePath = "user://online/hosted.json";
+    private static readonly TimeSpan RetryEvery = TimeSpan.FromSeconds(3);
+
+    // Hosting
+    private LobbyHost? _lobby;
+    private TcpConnectionListener? _tcp;
+    private InMemoryListener? _loopback;
+    private HostedSave? _save;
+    private int _savedAnswers = -1;
+    private ulong _lastSaveMs;
+    private Upnp? _upnp;
+
+    // This device's player (also when hosting)
+    private LobbyClient? _lobbyClient;
+    private GameClient? _gameClient;
+    private string _address = "";
+    private int _port;
+    private DateTime _nextRetry;
+    private bool _connecting;
+
+    public NetSession? Session { get; private set; }
+    public LobbyClient? Lobby => _lobbyClient;
+    public LobbyHost? HostedLobby => _lobby;
+    public bool IsHosting => _lobby is not null || _resumed is not null;
+
+    /// <summary>This device runs the game (it can hand dropped players' seats to the computer).</summary>
+    public bool IsHostingGame => HostedGame is not null;
+    public bool IsActive => _lobbyClient is not null || _gameClient is not null || _lobby is not null;
+
+    /// <summary>Addresses to give the other players (local network, and the public one when the router allows it).</summary>
+    public List<string> ShareAddresses { get; } = new();
+
+    /// <summary>Something to tell the player (connection refused, router setup...).</summary>
+    public event Action<string>? Status;
+
+    /// <summary>The lobby changed, or the game started (see <see cref="Session"/>).</summary>
+    public event Action? Changed;
+
+    public static string Version => (string)ProjectSettings.GetSetting("application/config/version");
+
+    public static string ContentId => App.Instance.Module?.Manifest.Id ?? "generic";
+
+    // ------------------------------------------------------------------ hosting
+
+    /// <summary>Opens a lobby on <paramref name="port"/>; this device's player takes seat 0.</summary>
+    public void Host(string name, FormatRules format, int players, int port, DeckInfo deck)
+    {
+        Leave();
+        var settings = new LobbySettings(format.Name, format.Commander, format.StartingLife, players, Version, ContentId);
+        _lobby = new LobbyHost(settings, list => CheckDeck(list, format));
+        _lobby.Changed += () => Changed?.Invoke();
+        try
+        {
+            _tcp = new TcpConnectionListener(port);
+        }
+        catch (Exception e)
+        {
+            _lobby = null;
+            Status?.Invoke($"Can't listen on port {port}: {e.Message}");
+            return;
+        }
+        _port = _tcp.Port;
+        _loopback = new InMemoryListener();
+        _lobby.AddListener(_tcp);
+        _lobby.AddListener(_loopback);
+        _save = new HostedSave { Format = format.Id, Port = _port };
+        ListAddresses();
+        OpenRouterPort();
+        JoinLobby(_loopback.Connect(), new ClientIdentity(name, _lobby.HostToken, Version, ContentId));
+        SubmitDeck(deck);
+    }
+
+    /// <summary>Starts the hosted game with the lobby as it is.</summary>
+    public void StartGame()
+    {
+        if (_lobby is null || _lobby.StartProblem is not null) return;
+        ulong seed = (ulong)Random.Shared.NextInt64();
+        _save!.Seed = seed;
+        _save.Seats = _lobby.Setup.ToList();
+        _lobby.Start(seed, HostOptions());
+    }
+
+    private HostOptions HostOptions() => new()
+    {
+        ComputerPace = ComputerPaceAsync,
+    };
+
+    private async Task ComputerPaceAsync()
+    {
+        if (Godot.Engine.GetMainLoop() is not SceneTree tree) return;
+        if (Session?.Presentation is { } presenting) await presenting();
+        await tree.ToSignal(tree.CreateTimer(0.55 * UI.Board.BoardStyle.AnimationScale), SceneTreeTimer.SignalName.Timeout);
+    }
+
+    /// <summary>A hosted game that was interrupted (this device closed or crashed) and can be resumed.</summary>
+    public static bool HasSavedGame => Godot.FileAccess.FileExists(SavePath);
+
+    /// <summary>Hosts the saved game again: players get back in with their seats, and the game goes on where it stopped.</summary>
+    public bool ResumeSavedGame()
+    {
+        Leave();
+        HostedSave? save;
+        try
+        {
+            save = JsonSerializer.Deserialize<HostedSave>(File.ReadAllText(ProjectSettings.GlobalizePath(SavePath)));
+        }
+        catch (Exception e)
+        {
+            Status?.Invoke($"The saved game can't be read: {e.Message}");
+            return false;
+        }
+        if (save is null || save.Seats.Count < 2) return false;
+        var format = App.Instance.FormatById(save.Format);
+        var seats = new List<HostSeat>();
+        foreach (var seat in save.Seats)
+        {
+            var check = CheckDeck(seat.DeckList, format);
+            if (check.Problem is not null && check.Deck.Count == 0)
+            {
+                Status?.Invoke($"The saved game can't be resumed: {seat.Name}'s deck can't be read.");
+                return false;
+            }
+            seats.Add(new HostSeat(seat.Name, check.Deck, check.Commanders, seat.IsComputer, seat.IsComputer ? null : seat.Token));
+        }
+        var config = new GameConfig { Seed = save.Seed, StartingLife = format.StartingLife, Commander = format.Commander ? new CommanderRules() : null };
+        var game = new GameHost(config, seats, HostOptions() with { Version = Version, Content = ContentId, Replay = save.Answers });
+        try
+        {
+            _tcp = new TcpConnectionListener(save.Port);
+        }
+        catch
+        {
+            _tcp = new TcpConnectionListener(0);
+            Status?.Invoke($"Port {save.Port} is busy: players must join on port {_tcp.Port}.");
+        }
+        _port = _tcp.Port;
+        _loopback = new InMemoryListener();
+        game.AddListener(_tcp);
+        game.AddListener(_loopback);
+        _save = save;
+        _savedAnswers = save.Answers.Count;
+        _resumed = game;
+        ListAddresses();
+        OpenRouterPort();
+        game.Start();
+        StartGameClient(_loopback.Connect(), new ClientIdentity(save.Seats[0].Name, save.Seats[0].Token, Version, ContentId));
+        return true;
+    }
+
+    private GameHost? _resumed;
+
+    private GameHost? HostedGame => _lobby?.Game ?? _resumed;
+
+    /// <summary>Gives a disconnected player's seat to the computer now.</summary>
+    public void ReplaceWithComputer(PlayerId seat) => HostedGame?.ReplaceWithComputer(seat);
+
+    private DeckCheck CheckDeck(string list, FormatRules format)
+    {
+        if (App.Instance.Cards is not { } cards) return new DeckCheck(Array.Empty<Arcanum.Engine.Cards.CardDefinition>(), null, "The host has no card data.");
+        DeckList deck;
+        try
+        {
+            deck = DeckList.Parse(list);
+        }
+        catch (Exception e)
+        {
+            return new DeckCheck(Array.Empty<Arcanum.Engine.Cards.CardDefinition>(), null, $"Unreadable deck list: {e.Message}");
+        }
+        var (definitions, unknown) = deck.Resolve(cards);
+        var commanders = format.Commander ? DeckList.Definitions(cards, deck.Commander) : null;
+        if (!format.Commander) definitions.AddRange(DeckList.Definitions(cards, deck.Commander));
+        string? problem = unknown.Count > 0 ? $"Cards the host doesn't know: {string.Join(", ", unknown.Take(3))}" : null;
+        problem ??= DeckValidator.Validate(deck, format, cards).FirstOrDefault(i => i.Severity == IssueSeverity.Error)?.Message;
+        return new DeckCheck(definitions, commanders, problem);
+    }
+
+    private void ListAddresses()
+    {
+        ShareAddresses.Clear();
+        foreach (var ip in IP.GetLocalAddresses().Where(a => !a.Contains(':') && !a.StartsWith("127.") && !a.StartsWith("169.254.")))
+            ShareAddresses.Add($"{ip}:{_port} (local network)");
+    }
+
+    /// <summary>Asks the router to forward the port (UPnP), so players outside the local network can join.</summary>
+    private void OpenRouterPort()
+    {
+        int port = _port;
+        Task.Run(() =>
+        {
+            var upnp = new Upnp();
+            string message;
+            if (upnp.Discover(2000, 2, "") == (int)Upnp.UpnpResult.Success && upnp.GetGateway() is { } gateway && gateway.IsValidGateway()
+                && upnp.AddPortMapping(port, port, "Arcanum", "TCP", 0) == (int)Upnp.UpnpResult.Success)
+            {
+                _upnp = upnp;
+                var external = upnp.QueryExternalAddress();
+                message = $"{external}:{port} (internet)";
+                Callable.From(() =>
+                {
+                    ShareAddresses.Add(message);
+                    Changed?.Invoke();
+                }).CallDeferred();
+            }
+            else
+            {
+                Callable.From(() => Status?.Invoke(
+                    $"The router didn't open port {port} automatically. Players outside your network need you to forward TCP port {port} to this device.")).CallDeferred();
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------ joining
+
+    /// <summary>Joins the game hosted at <paramref name="address"/> ("host" or "host:port").</summary>
+    public async void Join(string name, string address, DeckInfo deck)
+    {
+        Leave();
+        if (!TryParseAddress(address, out var host, out int port))
+        {
+            Status?.Invoke("Enter the host's address, like 192.168.1.20:47013.");
+            return;
+        }
+        _address = host;
+        _port = port;
+        Status?.Invoke($"Connecting to {host}:{port}…");
+        try
+        {
+            var connection = await TcpConnection.ConnectAsync(host, port, TimeSpan.FromSeconds(8));
+            JoinLobby(connection, new ClientIdentity(name, "", Version, ContentId));
+            SubmitDeck(deck);
+        }
+        catch (Exception e)
+        {
+            Status?.Invoke($"Couldn't connect: {e.Message}");
+        }
+    }
+
+    public static bool TryParseAddress(string text, out string host, out int port)
+    {
+        text = text.Trim();
+        host = text;
+        port = DefaultPort;
+        int colon = text.LastIndexOf(':');
+        if (colon > 0 && text.IndexOf(':') == colon) // host:port (IPv6 addresses go in brackets: [::1]:47013)
+        {
+            host = text[..colon];
+            if (!int.TryParse(text[(colon + 1)..], out port) || port is < 1 or > 65535) return false;
+        }
+        else if (text.StartsWith('[') && text.Contains("]:"))
+        {
+            int close = text.IndexOf("]:", StringComparison.Ordinal);
+            host = text[1..close];
+            if (!int.TryParse(text[(close + 2)..], out port)) return false;
+        }
+        return host.Length > 0;
+    }
+
+    private void JoinLobby(IConnection connection, ClientIdentity identity)
+    {
+        _lobbyClient = new LobbyClient(connection, identity);
+        _lobbyClient.Changed += () => Changed?.Invoke();
+        _lobbyClient.Rejected += reason => Status?.Invoke(reason);
+        _lobbyClient.Disconnected += () =>
+        {
+            if (!_lobbyClient!.Started) Status?.Invoke("Disconnected from the host.");
+        };
+        _lobbyClient.GameStarting += () => StartGameClient(null, _lobbyClient.Identity);
+    }
+
+    /// <summary>Sends the chosen deck to the host (again whenever it changes).</summary>
+    public void SubmitDeck(DeckInfo deck)
+    {
+        if (_lobbyClient is null) return;
+        var (list, _) = App.Instance.Decks.Load(deck);
+        _lobbyClient.SubmitDeck(deck.Name, list.Export());
+    }
+
+    private ClientIdentity? _identity;
+
+    private void StartGameClient(IConnection? connection, ClientIdentity identity)
+    {
+        _identity = identity;
+        var client = connection is null ? _lobbyClient!.JoinGame() : new GameClient(connection, identity);
+        _gameClient = client;
+        client.Rejected += reason => Status?.Invoke(reason);
+        void Ready(Arcanum.Engine.Views.GameView _)
+        {
+            client.ViewChanged -= Ready;
+            if (Session is not null) return;
+            Session = new NetSession(client, PolicyFromSettings(), Settings.Current.ConfirmManaPayment);
+            Session.ConnectionChanged += connected => { if (!connected) _nextRetry = DateTime.UtcNow + RetryEvery; };
+            Changed?.Invoke();
+            App.Instance.GoTo(App.GameBoardScene);
+        }
+        client.ViewChanged += Ready;
+    }
+
+    private static AutoPassPolicy PolicyFromSettings()
+    {
+        var policy = new AutoPassPolicy();
+        policy.OwnTurnStops.Clear();
+        policy.OwnTurnStops.UnionWith(Settings.ParseSteps(Settings.Current.OwnTurnStops));
+        policy.OpponentTurnStops.UnionWith(Settings.ParseSteps(Settings.Current.OpponentTurnStops));
+        policy.FullControl = Settings.Current.FullControl;
+        return policy;
+    }
+
+    /// <summary>A joined player lost the host: try the same address again with the seat's token.</summary>
+    private async void Reconnect()
+    {
+        if (_connecting || _identity is null || IsHosting || _resumed is not null) return;
+        _connecting = true;
+        try
+        {
+            var connection = await TcpConnection.ConnectAsync(_address, _port, TimeSpan.FromSeconds(5));
+            if (Session is null) { connection.Close(); return; }
+            var client = new GameClient(connection, _identity);
+            _gameClient = client;
+            Session.Attach(client);
+        }
+        catch (Exception)
+        {
+            _nextRetry = DateTime.UtcNow + RetryEvery;
+        }
+        finally
+        {
+            _connecting = false;
+        }
+    }
+
+    // ------------------------------------------------------------------ every frame
+
+    public override void _Process(double delta)
+    {
+        _lobby?.Poll();
+        _resumed?.Poll();
+        _lobbyClient?.Poll();
+        _gameClient?.Poll();
+        if (Session is { IsConnected: false } && !_connecting && DateTime.UtcNow >= _nextRetry) Reconnect();
+        SaveHostedGame();
+    }
+
+    /// <summary>Keeps the hosted game's answers on disk (a couple of times a second at most) so it can be resumed.</summary>
+    private void SaveHostedGame()
+    {
+        if (HostedGame is not { } game || _save is null || Time.GetTicksMsec() - _lastSaveMs < 500) return;
+        if (game.Answers.Count == _savedAnswers) return;
+        _lastSaveMs = Time.GetTicksMsec();
+        _savedAnswers = game.Answers.Count;
+        _save.Answers = game.Answers.ToList();
+        if (game.Game.State.IsGameOver)
+        {
+            DeleteSave();
+            return;
+        }
+        var path = ProjectSettings.GlobalizePath(SavePath);
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+        File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(_save));
+        File.Move(path + ".tmp", path, overwrite: true);
+    }
+
+    public static void DeleteSave()
+    {
+        var path = ProjectSettings.GlobalizePath(SavePath);
+        if (File.Exists(path)) File.Delete(path);
+    }
+
+    /// <summary>Leaves (or stops hosting) the current online game.</summary>
+    public void Leave()
+    {
+        _lobbyClient?.Close();
+        _gameClient?.Close();
+        _tcp?.Dispose();
+        _lobbyClient = null;
+        _gameClient = null;
+        _tcp = null;
+        _loopback = null;
+        _lobby = null;
+        _resumed = null;
+        _save = null;
+        _savedAnswers = -1;
+        _identity = null;
+        Session = null;
+        ShareAddresses.Clear();
+        if (_upnp is { } upnp)
+        {
+            int port = _port;
+            _upnp = null;
+            Task.Run(() => upnp.DeletePortMapping(port, "TCP"));
+        }
+    }
+
+    public override void _ExitTree() => Leave();
+
+    /// <summary>What a hosted game needs to be resumed.</summary>
+    public sealed class HostedSave
+    {
+        public ulong Seed { get; set; }
+        public string Format { get; set; } = "casual";
+        public int Port { get; set; } = DefaultPort;
+        public List<SeatSetup> Seats { get; set; } = new();
+        public List<RecordedAnswer> Answers { get; set; } = new();
+    }
+}

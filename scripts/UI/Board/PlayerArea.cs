@@ -24,6 +24,9 @@ public partial class PlayerArea : Control
     private readonly Panel _activeBorder = new();
     private readonly Label _life = BoardStyle.MakeLabel("20", 26, bold: true);
     private readonly Label _name = BoardStyle.MakeLabel("Player", 14, bold: true);
+
+    /// <summary>Who plays the seat now, in online games ("computer", "disconnected 1:42"); shown beside the name.</summary>
+    public string? SeatNote { get; set; }
     private readonly PanelContainer _nameBadge = new();
     private readonly Label _handLabel = BoardStyle.MakeLabel("Hand (0)", 12, BoardStyle.TextDim);
     private readonly ZonePile _library = new("Library");
@@ -183,7 +186,7 @@ public partial class PlayerArea : Control
         RefreshPool(me);
         _life.Text = me.Life.ToString();
         _life.AddThemeColorOverride("font_color", me.HasLost ? BoardStyle.TextDim : BoardStyle.Text);
-        _name.Text = me.HasLost ? $"{me.Name} (defeated)" : me.Name;
+        _name.Text = (me.HasLost ? $"{me.Name} (defeated)" : me.Name) + (SeatNote is { } note ? $" · {note}" : "");
         _nameBadge.ResetSize();
         _activeBorder.Visible = isActive;
         _handLabel.Text = $"⌄ Hand ({me.Hand.Count})";

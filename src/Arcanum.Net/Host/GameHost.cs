@@ -131,11 +131,12 @@ public sealed class GameHost
 
         foreach (var peer in _greeting.ToList())
         {
-            foreach (var message in peer.Receive())
+            var messages = peer.Receive();
+            if (messages.Count > 0)
             {
-                if (message is Hello hello) Greet(peer, hello);
+                peer.Hold(messages.Skip(1));
+                if (messages[0] is Hello hello) Greet(peer, hello);
                 else peer.Close();
-                break;
             }
             if (!peer.IsOpen) _greeting.Remove(peer);
         }
@@ -160,7 +161,7 @@ public sealed class GameHost
             peer.Close();
             return;
         }
-        seat!.Connect(peer.Connection);
+        seat!.Connect(peer.Connection, peer.TakeHeld());
     }
 
     internal void SendWelcome(Seat seat)

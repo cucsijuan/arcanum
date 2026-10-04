@@ -17,6 +17,7 @@ public sealed class Peer
     private readonly Func<DateTime> _clock;
     private DateTime _lastReceived;
     private DateTime _lastSent;
+    private readonly List<NetMessage> _held = new();
 
     public WireFormat Format { get; }
 
@@ -41,10 +42,21 @@ public sealed class Peer
         _lastSent = _clock();
     }
 
-    /// <summary>Messages received since the last call. Closes the connection on silence or a malformed message.</summary>
+    /// <summary>Puts messages back, to be returned first by the next <see cref="Receive"/> (read too early, e.g. right after a greeting).</summary>
+    public void Hold(IEnumerable<NetMessage> messages) => _held.AddRange(messages);
+
+    /// <summary>Messages put back with <see cref="Hold"/>, taken out (to hand them to whoever handles this connection next).</summary>
+    public List<NetMessage> TakeHeld()
+    {
+        var held = _held.ToList();
+        _held.Clear();
+        return held;
+    }
+
+    /// <summary>Messages received since the last call. Closes the connection on silence.</summary>
     public List<NetMessage> Receive()
     {
-        var received = new List<NetMessage>();
+        var received = TakeHeld();
         var now = _clock();
         while (_connection.TryReceive(out var json))
         {

@@ -54,7 +54,6 @@ public partial class PlaySetup : Control
         _playerCount.CustomMinimumSize = new Vector2(160, 48);
         _playerCount.ItemSelected += _ => BuildSeats();
         modes.AddChild(_playerCount);
-        modes.AddChild(MenuKit.Hint("Online play arrives in a later version."));
         root.AddChild(modes);
 
         var loading = MenuKit.Hint(App.Instance.ContentStatus);

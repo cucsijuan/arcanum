@@ -6,6 +6,7 @@ using Arcanum.Engine.Mana;
 using Arcanum.Engine.Rules;
 using Arcanum.Engine.Players;
 using Arcanum.Engine.Views;
+using Arcanum.Net.Protocol;
 using Godot;
 
 namespace Arcanum.UI.Board;
@@ -85,6 +86,7 @@ public partial class GameBoard : Control
     }
 
     private readonly Label _loading = BoardStyle.MakeLabel("", 22);
+    private Button? _newGameItem;
     private readonly Control _menu = new();
     private Func<ulong, IBoardSession> _newSession = GameSession.CreateHotseatDemo;
 
@@ -106,6 +108,12 @@ public partial class GameBoard : Control
         bool loaded = await App.Instance.ContentReady;
         App.Instance.ContentProgress -= OnProgress;
         _loading.Visible = false;
+
+        if (App.Instance.Online.Session is { } online)
+        {
+            StartOnline(online);
+            return;
+        }
 
         var match = App.Instance.PendingMatch;
         if (match is not null) UseMatch(match);
@@ -236,6 +244,73 @@ public partial class GameBoard : Control
     }
 
     private void StartNewGame(ulong seed) => StartSession(_newSession(seed));
+
+    // ---------------------------------------------------------------- online
+
+    private NetSession? _online;
+    private readonly Dictionary<PlayerId, (SeatState State, DateTime? Deadline)> _seatStates = new();
+    private readonly VBoxContainer _seatPanel = new();
+    private readonly Label _connectionLost = BoardStyle.MakeLabel("Connection to the host lost — reconnecting…", 18, BoardStyle.Attacking);
+    private ulong _nextSeatTick;
+
+    /// <summary>A seat in a game run by a host: no new game or undo; who plays each seat is shown.</summary>
+    private void StartOnline(NetSession online)
+    {
+        _online = online;
+        if (_newGameItem is not null) _newGameItem.Visible = false;
+        online.SeatChanged += OnSeatChanged;
+        online.Notice += text => Arcanum.UI.Menu.MenuKit.Toast(this, text);
+        online.ConnectionChanged += connected => _connectionLost.Visible = !connected;
+
+        _connectionLost.Visible = false;
+        _connectionLost.AnchorLeft = 0.5f; _connectionLost.AnchorRight = 0.5f;
+        _connectionLost.GrowHorizontal = GrowDirection.Both;
+        _connectionLost.OffsetTop = 14;
+        _connectionLost.ZIndex = BoardStyle.Z.Menu - 1;
+        AddChild(_connectionLost);
+        _seatPanel.AnchorLeft = 0.5f; _seatPanel.AnchorRight = 0.5f;
+        _seatPanel.GrowHorizontal = GrowDirection.Both;
+        _seatPanel.OffsetTop = 44;
+        _seatPanel.ZIndex = BoardStyle.Z.Menu - 1;
+        AddChild(_seatPanel);
+        StartSession(online);
+        foreach (var status in online.Seats.Values) OnSeatChanged(status);
+    }
+
+    private void OnSeatChanged(SeatStatus status)
+    {
+        DateTime? deadline = status is { State: SeatState.Disconnected, SecondsLeft: >= 0 } ? DateTime.UtcNow.AddSeconds(status.SecondsLeft) : null;
+        _seatStates[status.Seat] = (status.State, deadline);
+        UpdateSeatNotes();
+    }
+
+    /// <summary>Shows who plays each seat beside its name, and lets the host give a dropped player's seat to the computer.</summary>
+    private void UpdateSeatNotes()
+    {
+        if (_online is null) return;
+        foreach (var child in _seatPanel.GetChildren()) child.QueueFree();
+        foreach (var (seat, (state, deadline)) in _seatStates)
+        {
+            if (seat.Value >= _areas.Count) continue;
+            string? note = state switch
+            {
+                SeatState.Computer => "\U0001F916 computer",
+                SeatState.Disconnected when deadline is { } d => $"disconnected · computer in {Math.Max(0, (int)(d - DateTime.UtcNow).TotalSeconds) / 60}:{Math.Max(0, (int)(d - DateTime.UtcNow).TotalSeconds) % 60:00}",
+                SeatState.Disconnected => "disconnected",
+                _ => null,
+            };
+            _areas[seat.Value].SeatNote = note;
+            if (state == SeatState.Disconnected && App.Instance.Online.IsHostingGame)
+            {
+                var name = _session.ViewFor(Bottom).Players[seat.Value].Name;
+                var button = BoardStyle.MakeButton($"\U0001F916 Let the computer play for {name} now", 14);
+                var target = seat;
+                button.Pressed += () => App.Instance.Online.ReplaceWithComputer(target);
+                _seatPanel.AddChild(button);
+            }
+        }
+        if (_online.Client.View is not null) Refresh();
+    }
 
     private void StartSession(IBoardSession session)
     {
@@ -447,15 +522,16 @@ public partial class GameBoard : Control
         var title = BoardStyle.MakeLabel("Menu", 22, bold: true);
         title.HorizontalAlignment = HorizontalAlignment.Center;
         box.AddChild(title);
-        void Item(string text, Action action, bool primary = false)
+        Button Item(string text, Action action, bool primary = false)
         {
             var button = primary ? BoardStyle.MakePrimaryButton(text, 18) : BoardStyle.MakeButton(text, 18);
             button.CustomMinimumSize = new Vector2(280, 48);
             button.Pressed += () => { _menu.Visible = false; action(); };
             box.AddChild(button);
+            return button;
         }
         Item("Resume", () => { }, primary: true);
-        Item("New game (same decks)", () => StartNewGame((ulong)Time.GetTicksUsec()));
+        _newGameItem = Item("New game (same decks)", () => StartNewGame((ulong)Time.GetTicksUsec()));
         Item("Main menu", () => App.Instance.GoTo(App.MainMenuScene));
         panel.AddChild(box);
         _menu.AddChild(panel);
@@ -1191,7 +1267,16 @@ public partial class GameBoard : Control
 
     // ---------------------------------------------------------------- input
 
-    public override void _Process(double delta) => _session?.Poll();
+    public override void _Process(double delta)
+    {
+        _session?.Poll();
+        // Count down the seats waiting for a disconnected player.
+        if (_online is not null && Time.GetTicksMsec() >= _nextSeatTick && _seatStates.Values.Any(s => s.Deadline is not null))
+        {
+            _nextSeatTick = Time.GetTicksMsec() + 1000;
+            UpdateSeatNotes();
+        }
+    }
 
     public override void _ExitTree() => _session?.Leave();
 
@@ -1636,7 +1721,7 @@ public partial class GameBoard : Control
         _gameOver.Visible = true;
         _actionPanel.Visible = false;
         bool inEvent = _match?.Event is not null;
-        if (_newGameButton is not null) _newGameButton.Visible = !inEvent;
+        if (_newGameButton is not null) _newGameButton.Visible = !inEvent && _online is null;
         if (_backToEventButton is not null) _backToEventButton.Visible = inEvent;
     }
 }

@@ -31,6 +31,7 @@ public partial class App : Node
     public const string ExtrasScene = "res://scenes/extras/Extras.tscn";
     public const string GameBoardScene = "res://scenes/game_board/GameBoard.tscn";
     public const string LimitedScene = "res://scenes/limited/Limited.tscn";
+    public const string OnlineScene = "res://scenes/online/Online.tscn";
 
     public const string SourceUrl = "https://github.com/cucsijuan/arcanum";
 
@@ -41,6 +42,7 @@ public partial class App : Node
     public ContentLoader Content { get; } = new();
     public DeckStore Decks { get; } = new();
     public LimitedService Limited { get; } = new();
+    public OnlineService Online { get; } = new();
     public List<FormatRules> Formats { get; } = new();
 
     /// <summary>Latest content loading message, for screens that open while loading is still going on.</summary>
@@ -63,6 +65,7 @@ public partial class App : Node
         Settings.Load();
         Settings.Apply();
         AddChild(Content);
+        AddChild(Online);
         Content.Progress += message =>
         {
             ContentStatus = message;

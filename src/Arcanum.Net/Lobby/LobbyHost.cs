@@ -10,6 +10,9 @@ namespace Arcanum.Net.Lobby;
 /// <summary>A deck list read by the host: the cards, or why it can't be played in this game.</summary>
 public sealed record DeckCheck(IReadOnlyList<CardDefinition> Deck, IReadOnlyList<CardDefinition>? Commanders, string? Problem);
 
+/// <summary>How a seat was set up, to save a hosted game and resume it later.</summary>
+public sealed record SeatSetup(string Name, string? DeckName, string DeckList, bool IsComputer, string Token);
+
 /// <param name="Format">Name of the format, shown to the players.</param>
 /// <param name="Seats">Number of players, the host included.</param>
 public sealed record LobbySettings(string Format, bool Commander, int StartingLife, int Seats, string Version, string Content);
@@ -28,6 +31,7 @@ public sealed class LobbyHost
         public string Token = Tokens.New();
         public Peer? Peer;
         public string? DeckName;
+        public string DeckList = "";
         public DeckCheck? Deck;
     }
 
@@ -62,6 +66,10 @@ public sealed class LobbyHost
         s.Name, s.Kind, s.Kind == LobbySeatKind.Computer || s.Peer is not null, s.DeckName,
         s.Kind == LobbySeatKind.Open ? null : s.Deck is null ? "No deck chosen yet." : s.Deck.Problem)).ToList());
 
+    /// <summary>Every seat as set up now (names, deck lists, tokens).</summary>
+    public IReadOnlyList<SeatSetup> Setup =>
+        _slots.Select(s => new SeatSetup(s.Name, s.DeckName, s.DeckList, s.Kind == LobbySeatKind.Computer, s.Token)).ToList();
+
     public void AddListener(IConnectionListener listener)
     {
         _listeners.Add(listener);
@@ -80,6 +88,7 @@ public sealed class LobbyHost
         slot.Name = name;
         slot.Token = Tokens.New();
         slot.DeckName = deckName;
+        slot.DeckList = list;
         slot.Deck = _checkDeck(list);
         Broadcast();
     }
@@ -150,11 +159,12 @@ public sealed class LobbyHost
 
         foreach (var peer in _greeting.ToList())
         {
-            var hello = peer.Receive().FirstOrDefault();
-            if (hello is not null)
+            var messages = peer.Receive();
+            if (messages.Count > 0)
             {
                 _greeting.Remove(peer);
-                if (hello is Hello h) Join(peer, h);
+                peer.Hold(messages.Skip(1)); // the deck may come right behind the greeting
+                if (messages[0] is Hello h) Join(peer, h);
                 else peer.Close();
             }
             else if (!peer.IsOpen) _greeting.Remove(peer);
@@ -168,6 +178,7 @@ public sealed class LobbyHost
                 if (message is SubmitDeck deck)
                 {
                     slot.DeckName = deck.Name;
+                    slot.DeckList = deck.List;
                     slot.Deck = _checkDeck(deck.List);
                     changed = true;
                 }
