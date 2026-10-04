@@ -61,6 +61,9 @@ public partial class ZonePile : Control
         _label.Size = new Vector2(Size.X + 12, 18);
     }
 
+    /// <summary>Changes the title shown above the pile.</summary>
+    public void SetTitle(string title) => _title = title;
+
     /// <param name="topCard">Card to show face up/down on top, or null for an empty slot.</param>
     /// <param name="note">Extra text after the count, e.g. commander tax.</param>
     public void Refresh(int count, CardView? topCard, string note = "")

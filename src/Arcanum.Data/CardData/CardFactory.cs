@@ -34,6 +34,8 @@ public static partial class CardFactory
         "Scry", "Surveil", "Fight", "Mill", "Treasure", "Food", "Investigate",
         "Raid", "Landfall", "Morbid", "Threshold", "Ferocious", "Hexproof from", "Affinity", "Double", "Formidable", "Alliance", "Crew", "Protection", "Vivid",
         "Amass", "Recruit", "Gift", "Behold", "Landwalk",
+        // Pairing rules for two commanders (deck construction); "Partner with" also has a trigger derived below.
+        "Partner", "Partner with", "Friends forever", "Choose a background", "Doctor's companion",
     };
 
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
@@ -135,6 +137,7 @@ public static partial class CardFactory
             if (EntersTappedLine().IsMatch(line)) continue;
             if (KickerLine().IsMatch(line) || FlashbackLine().IsMatch(line) || WardLine().IsMatch(line) || line == "This spell can't be countered") continue;
             if (CyclingLine().IsMatch(line)) continue;
+            if (CommanderPairingLine().IsMatch(line)) continue;
             // A keyword line: "Flying" or "Flying, trample".
             if (line.Split(',').Select(k => k.Trim()).All(k => record.Keywords.Contains(k, StringComparer.OrdinalIgnoreCase) || WardLine().IsMatch(k))) continue;
             return false;
@@ -226,6 +229,7 @@ public static partial class CardFactory
                 });
             }
             if (CyclingAbility(line) is { } cycling) abilities.Add(cycling);
+            if (PartnerWithAbility(line) is { } partnerWith) abilities.Add(partnerWith);
             var enchantMatch = EnchantLine().Match(line);
             if (enchantMatch.Success)
             {
@@ -262,6 +266,33 @@ public static partial class CardFactory
         }
         return new Engine.Abilities.ActivatedAbility { Cost = cost, Effects = new[] { effect }, Text = line };
     }
+
+    /// <summary>
+    /// "Partner with [name]": when this creature enters, target player may put [name] into their hand from their
+    /// library, then shuffle (rule 702.124j).
+    /// </summary>
+    private static Engine.Abilities.TriggeredAbility? PartnerWithAbility(string line)
+    {
+        if (!line.StartsWith("Partner with ", StringComparison.Ordinal)) return null;
+        var name = line[13..].Trim();
+        return new Engine.Abilities.TriggeredAbility
+        {
+            Trigger = Engine.Abilities.TriggerEvent.EntersBattlefield,
+            Targets = new[] { new Engine.Abilities.TargetSpec(Engine.Abilities.TargetKind.Player, Engine.Abilities.ControllerFilter.Any) },
+            Effects = new Engine.Abilities.Effect[]
+            {
+                new Engine.Abilities.SearchLibrary(new Engine.Abilities.ObjectFilter(Name: name, Controller: Engine.Abilities.ControllerFilter.Any), 1, Engine.State.Zone.Hand)
+                {
+                    Who = Engine.Abilities.Subject.TargetAt(0), Optional = true,
+                },
+            },
+            Text = $"{line} (When this creature enters, target player may put {name} into their hand from their library, then shuffle.)",
+        };
+    }
+
+    /// <summary>Lines that only matter for having two commanders: partner (with a name or a variant), friends forever, Backgrounds, Doctors.</summary>
+    [GeneratedRegex(@"^(Partner|Partner with .+|Partner\u2014.+|Friends forever|Choose a Background|Doctor's companion)$")]
+    private static partial Regex CommanderPairingLine();
 
     [GeneratedRegex(@"^(?<type>[A-Za-z ]*?)[Cc]ycling (?<cost>(\{[0-9WUBRGC]+\})+)$")]
     private static partial Regex CyclingLine();

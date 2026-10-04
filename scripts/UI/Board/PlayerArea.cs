@@ -36,6 +36,9 @@ public partial class PlayerArea : Control
     private readonly ZonePile _graveyard = new("Graveyard");
     private readonly ZonePile _exile = new("Exile");
     private readonly ZonePile _command = new("Commander");
+
+    /// <summary>The second commander in the command zone (partners, a Background).</summary>
+    private readonly ZonePile _command2 = new("Commander");
     private readonly HBoxContainer _pool = new();
     private readonly Dictionary<CardId, CardNode> _cards = new();
     private IReadOnlySet<CardId> _staged = new HashSet<CardId>();
@@ -114,7 +117,8 @@ public partial class PlayerArea : Control
         AddChild(_tags);
 
         AddChild(_handLabel);
-        foreach (var pile in new[] { _library, _graveyard, _exile, _command })
+        _command2.Visible = false;
+        foreach (var pile in new[] { _library, _graveyard, _exile, _command, _command2 })
         {
             pile.CardClicked += c => CardClicked?.Invoke(c); // e.g. casting a commander from the command zone
             pile.CardHoverStarted += c => CardHoverStarted?.Invoke(c);
@@ -137,12 +141,13 @@ public partial class PlayerArea : Control
 
     public override void _Ready()
     {
-        foreach (var pile in new[] { _library, _graveyard, _exile, _command }) pile.SetCardSize(PileSize);
+        foreach (var pile in new[] { _library, _graveyard, _exile, _command, _command2 }) pile.SetCardSize(PileSize);
         if (!Compact) return;
         _library.UseCompactLabel("Library");
         _graveyard.UseCompactLabel("Grave");
         _exile.UseCompactLabel("Exile");
         _command.UseCompactLabel("Cmdr");
+        _command2.UseCompactLabel("Cmdr");
         _handLabel.AddThemeFontSizeOverride("font_size", 11);
     }
 
@@ -173,8 +178,9 @@ public partial class PlayerArea : Control
         float gap = PileGap * Scale;
         float x = Size.X - SideMargin - PileSize.X;
         float y = Size.Y - Peek;
-        foreach (var pile in new[] { _command, _exile, _graveyard, _library })
+        foreach (var pile in new[] { _command2, _command, _exile, _graveyard, _library })
         {
+            if (!pile.Visible) continue;
             pile.Position = new Vector2(x, y);
             x -= PileSize.X + gap;
         }
@@ -207,8 +213,16 @@ public partial class PlayerArea : Control
         _library.Refresh(me.LibraryCount, libraryTop);
         _graveyard.Refresh(me.Graveyard.Count, me.Graveyard.LastOrDefault());
         _exile.Refresh(me.Exile.Count, me.Exile.LastOrDefault());
-        var commanderCard = me.Command.LastOrDefault();
-        _command.Refresh(me.Command.Count, commanderCard, commanderCard is { CommanderTax: > 0 } c ? $" +{{{c.CommanderTax}}}" : "");
+        // Each commander has its own pile, so either can be cast; the tax is per commander (rule 903.8).
+        string Tax(CardView? c) => c is { CommanderTax: > 0 } ? $" +{{{c.CommanderTax}}}" : "";
+        var commanderCard = me.Command.FirstOrDefault();
+        var secondCommander = me.Command.Count > 1 ? me.Command[1] : null;
+        // Two piles side by side need short titles so they don't overlap.
+        _command.SetTitle(secondCommander is not null || Compact ? "Cmdr" : "Commander");
+        _command2.SetTitle("Cmdr");
+        _command.Refresh(me.Command.Count > 1 ? 1 : me.Command.Count, commanderCard, Tax(commanderCard));
+        _command2.Visible = secondCommander is not null;
+        _command2.Refresh(1, secondCommander, Tax(secondCommander));
         _commanderDamage.Text = string.Join("\n", me.CommanderDamage.Where(kv => kv.Value > 0)
             .Select(kv => $"\u2694 {view.FindCard(kv.Key)?.Name ?? "Commander"}: {kv.Value}/21"));
         _commanderDamage.Position = new Vector2(8, me.ManaPool.Count > 0 ? 84 : 58);
@@ -273,6 +287,8 @@ public partial class PlayerArea : Control
         if (me.CitysBlessing) AddTag("City's blessing", new Color("6fd08c"), $"{me.Name} has the city's blessing for the rest of the game.");
         if (me.Protected) AddTag("Protection", new Color("7fb2ff"), $"{me.Name} has protection from everything until their next turn.");
         if (me.NoMaximumHandSize) AddTag("No max hand size", BoardStyle.TextDim, $"{me.Name} has no maximum hand size for the rest of the game.");
+        foreach (var emblem in me.Emblems)
+            AddTag($"Emblem: {emblem.Name}", new Color("e89ad8"), $"{me.Name}'s emblem{(emblem.UntilEndOfTurn ? " (until end of turn)" : "")}:\n{emblem.Text}");
         if (me.Poison > 0) AddTag($"Poison {me.Poison}/10", new Color("8fd14f"), $"{me.Name} has {me.Poison} poison counter{(me.Poison == 1 ? "" : "s")}; ten or more loses the game.");
     }
 

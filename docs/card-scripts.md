@@ -8,7 +8,9 @@ engine derives from card data: type line, power/toughness, supported keywords an
 Comments (`//`) and trailing commas are allowed.
 
 Also derived from rules text without a script: `Equip {N}`, `Enchant creature` (and land, artifact,
-enchantment, permanent, "... you control") and "This land/creature enters tapped".
+enchantment, permanent, "... you control"), "This land/creature enters tapped", cycling and "Partner with [name]"
+(its enters trigger). Partner, partner with, "Partner—[kind]", friends forever, "Choose a Background" and "Doctor's
+companion" only decide which two cards can be commanders together.
 
 ## Structure
 

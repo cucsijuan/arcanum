@@ -133,8 +133,12 @@ public class CommanderFormatTests
         Card("Forest", "Basic Land — Forest", new[] { "G" }),
         Card("Grove Queen", "Legendary Creature — Elf", new[] { "G" }),
         Card("Anvil Duke", "Legendary Creature — Dwarf", new[] { "R" }),
-        Card("Twin A", "Legendary Creature — Elf", new[] { "G" }, keywords: new[] { "Partner" }),
-        Card("Twin B", "Legendary Creature — Dwarf", new[] { "R" }, keywords: new[] { "Partner" }),
+        Card("Twin A", "Legendary Creature — Elf", new[] { "G" }, "Partner (You can have two commanders if both have partner.)", new[] { "Partner" }),
+        Card("Twin B", "Legendary Creature — Dwarf", new[] { "R" }, "Partner", new[] { "Partner" }),
+        Card("Hobbit Hero", "Legendary Creature — Halfling", new[] { "G" }, "Partner with Loyal Friend\nVigilance", new[] { "Partner with", "Partner", "Vigilance" }),
+        Card("Loyal Friend", "Legendary Creature — Halfling", new[] { "G" }, "Partner with Hobbit Hero (When this creature enters, target player may put Hobbit Hero into their hand from their library, then shuffle.)", new[] { "Partner with", "Partner" }),
+        Card("Bard Hero", "Legendary Creature — Human", new[] { "R" }, "Choose a Background (You can have a Background as a second commander.)", new[] { "Choose a background" }),
+        Card("Noble Upbringing", "Legendary Enchantment — Background", new[] { "G" }, "Commander creatures you own get +1/+1."),
         Card("Plain Bear", "Creature — Bear", new[] { "G" }),
         Card("Ember Imp", "Creature — Imp", new[] { "R" }),
     }.Concat(Enumerable.Range(0, 60).Select(i => Card($"Elf {i}", "Creature — Elf", new[] { "G" }))));
@@ -191,12 +195,35 @@ public class CommanderFormatTests
         var two = Deck("Grove Queen");
         two.Commander.Add(new DeckEntry(1, "Anvil Duke"));
         two.Main.RemoveAt(two.Main.Count - 1);
-        Assert.Contains(Errors(two), e => e.Contains("two that both have partner"));
+        Assert.Contains(Errors(two), e => e.Contains("two that can be together"));
 
         var partners = Deck("Twin A");
         partners.Commander.Add(new DeckEntry(1, "Twin B"));
         partners.Main.RemoveAt(partners.Main.Count - 1);
         Assert.DoesNotContain(Errors(partners), e => e.Contains("partner"));
+    }
+
+    private static List<string> PairErrors(string first, string second)
+    {
+        var deck = Deck(first);
+        deck.Commander.Add(new DeckEntry(1, second));
+        deck.Main.RemoveAt(deck.Main.Count - 1);
+        return Errors(deck).Where(e => !e.Contains("color identity")).ToList();
+    }
+
+    [Fact]
+    public void PartnerWithPairsOnlyWithTheNamedCard()
+    {
+        Assert.Empty(PairErrors("Hobbit Hero", "Loyal Friend"));
+        // "Partner with" is not plain partner: it doesn't pair with other partners.
+        Assert.Contains(PairErrors("Hobbit Hero", "Twin A"), e => e.Contains("two that can be together"));
+    }
+
+    [Fact]
+    public void ABackgroundIsACommanderOnlyBesideOneThatChoosesIt()
+    {
+        Assert.Empty(PairErrors("Bard Hero", "Noble Upbringing"));
+        Assert.Contains(PairErrors("Grove Queen", "Noble Upbringing"), e => e.Contains("Noble Upbringing can't be a commander"));
     }
 
     [Fact]

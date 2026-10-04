@@ -109,9 +109,15 @@ public sealed record PlayerView
     /// <summary>Has no maximum hand size for the rest of the game.</summary>
     public bool NoMaximumHandSize { get; init; }
 
+    /// <summary>Emblems the player owns: name and rules text.</summary>
+    public IReadOnlyList<EmblemView> Emblems { get; init; } = Array.Empty<EmblemView>();
+
     /// <summary>Floating mana by type (only types with a non-zero amount).</summary>
     public required IReadOnlyDictionary<Mana.ManaType, int> ManaPool { get; init; }
 }
+
+/// <summary>An emblem in the command zone (rule 114).</summary>
+public sealed record EmblemView(string Name, string Text, bool UntilEndOfTurn);
 
 /// <param name="Card">The spell, or the source of the ability.</param>
 /// <param name="AbilityText">Rules text of the ability, or null for a spell.</param>

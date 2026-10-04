@@ -45,6 +45,8 @@ public static class ViewBuilder
                 Protected = p.Protected,
                 Poison = p.Poison,
                 NoMaximumHandSize = p.NoMaximumHandSize,
+                Emblems = state.Emblems.Select(state.GetCard).Where(e => e.Owner == p.Id)
+                    .Select(e => new EmblemView(e.Name, e.Definition.OracleText, state.EmblemsUntilEndOfTurn.Contains(e.Id))).ToList(),
                 ManaPool = Enum.GetValues<Mana.ManaType>().Where(t => p.ManaPool.AllOf(t) > 0).ToDictionary(t => t, t => p.ManaPool.AllOf(t)),
             }).ToList(),
             Battlefield = Views(state.Battlefield),

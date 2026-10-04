@@ -144,14 +144,17 @@ public static class DeckValidator
     {
         var commanders = deck.Commander.Select(e => cards.Find(e.Name)).OfType<CardEntry>().ToList();
         int count = deck.Commander.Sum(e => e.Count);
-        bool partners = commanders.Count == 2 && commanders.All(c => c.Record.Keywords.Contains("Partner", StringComparer.OrdinalIgnoreCase));
+        bool pair = count == 2 && commanders.Count == 2 && CanBeTogether(commanders[0], commanders[1]);
         if (count == 0) issues.Add(new(IssueSeverity.Error, "Choose a commander (Commander section)."));
-        else if (count > 2 || (count == 2 && !partners)) issues.Add(new(IssueSeverity.Error, "Only one commander, or two that both have partner."));
+        else if (count > 2 || (count == 2 && !pair))
+            issues.Add(new(IssueSeverity.Error, "Only one commander, or two that can be together: both with partner, partners with each other, "
+                                                + "both with friends forever, or a commander that chooses a Background and a Background."));
 
         foreach (var c in commanders)
         {
             bool legendaryCreature = (c.Definition.Supertypes & Supertype.Legendary) != 0 && c.Definition.Is(CardType.Creature);
-            bool allowed = legendaryCreature || c.Record.OracleText.Contains("can be your commander", StringComparison.OrdinalIgnoreCase);
+            bool allowed = legendaryCreature || c.Record.OracleText.Contains("can be your commander", StringComparison.OrdinalIgnoreCase)
+                           || (pair && IsBackground(c)); // a Background is a commander only beside one that chooses it (rule 702.124k)
             if (!allowed) issues.Add(new(IssueSeverity.Error, $"{c.Name} can't be a commander (it isn't a legendary creature).", c.Name));
         }
 
@@ -166,4 +169,34 @@ public static class DeckValidator
                 issues.Add(new(IssueSeverity.Error, $"{card.Name} is outside your commander's color identity ({string.Join("", outside)}).", card.Name));
         }
     }
+
+    /// <summary>Whether two cards can be commanders together (rules 702.124 and 702.124h–k).</summary>
+    public static bool CanBeTogether(CardEntry a, CardEntry b)
+    {
+        var la = Lines(a);
+        var lb = Lines(b);
+        bool Has(List<string> lines, string text) => lines.Any(l => l.Equals(text, StringComparison.OrdinalIgnoreCase));
+        string? PartnerWith(List<string> lines) => lines.FirstOrDefault(l => l.StartsWith("Partner with ", StringComparison.OrdinalIgnoreCase))?[13..];
+        string? PartnerVariant(List<string> lines) => lines.FirstOrDefault(l => l.StartsWith("Partner\u2014", StringComparison.Ordinal))?[8..];
+        if (Has(la, "Partner") && Has(lb, "Partner")) return true;
+        if (PartnerWith(la) is { } wa && PartnerWith(lb) is { } wb)
+            return wa.Equals(b.Name, StringComparison.OrdinalIgnoreCase) && wb.Equals(a.Name, StringComparison.OrdinalIgnoreCase);
+        if (PartnerVariant(la) is { } va && PartnerVariant(lb) is { } vb) return va.Equals(vb, StringComparison.OrdinalIgnoreCase);
+        if (Has(la, "Friends forever") && Has(lb, "Friends forever")) return true;
+        if (Has(la, "Choose a Background") && IsBackground(b) || Has(lb, "Choose a Background") && IsBackground(a)) return true;
+        if (Has(la, "Doctor's companion") && IsDoctor(b) || Has(lb, "Doctor's companion") && IsDoctor(a)) return true;
+        return false;
+    }
+
+    /// <summary>The card's rules text lines without reminder text.</summary>
+    private static List<string> Lines(CardEntry c) =>
+        System.Text.RegularExpressions.Regex.Replace(c.Record.OracleText, @"\s*\([^)]*\)", "").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+
+    private static bool IsBackground(CardEntry c) =>
+        (c.Definition.Supertypes & Supertype.Legendary) != 0 && c.Definition.Is(CardType.Enchantment) && c.Definition.Subtypes.Contains("Background");
+
+    /// <summary>A legendary Time Lord Doctor creature with no other creature types (rule 702.124m).</summary>
+    private static bool IsDoctor(CardEntry c) =>
+        (c.Definition.Supertypes & Supertype.Legendary) != 0 && c.Definition.Is(CardType.Creature)
+        && c.Record.TypeLine.Split('\u2014') is { Length: 2 } parts && parts[1].Trim() == "Time Lord Doctor";
 }
