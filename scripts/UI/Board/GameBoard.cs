@@ -59,6 +59,7 @@ public partial class GameBoard : Control
     private readonly Dictionary<CardId, CardId> _blocks = new(); // blocker -> attacker
     private CardId? _pendingBlocker;
     private readonly List<ManaTap> _staged = new();  // sources picked for an unconfirmed payment
+    private ManaSourceOption? _comboSource;          // a source whose mana combination is being chosen
     private CardId? _abilityChoiceSource;              // permanent with several abilities waiting for a choice
     private readonly List<Arcanum.Engine.Abilities.Target> _chosenTargets = new(); // targets picked so far
     private readonly VBoxContainer _actionExtra = new();
@@ -616,6 +617,7 @@ public partial class GameBoard : Control
             _chosenModes.Clear();
             _number = decision is ChooseNumberDecision nd ? nd.Request.Max : 0;
             _staged.Clear();
+            _comboSource = null;
             if (decision is ManaPaymentDecision pay) _staged.AddRange(pay.Request.SuggestedTaps);
             if (decision is DamageAssignmentDecision dmg) ResetDamage(dmg);
             _lastDecision = decision;
@@ -726,7 +728,10 @@ public partial class GameBoard : Control
             case BlockDecision b when b.Request.MinimumBlockers.Count > 0 || b.Request.MustBeBlocked.Count > 0:
                 b.Answer(b.Request.WithRequirements(Array.Empty<BlockDeclaration>())); // keep autoplay simple around menace
                 break;
-            case AttackDecision a: a.Answer(a.PossibleAttackers.Select(id => new AttackDeclaration(id, a.Defenders[0])).ToList()); break;
+            case AttackDecision a:
+                a.Answer(a.PossibleAttackers.Take(view.AttackTaxes.FirstOrDefault(t => t.Defender == a.Defenders[0])?.Affordable ?? int.MaxValue)
+                    .Select(id => new AttackDeclaration(id, a.Defenders[0])).ToList());
+                break;
             // Double-block the first attacker when possible so damage assignment gets exercised too.
             case BlockDecision b:
             {
@@ -1035,6 +1040,24 @@ public partial class GameBoard : Control
                     _actionExtra.AddChild(CostLine("Still needed", remaining.ToString(), BoardStyle.Attacking));
                 else
                     _actionExtra.AddChild(BoardStyle.MakeLabel("Fully paid \u2713", 14, new Color("6fd08c")));
+                if (_comboSource is { } combo)
+                {
+                    // "Add two mana in any combination of …": choose the mana this source adds.
+                    var name = view.FindCard(combo.Source)?.Name ?? "source";
+                    _actionExtra.AddChild(BoardStyle.MakeLabel($"{name}: choose the mana to add", 14, BoardStyle.Text, bold: true));
+                    foreach (var mana in Combinations(combo))
+                    {
+                        var (_, excess) = ManaPayment.Apply(remaining, mana);
+                        var button = AddChoiceButton(string.Concat(mana.Select(t => $"{{{t.ToSymbol()}}}")) + (excess > 0 ? "  (some of it floats)" : ""), () =>
+                        {
+                            _staged.Add(new ManaTap(combo.Source, mana[0], combo.Option, mana));
+                            _comboSource = null;
+                            Refresh();
+                        });
+                    }
+                    AddButton("Back", () => { _comboSource = null; Refresh(); });
+                    break;
+                }
                 AddButton("Cancel", () => pay.Answer(null));
                 AddButton("Auto", () => { _staged.Clear(); _staged.AddRange(pay.Request.SuggestedTaps); Refresh(); });
                 var confirmPay = AddButton("Confirm", () => pay.Answer(_staged.ToList()), primary: true);
@@ -1114,6 +1137,11 @@ public partial class GameBoard : Control
 
             case AttackDecision a:
                 _prompt.Text = $"{who}: choose attackers";
+                foreach (var tax in view.AttackTaxes)
+                {
+                    _actionExtra.Visible = true;
+                    _actionExtra.AddChild(BoardStyle.MakeLabel($"Attacking {view.Players[tax.Defender.Value].Name} costs {tax.CostPerCreature} per creature (you can pay for {tax.Affordable})", 14, BoardStyle.Attacking));
+                }
                 if (a.Defenders.Count > 1)
                 {
                     // Several opponents: pick who the next attackers go after.
@@ -1246,8 +1274,12 @@ public partial class GameBoard : Control
 
     /// <summary>What the staged taps still leave unpaid.</summary>
     private ManaCost RemainingCost(ManaPaymentDecision pay) =>
-        ManaPayment.Apply(pay.Request.RemainingAfterPool, _staged.SelectMany(t =>
-            Enumerable.Repeat(t.Type, pay.Request.Sources.FirstOrDefault(s => s.Source == t.Source && s.Option == t.Option)?.Amount ?? 1))).Remaining;
+        ManaPayment.Apply(pay.Request.RemainingAfterPool, _staged.SelectMany(t => t.Combination
+            ?? Enumerable.Repeat(t.Type, pay.Request.Sources.FirstOrDefault(s => s.Source == t.Source && s.Option == t.Option)?.Amount ?? 1))).Remaining;
+
+    /// <summary>Every combination of mana a "in any combination" source can add.</summary>
+    private static List<IReadOnlyList<ManaType>> Combinations(ManaSourceOption source) =>
+        new Arcanum.Engine.Cards.ManaOption(source.Types, source.Amount) { Combination = true }.Combinations().ToList();
 
     /// <summary>A mana type this source can add that still helps pay <paramref name="remaining"/>, preferring colored pips.</summary>
     private static ManaType? UsefulType(ManaSourceOption source, ManaCost remaining)
@@ -1439,6 +1471,8 @@ public partial class GameBoard : Control
             {
                 int staged = _staged.FindIndex(t => t.Source == id);
                 if (staged >= 0) _staged.RemoveAt(staged); // untap: pick something else instead
+                else if (pay.Request.Sources.FirstOrDefault(s => s.Source == id && s.Combination && UsefulType(s, RemainingCost(pay)) is not null) is { } comboSource)
+                    _comboSource = comboSource; // choose the combination in the action panel
                 else if (pay.Request.Sources.Where(s => s.Source == id).Select(s => (Source: s, Type: UsefulType(s, RemainingCost(pay))))
                              .FirstOrDefault(x => x.Type is not null) is { Type: { } type } useful)
                     _staged.Add(new ManaTap(id, type, useful.Source.Option)); // can never tap more than what is still needed

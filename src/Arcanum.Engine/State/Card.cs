@@ -110,6 +110,15 @@ public sealed class Card
     internal int ToughnessBonus { get; set; }
     internal HashSet<Keyword> GrantedKeywords { get; } = new();
     internal HashSet<Keyword> LostKeywords { get; } = new();
+
+    /// <summary>Supertypes given by effects ("your Ring-bearer is legendary").</summary>
+    internal Supertype GrantedSupertypes { get; set; }
+
+    /// <summary>Players whose creatures can't block it this turn ("can't be blocked by creatures that player controls").</summary>
+    internal HashSet<Core.PlayerId> UnblockableBy { get; } = new();
+
+    /// <summary>Its supertypes now.</summary>
+    public Supertype Supertypes => Definition.Supertypes | GrantedSupertypes;
     internal HashSet<string> GrantedSubtypes { get; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Base power/toughness from a characteristic-defining ability (rule 604.3).</summary>
     internal int? BasePowerOverride { get; set; }
@@ -302,7 +311,7 @@ public sealed class Card
                 Tapped = Tapped,
                 Attacking = WasAttacking,
                 Blocking = WasBlocking,
-                Supertypes = Definition.Supertypes,
+                Supertypes = Supertypes,
                 AttachedTo = AttachedTo,
             };
         }

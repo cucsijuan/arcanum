@@ -118,6 +118,9 @@ public sealed record AttackingPowerAtLeast(int Amount) : Condition;
 /// <summary>"If the gift was promised".</summary>
 public sealed record GiftPromised : Condition;
 
+/// <summary>The object the trigger was about matches the filter as the ability resolves ("if that creature is legendary").</summary>
+public sealed record TriggeredMatches(ObjectFilter Filter) : Condition;
+
 /// <summary>An opponent has the most life or is tied for it.</summary>
 public sealed record OpponentHasMostLife : Condition;
 

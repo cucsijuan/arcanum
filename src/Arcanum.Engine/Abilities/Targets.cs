@@ -126,6 +126,8 @@ public enum SubjectKind
     Found,
     /// <summary>One permanent matching <see cref="Subject.Filter"/>, chosen (not targeted) as the effect happens.</summary>
     ChooseOne,
+    /// <summary>Permanents this spell or ability dealt damage to, matching <see cref="Subject.Filter"/> ("if a Dragon is dealt damage this way").</summary>
+    DamagedThisWay,
 }
 
 public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filter = null)

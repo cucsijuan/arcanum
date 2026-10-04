@@ -111,6 +111,9 @@ public sealed record PlayerView
 /// <param name="AbilityText">Rules text of the ability, or null for a spell.</param>
 public sealed record StackItemView(CardView Card, PlayerId Controller, string? AbilityText, IReadOnlyList<Abilities.Target> Targets, int Id = 0);
 
+/// <summary>"Creatures can't attack [Defender] unless their controller pays [CostPerCreature] for each": and how many the viewer can pay for now.</summary>
+public sealed record AttackTaxView(PlayerId Defender, string CostPerCreature, int Affordable);
+
 public sealed record AttackView(CardId Attacker, PlayerId Defender, IReadOnlyList<CardId> Blockers, bool IsBlocked, CardId? Planeswalker = null);
 
 /// <summary>Snapshot of the game from one player's perspective.</summary>
@@ -126,6 +129,9 @@ public sealed record GameView
     public required IReadOnlyList<StackItemView> Stack { get; init; }
     public required IReadOnlyList<AttackView> Attacks { get; init; }
     public required bool IsGameOver { get; init; }
+
+    /// <summary>Attack taxes the viewer would have to pay, by defending player.</summary>
+    public IReadOnlyList<AttackTaxView> AttackTaxes { get; init; } = Array.Empty<AttackTaxView>();
     public required PlayerId? Winner { get; init; }
 
     public PlayerView Self => Players[Viewer.Value];

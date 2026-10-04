@@ -4,6 +4,7 @@ using Arcanum.Engine.Core;
 using Arcanum.Engine.Events;
 using Arcanum.Engine.Players;
 using Arcanum.Engine.State;
+using Arcanum.Engine.Views;
 
 namespace Arcanum.Engine;
 
@@ -43,22 +44,23 @@ public sealed partial class Game
                 declared = declared.Concat(mustAttack.Select(id => new AttackDeclaration(id, defender))).ToList();
             }
 
-            // "Creatures can't attack you unless their controller pays {1} for each of those creatures" (rule 508.1g–h):
-            // creatures whose attack isn't paid for don't attack that player.
-            foreach (var defender in declared.Select(d => d.Defender).Distinct().ToList())
+            // "Creatures can't attack you unless their controller pays {1} for each of those creatures" (rule 508.1g–h): the
+            // costs are paid as attackers are declared; a declaration whose costs aren't paid is illegal and is made again.
+            var total = Mana.ManaCost.Zero;
+            foreach (var d in declared)
+                if (AttackTax(d.Defender) is { } tax) total = total.Plus(tax);
+            if (total.ManaValue > 0
+                && !(Payable(active, total, null) && await PayManaAsync(State.GetPlayer(active), declared[0].Attacker, total, null)))
             {
-                var taxes = State.PermanentsControlledBy(defender)
-                    .Where(c => c.Definition.AttackTax is not null && (c.Definition.AttackTaxIf is not { } cond || Holds(cond, defender, c)))
-                    .Select(c => c.Definition.AttackTax!).ToList();
-                if (taxes.Count == 0) continue;
-                var taxed = declared.Where(d => d.Defender == defender).ToList();
-                var total = Mana.ManaCost.Zero;
-                foreach (var _ in taxed)
-                    foreach (var tax in taxes) total = total.Plus(tax);
-                bool paid = total.ManaValue == 0
-                            || (Payable(active, total, null) && await PayManaAsync(State.GetPlayer(active), taxed[0].Attacker, total, null));
-                if (!paid) declared = declared.Where(d => d.Defender != defender).ToList();
+                if (++_attackRetries < 5)
+                {
+                    await DeclareAttackersAsync();
+                    return;
+                }
+                // A controller that keeps declaring attacks it won't pay for gets no taxed attacks.
+                declared = declared.Where(d => AttackTax(d.Defender) is null).ToList();
             }
+            _attackRetries = 0;
 
             foreach (var d in declared)
             {
@@ -81,6 +83,32 @@ public sealed partial class Game
         _skipCombatDamageSteps = combat.Attacks.Count == 0; // rule 508.8
     }
 
+    private int _attackRetries;
+
+    /// <summary>The total cost to attack <paramref name="defender"/> with one creature, or null when attacking them is free.</summary>
+    private Mana.ManaCost? AttackTax(PlayerId defender)
+    {
+        var total = Mana.ManaCost.Zero;
+        foreach (var c in State.PermanentsControlledBy(defender))
+            if (c.Definition.AttackTax is { } tax && (c.Definition.AttackTaxIf is not { } cond || Holds(cond, defender, c))) total = total.Plus(tax);
+        return total.ManaValue > 0 ? total : null;
+    }
+
+    /// <summary>What attacking each opponent costs the player, and how many creatures they can pay for now.</summary>
+    private IReadOnlyList<AttackTaxView> AttackTaxesFor(PlayerId player)
+    {
+        var result = new List<AttackTaxView>();
+        foreach (var defender in State.OpponentsOf(player))
+        {
+            if (AttackTax(defender) is not { } tax) continue;
+            int n = 0;
+            var cost = Mana.ManaCost.Zero;
+            while (n < 30 && Payable(player, cost.Plus(tax), null)) { cost = cost.Plus(tax); n++; }
+            result.Add(new AttackTaxView(defender, tax.ToString(), n));
+        }
+        return result;
+    }
+
     private static bool CanAttack(Card c) =>
         c.IsCreature && !c.Tapped && !c.IsSummoningSick && !c.Has(Keyword.Defender) && !c.Has(Keyword.CantAttack);
 
@@ -89,6 +117,8 @@ public sealed partial class Game
         !blocker.Has(Keyword.CantBlock) && !attacker.Has(Keyword.CantBeBlocked) && !ProtectedFrom(attacker, blocker)
         && (!attacker.Has(Keyword.Flying) || blocker.Has(Keyword.Flying) || blocker.Has(Keyword.Reach))
         && attacker.Has(Keyword.Shadow) == blocker.Has(Keyword.Shadow) // shadow (702.28b)
+        && !attacker.UnblockableBy.Contains(blocker.Controller)
+        && !State.CantBlockThisTurn.Any(r => r.Turn == State.TurnNumber && Matches(r.Filter with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, null, r.Controller))
         && !Landwalks.Any(w => attacker.Has(w.Keyword) && State.PermanentsControlledBy(blocker.Controller).Any(c => c.Is(CardType.Land) && c.HasSubtype(w.Land)))
         && !(IsRingBearer(attacker, 1) && blocker.Power > attacker.Power) // the Ring, level 1
         && !(attacker.Definition.CantBeBlockedBy is { } restriction

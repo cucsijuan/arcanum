@@ -261,6 +261,9 @@ public static class CardScriptParser
                     Bool(m, "abilitiesToo"))
                     {
                         OneOfEach = Bool(m, "oneOfEach"),
+                        Combination = Bool(m, "combination"),
+                        LifeCost = m.TryGetProperty("lifeCost", out var mlc) ? mlc.GetInt32() : 0,
+                        Rider = m.TryGetProperty("rider", out var mrd) ? Enum.Parse<ManaRider>(mrd.GetString()!, ignoreCase: true) : ManaRider.None,
                         ColorsAmongYourPermanents = Bool(m, "colorsAmongYourPermanents"),
                     }).ToList()
                 : null,
@@ -470,6 +473,7 @@ public static class CardScriptParser
         }
         : e.TryGetProperty("discarded", out var df) ? new Subject(SubjectKind.Discarded, Filter: ParseFilter(df, ControllerFilter.Any))
         : e.TryGetProperty("choose", out var cf) ? new Subject(SubjectKind.ChooseOne, Filter: ParseFilter(cf, ControllerFilter.You))
+        : e.TryGetProperty("damagedThisWay", out var dtw) ? new Subject(SubjectKind.DamagedThisWay, Filter: ParseFilter(dtw, ControllerFilter.Any))
         : throw new FormatException($"Unknown subject {e.GetRawText()}.");
 
     public static TriggerEvent ParseTrigger(string text) => text switch
@@ -524,6 +528,7 @@ public static class CardScriptParser
         "combatDamageToYou" => TriggerEvent.CombatDamageToYou,
         "finalChapterResolved" => TriggerEvent.FinalChapterResolved,
         "ringTempts" => TriggerEvent.RingTemptsYou,
+        "leaves" => TriggerEvent.LeavesBattlefield,
         _ => throw new FormatException($"Unknown trigger '{text}'."),
     };
 
@@ -646,6 +651,7 @@ public static class CardScriptParser
         if (c.TryGetProperty("resolvedThisTurn", out var rtt)) return new ResolvedThisTurn(rtt.GetInt32(), Bool(c, "exactly"));
         if (c.TryGetProperty("targetControlledByYou", out var tcy)) return new TargetControlledByYou(ParseSubject(tcy.GetString()).Index);
         if (c.TryGetProperty("drawn", out var drn)) return new CardsDrawnThisTurn(drn.GetInt32());
+        if (c.TryGetProperty("triggered", out var trg)) return new TriggeredMatches(ParseFilter(trg, ControllerFilter.Any));
         if (c.TryGetProperty("attackersExactly", out var axe)) return new AttackingCreaturesExactly(axe.GetInt32());
         if (c.TryGetProperty("attackedWith", out var awi)) return new AttackedWithAtLeast(awi.GetInt32());
         if (c.TryGetProperty("attackingPower", out var apw)) return new AttackingPowerAtLeast(apw.GetInt32());
@@ -699,6 +705,7 @@ public static class CardScriptParser
                     "milledManaValue" => new Quantity(0, QuantityKind.MilledManaValue),
                     "tapped" => new Quantity(0, QuantityKind.TappedThisWay),
                     "ringLevel" => new Quantity(0, QuantityKind.RingLevel),
+                    "attached" => new Quantity(0, QuantityKind.AttachedThisWay),
                     var unknown => throw new FormatException($"Unknown quantity '{unknown}'."),
                 };
         }
@@ -852,7 +859,7 @@ public static class CardScriptParser
         if (e.TryGetProperty("mill", out _)) return new Mill(Qty("mill"), Subj("who", "you")) { RepeatWhileNonlandShareColor = Flag("repeatIfShareColor") };
         if (Value("destroy") is { } destroy) return new Destroy(destroy);
         if (Value("exile") is { } exile)
-            return new ExileIt(exile) { WithCounter = Str("withCounter") is { } wc ? ParseCounterKind(wc) : null, ExceptCreatedThisWay = Flag("exceptCreated") };
+            return new ExileIt(exile) { WithCounter = Str("withCounter") is { } wc ? ParseCounterKind(wc) : null, ExceptCreatedThisWay = Flag("exceptCreated"), Linked = Flag("linked") };
         if (Flag("loseGame")) return new LoseGame();
         if (Value("bounce") is { } bounce) return new ReturnToHand(bounce);
         if (Value("tap") is { } tap) return new TapIt(tap);
@@ -1053,6 +1060,9 @@ public static class CardScriptParser
         if (e.TryGetProperty("castFromGraveyard", out var cfgy)) return new CastFromGraveyardNow(ParseFilter(cfgy, ControllerFilter.Any));
         if (Value("preventDamageBy") is { } pdb) return new PreventDamageBy(pdb);
         if (Value("phaseOut") is { } po) return new PhaseOut(po);
+        if (Flag("returnLinkedExiled")) return new ReturnLinkedExiled();
+        if (e.TryGetProperty("cantBlockThisTurn", out var cbt)) return new CantBlockThisTurn(ParseFilter(cbt, ControllerFilter.Any));
+        if (Value("unblockableByMostLifePlayer") is { } ubm) return new UnblockableByMostLifePlayer(ubm);
         if (Flag("ringTempts")) return new RingTemptsYou();
         if (Flag("playerProtection")) return new PlayerProtection();
         if (e.TryGetProperty("castFromHandFree", out var cfh)) return new CastFromHandFree(ParseFilter(cfh, ControllerFilter.Any), Qty("maxManaValue"));

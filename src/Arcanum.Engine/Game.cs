@@ -86,7 +86,7 @@ public sealed partial class Game
     }
 
     public GameView ViewFor(PlayerId player, bool revealAll = false) =>
-        ViewBuilder.Build(State, player, revealAll, Config.Commander?.TaxPerCast ?? 0);
+        ViewBuilder.Build(State, player, revealAll, Config.Commander?.TaxPerCast ?? 0) with { AttackTaxes = AttackTaxesFor(player) };
 
     private IPlayerController ControllerOf(PlayerId player) => _controllers[player.Value];
 

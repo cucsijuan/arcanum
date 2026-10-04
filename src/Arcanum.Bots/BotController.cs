@@ -535,6 +535,26 @@ public sealed class BotController : IPlayerController
     public async Task<IReadOnlyList<AttackDeclaration>> DeclareAttackersAsync(
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders)
     {
+        var declared = await ChooseAttackersAsync(view, possibleAttackers, defenders);
+        if (view.AttackTaxes.Count == 0) return declared;
+        // Only as many attackers as the attack taxes can be paid for, the strongest first; taxes add up across defenders.
+        var budget = view.AttackTaxes.ToDictionary(t => t.Defender, t => t.Affordable);
+        int affordable = view.AttackTaxes.Select(t => t.Affordable).DefaultIfEmpty(int.MaxValue).Min();
+        var kept = new List<AttackDeclaration>();
+        int taxedSoFar = 0;
+        foreach (var d in declared.OrderByDescending(d => view.FindCard(d.Attacker)?.Power ?? 0))
+        {
+            if (!budget.ContainsKey(d.Defender)) { kept.Add(d); continue; }
+            if (taxedSoFar >= affordable || taxedSoFar >= budget[d.Defender]) continue;
+            kept.Add(d);
+            taxedSoFar++;
+        }
+        return kept;
+    }
+
+    private async Task<IReadOnlyList<AttackDeclaration>> ChooseAttackersAsync(
+        GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders)
+    {
         var attackers = possibleAttackers.Select(view.FindCard).OfType<CardView>().ToList();
         List<CardView> BlockersOf(PlayerId p) =>
             view.Battlefield.Where(c => c.Controller == p && (c.Types & CardType.Creature) != 0 && !c.Tapped && !Has(c, "Can't block")).ToList();

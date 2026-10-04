@@ -28,6 +28,9 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
     /// <summary>When the effect began (rule 613.7a).</summary>
     public long Timestamp { get; init; }
 
+    /// <summary>"Can't be blocked by creatures that player controls this turn."</summary>
+    public PlayerId? UnblockableBy { get; init; }
+
     /// <summary>Keywords it loses (layer 6).</summary>
     public IReadOnlyList<Cards.Keyword>? LoseKeywords { get; init; }
 
@@ -128,6 +131,9 @@ public sealed class GameState
 
     /// <summary>Objects that are exiled instead if they would die this turn.</summary>
     public HashSet<(CardId Card, int Version)> ExileIfDies { get; } = new();
+
+    /// <summary>"Creatures without flying can't block this turn": filters (with the player whose effect it is) for this turn.</summary>
+    public List<(Abilities.ObjectFilter Filter, PlayerId Controller, int Turn)> CantBlockThisTurn { get; } = new();
 
     /// <summary>Phased-out permanents (rule 702.26), with the player whose untap step phases them in.</summary>
     public List<(CardId Card, PlayerId Controller)> PhasedOut { get; } = new();

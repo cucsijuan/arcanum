@@ -98,7 +98,7 @@ public static class ViewBuilder
             BasePower = card.Definition.Power,
             BaseToughness = card.Definition.Toughness,
             AbilityTexts = card.Abilities.Select(a => a.Text).ToList(),
-            Supertypes = card.Definition.Supertypes,
+            Supertypes = card.Supertypes,
             Subtypes = card.CurrentSubtypes,
             PrintedTypes = card.Definition.Types,
             PrintedSubtypes = card.Definition.Subtypes,

@@ -383,3 +383,19 @@ Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYo
 `{ "count": f, "controlledBy": "triggeredPlayer" }`. Conditions: `"opponentHasMostLife"`, `{ "attackersExactly": 1 }`,
 `{ "attackedWith": 2 }`. Filters: `maxToughness`, `notChosenType`, `leastPower`, `damagedThisTurn`, `blockingSource`,
 `dealtCombatDamageToYou`, `maxManaValueTriggerAmount`.
+
+## Mana abilities with choices and costs, linked abilities
+
+- `extraMana` entries also take `"combination": true` ("add two mana in any combination of …": the player chooses
+  each mana; the payment screen offers the combinations), `"lifeCost": 1` ("{T}, Pay 1 life: Add …") and `"rider"`
+  (a mana rider for that ability only, e.g. `LegendaryUncounterable`).
+- `{ "exile": "target", "linked": true }` with a `"leaves"` trigger doing `{ "returnLinkedExiled": true }`: the
+  two linked abilities of "exile … / when this leaves the battlefield, return the exiled card" (rule 607). If the
+  permanent left before its exile ability resolved, the card stays exiled.
+- `{ "cantBlockThisTurn": filter }`: a rules effect for the turn (creatures that arrive later are affected too).
+- `{ "unblockableByMostLifePlayer": "target" }`: choose a player with the most life or tied (you included); the
+  creature can't be blocked by creatures that player controls this turn.
+- Conditions `{ "triggered": filter }` (the object the trigger was about, checked on resolution); subject
+  `{ "damagedThisWay": filter }`; quantity `"attached"` (Auras and Equipment attached by this effect).
+- The free first equip (`freeFirstEquipIf`) is offered as a choice. Attack taxes are paid as attackers are declared;
+  an unpaid declaration is made again, and players see what attacking costs.

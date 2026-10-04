@@ -18,6 +18,9 @@ public sealed record ExileIt(Subject What) : Effect
 
     /// <summary>"All other ...": skip tokens this spell or ability created.</summary>
     public bool ExceptCreatedThisWay { get; init; }
+
+    /// <summary>Linked to this object (rule 607): a later "return the exiled card" of the same object finds it.</summary>
+    public bool Linked { get; init; }
 }
 public sealed record ReturnToHand(Subject What) : Effect;
 public sealed record TapIt(Subject What) : Effect;
@@ -513,3 +516,12 @@ public sealed record OpponentChooses(string Prompt, IReadOnlyList<Effect> IfYes,
 
 /// <summary>Exile the target card, copy it, and you may cast the copy without paying its mana cost.</summary>
 public sealed record CastCopyOfExiled(Subject What) : Effect;
+
+/// <summary>"Choose a player with the most life or tied for most life. [Subject] can't be blocked by creatures that player controls this turn."</summary>
+public sealed record UnblockableByMostLifePlayer(Subject What) : Effect;
+
+/// <summary>Return to the battlefield (under their owners' control) the cards exiled by this object's linked ability (rule 607).</summary>
+public sealed record ReturnLinkedExiled : Effect;
+
+/// <summary>"[Filter] creatures can't block this turn" (a rules effect: creatures that come later are affected too, rule 611.2c).</summary>
+public sealed record CantBlockThisTurn(ObjectFilter Filter) : Effect;

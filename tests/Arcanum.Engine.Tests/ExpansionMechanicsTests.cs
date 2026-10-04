@@ -6,6 +6,7 @@ using Arcanum.Engine.Events;
 using Arcanum.Engine.Mana;
 using Arcanum.Engine.Players;
 using Arcanum.Engine.State;
+using Arcanum.Engine.Views;
 using static Arcanum.Engine.Tests.Scenario;
 
 namespace Arcanum.Engine.Tests;
@@ -647,5 +648,155 @@ public class EternalMechanicsTests
         await s.RunUntilTurn(3);
         Assert.Equal(life, s.Game.State.GetPlayer(P0).Life);
         Assert.False(s.Game.State.GetPlayer(P0).Protected); // ends as their next turn begins
+    }
+}
+
+/// <summary>Exact rules for mana in combinations, life-cost mana, linked exiles, batched counters and attack taxes.</summary>
+public class ExactnessTests
+{
+    private static Scenario Casting()
+    {
+        var s = new Scenario();
+        s.Attacker.Act = (_, legal) => legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        return s;
+    }
+
+    private static readonly CardDefinition TwoColors = new()
+    {
+        Name = "Two Colors", ManaCost = ManaCost.Parse("{U}{R}"), Types = CardType.Sorcery,
+        Spell = new SpellAbility { Effects = new Effect[] { new GainLife(5, Subject.You) } },
+    };
+
+    [Fact]
+    public async Task ManaInAnyCombinationPaysTwoDifferentColors()
+    {
+        var s = Casting();
+        s.Add(P0, new CardDefinition
+        {
+            Name = "Prism Relic", Types = CardType.Artifact,
+            ExtraManaOptions = new[] { new ManaOption(new[] { ManaType.Blue, ManaType.Black, ManaType.Red }, 2) { Combination = true } },
+        });
+        s.InHand(P0, TwoColors);
+        int life = s.Game.State.GetPlayer(P0).Life;
+        await s.RunUntilTurn();
+        Assert.Equal(life + 5, s.Game.State.GetPlayer(P0).Life);
+    }
+
+    [Fact]
+    public async Task ActivatingACombinationAbilityAsksWhichManaToAdd()
+    {
+        var s = new Scenario();
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        var relic = s.Add(P0, new CardDefinition
+        {
+            Name = "Prism Relic", Types = CardType.Artifact,
+            ExtraManaOptions = new[] { new ManaOption(new[] { ManaType.Blue, ManaType.Black, ManaType.Red }, 2) { Combination = true } },
+        });
+        List<string>? offered = null;
+        bool done = false;
+        s.Attacker.Act = (_, legal) => done ? PassPriority.Instance : legal.OfType<ActivateManaAbility>().First(a => a.Source == relic);
+        s.Attacker.Option = (_, r) => { offered = r.Options.ToList(); done = true; return r.Options.ToList().IndexOf("{U}{R}"); };
+        var added = new List<ManaType>();
+        s.Game.EventRaised += e => { if (e is ManaAdded m) added.Add(m.Type); };
+        await s.RunUntilTurn();
+        Assert.Equal(new[] { "{U}{U}", "{U}{B}", "{U}{R}", "{B}{B}", "{B}{R}", "{R}{R}" }, offered!);
+        Assert.Equal(new[] { ManaType.Blue, ManaType.Red }, added);
+    }
+
+    [Fact]
+    public async Task ManaWithALifeCostCanPayForSpellsAndCostsLife()
+    {
+        var s = Casting();
+        s.Add(P0, new CardDefinition
+        {
+            Name = "Fiery Peak", Types = CardType.Land,
+            ExtraManaOptions = new[] { new ManaOption(new[] { ManaType.Black, ManaType.Red }) { LifeCost = 1 } },
+        });
+        s.InHand(P0, TwoColors with { ManaCost = ManaCost.Parse("{R}") });
+        int life = s.Game.State.GetPlayer(P0).Life;
+        await s.RunUntilTurn();
+        Assert.Equal(life - 1 + 5, s.Game.State.GetPlayer(P0).Life);
+    }
+
+    [Fact]
+    public async Task LinkedExileReturnsWhenTheExilerLeavesAndNotIfItLeftFirst()
+    {
+        var hunter = Creature("Warden", 1, 3) with
+        {
+            Abilities = new AbilityDefinition[]
+            {
+                new TriggeredAbility { Trigger = TriggerEvent.EntersBattlefield, Targets = new[] { new TargetSpec(TargetKind.Creature, ControllerFilter.Opponent) },
+                    Effects = new Effect[] { new ExileIt(Subject.TargetAt(0)) { Linked = true } }, Text = "exile" },
+                new TriggeredAbility { Trigger = TriggerEvent.LeavesBattlefield, Effects = new Effect[] { new ReturnLinkedExiled() }, Text = "return" },
+            },
+        };
+        var s = Casting();
+        s.Lands(P0, 2);
+        var victim = s.Add(P1, Creature("Victim", 2, 2));
+        var warden = s.InHand(P0, hunter);
+        s.InHand(P0, new CardDefinition
+        {
+            Name = "Sudden End", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Instant,
+            Spell = new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Creature, ControllerFilter.You) }, Effects = new Effect[] { new Destroy(Subject.TargetAt(0)) } },
+        });
+        s.Attacker.Act = (view, legal) => view.Stack.Count > 0 ? PassPriority.Instance
+            : legal.OfType<CastSpell>().FirstOrDefault(c => s.Card(c.Card).Name == "Warden") ?? legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
+        bool exiledWhileWardenThere = false;
+        s.Game.EventRaised += e => { if (e is CardMoved { To: Zone.Exile } m && m.Card == victim) exiledWhileWardenThere = s.Card(warden).Zone == Zone.Battlefield; };
+        await s.RunUntilTurn();
+        Assert.True(exiledWhileWardenThere);
+        Assert.Equal(Zone.Graveyard, s.Card(warden).Zone);
+        Assert.Equal(Zone.Battlefield, s.Card(victim).Zone);
+    }
+
+    [Fact]
+    public async Task CountersOnSeveralPermanentsAtOnceTriggerOneOrMoreAbilitiesOnce()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.Add(P0, Creature("Goblin A", 1, 1) with { Subtypes = new[] { "Goblin" } });
+        s.Add(P0, Creature("Goblin B", 1, 1) with { Subtypes = new[] { "Goblin" } });
+        s.Add(P0, new CardDefinition
+        {
+            Name = "Warchief", Types = CardType.Enchantment,
+            Abilities = new AbilityDefinition[]
+            {
+                new TriggeredAbility { Trigger = TriggerEvent.CountersPlaced, AnyCounterKind = true, PlacedByYou = true, Batched = true,
+                    Filter = new ObjectFilter(Subtype: "Goblin"), Effects = new Effect[] { new GainLife(1, Subject.You) }, Text = "gain 1" },
+            },
+        });
+        s.InHand(P0, new CardDefinition
+        {
+            Name = "Rally", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Sorcery,
+            Spell = new SpellAbility { Effects = new Effect[] { new AddCounters(1, Subject.Each(new ObjectFilter(CardType.Creature))) } },
+        });
+        int life = s.Game.State.GetPlayer(P0).Life;
+        await s.RunUntilTurn();
+        Assert.Equal(life + 1, s.Game.State.GetPlayer(P0).Life);
+    }
+
+    [Fact]
+    public async Task UnpaidAttackTaxesMakeThePlayerDeclareAgain()
+    {
+        var s = new Scenario();
+        s.Attacker.Act = (_, _) => PassPriority.Instance;
+        s.Lands(P0, 1);
+        s.Add(P0, Creature("Raider A", 2, 2));
+        s.Add(P0, Creature("Raider B", 2, 2));
+        s.Add(P1, new CardDefinition { Name = "Gatehouse", Types = CardType.Enchantment, AttackTax = ManaCost.Parse("{1}") });
+        var declarations = new List<int>();
+        AttackTaxView? seen = null;
+        s.Attacker.Attack = (view, attackers, defenders) =>
+        {
+            seen = view.AttackTaxes.SingleOrDefault();
+            declarations.Add(declarations.Count == 0 ? attackers.Count : 1);
+            return attackers.Take(declarations[^1]).Select(a => new AttackDeclaration(a, defenders[0])).ToList();
+        };
+        int life = s.Game.State.GetPlayer(P1).Life;
+        await s.RunUntilTurn();
+        Assert.Equal(new[] { 2, 1 }, declarations);
+        Assert.Equal(1, seen?.Affordable);
+        Assert.Equal(life - 2, s.Game.State.GetPlayer(P1).Life);
     }
 }

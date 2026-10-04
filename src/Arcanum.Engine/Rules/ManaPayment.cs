@@ -22,6 +22,10 @@ public static class ManaPayment
     /// <summary>Unrestricted mana abilities only (floating mana, unknown use).</summary>
     public static readonly OptionUsable Unrestricted = (_, option) => option.OnlyFor is null;
 
+    /// <summary>Mana abilities usable here that their controller can also afford (life costs, rule 119.4).</summary>
+    public static OptionUsable Affordable(GameState state, OptionUsable? usable) =>
+        (source, option) => (usable ?? Unrestricted)(source, option) && option.LifeCost <= state.GetPlayer(source.Controller).Life;
+
     /// <summary>Indices of the source's mana abilities usable here.</summary>
     public static List<int> UsableOptions(Card source, OptionUsable? usable) =>
         Enumerable.Range(0, source.ManaOptions.Count).Where(i => (usable ?? Unrestricted)(source, source.ManaOptions[i]) && source.ManaOptions[i].Produces > 0).ToList();
@@ -29,7 +33,7 @@ public static class ManaPayment
     /// <param name="exclude">A permanent that can't be tapped for mana here (it is tapping for an ability's cost).</param>
     public static IEnumerable<Card> AvailableSources(GameState state, PlayerId player, CardId? exclude = null, OptionUsable? usable = null) =>
         state.PermanentsControlledBy(player)
-            .Where(c => !c.Tapped && c.Id != exclude && UsableOptions(c, usable).Count > 0)
+            .Where(c => !c.Tapped && c.Id != exclude && UsableOptions(c, Affordable(state, usable)).Count > 0)
             // Creatures can't use {T} abilities while summoning sick (rule 302.6).
             .Where(c => !c.IsSummoningSick);
 
@@ -89,6 +93,7 @@ public static class ManaPayment
         Func<ManaUnit, bool>? unitUsable = null)
     {
         var (fromPool, rest) = ApplyPool(cost, state.GetPlayer(player).ManaPool, unitUsable);
+        usable = Affordable(state, usable);
         var all = AvailableSources(state, player, exclude, usable).ToList();
         // Sources with an ability that adds several mana are decided first (skip, or each ability and type); the
         // others (one mana per activation, from any of their usable abilities) pay what is left with the pip solver.
@@ -117,15 +122,23 @@ public static class ManaPayment
         if (SolveMulti(multi, index + 1, remaining, chosen, single, usable) is { } without) return without;
         var source = multi[index];
         foreach (var option in UsableOptions(source, usable))
-            foreach (var type in source.ManaOptions[option].OneOfEach ? source.ManaOptions[option].Types.Take(1) : source.ManaOptions[option].Types.Distinct())
+            foreach (var tap in TapsOf(source, option))
             {
-                var (left, _) = Apply(remaining, Produced(source, new ManaTap(source.Id, type, option)));
-                chosen.Add(new ManaTap(source.Id, type, option));
+                var (left, _) = Apply(remaining, Produced(source, tap));
+                chosen.Add(tap);
                 var result = SolveMulti(multi, index + 1, left, chosen, single, usable);
                 chosen.RemoveAt(chosen.Count - 1);
                 if (result is not null) return result;
             }
         return null;
+    }
+
+    /// <summary>The different ways one activation of the ability can be made: each type, each combination, or all types at once.</summary>
+    private static IEnumerable<ManaTap> TapsOf(Card source, int option)
+    {
+        var mana = source.ManaOptions[option];
+        if (mana.Combination) return mana.Combinations().Select(c => new ManaTap(source.Id, c[0], option, c));
+        return (mana.OneOfEach ? mana.Types.Take(1) : mana.Types.Distinct()).Select(t => new ManaTap(source.Id, t, option));
     }
 
     private static List<ManaTap>? SolveSingle(List<Card> sources, ManaCost rest, OptionUsable? usable)
@@ -154,7 +167,18 @@ public static class ManaPayment
     public static IEnumerable<ManaType> Produced(Card source, ManaTap tap) =>
         tap.Option < source.ManaOptions.Count && source.ManaOptions[tap.Option].OneOfEach
             ? source.ManaOptions[tap.Option].Types
-            : Enumerable.Repeat(tap.Type, AmountOf(source, tap.Option));
+            : tap.Option < source.ManaOptions.Count && source.ManaOptions[tap.Option].Combination && tap.Combination is { } combination
+                ? combination
+                : Enumerable.Repeat(tap.Type, AmountOf(source, tap.Option));
+
+    /// <summary>Whether the tap's chosen mana is something the ability can add.</summary>
+    public static bool IsValid(Card source, ManaTap tap)
+    {
+        if (tap.Option >= source.ManaOptions.Count) return false;
+        var mana = source.ManaOptions[tap.Option];
+        if (!mana.Combination) return tap.Combination is null && mana.Types.Contains(tap.Type);
+        return tap.Combination is { } c && c.Count == mana.Amount && c.All(mana.Types.Contains);
+    }
 
     public static int AmountOf(Card source, int option) => option < source.ManaOptions.Count ? source.ManaOptions[option].Produces : 1;
 

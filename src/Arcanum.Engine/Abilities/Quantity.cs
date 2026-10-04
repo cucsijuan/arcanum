@@ -86,6 +86,8 @@ public enum QuantityKind
     TappedThisWay,
     /// <summary>Times the Ring has tempted the controller.</summary>
     RingLevel,
+    /// <summary>Auras and Equipment this effect attached.</summary>
+    AttachedThisWay,
 }
 
 /// <summary>

@@ -64,7 +64,7 @@ public sealed partial class Game
 
         // Legend rule (704.5j): a player with two or more legendary permanents with the same name chooses one; the
         // rest go to their owners' graveyards.
-        foreach (var group in permanents.Where(c => (c.Definition.Supertypes & Supertype.Legendary) != 0)
+        foreach (var group in permanents.Where(c => (c.Supertypes & Supertype.Legendary) != 0)
                      .GroupBy(c => (c.Controller, c.Name)).Where(g => g.Count() > 1).ToList())
         {
             var options = group.Select(c => ViewBuilder.Card(State, c.Id, group.Key.Controller, reveal: true)).ToList();
@@ -81,7 +81,7 @@ public sealed partial class Game
                                               && !_pendingTriggers.Any(t => t.Source == c.Id && t.Ability.Trigger == Abilities.TriggerEvent.Chapter)).ToList();
 
         // World rule (704.5k): only the newest world permanent stays.
-        var worlds = permanents.Where(c => (c.Definition.Supertypes & Supertype.World) != 0).ToList();
+        var worlds = permanents.Where(c => (c.Supertypes & Supertype.World) != 0).ToList();
         if (worlds.Count > 1) toGraveyard.AddRange(worlds.Take(worlds.Count - 1));
 
         // +1/+1 and -1/-1 counters on the same permanent cancel out (704.5q).

@@ -256,6 +256,8 @@ public enum TriggerEvent
     FinalChapterResolved,
     /// <summary>"Whenever the Ring tempts you".</summary>
     RingTemptsYou,
+    /// <summary>"When this leaves the battlefield" (to any zone).</summary>
+    LeavesBattlefield,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>

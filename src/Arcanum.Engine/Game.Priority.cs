@@ -197,9 +197,10 @@ public sealed partial class Game
 
         // Mana abilities can be activated any time the player has priority (rule 605.3a).
         foreach (var source in ManaPayment.AvailableSources(State, playerId, usable: (_, _) => true))
-            foreach (var option in ManaPayment.UsableOptions(source, (_, _) => true))
+            foreach (var option in ManaPayment.UsableOptions(source, ManaPayment.Affordable(State, (_, _) => true)))
                 // "One mana of each color" is a single activation, not a choice of type.
-                foreach (var type in source.ManaOptions[option].OneOfEach ? source.ManaOptions[option].Types.Take(1) : source.ManaOptions[option].Types.Distinct())
+                // "One mana of each color" and "in any combination" are single activations (the combination is chosen as it's activated).
+                foreach (var type in source.ManaOptions[option].OneOfEach || source.ManaOptions[option].Combination ? source.ManaOptions[option].Types.Take(1) : source.ManaOptions[option].Types.Distinct())
                     actions.Add(new ActivateManaAbility(source.Id, type, option));
         return actions;
     }
@@ -338,6 +339,11 @@ public sealed partial class Game
             usable: AbilityManaUsable(source, ability, player), unitUsable: UnitUsableFor(source, isAbility: true)) is not null);
     }
 
+    /// <summary>"You may pay {0} rather than pay the equip cost of the first equip ability you activate each turn."</summary>
+    private bool FreeEquipAvailable(PlayerId player) =>
+        State.GetPlayer(player).EquipsThisTurn == 0
+        && State.PermanentsControlledBy(player).Any(c => c.Definition.FreeFirstEquipIf is { } free && Holds(free, player, c));
+
     /// <summary>
     /// Mana sources usable for an ability, keeping back creatures that tap for mana when they're needed for a "tap an untapped
     /// creature you control" cost, and permanents that sacrifice themselves for mana when they're needed for a sacrifice.
@@ -368,16 +374,14 @@ public sealed partial class Game
     /// An activated ability's mana cost after reductions: "costs {1} less for each …", equip discounts of the creature it
     /// targets (before targets are chosen, the best legal one), and a free first equip each turn.
     /// </summary>
-    private ManaCost ActivationCost(Card source, ActivatedAbility ability, PlayerId player, IReadOnlyList<ChosenTarget>? targets)
+    private ManaCost ActivationCost(Card source, ActivatedAbility ability, PlayerId player, IReadOnlyList<ChosenTarget>? targets, bool useFreeEquip = true)
     {
         var cost = ability.Cost.Mana;
         if (ability.CostReductionPer is { } per)
             cost = cost.MinusGeneric(State.Battlefield.Select(State.GetCard).Count(c => Matches(per, c, c.Controller, source, player)));
         if (ability.CostReductionIf is { } reduceIf && Holds(reduceIf, player, source)) cost = cost.MinusGeneric(ability.CostReductionAmount);
         if (!ability.IsEquip) return cost;
-        if (State.GetPlayer(player).EquipsThisTurn == 0
-            && State.PermanentsControlledBy(player).Any(c => c.Definition.FreeFirstEquipIf is { } free && Holds(free, player, c)))
-            return ManaCost.Zero;
+        if (useFreeEquip && FreeEquipAvailable(player)) return ManaCost.Zero;
         var hosts = targets is not null
             ? targets.Select(t => t.Target.Card).OfType<CardId>()
             : ability.Targets.SelectMany(spec => LegalTargets(spec, player, source.Id)).Select(t => t.Card).OfType<CardId>();
@@ -398,8 +402,21 @@ public sealed partial class Game
                 return true;
 
             case ActivateManaAbility mana:
+            {
+                var source = State.GetCard(mana.Source);
+                if (mana.Option < source.ManaOptions.Count && source.ManaOptions[mana.Option].Combination)
+                {
+                    // "Add two mana in any combination of …": the player chooses the mana.
+                    var combinations = source.ManaOptions[mana.Option].Combinations().ToList();
+                    int pick = await ControllerOf(playerId).ChooseOptionAsync(ViewFor(playerId), new OptionRequest($"{source.Name}: choose the mana to add", source.Id,
+                        combinations.Select(c => string.Concat(c.Select(t => $"{{{t.ToSymbol()}}}"))).ToList(), OptionKind.Other));
+                    Require(pick >= 0 && pick < combinations.Count, "Choose one of the combinations.");
+                    TapForMana(player, new ManaTap(mana.Source, combinations[pick][0], mana.Option, combinations[pick]));
+                    return true;
+                }
                 TapForMana(player, new ManaTap(mana.Source, mana.Type, mana.Option));
                 return true;
+            }
 
             case CastSpell cast:
                 return await CastSpellAsync(player, cast.Card, cast.Adventure);
@@ -518,7 +535,7 @@ public sealed partial class Game
         // Mana riders: haste for Dragon creature spells, copies of red instants and sorceries.
         var riders = paidMana.SpecialSpent.Select(u => u.Rider).ToList();
         if (riders.Contains(ManaRider.HasteForDragonCreatureSpells) && card.Is(CardType.Creature) && card.HasSubtype("Dragon")) card.HasteOnEnter = true;
-        bool uncounterable = riders.Contains(ManaRider.LegendaryUncounterable) && (card.Definition.Supertypes & Supertype.Legendary) != 0;
+        bool uncounterable = riders.Contains(ManaRider.LegendaryUncounterable) && (card.Supertypes & Supertype.Legendary) != 0;
         // "When that mana is spent to cast a red instant or sorcery spell, copy that spell": one trigger of the mana's
         // source for each such mana spent, put on the stack above the spell.
         var copySources = (card.Is(CardType.Instant) || card.Is(CardType.Sorcery)) && card.Colors.Contains("R")
@@ -577,8 +594,12 @@ public sealed partial class Game
             : null;
         var targets = await ChooseTargetsAsync(player.Id, ability, source.Id, ability.Text, canCancel: true, affordable);
         if (targets is null) return false;
+        // The free first equip is an alternative cost the player may choose (or not).
+        bool free = ability.IsEquip && FreeEquipAvailable(player.Id)
+                    && (!Payable(player.Id, ActivationCost(source, ability, player.Id, targets, useFreeEquip: false).WithX(0), exclude, AbilityManaUsable(source, ability, player.Id))
+                        || await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Pay {{0}} rather than the equip cost of {source.Name}?", source.Id)));
 
-        var cost = ActivationCost(source, ability, player.Id, targets);
+        var cost = ActivationCost(source, ability, player.Id, targets, useFreeEquip: free);
         int x = 0;
         if (cost.XCount > 0)
         {
@@ -776,7 +797,7 @@ public sealed partial class Game
         var (fromPool, remaining) = ManaPayment.ApplyPool(cost, player.ManaPool, unitUsable);
         // One entry per usable mana ability, bigger ones first (a click picks the first that helps).
         var sources = ManaPayment.AvailableSources(State, player.Id, exclude, usable)
-            .SelectMany(c => ManaPayment.UsableOptions(c, usable).Select(i => new ManaSourceOption(c.Id, c.ManaOptions[i].Types, c.ManaOptions[i].Amount, i))
+            .SelectMany(c => ManaPayment.UsableOptions(c, ManaPayment.Affordable(State, usable)).Select(i => new ManaSourceOption(c.Id, c.ManaOptions[i].Types, c.ManaOptions[i].Amount, i) { Combination = c.ManaOptions[i].Combination })
                 .OrderByDescending(o => o.Amount))
             .ToList();
         var request = new ManaPaymentRequest(source, cost, fromPool, remaining, plan.Taps, sources);
@@ -785,7 +806,7 @@ public sealed partial class Game
         if (taps is null) return null;
 
         Require(taps.Select(t => t.Source).Distinct().Count() == taps.Count, "Each source can be tapped only once.");
-        Require(taps.All(t => sources.Any(s => s.Source == t.Source && s.Option == t.Option && s.Types.Contains(t.Type))), "Illegal mana source.");
+        Require(taps.All(t => sources.Any(s => s.Source == t.Source && s.Option == t.Option && s.Types.Contains(t.Type)) && ManaPayment.IsValid(State.GetCard(t.Source), t)), "Illegal mana source.");
         var produced = ManaPayment.Produced(State, taps).ToList();
         var (owed, excess) = ManaPayment.Apply(remaining, produced);
         Require(owed.ManaValue == 0, $"Payment is short by {owed}.");
@@ -817,10 +838,12 @@ public sealed partial class Game
                 Colors = only.ChosenColor && source.ChosenColor is { } chosen ? new[] { chosen } : only.Colors, ChosenColor = false,
             }
             : null;
+        if (option is { LifeCost: > 0 } paysLife) ChangeLife(player.Id, -paysLife.LifeCost); // "{T}, Pay 1 life: Add …"
+        var rider = option is { Rider: not ManaRider.None } ? option.Rider : source.Definition.ManaRider;
         foreach (var type in ManaPayment.Produced(source, tap).ToList())
         {
-            if (onlyFor is not null || source.Definition.ManaRider != ManaRider.None)
-                player.ManaPool.AddSpecial(new ManaUnit(type, source.Id, onlyFor, option?.AbilitiesToo ?? false, source.Definition.ManaRider));
+            if (onlyFor is not null || rider != ManaRider.None)
+                player.ManaPool.AddSpecial(new ManaUnit(type, source.Id, onlyFor, option?.AbilitiesToo ?? false, rider));
             else player.ManaPool.Add(type);
             Emit(new ManaAdded(player.Id, type, tap.Source));
         }
