@@ -32,6 +32,12 @@ public sealed record FormatRules
     /// </summary>
     public bool Commander { get; init; }
 
+    /// <summary>
+    /// Limited (draft, sealed): the deck is built from the player's pool plus any number of basic lands, with no limit
+    /// on copies beyond what the pool holds; the rest of the pool is the sideboard.
+    /// </summary>
+    public bool Limited { get; init; }
+
     /// <summary>Starting life total for games in this format.</summary>
     public int StartingLife { get; init; } = 20;
 
@@ -55,6 +61,7 @@ public sealed record FormatRules
             BasicLandsUnlimited = !e.TryGetProperty("basicLandsUnlimited", out var b) || b.GetBoolean(),
             StartingLife = Int("startingLife") ?? 20,
             Commander = e.TryGetProperty("commander", out var c) && c.GetBoolean(),
+            Limited = e.TryGetProperty("limited", out var l) && l.GetBoolean(),
             Description = Str("description") ?? "",
         };
     }
@@ -101,6 +108,32 @@ public static class DeckValidator
                      && !entry.Record.OracleText.Contains("A deck can have any number of cards named", StringComparison.Ordinal))
                 issues.Add(new(IssueSeverity.Error, $"{copies} copies of {name}; at most {format.MaxCopies}.", name));
 
+            if (entry.Support != CardSupport.Full)
+                issues.Add(new(IssueSeverity.Warning, $"{name} isn't fully supported yet; some of its rules won't work.", name));
+        }
+        return issues;
+    }
+
+    /// <summary>
+    /// A limited deck (rule 100.2b): at least the format's minimum size, made of cards from <paramref name="pool"/>
+    /// (no more copies than the pool has) plus any number of basic lands.
+    /// </summary>
+    public static List<DeckIssue> ValidateLimited(DeckList deck, FormatRules format, IReadOnlyList<Limited.PoolCard> pool, CardDatabase cards)
+    {
+        var issues = new List<DeckIssue>();
+        int main = deck.Main.Sum(e => e.Count);
+        if (main < format.MinDeckSize) issues.Add(new(IssueSeverity.Error, $"Deck has {main} cards; {format.Name} needs at least {format.MinDeckSize}."));
+        var available = pool.GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+        foreach (var group in deck.Main.GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var name = group.First().Name;
+            var entry = cards.Find(name);
+            if (entry is null) { issues.Add(new(IssueSeverity.Error, $"Unknown card: {name}.", name)); continue; }
+            bool basic = (entry.Definition.Supertypes & Supertype.Basic) != 0 && entry.Definition.Is(CardType.Land);
+            int copies = group.Sum(e => e.Count);
+            int have = available.GetValueOrDefault(name);
+            if (!basic && copies > have)
+                issues.Add(new(IssueSeverity.Error, have == 0 ? $"{name} isn't in your pool." : $"{copies} copies of {name}; your pool has {have}.", name));
             if (entry.Support != CardSupport.Full)
                 issues.Add(new(IssueSeverity.Warning, $"{name} isn't fully supported yet; some of its rules won't work.", name));
         }

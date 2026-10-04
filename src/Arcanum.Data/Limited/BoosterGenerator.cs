@@ -8,14 +8,27 @@ namespace Arcanum.Data.Limited;
 /// <summary>A card in a booster or a pool: the card and the printing it came as.</summary>
 public sealed record PoolCard(string Name, string Set, string Number, string Rarity)
 {
-    public DeckEntry ToEntry(int count = 1) => new(count, Name, Set.ToUpperInvariant(), Number);
+    /// <summary>A deck line for this card (with its printing when it has one).</summary>
+    public DeckEntry ToEntry(int count = 1) => Set.Length == 0 ? new(count, Name) : new(count, Name, Set.ToUpperInvariant(), Number);
 
     public static PoolCard Of(CardEntry card, Printing printing) => new(card.Name, printing.Set, printing.CollectorNumber, printing.Rarity);
 }
 
-/// <summary>Opens boosters of a set following its <see cref="BoosterSpec"/>.</summary>
-public sealed class BoosterGenerator
+/// <summary>Where a limited event's boosters come from: a set's boosters or a cube.</summary>
+public interface IBoosterSource
 {
+    /// <summary>Shown to players ("Alphabet Play Booster", "My Cube").</summary>
+    string Name { get; }
+
+    /// <summary>Opens one booster.</summary>
+    List<PoolCard> Open(Random random);
+}
+
+/// <summary>Opens boosters of a set following its <see cref="BoosterSpec"/>.</summary>
+public sealed class BoosterGenerator : IBoosterSource
+{
+    public string Name => $"{Set.Name} {_spec.Name}";
+
     private readonly BoosterSpec _spec;
     // Each sheet entry is one card with every printing it has on that sheet (alternate arts share the card's chance).
     private readonly Dictionary<string, List<PoolCard[]>> _sheets = new();

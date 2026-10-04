@@ -104,7 +104,7 @@ public class FidelityTests
         s.Game.EventRaised += e => { if (e is TokenCreated t) copies.Add(t.Card); };
         await s.RunUntilTurn();
         Assert.Equal(2, copies.Count);
-        Assert.All(copies, id => Assert.True(s.Card(id).Definition.Abilities.OfType<TriggeredAbility>().Any(a => a.Trigger == TriggerEvent.EachEndStep)));
+        Assert.All(copies, id => Assert.Contains(s.Card(id).Definition.Abilities.OfType<TriggeredAbility>(), a => a.Trigger == TriggerEvent.EachEndStep));
         Assert.All(copies, id => Assert.NotEqual(Zone.Battlefield, s.Card(id).Zone)); // sacrificed at the end step
     }
 
