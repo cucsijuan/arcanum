@@ -202,7 +202,9 @@ public partial class PlayerArea : Control
         _commanderDamage.Position = new Vector2(8, me.ManaPool.Count > 0 ? 84 : 58);
         LayoutStatic();
 
-        var battlefield = view.Battlefield.Where(c => c.Controller == Player).ToList();
+        // An Aura or Equipment is shown on the permanent it's attached to, even on another player's side.
+        PlayerId SideOf(CardView c) => c.AttachedTo is { } host && view.FindCard(host) is { Zone: Zone.Battlefield } h ? h.Controller : c.Controller;
+        var battlefield = view.Battlefield.Where(c => SideOf(c) == Player).ToList();
         var wanted = me.Hand.Concat(battlefield).ToList();
         var wantedIds = wanted.Select(c => c.Id).ToHashSet();
 

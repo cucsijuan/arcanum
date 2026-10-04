@@ -177,6 +177,17 @@ public sealed class Card
 
     private static readonly HashSet<string> SpellTypes = new(StringComparer.OrdinalIgnoreCase) { "Adventure", "Arcane", "Lesson", "Trap", "Omen" };
 
+    /// <summary>Its subtypes now, after effects that change them (without the every-creature-type of changeling).</summary>
+    public IReadOnlyList<string> CurrentSubtypes =>
+        (SubtypesOverride ?? Definition.Subtypes).Concat(GrantedSubtypes).Distinct(StringComparer.OrdinalIgnoreCase)
+        .Where(t => TypesOverride is null || SubtypeFitsTypes(t)).ToList();
+
+    /// <summary>Abilities it has from effects (not printed).</summary>
+    public IReadOnlyList<AbilityDefinition> GainedAbilities => GrantedAbilities;
+
+    /// <summary>Whether an effect made it lose its printed abilities.</summary>
+    public bool LostAllAbilities => LosesAbilities;
+
     /// <summary>Whether a subtype is a creature type (not a land, artifact, enchantment, spell or battle type).</summary>
     internal static bool IsCreatureType(string subtype) => !NonCreatureSubtypes.Contains(subtype);
 

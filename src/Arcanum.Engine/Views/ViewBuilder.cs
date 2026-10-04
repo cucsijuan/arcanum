@@ -93,6 +93,18 @@ public static class ViewBuilder
             BasePower = card.Definition.Power,
             BaseToughness = card.Definition.Toughness,
             AbilityTexts = card.Abilities.Select(a => a.Text).ToList(),
+            Supertypes = card.Definition.Supertypes,
+            Subtypes = card.CurrentSubtypes,
+            PrintedTypes = card.Definition.Types,
+            PrintedSubtypes = card.Definition.Subtypes,
+            PrintedColors = card.Definition.ColorList,
+            PrintedKeywords = card.Definition.KeywordAbilities.Select(Cards.Keywords.DisplayName).ToList(),
+            LostAllAbilities = card.LostAllAbilities,
+            GainedAbilityTexts = card.GainedAbilities.Select(a => a.Text).Where(t => !string.IsNullOrEmpty(t)).ToList(),
+            OtherCounters = card.Counters.Where(kv => kv.Value > 0 && kv.Key is not (Abilities.CounterKind.PlusOnePlusOne or Abilities.CounterKind.MinusOneMinusOne or Abilities.CounterKind.Loyalty))
+                .ToDictionary(kv => kv.Key.ToString(), kv => kv.Value),
+            ChosenColor = card.ChosenColor,
+            ChosenType = card.ChosenType,
         };
     }
 }

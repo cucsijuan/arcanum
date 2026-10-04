@@ -437,4 +437,31 @@ public class FidelityTests
         await s.RunUntilTurn();
         Assert.Equal(26, Life(s, P1)); // toughness 6 as it last existed
     }
+
+    [Fact]
+    public async Task ViewsShowWhatEffectsChanged()
+    {
+        var s = new Scenario();
+        var lagac = s.Add(P1, Creature("Lagac", 2, 3, Keyword.Haste) with { ManaCost = ManaCost.Parse("{2}{R}"), Subtypes = new[] { "Elemental", "Lizard" } });
+        s.Game.SetupPermanent(P0, Enchantment("Moon Prison", new StaticAbility(new AffectedFilter(AffectedScope.Enchanted))
+        {
+            SetTypes = CardType.Land, SetColors = Array.Empty<string>(), LosesAllAbilities = true, GrantsMana = new[] { ManaType.Colorless },
+        }) with { Subtypes = new[] { "Aura" }, EnchantTarget = new TargetSpec(TargetKind.Permanent) }, attachTo: lagac);
+        s.Card(lagac).Counters[CounterKind.Stun] = 1;
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        Views.CardView? seen = null;
+        s.Game.EventRaised += e => { if (e is TurnBegan { TurnNumber: 1 }) seen = s.Game.ViewFor(P0).FindCard(lagac); };
+        await s.RunUntilTurn();
+        Assert.NotNull(seen);
+        Assert.Equal(CardType.Land, seen!.Types);
+        Assert.Equal(CardType.Creature, seen.PrintedTypes);
+        Assert.Empty(seen.Subtypes);
+        Assert.Equal(new[] { "Elemental", "Lizard" }, seen.PrintedSubtypes);
+        Assert.Empty(seen.Colors);
+        Assert.Equal(new[] { "R" }, seen.PrintedColors);
+        Assert.True(seen.LostAllAbilities);
+        Assert.DoesNotContain("Haste", seen.Keywords);
+        Assert.Contains("Haste", seen.PrintedKeywords);
+        Assert.Equal(1, seen.OtherCounters["Stun"]);
+    }
 }

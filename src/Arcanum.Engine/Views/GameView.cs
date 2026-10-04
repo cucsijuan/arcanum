@@ -46,6 +46,21 @@ public sealed record CardView
     public IReadOnlyList<string> Colors { get; init; } = Array.Empty<string>();
     /// <summary>Exact image identifier when the name is ambiguous (tokens); see <c>CardDefinition.ImageKey</c>.</summary>
     public string? ImageKey { get; init; }
+
+    // What effects changed compared with the printed card (shown beside the card preview).
+    public Supertype Supertypes { get; init; }
+    public IReadOnlyList<string> Subtypes { get; init; } = Array.Empty<string>();
+    public CardType PrintedTypes { get; init; }
+    public IReadOnlyList<string> PrintedSubtypes { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> PrintedColors { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> PrintedKeywords { get; init; } = Array.Empty<string>();
+    public bool LostAllAbilities { get; init; }
+    /// <summary>Rules text of abilities it gained from effects.</summary>
+    public IReadOnlyList<string> GainedAbilityTexts { get; init; } = Array.Empty<string>();
+    /// <summary>Counters other than +1/+1, -1/-1 and loyalty, by kind.</summary>
+    public IReadOnlyDictionary<string, int> OtherCounters { get; init; } = new Dictionary<string, int>();
+    public string? ChosenColor { get; init; }
+    public string? ChosenType { get; init; }
 }
 
 public sealed record PlayerView

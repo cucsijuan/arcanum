@@ -23,6 +23,7 @@ public partial class GameBoard : Control
     /// <summary>One area per player: seat 0 across the bottom half, opponents side by side across the top half.</summary>
     private readonly List<PlayerArea> _areas = new();
     private readonly CardNode _preview = new();
+    private readonly CardStatusPanel _status = new() { Visible = false };
     private readonly Label _turnNumber = BoardStyle.MakeLabel("1", 22, bold: true);
     private readonly Label _stepLabel = BoardStyle.MakeLabel("", 12, BoardStyle.TextDim);
     private readonly PanelContainer _actionPanel = new();
@@ -384,6 +385,8 @@ public partial class GameBoard : Control
         _preview.Visible = false;
         _preview.ZIndex = BoardStyle.Z.Preview;
         AddChild(_preview);
+        _status.ZIndex = BoardStyle.Z.Preview;
+        AddChild(_status);
 
         // Game over overlay.
         _gameOver.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -1373,9 +1376,17 @@ public partial class GameBoard : Control
         _preview.Setup(view, showCostPips: false);
         _preview.Position = new Vector2(16, (Size.Y - _preview.Size.Y) / 2);
         _preview.Visible = true;
+        // Beside it: what effects changed about the card and its state now.
+        var game = _session.ViewFor(Bottom);
+        if (_status.ShowFor(game.FindCard(view.Id) ?? view, game))
+            _status.Position = _preview.Position + new Vector2(_preview.Size.X + 12, 0);
     }
 
-    private void HidePreview(CardNode node) => _preview.Visible = false;
+    private void HidePreview(CardNode node)
+    {
+        _preview.Visible = false;
+        _status.Visible = false;
+    }
 
     private bool _refreshQueued;
 
