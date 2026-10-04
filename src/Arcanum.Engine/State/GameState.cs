@@ -27,6 +27,16 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
 
     /// <summary>When the effect began (rule 613.7a).</summary>
     public long Timestamp { get; init; }
+
+    /// <summary>Its card types from now on (layer 4).</summary>
+    public Cards.CardType? SetTypes { get; init; }
+
+    /// <summary>Base power/toughness worked out continuously ("equal to the number of lands you control").</summary>
+    public Abilities.Quantity? SetPowerFrom { get; init; }
+    public Abilities.Quantity? SetToughnessFrom { get; init; }
+
+    /// <summary>Ends when this permanent (id, version) leaves the battlefield ("for as long as this Saga remains").</summary>
+    public (CardId Card, int Version)? WhileSource { get; init; }
 }
 
 /// <summary>Control gained "until end of turn": returned to <paramref name="Original"/> at cleanup.</summary>
@@ -36,7 +46,20 @@ public sealed record TemporaryControlEffect(CardId Card, int Version, PlayerId O
 public sealed record LinkedExile(CardId Source, int SourceVersion, CardId Exiled, int ExiledVersion);
 
 /// <summary>A card in exile <paramref name="Player"/> may play until turn <paramref name="UntilTurn"/> ends (free when <paramref name="WithoutPaying"/>).</summary>
-public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player, int UntilTurn, bool WithoutPaying = false);
+public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player, int UntilTurn, bool WithoutPaying = false)
+{
+    /// <summary>Cast by paying life equal to its mana value rather than its mana cost.</summary>
+    public bool PayLife { get; init; }
+
+    /// <summary>Playable only while this holds for the player.</summary>
+    public Abilities.Condition? While { get; init; }
+}
+
+/// <summary>A delayed triggered ability waiting for its moment ("at the beginning of the next upkeep").</summary>
+public sealed record DelayedTrigger(CardId Source, Abilities.TriggeredAbility Ability, PlayerId Controller, int Amount);
+
+/// <summary>"Prevent all damage that would be dealt by" a permanent, while a source stays on the battlefield.</summary>
+public sealed record DamagePrevention(CardId Card, int Version, CardId Source, int SourceVersion);
 
 /// <summary>A delayed action: return a card to the battlefield, or sacrifice a permanent.</summary>
 public sealed record DelayedAction(CardId Card, int Version, bool Return, PlayerId Controller)
@@ -96,6 +119,15 @@ public sealed class GameState
 
     /// <summary>Objects that are exiled instead if they would die this turn.</summary>
     public HashSet<(CardId Card, int Version)> ExileIfDies { get; } = new();
+
+    /// <summary>Turn in which players can't cast spells (-1: none).</summary>
+    public int SpellsForbiddenTurn { get; set; } = -1;
+
+    /// <summary>Delayed abilities that trigger at the beginning of the next upkeep.</summary>
+    public List<DelayedTrigger> AtNextUpkeep { get; } = new();
+
+    /// <summary>Permanents whose damage is prevented while a source stays.</summary>
+    public List<DamagePrevention> DamagePreventions { get; } = new();
 
     /// <summary>Objects combat damage to which is prevented this turn.</summary>
     public HashSet<(CardId Card, int Version)> CombatDamagePrevented { get; } = new();

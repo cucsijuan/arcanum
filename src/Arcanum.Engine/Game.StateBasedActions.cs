@@ -74,6 +74,12 @@ public sealed partial class Game
             toGraveyard.AddRange(group.Where(c => c.Id != kept));
         }
 
+        // A Saga with as many lore counters as its final chapter, and no chapter ability of it waiting or on the
+        // stack, is sacrificed (714.4).
+        var sagasDone = permanents.Where(c => c.Definition.FinalChapter is > 0 and var last && c.CounterCount(Abilities.CounterKind.Lore) >= last
+                                              && !State.Stack.Any(i => i is AbilityOnStack { Ability: Abilities.TriggeredAbility { Trigger: Abilities.TriggerEvent.Chapter } } a && a.Source == c.Id)
+                                              && !_pendingTriggers.Any(t => t.Source == c.Id && t.Ability.Trigger == Abilities.TriggerEvent.Chapter)).ToList();
+
         // World rule (704.5k): only the newest world permanent stays.
         var worlds = permanents.Where(c => (c.Definition.Supertypes & Supertype.World) != 0).ToList();
         if (worlds.Count > 1) toGraveyard.AddRange(worlds.Take(worlds.Count - 1));
@@ -98,6 +104,11 @@ public sealed partial class Game
             if (card.Zone != Zone.Battlefield) continue;
             MoveCard(card.Id, Zone.Graveyard);
             if (died.Contains(card)) Emit(new CreatureDied(card.Id));
+            any = true;
+        }
+        foreach (var saga in sagasDone.Where(c => c.Zone == Zone.Battlefield))
+        {
+            SacrificePermanent(saga.Id);
             any = true;
         }
         EndSimultaneous();

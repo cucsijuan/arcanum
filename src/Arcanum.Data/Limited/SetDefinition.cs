@@ -21,7 +21,7 @@ public sealed record SheetSpec
     /// <summary>Only these card names.</summary>
     public IReadOnlyList<string>? Names { get; init; }
 
-    /// <summary>Only these collector numbers.</summary>
+    /// <summary>Only these collector numbers (ranges like "1-181" are expanded when parsed).</summary>
     public IReadOnlyList<string>? Numbers { get; init; }
 
     /// <summary>Card names left out.</summary>
@@ -87,7 +87,7 @@ public sealed record SetDefinition
                 Booster = s.TryGetProperty("booster", out var bo) ? bo.GetBoolean() : null,
                 Basic = s.TryGetProperty("basic", out var ba) ? ba.GetBoolean() : null,
                 Names = Strings(s, "names"),
-                Numbers = Strings(s, "numbers"),
+                Numbers = Strings(s, "numbers")?.SelectMany(ExpandRange).ToList(),
                 Exclude = Strings(s, "exclude") ?? new List<string>(),
             };
         }
@@ -105,6 +105,15 @@ public sealed record SetDefinition
             slots.Add(new SlotSpec(count, weights, slot.TryGetProperty("wildcard", out var wc) && wc.GetBoolean()));
         }
         return new BoosterSpec(Str(b, "name") ?? "Booster", Str(b, "description") ?? "", sheets, slots);
+    }
+
+    /// <summary>A collector number, or a range of plain numbers ("1-181").</summary>
+    private static IEnumerable<string> ExpandRange(string number)
+    {
+        var parts = number.Split('-');
+        if (parts.Length == 2 && int.TryParse(parts[0], out int from) && int.TryParse(parts[1], out int to) && from <= to)
+            return Enumerable.Range(from, to - from + 1).Select(n => n.ToString());
+        return new[] { number };
     }
 
     private static string? Str(JsonElement e, string name) =>

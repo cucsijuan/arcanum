@@ -23,7 +23,7 @@ public static partial class CardFactory
         ["Mountain"] = ManaType.Red, ["Forest"] = ManaType.Green,
     };
 
-    private static readonly HashSet<string> SingleFaceLayouts = new(StringComparer.Ordinal) { "normal", "token" };
+    private static readonly HashSet<string> SingleFaceLayouts = new(StringComparer.Ordinal) { "normal", "token", "saga" };
 
     /// <summary>
     /// Keyword actions and ability words the card source lists as keywords but that only label rules text a card
@@ -33,6 +33,7 @@ public static partial class CardFactory
     {
         "Scry", "Surveil", "Fight", "Mill", "Treasure", "Food", "Investigate",
         "Raid", "Landfall", "Morbid", "Threshold", "Ferocious", "Hexproof from", "Affinity", "Double", "Formidable", "Alliance", "Crew", "Protection", "Vivid",
+        "Amass", "Recruit", "Gift", "Behold",
     };
 
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
@@ -44,6 +45,7 @@ public static partial class CardFactory
     /// <param name="script">The card's ability script from the content module, if it has one.</param>
     public static (CardDefinition Definition, CardSupport Support) Create(CardRecord record, Scripts.CardScript? script = null)
     {
+        if (record.Layout == "adventure" && record.Faces.Count == 2) return CreateAdventurer(record, script);
         var (supertypes, types, subtypes) = TypeLine.Parse(record.TypeLine);
         var tapForMana = subtypes.Where(BasicLandTypes.ContainsKey).Select(t => BasicLandTypes[t]).ToList();
         tapForMana.AddRange(ManaAbilityTypes(record.OracleText));
@@ -87,8 +89,34 @@ public static partial class CardFactory
         toughnessOk |= script?.ToughnessFrom is not null;
         bool supported = costOk && powerOk && toughnessOk
                          && SingleFaceLayouts.Contains(record.Layout)
-                         && record.Keywords.All(SupportedKeywords.Contains)
+                         && record.Keywords.All(k => SupportedKeywords.Contains(k) || IsCycling(k))
                          && (script is not null || RulesTextIsCovered(record));
+        return (definition, supported ? CardSupport.Full : CardSupport.Unsupported);
+    }
+
+    /// <summary>
+    /// An adventurer card (rule 715): the card is its first face; its second face is the Adventure, an instant or sorcery
+    /// described by the script's "adventure" part. Both show the card's picture.
+    /// </summary>
+    private static (CardDefinition Definition, CardSupport Support) CreateAdventurer(CardRecord record, Scripts.CardScript? script)
+    {
+        CardRecord FaceRecord(CardFaceRecord face) => record with
+        {
+            Layout = "normal", Name = face.Name, ManaCost = face.ManaCost, TypeLine = face.TypeLine, OracleText = face.OracleText,
+            Power = face.Power, Toughness = face.Toughness, Faces = Array.Empty<CardFaceRecord>(),
+            // The card source lists the keywords of both faces together: each face keeps those its own text uses.
+            Keywords = record.Keywords.Where(k => face.OracleText.Contains(k, StringComparison.OrdinalIgnoreCase)).ToList(),
+        };
+        var (card, cardSupport) = Create(FaceRecord(record.Faces[0]), script);
+        var (adventure, adventureSupport) = Create(FaceRecord(record.Faces[1]), script?.Adventure);
+        var face = record.Faces[1];
+        var definition = card with
+        {
+            OracleText = $"{card.OracleText}\n\n{face.Name} {face.ManaCost} ({face.TypeLine})\n{face.OracleText}".Trim(),
+            ImageKey = record.DefaultPrintingId,
+            Adventure = adventure with { ImageKey = record.DefaultPrintingId },
+        };
+        bool supported = cardSupport == CardSupport.Full && adventureSupport == CardSupport.Full;
         return (definition, supported ? CardSupport.Full : CardSupport.Unsupported);
     }
 
@@ -106,6 +134,7 @@ public static partial class CardFactory
             if (TapForManaLine().IsMatch(line) || AnyColorManaLine().IsMatch(line)) continue;
             if (EntersTappedLine().IsMatch(line)) continue;
             if (KickerLine().IsMatch(line) || FlashbackLine().IsMatch(line) || WardLine().IsMatch(line) || line == "This spell can't be countered") continue;
+            if (CyclingLine().IsMatch(line)) continue;
             // A keyword line: "Flying" or "Flying, trample".
             if (line.Split(',').Select(k => k.Trim()).All(k => record.Keywords.Contains(k, StringComparer.OrdinalIgnoreCase) || WardLine().IsMatch(k))) continue;
             return false;
@@ -119,15 +148,20 @@ public static partial class CardFactory
     /// </summary>
     private static T? WithTokenImages<T>(T? ability, IReadOnlyList<RelatedToken> tokens, bool replace = false) where T : Engine.Abilities.AbilityDefinition
     {
-        if (ability is null || tokens.Count == 0 || !ability.Effects.Any(e => e is Engine.Abilities.CreateTokens)) return ability;
-        var effects = ability.Effects.Select(effect =>
+        if (ability is null || tokens.Count == 0) return ability;
+        CardDefinition Pictured(CardDefinition token)
         {
-            if (effect is not Engine.Abilities.CreateTokens create || (create.Token.ImageKey is not null && !replace)) return effect;
-            var candidates = tokens.Where(t => t.Name.Equals(create.Token.Name, StringComparison.OrdinalIgnoreCase)).ToList();
-            var match = candidates.Count <= 1 ? candidates.FirstOrDefault() : candidates.FirstOrDefault(t => MatchesStats(t, create.Token)) ?? candidates[0];
-            return match is null ? effect : create with { Token = create.Token with { ImageKey = match.Id } };
-        }).ToList();
-        return ability with { Effects = effects };
+            if (token.ImageKey is not null && !replace) return token;
+            var candidates = tokens.Where(t => t.Name.Equals(token.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+            var match = candidates.Count <= 1 ? candidates.FirstOrDefault() : candidates.FirstOrDefault(t => MatchesStats(t, token)) ?? candidates[0];
+            return match is null ? token : token with { ImageKey = match.Id };
+        }
+        return (T)Engine.Abilities.EffectTree.Map(ability, effect => effect switch
+        {
+            Engine.Abilities.CreateTokens create => create with { Token = Pictured(create.Token) },
+            Engine.Abilities.Amass amass => amass with { Token = Pictured(amass.Token) },
+            _ => effect,
+        });
     }
 
     /// <summary>
@@ -139,6 +173,7 @@ public static partial class CardFactory
         ImageKey = printing.Id,
         Spell = WithTokenImages(definition.Spell, printing.Tokens, replace: true),
         Abilities = definition.Abilities.Select(a => WithTokenImages(a, printing.Tokens, replace: true)!).ToList(),
+        Adventure = definition.Adventure is { } adventure ? ForPrinting(adventure, printing) : null,
     };
 
     /// <summary>
@@ -187,8 +222,10 @@ public static partial class CardFactory
                     Targets = new[] { new Engine.Abilities.TargetSpec(Engine.Abilities.TargetKind.Creature, Engine.Abilities.ControllerFilter.You) },
                     Effects = new Engine.Abilities.Effect[] { new Engine.Abilities.AttachSelf(Engine.Abilities.Subject.TargetAt(0)) },
                     Text = line,
+                    IsEquip = true,
                 });
             }
+            if (CyclingAbility(line) is { } cycling) abilities.Add(cycling);
             var enchantMatch = EnchantLine().Match(line);
             if (enchantMatch.Success)
             {
@@ -200,6 +237,34 @@ public static partial class CardFactory
         }
         return (abilities, enchant, entersTapped);
     }
+
+    /// <summary>Cycling and typecycling keywords ("Cycling", "Mountaincycling", "Landcycling"): derived from their rules text.</summary>
+    private static bool IsCycling(string keyword) => keyword.EndsWith("cycling", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// "Cycling {2}" ({2}, discard this card: draw a card) and "[Type]cycling {2}" ({2}, discard this card: search your
+    /// library for a [type] card, reveal it, put it into your hand, then shuffle), activated from the hand (rule 702.29).
+    /// </summary>
+    private static Engine.Abilities.ActivatedAbility? CyclingAbility(string line)
+    {
+        var m = CyclingLine().Match(line);
+        if (!m.Success) return null;
+        var cost = new Engine.Abilities.AbilityCost(ManaCost.Parse(m.Groups["cost"].Value)) { FromHand = true };
+        var type = m.Groups["type"].Value.Trim();
+        Engine.Abilities.Effect effect;
+        if (type.Length == 0) effect = new Engine.Abilities.DrawCards(1, Engine.Abilities.Subject.You);
+        else
+        {
+            var filter = type.Equals("basic land", StringComparison.OrdinalIgnoreCase)
+                ? new Engine.Abilities.ObjectFilter(CardType.Land, Supertype: Supertype.Basic, Controller: Engine.Abilities.ControllerFilter.Any)
+                : new Engine.Abilities.ObjectFilter(Subtype: char.ToUpperInvariant(type[0]) + type[1..], Controller: Engine.Abilities.ControllerFilter.Any);
+            effect = new Engine.Abilities.SearchLibrary(filter, 1, Engine.State.Zone.Hand) { Reveal = true };
+        }
+        return new Engine.Abilities.ActivatedAbility { Cost = cost, Effects = new[] { effect }, Text = line };
+    }
+
+    [GeneratedRegex(@"^(?<type>[A-Za-z ]*?)[Cc]ycling (?<cost>(\{[0-9WUBRGC]+\})+)$")]
+    private static partial Regex CyclingLine();
 
     /// <summary>"Kicker {2}", "Flashback {1}{R}", "Ward {2}" / "Ward—Pay 2 life" / "Ward—{3}, Pay 3 life", "This spell can't be countered".</summary>
     private static (ManaCost? Kicker, ManaCost? Flashback, ManaCost? WardMana, int WardLife, bool CantBeCountered) DeriveCosts(string oracleText)

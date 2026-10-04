@@ -22,7 +22,16 @@ public sealed partial class Game
         // Replacement effects on where the card goes (rule 614).
         if (to == Zone.Graveyard)
         {
+            var exiledInsteadBy = from == Zone.Battlefield && card.IsCreature
+                ? State.Battlefield.Select(State.GetCard).Where(c => c.Controller != card.Controller && (c.Definition.Replaces & Cards.Replacements.OpponentsCreaturesExiledInsteadOfDying) != 0).ToList()
+                : new List<Card>();
             if (from == Zone.Battlefield && State.ExileIfDies.Contains((id, card.Version))) to = Zone.Exile;
+            else if (exiledInsteadBy.Count > 0)
+            {
+                // "If a creature an opponent controls would die, exile it instead. When you do, …"
+                to = Zone.Exile;
+                foreach (var replacer in exiledInsteadBy) Queue(replacer.Id, Abilities.TriggerEvent.CreatureExiledInstead, replacer.Controller);
+            }
             else if ((card.Definition.Replaces & Cards.Replacements.ShuffleIntoLibraryInsteadOfGraveyard) != 0) { to = Zone.Library; shuffleAfter = true; }
             else if ((card.Is(Cards.CardType.Instant) || card.Is(Cards.CardType.Sorcery))
                      && State.Battlefield.Any(b => (State.GetCard(b).Definition.Replaces & Cards.Replacements.ExileInstantsAndSorceries) != 0))
@@ -32,6 +41,7 @@ public sealed partial class Game
         switch (from)
         {
             case Zone.Battlefield:
+                card.LeftBattlefieldTurn = State.TurnNumber;
                 card.WasAttacking = State.Combat?.FindAttack(id) is not null;
                 card.WasBlocking = State.Combat?.IsBlocking(id) == true;
                 State.Battlefield.Remove(id);
@@ -60,6 +70,7 @@ public sealed partial class Game
                 card.AttachedTo = attachTo;
                 // Replacement effects that modify how the permanent enters (rule 614.1c).
                 if (card.Definition.EntersTapped) card.Tapped = true;
+                if (card.Definition.EntersTappedUnless is { } unless && !Holds(unless, card.Controller, card)) card.Tapped = true;
                 if (card.IsCreature && OpponentsCreaturesEnterTapped(card.Controller)) card.Tapped = true;
                 // Counters it enters with are "put on" it (rule 122.6): they're applied right after it enters.
                 if (card.Definition.EntersWithCounters > 0
@@ -69,6 +80,7 @@ public sealed partial class Game
                     enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne,
                         Eval(countFrom, new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
                 if (card.Definition.Loyalty is { } loyalty) enterCounters.Add((Abilities.CounterKind.Loyalty, loyalty)); // 306.5b
+                if (card.Definition.FinalChapter > 0) enterCounters.Add((Abilities.CounterKind.Lore, 1)); // a Saga enters with a lore counter (714.3a)
                 // "Each other Angel you control enters with an additional +1/+1 counter for each Angel you already control."
                 if (card.HasSubtype("Angel"))
                 {
@@ -115,14 +127,21 @@ public sealed partial class Game
         var player = State.GetPlayer(playerId);
         for (int i = 0; i < count; i++)
         {
-            if (player.Library.Count == 0)
+            // "If you would draw a card except the first one you draw in each of your draw steps, draw two cards instead."
+            bool firstInDrawStep = State.Step == Step.Draw && State.ActivePlayer == playerId && !player.DrewInDrawStep;
+            if (State.Step == Step.Draw && State.ActivePlayer == playerId) player.DrewInDrawStep = true;
+            int cards = !firstInDrawStep && Has(playerId, Cards.Replacements.DrawTwoExceptFirstInDrawStep) ? 2 : 1;
+            for (int n = 0; n < cards; n++)
             {
-                player.AttemptedDrawFromEmptyLibrary = true; // loses at next SBA check (rule 704.5b)
-                return;
+                if (player.Library.Count == 0)
+                {
+                    player.AttemptedDrawFromEmptyLibrary = true; // loses at next SBA check (rule 704.5b)
+                    return;
+                }
+                var top = player.Library[0];
+                MoveCard(top, Zone.Hand);
+                Emit(new CardDrawn(playerId, top));
             }
-            var top = player.Library[0];
-            MoveCard(top, Zone.Hand);
-            Emit(new CardDrawn(playerId, top));
         }
     }
 

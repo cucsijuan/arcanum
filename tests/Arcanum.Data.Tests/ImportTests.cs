@@ -192,6 +192,18 @@ public class ModuleTests
         int supported = db.All.Count(d => db.SupportOf(d.Name) == CardSupport.Full);
         Console.WriteLine($"cards={db.Count} supported={supported}");
 
+        // Sets: every card of a set the module describes is known and fully supported.
+        foreach (var set in module.LoadSets())
+        {
+            var unknown = set.Cards.Where(name => db.Find(name) is null).ToList();
+            var unsupported = set.Cards.Where(name => db.Find(name) is not null && db.SupportOf(name) != CardSupport.Full).ToList();
+            Console.WriteLine($"set {set.Code}: {set.Cards.Count - unknown.Count - unsupported.Count}/{set.Cards.Count} supported"
+                              + (unknown.Count > 0 ? $", unknown {string.Join(", ", unknown)}" : "")
+                              + (unsupported.Count > 0 ? $", unsupported {string.Join(", ", unsupported)}" : ""));
+            Assert.Empty(unknown);
+            Assert.Empty(unsupported);
+        }
+
         // Cubes: every card known and fully supported.
         foreach (var cubeName in module.CubeNames())
         {

@@ -76,6 +76,15 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
 
     /// <summary>Adds the creature type chosen as the source entered ("is the chosen type in addition to its other types").</summary>
     public bool AddChosenType { get; init; }
+
+    /// <summary>Grants ward with this cost ("artifacts and creatures you control have ward {1}").</summary>
+    public Mana.ManaCost? GrantsWard { get; init; }
+
+    /// <summary>"If a triggered ability of [an affected permanent] triggers, that ability triggers an additional time."</summary>
+    public bool ExtraTriggers { get; init; }
+
+    /// <summary>"Has all activated abilities of all [filter] cards in your graveyard."</summary>
+    public ObjectFilter? GrantsGraveyardAbilities { get; init; }
 }
 
 /// <summary>Attach the source Aura/Equipment to a permanent ("Equip {2}").</summary>

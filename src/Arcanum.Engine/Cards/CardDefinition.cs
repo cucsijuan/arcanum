@@ -5,7 +5,7 @@ using Arcanum.Engine.Mana;
 namespace Arcanum.Engine.Cards;
 
 /// <summary>A choice made as a permanent enters (rule 614.12).</summary>
-public enum EnterChoice { None, Color, CreatureType, CardName }
+public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven }
 
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]
@@ -52,8 +52,12 @@ public enum Replacements
     StopsChosenNameAbilities = 262144,
     /// <summary>Each other Angel you control enters with an additional +1/+1 counter for each Angel you already control.</summary>
     AngelsEnterWithCounters = 524288,
-    /// <summary>You may play an additional land on each of your turns.</summary>
+    /// <summary>You may play an additional land on each of your turns (while <see cref="CardDefinition.AdditionalLandPlayIf"/> holds).</summary>
     AdditionalLandPlay = 1048576,
+    /// <summary>If you would draw a card except the first one you draw in each of your draw steps, draw two cards instead.</summary>
+    DrawTwoExceptFirstInDrawStep = 2097152,
+    /// <summary>If a creature an opponent controls would die, exile it instead (its "When you do" ability then triggers).</summary>
+    OpponentsCreaturesExiledInsteadOfDying = 4194304,
 }
 
 /// <summary>
@@ -239,9 +243,43 @@ public sealed record CardDefinition
     /// <summary>Marks a token definition (tokens cease to exist outside the battlefield, rule 111.7).</summary>
     public bool IsToken { get; init; }
 
+    /// <summary>"Gift a [token]" (rule 702.174): an opponent the caster promises it to creates this token before the spell's other effects.</summary>
+    public CardDefinition? Gift { get; init; }
+
+    /// <summary>"You may cast this spell as though it had flash if [condition]."</summary>
+    public Condition? FlashIf { get; init; }
+
+    /// <summary>"Creatures can't attack you unless their controller pays [cost] for each of those creatures" (while <see cref="AttackTaxIf"/> holds).</summary>
+    public ManaCost? AttackTax { get; init; }
+    public Condition? AttackTaxIf { get; init; }
+
+    /// <summary>The <see cref="Replacements.AdditionalLandPlay"/> applies only while this holds ("as long as you control another Elf").</summary>
+    public Condition? AdditionalLandPlayIf { get; init; }
+
+    /// <summary>"This land enters tapped unless [condition]."</summary>
+    public Condition? EntersTappedUnless { get; init; }
+
+    /// <summary>"Equip abilities you activate that target this creature cost {N} less to activate."</summary>
+    public int EquipDiscount { get; init; }
+
+    /// <summary>"You may pay {0} rather than pay the equip cost of the first equip ability you activate each turn" (while this holds).</summary>
+    public Condition? FreeFirstEquipIf { get; init; }
+
+    /// <summary>Its restricted mana (<see cref="ManaOnlyFor"/>) may also pay for abilities of matching sources.</summary>
+    public bool ManaOnlyForAbilitiesToo { get; init; }
+
+    /// <summary>
+    /// For an adventurer card (rule 715): its Adventure, an instant or sorcery the card can be cast as instead. After
+    /// that spell resolves the card is exiled, and its owner may cast the card itself from exile later.
+    /// </summary>
+    public CardDefinition? Adventure { get; init; }
+
     public bool Is(CardType type) => (Types & type) != 0;
 
     public bool IsCreature() => Is(CardType.Creature);
+
+    /// <summary>A Saga's final chapter number (rule 714.2c); 0 for anything else.</summary>
+    public int FinalChapter => Abilities.OfType<TriggeredAbility>().SelectMany(a => a.Chapters).DefaultIfEmpty(0).Max();
 
     private IReadOnlyList<string>? _colorList;
 

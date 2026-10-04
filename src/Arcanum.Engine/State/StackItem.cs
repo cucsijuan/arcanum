@@ -36,6 +36,9 @@ public sealed record SpellOnStack(CardId Card, PlayerId Controller, IReadOnlyLis
 
     /// <summary>Cast with flashback: exiled instead of going anywhere else when it leaves the stack.</summary>
     public bool Flashback { get; init; }
+
+    /// <summary>The opponent the caster promised the gift to.</summary>
+    public PlayerId? GiftTo { get; init; }
 }
 
 public sealed record AbilityOnStack(CardId Source, AbilityDefinition Ability, PlayerId Controller, IReadOnlyList<ChosenTarget> ChosenTargets)

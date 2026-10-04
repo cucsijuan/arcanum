@@ -9,7 +9,18 @@ namespace Arcanum.Engine.State;
 public sealed class Card
 {
     public CardId Id { get; }
-    public CardDefinition Definition { get; }
+
+    /// <summary>The card as printed (for an adventurer card, the card itself rather than its Adventure).</summary>
+    public CardDefinition PrintedDefinition { get; }
+
+    /// <summary>Its characteristics now: those of its Adventure while it is cast as one (rule 715.3), otherwise the printed card's.</summary>
+    public CardDefinition Definition => AsAdventure && PrintedDefinition.Adventure is { } adventure ? adventure : PrintedDefinition;
+
+    /// <summary>It is being cast, or is on the stack, as its Adventure (rule 715.3).</summary>
+    public bool AsAdventure { get; set; }
+
+    /// <summary>Exiled after resolving as an Adventure: its owner may cast it (not as an Adventure) from exile (rule 715.4).</summary>
+    public bool OnAdventure { get; set; }
     public PlayerId Owner { get; }
     public PlayerId Controller { get; set; }
 
@@ -33,6 +44,30 @@ public sealed class Card
 
     /// <summary>Card name chosen as it entered.</summary>
     public string? ChosenName { get; set; }
+
+    /// <summary>"Odd" or "even", chosen as it entered.</summary>
+    public string? ChosenParity { get; set; }
+
+    /// <summary>As a spell: cast from a graveyard (for "if this spell was cast from a graveyard").</summary>
+    public bool CastFromGraveyard { get; set; }
+
+    /// <summary>As a spell: the mana spent to cast it.</summary>
+    public int ManaSpent { get; set; }
+
+    /// <summary>As a spell: mana from a Treasure was spent to cast it.</summary>
+    public bool PaidWithTreasure { get; set; }
+
+    /// <summary>As a spell: its caster promised the gift.</summary>
+    public bool GiftPromised { get; set; }
+
+    /// <summary>Exiled face down: only its owner may look at it.</summary>
+    public bool FaceDown { get; set; }
+
+    /// <summary>Turn number when it last left the battlefield (for "put there from the battlefield this turn").</summary>
+    public int LeftBattlefieldTurn { get; set; } = -1;
+
+    /// <summary>Ward costs granted by other permanents (recomputed with continuous effects).</summary>
+    internal List<Mana.ManaCost> GrantedWards { get; } = new();
 
     /// <summary>Gains haste until end of turn as it enters (mana rider).</summary>
     public bool HasteOnEnter { get; set; }
@@ -116,7 +151,7 @@ public sealed class Card
     public Card(CardId id, CardDefinition definition, PlayerId owner)
     {
         Id = id;
-        Definition = definition;
+        PrintedDefinition = definition;
         Owner = owner;
         Controller = owner;
         BaseController = owner;
@@ -212,7 +247,7 @@ public sealed class Card
                 var types = Definition.ManaFromChosenColor && ChosenColor is { } color && Mana.ManaTypeExtensions.TryParse(color[0], out var type)
                     ? new[] { type }
                     : Definition.TapForMana;
-                if (types.Count > 0 && ManaAmount > 0) options.Add(new ManaOption(types, ManaAmount, Definition.ManaOnlyFor));
+                if (types.Count > 0 && ManaAmount > 0) options.Add(new ManaOption(types, ManaAmount, Definition.ManaOnlyFor, Definition.ManaOnlyForAbilitiesToo));
                 options.AddRange(Definition.ExtraManaOptions.Select(o => o.ColorsAmongYourPermanents ? o with { Types = ColorsAmongYourPermanents } : o));
             }
             options.AddRange(GrantedManaOptions);
@@ -297,6 +332,15 @@ public sealed class Card
         ActivatedEver.Clear();
         ChosenName = null;
         AttacksThisTurn = 0;
+        AsAdventure = false;
+        OnAdventure = false;
+        ChosenParity = null;
+        CastFromGraveyard = false;
+        ManaSpent = 0;
+        PaidWithTreasure = false;
+        GiftPromised = false;
+        FaceDown = false;
+        GrantedWards.Clear();
         Version++;
         Controller = Owner;
         BaseController = Owner;

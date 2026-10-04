@@ -80,7 +80,7 @@ public sealed record CreatedThisWay : Condition;
 public sealed record DifferentNames(ObjectFilter Filter, int AtLeast) : Condition;
 
 /// <summary>This ability has resolved at least <paramref name="Times"/> times this turn (including now).</summary>
-public sealed record ResolvedThisTurn(int Times) : Condition;
+public sealed record ResolvedThisTurn(int Times, bool Exactly = false) : Condition;
 
 /// <summary>"If you cast it from your hand" / "if you cast it".</summary>
 public sealed record WasCastFromHand : Condition;
@@ -102,3 +102,21 @@ public sealed record WasCast : Condition;
 
 /// <summary>"As long as it's untapped": the source permanent is untapped.</summary>
 public sealed record SourceUntapped : Condition;
+
+/// <summary>The target at <paramref name="Index"/> was controlled by the ability's controller (as it last existed if it left).</summary>
+public sealed record TargetControlledByYou(int Index) : Condition;
+
+/// <summary>"If this spell was cast from a graveyard".</summary>
+public sealed record WasCastFromGraveyard : Condition;
+
+/// <summary>"If you've drawn N or more cards this turn".</summary>
+public sealed record CardsDrawnThisTurn(int AtLeast) : Condition;
+
+/// <summary>"Creatures with total power N or greater" are attacking for the controller.</summary>
+public sealed record AttackingPowerAtLeast(int Amount) : Condition;
+
+/// <summary>"If the gift was promised".</summary>
+public sealed record GiftPromised : Condition;
+
+/// <summary>"As long as you have an enduring story" (storied).</summary>
+public sealed record HasEnduringStory : Condition;

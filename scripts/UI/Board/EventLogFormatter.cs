@@ -41,6 +41,7 @@ public static class EventLogFormatter
             PermanentSacrificed sac when !IsCreature(sac.Card) => $"{C(sac.Card)} is sacrificed.",
             ControlChanged cc => $"{P(cc.NewController)} gains control of {C(cc.Card)}.",
             ChoiceMade cm => $"{C(cm.Card)}: {cm.Choice} chosen.",
+            EnduringStoryGained es => $"{P(es.Player)} has an enduring story.",
             CardsRevealed cr => $"{P(cr.Player)} reveals {string.Join(", ", cr.Cards.Select(C))}.",
             HandRevealed hr => $"{P(hr.Player)} reveals their hand.",
             CardDiscarded d => $"{P(d.Player)} discards {C(d.Card)}.",

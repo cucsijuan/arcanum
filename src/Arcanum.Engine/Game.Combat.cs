@@ -43,6 +43,23 @@ public sealed partial class Game
                 declared = declared.Concat(mustAttack.Select(id => new AttackDeclaration(id, defender))).ToList();
             }
 
+            // "Creatures can't attack you unless their controller pays {1} for each of those creatures" (rule 508.1g–h):
+            // creatures whose attack isn't paid for don't attack that player.
+            foreach (var defender in declared.Select(d => d.Defender).Distinct().ToList())
+            {
+                var taxes = State.PermanentsControlledBy(defender)
+                    .Where(c => c.Definition.AttackTax is not null && (c.Definition.AttackTaxIf is not { } cond || Holds(cond, defender, c)))
+                    .Select(c => c.Definition.AttackTax!).ToList();
+                if (taxes.Count == 0) continue;
+                var taxed = declared.Where(d => d.Defender == defender).ToList();
+                var total = Mana.ManaCost.Zero;
+                foreach (var _ in taxed)
+                    foreach (var tax in taxes) total = total.Plus(tax);
+                bool paid = total.ManaValue == 0
+                            || (Payable(active, total, null) && await PayManaAsync(State.GetPlayer(active), taxed[0].Attacker, total, null));
+                if (!paid) declared = declared.Where(d => d.Defender != defender).ToList();
+            }
+
             foreach (var d in declared)
             {
                 combat.Attacks.Add(new AttackInfo { Attacker = d.Attacker, Defender = d.Defender, Planeswalker = d.Planeswalker });

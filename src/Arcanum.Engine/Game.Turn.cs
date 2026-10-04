@@ -24,6 +24,9 @@ public sealed partial class Game
             player.CardsDrawnThisTurn = 0;
             player.LifeGainsThisTurn = 0;
             player.SpellsCastThisTurn.Clear();
+            player.ExtraLandsThisTurn = 0;
+            player.EquipsThisTurn = 0;
+            player.DrewInDrawStep = false;
             player.GraveyardTypesUsedThisTurn = 0;
         }
         foreach (var permanent in State.PermanentsControlledBy(active.Id)) permanent.ControlledSinceTurnStart = true;
@@ -100,6 +103,11 @@ public sealed partial class Game
                 break;
             case Step.Draw:
                 Draw(State.ActivePlayer);
+                break;
+            case Step.PrecombatMain:
+                // As the precombat main phase begins, its player puts a lore counter on each of their Sagas (714.3b).
+                foreach (var saga in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Definition.FinalChapter > 0).ToList())
+                    PutCounters(saga, Abilities.CounterKind.Lore, 1, State.ActivePlayer);
                 break;
             case Step.BeginCombat:
                 State.Combat = new CombatState();

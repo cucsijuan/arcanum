@@ -89,6 +89,14 @@ public sealed partial class Game
                 Require(i >= 0 && i < ColorNames.Length, "Choose one of the colors.");
                 card.ChosenColor = ColorLetters[i];
             }
+            else if (card.Definition.ChooseOnEnter == EnterChoice.OddOrEven)
+            {
+                int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose odd or even", id, new[] { "Odd", "Even" }, OptionKind.Other));
+                Require(i is 0 or 1, "Choose odd or even.");
+                card.ChosenParity = i == 0 ? "odd" : "even";
+                Emit(new ChoiceMade(id, i == 0 ? "Odd" : "Even"));
+                continue;
+            }
             else if (card.Definition.ChooseOnEnter == EnterChoice.CardName)
             {
                 // "Look at an opponent's hand, then choose any card name."
@@ -152,30 +160,27 @@ public sealed partial class Game
         {
             if (card.Is(CardType.Land))
             {
-                if (card.Zone is Zone.Hand or Zone.Exile or Zone.Graveyard && sorcerySpeed && player.LandsPlayedThisTurn < Config.LandsPerTurn + State.PermanentsControlledBy(playerId).Count(c => (c.Definition.Replaces & Replacements.AdditionalLandPlay) != 0))
+                if (card.Zone is Zone.Hand or Zone.Exile or Zone.Graveyard && sorcerySpeed && player.LandsPlayedThisTurn < LandsAllowed(playerId))
                     actions.Add(new PlayLand(card.Id));
-                continue;
             }
-            bool timingOk = card.Is(CardType.Instant) || card.Definition.KeywordAbilities.Contains(Keyword.Flash) || sorcerySpeed
-                            || Has(playerId, Replacements.YourSpellsHaveFlash);
-            var cost = CastingCost(card).WithX(0);
-            if (!timingOk && card.Definition.FlashExtraCost is { } flashExtra)
+            else if (State.SpellsForbiddenTurn == State.TurnNumber) continue;
+            else if (CanCast(card, playerId, sorcerySpeed)) actions.Add(new CastSpell(card.Id));
+            // An adventurer card can be cast as its Adventure wherever it could be cast (rule 715.3), except from exile after an adventure.
+            if (card.PrintedDefinition.Adventure is not null && !card.OnAdventure && card.Zone != Zone.Command)
             {
-                timingOk = true; // "as though it had flash if you pay {2} more"
-                cost = cost.Plus(flashExtra);
+                card.AsAdventure = true;
+                bool canAdventure = CanCast(card, playerId, sorcerySpeed);
+                card.AsAdventure = false;
+                if (canAdventure) actions.Add(new CastSpell(card.Id, Adventure: true));
             }
-            if (timingOk && HasLegalTargets(CastingTargets(card.Definition), playerId, card.Id)
-                && CanPayExtra(playerId, card.Definition.AdditionalCost, card.Id)
-                && (card.Zone != Zone.Graveyard || CanPayExtra(playerId, GraveyardCost(card), card.Id))
-                && (CanPayFromCostOptions(playerId, card, cost) || AlternativeCostPayable(playerId, card)))
-                actions.Add(new CastSpell(card.Id));
         }
 
-        foreach (var permanent in State.PermanentsControlledBy(playerId).Concat(player.Graveyard.Select(State.GetCard)))
+        foreach (var permanent in State.PermanentsControlledBy(playerId).Concat(player.Graveyard.Select(State.GetCard)).Concat(player.Hand.Select(State.GetCard)))
         {
             var abilities = permanent.Abilities;
             for (int i = 0; i < abilities.Count; i++)
                 if (abilities[i] is ActivatedAbility ability && ability.Cost.FromGraveyard == (permanent.Zone == Zone.Graveyard)
+                    && ability.Cost.FromHand == (permanent.Zone == Zone.Hand)
                     && CanActivate(permanent, ability, i, playerId, sorcerySpeed))
                     actions.Add(new ActivateAbility(permanent.Id, i));
         }
@@ -188,6 +193,46 @@ public sealed partial class Game
                     actions.Add(new ActivateManaAbility(source.Id, type, option));
         return actions;
     }
+
+    /// <summary>Whether the card (as it is now: the card, or its Adventure) can be cast: timing, targets and every cost.</summary>
+    private bool CanCast(Card card, PlayerId playerId, bool sorcerySpeed)
+    {
+        bool timingOk = card.Is(CardType.Instant) || card.Definition.KeywordAbilities.Contains(Keyword.Flash) || sorcerySpeed
+                        || Has(playerId, Replacements.YourSpellsHaveFlash)
+                        || (card.Definition.FlashIf is { } flashIf && Holds(flashIf, playerId, card))
+                        || GrantedFlash(card, playerId);
+        if (PaysLife(card) && State.GetPlayer(playerId).Life < card.Definition.ManaCost.ManaValue) return false;
+        var cost = CastingCost(card).WithX(0);
+        if (!timingOk && card.Definition.FlashExtraCost is { } flashExtra)
+        {
+            timingOk = true; // "as though it had flash if you pay {2} more"
+            cost = cost.Plus(flashExtra);
+        }
+        return timingOk && HasLegalTargets(CastingTargets(card.Definition), playerId, card.Id)
+               && CanPayExtra(playerId, card.Definition.AdditionalCost, card.Id)
+               && (card.Zone != Zone.Graveyard || CanPayExtra(playerId, GraveyardCost(card), card.Id))
+               && (CanPayFromCostOptions(playerId, card, cost) || AlternativeCostPayable(playerId, card));
+    }
+
+    /// <summary>Lands the player may play this turn.</summary>
+    private int LandsAllowed(PlayerId playerId) =>
+        Config.LandsPerTurn + State.GetPlayer(playerId).ExtraLandsThisTurn
+        + State.PermanentsControlledBy(playerId).Count(c => (c.Definition.Replaces & Replacements.AdditionalLandPlay) != 0
+                                                            && (c.Definition.AdditionalLandPlayIf is not { } cond || Holds(cond, playerId, c)));
+
+    /// <summary>"Can be cast as though it had flash" from a permanent the caster controls ("the first creature spell you cast each turn").</summary>
+    private bool GrantedFlash(Card card, PlayerId caster) =>
+        State.PermanentsControlledBy(caster).Any(p => p.Abilities.OfType<SpellCostReduction>().Any(r => r.GrantsFlash && ReductionApplies(r, p, card, caster)));
+
+    /// <summary>Whether a "spells you cast cost less" ability of <paramref name="permanent"/> applies to <paramref name="card"/>.</summary>
+    private bool ReductionApplies(SpellCostReduction reduction, Card permanent, Card card, PlayerId caster) =>
+        Matches(reduction.Spells with { Controller = ControllerFilter.Any }, card, caster, permanent, caster)
+        && (!reduction.FirstOfTurn || !State.GetPlayer(caster).SpellsCastThisTurn.Select(State.GetCard)
+            .Any(c => c.Id != card.Id && Matches(reduction.Spells with { Controller = ControllerFilter.Any, InHand = null }, c, caster, permanent, caster)));
+
+    /// <summary>Cast from exile by paying life equal to its mana value ("rather than pay its mana cost").</summary>
+    private bool PaysLife(Card card) =>
+        card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.PayLife);
 
     /// <summary>Cards castable through permissions: the top of the library, stashed cards, permanents from the graveyard.</summary>
     private IEnumerable<CardId> OtherCastableCards(PlayerId playerId)
@@ -208,6 +253,9 @@ public sealed partial class Game
             }
         foreach (var id in player.Graveyard)
             if (State.GetCard(id).Definition.GraveyardCastCost is not null) yield return id;
+        // Cards that went on an adventure (rule 715.4).
+        foreach (var id in player.Exile)
+            if (State.GetCard(id).OnAdventure) yield return id;
     }
 
     /// <summary>The extra cost of casting from the graveyard, if the card has one.</summary>
@@ -232,7 +280,8 @@ public sealed partial class Game
     /// <summary>Exiled cards <paramref name="player"/> may currently play.</summary>
     private IEnumerable<CardId> PlayableExile(PlayerId player) =>
         State.PlayableFromExile.Where(p => p.Player == player && p.UntilTurn >= State.TurnNumber
-                                           && State.GetCard(p.Card) is { Zone: Zone.Exile } c && c.Version == p.Version)
+                                           && State.GetCard(p.Card) is { Zone: Zone.Exile } c && c.Version == p.Version
+                                           && (p.While is not { } condition || Holds(condition, player, null)))
             .Select(p => p.Card).Distinct().ToList();
 
     private bool CanActivate(Card source, ActivatedAbility ability, int index, PlayerId player, bool sorcerySpeed)
@@ -256,8 +305,27 @@ public sealed partial class Game
         if (ability.Cost.RemoveCounters > 0 && source.CounterCount(ability.Cost.RemoveCounterKind) < ability.Cost.RemoveCounters) return false;
         if (!CanPayExtra(player, ability.Cost.Extra, source.Id)) return false;
         if (!HasLegalTargets(ability, player, source.Id)) return false;
-        return ability.Cost.Mana.WithX(0).Variants().Any(v => ManaPayment.FindPlan(State, player, v, exclude: ability.Cost.Tap ? source.Id : null,
+        return ActivationCost(source, ability, player, null).WithX(0).Variants().Any(v => ManaPayment.FindPlan(State, player, v, exclude: ability.Cost.Tap ? source.Id : null,
             usable: UsableFor(source, isAbility: true), unitUsable: UnitUsableFor(source, isAbility: true)) is not null);
+    }
+
+    /// <summary>
+    /// An activated ability's mana cost after reductions: "costs {1} less for each …", equip discounts of the creature it
+    /// targets (before targets are chosen, the best legal one), and a free first equip each turn.
+    /// </summary>
+    private ManaCost ActivationCost(Card source, ActivatedAbility ability, PlayerId player, IReadOnlyList<ChosenTarget>? targets)
+    {
+        var cost = ability.Cost.Mana;
+        if (ability.CostReductionPer is { } per)
+            cost = cost.MinusGeneric(State.Battlefield.Select(State.GetCard).Count(c => Matches(per, c, c.Controller, source, player)));
+        if (!ability.IsEquip) return cost;
+        if (State.GetPlayer(player).EquipsThisTurn == 0
+            && State.PermanentsControlledBy(player).Any(c => c.Definition.FreeFirstEquipIf is { } free && Holds(free, player, c)))
+            return ManaCost.Zero;
+        var hosts = targets is not null
+            ? targets.Select(t => t.Target.Card).OfType<CardId>()
+            : ability.Targets.SelectMany(spec => LegalTargets(spec, player, source.Id)).Select(t => t.Card).OfType<CardId>();
+        return cost.MinusGeneric(hosts.Select(id => State.GetCard(id).Definition.EquipDiscount).DefaultIfEmpty(0).Max());
     }
 
     /// <returns>False if the action was cancelled and nothing happened.</returns>
@@ -278,7 +346,7 @@ public sealed partial class Game
                 return true;
 
             case CastSpell cast:
-                return await CastSpellAsync(player, cast.Card);
+                return await CastSpellAsync(player, cast.Card, cast.Adventure);
 
             case ActivateAbility activate:
                 return await ActivateAbilityAsync(player, activate);
@@ -292,13 +360,33 @@ public sealed partial class Game
     /// Casting (rule 601.2): choose modes and targets, the value of X and whether to kick, then pay every cost.
     /// Every step up to paying mana can be cancelled with nothing changed.
     /// </summary>
-    private async Task<bool> CastSpellAsync(Player player, CardId cardId)
+    /// <param name="exileAfter">Exiled instead of going anywhere else when it leaves the stack (as with flashback).</param>
+    private async Task<bool> CastSpellAsync(Player player, CardId cardId, bool adventure = false, bool exileAfter = false)
     {
         var card = State.GetCard(cardId);
-        bool flashback = card.Zone == Zone.Graveyard
+        card.AsAdventure = adventure;
+        if (!await CastAsItIsAsync(player, card, exileAfter))
+        {
+            card.AsAdventure = false;
+            return false;
+        }
+        return true;
+    }
+
+    private async Task<bool> CastAsItIsAsync(Player player, Card card, bool exileAfter)
+    {
+        var cardId = card.Id;
+        bool flashback = exileAfter || (card.Zone == Zone.Graveyard
                          && (card.Definition.Flashback is not null || State.FlashbackGranted.Any(p => p.Card == cardId && p.Version == card.Version))
-                         && !State.PlayableFromGraveyard.Any(p => p.Card == cardId && p.Version == card.Version);
+                         && !State.PlayableFromGraveyard.Any(p => p.Card == cardId && p.Version == card.Version));
+        bool fromGraveyard = card.Zone == Zone.Graveyard;
+        bool paysLife = PaysLife(card);
         if (card.Zone == Zone.Hand) card.CastFromHand = true;
+        // A gift is promised (or not) as the spell is cast, to an opponent (rule 702.174a).
+        PlayerId? giftTo = null;
+        if (card.Definition.Gift is not null && State.OpponentsOf(player.Id).Any()
+            && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Promise an opponent a gift ({card.Definition.Gift.Name}) for {card.Name}?", cardId)))
+            giftTo = await ChooseOpponentAsync(player.Id, card, "Choose the opponent who gets the gift");
         // Kicker is announced before targets (601.2b): a kicked spell may target differently.
         bool kicked = false;
         if (card.Definition.Kicker is { } announcedKicker && Payable(player.Id, CastingCost(card).WithX(0).Plus(announcedKicker), null))
@@ -356,8 +444,11 @@ public sealed partial class Game
 
         // Ward: targeting an opponent's warded permanent costs extra; unpaid, the spell is countered (702.21).
 
+        if (paysLife) cost = ManaCost.Zero;
         var paidMana = await PayManaTapsAsync(player, cardId, cost, exclude: null, UsableFor(card, isAbility: false), UnitUsableFor(card, isAbility: false));
         if (paidMana is null) return false;
+        if (paysLife) ChangeLife(player.Id, -card.Definition.ManaCost.ManaValue);
+        bool treasure = paidMana.Taps.Any(t => State.GetCard(t.Source).HasSubtype("Treasure")) || paidMana.SpecialSpent.Any(u => State.GetCard(u.Source).HasSubtype("Treasure"));
         await PayExtraAsync(player.Id, card.Definition.AdditionalCost, cardId);
         if (option?.Extra is { } chosenExtra) await PayExtraAsync(player.Id, chosenExtra, cardId);
         if (card.Zone == Zone.Graveyard && GraveyardCost(card) is { } graveyardCost) await PayExtraAsync(player.Id, graveyardCost, cardId);
@@ -374,8 +465,13 @@ public sealed partial class Game
             : new List<CardId>();
 
         if (card.Zone == Zone.Command) player.CommanderCasts[cardId] = player.CommanderCasts.GetValueOrDefault(cardId) + 1;
-        bool fromHand = card.CastFromHand, haste = card.HasteOnEnter;
+        bool fromHand = card.CastFromHand, haste = card.HasteOnEnter, asAdventure = card.AsAdventure;
         MoveCard(cardId, Zone.Stack);
+        card.AsAdventure = asAdventure;
+        card.CastFromGraveyard = fromGraveyard;
+        card.ManaSpent = cost.ManaValue;
+        card.PaidWithTreasure = treasure;
+        card.GiftPromised = giftTo is not null;
         card.Kicked = kicked;
         card.CastFromHand = fromHand;
         card.WasCast = true;
@@ -384,7 +480,7 @@ public sealed partial class Game
         PushStack(new SpellOnStack(cardId, player.Id, targets)
         {
             Ability = ability != CastingTargets(card.Definition) ? ability : null,
-            X = x, Kicked = kicked, Flashback = flashback,
+            X = x, Kicked = kicked, Flashback = flashback, GiftTo = giftTo,
         });
         Emit(new SpellCast(player.Id, cardId));
         foreach (var source in copySources) QueueCopyThatSpell(source, player.Id, card);
@@ -413,7 +509,7 @@ public sealed partial class Game
         if (targets is null) return false;
 
         var exclude = ability.Cost.Tap ? source.Id : (CardId?)null;
-        var cost = ability.Cost.Mana;
+        var cost = ActivationCost(source, ability, player.Id, targets);
         int x = 0;
         if (cost.XCount > 0)
         {
@@ -432,6 +528,8 @@ public sealed partial class Game
         if (ability.Cost.RemoveCounters > 0)
             source.Counters[ability.Cost.RemoveCounterKind] = source.CounterCount(ability.Cost.RemoveCounterKind) - ability.Cost.RemoveCounters;
         if (ability.Cost.ExileSelf) MoveCard(source.Id, Zone.Exile);
+        if (ability.Cost.FromHand) DiscardCard(player.Id, source.Id, null); // cycling: discard this card
+        if (ability.IsEquip) player.EquipsThisTurn++;
         var sacrificed = await PayExtraAsync(player.Id, ability.Cost.Extra, source.Id);
         if (ability.OncePerTurn) source.ActivatedThisTurn.Add(action.Index);
         if (ability.OnlyOnce) source.ActivatedEver.Add(action.Index);
@@ -700,13 +798,17 @@ public sealed partial class Game
                 total += self.Amount * State.GetPlayer(caster).Graveyard.Select(State.GetCard)
                     .Count(c => Matches(perCard with { Controller = ControllerFilter.Any }, c, caster, card, caster));
             else if (self.ByTotalPower)
-                total += self.Amount * State.PermanentsControlledBy(caster).Where(c => c.IsCreature).Sum(c => Math.Max(0, c.Power));
+                total += self.Amount * State.PermanentsControlledBy(caster)
+                    .Where(c => c.IsCreature && (self.PowerFilter is not { } pf || Matches(pf, c, c.Controller, card, caster))).Sum(c => Math.Max(0, c.Power));
             else if (self.Condition is null || Holds(self.Condition, caster, card))
                 total += self.Amount;
         }
         foreach (var permanent in State.PermanentsControlledBy(caster))
             foreach (var reduction in permanent.Abilities.OfType<SpellCostReduction>())
-                if (Matches(reduction.Spells with { Controller = ControllerFilter.Any }, card, caster, permanent, caster)) total += reduction.Amount;
+                if (ReductionApplies(reduction, permanent, card, caster))
+                    total += reduction.AmountFrom is { } from
+                        ? Math.Max(0, Eval(from, new EffectContext(caster, permanent, Array.Empty<ChosenTarget>(), Array.Empty<bool>())))
+                        : reduction.Amount;
         return total;
     }
 
@@ -732,6 +834,14 @@ public sealed partial class Game
                     break;
                 }
                 if (card.Zone != Zone.Stack) break; // the spell moved itself (shuffled away, exiled...)
+                if (card.AsAdventure && !card.Definition.IsToken)
+                {
+                    // A resolved Adventure goes on an adventure: exiled, castable from there later (rule 715.4).
+                    MoveCard(spell.Card, Zone.Exile);
+                    if (card.Zone == Zone.Exile) card.OnAdventure = true;
+                    Emit(new SpellResolved(spell.Card));
+                    break;
+                }
                 bool hasteOnEnter = card.HasteOnEnter;
                 // An Aura spell enters attached to the object it targeted (rule 303.4f).
                 var attachTo = card.Definition.EnchantTarget is not null ? item.Targets[0].Target.Card : null;

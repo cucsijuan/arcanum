@@ -27,10 +27,21 @@ public sealed record Mill(Quantity Count, Subject Who) : Effect
     /// <summary>"If two nonland cards that share a color were milled this way, repeat this process."</summary>
     public bool RepeatWhileNonlandShareColor { get; init; }
 }
-public sealed record CounterSpell(Subject What) : Effect;
+public sealed record CounterSpell(Subject What) : Effect
+{
+    /// <summary>"Unless its controller pays {N}".</summary>
+    public Mana.ManaCost? UnlessPays { get; init; }
+
+    /// <summary>A permanent spell countered this way is exiled, and its countering player may cast it for free while it stays exiled.</summary>
+    public bool ExilePermanentPlayable { get; init; }
+}
 
 /// <summary>"Target creature gets +N/+N (and gains a keyword) until end of turn."</summary>
-public sealed record PumpUntilEndOfTurn(Quantity Power, Quantity Toughness, Subject What, IReadOnlyList<Keyword>? Keywords = null) : Effect;
+public sealed record PumpUntilEndOfTurn(Quantity Power, Quantity Toughness, Subject What, IReadOnlyList<Keyword>? Keywords = null) : Effect
+{
+    /// <summary>Lasts as long as the source stays on the battlefield instead of until end of turn.</summary>
+    public bool WhileSourceRemains { get; init; }
+}
 
 /// <summary>Put +1/+1 (or -1/-1) counters on a creature.</summary>
 public sealed record AddCounters(Quantity Count, Subject What, CounterKind Kind = CounterKind.PlusOnePlusOne) : Effect;
@@ -42,7 +53,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
     public bool HasteUntilEndOfTurn { get; init; }
 }
 
-public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash }
+public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect;
@@ -65,6 +76,16 @@ public sealed record MayDo(string Prompt, IReadOnlyList<Effect> Effects) : Effec
 /// <summary>Put cards (from a graveyard, usually) onto the battlefield; "under your control" unless <paramref name="UnderOwnersControl"/>.</summary>
 public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool UnderOwnersControl = false) : Effect
 {
+    /// <summary>An Aura returned "attached to" this (a target creature).</summary>
+    public Subject? AttachTo { get; init; }
+
+    /// <summary>"They're an artifact" / "They are Food artifacts": its card types (and subtypes) from now on.</summary>
+    public Cards.CardType? SetTypes { get; init; }
+    public IReadOnlyList<string>? SetSubtypes { get; init; }
+
+    /// <summary>Abilities it has from now on, besides its own.</summary>
+    public IReadOnlyList<AbilityDefinition>? AddAbilities { get; init; }
+
     /// <summary>It enters with these +1/+1 counters, and keeps these extra creature types and keywords.</summary>
     public int Counters { get; init; }
     public CounterKind CounterKind { get; init; } = CounterKind.PlusOnePlusOne;
@@ -78,6 +99,12 @@ public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool 
 /// </summary>
 public sealed record SearchLibrary(ObjectFilter Filter, int Count, State.Zone To, bool Tapped = false) : Effect
 {
+    /// <summary>Up to this many instead of <see cref="Count"/> ("that many basic land cards").</summary>
+    public Quantity? CountFrom { get; init; }
+
+    /// <summary>"Put one onto the battlefield tapped and the other into your hand."</summary>
+    public bool OneToBattlefieldRestToHand { get; init; }
+
     /// <summary>Whose library (and who searches): the controller by default.</summary>
     public Subject? Who { get; init; }
 
@@ -119,6 +146,9 @@ public sealed record ExileAndReturnAtEndStep(Subject What, bool UnderYourControl
 /// <summary>Create token copies of a permanent, optionally with haste and "sacrifice it at the beginning of the next end step".</summary>
 public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = false, bool SacrificeAtEndStep = false) : Effect
 {
+    /// <summary>"Except the tokens aren't legendary."</summary>
+    public bool NotLegendary { get; init; }
+
     /// <summary>"Except it's a Nightmare in addition to its other types."</summary>
     public IReadOnlyList<string>? AddSubtypes { get; init; }
 }
@@ -135,6 +165,12 @@ public sealed record PreventCombatDamageTo(Subject What) : Effect;
 /// <summary>Look at the top cards of your library; take up to <paramref name="Take"/> matching ones, the rest go to the bottom (or graveyard).</summary>
 public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, State.Zone TakeTo, bool RestToGraveyard = false) : Effect
 {
+    /// <summary>The cards taken onto the battlefield enter tapped.</summary>
+    public bool Tapped { get; init; }
+
+    /// <summary>"Then shuffle": the rest stay and the library is shuffled.</summary>
+    public bool RestShuffled { get; init; }
+
     /// <summary>Look at X cards (X of the spell) instead of <see cref="Count"/>.</summary>
     public bool CountIsX { get; init; }
 
@@ -170,7 +206,11 @@ public sealed record AddMana(IReadOnlyList<Mana.ManaType> Types) : Effect;
 public sealed record DealsDamageEqualToPower(Subject Source, Subject To) : Effect;
 
 /// <summary>Put cards from the subject players' graveyards matching the filter onto the battlefield under your control.</summary>
-public sealed record ReanimateAll(Subject Who, ObjectFilter Filter) : Effect;
+public sealed record ReanimateAll(Subject Who, ObjectFilter Filter) : Effect
+{
+    /// <summary>What they become as they enter (types, subtypes, abilities), as for <see cref="PutOntoBattlefield"/>.</summary>
+    public PutOntoBattlefield? As { get; init; }
+}
 
 /// <summary>Return every permanent matching the filter to its owner's hand (filter controller relative to <paramref name="RelativeTo"/>).</summary>
 public sealed record BounceAll(ObjectFilter Filter, Subject? RelativeTo = null) : Effect;
@@ -216,7 +256,26 @@ public sealed record MillUntil(Subject Who, ObjectFilter Until) : Effect;
 public sealed record CreateEmblem(string Name, IReadOnlyList<AbilityDefinition> Abilities) : Effect;
 
 /// <summary>Exile the top N cards of your library; you choose one (or all with <paramref name="ChooseOne"/> false) and may play it this turn.</summary>
-public sealed record ExileTopPlayable(int Count, bool ChooseOne = true, bool UntilEndOfNextTurn = false, bool WithoutPaying = false) : Effect;
+public sealed record ExileTopPlayable(int Count, bool ChooseOne = true, bool UntilEndOfNextTurn = false, bool WithoutPaying = false) : Effect
+{
+    /// <summary>Exile this many instead of <see cref="Count"/> (X).</summary>
+    public Quantity? CountFrom { get; init; }
+
+    /// <summary>Whose library (the controller's by default): "target opponent's library".</summary>
+    public Subject? From { get; init; }
+
+    /// <summary>"Pay life equal to its mana value rather than pay its mana cost."</summary>
+    public bool PayLife { get; init; }
+
+    /// <summary>"For as long as they remain exiled" instead of this turn.</summary>
+    public bool Forever { get; init; }
+
+    /// <summary>Exiled face down: only the controller may look at them.</summary>
+    public bool FaceDown { get; init; }
+
+    /// <summary>They may be played only while this holds ("if you control a Wizard").</summary>
+    public Condition? While { get; init; }
+}
 
 /// <summary>Divide damage as you choose among the chosen targets (at least 1 to each, rule 601.2d).</summary>
 public sealed record DealDamageDivided(int Total) : Effect;
@@ -232,6 +291,14 @@ public sealed record Become(Subject What, int? Power = null, int? Toughness = nu
     IReadOnlyList<string>? AddSubtypes = null, IReadOnlyList<Cards.Keyword>? Keywords = null, IReadOnlyList<AbilityDefinition>? Abilities = null,
     bool Permanent = false) : Effect
 {
+    /// <summary>Base power and toughness worked out: once as the effect starts ("equal to Galion's power"), or continuously when <see cref="Continuous"/>.</summary>
+    public Quantity? PowerFrom { get; init; }
+    public Quantity? ToughnessFrom { get; init; }
+    public bool Continuous { get; init; }
+
+    /// <summary>Lasts as long as the source stays on the battlefield ("for as long as this Saga remains on the battlefield").</summary>
+    public bool WhileSourceRemains { get; init; }
+
     /// <summary>Replaces its creature types ("becomes a Human Faerie Detective").</summary>
     public IReadOnlyList<string>? SetSubtypes { get; init; }
 }
@@ -243,7 +310,11 @@ public sealed record DestroySameName(Subject What) : Effect;
 public sealed record DistributeCounters(int Total) : Effect;
 
 /// <summary>Reveal cards from the top of your library until a matching card; put it into <paramref name="To"/>, the rest on the bottom in a random order.</summary>
-public sealed record RevealUntil(ObjectFilter Filter, State.Zone To) : Effect;
+public sealed record RevealUntil(ObjectFilter Filter, State.Zone To) : Effect
+{
+    /// <summary>The card found goes onto the battlefield instead when it also matches this ("if its mana value is less than or equal to …").</summary>
+    public ObjectFilter? BattlefieldIf { get; init; }
+}
 
 /// <summary>
 /// Each subject player may pay one of the options (discard a card, sacrifice a permanent, pay life...);
@@ -303,4 +374,66 @@ public sealed record ChangeTarget(Subject What) : Effect;
 public sealed record CounterUnlessPays(int StackObject, Mana.ManaCost Mana, int Life) : Effect;
 
 /// <summary>"When you do, …": creates a reflexive triggered ability (with its own targets) if <see cref="If"/> shows the action before it happened.</summary>
-public sealed record ReflexiveTrigger(TriggeredAbility Ability, Condition? If = null) : Effect;
+public sealed record ReflexiveTrigger(TriggeredAbility Ability, Condition? If = null) : Effect
+{
+    /// <summary>What the reflexive ability is about ("that creature"), and an amount worked out now ("that creature's power").</summary>
+    public Subject? About { get; init; }
+    public Quantity? Amount { get; init; }
+}
+
+/// <summary>
+/// Amass [type] N (rule 701.47): if the player controls no Army, they create <paramref name="Token"/> (a 0/0 black
+/// [type] Army); then they put N +1/+1 counters on an Army they control, which becomes a [type] in addition.
+/// </summary>
+public sealed record Amass(Quantity Count, string Subtype, CardDefinition Token, Subject Who) : Effect;
+
+/// <summary>Recruit: the player draws a card, then discards a card; if a nonland card was discarded, they create <paramref name="Token"/> (a 1/1 white Human Soldier).</summary>
+public sealed record Recruit(CardDefinition Token, Subject Who) : Effect;
+
+/// <summary>Attach Auras or Equipment (<paramref name="What"/>) to a permanent (<paramref name="To"/>).</summary>
+public sealed record Attach(Subject What, Subject To) : Effect;
+
+/// <summary>Put cards milled by this effect into their owner's hand: all matching ones (<paramref name="Count"/> &lt; 0) or up to <paramref name="Count"/> chosen.</summary>
+public sealed record TakeMilled(ObjectFilter? Filter, int Count) : Effect;
+
+/// <summary>Remove every counter from the subject.</summary>
+public sealed record RemoveAllCounters(Subject What) : Effect;
+
+/// <summary>Exile the subject, then return it to the battlefield at once under its owner's control.</summary>
+public sealed record Blink(Subject What) : Effect;
+
+/// <summary>Its owner shuffles the subject into their library.</summary>
+public sealed record ShuffleIntoLibrary(Subject What) : Effect;
+
+/// <summary>"You may play an additional land this turn."</summary>
+public sealed record AdditionalLandThisTurn : Effect;
+
+/// <summary>"Players can't cast spells this turn."</summary>
+public sealed record NoSpellsThisTurn : Effect;
+
+/// <summary>Exchange control of two permanents.</summary>
+public sealed record ExchangeControl(Subject First, Subject Second) : Effect;
+
+/// <summary>A delayed triggered ability: "at the beginning of the next upkeep, …", with an amount worked out now.</summary>
+public sealed record AtNextUpkeep(TriggeredAbility Ability, Quantity? Amount = null) : Effect;
+
+/// <summary>"Choose a creature type": the source remembers it (for "creatures of that type").</summary>
+public sealed record ChooseCreatureType : Effect;
+
+/// <summary>Reveal the top N cards, put a random matching one into <paramref name="To"/>, the rest on the bottom in a random order.</summary>
+public sealed record RevealTopPutRandom(int Count, ObjectFilter Filter, State.Zone To) : Effect;
+
+/// <summary>Search your hand and/or library for a matching card and put it into <paramref name="To"/>; shuffle.</summary>
+public sealed record SearchHandOrLibrary(ObjectFilter Filter, State.Zone To) : Effect;
+
+/// <summary>Add mana in any combination of colors, spendable only on spells matching <paramref name="OnlyFor"/>.</summary>
+public sealed record AddManaInAnyCombination(int Count, ObjectFilter? OnlyFor) : Effect;
+
+/// <summary>"You may behold a [filter]" (choose one you control or reveal one from your hand); if you do, <paramref name="Effects"/>.</summary>
+public sealed record Behold(ObjectFilter Filter, IReadOnlyList<Effect> Effects) : Effect;
+
+/// <summary>"You may cast a [filter] spell from your graveyard"; an instant or sorcery cast this way is exiled instead of going to the graveyard.</summary>
+public sealed record CastFromGraveyardNow(ObjectFilter Filter) : Effect;
+
+/// <summary>Prevent all damage the subject would deal, for as long as the source remains on the battlefield.</summary>
+public sealed record PreventDamageBy(Subject What) : Effect;

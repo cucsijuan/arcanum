@@ -54,6 +54,8 @@ public sealed record SpellCopied(CardId Copy, CardId Original, PlayerId Controll
 public sealed record PoisonGiven(PlayerId Player, int Count) : GameEvent;
 public sealed record EmblemCreated(CardId Emblem, PlayerId Owner) : GameEvent;
 public sealed record ChoiceMade(CardId Card, string Choice) : GameEvent;
+/// <summary>A player got an enduring story (storied) for the rest of the game.</summary>
+public sealed record EnduringStoryGained(PlayerId Player) : GameEvent;
 public sealed record HandRevealed(PlayerId Player, IReadOnlyList<CardId> Cards) : GameEvent;
 public sealed record PermanentSacrificed(CardId Card) : GameEvent;
 public sealed record ControlChanged(CardId Card, PlayerId NewController) : GameEvent;

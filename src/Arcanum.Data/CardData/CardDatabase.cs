@@ -52,7 +52,10 @@ public sealed class CardDatabase : ICardDatabase
             var (definition, support) = CardFactory.Create(record, scripts?.GetValueOrDefault(record.OracleId));
             _byName[record.Name] = new CardEntry(definition, support, record);
         }
-        _sorted = _byName.Values.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        // A card with several faces whose name is its first face's (an adventurer card) is also found by that name.
+        foreach (var entry in _byName.Values.Where(e => e.Name != e.Record.Name).ToList())
+            _byName.TryAdd(entry.Name, entry);
+        _sorted = _byName.Values.Distinct().OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
         Sets = _sorted.SelectMany(e => e.Record.Printings)
             .GroupBy(p => p.Set, StringComparer.OrdinalIgnoreCase)
             .Select(g => new SetInfo(g.Key, g.First().SetName, g.Min(p => p.Released) ?? "", g.First().SetType, g.Count()))
@@ -88,7 +91,7 @@ public sealed class CardDatabase : ICardDatabase
         return true;
     }
 
-    public int Count => _byName.Count;
+    public int Count => _sorted.Count;
 
     public bool TryGet(string name, out CardDefinition definition)
     {
@@ -120,7 +123,8 @@ public sealed class CardDatabase : ICardDatabase
             }
             if (query.LegalIn is { } format && !(r.Legalities.TryGetValue(format, out var status) && status is "legal" or "restricted")) continue;
             if (query.Set is { } set && r.FindPrinting(set) is null) continue;
-            if (words.Length > 0 && !words.All(w => Contains(r.Name, w) || Contains(r.TypeLine, w) || Contains(r.OracleText, w))) continue;
+            if (words.Length > 0 && !words.All(w => Contains(r.Name, w) || Contains(r.TypeLine, w) || Contains(r.OracleText, w)
+                                                     || r.Faces.Any(f => Contains(f.TypeLine, w) || Contains(f.OracleText, w)))) continue;
             yield return entry;
         }
     }

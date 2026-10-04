@@ -59,6 +59,16 @@ public enum QuantityKind
 
     /// <summary>Spells matching the filter you cast this turn before the spell that triggered the ability ("each other … you've cast before it this turn").</summary>
     SpellsCastBeforeTriggered,
+    /// <summary>Cards discarded by this effect that match the filter.</summary>
+    DiscardedThisWay,
+    /// <summary>Graveyards with at least <see cref="Quantity.Value"/> cards in them.</summary>
+    GraveyardsWithAtLeast,
+    /// <summary>Mana spent to cast the spell the trigger was about.</summary>
+    ManaSpent,
+    /// <summary>Permanents returned to their owners' hands by this effect.</summary>
+    ReturnedThisWay,
+    /// <summary>The power of the creature the source is attached to.</summary>
+    AttachedPower,
 }
 
 /// <summary>
@@ -68,6 +78,9 @@ public enum QuantityKind
 public sealed record Quantity(int Value, QuantityKind Kind = QuantityKind.Fixed, ObjectFilter? Filter = null, int Multiplier = 1, int Index = 0,
     CounterKind Counter = CounterKind.PlusOnePlusOne, int Offset = 0)
 {
+    /// <summary>For <see cref="QuantityKind.PermanentCount"/>: count only what the target player at <see cref="Index"/> controls.</summary>
+    public bool ControlledByTarget { get; init; }
+
     public static implicit operator Quantity(int value) => new(value);
 
     public static readonly Quantity X = new(0, QuantityKind.X);

@@ -82,6 +82,9 @@ public sealed record PlayerView
     /// <summary>Combat damage taken from each commander (commander games).</summary>
     public IReadOnlyDictionary<CardId, int> CommanderDamage { get; init; } = new Dictionary<CardId, int>();
 
+    /// <summary>Has an enduring story (storied) for the rest of the game.</summary>
+    public bool EnduringStory { get; init; }
+
     /// <summary>Floating mana by type (only types with a non-zero amount).</summary>
     public required IReadOnlyDictionary<Mana.ManaType, int> ManaPool { get; init; }
 }

@@ -18,6 +18,9 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
 
     /// <summary>Remove N counters from among creatures you control.</summary>
     public int RemoveCountersFromYourCreatures { get; init; }
+
+    /// <summary>The discarded cards must match this ("discard a legendary card with the same name as …").</summary>
+    public ObjectFilter? DiscardFilter { get; init; }
 }
 
 /// <summary>
@@ -30,8 +33,9 @@ public sealed record CostReduction(int Amount, Condition? Condition = null, Obje
     /// <summary>"Costs {N} less to cast if it targets a [filter]."</summary>
     public ObjectFilter? IfTargets { get; init; }
 
-    /// <summary>"Costs {X} less, where X is the total power of creatures you control."</summary>
+    /// <summary>"Costs {X} less, where X is the total power of creatures you control" (those matching <see cref="PowerFilter"/>).</summary>
     public bool ByTotalPower { get; init; }
+    public ObjectFilter? PowerFilter { get; init; }
 }
 
 /// <summary>One way to pay a cost when there are alternatives ("sacrifice a creature or pay {3}{B}").</summary>

@@ -116,10 +116,23 @@ public enum SubjectKind
     Granter,
     /// <summary>In a granted ability: the permanent that grants it.</summary>
     GranterPermanent,
+    /// <summary>The Army this spell or ability amassed ("the amassed Army").</summary>
+    Amassed,
+    /// <summary>Tokens this spell or ability created ("attach this Equipment to it").</summary>
+    Created,
+    /// <summary>Cards discarded by this spell or ability, matching <see cref="Subject.Filter"/> ("if you discard a land card this way, put it …").</summary>
+    Discarded,
+    /// <summary>Cards this spell or ability found in a library ("untap that land").</summary>
+    Found,
+    /// <summary>One permanent matching <see cref="Subject.Filter"/>, chosen (not targeted) as the effect happens.</summary>
+    ChooseOne,
 }
 
 public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filter = null)
 {
+    /// <summary>For <see cref="SubjectKind.Each"/>: only permanents the target player at <see cref="Index"/> controls ("creatures target player controls").</summary>
+    public bool ControlledByTarget { get; init; }
+
     /// <summary>For <see cref="SubjectKind.FixedPlayer"/>.</summary>
     public PlayerId? Player { get; init; }
 

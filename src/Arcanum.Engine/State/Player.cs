@@ -32,6 +32,18 @@ public sealed class Player
     /// <summary>"You have no maximum hand size for the rest of the game."</summary>
     public bool NoMaximumHandSize { get; set; }
 
+    /// <summary>Additional lands this player may play this turn ("you may play an additional land this turn").</summary>
+    public int ExtraLandsThisTurn { get; set; }
+
+    /// <summary>Equip abilities activated this turn.</summary>
+    public int EquipsThisTurn { get; set; }
+
+    /// <summary>The first card of this turn's draw step has been drawn.</summary>
+    public bool DrewInDrawStep { get; set; }
+
+    /// <summary>Has an enduring story for the rest of the game (storied).</summary>
+    public bool HasEnduringStory { get; set; }
+
     /// <summary>Poison counters (ten or more: the player loses, rule 704.5c).</summary>
     public int Poison { get; set; }
 

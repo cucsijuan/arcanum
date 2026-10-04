@@ -53,6 +53,8 @@ public enum TargetRule
     DifferentControllers,
     /// <summary>Every target card is in the same graveyard ("from a single graveyard").</summary>
     SameGraveyard,
+    /// <summary>The targets share a card type ("two target nonland permanents that share a card type").</summary>
+    ShareCardType,
 }
 
 /// <summary>One mode of a modal spell or ability.</summary>
@@ -95,6 +97,9 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>"Tap [the permanent that granted this ability]" as a cost ("Tap Fishing Pole").</summary>
     public bool TapGranter { get; init; }
 
+    /// <summary>Activated from the hand by discarding this card (cycling, rule 702.29).</summary>
+    public bool FromHand { get; init; }
+
     public static readonly AbilityCost TapOnly = new(ManaCost.Zero, Tap: true);
 }
 
@@ -114,10 +119,26 @@ public sealed record ActivatedAbility : AbilityDefinition
 
     /// <summary>"Activate only if [condition]."</summary>
     public Condition? ActivationCondition { get; init; }
+
+    /// <summary>An equip ability (rule 702.6): affected by "equip abilities you activate cost less" effects.</summary>
+    public bool IsEquip { get; init; }
+
+    /// <summary>"This ability costs {1} less to activate for each [filter] you control."</summary>
+    public ObjectFilter? CostReductionPer { get; init; }
 }
 
 /// <summary>"[Spells matching the filter] you cast cost {N} less to cast" while the source is on the battlefield.</summary>
-public sealed record SpellCostReduction(ObjectFilter Spells, int Amount) : AbilityDefinition;
+public sealed record SpellCostReduction(ObjectFilter Spells, int Amount) : AbilityDefinition
+{
+    /// <summary>The amount worked out from the source ("{X} less, where X is equipped creature's power").</summary>
+    public Quantity? AmountFrom { get; init; }
+
+    /// <summary>Only the first such spell each turn ("the first creature spell you cast each turn").</summary>
+    public bool FirstOfTurn { get; init; }
+
+    /// <summary>Those spells can also be cast as though they had flash.</summary>
+    public bool GrantsFlash { get; init; }
+}
 
 public enum TriggerEvent
 {
@@ -191,6 +212,28 @@ public enum TriggerEvent
     OpponentDrawsCard,
     /// <summary>"At the beginning of each player's draw step".</summary>
     EachDrawStep,
+    /// <summary>A Saga's chapter ability (rule 714.2): triggers when lore counters reach one of <see cref="TriggeredAbility.Chapters"/>.</summary>
+    Chapter,
+    /// <summary>"Whenever [another] [permanent matching the filter] enters" (any permanent type; tokens, artifacts, ...).</summary>
+    PermanentEnters,
+    /// <summary>"Whenever a [filter] card leaves your graveyard".</summary>
+    LeavesGraveyard,
+    /// <summary>"At the beginning of your first main phase" (precombat main).</summary>
+    YourPrecombatMain,
+    /// <summary>"When this is put into a graveyard from the battlefield" (any permanent, not only creatures).</summary>
+    PutIntoGraveyard,
+    /// <summary>"Whenever this becomes the target of a spell or ability an opponent controls".</summary>
+    BecomesTargetOfOpponent,
+    /// <summary>"Whenever you activate an ability of a [filter]".</summary>
+    YouActivateAbility,
+    /// <summary>"Whenever a player loses life".</summary>
+    PlayerLosesLife,
+    /// <summary>"Whenever you sacrifice a [filter]".</summary>
+    YouSacrifice,
+    /// <summary>A creature an opponent controls would have died and was exiled instead by this permanent ("When you do, …").</summary>
+    CreatureExiledInstead,
+    /// <summary>A delayed ability: "at the beginning of the next upkeep".</summary>
+    NextUpkeep,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -228,6 +271,15 @@ public sealed record TriggeredAbility : AbilityDefinition
 
     /// <summary>For counter triggers: the kind of counters (default +1/+1).</summary>
     public CounterKind CounterKind { get; init; } = CounterKind.PlusOnePlusOne;
+
+    /// <summary>For a chapter ability: its chapter numbers ("III, IV —").</summary>
+    public IReadOnlyList<int> Chapters { get; init; } = Array.Empty<int>();
+
+    /// <summary>"Whenever one or more …": triggers once for events that happen at the same time.</summary>
+    public bool Batched { get; init; }
+
+    /// <summary>For counter triggers: counters of any kind ("one or more counters").</summary>
+    public bool AnyCounterKind { get; init; }
 }
 
 /// <summary>
@@ -279,7 +331,12 @@ public sealed record ObjectFilter(
     bool? Colorless = null,
     bool? Enchanted = null,
     bool? Equipped = null,
-    bool? Commander = null)
+    bool? Commander = null,
+    bool? InHand = null,
+    bool FromBattlefieldThisTurn = false,
+    bool PaidWithTreasure = false,
+    bool ChosenParity = false,
+    bool SharesNameWithYourLegendary = false)
 {
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 

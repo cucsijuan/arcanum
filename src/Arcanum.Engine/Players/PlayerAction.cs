@@ -13,8 +13,8 @@ public sealed record PassPriority : PlayerAction
 
 public sealed record PlayLand(CardId Card) : PlayerAction;
 
-/// <summary>Cast a spell. Mana is paid through a payment decision (auto-pay suggested).</summary>
-public sealed record CastSpell(CardId Card) : PlayerAction;
+/// <summary>Cast a spell (as the card's Adventure when <paramref name="Adventure"/>). Mana is paid through a payment decision (auto-pay suggested).</summary>
+public sealed record CastSpell(CardId Card, bool Adventure = false) : PlayerAction;
 
 /// <summary>
 /// Activate a mana ability, e.g. tap a land for mana (rule 605). Mana abilities don't use the stack;

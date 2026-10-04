@@ -42,6 +42,8 @@ public enum Keyword
     ProtectionFromBlack,
     ProtectionFromRed,
     ProtectionFromGreen,
+    /// <summary>"If you control three or more artifacts, legendaries, and/or Sagas, you have an enduring story for the rest of the game."</summary>
+    Storied,
 }
 
 public static class Keywords
