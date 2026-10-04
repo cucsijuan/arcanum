@@ -411,10 +411,10 @@ public sealed partial class Game
                     int pick = await ControllerOf(playerId).ChooseOptionAsync(ViewFor(playerId), new OptionRequest($"{source.Name}: choose the mana to add", source.Id,
                         combinations.Select(c => string.Concat(c.Select(t => $"{{{t.ToSymbol()}}}"))).ToList(), OptionKind.Other));
                     Require(pick >= 0 && pick < combinations.Count, "Choose one of the combinations.");
-                    TapForMana(player, new ManaTap(mana.Source, combinations[pick][0], mana.Option, combinations[pick]));
+                    await TapForManaAsync(player, new ManaTap(mana.Source, combinations[pick][0], mana.Option, combinations[pick]));
                     return true;
                 }
-                TapForMana(player, new ManaTap(mana.Source, mana.Type, mana.Option));
+                await TapForManaAsync(player, new ManaTap(mana.Source, mana.Type, mana.Option));
                 return true;
             }
 
@@ -639,7 +639,7 @@ public sealed partial class Game
         if (ability.Cost.SacrificeSelf)
         {
             if (source.Zone == Zone.Graveyard) MoveCard(source.Id, Zone.Exile); // "Exile this card from your graveyard"
-            else SacrificePermanent(source.Id);
+            else await SacrificePermanentAsync(source.Id);
         }
 
         Emit(new AbilityActivated(player.Id, source.Id, ability.Text));
@@ -772,7 +772,7 @@ public sealed partial class Game
                 new CardChoiceRequest($"Sacrifice {extra.SacrificeCount} to pay the cost", source, options, extra.SacrificeCount, extra.SacrificeCount, CardChoicePurpose.Sacrifice));
             Require(chosen.Count == extra.SacrificeCount && chosen.Distinct().Count() == chosen.Count && chosen.All(id => candidates.Any(c => c.Id == id)),
                 "Sacrifice one of the listed permanents.");
-            foreach (var id in chosen) SacrificePermanent(id);
+            foreach (var id in chosen) await SacrificePermanentAsync(id);
             return chosen;
         }
         return Array.Empty<CardId>();
@@ -813,7 +813,7 @@ public sealed partial class Game
         // No pointless taps: surplus is only allowed when a source adds more mana than is still needed.
         Require(excess == 0 || taps.Any(t => ManaPayment.AmountOf(State.GetCard(t.Source), t.Option) > 1), "Payment taps more mana than the cost.");
 
-        foreach (var tap in taps) TapForMana(player, tap);
+        foreach (var tap in taps) await TapForManaAsync(player, tap);
         // Pay the whole cost from the pool; any surplus keeps floating (rule 106.4).
         var plainUsed = new List<ManaType>();
         var specialUsed = new List<ManaUnit>();
@@ -824,7 +824,7 @@ public sealed partial class Game
         return new ManaPaid(taps, specialUsed);
     }
 
-    private void TapForMana(Player player, ManaTap tap)
+    private async Task TapForManaAsync(Player player, ManaTap tap)
     {
         var source = State.GetCard(tap.Source);
         source.Tapped = true;
@@ -847,7 +847,7 @@ public sealed partial class Game
             else player.ManaPool.Add(type);
             Emit(new ManaAdded(player.Id, type, tap.Source));
         }
-        if (source.Definition.SacrificeForMana) SacrificePermanent(source.Id);
+        if (source.Definition.SacrificeForMana) await SacrificePermanentAsync(source.Id);
     }
 
     /// <summary>

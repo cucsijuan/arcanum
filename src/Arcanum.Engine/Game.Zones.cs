@@ -7,6 +7,53 @@ namespace Arcanum.Engine;
 
 public sealed partial class Game
 {
+    private enum DeathFate { ExiledThisTurn, Shuffled, ExiledBy }
+
+    /// <summary>One replacement effect that applies to a permanent going from the battlefield to a graveyard.</summary>
+    private readonly record struct DeathReplacement(DeathFate Fate, Card? By);
+
+    /// <summary>The replacement each controller chose for its permanents about to die, by card and version.</summary>
+    private readonly Dictionary<(CardId Card, int Version), DeathReplacement> _deathReplacement = new();
+
+    /// <summary>Every replacement effect that would apply if the permanent went from the battlefield to a graveyard.</summary>
+    private List<DeathReplacement> DeathReplacements(Card card)
+    {
+        var list = new List<DeathReplacement>();
+        if (State.ExileIfDies.Contains((card.Id, card.Version))) list.Add(new(DeathFate.ExiledThisTurn, null));
+        if ((card.Definition.Replaces & Cards.Replacements.ShuffleIntoLibraryInsteadOfGraveyard) != 0) list.Add(new(DeathFate.Shuffled, null));
+        if (card.IsCreature)
+            list.AddRange(State.Battlefield.Select(State.GetCard)
+                .Where(c => c.Controller != card.Controller && (c.Definition.Replaces & Cards.Replacements.OpponentsCreaturesExiledInsteadOfDying) != 0)
+                .Select(c => new DeathReplacement(DeathFate.ExiledBy, c)));
+        return list;
+    }
+
+    /// <summary>
+    /// For each permanent about to go to a graveyard from the battlefield with more than one replacement effect that
+    /// would apply, its controller chooses which one does (rule 616.1).
+    /// </summary>
+    private async Task ChooseDeathReplacementsAsync(IEnumerable<CardId> ids)
+    {
+        foreach (var id in ids.ToList())
+        {
+            var card = State.GetCard(id);
+            if (card.Zone != Zone.Battlefield) continue;
+            _deathReplacement.Remove((id, card.Version));
+            var options = DeathReplacements(card);
+            if (options.Count < 2) continue;
+            var labels = options.Select(o => o.Fate switch
+            {
+                DeathFate.ExiledThisTurn => "Exile it (it would die this turn)",
+                DeathFate.Shuffled => $"Shuffle it into its owner's library ({card.Name})",
+                _ => $"Exile it ({o.By!.Name}, {State.GetPlayer(o.By.Controller).Name})",
+            }).ToList();
+            int pick = await ControllerOf(card.Controller).ChooseOptionAsync(ViewFor(card.Controller),
+                new Players.OptionRequest($"{card.Name} would be put into a graveyard: choose which replacement applies", id, labels, Players.OptionKind.Other));
+            Require(pick >= 0 && pick < options.Count, "Choose one of the listed replacements.");
+            _deathReplacement[(id, card.Version)] = options[pick];
+        }
+    }
+
     /// <summary>Moves a card between zones. Cards always go to their owner's per-player zones (rule 400.3).</summary>
     /// <param name="kicked">A spell cast with kicker becoming a permanent: it remembers it was kicked (for "if it was kicked").</param>
     private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
@@ -20,19 +67,18 @@ public sealed partial class Game
         var lastController = card.Controller;
 
         // Replacement effects on where the card goes (rule 614).
-        if (to == Zone.Graveyard)
+        if (to == Zone.Graveyard && from == Zone.Battlefield && DeathReplacements(card) is { Count: > 0 } replacements)
         {
-            var exiledInsteadBy = from == Zone.Battlefield && card.IsCreature
-                ? State.Battlefield.Select(State.GetCard).Where(c => c.Controller != card.Controller && (c.Definition.Replaces & Cards.Replacements.OpponentsCreaturesExiledInsteadOfDying) != 0).ToList()
-                : new List<Card>();
-            if (from == Zone.Battlefield && State.ExileIfDies.Contains((id, card.Version))) to = Zone.Exile;
-            else if (exiledInsteadBy.Count > 0)
-            {
-                // "If a creature an opponent controls would die, exile it instead. When you do, …"
-                to = Zone.Exile;
-                foreach (var replacer in exiledInsteadBy) Queue(replacer.Id, Abilities.TriggerEvent.CreatureExiledInstead, replacer.Controller);
-            }
-            else if ((card.Definition.Replaces & Cards.Replacements.ShuffleIntoLibraryInsteadOfGraveyard) != 0) { to = Zone.Library; shuffleAfter = true; }
+            // Only one applies: the controller chose it before the creature died, or there was no choice (rule 616.1).
+            var applied = _deathReplacement.Remove((id, card.Version), out var chosen) && replacements.Contains(chosen) ? chosen : replacements[0];
+            if (applied.Fate == DeathFate.Shuffled) { to = Zone.Library; shuffleAfter = true; }
+            else to = Zone.Exile;
+            // "If a creature an opponent controls would die, exile it instead. When you do, …"
+            if (applied.By is { } replacer) Queue(replacer.Id, Abilities.TriggerEvent.CreatureExiledInstead, replacer.Controller);
+        }
+        else if (to == Zone.Graveyard)
+        {
+            if ((card.Definition.Replaces & Cards.Replacements.ShuffleIntoLibraryInsteadOfGraveyard) != 0) { to = Zone.Library; shuffleAfter = true; }
             else if ((card.Is(Cards.CardType.Instant) || card.Is(Cards.CardType.Sorcery))
                      && State.Battlefield.Any(b => (State.GetCard(b).Definition.Replaces & Cards.Replacements.ExileInstantsAndSorceries) != 0))
                 to = Zone.Exile;

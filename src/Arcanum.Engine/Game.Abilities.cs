@@ -545,7 +545,7 @@ public sealed partial class Game
                 {
                     if (card.Zone != Zone.Battlefield) continue;
                     bool yours = card.Controller == ctx.Controller;
-                    SacrificePermanent(card.Id);
+                    await SacrificePermanentAsync(card.Id);
                     ctx.Results.Sacrificed.Add(card.Id);
                     if (yours) ctx.Results.YouSacrificed = true;
                 }
@@ -618,6 +618,7 @@ public sealed partial class Game
                              .Where(c => !c.Is(CardType.Land) && c.Definition.ManaCost.ManaValue == ctx.X && ctx.Source.CombatDamagedPlayers.Contains(c.Controller)
                                          && !c.Has(Keyword.Indestructible)).ToList())
                 {
+                    await ChooseDeathReplacementsAsync(new[] { card.Id });
                     MoveCard(card.Id, Zone.Graveyard);
                     Emit(new PermanentDestroyed(card.Id));
                 }
@@ -720,7 +721,7 @@ public sealed partial class Game
                         keep.Add(pick[0]);
                     }
                     BeginSimultaneous();
-                    foreach (var card in mine.Where(c => !keep.Contains(c.Id))) SacrificePermanent(card.Id);
+                    foreach (var card in mine.Where(c => !keep.Contains(c.Id))) await SacrificePermanentAsync(card.Id);
                     EndSimultaneous();
                 }
                 break;
@@ -783,6 +784,7 @@ public sealed partial class Game
                     var name = target.Name;
                     foreach (var card in State.Battlefield.Select(State.GetCard).Where(c => c.Name == name && !c.Has(Keyword.Indestructible)).ToList())
                     {
+                        await ChooseDeathReplacementsAsync(new[] { card.Id });
                         bool creature = card.IsCreature;
                         MoveCard(card.Id, Zone.Graveyard);
                         ctx.Results.Destroyed++;
@@ -1152,7 +1154,7 @@ public sealed partial class Game
                 BeginSimultaneous();
                 foreach (var (player, chosen) in choices)
                 {
-                    foreach (var id in chosen) SacrificePermanent(id);
+                    foreach (var id in chosen) await SacrificePermanentAsync(id);
                     ctx.Results.Sacrificed.AddRange(chosen);
                     if (player == ctx.Controller && chosen.Count > 0) ctx.Results.YouSacrificed = true;
                 }
@@ -1246,6 +1248,7 @@ public sealed partial class Game
                 BeginSimultaneous();
                 foreach (var card in CardsFor(d.What, ctx).Where(c => !c.Has(Keyword.Indestructible)).ToList())
                 {
+                    await ChooseDeathReplacementsAsync(new[] { card.Id });
                     bool creature = card.IsCreature;
                     MoveCard(card.Id, Zone.Graveyard);
                     ctx.Results.Destroyed++;
@@ -1516,6 +1519,7 @@ public sealed partial class Game
                 BeginSimultaneous();
                 foreach (var card in all.Where(c => !keep.Contains(c.Id) && !c.Has(Keyword.Indestructible)))
                 {
+                    await ChooseDeathReplacementsAsync(new[] { card.Id });
                     bool creature = card.IsCreature;
                     MoveCard(card.Id, Zone.Graveyard);
                     ctx.Results.Destroyed++;
@@ -2041,7 +2045,7 @@ public sealed partial class Game
     {
         var chosen = await ChooseSacrificesAsync(who, count, filter, source);
         BeginSimultaneous();
-        foreach (var id in chosen) SacrificePermanent(id);
+        foreach (var id in chosen) await SacrificePermanentAsync(id);
         EndSimultaneous();
         return chosen;
     }
@@ -2066,8 +2070,9 @@ public sealed partial class Game
         return chosen;
     }
 
-    private void SacrificePermanent(CardId id)
+    private async Task SacrificePermanentAsync(CardId id)
     {
+        await ChooseDeathReplacementsAsync(new[] { id });
         var card = State.GetCard(id);
         bool creature = card.IsCreature;
         MoveCard(id, Zone.Graveyard);

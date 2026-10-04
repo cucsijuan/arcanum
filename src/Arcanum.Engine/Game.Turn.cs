@@ -135,7 +135,7 @@ public sealed partial class Game
             case Step.EndCombat:
                 // "Sacrifice it at end of combat" (the Ring's third ability).
                 foreach (var (card, version) in State.SacrificeAtEndOfCombat.ToList())
-                    if (State.GetCard(card) is { Zone: Zone.Battlefield } doomed && doomed.Version == version) SacrificePermanent(card);
+                    if (State.GetCard(card) is { Zone: Zone.Battlefield } doomed && doomed.Version == version) await SacrificePermanentAsync(card);
                 State.SacrificeAtEndOfCombat.Clear();
                 break;
             case Step.Cleanup:

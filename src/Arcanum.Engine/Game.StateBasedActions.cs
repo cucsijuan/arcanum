@@ -98,6 +98,7 @@ public sealed partial class Game
         if (unattach.Count > 0) { RecomputeContinuousEffects(); any = true; }
 
         foreach (var survivor in permanents) survivor.DamagedByDeathtouch = false;
+        await ChooseDeathReplacementsAsync(died.Concat(toGraveyard).Where(c => c.Zone == Zone.Battlefield).Select(c => c.Id).Distinct());
         BeginSimultaneous(); // all at once (rule 704.3)
         foreach (var card in died.Concat(toGraveyard).Distinct().ToList())
         {
@@ -108,7 +109,7 @@ public sealed partial class Game
         }
         foreach (var saga in sagasDone.Where(c => c.Zone == Zone.Battlefield))
         {
-            SacrificePermanent(saga.Id);
+            await SacrificePermanentAsync(saga.Id);
             any = true;
         }
         EndSimultaneous();

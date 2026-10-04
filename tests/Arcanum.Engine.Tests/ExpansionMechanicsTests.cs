@@ -799,4 +799,39 @@ public class ExactnessTests
         Assert.Equal(1, seen?.Affordable);
         Assert.Equal(life - 2, s.Game.State.GetPlayer(P1).Life);
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TheDyingCreaturesControllerChoosesWhichExileReplacementApplies(bool chooseOpponents)
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        var mine = s.Add(P0, Creature("Mine", 2, 2));
+        s.Add(P1, new CardDefinition
+        {
+            Name = "Hunt Leader", Types = CardType.Creature, Power = 2, Toughness = 2, Replaces = Replacements.OpponentsCreaturesExiledInsteadOfDying,
+            Abilities = new AbilityDefinition[] { new TriggeredAbility { Trigger = TriggerEvent.CreatureExiledInstead, Effects = new Effect[] { new GainLife(3, Subject.You) }, Text = "gain 3" } },
+        });
+        s.InHand(P0, new CardDefinition
+        {
+            Name = "Smite", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Instant,
+            Spell = new SpellAbility
+            {
+                Targets = new[] { new TargetSpec(TargetKind.Creature, ControllerFilter.You) },
+                Effects = new Effect[] { new ExileIfDiesThisTurn(Subject.TargetAt(0)), new DealDamage(3, Subject.TargetAt(0)) },
+            },
+        });
+        List<string>? offered = null;
+        s.Attacker.Option = (_, r) =>
+        {
+            offered = r.Options.ToList();
+            return offered.FindIndex(o => o.Contains("Hunt Leader") == chooseOpponents);
+        };
+        int life = s.Game.State.GetPlayer(P1).Life;
+        await s.RunUntilTurn();
+        Assert.Equal(2, offered!.Count);
+        Assert.Equal(Zone.Exile, s.Card(mine).Zone);
+        Assert.Equal(chooseOpponents ? life + 3 : life, s.Game.State.GetPlayer(P1).Life);
+    }
 }
