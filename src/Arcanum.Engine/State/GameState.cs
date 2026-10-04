@@ -3,7 +3,11 @@ using Arcanum.Engine.Core;
 
 namespace Arcanum.Engine.State;
 
-/// <summary>A temporary P/T change and/or keyword grant on one specific object (card + version).</summary>
+/// <summary>
+/// A continuous effect from a resolved spell or ability on one specific object (card + version): P/T changes, keyword
+/// and ability grants, type changes. Kept until end of turn, or until the object leaves the battlefield
+/// (<see cref="GameState.LastingEffects"/>). Applied in its layers in timestamp order (rule 613.7).
+/// </summary>
 public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, int Toughness, IReadOnlyList<Cards.Keyword> Keywords)
 {
     /// <summary>"Becomes a 3/3 creature": card types added and base power/toughness set (layers 4, 7b).</summary>
@@ -12,8 +16,17 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
     public int? SetToughness { get; init; }
     public IReadOnlyList<string>? AddSubtypes { get; init; }
 
-    /// <summary>Abilities gained until end of turn ("gains 'When this creature dies, ...'").</summary>
+    /// <summary>Replaces its subtypes ("becomes a Human Faerie Detective").</summary>
+    public IReadOnlyList<string>? SetSubtypes { get; init; }
+
+    /// <summary>Abilities gained ("gains 'When this creature dies, ...'").</summary>
     public IReadOnlyList<Abilities.AbilityDefinition>? Abilities { get; init; }
+
+    /// <summary>It loses all abilities (those it gained from earlier effects too).</summary>
+    public bool LosesAbilities { get; init; }
+
+    /// <summary>When the effect began (rule 613.7a).</summary>
+    public long Timestamp { get; init; }
 }
 
 /// <summary>Control gained "until end of turn": returned to <paramref name="Original"/> at cleanup.</summary>
@@ -47,6 +60,12 @@ public sealed class GameState
 
     /// <summary>"Until end of turn" modifications, removed in the cleanup step (rule 514.2).</summary>
     public List<UntilEndOfTurnEffect> UntilEndOfTurn { get; } = new();
+
+    /// <summary>Effects that last as long as their object stays on the battlefield ("it's a Demon in addition to its other types").</summary>
+    public List<UntilEndOfTurnEffect> LastingEffects { get; } = new();
+
+    /// <summary>The latest timestamp handed out (rule 613.7).</summary>
+    public long LastTimestamp { get; set; }
 
     public List<TemporaryControlEffect> TemporaryControl { get; } = new();
 

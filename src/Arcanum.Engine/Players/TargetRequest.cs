@@ -39,5 +39,6 @@ public sealed record TargetRequest(
     }
 
     /// <summary>Enough targets chosen to finish (all requirements, the "any number" one at least once unless optional).</summary>
-    public bool IsComplete(int chosen) => LastIsAnyNumber ? chosen >= Specs.Count - (Specs[^1].Optional ? 1 : 0) : chosen == Specs.Count;
+    /// <summary>Enough targets chosen: "any number" includes zero (rule 601.2c).</summary>
+    public bool IsComplete(int chosen) => LastIsAnyNumber ? chosen >= Specs.Count - 1 : chosen == Specs.Count;
 }

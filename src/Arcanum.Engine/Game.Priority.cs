@@ -63,7 +63,7 @@ public sealed partial class Game
         do
         {
             await ResolveEnterChoicesAsync();
-            CheckStateBasedActions();
+            await CheckStateBasedActionsAsync();
             if (State.IsGameOver) return;
             await OfferCommanderReturnsAsync();
         }
@@ -366,7 +366,11 @@ public sealed partial class Game
         // Mana riders: haste for Dragon creature spells, copies of red instants and sorceries.
         var riders = paidMana.SpecialSpent.Select(u => u.Rider).ToList();
         if (riders.Contains(ManaRider.HasteForDragonCreatureSpells) && card.Is(CardType.Creature) && card.HasSubtype("Dragon")) card.HasteOnEnter = true;
-        bool copyRider = riders.Contains(ManaRider.CopyRedInstantOrSorcery) && (card.Is(CardType.Instant) || card.Is(CardType.Sorcery)) && card.Colors.Contains("R");
+        // "When that mana is spent to cast a red instant or sorcery spell, copy that spell": one trigger of the mana's
+        // source for each such mana spent, put on the stack above the spell.
+        var copySources = (card.Is(CardType.Instant) || card.Is(CardType.Sorcery)) && card.Colors.Contains("R")
+            ? paidMana.SpecialSpent.Where(u => u.Rider == ManaRider.CopyRedInstantOrSorcery).Select(u => u.Source).ToList()
+            : new List<CardId>();
 
         if (card.Zone == Zone.Command) player.CommanderCasts[cardId] = player.CommanderCasts.GetValueOrDefault(cardId) + 1;
         bool fromHand = card.CastFromHand, haste = card.HasteOnEnter;
@@ -382,7 +386,7 @@ public sealed partial class Game
             X = x, Kicked = kicked, Flashback = flashback,
         });
         Emit(new SpellCast(player.Id, cardId));
-        if (copyRider) await CopySpellAsync((SpellOnStack)State.Stack[^1], player.Id);
+        foreach (var source in copySources) QueueCopyThatSpell(source, player.Id, card);
         return true;
     }
 
@@ -450,7 +454,7 @@ public sealed partial class Game
         }
 
         Emit(new AbilityActivated(player.Id, source.Id, ability.Text));
-        var item = new AbilityOnStack(source.Id, ability, player.Id, targets) { X = x, SacrificedForCost = sacrificed };
+        var item = new AbilityOnStack(source.Id, ability, player.Id, targets) { X = x, SacrificedForCost = sacrificed, SourceVersion = source.Version };
         if (IsManaAbility(ability))
         {
             await ApplyResolutionAsync(item, ability, source); // mana abilities don't use the stack (rule 605.3b)
@@ -734,7 +738,7 @@ public sealed partial class Game
                     kicked: spell.Kicked && card.Types.IsPermanent(), castFromHand: card.CastFromHand && card.Types.IsPermanent(),
                     wasCast: card.Types.IsPermanent() && !card.Definition.IsToken);
                 if (card.Zone == Zone.Battlefield && hasteOnEnter)
-                    State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste }));
+                    State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });
                 if (card.Zone == Zone.Battlefield && card.Definition.EntersWithXCounters && spell.X > 0)
                     PutCounters(card, CounterKind.PlusOnePlusOne, spell.X, spell.Controller);
                 Emit(new SpellResolved(spell.Card));

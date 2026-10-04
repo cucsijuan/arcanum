@@ -112,7 +112,7 @@ public sealed class BotController : IPlayerController
         IEnumerable<CardView> picks = request.Purpose switch
         {
             CardChoicePurpose.ScryToBottom or CardChoicePurpose.SurveilToGraveyard => request.Options.Where(Unwanted),
-            CardChoicePurpose.ToHand or CardChoicePurpose.ToBattlefield => request.Options.OrderByDescending(Value).Take(request.Max),
+            CardChoicePurpose.ToHand or CardChoicePurpose.ToBattlefield or CardChoicePurpose.Keep => request.Options.OrderByDescending(Value).Take(request.Max),
             _ => request.Options.OrderBy(Value).Take(request.Min),
         };
         var chosen = picks.Take(request.Max).Select(c => c.Id).ToList();

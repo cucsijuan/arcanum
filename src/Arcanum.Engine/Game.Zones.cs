@@ -33,6 +33,7 @@ public sealed partial class Game
         {
             case Zone.Battlefield:
                 card.WasAttacking = State.Combat?.FindAttack(id) is not null;
+                card.WasBlocking = State.Combat?.IsBlocking(id) == true;
                 State.Battlefield.Remove(id);
                 State.Combat?.Remove(id);
                 break;

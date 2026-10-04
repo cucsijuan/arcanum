@@ -123,6 +123,8 @@ public enum TriggerEvent
 {
     /// <summary>"When this enters" (the source itself enters the battlefield).</summary>
     EntersBattlefield,
+    /// <summary>A reflexive trigger ("When you do, …"): created by an effect, never by an event.</summary>
+    Reflexive,
     /// <summary>"When this dies" (the source goes from the battlefield to a graveyard).</summary>
     Dies,
     /// <summary>"Whenever this attacks".</summary>
@@ -198,6 +200,13 @@ public sealed record TriggeredAbility : AbilityDefinition
 
     /// <summary>Which objects the event must involve, for events about other objects (creature enters, spell cast...).</summary>
     public ObjectFilter? Filter { get; init; }
+
+    /// <summary>
+    /// A condition of the trigger event itself ("whenever you attack with three or more creatures", "attacks while you
+    /// control …"): checked only when the event happens, unlike an intervening "if" (<see cref="Condition"/>), which is
+    /// checked again on resolution (rule 603.4).
+    /// </summary>
+    public Condition? TriggerCondition { get; init; }
 
     /// <summary>Only the Nth such event of the turn counts ("your second card each turn", "for the first time each turn").</summary>
     public int? NthOfTurn { get; init; }

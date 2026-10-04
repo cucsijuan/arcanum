@@ -86,6 +86,9 @@ public sealed partial class Game
 
     private IPlayerController ControllerOf(PlayerId player) => _controllers[player.Value];
 
+    /// <summary>A new timestamp, later than every earlier one (rule 613.7).</summary>
+    private long NewTimestamp() => ++State.LastTimestamp;
+
     private void Emit(GameEvent e)
     {
         _log.Add(e);
@@ -99,7 +102,7 @@ public sealed partial class Game
     {
         switch (e)
         {
-            case CardMoved { From: Zone.Battlefield, To: Zone.Graveyard } m when State.GetCard(m.Card).IsCreature:
+            case CardMoved { From: Zone.Battlefield, To: Zone.Graveyard } m when WasCreature(State.GetCard(m.Card)):
                 State.CreaturesDiedThisTurn++;
                 break;
             case LifeChanged l when l.NewLife > l.OldLife:

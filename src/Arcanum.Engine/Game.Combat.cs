@@ -181,6 +181,7 @@ public sealed partial class Game
         }
 
         // All combat damage is dealt simultaneously (rule 510.2).
+        BeginCombatDamage();
         var lifeGained = new Dictionary<PlayerId, int>();
         foreach (var (source, target, dealt) in toCards)
         {
@@ -208,6 +209,7 @@ public sealed partial class Game
             if (source.Has(Keyword.Lifelink)) lifeGained[source.Controller] = lifeGained.GetValueOrDefault(source.Controller) + amount;
         }
         foreach (var (player, amount) in lifeGained) GainLifeFor(player, amount); // lifelink (702.15b)
+        EndCombatDamage();
     }
 
     private async Task<DamageAssignment> AssignDamageAsync(Card attacker, PlayerId defender, List<Card> blockers, int power, bool trample)

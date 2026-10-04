@@ -73,6 +73,9 @@ public sealed record SourceHadCounters(CounterKind Kind) : Condition;
 /// <summary>This effect sacrificed at least one permanent of yours.</summary>
 public sealed record YouSacrificedThisWay : Condition;
 
+/// <summary>This effect created at least one token so far ("When you do" after "create …").</summary>
+public sealed record CreatedThisWay : Condition;
+
 /// <summary>You control at least <paramref name="AtLeast"/> matching permanents with different names.</summary>
 public sealed record DifferentNames(ObjectFilter Filter, int AtLeast) : Condition;
 

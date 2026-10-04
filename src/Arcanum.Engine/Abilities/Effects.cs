@@ -136,6 +136,9 @@ public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, St
 
     /// <summary>"Reveal it": the card taken is shown to every player.</summary>
     public bool Reveal { get; init; }
+
+    /// <summary>"Reveal the top X cards": every card looked at is shown to every player.</summary>
+    public bool RevealAll { get; init; }
 }
 
 /// <summary>"[Player] reveals their hand; you choose a [filter] card from it; they discard it."</summary>
@@ -144,8 +147,8 @@ public sealed record DiscardChosenByYou(Subject Who, ObjectFilter? Filter, int C
 /// <summary>Exile every card in the subject players' graveyards.</summary>
 public sealed record ExileGraveyard(Subject Who) : Effect;
 
-/// <summary>Double the number of +1/+1 counters on the subject.</summary>
-public sealed record DoubleCounters(Subject What) : Effect;
+/// <summary>"Double the number of [kind] counters on it"; with no kind, every kind of counter on it.</summary>
+public sealed record DoubleCounters(Subject What, CounterKind? Kind = null) : Effect;
 
 /// <summary>Remove counters from the subject.</summary>
 public sealed record RemoveCounters(Quantity Count, Subject What, CounterKind Kind = CounterKind.PlusOnePlusOne) : Effect;
@@ -288,3 +291,6 @@ public sealed record ChangeTarget(Subject What) : Effect;
 
 /// <summary>"Counter it unless its controller pays [cost]" for the stack object <paramref name="StackObject"/> (ward).</summary>
 public sealed record CounterUnlessPays(int StackObject, Mana.ManaCost Mana, int Life) : Effect;
+
+/// <summary>"When you do, …": creates a reflexive triggered ability (with its own targets) if <see cref="If"/> shows the action before it happened.</summary>
+public sealed record ReflexiveTrigger(TriggeredAbility Ability, Condition? If = null) : Effect;
