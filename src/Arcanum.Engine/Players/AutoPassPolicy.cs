@@ -42,9 +42,19 @@ public sealed class AutoPassPolicy
         Changed?.Invoke();
     }
 
-    public void PassTurn(int turnNumber) => PassingTurn = turnNumber;
+    public void PassTurn(int turnNumber)
+    {
+        if (PassingTurn == turnNumber) return;
+        PassingTurn = turnNumber;
+        Changed?.Invoke();
+    }
 
-    public void CancelPassTurn() => PassingTurn = null;
+    public void CancelPassTurn()
+    {
+        if (PassingTurn is null) return;
+        PassingTurn = null;
+        Changed?.Invoke();
+    }
 
     public bool ShouldAutoPass(GameView view, IReadOnlyList<PlayerAction> legal)
     {
