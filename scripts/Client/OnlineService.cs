@@ -45,11 +45,11 @@ public partial class OnlineService : Node
     public NetSession? Session { get; private set; }
     public LobbyClient? Lobby => _lobbyClient;
     public LobbyHost? HostedLobby => _lobby;
-    public bool IsHosting => _lobby is not null || _resumed is not null;
+    public bool IsHosting => _lobby is not null || _resumed is not null || _resumedEvent is not null;
 
     /// <summary>This device runs the game (it can hand dropped players' seats to the computer).</summary>
     public bool IsHostingGame => HostedGame is not null;
-    public bool IsActive => _lobbyClient is not null || _gameClient is not null || _lobby is not null;
+    public bool IsActive => _lobbyClient is not null || _gameClient is not null || _lobby is not null || _eventClient is not null;
 
     /// <summary>Addresses to give the other players (local network, and the public one when the router allows it).</summary>
     public List<string> ShareAddresses { get; } = new();
@@ -97,7 +97,12 @@ public partial class OnlineService : Node
     /// <summary>Starts the hosted game with the lobby as it is.</summary>
     public void StartGame()
     {
-        if (_lobby is null || _lobby.StartProblem is not null) return;
+        if (_lobby is null || _lobby.StartProblem is not null || _lobby.Game is not null || _lobby.Event is not null) return;
+        if (_eventSetup is not null)
+        {
+            StartEvent();
+            return;
+        }
         ulong seed = (ulong)Random.Shared.NextInt64();
         _save!.Seed = seed;
         _save.Seats = _lobby.Setup.ToList();
@@ -267,6 +272,12 @@ public partial class OnlineService : Node
     {
         Leave();
         if (!CanRejoin || !TryParseAddress(Settings.Current.LastHostAddress, out var host, out int port)) return;
+        if (Settings.Current.LastSeatIsEvent)
+        {
+            Status?.Invoke($"Reconnecting to {host}:{port}…");
+            RejoinEvent(name, host, port);
+            return;
+        }
         _address = host;
         _port = port;
         Status?.Invoke($"Reconnecting to {host}:{port}…");
@@ -318,7 +329,11 @@ public partial class OnlineService : Node
         {
             if (!_lobbyClient!.Started) Status?.Invoke("Disconnected from the host.");
         };
-        _lobbyClient.GameStarting += () => StartGameClient(null, _lobbyClient.Identity);
+        _lobbyClient.GameStarting += () =>
+        {
+            if (_lobbyClient.IsEvent) StartEventSession(_lobbyClient.JoinEvent());
+            else StartGameClient(null, _lobbyClient.Identity);
+        };
     }
 
     /// <summary>Sends the chosen deck to the host (again whenever it changes).</summary>
@@ -331,13 +346,15 @@ public partial class OnlineService : Node
 
     private ClientIdentity? _identity;
 
-    private void StartGameClient(IConnection? connection, ClientIdentity identity)
+    /// <param name="eventGame">A game of an event: the event, not this game, is what a rejoin goes back to.</param>
+    private void StartGameClient(IConnection? connection, ClientIdentity identity, bool eventGame = false)
     {
         _identity = identity;
-        if (!IsHosting)
+        if (!IsHosting && !eventGame)
         {
             // Remembered so this player can get back in even if this device closes.
             Settings.Current.LastSeatToken = identity.Token;
+            Settings.Current.LastSeatIsEvent = false;
             Settings.Current.LastHostAddress = _address.Contains(':') ? $"[{_address}]:{_port}" : $"{_address}:{_port}";
             Settings.Save();
         }
@@ -345,10 +362,10 @@ public partial class OnlineService : Node
         _gameClient = client;
         client.Rejected += reason =>
         {
-            ForgetSeat(); // the seat is gone (game over or another game)
+            if (!eventGame) ForgetSeat(); // the seat is gone (game over or another game)
             Status?.Invoke(reason);
         };
-        client.ViewChanged += view => { if (view.IsGameOver) ForgetSeat(); };
+        if (!eventGame) client.ViewChanged += view => { if (view.IsGameOver) ForgetSeat(); };
         void Ready(Arcanum.Engine.Views.GameView _)
         {
             client.ViewChanged -= Ready;
@@ -374,7 +391,7 @@ public partial class OnlineService : Node
     /// <summary>A joined player lost the host: try the same address again with the seat's token.</summary>
     private async void Reconnect()
     {
-        if (_connecting || _identity is null || IsHosting || _resumed is not null) return;
+        if (_connecting || _identity is null || IsHosting || Session?.Client.View is { IsGameOver: true }) return;
         _connecting = true;
         try
         {
@@ -400,10 +417,14 @@ public partial class OnlineService : Node
     {
         _lobby?.Poll();
         _resumed?.Poll();
+        _resumedEvent?.Poll();
         _lobbyClient?.Poll();
+        _eventClient?.Poll();
         _gameClient?.Poll();
         if (Session is { IsConnected: false } && !_connecting && DateTime.UtcNow >= _nextRetry) Reconnect();
+        if (EventSession is not null && _eventClient is { IsConnected: false } && !_connecting && DateTime.UtcNow >= _nextRetry) ReconnectEvent();
         SaveHostedGame();
+        SaveHostedEvent();
     }
 
     /// <summary>Keeps the hosted game's answers on disk (a couple of times a second at most) so it can be resumed.</summary>
@@ -434,6 +455,12 @@ public partial class OnlineService : Node
     /// <summary>Leaves (or stops hosting) the current online game.</summary>
     public void Leave()
     {
+        _eventClient?.Close();
+        _eventClient = null;
+        EventSession = null;
+        _resumedEvent = null;
+        _eventSetup = null;
+        _gameToken = null;
         _lobbyClient?.Close();
         _gameClient?.Close();
         _tcp?.Dispose();

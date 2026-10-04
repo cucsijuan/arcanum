@@ -54,7 +54,8 @@ public partial class OnlineScreen : Control
 
     /// <summary>
     /// Quick testing without the menus: ARCANUM_ONLINE_HOST=port[,players] hosts with the first deck (the computer takes
-    /// seats left free after ARCANUM_ONLINE_WAIT seconds, default 20) and starts when the lobby is complete;
+    /// seats left free after ARCANUM_ONLINE_WAIT seconds, default 20) and starts when the lobby is complete
+    /// (ARCANUM_ONLINE_EVENT=draft|sealed hosts an event with the first booster source instead);
     /// ARCANUM_ONLINE_JOIN=address joins; ARCANUM_ONLINE_REJOIN=1 gets back into the last joined game.
     /// </summary>
     private void AutoStart()
@@ -80,7 +81,11 @@ public partial class OnlineScreen : Control
         var parts = host.Split(',');
         int port = int.TryParse(parts[0], out int p) ? p : OnlineService.DefaultPort;
         int players = parts.Length > 1 && int.TryParse(parts[1], out int n) ? Math.Clamp(n, 2, 4) : 2;
-        Online.Host("Host", App.Instance.FormatById(deck.FormatId), players, port, deck);
+        var eventMode = OS.GetEnvironment("ARCANUM_ONLINE_EVENT");
+        if (eventMode.Length > 0 && App.Instance.Limited.Sources().FirstOrDefault() is { } eventSource)
+            Online.HostEvent("Host", eventMode == "sealed" ? Arcanum.Data.Limited.LimitedMode.Sealed : Arcanum.Data.Limited.LimitedMode.Draft,
+                eventSource, 1, players, port);
+        else Online.Host("Host", App.Instance.FormatById(deck.FormatId), players, port, deck);
         int wait = int.TryParse(OS.GetEnvironment("ARCANUM_ONLINE_WAIT"), out int w) ? w : 20;
         GetTree().CreateTimer(wait).Timeout += () =>
         {
@@ -89,12 +94,13 @@ public partial class OnlineScreen : Control
                 if (lobby.State.Seats[i].Kind == LobbySeatKind.Open)
                 {
                     var (list, _) = App.Instance.Decks.Load(_decks[(deckIndex + i) % _decks.Count]);
-                    lobby.SetComputer(i, $"Computer {i}", _decks[(deckIndex + i) % _decks.Count].Name, list.Export());
+                    if (lobby.Settings.Event is not null) lobby.SetComputer(i, $"Computer {i}", "", "");
+                    else lobby.SetComputer(i, $"Computer {i}", _decks[(deckIndex + i) % _decks.Count].Name, list.Export());
                 }
         };
         Online.Changed += () =>
         {
-            if (Online.HostedLobby is { Game: null, StartProblem: null }) Online.StartGame();
+            if (Online.HostedLobby is { Game: null, Event: null, StartProblem: null }) Online.StartGame();
         };
     }
 
@@ -152,11 +158,31 @@ public partial class OnlineScreen : Control
         host.AddThemeConstantOverride("separation", 10);
         host.AddChild(MenuKit.SectionTitle("Host a game"));
         host.AddChild(MenuKit.Hint("Other players join with your address. On another network, your router must let them in (it's tried automatically)."));
+        var kind = MenuKit.Options(new[] { "Game (bring a deck)", "Draft", "Sealed" }, _kind);
+        host.AddChild(MenuKit.Row("Play", kind, 90));
+        bool limited = _kind > 0;
         var formats = App.Instance.Formats;
         var format = MenuKit.Options(formats.Select(f => f.Name), Math.Max(0, formats.FindIndex(f => f.Id == SelectedDeck?.FormatId)));
-        host.AddChild(MenuKit.Row("Format", format, 90));
-        var players = MenuKit.Options(new[] { "2 players", "3 players", "4 players" });
+        var sources = App.Instance.Limited.Sources();
+        var source = MenuKit.Options(sources.Select(x => x.Name), Math.Min(_sourceIndex, Math.Max(0, sources.Count - 1)));
+        source.ItemSelected += i => _sourceIndex = (int)i;
+        var bestOf = MenuKit.Options(new[] { "Best of one", "Best of three" }, _bestOfIndex);
+        bestOf.ItemSelected += i => _bestOfIndex = (int)i;
+        if (limited)
+        {
+            host.AddChild(MenuKit.Row("Boosters", source, 90));
+            host.AddChild(MenuKit.Row("Matches", bestOf, 90));
+        }
+        else host.AddChild(MenuKit.Row("Format", format, 90));
+        var players = MenuKit.Options(Enumerable.Range(2, limited ? 7 : 3).Select(n => $"{n} players"), Math.Min(_playersIndex, limited ? 6 : 2));
+        players.ItemSelected += i => _playersIndex = (int)i;
         host.AddChild(MenuKit.Row("Players", players, 90));
+        kind.ItemSelected += i =>
+        {
+            _kind = (int)i;
+            Rebuild();
+        };
+        if (limited) host.AddChild(MenuKit.Hint("Free seats can be given to the computer in the lobby. Everyone gets a time limit for each pick and for building their deck."));
         var port = MenuKit.TextField(OnlineService.DefaultPort.ToString(), "Port");
         host.AddChild(MenuKit.Row("Port", port, 90));
         var hostButton = BoardStyle.MakePrimaryButton("Host", 20);
@@ -171,9 +197,20 @@ public partial class OnlineScreen : Control
                 return;
             }
             SaveName();
-            Online.Host(PlayerName, formats[format.Selected], players.Selected + 2, p, deck);
+            if (!limited) Online.Host(PlayerName, formats[format.Selected], players.Selected + 2, p, deck);
+            else if (sources.Count == 0) ShowStatus("No set with boosters or cube is available.");
+            else Online.HostEvent(PlayerName, _kind == 1 ? Arcanum.Data.Limited.LimitedMode.Draft : Arcanum.Data.Limited.LimitedMode.Sealed,
+                sources[source.Selected], bestOf.Selected == 0 ? 1 : 3, players.Selected + 2, p);
         };
         host.AddChild(hostButton);
+        if (OnlineService.HasSavedEvent)
+        {
+            var resumeEvent = BoardStyle.MakeButton("Resume interrupted event", 16);
+            resumeEvent.TooltipText = "Host again the draft or sealed event that was running when this device stopped hosting.";
+            resumeEvent.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
+            resumeEvent.Pressed += () => Online.ResumeSavedEvent(PlayerName);
+            host.AddChild(resumeEvent);
+        }
         if (OnlineService.HasSavedGame)
         {
             var resume = BoardStyle.MakeButton("Resume interrupted game", 16);
@@ -218,7 +255,7 @@ public partial class OnlineScreen : Control
         _root.AddChild(row);
     }
 
-    private static int _lastDeck;
+    private static int _lastDeck, _kind, _sourceIndex, _bestOfIndex, _playersIndex;
 
     private void SaveName()
     {
@@ -233,7 +270,7 @@ public partial class OnlineScreen : Control
         var box = new VBoxContainer();
         box.AddThemeConstantOverride("separation", 12);
         var state = lobby.State;
-        box.AddChild(MenuKit.SectionTitle(state is null ? "Joining…" : $"Lobby · {state.Format}"));
+        box.AddChild(MenuKit.SectionTitle(state is null ? "Joining…" : $"Lobby · {state.Event ?? state.Format}"));
 
         if (Online.IsHosting)
         {
@@ -255,13 +292,17 @@ public partial class OnlineScreen : Control
         {
             for (int i = 0; i < state.Seats.Count; i++) box.AddChild(SeatRow(i, state.Seats[i], lobby.Seat == i));
 
-            _deck = DeckPicker(_lastDeck);
-            _deck.ItemSelected += i =>
+            if (state.Event is null)
             {
-                _lastDeck = (int)i;
-                if (SelectedDeck is { } deck) Online.SubmitDeck(deck);
-            };
-            box.AddChild(MenuKit.Row("Your deck", _deck, 120));
+                _deck = DeckPicker(_lastDeck);
+                _deck.ItemSelected += i =>
+                {
+                    _lastDeck = (int)i;
+                    if (SelectedDeck is { } deck) Online.SubmitDeck(deck);
+                };
+                box.AddChild(MenuKit.Row("Your deck", _deck, 120));
+            }
+            else box.AddChild(MenuKit.Hint("Decks come from the boosters opened in the event."));
         }
 
         var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
@@ -316,17 +357,24 @@ public partial class OnlineScreen : Control
             var computerDeck = DeckPicker(index % Math.Max(1, _decks.Count));
             computerDeck.CustomMinimumSize = new Vector2(240, 0);
             computerDeck.TooltipText = "Deck for the computer";
-            var computer = BoardStyle.MakeButton(seat.Kind == LobbySeatKind.Computer ? "Change deck" : "Computer", 14);
+            bool isEvent = hosted.Settings.Event is not null; // the computer drafts or opens its own cards
+            var computer = BoardStyle.MakeButton(seat.Kind == LobbySeatKind.Computer && !isEvent ? "Change deck" : "Computer", 14);
             computer.TooltipText = "The computer plays this seat";
             computer.Pressed += () =>
             {
+                string name = index == 1 && hosted.Settings.Seats == 2 ? "Computer" : $"Computer {index}";
+                if (isEvent)
+                {
+                    hosted.SetComputer(index, name, "", "");
+                    return;
+                }
                 var info = _decks[computerDeck.Selected];
                 var (list, _) = App.Instance.Decks.Load(info);
-                hosted.SetComputer(index, index == 1 && hosted.Settings.Seats == 2 ? "Computer" : $"Computer {index}", info.Name, list.Export());
+                hosted.SetComputer(index, name, info.Name, list.Export());
             };
-            if (seat.Kind != LobbySeatKind.Person || !seat.Connected)
+            if (seat.Kind == LobbySeatKind.Open || (seat.Kind == LobbySeatKind.Person && !seat.Connected) || (seat.Kind == LobbySeatKind.Computer && !isEvent))
             {
-                row.AddChild(computerDeck);
+                if (!isEvent) row.AddChild(computerDeck);
                 row.AddChild(computer);
             }
             if (seat.Kind != LobbySeatKind.Open)

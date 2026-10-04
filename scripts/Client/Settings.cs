@@ -16,6 +16,8 @@ public sealed class SettingsData
     public string LastHostAddress { get; set; } = "";
     /// <summary>Seat token of the online game in progress (to get back in after this device closed); empty when none.</summary>
     public string LastSeatToken { get; set; } = "";
+    /// <summary>That token is an event's (draft, sealed), not a single game's.</summary>
+    public bool LastSeatIsEvent { get; set; }
     public bool ConfirmManaPayment { get; set; } = true;
     public bool RevealHandsInHotseat { get; set; } = true;
 

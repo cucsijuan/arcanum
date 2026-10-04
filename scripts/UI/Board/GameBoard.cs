@@ -248,6 +248,7 @@ public partial class GameBoard : Control
     // ---------------------------------------------------------------- online
 
     private NetSession? _online;
+    private bool _leavingToEvent;
     private readonly Dictionary<PlayerId, (SeatState State, DateTime? Deadline)> _seatStates = new();
     private readonly VBoxContainer _seatPanel = new();
     private readonly Label _connectionLost = BoardStyle.MakeLabel("Connection to the host lost — reconnecting…", 18, BoardStyle.Attacking);
@@ -488,7 +489,11 @@ public partial class GameBoard : Control
         back.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
         back.CustomMinimumSize = new Vector2(220, 52);
         back.Visible = false;
-        back.Pressed += () => { if (_match?.Event is { } hook) App.Instance.GoTo(hook.ReturnScene); };
+        back.Pressed += () =>
+        {
+            if (_match?.Event is { } hook) App.Instance.GoTo(hook.ReturnScene);
+            else if (App.Instance.Online.EventSession is not null) App.Instance.Online.BackToEvent();
+        };
         overBox.AddChild(back);
         _backToEventButton = back;
         var toMenu = BoardStyle.MakeButton("Main menu", 18);
@@ -648,6 +653,11 @@ public partial class GameBoard : Control
             // Automatic play of a whole event (smoke tests): go back to the event on its own.
             if (_autoplay && _match?.Event is { } back)
                 GetTree().CreateTimer(0.5).Timeout += () => App.Instance.GoTo(back.ReturnScene);
+            else if (_autoplay && _online is not null && App.Instance.Online.EventSession is not null && !_leavingToEvent)
+            {
+                _leavingToEvent = true;
+                GetTree().CreateTimer(0.5).Timeout += App.Instance.Online.BackToEvent;
+            }
         }
 
         ApplyHighlights(view, decision);
@@ -1720,7 +1730,7 @@ public partial class GameBoard : Control
         _gameOverReasons.Text = lines.Length > 1 ? lines[1] : "";
         _gameOver.Visible = true;
         _actionPanel.Visible = false;
-        bool inEvent = _match?.Event is not null;
+        bool inEvent = _match?.Event is not null || (_online is not null && App.Instance.Online.EventSession is not null);
         if (_newGameButton is not null) _newGameButton.Visible = !inEvent && _online is null;
         if (_backToEventButton is not null) _backToEventButton.Visible = inEvent;
     }

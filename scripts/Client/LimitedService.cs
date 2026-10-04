@@ -18,7 +18,7 @@ public sealed record LimitedSource(string Id, string Name, bool IsCube, int Boos
 /// decks, pairs the rounds, plays out the matches between computer players and saves everything under
 /// user://limited so the event can be resumed.
 /// </summary>
-public sealed class LimitedService
+public sealed class LimitedService : ILimitedSession
 {
     private static string SavePath => ProjectSettings.GlobalizePath("user://limited/current.json");
     private static string UserCubes => ProjectSettings.GlobalizePath("user://cubes");
@@ -39,6 +39,36 @@ public sealed class LimitedService
             return _draft ??= DraftSession.Restore(snapshot, SourceFor(Current, opened: snapshot), _random);
         }
     }
+
+    // ---------------------------------------------------------------- the screen's view of the event
+
+    public int Seat => Current?.HumanSeat ?? 0;
+
+    public DraftView? DraftState => Draft is { } d && Current is { } ev
+        ? new DraftView(d.Round, d.Rounds, d.PickInRound, d.PassesLeft, d.PackFor(ev.HumanSeat), d.Picks[ev.HumanSeat], false)
+        : null;
+
+    public bool IsOnline => false;
+    public int SecondsLeft => -1;
+    public string? Status => null;
+    public bool GameInProgress => false;
+    public bool WaitingForOpponent => false;
+
+    public event Action? Changed { add { } remove { } }
+
+    public void Pick(int index) => HumanPick(index);
+
+    public void DeckEdited() => Save();
+
+    public void FinishBuilding() => StartPlaying();
+
+    public void PlayNext()
+    {
+        App.Instance.PendingMatch = NextGame();
+        App.Instance.GoTo(App.GameBoardScene);
+    }
+
+    public void ReturnToGame() { }
 
     // ---------------------------------------------------------------- sources
 
@@ -82,7 +112,10 @@ public sealed class LimitedService
     }
 
     /// <summary>Opens boosters for an event; a cube leaves out the cards already opened (<paramref name="opened"/>).</summary>
-    private IBoosterSource SourceFor(LimitedEvent ev, DraftSnapshot? opened = null)
+    private IBoosterSource SourceFor(LimitedEvent ev, DraftSnapshot? opened = null) => BoosterSource(ev, opened, _random);
+
+    /// <summary>Opens boosters for an event; a cube leaves out the cards already opened (<paramref name="opened"/>).</summary>
+    public static IBoosterSource BoosterSource(LimitedEvent ev, DraftSnapshot? opened, Random random)
     {
         if (ev.Source.StartsWith("set:"))
         {
@@ -93,7 +126,7 @@ public sealed class LimitedService
         if (opened is not null)
             foreach (var card in opened.Packs.Concat(opened.Picks).SelectMany(c => c))
                 remaining.Remove(card);
-        return new CubeBoosters(ev.Source, remaining, ev.CubeBoosterSize, _random);
+        return new CubeBoosters(ev.Source, remaining, ev.CubeBoosterSize, random);
     }
 
     // ---------------------------------------------------------------- event lifecycle
@@ -127,27 +160,41 @@ public sealed class LimitedService
         if (File.Exists(SavePath)) File.Delete(SavePath);
     }
 
-    /// <summary>Starts a new event; returns an error message if it can't.</summary>
-    public string? Start(LimitedMode mode, LimitedSource source, int seats, int bestOf, string playerName)
+    /// <summary>A new event (not started) for these seats; null with <paramref name="error"/> if it can't be made.</summary>
+    public static LimitedEvent? NewEvent(LimitedMode mode, LimitedSource source, IReadOnlyList<EventSeat> seats, int bestOf, int seed, out string? error)
     {
-        int seed = System.Environment.TickCount;
-        _random = new Random(seed);
+        error = null;
         var cube = new List<PoolCard>();
         if (source.IsCube)
         {
             var unknown = new List<string>();
             cube = CubeCards(source.Id, unknown);
-            int needed = (mode == LimitedMode.Draft ? seats * source.BoostersPerPlayer : seats * source.SealedBoosters) * 15;
-            if (cube.Count < needed) return $"This cube has {cube.Count} cards; {(mode == LimitedMode.Draft ? "a draft" : "sealed")} for {seats} needs {needed}.";
+            int needed = (mode == LimitedMode.Draft ? seats.Count * source.BoostersPerPlayer : seats.Count * source.SealedBoosters) * 15;
+            if (cube.Count < needed)
+            {
+                error = $"This cube has {cube.Count} cards; {(mode == LimitedMode.Draft ? "a draft" : "sealed")} for {seats.Count} needs {needed}.";
+                return null;
+            }
             if (unknown.Count > 0) GD.PushWarning($"Cube: unknown cards {string.Join(", ", unknown.Take(10))}");
         }
-        var ev = new LimitedEvent
+        return new LimitedEvent
         {
             Mode = mode, Source = source.Id, CubeCards = cube, BestOf = bestOf, Seed = seed,
             BoostersPerPlayer = mode == LimitedMode.Draft ? source.BoostersPerPlayer : source.SealedBoosters,
-            RoundsTotal = Math.Min(3, seats - 1),
-            Seats = Enumerable.Range(0, seats).Select(i => new EventSeat { Name = i == 0 ? playerName : $"Computer {i}", IsHuman = i == 0 }).ToList(),
+            RoundsTotal = Math.Min(3, seats.Count - 1),
+            Seats = seats.ToList(),
         };
+    }
+
+    /// <summary>Starts a new event; returns an error message if it can't.</summary>
+    public string? Start(LimitedMode mode, LimitedSource source, int seats, int bestOf, string playerName)
+    {
+        int seed = System.Environment.TickCount;
+        _random = new Random(seed);
+        var ev = NewEvent(mode, source,
+            Enumerable.Range(0, seats).Select(i => new EventSeat { Name = i == 0 ? playerName : $"Computer {i}", IsHuman = i == 0 }).ToList(),
+            bestOf, seed, out var error);
+        if (ev is null) return error;
         Current = ev;
         _draft = null;
         var boosters = SourceFor(ev);
@@ -167,7 +214,7 @@ public sealed class LimitedService
         return null;
     }
 
-    private static DraftOption Option(PoolCard card) =>
+    public static DraftOption Option(PoolCard card) =>
         new(Cards.TryGet(card.Name, card.Set.Length > 0 ? card.Set : null, card.Number.Length > 0 ? card.Number : null, out var d) ? d : Cards.Find(card.Name)!.Definition, card.Rarity);
 
     /// <summary>The person takes a card; the computer players pick at the same time, then the boosters move on.</summary>
@@ -227,7 +274,10 @@ public sealed class LimitedService
                                         ?? new FormatRules { Id = "limited", Name = "Limited", MinDeckSize = 40, MaxCopies = 99, Limited = true };
 
     /// <summary>A 40-card deck built from a pool the way the computer players build theirs.</summary>
-    public DeckList AutoBuild(IReadOnlyList<PoolCard> pool)
+    public DeckList AutoBuild(IReadOnlyList<PoolCard> pool) => AutoBuild(pool, Current?.Source);
+
+    /// <summary>A 40-card deck built from a pool, with basic lands of the event's set (<paramref name="source"/>).</summary>
+    public static DeckList AutoBuild(IReadOnlyList<PoolCard> pool, string? source)
     {
         var choice = LimitedDeckBuilder.Build(pool.Select(Option).ToList());
         var deck = new DeckList();
@@ -238,7 +288,7 @@ public sealed class LimitedService
         }
         foreach (var (color, count) in choice.BasicLands.Where(kv => kv.Value > 0))
         {
-            var basic = BasicLand(color);
+            var basic = BasicLand(color, source);
             DeckList.Adjust(deck.Main, basic.Name, count, basic.Set, basic.Number);
         }
         foreach (var (card, index) in pool.Select((c, i) => (c, i)).Where(x => !choice.PoolCards.Contains(x.i)))
@@ -257,17 +307,21 @@ public sealed class LimitedService
     public static IReadOnlyDictionary<ManaType, string> Basics => BasicNames;
 
     /// <summary>A basic land for the deck, in the event set's printing when the set has one.</summary>
-    public DeckEntry BasicLand(ManaType color)
+    public DeckEntry BasicLand(ManaType color) => BasicLand(color, Current?.Source);
+
+    public static DeckEntry BasicLand(ManaType color, string? source)
     {
         var name = BasicNames[color];
-        if (Current?.Source is { } source && source.StartsWith("set:") && Cards.Find(name)?.Record.Printings
+        if (source is not null && source.StartsWith("set:") && Cards.Find(name)?.Record.Printings
                 .Where(p => p.Set.Equals(source[4..], StringComparison.OrdinalIgnoreCase))
                 .OrderBy(p => p.CollectorNumber, Comparer<string>.Create(OracleJsonl.CompareNumbers)).FirstOrDefault() is { } printing)
             return new DeckEntry(1, name, printing.Set.ToUpperInvariant(), printing.CollectorNumber);
         return new DeckEntry(1, name);
     }
 
-    public List<DeckIssue> Validate(EventSeat seat) =>
+    public List<DeckIssue> Validate(EventSeat seat) => ValidateSeat(seat);
+
+    public static List<DeckIssue> ValidateSeat(EventSeat seat) =>
         seat.Deck is null ? new List<DeckIssue> { new(IssueSeverity.Error, "No deck yet.") }
             : DeckValidator.ValidateLimited(seat.Deck, Format, seat.Pool, Cards);
 
@@ -302,9 +356,12 @@ public sealed class LimitedService
         if (ev.CurrentMatch is null) NextRound();
     }
 
-    private double DeckStrength(EventSeat seat)
+    private double DeckStrength(EventSeat seat) => DeckStrength(seat.Deck);
+
+    /// <summary>How strong a deck is (to settle matches between computer players without playing them).</summary>
+    public static double DeckStrength(DeckList? deck)
     {
-        var spells = (seat.Deck?.Main ?? new List<DeckEntry>()).Where(e => Cards.Find(e.Name) is { } c && !c.Definition.Is(CardType.Land));
+        var spells = (deck?.Main ?? new List<DeckEntry>()).Where(e => Cards.Find(e.Name) is { } c && !c.Definition.Is(CardType.Land));
         double total = spells.Sum(e => CardRating.Rate(Cards.Find(e.Name)!.Definition) * e.Count);
         return Math.Max(1, total);
     }

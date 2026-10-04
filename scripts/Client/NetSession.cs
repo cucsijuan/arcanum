@@ -113,5 +113,5 @@ public sealed class NetSession : IBoardSession
 
     public void Poll() { } // the online service polls the connection, also between screens
 
-    public void Leave() => App.Instance.Online.Leave();
+    public void Leave() => App.Instance.Online.LeaveGame();
 }

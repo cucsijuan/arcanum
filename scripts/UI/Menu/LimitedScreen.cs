@@ -33,6 +33,12 @@ public partial class LimitedScreen : Control
     private int _sourceIndex, _seatsIndex = 6, _bestOfIndex;
 
     private static LimitedService Service => App.Instance.Limited;
+
+    /// <summary>The event shown: an online one this device takes part in, or the local one.</summary>
+    private static ILimitedSession Session => (ILimitedSession?)App.Instance.Online.EventSession ?? App.Instance.Limited;
+
+    private readonly Label _timer = BoardStyle.MakeLabel("", 22, BoardStyle.Attacking, bold: true);
+    private ILimitedSession? _watched;
     private static CardDatabase Cards => App.Instance.Cards!;
 
     public override async void _Ready()
@@ -41,6 +47,7 @@ public partial class LimitedScreen : Control
         MenuKit.AddBackdrop(this);
         var header = MenuKit.AddHeader(this, "Limited");
         _title = header.GetChild<Label>(1);
+        header.AddChild(_timer);
         var frame = new MarginContainer { AnchorRight = 1, AnchorBottom = 1, OffsetLeft = 24, OffsetTop = 92, OffsetRight = -24, OffsetBottom = -20 };
         frame.AddChild(_content);
         AddChild(frame);
@@ -54,9 +61,58 @@ public partial class LimitedScreen : Control
             loading.Text = "Card data isn't available: install a content module to play limited.";
             return;
         }
-        Service.Load();
+        if (!Session.IsOnline) Service.Load();
+        _watched = Session;
+        _watched.Changed += OnSessionChanged;
         Show();
         AutoPlay();
+    }
+
+    public override void _ExitTree()
+    {
+        if (_watched is not null) _watched.Changed -= OnSessionChanged;
+    }
+
+    private bool _showQueued;
+
+    /// <summary>Online updates: redraw once per frame at most.</summary>
+    private void OnSessionChanged()
+    {
+        if (_showQueued) return;
+        _showQueued = true;
+        Callable.From(() =>
+        {
+            _showQueued = false;
+            if (IsInsideTree()) Show();
+            if (_autoOnline) AutoOnline();
+        }).CallDeferred();
+    }
+
+    public override void _Process(double delta)
+    {
+        int left = Session.SecondsLeft;
+        _timer.Text = left >= 0 ? $"⏱ {left / 60}:{left % 60:00}" : "";
+    }
+
+    private static readonly bool _autoOnline = OS.GetEnvironment("ARCANUM_AUTOPLAY") == "1";
+
+    /// <summary>Automatic play of an online event (smoke tests): first card, automatic deck, always ready.</summary>
+    private void AutoOnline()
+    {
+        var session = Session;
+        if (!session.IsOnline || session.Current is not { } ev) return;
+        GD.Print($"EVENT {ev.Stage} draft={session.DraftState?.Round}/{session.DraftState?.PickInRound} picked={session.DraftState?.Picked} "
+                 + $"round={ev.Rounds.Count} status={session.Status} game={session.GameInProgress} waiting={session.WaitingForOpponent}");
+        if (session.DraftState is { Picked: false, Pack.Count: > 0 }) session.Pick(0);
+        var seat = ev.Seats[session.Seat];
+        if (ev.Stage == EventStage.Building && session.Status is null)
+        {
+            seat.Deck = session.AutoBuild(seat.Pool);
+            session.FinishBuilding();
+        }
+        if (ev.Stage == EventStage.Playing && !session.GameInProgress && !session.WaitingForOpponent && ev.CurrentMatch is not null) session.PlayNext();
+        if (ev.Stage == EventStage.Finished)
+            foreach (var s in ev.Standings()) GD.Print($"LIMITED standing {ev.Seats[s].Name} {Record(ev, s)} {ev.Points(s)} pts");
     }
 
     /// <summary>
@@ -66,6 +122,11 @@ public partial class LimitedScreen : Control
     private void AutoPlay()
     {
         var mode = OS.GetEnvironment("ARCANUM_LIMITED");
+        if (Session.IsOnline)
+        {
+            if (_autoOnline) AutoOnline();
+            return;
+        }
         if (mode.Length == 0) return;
         if (Service.Current is null)
         {
@@ -106,9 +167,13 @@ public partial class LimitedScreen : Control
     {
         foreach (var child in _content.GetChildren()) child.QueueFree();
         _preview.Visible = false;
-        var ev = Service.Current;
+        var ev = Session.Current;
         switch (ev?.Stage)
         {
+            case null when Session.IsOnline:
+                _title.Text = "Online event";
+                _content.AddChild(MenuKit.Hint(Session.Status ?? "Waiting for the host…"));
+                break;
             case null:
                 ShowSetup();
                 break;
@@ -116,10 +181,10 @@ public partial class LimitedScreen : Control
                 ShowDraft();
                 break;
             case EventStage.Building:
-                ShowBuilder(finishLabel: "Start playing", onFinish: () => { Service.StartPlaying(); Show(); });
+                ShowBuilder(finishLabel: Session.IsOnline ? "Deck done" : "Start playing", onFinish: () => { Session.FinishBuilding(); Show(); });
                 break;
             case EventStage.Playing when _editingDuringEvent:
-                ShowBuilder(finishLabel: "Done", onFinish: () => { _editingDuringEvent = false; Service.Save(); Show(); });
+                ShowBuilder(finishLabel: "Done", onFinish: () => { _editingDuringEvent = false; Session.DeckEdited(); Show(); });
                 break;
             case EventStage.Playing:
             case EventStage.Finished:
@@ -300,9 +365,7 @@ public partial class LimitedScreen : Control
 
     private void ShowDraft()
     {
-        var draft = Service.Draft!;
-        var ev = Service.Current!;
-        int human = ev.HumanSeat;
+        var draft = Session.DraftState!;
         _title.Text = $"Draft · pack {draft.Round + 1} of {draft.Rounds} · pick {draft.PickInRound + 1} · passing {(draft.PassesLeft ? "left" : "right")}";
         _selected = -1;
 
@@ -313,7 +376,9 @@ public partial class LimitedScreen : Control
         var left = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         left.AddThemeConstantOverride("separation", 12);
         body.AddChild(left);
-        left.AddChild(MenuKit.Hint("Click a card to select it, then take it (or double-click). The other players pick at the same time."));
+        left.AddChild(MenuKit.Hint(draft.Picked ? Session.Status ?? "Waiting for the other players…"
+            : "Click a card to select it, then take it (or double-click). The other players pick at the same time."
+              + (Session.IsOnline ? " When time runs out, a card is taken for you." : "")));
         var grid = new HFlowContainer();
         grid.AddThemeConstantOverride("h_separation", 10);
         grid.AddThemeConstantOverride("v_separation", 10);
@@ -325,7 +390,7 @@ public partial class LimitedScreen : Control
         left.AddChild(take);
 
         var nodes = new List<CardNode>();
-        var pack = draft.PackFor(human);
+        var pack = draft.Picked ? Array.Empty<PoolCard>() : draft.Pack;
         for (int i = 0; i < pack.Count; i++)
         {
             int index = i;
@@ -344,7 +409,7 @@ public partial class LimitedScreen : Control
 
         var right = new VBoxContainer { CustomMinimumSize = new Vector2(360, 0) };
         right.AddThemeConstantOverride("separation", 6);
-        var picks = draft.Picks[human];
+        var picks = draft.Picks;
         right.AddChild(MenuKit.SectionTitle($"Your picks ({picks.Count})"));
         right.AddChild(PickList(picks));
         body.AddChild(MenuKit.Card(right, 14));
@@ -352,7 +417,7 @@ public partial class LimitedScreen : Control
 
     private void Pick(int index)
     {
-        Service.HumanPick(index);
+        Session.Pick(index);
         Show();
     }
 
@@ -382,8 +447,8 @@ public partial class LimitedScreen : Control
 
     private void ShowBuilder(string finishLabel, Action onFinish)
     {
-        var ev = Service.Current!;
-        var seat = ev.Seats[ev.HumanSeat];
+        var ev = Session.Current!;
+        var seat = ev.Seats[Session.Seat];
         seat.Deck ??= new DeckList();
         var deck = seat.Deck;
         _title.Text = _editingDuringEvent ? "Sideboarding" : "Build your deck";
@@ -425,7 +490,7 @@ public partial class LimitedScreen : Control
                 {
                     DeckList.Adjust(deck.Main, entry.Name, 1, entry.Set, entry.Number);
                     DeckList.Adjust(deck.Sideboard, entry.Name, -1, entry.Set, entry.Number);
-                    Service.Save();
+                    Session.DeckEdited();
                     Show();
                 };
             }
@@ -457,7 +522,7 @@ public partial class LimitedScreen : Control
             {
                 DeckList.Adjust(deck.Main, entry.Name, -1, entry.Set, entry.Number);
                 DeckList.Adjust(deck.Sideboard, entry.Name, 1, entry.Set, entry.Number);
-                Service.Save();
+                Session.DeckEdited();
                 Show();
             };
             list.AddChild(row);
@@ -469,7 +534,7 @@ public partial class LimitedScreen : Control
         lands.AddThemeConstantOverride("separation", 8);
         foreach (var (color, name) in LimitedService.Basics)
         {
-            var basic = Service.BasicLand(color);
+            var basic = Session.BasicLand(color);
             int count = deck.Main.Where(e => e.Name == name).Sum(e => e.Count);
             var cell = new VBoxContainer();
             var (bg, fg) = BoardStyle.PipColors(ColorLetter(color));
@@ -486,7 +551,7 @@ public partial class LimitedScreen : Control
                 {
                     var existing = deck.Main.FirstOrDefault(e => e.Name == name);
                     DeckList.Adjust(deck.Main, name, delta, existing?.Set ?? basic.Set, existing?.Number ?? basic.Number);
-                    Service.Save();
+                    Session.DeckEdited();
                     Show();
                 };
                 buttons.AddChild(b);
@@ -499,9 +564,10 @@ public partial class LimitedScreen : Control
         }
         right.AddChild(lands);
 
-        var issues = Service.Validate(seat);
+        var issues = Session.Validate(seat);
         var errors = issues.Where(i => i.Severity == IssueSeverity.Error).ToList();
-        var status = MenuKit.Hint(errors.Count == 0 ? "✓ Ready to play" : string.Join("\n", errors.Take(4).Select(i => "• " + i.Message)));
+        var status = MenuKit.Hint(Session.Status is { } note ? note
+            : errors.Count == 0 ? "✓ Ready to play" : string.Join("\n", errors.Take(4).Select(i => "• " + i.Message)));
         status.AddThemeColorOverride("font_color", errors.Count == 0 ? new Color("6fd08c") : new Color("ff8a70"));
         right.AddChild(status);
 
@@ -510,11 +576,11 @@ public partial class LimitedScreen : Control
         var auto = BoardStyle.MakeButton("Build for me", 16);
         auto.CustomMinimumSize = new Vector2(150, 46);
         auto.TooltipText = "Pick the best two colors and build a 40-card deck automatically";
-        auto.Pressed += () => { seat.Deck = Service.AutoBuild(seat.Pool); Service.Save(); Show(); };
+        auto.Pressed += () => { seat.Deck = Session.AutoBuild(seat.Pool); Session.DeckEdited(); Show(); };
         actions.AddChild(auto);
         var clear = BoardStyle.MakeButton("Clear", 16);
         clear.CustomMinimumSize = new Vector2(100, 46);
-        clear.Pressed += () => { seat.Deck = new DeckList(); Service.Save(); Show(); };
+        clear.Pressed += () => { seat.Deck = new DeckList(); Session.DeckEdited(); Show(); };
         actions.AddChild(clear);
         var finish = BoardStyle.MakePrimaryButton(finishLabel, 18);
         finish.CustomMinimumSize = new Vector2(160, 46);
@@ -533,8 +599,8 @@ public partial class LimitedScreen : Control
 
     private void ShowRounds()
     {
-        var ev = Service.Current!;
-        int human = ev.HumanSeat;
+        var ev = Session.Current!;
+        int human = Session.Seat;
         bool finished = ev.Stage == EventStage.Finished;
         _title.Text = finished ? "Event results" : $"Round {ev.Rounds.Count} of {ev.RoundsTotal}";
 
@@ -551,24 +617,45 @@ public partial class LimitedScreen : Control
         if (ev.CurrentMatch is { } match && !finished)
         {
             int opponent = match.Opponent(human)!.Value;
-            matchBox.AddChild(MenuKit.SectionTitle($"Your match: {ev.Seats[human].Name} vs {ev.Seats[opponent].Name} ({DeckColors(ev.Seats[opponent].Deck)})"));
+            var colors = DeckColors(ev.Seats[opponent].Deck);
+            matchBox.AddChild(MenuKit.SectionTitle($"Your match: {ev.Seats[human].Name} vs {ev.Seats[opponent].Name}" + (colors.Length > 0 ? $" ({colors})" : "")));
             matchBox.AddChild(BoardStyle.MakeLabel($"Games: {match.WinsOf(human)} – {match.WinsOf(opponent)}" + (match.Draws > 0 ? $" ({match.Draws} drawn)" : "")
                                                  + (ev.BestOf > 1 ? $" · best of {ev.BestOf}" : ""), 16));
             var actions = new HBoxContainer();
             actions.AddThemeConstantOverride("separation", 12);
-            var play = BoardStyle.MakePrimaryButton($"Play game {match.WinsA + match.WinsB + match.Draws + 1}", 20);
-            play.CustomMinimumSize = new Vector2(220, 52);
-            play.Pressed += () =>
+            int next = match.WinsA + match.WinsB + match.Draws + 1;
+            if (Session.GameInProgress)
             {
-                App.Instance.PendingMatch = Service.NextGame();
-                App.Instance.GoTo(App.GameBoardScene);
-            };
-            actions.AddChild(play);
+                var back = BoardStyle.MakePrimaryButton($"Return to game {next}", 20);
+                back.CustomMinimumSize = new Vector2(240, 52);
+                back.Pressed += Session.ReturnToGame;
+                actions.AddChild(back);
+            }
+            else if (Session.WaitingForOpponent)
+            {
+                actions.AddChild(BoardStyle.MakeLabel("Ready. Waiting for your opponent…", 16, BoardStyle.TextDim));
+            }
+            else
+            {
+                var play = BoardStyle.MakePrimaryButton(Session.IsOnline ? $"Ready for game {next}" : $"Play game {next}", 20);
+                play.CustomMinimumSize = new Vector2(220, 52);
+                play.Pressed += () =>
+                {
+                    Session.PlayNext();
+                    if (Session.IsOnline) Show();
+                };
+                actions.AddChild(play);
+            }
             var edit = BoardStyle.MakeButton(ev.BestOf > 1 && match.WinsA + match.WinsB + match.Draws > 0 ? "Sideboard" : "Edit deck", 16);
             edit.CustomMinimumSize = new Vector2(150, 52);
             edit.Pressed += () => { _editingDuringEvent = true; Show(); };
+            edit.Disabled = Session.GameInProgress;
             actions.AddChild(edit);
             matchBox.AddChild(actions);
+        }
+        else if (!finished)
+        {
+            matchBox.AddChild(MenuKit.SectionTitle("Your match is over. Waiting for the other matches of this round…"));
         }
         else
         {
@@ -586,7 +673,8 @@ public partial class LimitedScreen : Control
             actions.AddChild(save);
             var again = BoardStyle.MakePrimaryButton("New event", 18);
             again.CustomMinimumSize = new Vector2(180, 48);
-            again.Pressed += () => { Service.Abandon(); Show(); };
+            again.Text = Session.IsOnline ? "Leave event" : "New event";
+            again.Pressed += () => { Session.Abandon(); Show(); };
             actions.AddChild(again);
             matchBox.AddChild(actions);
         }
@@ -622,7 +710,9 @@ public partial class LimitedScreen : Control
         }
         right.AddChild(new Control { CustomMinimumSize = new Vector2(0, 16) });
         var abandon = BoardStyle.MakeButton(finished ? "Close event" : "Abandon event", 14);
-        abandon.Pressed += () => Ask(finished ? "Close this event?" : "Abandon this event? It can't be resumed.", () => { Service.Abandon(); Show(); });
+        abandon.Pressed += () => Ask(finished ? "Close this event?"
+            : Session.IsOnline ? "Leave this event? The computer plays your games from now on." : "Abandon this event? It can't be resumed.",
+            () => { Session.Abandon(); Show(); });
         right.AddChild(abandon);
         body.AddChild(MenuKit.Card(right, 14));
     }
