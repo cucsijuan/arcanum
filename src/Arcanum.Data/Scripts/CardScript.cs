@@ -965,6 +965,7 @@ public static class CardScriptParser
             };
         if (e.TryGetProperty("revealTop", out var rvt)) return new RevealTop(ParseFilter(rvt, ControllerFilter.Any), Flag("optional"), Effects(e));
         if (Flag("damageCantBePrevented")) return new DamageCantBePreventedThisTurn();
+        if (e.TryGetProperty("simultaneously", out var sim)) return new Simultaneously(EffectList(sim));
         if (Value("goad") is { } goad) return new Goad(goad);
         if (Value("protectionFromChosenType") is { } pfct) return new ProtectionFromChosenType(pfct);
         if (Value("protectionFromColorsOf") is { } pfco) return new ProtectionFromColorsOf(pfco, Subj("what", "self"));

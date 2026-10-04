@@ -54,6 +54,9 @@ public sealed class Card
     /// <summary>As a spell: the mana spent to cast it.</summary>
     public int ManaSpent { get; set; }
 
+    /// <summary>The spell it was (version) and its mana value with X, as it last existed on the stack.</summary>
+    public (int Version, int ManaValue)? LastOnStack { get; set; }
+
     /// <summary>The X chosen when this permanent was cast (its enters abilities use it, rule 107.3m).</summary>
     public int CastX { get; set; }
 
@@ -329,6 +332,8 @@ public sealed class Card
                 Blocking = WasBlocking,
                 Supertypes = Supertypes,
                 AttachedTo = AttachedTo,
+                Version = Version,
+                ManaValue = Definition.ManaCost.ManaValue,
             };
         }
         Tapped = false;
@@ -387,6 +392,11 @@ public sealed class Card
 public sealed record LastKnown(int Power, int Toughness, Core.PlayerId Controller, IReadOnlyDictionary<CounterKind, int> Counters,
     IReadOnlyList<string> Subtypes, IReadOnlyList<AbilityDefinition> Abilities, CardType Types)
 {
+    /// <summary>The object (version) this describes.</summary>
+    public int Version { get; init; }
+
+    public int ManaValue { get; init; }
+
     public string Name { get; init; } = "";
     public IReadOnlyList<string> Colors { get; init; } = Array.Empty<string>();
     public IReadOnlySet<Keyword> Keywords { get; init; } = new HashSet<Keyword>();

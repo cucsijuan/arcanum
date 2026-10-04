@@ -298,9 +298,7 @@ public sealed partial class Game
         // A promised gift is given before the spell's other effects (rule 702.174b).
         if (item is SpellOnStack { GiftTo: { } giftee } && source.Definition.Gift is { } gift && !State.GetPlayer(giftee).HasLost)
         {
-            BeginEnteringTogether();
-            for (int i = 0, n = Has(giftee, Replacements.DoubleTokens) ? 2 : 1; i < n; i++) CreateToken(gift, giftee);
-            EndEnteringTogether();
+            await CreateTokenEventAsync(giftee, gift, 1, false, source);
         }
         if (item is AbilityOnStack { Ability: var counted }) source.ResolvedThisTurn[counted] = source.ResolvedThisTurn.GetValueOrDefault(counted) + 1;
         await ApplyAllAsync(ability.Effects, context);
@@ -318,6 +316,7 @@ public sealed partial class Game
         {
             if (State.IsGameOver) return;
             await ApplyAsync(effect, ctx);
+            await ResolvePendingCountersAsync();
             RecomputeContinuousEffects(); // later effects see earlier ones ("then it fights")
         }
     }
@@ -427,7 +426,7 @@ public sealed partial class Game
         // A target that left the battlefield during resolution ("its toughness" after it was moved) is used as it
         // last existed there (rule 608.2h).
         LastKnown? TargetLastKnown() => TargetCard() is { } t && ctx.ChosenVersionAt(q.Index) is { } v && v != t.Version
-                                        && t.Zone != Zone.Battlefield ? t.LastKnownInfo : null;
+                                        && t.Zone != Zone.Battlefield && t.LastKnownInfo is { } lk && lk.Version == v ? lk : null;
         int value = q.Kind switch
         {
             QuantityKind.Fixed => q.Value,
@@ -464,7 +463,12 @@ public sealed partial class Game
             QuantityKind.SourcePower => ctx.Source.Zone == Zone.Battlefield || ctx.Source.LastKnownInfo is null ? ctx.Source.Power : ctx.Source.LastKnownInfo.Power,
             QuantityKind.TargetPower => TargetLastKnown()?.Power ?? TargetCard()?.Power ?? 0,
             QuantityKind.TargetToughness => TargetLastKnown()?.Toughness ?? TargetCard()?.Toughness ?? 0,
-            QuantityKind.TargetManaValue => TargetCard() is { } tmv ? ManaValueOf(tmv) : 0,
+            // As the chosen object last existed (rule 608.2h): a spell that left the stack keeps its X.
+            QuantityKind.TargetManaValue => TargetCard() is { } tmv
+                ? ctx.ChosenVersionAt(q.Index) is { } chosenVersion && chosenVersion != tmv.Version
+                    ? TargetLastKnown()?.ManaValue ?? (tmv.LastOnStack is { } stack && stack.Version == chosenVersion ? stack.ManaValue : ManaValueOf(tmv))
+                    : ManaValueOf(tmv)
+                : 0,
             QuantityKind.LifeGainedThisTurn => State.GetPlayer(ctx.Controller).LifeGainedThisTurn,
             QuantityKind.YourLife => State.GetPlayer(ctx.Controller).Life,
             QuantityKind.HandSize => State.GetPlayer(ctx.Controller).Hand.Count,
@@ -573,19 +577,14 @@ public sealed partial class Game
                     Keywords = tc.AddKeywords is { } addKeywords ? copy.Keywords.Concat(addKeywords).Distinct().ToList() : copy.Keywords,
                     Abilities = tc.AddAbilities is { } addAbilities ? copy.Abilities.Concat(addAbilities).ToList() : copy.Abilities,
                 };
-                int copies = count * (Has(ctx.Controller, Replacements.DoubleTokens) ? 2 : 1);
-                BeginEnteringTogether();
-                for (int i = 0; i < copies; i++)
-                    if (CreateToken(copy, ctx.Controller, tc.Tapped) is { } made)
-                    {
-                        ctx.Results.Created.Add(made);
-                        if (tc.Attacking && State.Combat is { } copyCombat)
-                            copyCombat.Attacks.Add(new AttackInfo { Attacker = made, Defender = await AttackedPlayerFor(State.GetCard(made), ctx) });
-                        if (tc.AtNextEndStep is { } later)
-                            State.AtNextEndStepEffects.Add((ctx.Source.Id, ctx.Controller, made, State.GetCard(made).Version, later, tc.AtNextEndStepUnless));
-                    }
-                AddExtraFood(ctx.Controller);
-                EndEnteringTogether();
+                foreach (var made in (await CreateTokenEventAsync(ctx.Controller, copy, count, tc.Tapped, ctx.Source)).Originals)
+                {
+                    ctx.Results.Created.Add(made);
+                    if (tc.Attacking && State.Combat is { } copyCombat)
+                        copyCombat.Attacks.Add(new AttackInfo { Attacker = made, Defender = await AttackedPlayerFor(State.GetCard(made), ctx) });
+                    if (tc.AtNextEndStep is { } later)
+                        State.AtNextEndStepEffects.Add((ctx.Source.Id, ctx.Controller, made, State.GetCard(made).Version, later, tc.AtNextEndStepUnless));
+                }
                 break;
             }
             case GuessTopCard gt:
@@ -1857,10 +1856,7 @@ public sealed partial class Game
                     var discarded = await DiscardAsync(player, 1, player);
                     ctx.Results.Discarded.AddRange(discarded);
                     if (!discarded.Any(id => !State.GetCard(id).Is(CardType.Land))) continue;
-                    BeginEnteringTogether();
-                    for (int i = 0, n = Has(player, Replacements.DoubleTokens) ? 2 : 1; i < n; i++)
-                        if (CreateToken(rc.Token, player) is { } soldier) ctx.Results.Created.Add(soldier);
-                    EndEnteringTogether();
+                    ctx.Results.Created.AddRange((await CreateTokenEventAsync(player, rc.Token, 1, false, ctx.Source)).Originals);
                 }
                 break;
             case Attach at:
@@ -2092,6 +2088,11 @@ public sealed partial class Game
                 if (moved > 0) await ApplyAllAsync(mcc.Then, ctx); // "one or more … If you do"
                 break;
             }
+            case Simultaneously sim:
+                BeginSimultaneous();
+                await ApplyAllAsync(sim.Effects, ctx);
+                EndSimultaneous();
+                break;
             case RevealTop rt:
             {
                 var player = State.GetPlayer(ctx.Controller);
@@ -2181,31 +2182,21 @@ public sealed partial class Game
             case CreateTokens t:
             {
                 int count = Eval(t.Count, ctx);
-                BeginEnteringTogether();
-                foreach (var player in PlayersFor(t.Controller, ctx))
+                foreach (var player in PlayersFor(t.Controller, ctx).ToList())
                 {
-                    int made = count * (Has(player, Replacements.DoubleTokens) ? 2 : 1);
-                    // "If you would create a Food token, instead create a Food token and a Treasure token."
-                    if (t.Token.Subtypes.Contains("Food") && Has(player, Replacements.FoodAlsoTreasure))
-                        for (int i = 0; i < made; i++) CreateToken(PredefinedTokens.Treasure, player);
-                    if (made > 0) AddExtraFoodAfter.Add(player);
-                    for (int i = 0; i < made; i++)
-                        if (CreateToken(t.Token, player, t.Tapped) is { } token)
-                        {
-                            ctx.Results.Created.Add(token);
-                            // "Tapped and attacking": attacking what the creature the trigger was about attacks.
-                            if (t.Attacking && State.Combat is { } combat && ctx.Trigger?.Subject is { } attackerId && combat.FindAttack(attackerId) is { } attack)
-                                combat.Attacks.Add(new AttackInfo { Attacker = token, Defender = attack.Defender, Planeswalker = attack.Planeswalker });
-                            else if (t.Attacking && State.Combat is { } openCombat)
-                                openCombat.Attacks.Add(new AttackInfo { Attacker = token, Defender = await AttackedPlayerFor(State.GetCard(token), ctx) });
-                            if (t.SacrificeAtEndOfCombat) State.SacrificeAtEndOfCombat.Add((token, State.GetCard(token).Version));
-                            if (t.HasteUntilEndOfTurn)
-                                State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(token, State.GetCard(token).Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });
-                        }
+                    foreach (var token in (await CreateTokenEventAsync(player, t.Token, count, t.Tapped, ctx.Source)).Originals)
+                    {
+                        ctx.Results.Created.Add(token);
+                        // "Tapped and attacking": attacking what the creature the trigger was about attacks.
+                        if (t.Attacking && State.Combat is { } combat && ctx.Trigger?.Subject is { } attackerId && combat.FindAttack(attackerId) is { } attack)
+                            combat.Attacks.Add(new AttackInfo { Attacker = token, Defender = attack.Defender, Planeswalker = attack.Planeswalker });
+                        else if (t.Attacking && State.Combat is { } openCombat)
+                            openCombat.Attacks.Add(new AttackInfo { Attacker = token, Defender = await AttackedPlayerFor(State.GetCard(token), ctx) });
+                        if (t.SacrificeAtEndOfCombat) State.SacrificeAtEndOfCombat.Add((token, State.GetCard(token).Version));
+                        if (t.HasteUntilEndOfTurn)
+                            State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(token, State.GetCard(token).Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });
+                    }
                 }
-                foreach (var player in AddExtraFoodAfter) AddExtraFood(player);
-                AddExtraFoodAfter.Clear();
-                EndEnteringTogether();
             }
                 break;
             default:
@@ -2231,12 +2222,7 @@ public sealed partial class Game
         bool IsArmy(Card c) => c.IsCreature && c.HasSubtype("Army");
         if (!State.PermanentsControlledBy(player).Any(IsArmy))
         {
-            BeginEnteringTogether();
-            int made = Has(player, Replacements.DoubleTokens) ? 2 : 1;
-            for (int i = 0; i < made; i++)
-                if (CreateToken(amass.Token, player) is { } token) ctx.Results.Created.Add(token);
-            AddExtraFood(player);
-            EndEnteringTogether();
+            ctx.Results.Created.AddRange((await CreateTokenEventAsync(player, amass.Token, 1, false, ctx.Source)).Originals);
         }
         var armies = State.PermanentsControlledBy(player).Where(IsArmy).ToList();
         if (armies.Count == 0) return;
@@ -2297,11 +2283,48 @@ public sealed partial class Game
         if (source.Has(Keyword.Lifelink)) GainLifeFor(source.Controller, amount);
     }
 
-    /// <summary>"Those tokens plus an additional Food token are created instead" (once per such permanent), after tokens were created.</summary>
-    private void AddExtraFood(PlayerId player)
+    /// <summary>
+    /// One event that creates tokens for a player, after the replacement effects that modify it: each one applies once, in
+    /// the order the player chooses (rules 614.5 and 616.1) — "twice that many", "plus an additional Food", "a Food and a
+    /// Treasure instead of a Food". Returns the tokens of the original kind and every token made.
+    /// </summary>
+    private async Task<(List<CardId> Originals, List<CardId> All)> CreateTokenEventAsync(PlayerId player, CardDefinition token, int count, bool tapped, Card source)
     {
-        foreach (var _ in State.PermanentsControlledBy(player).Where(c => (c.Definition.Replaces & Replacements.ExtraFoodWithTokens) != 0).ToList())
-            CreateToken(PredefinedTokens.Food, player);
+        var originals = new List<CardId>();
+        var all = new List<CardId>();
+        if (count <= 0) return (originals, all);
+        var batch = new List<(CardDefinition Token, int Count, bool Original)> { (token, count, true) };
+        int doublings = Instances(player, Replacements.DoubleTokens);
+        int extraFoods = Instances(player, Replacements.ExtraFoodWithTokens);
+        int treasures = Instances(player, Replacements.FoodAlsoTreasure);
+        while (true)
+        {
+            int foods = batch.Where(b => b.Token.Subtypes.Contains("Food")).Sum(b => b.Count);
+            var choices = new List<(string Label, Action Apply)>();
+            if (doublings > 0) choices.Add(("Twice that many tokens", () => { batch = batch.Select(b => (b.Token, b.Count * 2, b.Original)).ToList(); doublings--; }));
+            if (extraFoods > 0) choices.Add(("Those tokens plus an additional Food", () => { batch.Add((PredefinedTokens.Food, 1, false)); extraFoods--; }));
+            if (treasures > 0 && foods > 0) choices.Add(("A Treasure for each Food", () => { batch.Add((PredefinedTokens.Treasure, foods, false)); treasures--; }));
+            if (choices.Count == 0) break;
+            int pick = 0;
+            if (choices.Count > 1)
+            {
+                pick = await ControllerOf(player).ChooseOptionAsync(ViewFor(player), new OptionRequest(
+                    $"Creating {string.Join(", ", batch.Select(b => $"{b.Count} {b.Token.Name}"))}: which replacement applies next?", source.Id,
+                    choices.Select(c => c.Label).ToList(), OptionKind.Other));
+                Require(pick >= 0 && pick < choices.Count, "Choose one of the replacements.");
+            }
+            choices[pick].Apply();
+        }
+        BeginEnteringTogether();
+        foreach (var (def, n, original) in batch)
+            for (int i = 0; i < n; i++)
+                if (CreateToken(def, player, original && tapped) is { } made)
+                {
+                    all.Add(made);
+                    if (original) originals.Add(made);
+                }
+        EndEnteringTogether();
+        return (originals, all);
     }
 
     private CardId? CreateToken(CardDefinition definition, PlayerId controller, bool tapped = false)
@@ -2345,13 +2368,56 @@ public sealed partial class Game
     private void PutCounters(Card card, CounterKind kind, int count, PlayerId? placedBy = null)
     {
         if (count <= 0) return;
-        // "That many plus one +1/+1 counters are put on it instead" (Armies, Goblins and Orcs), then doubling.
-        if (kind == CounterKind.PlusOnePlusOne && card.IsCreature && (card.HasSubtype("Army") || card.HasSubtype("Goblin") || card.HasSubtype("Orc")))
-            count += State.PermanentsControlledBy(card.Controller).Count(c => (c.Definition.Replaces & Replacements.ExtraCounterOnArmiesGoblinsOrcs) != 0);
-        if (Has(card.Controller, Replacements.DoubleCounters)) count *= 2;
+        int plusOnes = ExtraCounterInstances(card, kind), doublings = Instances(card.Controller, Replacements.DoubleCounters);
+        if (plusOnes > 0 && doublings > 0)
+        {
+            // Both kinds of replacement apply: the permanent's controller chooses their order (rule 616.1), as soon as the
+            // engine can ask (right after the current effect).
+            _pendingCounters.Add((card.Id, card.Version, kind, count, placedBy));
+            return;
+        }
+        PlaceCounters(card, kind, (count + plusOnes) << doublings, placedBy);
+    }
+
+    private void PlaceCounters(Card card, CounterKind kind, int count, PlayerId? placedBy)
+    {
         card.Counters[kind] = card.CounterCount(kind) + count;
         Emit(new CountersPlaced(card.Id, kind, count, placedBy));
     }
+
+    /// <summary>"That many plus one +1/+1 counters are put on it instead" effects that apply (Armies, Goblins and Orcs you control).</summary>
+    private int ExtraCounterInstances(Card card, CounterKind kind) =>
+        kind == CounterKind.PlusOnePlusOne && card.IsCreature && (card.HasSubtype("Army") || card.HasSubtype("Goblin") || card.HasSubtype("Orc"))
+            ? Instances(card.Controller, Replacements.ExtraCounterOnArmiesGoblinsOrcs) : 0;
+
+    /// <summary>Counters waiting for their controller to order the replacement effects that modify them.</summary>
+    private readonly List<(CardId Card, int Version, CounterKind Kind, int Count, PlayerId? PlacedBy)> _pendingCounters = new();
+
+    /// <summary>Puts the waiting counters, each replacement effect applied once in the order the permanent's controller chooses.</summary>
+    private async Task ResolvePendingCountersAsync()
+    {
+        while (_pendingCounters.Count > 0)
+        {
+            var (id, version, kind, count, placedBy) = _pendingCounters[0];
+            _pendingCounters.RemoveAt(0);
+            var card = State.GetCard(id);
+            if (card.Zone != Zone.Battlefield || card.Version != version) continue;
+            int plusOnes = ExtraCounterInstances(card, kind), doublings = Instances(card.Controller, Replacements.DoubleCounters);
+            while (plusOnes > 0 || doublings > 0)
+            {
+                bool plusFirst = doublings == 0 || (plusOnes > 0 && await ControllerOf(card.Controller).ChooseOptionAsync(ViewFor(card.Controller),
+                    new OptionRequest($"{count} {CounterName(kind)} counter{(count == 1 ? "" : "s")} on {card.Name}: which replacement applies next?", card.Id,
+                        new[] { "That many plus one", "Twice that many" }, OptionKind.Other)) == 0);
+                if (plusFirst) { count += 1; plusOnes--; }
+                else { count *= 2; doublings--; }
+            }
+            PlaceCounters(card, kind, count, placedBy);
+        }
+    }
+
+    /// <summary>How many permanents with this replacement effect a player controls (each one applies, rule 616).</summary>
+    private int Instances(PlayerId player, Replacements replacement) =>
+        State.PermanentsControlledBy(player).Count(c => (c.Definition.Replaces & replacement) != 0);
 
     /// <summary>Whether a player controls a permanent with this replacement effect.</summary>
     private bool Has(PlayerId player, Replacements replacement) =>
@@ -2398,8 +2464,8 @@ public sealed partial class Game
         var lki = source.Zone is not (Zone.Battlefield or Zone.Stack) && source.ZoneChangedTurn == State.TurnNumber ? source.LastKnownInfo : null;
         var controller = lki?.Controller ?? source.Controller;
         bool creature = lki is not null ? (lki.Types & CardType.Creature) != 0 : source.IsCreature && source.Zone == Zone.Battlefield;
-        if (victim != controller && Has(controller, Replacements.DoubleDamageToOpponents)) amount *= 2;
-        if (creature && Has(controller, Replacements.DoubleCreatureDamage)) amount *= 2;
+        if (victim != controller) amount <<= Instances(controller, Replacements.DoubleDamageToOpponents);
+        if (creature) amount <<= Instances(controller, Replacements.DoubleCreatureDamage);
         return amount;
     }
 
@@ -2813,8 +2879,7 @@ public sealed partial class Game
     /// <summary>The amount a pending trigger is about, while its targets are chosen and checked ("with equal or lesser mana value than that spell").</summary>
     private int _triggeredAmount;
 
-    /// <summary>Players who created tokens in the current token event (each gets Peregrin-style extra Food after it).</summary>
-    private readonly List<PlayerId> AddExtraFoodAfter = new();
+
 
     /// <summary>Activated abilities a permanent has from lands its controller's opponents control.</summary>
     private readonly Dictionary<CardId, List<ActivatedAbility>> _sharkeyAbilities = new();
@@ -3541,10 +3606,19 @@ public sealed partial class Game
     /// </summary>
     private List<CardId>? _lookBack;
 
-    private void BeginSimultaneous() => _lookBack ??= State.Battlefield.ToList();
+    /// <summary>Nesting of simultaneous groups: an effect inside a larger event ("a counter and a lifelink counter on each") stays part of it.</summary>
+    private int _simultaneousDepth;
+
+    private void BeginSimultaneous()
+    {
+        _lookBack ??= State.Battlefield.ToList();
+        _simultaneousDepth++;
+    }
 
     private void EndSimultaneous()
     {
+        if (--_simultaneousDepth > 0) return;
+        _simultaneousDepth = 0;
         _lookBack = null;
         _batchTriggered.Clear();
     }

@@ -76,6 +76,7 @@ public sealed partial class Game
     /// <summary>"As this enters, choose a color / creature type" (rule 614.12), made before anything else happens.</summary>
     private async Task ResolveEnterChoicesAsync()
     {
+        await ResolvePendingCountersAsync();
         while (State.PendingEnterChoices.Count > 0)
         {
             var (id, version) = State.PendingEnterChoices[0];
@@ -660,7 +661,11 @@ public sealed partial class Game
         var sacrificed = await PayExtraAsync(player.Id, ability.Cost.Extra, source.Id);
         if (ability.OncePerTurn) source.ActivatedThisTurn.Add(action.Index);
         if (ability.OnlyOnce) source.ActivatedEver.Add(action.Index);
-        if (ability.Cost.AddCounters > 0) PutCounters(source, ability.Cost.AddCounterKind, ability.Cost.AddCounters, player.Id);
+        if (ability.Cost.AddCounters > 0)
+        {
+            PutCounters(source, ability.Cost.AddCounterKind, ability.Cost.AddCounters, player.Id);
+            await ResolvePendingCountersAsync();
+        }
         if (ability.Cost.ReturnSelfToHand) MoveCard(source.Id, Zone.Hand);
         if (ability.Cost.TapGranter && ability.GrantedBy is { } granter)
         {

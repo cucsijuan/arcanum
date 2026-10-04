@@ -327,6 +327,9 @@ public sealed record MayPay(string Prompt, Mana.ManaCost? Mana, ExtraCost? Extra
 /// <summary>"You may reveal the top card of your library. If it's a [filter] card, [effects]" (the card is "found").</summary>
 public sealed record RevealTop(ObjectFilter Filter, bool Optional, IReadOnlyList<Effect> Effects) : Effect;
 
+/// <summary>Several effects that are one event ("put a +1/+1 counter and a lifelink counter on it"): "one or more" triggers see it once.</summary>
+public sealed record Simultaneously(IReadOnlyList<Effect> Effects) : Effect;
+
 /// <summary>"Damage can't be prevented this turn."</summary>
 public sealed record DamageCantBePreventedThisTurn : Effect;
 

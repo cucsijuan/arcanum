@@ -293,4 +293,99 @@ public class LegendaryJourneyTests
         await s.RunUntilTurn(3);
         Assert.Equal(life - 2, s.Game.State.GetPlayer(P0).Life);
     }
+
+    [Theory]
+    [InlineData(0, 4)] // that many plus one, then twice that many: (1 + 1) × 2
+    [InlineData(1, 3)] // twice that many, then plus one: 1 × 2 + 1
+    public async Task TheAffectedPlayerOrdersReplacementsOfCounters(int pick, int expected)
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        var orc = s.Add(P0, Creature("Orc", 1, 1) with { Subtypes = new[] { "Orc" } });
+        s.Add(P0, new CardDefinition { Name = "Captain", Types = CardType.Enchantment, Replaces = Replacements.ExtraCounterOnArmiesGoblinsOrcs });
+        s.Add(P0, new CardDefinition { Name = "Season", Types = CardType.Enchantment, Replaces = Replacements.DoubleCounters });
+        s.InHand(P0, TargetedSorcery("Grow", new TargetSpec(TargetKind.Creature, ControllerFilter.You), new AddCounters(1, Subject.TargetAt(0), CounterKind.PlusOnePlusOne)));
+        s.Attacker.Option = (_, r) => r.Options.Contains("Twice that many") ? pick : 0;
+        await s.RunUntilTurn();
+        Assert.Equal(expected, s.Card(orc).CounterCount(CounterKind.PlusOnePlusOne));
+    }
+
+    [Fact]
+    public async Task EachTokenDoublerApplies()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.Add(P0, new CardDefinition { Name = "Season A", Types = CardType.Enchantment, Replaces = Replacements.DoubleTokens });
+        s.Add(P0, new CardDefinition { Name = "Season B", Types = CardType.Enchantment, Replaces = Replacements.DoubleTokens });
+        s.InHand(P0, Sorcery("Muster", new CreateTokens(Creature("Soldier", 1, 1), 1, Subject.You)));
+        await s.RunUntilTurn();
+        Assert.Equal(4, s.Game.State.PermanentsControlledBy(P0).Count(c => c.Name == "Soldier"));
+    }
+
+    [Theory]
+    [InlineData(0, 3)] // twice that many first, then the extra Food: 2 Soldiers + 1 Food
+    [InlineData(1, 4)] // the extra Food first, then everything doubled: 2 Soldiers + 2 Foods
+    public async Task ThePlayerOrdersReplacementsOfTokens(int pick, int expectedTokens)
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.Add(P0, new CardDefinition { Name = "Host", Types = CardType.Enchantment, Replaces = Replacements.ExtraFoodWithTokens });
+        s.Add(P0, new CardDefinition { Name = "Season", Types = CardType.Enchantment, Replaces = Replacements.DoubleTokens });
+        s.InHand(P0, Sorcery("Muster", new CreateTokens(Creature("Soldier", 1, 1), 1, Subject.You)));
+        s.Attacker.Option = (_, r) => r.Prompt.Contains("replacement") ? pick : 0;
+        await s.RunUntilTurn();
+        Assert.Equal(2, s.Game.State.PermanentsControlledBy(P0).Count(c => c.Name == "Soldier"));
+        Assert.Equal(expectedTokens, s.Game.State.PermanentsControlledBy(P0).Count(c => c.Definition.IsToken));
+    }
+
+    [Fact]
+    public async Task SeveralCounterEffectsInOneEventTriggerOnce()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        var leader = s.Add(P0, Creature("Leader", 3, 3) with
+        {
+            Abilities = new AbilityDefinition[]
+            {
+                new TriggeredAbility
+                {
+                    Trigger = TriggerEvent.CountersPlaced, OnSelf = true, AnyCounterKind = true, Batched = true,
+                    Effects = new Effect[] { new GainLife(1, Subject.You) }, Text = "whenever one or more counters are put on this, gain 1",
+                },
+            },
+        });
+        s.InHand(P0, TargetedSorcery("Bless", new TargetSpec(TargetKind.Creature, ControllerFilter.You), new Simultaneously(new Effect[]
+        {
+            new AddCounters(1, Subject.TargetAt(0), CounterKind.PlusOnePlusOne), new AddCounters(1, Subject.TargetAt(0), CounterKind.Lifelink),
+        })));
+        int life = s.Game.State.GetPlayer(P0).Life;
+        await s.RunUntilTurn();
+        Assert.Equal(life + 1, s.Game.State.GetPlayer(P0).Life);
+        Assert.Equal(1, s.Card(leader).CounterCount(CounterKind.Lifelink));
+    }
+
+    [Fact]
+    public async Task ASpellReturnedToHandKeepsTheManaValueItHadOnTheStack()
+    {
+        var s = new Scenario();
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Lands(P0, 4);
+        var golem = s.InHand(P0, Creature("Growing Golem", 0, 0) with { ManaCost = ManaCost.Parse("{X}{R}") });
+        s.InHand(P0, new CardDefinition
+        {
+            Name = "Recall and Measure", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Instant,
+            Spell = new SpellAbility
+            {
+                Targets = new[] { new TargetSpec(TargetKind.Spell) },
+                Effects = new Effect[] { new ReturnToHand(Subject.TargetAt(0)), new GainLife(new Quantity(0, QuantityKind.TargetManaValue), Subject.You) },
+            },
+        });
+        s.Attacker.Number = (_, r) => r.Prompt.Contains("Golem") ? 2 : r.Max;
+        s.Attacker.Act = (view, legal) => legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == golem && view.Stack.Count == 0)
+                                         ?? legal.OfType<CastSpell>().FirstOrDefault(c => c.Card != golem && view.Stack.Count > 0) as PlayerAction
+                                         ?? PassPriority.Instance;
+        int life = s.Game.State.GetPlayer(P0).Life;
+        await s.RunUntilTurn();
+        Assert.Equal(life + 3, s.Game.State.GetPlayer(P0).Life); // {X}{R} with X = 2
+    }
 }

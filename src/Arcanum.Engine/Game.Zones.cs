@@ -84,6 +84,7 @@ public sealed partial class Game
                 to = Zone.Exile;
         }
 
+        if (from == Zone.Stack) card.LastOnStack = (card.Version, ManaValueOf(card));
         switch (from)
         {
             case Zone.Battlefield:

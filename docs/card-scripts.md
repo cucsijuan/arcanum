@@ -451,3 +451,9 @@ Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYo
   opponents' lands, which can't be activated unless they're mana abilities).
 - A legendary instant or sorcery can be cast only with a legendary creature or planeswalker. "A deck can have up to nine
   cards named …" raises the copy limit; enters abilities that refer to X use the X the permanent was cast with.
+- `{ "simultaneously": [ … ] }`: several effects that are one event ("put a +1/+1 counter and a lifelink counter on it",
+  "each deal damage"), so "one or more" triggers see it once.
+- Replacement effects on tokens and counters ("twice that many", "plus an additional Food", "a Food and a Treasure",
+  "that many plus one") each apply once per permanent that has them; when more than one kind applies, the affected
+  player chooses the order (rule 616.1). Damage doublers stack the same way. Quantities about a target that changed zones
+  use the object as it last existed (a spell returned to hand keeps the mana value it had with its X).
