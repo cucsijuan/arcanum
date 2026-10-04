@@ -231,6 +231,15 @@ public partial class LimitedScreen : Control
         _preview.Visible = true;
     }
 
+    /// <summary>The card large, beside a list row (lists sit on the right, so the preview goes to their left).</summary>
+    private void ShowPreviewLeftOf(CardDefinition definition, Control row)
+    {
+        _preview.Setup(ViewOf(definition), false);
+        var rect = row.GetGlobalRect();
+        _preview.Position = new Vector2(rect.Position.X - _preview.Size.X - 16, Math.Clamp(rect.Position.Y - 120, 90, GetViewportRect().Size.Y - _preview.Size.Y - 20));
+        _preview.Visible = true;
+    }
+
     private static ScrollContainer Scroll(Control inner)
     {
         var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, SizeFlagsHorizontal = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
@@ -431,12 +440,15 @@ public partial class LimitedScreen : Control
             list.AddChild(BoardStyle.MakeLabel($"{group.Key} ({group.Count()})", 14, BoardStyle.TextDim, bold: true));
             foreach (var x in group.OrderBy(x => x.Def.ManaCost.ManaValue).ThenBy(x => x.Card.Name))
             {
-                var row = new HBoxContainer();
+                var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Stop };
                 var name = BoardStyle.MakeLabel(x.Card.Name, 14);
                 name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
                 name.ClipText = true;
                 row.AddChild(name);
                 row.AddChild(BoardStyle.MakeCostRow(x.Def.ManaCost.ToString(), 16, 10));
+                var def = x.Def;
+                row.MouseEntered += () => ShowPreviewLeftOf(def, row);
+                row.MouseExited += () => _preview.Visible = false;
                 list.AddChild(row);
             }
         }
@@ -510,13 +522,7 @@ public partial class LimitedScreen : Control
             var row = new Button { Flat = true, FocusMode = FocusModeEnum.None, Alignment = HorizontalAlignment.Left, TooltipText = "Take it out of the deck" };
             row.Text = $"{entry.Count}  {entry.Name}";
             row.AddThemeFontSizeOverride("font_size", 14);
-            row.MouseEntered += () =>
-            {
-                _preview.Setup(ViewOf(def), false);
-                var rect = row.GetGlobalRect();
-                _preview.Position = new Vector2(rect.Position.X - _preview.Size.X - 16, Math.Clamp(rect.Position.Y - 120, 90, GetViewportRect().Size.Y - _preview.Size.Y - 20));
-                _preview.Visible = true;
-            };
+            row.MouseEntered += () => ShowPreviewLeftOf(def, row);
             row.MouseExited += () => _preview.Visible = false;
             row.Pressed += () =>
             {

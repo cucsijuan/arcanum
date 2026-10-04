@@ -319,6 +319,14 @@ public partial class OnlineScreen : Control
         {
             var problem = hosted.StartProblem;
             if (problem is not null) actions.AddChild(MenuKit.Hint(problem));
+            if (hosted.State.Seats.Any(s => s.Kind == LobbySeatKind.Open))
+            {
+                var fill = BoardStyle.MakeButton("\U0001F916 Fill free seats with the computer", 16);
+                fill.CustomMinimumSize = new Vector2(0, 50);
+                fill.TooltipText = "The computer plays every seat nobody took (with its own decks, or its own boosters in an event)";
+                fill.Pressed += Online.FillWithComputer;
+                actions.AddChild(fill);
+            }
             var start = BoardStyle.MakePrimaryButton("Start game", 20);
             start.CustomMinimumSize = new Vector2(220, 50);
             start.Disabled = problem is not null;

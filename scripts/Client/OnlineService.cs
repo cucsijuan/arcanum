@@ -72,6 +72,7 @@ public partial class OnlineService : Node
         Leave();
         var settings = new LobbySettings(format.Name, format.Commander, format.StartingLife, players, Version, ContentId);
         _lobby = new LobbyHost(settings, list => CheckDeck(list, format));
+        _hostFormat = format;
         _lobby.Changed += () => Changed?.Invoke();
         try
         {
@@ -92,6 +93,41 @@ public partial class OnlineService : Node
         OpenRouterPort();
         JoinLobby(_loopback.Connect(), new ClientIdentity(name, _lobby.HostToken, Version, ContentId));
         SubmitDeck(deck);
+    }
+
+    private FormatRules? _hostFormat;
+
+    /// <summary>
+    /// The computer takes every free seat of the lobby: in an event it opens or drafts its own cards; in a game it
+    /// brings a playable deck of the game's format (a different one for each seat when there are enough).
+    /// </summary>
+    public void FillWithComputer()
+    {
+        if (_lobby is not { Game: null, Event: null } lobby) return;
+        var free = Enumerable.Range(1, lobby.Settings.Seats - 1).Where(i => lobby.State.Seats[i].Kind == LobbySeatKind.Open).ToList();
+        if (free.Count == 0) return;
+        string Name(int seat) => lobby.Settings.Seats == 2 ? "Computer" : $"Computer {seat}";
+        if (lobby.Settings.Event is not null)
+        {
+            foreach (var seat in free) lobby.SetComputer(seat, Name(seat), "", "");
+            return;
+        }
+        var format = _hostFormat ?? FormatRules.Casual;
+        var decks = App.Instance.Decks.List(App.Instance.Module)
+            .Select(d => (Info: d, List: App.Instance.Decks.Load(d).Deck.Export()))
+            .Where(d => App.Instance.FormatById(d.Info.FormatId).Commander == format.Commander && CheckDeck(d.List, format).Problem is null)
+            .OrderBy(_ => Random.Shared.Next())
+            .ToList();
+        if (decks.Count == 0)
+        {
+            Status?.Invoke($"No deck is playable in {format.Name} for the computer.");
+            return;
+        }
+        for (int i = 0; i < free.Count; i++)
+        {
+            var (info, list) = decks[i % decks.Count];
+            lobby.SetComputer(free[i], Name(free[i]), info.Name, list);
+        }
     }
 
     /// <summary>Starts the hosted game with the lobby as it is.</summary>
