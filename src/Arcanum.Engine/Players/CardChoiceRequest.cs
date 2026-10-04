@@ -21,6 +21,8 @@ public enum CardChoicePurpose
     Sacrifice,
     /// <summary>Choose the next card in an order (e.g. which card goes on top of the library next).</summary>
     Order,
+    /// <summary>The chosen permanents stay; the others go to the graveyard (legend rule).</summary>
+    Keep,
 }
 
 /// <summary>

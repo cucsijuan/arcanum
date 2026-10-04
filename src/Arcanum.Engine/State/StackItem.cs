@@ -45,6 +45,12 @@ public sealed record AbilityOnStack(CardId Source, AbilityDefinition Ability, Pl
 
     /// <summary>For a triggered ability: what the trigger event was about.</summary>
     public TriggerInfo? Trigger { get; init; }
+
+    /// <summary>
+    /// The source's object version when the ability triggered or was activated: "return it" works only on that same
+    /// object (a card that changed zones since then is a new object, rule 400.7).
+    /// </summary>
+    public int? SourceVersion { get; init; }
 }
 
 /// <summary>What a trigger event was about: an object (with its version then), a player and an amount.</summary>

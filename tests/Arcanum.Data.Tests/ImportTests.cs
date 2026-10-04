@@ -139,6 +139,20 @@ public class ImportTests
         Assert.False(db.TryGet("Glade Cub Token", out _)); // tokens aren't deck cards
     }
 
+    [Fact]
+    public void HexproofFromIsNotPlainHexproof()
+    {
+        static CardRecord Knight(string text) => new()
+        {
+            OracleId = "o-k", Name = "Knight", Layout = "normal", TypeLine = "Creature — Knight", Power = "2", Toughness = "2",
+            OracleText = text, Keywords = new[] { "First strike", "Hexproof from", "Hexproof" },
+        };
+        var partial = CardFactory.Create(Knight("First strike\nHexproof from black (This creature can't be the target of black spells or abilities your opponents control.)")).Definition;
+        Assert.DoesNotContain("Hexproof", partial.Keywords);
+        var both = CardFactory.Create(Knight("First strike, hexproof\nHexproof from black")).Definition;
+        Assert.Contains("Hexproof", both.Keywords);
+    }
+
     /// <summary>Optional check against a real downloaded card file: set ARCANUM_CARD_FILE to its path.</summary>
     [Fact]
     public void ImportsRealCardFileWhenProvided()

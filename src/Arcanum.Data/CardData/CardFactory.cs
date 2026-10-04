@@ -67,7 +67,7 @@ public static partial class CardFactory
             Toughness = toughness,
             Loyalty = int.TryParse(record.Loyalty, out int loyalty) ? loyalty : null,
             OracleText = record.OracleText,
-            Keywords = record.Keywords,
+            Keywords = PrintedKeywords(record),
             TapForMana = tapForMana,
             Spell = WithTokenImages(script?.Spell, record.RelatedTokens),
             Abilities = derivedAbilities.Concat((script?.Abilities ?? Array.Empty<Engine.Abilities.AbilityDefinition>()).Select(a => WithTokenImages(a, record.RelatedTokens)!)).ToList(),
@@ -140,6 +140,21 @@ public static partial class CardFactory
         Spell = WithTokenImages(definition.Spell, printing.Tokens, replace: true),
         Abilities = definition.Abilities.Select(a => WithTokenImages(a, printing.Tokens, replace: true)!).ToList(),
     };
+
+    /// <summary>
+    /// Keywords the card really has. The card source lists "Hexproof" next to "Hexproof from" even when the card
+    /// only has the "hexproof from …" form; that card doesn't have plain hexproof.
+    /// </summary>
+    private static IReadOnlyList<string> PrintedKeywords(CardRecord record)
+    {
+        bool hexproofFrom = record.Keywords.Contains("Hexproof from", StringComparer.OrdinalIgnoreCase);
+        if (!hexproofFrom || PlainHexproof().IsMatch(ReminderText().Replace(record.OracleText, ""))) return record.Keywords;
+        return record.Keywords.Where(k => !k.Equals("Hexproof", StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    /// <summary>"Hexproof" on its own (a keyword line or list), not followed by "from".</summary>
+    [GeneratedRegex(@"(^|, )[Hh]exproof(?! from)\s*(,|$)", RegexOptions.Multiline)]
+    private static partial Regex PlainHexproof();
 
     /// <summary>Related tokens carry no stats in the source's listing; their type line can still tell colors apart.</summary>
     private static bool MatchesStats(RelatedToken token, CardDefinition definition) =>

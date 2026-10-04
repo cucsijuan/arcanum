@@ -265,3 +265,15 @@ Quantities also: `sacrificedToughness`, `lifeLostThisWay`, `destroyedThisWay`, `
 `{ "sourceHadCounters": "revival" }`, `{ "differentNames": f, "count": 10 }`, `{ "resolvedThisTurn": 2 }`,
 `{ "triggeredCounters": 3 }`, `{ "targetAttachedTo": "target2", "to": "target" }`, `{ "sourceIs": f }`,
 `{ "atLeast": quantity, "value": 1 }`, `{ "lifeAboveStarting": 10 }`, `{ "totalPower": 8 }`, `{ "attackers": 3 }`.
+
+### Exact timing
+- A trigger's `"when"` is part of the trigger event ("whenever you attack with three or more creatures", "attacks
+  while you control …"): checked only when the event happens. `"if"` is an intervening "if", checked again on
+  resolution.
+- `{ "whenYouDo": { "if": "createdThisWay", "targets": […], "effects": […], "text": "…" } }` creates a reflexive
+  triggered ability once the effect before it happened; it chooses its own targets when it goes on the stack.
+- `{ "doubleCounters": "target", "kind": "+1/+1" }` doubles one kind of counter (without `kind`: every kind).
+- `{ "spellsCastBefore": f }` counts the spells you cast this turn before the spell that triggered the ability.
+- `lookAtTop` takes `revealAll` ("reveal the top X cards").
+- Copies of a token (`copy`) with `sacrificeAtEndStep` get the ability "At the beginning of the end step, sacrifice
+  this token" as part of the copy.

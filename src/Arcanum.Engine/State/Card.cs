@@ -83,13 +83,11 @@ public sealed class Card
     internal List<AbilityDefinition> GrantedAbilities { get; } = new();
     internal List<ManaOption> GrantedManaOptions { get; } = new();
 
-    /// <summary>Keywords, creature types and abilities given "permanently" by resolved effects (until it leaves the battlefield).</summary>
-    public HashSet<Keyword> PermanentKeywords { get; } = new();
-    public HashSet<string> PermanentSubtypes { get; } = new(StringComparer.OrdinalIgnoreCase);
-    public IReadOnlyList<string>? PermanentSubtypesOverride { get; set; }
-    public List<AbilityDefinition> PermanentAbilities { get; } = new();
-    public int? PermanentBasePower { get; set; }
-    public int? PermanentBaseToughness { get; set; }
+    /// <summary>
+    /// Its timestamp as a permanent (rule 613.7d–e): given as it enters the battlefield and again when it becomes
+    /// attached to something; 0 until the engine assigns one.
+    /// </summary>
+    public long Timestamp { get; internal set; }
 
     /// <summary>What the card was like the last time it was on the battlefield (rule 608.2h, last known information).</summary>
     public LastKnown? LastKnownInfo { get; internal set; }
@@ -102,6 +100,9 @@ public sealed class Card
 
     /// <summary>Was attacking when it last left the battlefield.</summary>
     public bool WasAttacking { get; set; }
+
+    /// <summary>It was blocking when it last left the battlefield.</summary>
+    public bool WasBlocking { get; set; }
 
     /// <summary>Resolutions of each of its abilities this turn (for "if this is the second time this ability has resolved").</summary>
     public Dictionary<AbilityDefinition, int> ResolvedThisTurn { get; } = new(ReferenceEqualityComparer.Instance);
@@ -146,18 +147,42 @@ public sealed class Card
 
     /// <summary>Has this subtype (changelings have every creature type).</summary>
     public bool HasSubtype(string subtype) =>
-        (SubtypesOverride ?? Definition.Subtypes).Contains(subtype, StringComparer.OrdinalIgnoreCase) || GrantedSubtypes.Contains(subtype)
-        || (Has(Keyword.Changeling) && !NonCreatureSubtypes.Contains(subtype));
+        ((SubtypesOverride ?? Definition.Subtypes).Contains(subtype, StringComparer.OrdinalIgnoreCase) || GrantedSubtypes.Contains(subtype)
+         || (Has(Keyword.Changeling) && !NonCreatureSubtypes.Contains(subtype)))
+        && (TypesOverride is null || SubtypeFitsTypes(subtype));
 
-    /// <summary>Subtypes that aren't creature types (changeling grants only creature types, rule 702.73a).</summary>
-    private static readonly HashSet<string> NonCreatureSubtypes = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>
+    /// An object can't have a subtype that doesn't correspond to one of its card types (rule 205.3d): a permanent an
+    /// effect turns into a land keeps its land types but loses its creature types.
+    /// </summary>
+    private bool SubtypeFitsTypes(string subtype) =>
+        LandTypes.Contains(subtype) ? Is(CardType.Land)
+        : ArtifactTypes.Contains(subtype) ? Is(CardType.Artifact)
+        : EnchantmentTypes.Contains(subtype) ? Is(CardType.Enchantment)
+        : SpellTypes.Contains(subtype) ? Is(CardType.Instant) || Is(CardType.Sorcery)
+        : subtype.Equals("Siege", StringComparison.OrdinalIgnoreCase) ? Is(CardType.Battle)
+        : Is(CardType.Creature) || Is(CardType.Planeswalker);
+
+    private static readonly HashSet<string> LandTypes = new(StringComparer.OrdinalIgnoreCase)
+        { "Plains", "Island", "Swamp", "Mountain", "Forest", "Desert", "Gate", "Lair", "Locus", "Mine", "Power-Plant", "Tower", "Urza's", "Cave", "Sphere", "Town" };
+
+    private static readonly HashSet<string> ArtifactTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Plains", "Island", "Swamp", "Mountain", "Forest", "Desert", "Gate", "Lair", "Locus", "Mine", "Power-Plant", "Tower", "Urza's", "Cave", "Sphere", "Town",
         "Equipment", "Vehicle", "Treasure", "Food", "Clue", "Blood", "Gold", "Fortification", "Contraption", "Attraction", "Powerstone", "Map",
         "Incubator", "Book", "Junk", "Spacecraft", "Bobblehead", "Lander",
-        "Aura", "Saga", "Shrine", "Curse", "Cartouche", "Class", "Room", "Rune", "Background", "Case", "Role", "Shard",
-        "Adventure", "Arcane", "Lesson", "Trap", "Omen",
     };
+
+    private static readonly HashSet<string> EnchantmentTypes = new(StringComparer.OrdinalIgnoreCase)
+        { "Aura", "Saga", "Shrine", "Curse", "Cartouche", "Class", "Room", "Rune", "Background", "Case", "Role", "Shard" };
+
+    private static readonly HashSet<string> SpellTypes = new(StringComparer.OrdinalIgnoreCase) { "Adventure", "Arcane", "Lesson", "Trap", "Omen" };
+
+    /// <summary>Whether a subtype is a creature type (not a land, artifact, enchantment, spell or battle type).</summary>
+    internal static bool IsCreatureType(string subtype) => !NonCreatureSubtypes.Contains(subtype);
+
+    /// <summary>Subtypes that aren't creature types (changeling grants only creature types, rule 702.73a).</summary>
+    private static readonly HashSet<string> NonCreatureSubtypes =
+        new(LandTypes.Concat(ArtifactTypes).Concat(EnchantmentTypes).Concat(SpellTypes).Append("Siege"), StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Color chosen as it entered ("As this enters, choose a color"): W, U, B, R or G.</summary>
     public string? ChosenColor { get; set; }
@@ -211,8 +236,20 @@ public sealed class Card
     internal void ResetStatus()
     {
         if (Zone == Zone.Battlefield)
-            LastKnownInfo = new LastKnown(Power, Toughness, Controller, new Dictionary<CounterKind, int>(Counters),
-                Definition.Subtypes.Concat(GrantedSubtypes).ToList(), Abilities.ToList(), Types);
+        {
+            var subtypes = (SubtypesOverride ?? Definition.Subtypes).Concat(GrantedSubtypes).Where(t => TypesOverride is null || SubtypeFitsTypes(t)).ToList();
+            LastKnownInfo = new LastKnown(Power, Toughness, Controller, new Dictionary<CounterKind, int>(Counters), subtypes, Abilities.ToList(), Types)
+            {
+                Name = Name,
+                Colors = Colors.ToList(),
+                Keywords = Enum.GetValues<Keyword>().Where(Has).ToHashSet(),
+                Tapped = Tapped,
+                Attacking = WasAttacking,
+                Blocking = WasBlocking,
+                Supertypes = Definition.Supertypes,
+                AttachedTo = AttachedTo,
+            };
+        }
         Tapped = false;
         Damage = 0;
         DamagedByDeathtouch = false;
@@ -223,13 +260,8 @@ public sealed class Card
         ToughnessBonus = 0;
         GrantedKeywords.Clear();
         GrantedSubtypes.Clear();
-        PermanentKeywords.Clear();
-        PermanentSubtypes.Clear();
-        PermanentSubtypesOverride = null;
-        PermanentAbilities.Clear();
-        PermanentBasePower = null;
-        PermanentBaseToughness = null;
         GrantedAbilities.Clear();
+        Timestamp = 0;
         TypesOverride = null;
         GrantedTypes = 0;
         SubtypesOverride = null;
@@ -259,6 +291,20 @@ public sealed class Card
     public override string ToString() => $"{Name} {Id}";
 }
 
-/// <summary>Last known information about a permanent that left the battlefield.</summary>
+/// <summary>Last known information about a permanent that left the battlefield (rule 608.2h): how it last existed there.</summary>
 public sealed record LastKnown(int Power, int Toughness, Core.PlayerId Controller, IReadOnlyDictionary<CounterKind, int> Counters,
-    IReadOnlyList<string> Subtypes, IReadOnlyList<AbilityDefinition> Abilities, CardType Types);
+    IReadOnlyList<string> Subtypes, IReadOnlyList<AbilityDefinition> Abilities, CardType Types)
+{
+    public string Name { get; init; } = "";
+    public IReadOnlyList<string> Colors { get; init; } = Array.Empty<string>();
+    public IReadOnlySet<Keyword> Keywords { get; init; } = new HashSet<Keyword>();
+    public bool Tapped { get; init; }
+    public bool Attacking { get; init; }
+    public bool Blocking { get; init; }
+    public Supertype Supertypes { get; init; }
+    public Core.CardId? AttachedTo { get; init; }
+
+    /// <summary>Had this subtype (changelings had every creature type).</summary>
+    public bool HasSubtype(string subtype) =>
+        Subtypes.Contains(subtype, StringComparer.OrdinalIgnoreCase) || (Keywords.Contains(Keyword.Changeling) && Card.IsCreatureType(subtype));
+}

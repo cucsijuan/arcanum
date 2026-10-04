@@ -56,6 +56,9 @@ public enum QuantityKind
     TriggeredColors,
     /// <summary>Spells matching the filter the controller cast this turn.</summary>
     SpellsCastThisTurn,
+
+    /// <summary>Spells matching the filter you cast this turn before the spell that triggered the ability ("each other … you've cast before it this turn").</summary>
+    SpellsCastBeforeTriggered,
 }
 
 /// <summary>

@@ -137,6 +137,7 @@ public static class CardScriptParser
                         Trigger = ParseTrigger(trigger.GetString()!), Targets = Targets(a), Effects = Effects(a), Text = Text(a),
                         Filter = a.TryGetProperty("filter", out var filter) ? ParseFilter(filter, ControllerFilter.You) : null,
                         Condition = a.TryGetProperty("if", out var condition) ? ParseCondition(condition) : null,
+                        TriggerCondition = a.TryGetProperty("when", out var when) ? ParseCondition(when) : null,
                         NthOfTurn = a.TryGetProperty("nth", out var nth) ? nth.GetInt32() : null,
                         OnSelf = Bool(a, "onSelf"),
                         OncePerTurn = Bool(a, "oncePerTurn"),
@@ -499,6 +500,7 @@ public static class CardScriptParser
                 "kicked" => new WasKicked(),
                 "opponentLostLife" => new OpponentLostLifeThisTurn(),
                 "yourTurn" => new YourTurn(),
+                "createdThisWay" => new CreatedThisWay(),
                 "attacking" => new SourceAttacking(),
                 "triggeredWasAttacking" => new TriggeredWasAttacking(),
                 "youSacrificed" => new YouSacrificedThisWay(),
@@ -572,6 +574,7 @@ public static class CardScriptParser
         if (e.TryGetProperty("milled", out var mil)) return new Quantity(0, QuantityKind.MilledThisWay, ParseFilter(mil, ControllerFilter.Any), times, Offset: offset);
         if (e.TryGetProperty("exiled", out var exl)) return new Quantity(0, QuantityKind.ExiledThisWay, ParseFilter(exl, ControllerFilter.Any), times, Offset: offset);
         if (e.TryGetProperty("distinctManaValues", out var dmv)) return new Quantity(0, QuantityKind.DistinctManaValues, ParseFilter(dmv), times, Offset: offset);
+        if (e.TryGetProperty("spellsCastBefore", out var scb)) return new Quantity(0, QuantityKind.SpellsCastBeforeTriggered, ParseFilter(scb, ControllerFilter.Any), times, Offset: offset);
         if (e.TryGetProperty("spellsCast", out var sct)) return new Quantity(0, QuantityKind.SpellsCastThisTurn, ParseFilter(sct, ControllerFilter.Any), times, Offset: offset);
         if (e.TryGetProperty("count", out var count)) return new Quantity(0, QuantityKind.PermanentCount, ParseFilter(count), times);
         if (e.TryGetProperty("graveyard", out var gy)) return new Quantity(0, QuantityKind.GraveyardCount, ParseFilter(gy), times);
@@ -780,11 +783,18 @@ public static class CardScriptParser
                 CountIsX = Flag("countIsX"),
                 MaxManaValueX = Flag("maxManaValueX"),
                 Reveal = Flag("reveal"),
+                RevealAll = Flag("revealAll"),
             };
         if (Value("discardChosen") is { } dchosen)
             return new DiscardChosenByYou(dchosen, e.TryGetProperty("filter", out var df) ? ParseFilter(df, ControllerFilter.Any) : null, e.TryGetProperty("count", out var dn) ? dn.GetInt32() : 1);
         if (Value("exileGraveyard") is { } eg) return new ExileGraveyard(eg);
-        if (Value("doubleCounters") is { } dbl) return new DoubleCounters(dbl);
+        if (e.TryGetProperty("whenYouDo", out var reflexive))
+            return new ReflexiveTrigger(WithModes(reflexive, new TriggeredAbility
+            {
+                Trigger = TriggerEvent.Reflexive, Targets = Targets(reflexive), Effects = Effects(reflexive), Text = Text(reflexive),
+            }), reflexive.TryGetProperty("if", out var rif) ? ParseCondition(rif) : null);
+        if (Value("doubleCounters") is { } dbl)
+            return new DoubleCounters(dbl, e.TryGetProperty("kind", out var dk) ? ParseCounterKind(dk.GetString()) : null);
         if (e.TryGetProperty("removeCounters", out _)) return new RemoveCounters(Qty("removeCounters"), Subj("what", "self"), ParseCounterKind(Str("kind")));
         if (Value("shuffleGraveyard") is { } sg) return new ShuffleGraveyardIntoLibrary(sg);
         if (Str("addMana") is { } addMana) return new AddMana(ManaCost.Parse(addMana).Pips);
