@@ -93,6 +93,10 @@ public sealed partial class Game
     {
         _log.Add(e);
         TrackTurnHistory(e);
+        // Continuous effects are always current (rule 611.3a): conditions like "as long as it's untapped" or
+        // "as long as you have 30 or more life" change with these events.
+        if (e is PermanentTapped or PermanentUntapped or CountersPlaced or LifeChanged or ControlChanged or AttacksDeclared or AttackerDeclared or BlockerDeclared)
+            RecomputeContinuousEffects();
         CollectTriggers(e);
         EventRaised?.Invoke(e);
     }

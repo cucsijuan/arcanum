@@ -344,6 +344,10 @@ public sealed partial class Game
     private int Eval(Quantity q, EffectContext ctx)
     {
         Card? TargetCard() => ctx.ChosenAt(q.Index)?.Card is { } id ? State.GetCard(id) : null;
+        // A target that left the battlefield during resolution ("its toughness" after it was moved) is used as it
+        // last existed there (rule 608.2h).
+        LastKnown? TargetLastKnown() => TargetCard() is { } t && ctx.ChosenVersionAt(q.Index) is { } v && v != t.Version
+                                        && t.Zone != Zone.Battlefield ? t.LastKnownInfo : null;
         int value = q.Kind switch
         {
             QuantityKind.Fixed => q.Value,
@@ -353,8 +357,8 @@ public sealed partial class Game
             QuantityKind.GraveyardCount => State.GetPlayer(ctx.Controller).Graveyard.Select(State.GetCard)
                 .Count(c => q.Filter is null || Matches(q.Filter with { Controller = ControllerFilter.Any }, c, ctx.Controller, ctx.Source, ctx.Controller)),
             QuantityKind.SourcePower => ctx.Source.Zone == Zone.Battlefield || ctx.Source.LastKnownInfo is null ? ctx.Source.Power : ctx.Source.LastKnownInfo.Power,
-            QuantityKind.TargetPower => TargetCard()?.Power ?? 0,
-            QuantityKind.TargetToughness => TargetCard()?.Toughness ?? 0,
+            QuantityKind.TargetPower => TargetLastKnown()?.Power ?? TargetCard()?.Power ?? 0,
+            QuantityKind.TargetToughness => TargetLastKnown()?.Toughness ?? TargetCard()?.Toughness ?? 0,
             QuantityKind.TargetManaValue => TargetCard() is { } tmv ? ManaValueOf(tmv) : 0,
             QuantityKind.LifeGainedThisTurn => State.GetPlayer(ctx.Controller).LifeGainedThisTurn,
             QuantityKind.YourLife => State.GetPlayer(ctx.Controller).Life,

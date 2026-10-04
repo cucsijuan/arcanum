@@ -23,6 +23,7 @@ public sealed partial class Game
     private async Task<bool> ApplyStateBasedActionsOnceAsync()
     {
         bool any = false;
+        RecomputeContinuousEffects();
 
         var losers = new List<(PlayerId Player, string Reason)>();
         foreach (var player in State.LivingPlayers)
