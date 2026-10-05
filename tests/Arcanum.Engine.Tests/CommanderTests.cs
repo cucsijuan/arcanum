@@ -178,6 +178,50 @@ public class CommanderTests
     }
 
     [Fact]
+    public async Task ACommanderDrawnAndPutIntoTheCommandZoneInsteadIsStillADraw()
+    {
+        // 903.9b modifies only where the drawn card goes (614.6: the modified event happens instead of the original), so the
+        // player still drew it (121.1): it counts as a card drawn and "whenever you draw" abilities trigger.
+        var p0 = new TestController { Attack = (_, _, _) => Array.Empty<AttackDeclaration>() };
+        var game = CommanderGame(p0, new TestController(), Legend("Leader", 3, 3, "{9}"), lands: 1);
+        game.SetupPermanent(P0, new CardDefinition
+        {
+            Name = "Scribe", Types = CardType.Enchantment,
+            Abilities = new AbilityDefinition[]
+            {
+                new TriggeredAbility { Trigger = TriggerEvent.YouDrawCard, Effects = new Effect[] { new GainLife(1, Subject.You) }, Text = "Whenever you draw a card, gain 1 life." },
+            },
+        });
+        game.SetupInHand(P0, new CardDefinition
+        {
+            Name = "Study", Types = CardType.Sorcery, ManaCost = ManaCost.Parse("{G}"),
+            Spell = new SpellAbility { Effects = new Effect[] { new DrawCards(1, Subject.You) } },
+        });
+        bool restacked = false;
+        p0.Act = (_, legal) =>
+        {
+            if (!restacked)
+            {
+                restacked = true;
+                var player = game.State.GetPlayer(P0);
+                var commander = CommanderOf(game);
+                player.Command.Remove(commander.Id);
+                commander.Zone = Zone.Library;
+                player.Library.Insert(0, commander.Id);
+            }
+            return legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
+        };
+        int drawnThisTurn = -1;
+        game.EventRaised += e => { if (e is LifeChanged) drawnThisTurn = game.State.GetPlayer(P0).CardsDrawnThisTurn; };
+        await RunUntilTurn(game, 2);
+        var drawn = CommanderOf(game);
+        Assert.Equal(Zone.Command, drawn.Zone);
+        Assert.Contains(game.Log, e => e is CardDrawn d && d.Card == drawn.Id);
+        Assert.Equal(1, drawnThisTurn);
+        Assert.Contains(game.Log.SkipWhile(e => e is not CardDrawn d || d.Card != drawn.Id), e => e is LifeChanged { NewLife: > 0 } l && l.NewLife > l.OldLife); // "whenever you draw" triggered
+    }
+
+    [Fact]
     public async Task TwentyOneCommanderDamageLoses()
     {
         var p0 = new TestController();

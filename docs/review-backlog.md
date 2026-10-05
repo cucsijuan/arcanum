@@ -154,19 +154,24 @@ wakes on queued work (and a slower tick when nothing is going on) would save bat
 
 ## Left over from the fixes
 
-### L1. Entering counters with both "plus one" and "twice that many" replacements
-Counters a permanent enters with are now on it before it is announced (R2), except when both kinds of counter replacement
-apply: their controller must order them (rule 616.1) and `MoveCard` can't ask, so those counters are still placed right
-after the current effect. Now that moves are planned asynchronously (`PlanMoveAsync`), the order can be asked as the
-permanent moves: do that.
+### L1. Entering counters with both "plus one" and "twice that many" replacements — **done**
+Counters a permanent enters with are on it before it is announced (R2), also when both kinds of counter replacement apply:
+`MoveCardAsync` has the controller order them (rule 616.1) right after the move is made and before anything is announced
+(`OrderEnterCountersAsync`, sharing `OrderedCounterCountAsync` with the deferred path), and tokens do the same
+(`CreateTokenAsync`). Left: a permanent that returns from an "until an opponent becomes the monarch" exile is moved by a
+synchronous caller (`ReturnFromMonarchExile`, reached from `LoseAll`), so in that one case its counters are still ordered
+right after the current effect.
 
-### L2. A commander drawn and put into the command zone instead
-`DrawAsync` still announces the draw when the commander goes to the command zone instead of the hand (903.9b). Check the
-rules on whether a draw replaced that way is still a draw ("cards drawn this turn", "whenever you draw") and match them.
+### L2. A commander drawn and put into the command zone instead — **done**
+Decision: it is still a draw and still announced (`CardDrawn`). Rule 903.9b only modifies where the drawn card goes, the
+modified event happens instead of the original (614.6), and the player still drew the top card (121.1); no different event
+replaces the draw, so it counts for "cards drawn this turn" and "whenever you draw" triggers. The rules text is not
+explicit about this case; the choice matches how other engines treat it. Pinned by a test, comment in `DrawOneAsync`.
 
-### L3. The "onto the battlefield instead of being discarded" replacement
-It is still applied before the move, outside `ZoneReplacements`; it should become one of the options there so it can be
-ordered with the others when something else also applies.
+### L3. The "onto the battlefield instead of being discarded" replacement — **done**
+It is now one of the zone-change replacements (`OntoBattlefieldInsteadOfDiscard`, only for a discard from the hand caused
+by an opponent's spell or ability), so it is ordered with the others when several apply. A card put onto the battlefield
+instead is not discarded (614.6: no `CardDiscarded`); one that goes elsewhere (exile, library) still is.
 
 ## Suggested order
 

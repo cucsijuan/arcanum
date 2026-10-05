@@ -21,6 +21,8 @@ public sealed partial class Game
         ExileInstantsAndSorceries,
         /// <summary>A commander that would be put into a hand or library may go to the command zone instead (903.9b).</summary>
         CommandZone,
+        /// <summary>The card's own "if a spell or ability an opponent controls causes you to discard it, put it onto the battlefield instead".</summary>
+        OntoBattlefieldInsteadOfDiscard,
     }
 
     /// <summary>One replacement effect that would modify where a card goes (rule 614.1a).</summary>
@@ -36,8 +38,11 @@ public sealed partial class Game
     /// <summary>Moves already decided (as the card moves, or ahead for cards leaving at the same time), by card and version: the requested zone and the plan.</summary>
     private readonly Dictionary<(CardId Card, int Version), (Zone Requested, MovePlan Plan)> _movePlans = new();
 
-    /// <summary>The replacement effects that would apply to the card going from one zone to another, except those already applied (rule 614.5).</summary>
-    private List<ZoneReplacement> ZoneReplacements(Card card, Zone from, Zone to, IReadOnlyList<ZoneReplacement> applied)
+    /// <summary>
+    /// The replacement effects that would apply to the card going from one zone to another, except those already applied (rule 614.5).
+    /// <paramref name="discardedByOpponent"/>: the move is a discard that a spell or ability an opponent of the card's owner controls caused.
+    /// </summary>
+    private List<ZoneReplacement> ZoneReplacements(Card card, Zone from, Zone to, IReadOnlyList<ZoneReplacement> applied, bool discardedByOpponent = false)
     {
         var list = new List<ZoneReplacement>();
         if (to is Zone.Hand or Zone.Library && from != to && Config.Commander is not null && card.IsCommander)
@@ -46,6 +51,8 @@ public sealed partial class Game
         {
             if (from == Zone.Battlefield && State.ExileIfDies.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileIfDies));
             if ((card.Definition.Replaces & Cards.Replacements.ShuffleIntoLibraryInsteadOfGraveyard) != 0) list.Add(new(ZoneReplacementKind.ShuffleIntoLibrary));
+            if (discardedByOpponent && from == Zone.Hand && card.Definition.OntoBattlefieldIfOpponentMakesYouDiscard)
+                list.Add(new(ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard));
             if (from == Zone.Battlefield && card.IsCreature)
                 list.AddRange(State.Battlefield.Select(State.GetCard)
                     .Where(c => c.Controller != card.Controller && (c.Definition.Replaces & Cards.Replacements.OpponentsCreaturesExiledInsteadOfDying) != 0)
@@ -64,6 +71,7 @@ public sealed partial class Game
     {
         ZoneReplacementKind.ShuffleIntoLibrary => Zone.Library,
         ZoneReplacementKind.CommandZone => Zone.Command,
+        ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard => Zone.Battlefield,
         _ => Zone.Exile,
     };
 
@@ -74,6 +82,7 @@ public sealed partial class Game
         ZoneReplacementKind.ExiledByOpponentsPermanent => $"Exile it ({replacement.By!.Name}, {State.GetPlayer(replacement.By.Controller).Name})",
         ZoneReplacementKind.ExileInsteadOfGraveyard => "Exile it (the effect it was cast with)",
         ZoneReplacementKind.ExileInstantsAndSorceries => "Exile it (instants and sorceries are exiled)",
+        ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard => $"Put it onto the battlefield ({card.Name}: an opponent made you discard it)",
         _ => "Put it into the command zone",
     };
 
@@ -83,14 +92,14 @@ public sealed partial class Game
     /// event, so one about the new destination may then apply (616.1e). An optional one ("may … instead") can be declined.
     /// Without <paramref name="canAsk"/> the move must need no choice; it then completes synchronously.
     /// </summary>
-    private async Task<MovePlan> PlanMoveAsync(Card card, Zone to, bool canAsk = true)
+    private async Task<MovePlan> PlanMoveAsync(Card card, Zone to, bool canAsk = true, bool discardedByOpponent = false)
     {
         var from = card.Zone;
         var chooser = from is Zone.Battlefield or Zone.Stack ? card.Controller : card.Owner;
         var applied = new List<ZoneReplacement>();
         var declined = new List<ZoneReplacement>();
         bool shuffle = false;
-        while (ZoneReplacements(card, from, to, applied.Concat(declined).ToList()) is { Count: > 0 } options)
+        while (ZoneReplacements(card, from, to, applied.Concat(declined).ToList(), discardedByOpponent) is { Count: > 0 } options)
         {
             ZoneReplacement? pick = options[0];
             if (options.Count > 1 || options[0].Optional)
@@ -145,17 +154,33 @@ public sealed partial class Game
         var card = State.GetCard(id);
         if (!(_movePlans.TryGetValue((id, card.Version), out var planned) && planned.Requested == to))
             _movePlans[(id, card.Version)] = (to, await PlanMoveAsync(card, to));
-        MoveCard(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped);
+        var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped);
+        // A permanent that enters with counters its controller must order replacement effects for (rule 616.1): asked as it
+        // enters, so the counters are on it before it is announced, as in every other case.
+        var ordered = await OrderEnterCountersAsync(move.Card, move.EnterCounters);
+        foreach (var returning in FinishMove(move, ordered)) await MoveCardAsync(returning, Zone.Battlefield, controller: State.GetCard(returning).Owner);
     }
 
     /// <summary>
     /// Moves a card between zones. Cards always go to their owner's per-player zones (rule 400.3). Directly only for moves
     /// that need no replacement choice (or whose choices were made); everything else goes through <see cref="MoveCardAsync"/>.
+    /// Counters a permanent enters with that need their replacement effects ordered are, here, put on right after the current effect.
     /// </summary>
     /// <param name="tapped">A permanent entering the battlefield tapped (rule 614.1c): it is tapped from the start, with no event.</param>
     /// <param name="kicked">A spell cast with kicker becoming a permanent: it remembers it was kicked (for "if it was kicked").</param>
     private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
         bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false)
+    {
+        var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped);
+        foreach (var returning in FinishMove(move, null)) MoveCard(returning, Zone.Battlefield, controller: State.GetCard(returning).Owner);
+    }
+
+    /// <summary>A card that has moved, before anything is announced: the counters it enters with are still to be put on.</summary>
+    private sealed record MoveInProgress(Card Card, Zone From, Zone To, PlayerId LastController, MovePlan Plan, List<(Abilities.CounterKind Kind, int Count)> EnterCounters);
+
+    /// <summary>The move itself, with its replacement effects applied: the card is in its new zone but nothing has been announced yet.</summary>
+    private MoveInProgress BeginMove(CardId id, Zone to, bool toBottom, PlayerId? controller, CardId? attachTo, bool kicked,
+        bool castFromHand, bool wasCast, int timesKicked, int squadPaid, bool tapped)
     {
         var enterCounters = new List<(Abilities.CounterKind Kind, int Count)>();
         var card = State.GetCard(id);
@@ -246,8 +271,21 @@ public sealed partial class Game
                 owner.GetZone(to).Add(id);
                 break;
         }
+        return new MoveInProgress(card, from, to, lastController, plan, enterCounters);
+    }
+
+    /// <summary>
+    /// Completes a move (<see cref="BeginMove"/>): the permanent gets the counters it enters with, then everything is announced.
+    /// <paramref name="ordered"/> holds the amounts of counters (by index) whose replacement effects the controller already ordered.
+    /// Returns the cards exiled "until this leaves the battlefield" that come back now (rule 610.3).
+    /// </summary>
+    private List<CardId> FinishMove(MoveInProgress move, IReadOnlyDictionary<int, int>? ordered)
+    {
+        var (card, from, to, lastController, plan, enterCounters) = move;
+        var id = card.Id;
+        var owner = State.GetPlayer(card.Owner);
         // The permanent is on the battlefield with its counters before anything reacts to it entering (rule 614.1c).
-        var placedCounters = to == Zone.Battlefield ? PlaceEnterCounters(card, enterCounters) : new List<(Abilities.CounterKind Kind, int Count)>();
+        var placedCounters = to == Zone.Battlefield ? PlaceEnterCounters(card, enterCounters, ordered) : new List<(Abilities.CounterKind Kind, int Count)>();
         RecomputeContinuousEffects();
         int leavingVersion = card.Version - 1;
         Emit(new CardMoved(id, card.Owner, from, to, lastController));
@@ -257,16 +295,18 @@ public sealed partial class Game
         if (plan.Shuffle) Shuffle(owner);
 
         // Cards exiled "until this leaves the battlefield" come back (rule 610.3).
+        var returning = new List<CardId>();
         if (from == Zone.Battlefield)
             foreach (var link in State.LinkedExiles.Where(l => l.Source == id && l.SourceVersion == leavingVersion).ToList())
             {
                 State.LinkedExiles.Remove(link);
                 var exiled = State.GetCard(link.Exiled);
-                if (exiled.Zone == Zone.Exile && exiled.Version == link.ExiledVersion) MoveCard(link.Exiled, Zone.Battlefield, controller: exiled.Owner);
+                if (exiled.Zone == Zone.Exile && exiled.Version == link.ExiledVersion) returning.Add(link.Exiled);
             }
 
         // A token that leaves the battlefield ceases to exist (rule 111.7, 704.5d).
         if (card.Definition.IsToken && to != Zone.Battlefield && to != Zone.Stack) owner.GetZone(to).Remove(id);
+        return returning;
     }
 
     private async Task DrawAsync(PlayerId playerId, int count = 1)
@@ -304,6 +344,10 @@ public sealed partial class Game
                 return;
             }
             var top = player.Library[0];
+            // A drawn commander its owner puts into the command zone instead (rule 903.9b) is still a draw: that replacement
+            // modifies only where the card goes, and the modified event happens instead of the original (rule 614.6), so the
+            // player still drew the top card (rule 121.1). The draw isn't replaced by some different event, so it counts for
+            // "cards drawn this turn" and "whenever you draw a card" triggers.
             await MoveCardAsync(top, Zone.Hand);
             Emit(new CardDrawn(playerId, top));
             // Miracle: the first card a player draws in a turn may be revealed as it's drawn (702.94a).

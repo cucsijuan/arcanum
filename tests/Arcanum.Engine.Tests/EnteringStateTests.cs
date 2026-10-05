@@ -103,6 +103,70 @@ public class EnteringStateTests
         Assert.Equal(new[] { "moved", "counters2" }, seen);
     }
 
+    /// <summary>An Orc that enters with one counter, with "that many plus one" and "twice that many" effects out: the order is the controller's (rule 616.1).</summary>
+    private static (Scenario Scenario, CardId Orc, List<string> Seen, List<string> Asked) EnteringWithBothReplacements(int pick)
+    {
+        var s = Casting();
+        s.Lands(P0, 2);
+        s.Add(P0, new CardDefinition { Name = "Captain", Types = CardType.Enchantment, Replaces = Replacements.ExtraCounterOnArmiesGoblinsOrcs });
+        s.Add(P0, new CardDefinition { Name = "Season", Types = CardType.Enchantment, Replaces = Replacements.DoubleCounters });
+        var orc = s.InHand(P0, Creature("Orc", 1, 1) with
+        {
+            ManaCost = Mana.ManaCost.Parse("{1}{R}"), Subtypes = new[] { "Orc" }, EntersWithCounters = 1,
+            Abilities = new AbilityDefinition[] { GainFiveIf(new SourceHasCounters(4)) },
+        });
+        var seen = new List<string>();
+        var asked = new List<string>();
+        s.Attacker.Option = (_, r) =>
+        {
+            if (!r.Options.Contains("Twice that many")) return 0;
+            asked.Add(r.Prompt);
+            seen.Add("asked");
+            return pick;
+        };
+        s.Game.EventRaised += e =>
+        {
+            if (e is CardMoved m && m.Card == orc && m.To == Zone.Battlefield) seen.Add($"moved:{s.Card(orc).CounterCount(CounterKind.PlusOnePlusOne)}");
+            if (e is CountersPlaced c && c.Card == orc) seen.Add($"counters{c.Count}");
+        };
+        return (s, orc, seen, asked);
+    }
+
+    [Theory]
+    [InlineData(0, 4)] // that many plus one, then twice that many: (1 + 1) x 2
+    [InlineData(1, 3)] // twice that many, then plus one: 1 x 2 + 1
+    public async Task TheControllerOrdersCounterReplacementsAsACreatureEntersBeforeItIsAnnounced(int pick, int expected)
+    {
+        var (s, orc, seen, asked) = EnteringWithBothReplacements(pick);
+        await s.RunUntilTurn();
+        Assert.Single(asked);
+        Assert.Equal(expected, s.Card(orc).CounterCount(CounterKind.PlusOnePlusOne));
+        // Asked as it moves, with the counters already on it when it is announced, and announced once.
+        Assert.Equal(new[] { "asked", $"moved:{expected}", $"counters{expected}" }, seen);
+        // Its intervening-if enters trigger saw the counters it entered with.
+        Assert.Equal(pick == 0 ? 25 : 20, s.Game.State.GetPlayer(P0).Life);
+    }
+
+    [Theory]
+    [InlineData(0, 4)]
+    [InlineData(1, 3)]
+    public async Task TheControllerOrdersCounterReplacementsForATokenThatEntersWithCounters(int pick, int expected)
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.Add(P0, new CardDefinition { Name = "Patron", Types = CardType.Enchantment, OthersEnterWithCounters = new Quantity(1) });
+        s.Add(P0, new CardDefinition { Name = "Captain", Types = CardType.Enchantment, Replaces = Replacements.ExtraCounterOnArmiesGoblinsOrcs });
+        s.Add(P0, new CardDefinition { Name = "Season", Types = CardType.Enchantment, Replaces = Replacements.DoubleCounters });
+        s.InHand(P0, Spell("Muster", "{R}", new SpellAbility
+        {
+            Effects = new Effect[] { new CreateTokens(Creature("Orc", 1, 1) with { Subtypes = new[] { "Orc" } }, 1, Subject.You) },
+        }));
+        s.Attacker.Option = (_, r) => r.Options.Contains("Twice that many") ? pick : 0;
+        await s.RunUntilTurn();
+        var token = s.Game.State.PermanentsControlledBy(P0).Single(c => c.Name == "Orc");
+        Assert.Equal(expected, token.CounterCount(CounterKind.PlusOnePlusOne));
+    }
+
     [Fact]
     public async Task TappingByAnEffectEmitsOnceAndTappingATappedPermanentEmitsNothing()
     {

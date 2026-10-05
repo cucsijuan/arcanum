@@ -288,4 +288,72 @@ public class ContinuousAndReplacementTests
         Assert.True(card.Tapped);
         Assert.Equal(0, card.CounterCount(CounterKind.Stun));
     }
+
+    /// <summary>A creature that goes onto the battlefield when an opponent makes its owner discard it, and is shuffled into its owner's library instead of a graveyard.</summary>
+    private static readonly CardDefinition Stubborn = Creature("Stubborn", 4, 4) with
+    {
+        ManaCost = ManaCost.Parse("{9}"), OntoBattlefieldIfOpponentMakesYouDiscard = true,
+        Replaces = Replacements.ShuffleIntoLibraryInsteadOfGraveyard,
+    };
+
+    private static CardDefinition MindTwist(Subject who, TargetSpec[]? targets) => new()
+    {
+        Name = "Mind Twist", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Sorcery,
+        Spell = new SpellAbility { Targets = targets ?? Array.Empty<TargetSpec>(), Effects = new Effect[] { new Discard(1, who) } },
+    };
+
+    [Theory]
+    [InlineData(true, Zone.Battlefield, false)]
+    [InlineData(false, Zone.Library, true)]
+    public async Task AnOpponentsDiscardLetsTheOwnerChooseBetweenTheBattlefieldAndAnotherReplacement(bool battlefield, Zone expected, bool discarded)
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.InHand(P0, MindTwist(Subject.TargetAt(0), new[] { new TargetSpec(TargetKind.Player, ControllerFilter.Opponent) }));
+        var stubborn = s.InHand(P1, Stubborn);
+        s.Defender.Discard = (_, _) => new[] { stubborn };
+        var asked = new List<IReadOnlyList<string>>();
+        s.Defender.Option = (_, r) =>
+        {
+            asked.Add(r.Options);
+            return r.Options.ToList().FindIndex(o => o.Contains(battlefield ? "battlefield" : "Shuffle"));
+        };
+        await s.RunUntilTurn();
+        Assert.Single(asked);
+        Assert.Equal(2, asked[0].Count);
+        Assert.Equal(expected, s.Card(stubborn).Zone);
+        // Shuffled into the library it was still discarded; put onto the battlefield instead, it never was.
+        Assert.Equal(discarded, s.Game.Log.Any(e => e is CardDiscarded d && d.Card == stubborn));
+    }
+
+    [Fact]
+    public async Task ADiscardByTheOwnersOwnEffectDoesNotPutItOntoTheBattlefield()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.InHand(P0, MindTwist(Subject.You, null));
+        var stubborn = s.InHand(P0, Stubborn);
+        s.Attacker.Discard = (_, _) => new[] { stubborn };
+        var asked = 0;
+        s.Attacker.Option = (_, _) => { asked++; return 0; };
+        await s.RunUntilTurn();
+        Assert.Equal(0, asked); // only the card's own shuffle replacement applies: nothing to choose
+        Assert.Equal(Zone.Library, s.Card(stubborn).Zone);
+        Assert.Contains(s.Game.Log, e => e is CardDiscarded d && d.Card == stubborn);
+    }
+
+    [Fact]
+    public async Task AnOpponentsDiscardWithNoOtherReplacementPutsItOntoTheBattlefieldWithoutAsking()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.InHand(P0, MindTwist(Subject.TargetAt(0), new[] { new TargetSpec(TargetKind.Player, ControllerFilter.Opponent) }));
+        var stubborn = s.InHand(P1, Stubborn with { Replaces = Replacements.None });
+        s.Defender.Discard = (_, _) => new[] { stubborn };
+        s.Defender.Option = (_, _) => throw new InvalidOperationException("Nothing to choose.");
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(stubborn).Zone);
+        Assert.Equal(P1, s.Card(stubborn).Controller);
+        Assert.DoesNotContain(s.Game.Log, e => e is CardDiscarded d && d.Card == stubborn);
+    }
 }

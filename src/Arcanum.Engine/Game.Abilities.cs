@@ -2842,7 +2842,7 @@ public sealed partial class Game
         BeginEnteringTogether();
         foreach (var (def, n, original) in batch)
             for (int i = 0; i < n; i++)
-                if (CreateToken(def, player, original && tapped) is { } made)
+                if (await CreateTokenAsync(def, player, original && tapped) is { } made)
                 {
                     all.Add(made);
                     if (original) originals.Add(made);
@@ -2851,7 +2851,7 @@ public sealed partial class Game
         return (originals, all);
     }
 
-    private CardId? CreateToken(CardDefinition definition, PlayerId controller, bool tapped = false)
+    private async Task<CardId?> CreateTokenAsync(CardDefinition definition, PlayerId controller, bool tapped = false)
     {
         var token = definition with { IsToken = true };
         var id = new CardId(State.Cards.Keys.Max(k => k.Value) + 1);
@@ -2864,7 +2864,7 @@ public sealed partial class Game
         // It enters with the counters other permanents give it (rule 614.1c), so they are there when its enters triggers are collected.
         var entering = new List<(CounterKind Kind, int Count)>();
         if (card.IsCreature && ExtraEnterCounters(card) is var extra and > 0) entering.Add((CounterKind.PlusOnePlusOne, extra));
-        var placed = PlaceEnterCounters(card, entering);
+        var placed = PlaceEnterCounters(card, entering, await OrderEnterCountersAsync(card, entering));
         Emit(new TokenCreated(id, controller));
         Emit(new CardMoved(id, controller, Zone.Exile, Zone.Battlefield, controller));
         AnnounceEnterCounters(card, placed);
@@ -2905,7 +2905,8 @@ public sealed partial class Game
     /// <summary>
     /// How many counters are put on after the replacement effects that modify them ("that many plus one", "twice that many"); null
     /// when both kinds apply, since the permanent's controller then chooses their order (rule 616.1) as soon as the engine can ask
-    /// (right after the current effect): the counters wait in <see cref="_pendingCounters"/>.
+    /// (right after the current effect): the counters wait in <see cref="_pendingCounters"/>. Counters a permanent enters with
+    /// are ordered as it enters instead (<see cref="OrderEnterCountersAsync"/>), so they never wait.
     /// </summary>
     private int? CountersAfterReplacements(Card card, CounterKind kind, int count, PlayerId? placedBy)
     {
@@ -2923,19 +2924,58 @@ public sealed partial class Game
     /// Puts on a permanent the counters it enters with, before it is announced as entered: it enters with them (rules 614.1c,
     /// 122.6), so its enters triggers and their intervening "if" conditions (rule 603.4) see them. Counter replacement effects
     /// still apply. Returns what was placed, to be announced afterwards with <see cref="AnnounceEnterCounters"/>. Counters whose
-    /// replacement effects need their controller to choose an order are put right after the current effect instead
-    /// (see <see cref="PutCounters"/>).
+    /// replacement effects need their controller to choose an order have it asked first (<see cref="OrderEnterCountersAsync"/>,
+    /// the result passed as <paramref name="ordered"/>); without it (a move that can't ask) they are put right after the
+    /// current effect instead (see <see cref="PutCounters"/>).
     /// </summary>
-    private List<(CounterKind Kind, int Count)> PlaceEnterCounters(Card card, IEnumerable<(CounterKind Kind, int Count)> counters)
+    private List<(CounterKind Kind, int Count)> PlaceEnterCounters(Card card, IReadOnlyList<(CounterKind Kind, int Count)> counters, IReadOnlyDictionary<int, int>? ordered = null)
     {
         var placed = new List<(CounterKind, int)>();
-        foreach (var (kind, count) in counters)
+        for (int i = 0; i < counters.Count; i++)
         {
-            if (CountersAfterReplacements(card, kind, count, card.Controller) is not { } amount) continue;
+            var (kind, count) = counters[i];
+            int amount;
+            if (ordered is not null && ordered.TryGetValue(i, out var orderedAmount)) amount = orderedAmount;
+            else if (CountersAfterReplacements(card, kind, count, card.Controller) is { } plain) amount = plain;
+            else continue;
             card.Counters[kind] = card.CounterCount(kind) + amount;
             placed.Add((kind, amount));
         }
         return placed;
+    }
+
+    /// <summary>
+    /// For a permanent entering with counters, has its controller order the "plus one" and "twice that many" replacement effects
+    /// where both apply (rule 616.1), as it enters and before its counters are put on. Returns the resulting amounts, by index.
+    /// </summary>
+    private async Task<Dictionary<int, int>> OrderEnterCountersAsync(Card card, IReadOnlyList<(CounterKind Kind, int Count)> counters)
+    {
+        var ordered = new Dictionary<int, int>();
+        for (int i = 0; i < counters.Count; i++)
+        {
+            var (kind, count) = counters[i];
+            if (count > 0 && ExtraCounterInstances(card, kind) > 0 && Instances(card.Controller, Replacements.DoubleCounters) > 0)
+                ordered[i] = await OrderedCounterCountAsync(card, kind, count);
+        }
+        return ordered;
+    }
+
+    /// <summary>
+    /// The number of counters after every "that many plus one" and "twice that many" effect applied once, in the order the
+    /// permanent's controller chooses (rules 614.5 and 616.1).
+    /// </summary>
+    private async Task<int> OrderedCounterCountAsync(Card card, CounterKind kind, int count)
+    {
+        int plusOnes = ExtraCounterInstances(card, kind), doublings = Instances(card.Controller, Replacements.DoubleCounters);
+        while (plusOnes > 0 || doublings > 0)
+        {
+            bool plusFirst = doublings == 0 || (plusOnes > 0 && await ControllerOf(card.Controller).ChooseOptionAsync(ViewFor(card.Controller),
+                new OptionRequest($"{count} {CounterName(kind)} counter{(count == 1 ? "" : "s")} on {card.Name}: which replacement applies next?", card.Id,
+                    new[] { "That many plus one", "Twice that many" }, OptionKind.Other)) == 0);
+            if (plusFirst) { count += 1; plusOnes--; }
+            else { count *= 2; doublings--; }
+        }
+        return count;
     }
 
     /// <summary>Announces counters placed by <see cref="PlaceEnterCounters"/>.</summary>
@@ -2967,16 +3007,7 @@ public sealed partial class Game
             _pendingCounters.RemoveAt(0);
             var card = State.GetCard(id);
             if (card.Zone != Zone.Battlefield || card.Version != version) continue;
-            int plusOnes = ExtraCounterInstances(card, kind), doublings = Instances(card.Controller, Replacements.DoubleCounters);
-            while (plusOnes > 0 || doublings > 0)
-            {
-                bool plusFirst = doublings == 0 || (plusOnes > 0 && await ControllerOf(card.Controller).ChooseOptionAsync(ViewFor(card.Controller),
-                    new OptionRequest($"{count} {CounterName(kind)} counter{(count == 1 ? "" : "s")} on {card.Name}: which replacement applies next?", card.Id,
-                        new[] { "That many plus one", "Twice that many" }, OptionKind.Other)) == 0);
-                if (plusFirst) { count += 1; plusOnes--; }
-                else { count *= 2; doublings--; }
-            }
-            PlaceCounters(card, kind, count, placedBy);
+            PlaceCounters(card, kind, await OrderedCounterCountAsync(card, kind, count), placedBy);
         }
     }
 
@@ -3362,16 +3393,20 @@ public sealed partial class Game
         return opponents[i];
     }
 
-    /// <summary>Discards a card; a card that says so goes to the battlefield instead when an opponent's spell or ability caused the discard.</summary>
+    /// <summary>
+    /// Discards a card: it moves from its owner's hand to the graveyard after the replacement effects that modify that (rule 614),
+    /// among them a card that says so going onto the battlefield instead when a spell or ability an opponent controls caused the
+    /// discard. A card that goes elsewhere instead is still discarded; one put onto the battlefield instead is not, since that
+    /// replaces the discard itself (rule 614.6).
+    /// </summary>
     private async Task DiscardCardAsync(PlayerId who, CardId card, PlayerId? causedBy)
     {
-        if (causedBy is { } cause && cause != who && State.GetCard(card).Definition.OntoBattlefieldIfOpponentMakesYouDiscard)
-        {
-            await MoveCardAsync(card, Zone.Battlefield);
-            return;
-        }
+        var discarded = State.GetCard(card);
+        bool byOpponent = causedBy is { } cause && State.OpponentsOf(who).Contains(cause);
+        var plan = await PlanMoveAsync(discarded, Zone.Graveyard, discardedByOpponent: byOpponent);
+        _movePlans[(card, discarded.Version)] = (Zone.Graveyard, plan);
         await MoveCardAsync(card, Zone.Graveyard);
-        Emit(new CardDiscarded(who, card));
+        if (plan.Applied.All(r => r.Kind != ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard)) Emit(new CardDiscarded(who, card));
     }
 
     private async Task<IReadOnlyList<CardId>> DiscardAsync(PlayerId who, int count, PlayerId? causedBy = null)
