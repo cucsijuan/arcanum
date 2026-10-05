@@ -153,6 +153,7 @@ public sealed partial class Game
         if (chosen is null)
         {
             Require(canCancel, "These targets must be chosen.");
+            _playerCancels++;
             return null;
         }
         Require(request.IsComplete(chosen.Count) && (request.LastIsAnyNumber || chosen.Count == legal.Count), $"Choose {legal.Count} target(s).");
@@ -272,6 +273,7 @@ public sealed partial class Game
                 if (answer is null)
                 {
                     Require(canCancel && n == 0, "Modes must be chosen.");
+                    _playerCancels++;
                     return null;
                 }
                 Require(answer.Count == 1 && possible.Contains(answer[0]), "Choose one of the possible modes.");
@@ -287,6 +289,7 @@ public sealed partial class Game
             if (answer is null)
             {
                 Require(canCancel, "Modes must be chosen.");
+                _playerCancels++;
                 return null;
             }
             Require(answer.Count >= min && answer.Count <= max && answer.Distinct().Count() == answer.Count && answer.All(possible.Contains),
@@ -660,10 +663,12 @@ public sealed partial class Game
                 var player = State.GetPlayer(ctx.Controller);
                 if (player.Library.Count == 0) break;
                 var top = player.Library.Take(gt.Look).ToList();
+                Look(ctx.Controller, top);
                 // "Put them back in any order".
                 var ordered = await OrderAsync(ctx.Controller, top, "Choose the card to put on top next", ctx.Source);
                 foreach (var id in top) player.Library.Remove(id);
                 player.Library.InsertRange(0, ordered);
+                PlacedInUnseenOrder(ordered, ctx.Controller);
                 int kind = await ControllerOf(ctx.Controller).ChooseOptionAsync(ViewFor(ctx.Controller), new OptionRequest($"{ctx.Source.Name}: choose land or nonland", ctx.Source.Id, new[] { "Land", "Nonland" }, OptionKind.Other));
                 Require(kind is 0 or 1, "Choose land or nonland.");
                 var guesser = await ChooseOpponentAsync(ctx.Controller, ctx.Source, "Choose the opponent who guesses") ?? State.OpponentsOf(ctx.Controller).First();
@@ -723,6 +728,7 @@ public sealed partial class Game
                 var rest = top.Where(id => !chosen.Contains(id)).ToList();
                 Rng.Shuffle(rest);
                 foreach (var id in rest) { player.Library.Remove(id); player.Library.Add(id); }
+                PlacedInUnseenOrder(rest, null);
                 break;
             }
             case NoteCreatureType:
@@ -830,7 +836,7 @@ public sealed partial class Game
                 foreach (var player in PlayersFor(dc.Who, ctx).ToList())
                 {
                     var hand = State.GetPlayer(player).Hand.Select(State.GetCard).ToList();
-                    Emit(new HandRevealed(player, hand.Select(c => c.Id).ToList()));
+                    Emit(new HandRevealed(player, hand.Select(c => c.Id).ToList(), Chooser: ctx.Controller));
                     var options = hand.Where(c => dc.Filter is null || Matches(dc.Filter with { Controller = ControllerFilter.Any }, c, player, ctx.Source, ctx.Controller))
                         .Select(c => ViewBuilder.Card(State, c.Id, ctx.Controller, reveal: true)).ToList();
                     int n = Math.Min(dc.Count, options.Count);
@@ -838,6 +844,7 @@ public sealed partial class Game
                     var chosen = await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller),
                         new CardChoiceRequest($"Choose {n} card(s) for {State.GetPlayer(player).Name} to discard", ctx.Source.Id, options, n, n, CardChoicePurpose.Discard));
                     Require(chosen.Count == n && chosen.Distinct().Count() == n && chosen.All(id => options.Any(o => o.Id == id)), "Choose among the revealed cards.");
+                    Emit(new ChosenFromHand(ctx.Controller, player, chosen.ToList()));
                     foreach (var id in chosen) await DiscardCardAsync(player, id, ctx.Controller);
                 }
                 break;
@@ -861,8 +868,8 @@ public sealed partial class Game
                 var top = State.ApnapOrder().Where(owners.Contains).SelectMany(o => State.GetPlayer(o).Library.Take(howMany).ToList()).ToList();
                 foreach (var id in top)
                 {
-                    await MoveCardAsync(id, Zone.Exile);
-                    if (ep.FaceDown) State.GetCard(id).FaceDown = true;
+                    if (ep.FaceDown) Look(ctx.Controller, new[] { id }); // "exile them face down; you may look at them"
+                    await MoveCardAsync(id, Zone.Exile, faceDown: ep.FaceDown);
                 }
                 IReadOnlyList<CardId> playable = top;
                 if (ep.ChooseOne && top.Count > 1)
@@ -1032,6 +1039,7 @@ public sealed partial class Game
                     var leftover = exiled.Where(id => State.GetCard(id).Zone == Zone.Exile).ToList();
                     Rng.Shuffle(leftover);
                     foreach (var id in leftover) await MoveCardAsync(id, Zone.Library, toBottom: true);
+                    PlacedInUnseenOrder(leftover, null);
                     break;
                 }
                 var revealed = new List<CardId>();
@@ -1065,6 +1073,7 @@ public sealed partial class Game
                 }
                 Rng.Shuffle(revealed);
                 foreach (var id in revealed) { player.Library.Remove(id); player.Library.Add(id); }
+                PlacedInUnseenOrder(revealed, null);
                 break;
             }
             case Unless un:
@@ -1103,11 +1112,13 @@ public sealed partial class Game
                 if (top.Count == 0) break;
                 if (pl.Revealed) Emit(new CardsRevealed(ctx.Controller, top));
                 var separator = await ChooseOpponentAsync(ctx.Controller, ctx.Source, "Choose the opponent who separates the piles") ?? State.OpponentsOf(ctx.Controller).First();
+                Look(separator, top);
                 var options = top.Select(id => ViewBuilder.Card(State, id, separator, reveal: true)).ToList();
                 var faceUp = await ControllerOf(separator).ChooseCardsAsync(ViewFor(separator),
                     new CardChoiceRequest(pl.Revealed ? $"Separate {player.Name}'s revealed cards into two piles: choose the first pile" : $"Choose the cards for {player.Name}'s face-up pile (the rest go face down)",
                         ctx.Source.Id, options, 0, top.Count, CardChoicePurpose.ToHand));
                 Require(faceUp.All(top.Contains) && faceUp.Distinct().Count() == faceUp.Count, "Choose among the top cards.");
+                RevealToAll(faceUp); // the face-up pile is seen by everyone
                 var faceDown = top.Where(id => !faceUp.Contains(id)).ToList();
                 var labels = pl.Revealed
                     ? new[]
@@ -1132,10 +1143,12 @@ public sealed partial class Game
                 var player = State.GetPlayer(ctx.Controller);
                 var top = player.Library.Take(pl.Count).ToList();
                 if (top.Count == 0) break;
+                Look(ctx.Controller, top);
                 var options = top.Select(id => ViewBuilder.Card(State, id, ctx.Controller, reveal: true)).ToList();
                 var faceUp = await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller),
                     new CardChoiceRequest("Choose the cards for the face-up pile (the rest go face down)", ctx.Source.Id, options, 0, top.Count, CardChoicePurpose.ToHand));
                 Require(faceUp.All(top.Contains) && faceUp.Distinct().Count() == faceUp.Count, "Choose among the top cards.");
+                RevealToAll(faceUp); // the face-up pile is seen by everyone
                 var faceDown = top.Where(id => !faceUp.Contains(id)).ToList();
                 var opponent = await ChooseOpponentAsync(ctx.Controller, ctx.Source, "Choose the opponent who picks the pile") ?? State.OpponentsOf(ctx.Controller).First();
                 var labels = new[]
@@ -1236,6 +1249,7 @@ public sealed partial class Game
             case SearchAndExileWithThis se:
             {
                 var player = State.GetPlayer(ctx.Controller);
+                Look(ctx.Controller, player.Library); // searching is looking through the whole library (rule 701.23a)
                 var options = player.Library.Select(State.GetCard).Where(c => Matches(se.Filter with { Controller = ControllerFilter.Any }, c, ctx.Controller, ctx.Source, ctx.Controller))
                     .Select(c => ViewBuilder.Card(State, c.Id, ctx.Controller, reveal: true)).ToList();
                 if (options.Count > 0)
@@ -1435,6 +1449,8 @@ public sealed partial class Game
                 break;
             }
             case PutIntoLibrary pl:
+            {
+                var placed = new List<(CardId Card, PlayerId Owner, bool Bottom)>();
                 foreach (var card in (pl.What.Kind == SubjectKind.Self && ctx.Source.Zone == Zone.Graveyard ? new[] { ctx.Source } : CardsFor(pl.What, ctx)).ToList())
                 {
                     if (pl.Position > 0)
@@ -1449,8 +1465,13 @@ public sealed partial class Game
                     bool bottom = !pl.Top && (pl.Bottom || await ControllerOf(card.Owner).ChooseYesNoAsync(ViewFor(card.Owner),
                         new YesNoRequest($"Put {card.Name} on the bottom of your library? (No: on top)", card.Id)));
                     await MoveCardAsync(card.Id, Zone.Library, toBottom: bottom);
+                    placed.Add((card.Id, card.Owner, bottom));
                 }
+                // Several cards put on the same end of a library at once: their owner doesn't reveal the order (rule 401.4).
+                foreach (var group in placed.GroupBy(x => (x.Owner, x.Bottom)))
+                    PlacedInUnseenOrder(group.Select(x => x.Card), group.Key.Owner);
                 break;
+            }
             case GainControl g:
             {
                 PlayerId? chosen = g.NewController is { Kind: SubjectKind.EachOpponent }
@@ -1823,6 +1844,7 @@ public sealed partial class Game
                 var rest = exiled.Where(id => State.GetCard(id).Zone == Zone.Exile).ToList();
                 Rng.Shuffle(rest);
                 foreach (var id in rest) await MoveCardAsync(id, Zone.Library, toBottom: true);
+                PlacedInUnseenOrder(rest, null);
                 break;
             }
             case CastFromHandFree cf:
@@ -1887,6 +1909,7 @@ public sealed partial class Game
                     hand.Select(id => ViewBuilder.Card(State, id, who)).ToList(), n, n, CardChoicePurpose.ScryToBottom));
                 Require(pick.Count == n && pick.All(hand.Contains), "Choose cards from your hand.");
                 foreach (var id in pick) await MoveCardAsync(id, Zone.Library, toBottom: true);
+                PlacedInUnseenOrder(pick, who);
                 break;
             }
             case TapAnyNumber ta:
@@ -2066,6 +2089,7 @@ public sealed partial class Game
                 var rest = top.Where(id => id != picked).ToList();
                 Rng.Shuffle(rest);
                 foreach (var id in rest) { player.Library.Remove(id); player.Library.Add(id); }
+                PlacedInUnseenOrder(rest, null);
                 break;
             }
             case SearchHandOrLibrary shl:
@@ -2126,8 +2150,21 @@ public sealed partial class Game
                 var castable = pool
                     .Where(c => c.Zone == Zone.Graveyard && !c.Is(CardType.Land) && Matches(cg.Filter with { Controller = ControllerFilter.Any }, c, c.Owner, ctx.Source, who)
                                 && (maxValue is null || c.Definition.ManaCost.ManaValue <= maxValue)
-                                && HasLegalTargets(CastingTargets(c.Definition), who, c.Id) && (cg.Free || Payable(who, CastingCost(c).WithX(0), null)))
+                                && CastableWith(c))
                     .ToList();
+                // Whether it could be cast with the permission this effect gives (tried, then taken back).
+                bool CastableWith(Card c)
+                {
+                    var trial = new PlayableFromExile(c.Id, c.Version, who, State.TurnNumber);
+                    State.PlayableFromGraveyard.Add(trial);
+                    bool free = cg.Free && _castFree.Add(c.Id);
+                    try { return CanBeCast(c, who, flashExtra: false); }
+                    finally
+                    {
+                        State.PlayableFromGraveyard.Remove(trial);
+                        if (free) _castFree.Remove(c.Id);
+                    }
+                }
                 if (castable.Count == 0) break;
                 var pick = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest(cg.Free ? "You may cast a spell without paying its mana cost" : "You may cast a spell from your graveyard", ctx.Source.Id,
                     castable.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 0, 1, CardChoicePurpose.ToBattlefield));
@@ -2379,11 +2416,10 @@ public sealed partial class Game
                 {
                     if (State.GetPlayer(whose).Library.Count == 0) continue;
                     var topCard = State.GetPlayer(whose).Library[0];
-                    await MoveCardAsync(topCard, Zone.Exile);
+                    Look(ctx.Controller, new[] { topCard });
+                    await MoveCardAsync(topCard, Zone.Exile, faceDown: true);
                     var hidden = State.GetCard(topCard);
                     if (hidden.Zone != Zone.Exile) continue;
-                    hidden.FaceDown = true;
-                    hidden.FaceDownLookers.Add(ctx.Controller);
                     hidden.ExiledWith = (ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version);
                 }
                 break;
@@ -2620,16 +2656,17 @@ public sealed partial class Game
                 var player = State.GetPlayer(ctx.Controller);
                 var top = player.Library.Take(hw.Count).ToList();
                 if (top.Count == 0) break;
+                Look(ctx.Controller, top);
                 var pick = await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller), new CardChoiceRequest("Hideaway: choose a card to exile face down", ctx.Source.Id,
                     top.Select(id => ViewBuilder.Card(State, id, ctx.Controller, reveal: true)).ToList(), 1, 1, CardChoicePurpose.Keep));
                 Require(pick.Count == 1 && top.Contains(pick[0]), "Choose one of the cards.");
-                await MoveCardAsync(pick[0], Zone.Exile);
+                await MoveCardAsync(pick[0], Zone.Exile, faceDown: true);
                 var hidden = State.GetCard(pick[0]);
-                hidden.FaceDown = true;
                 hidden.ExiledWith = (ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version);
                 // "Put the rest on the bottom of your library in any order" (rule 702.75a).
                 var rest = (await OrderAsync(ctx.Controller, top.Where(id => id != pick[0]).ToList(), "Choose the next card for the bottom (first goes deepest)", ctx.Source)).ToList();
                 foreach (var id in rest) { player.Library.Remove(id); player.Library.Add(id); }
+                PlacedInUnseenOrder(rest, ctx.Controller);
                 break;
             }
             case PlayLinkedExiledFree:
@@ -2673,10 +2710,13 @@ public sealed partial class Game
             {
                 if (ctx.Trigger?.Subject is not { } drawn || State.GetCard(drawn) is not { Zone: Zone.Hand } card || card.Version != ctx.Trigger.SubjectVersion
                     || card.Definition.Miracle is not { } miracle) break;
-                if (!HasLegalTargets(CastingTargets(card.Definition), ctx.Controller, card.Id) || !Payable(ctx.Controller, miracle.WithX(0), null, UsableFor(card, isAbility: false))) break;
-                if (!await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast {card.Name} for its miracle cost {miracle}?", card.Id))) break;
                 _miracleCost[card.Id] = miracle;
-                try { await CastSpellAsync(State.GetPlayer(ctx.Controller), card.Id); }
+                try
+                {
+                    if (!CanBeCast(card, ctx.Controller, flashExtra: false)
+                        || !await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast {card.Name} for its miracle cost {miracle}?", card.Id))) break;
+                    await CastSpellAsync(State.GetPlayer(ctx.Controller), card.Id);
+                }
                 finally { _miracleCost.Remove(card.Id); }
                 break;
             }
@@ -2842,7 +2882,7 @@ public sealed partial class Game
         BeginEnteringTogether();
         foreach (var (def, n, original) in batch)
             for (int i = 0; i < n; i++)
-                if (CreateToken(def, player, original && tapped) is { } made)
+                if (await CreateTokenAsync(def, player, original && tapped) is { } made)
                 {
                     all.Add(made);
                     if (original) originals.Add(made);
@@ -2851,7 +2891,7 @@ public sealed partial class Game
         return (originals, all);
     }
 
-    private CardId? CreateToken(CardDefinition definition, PlayerId controller, bool tapped = false)
+    private async Task<CardId?> CreateTokenAsync(CardDefinition definition, PlayerId controller, bool tapped = false)
     {
         var token = definition with { IsToken = true };
         var id = new CardId(State.Cards.Keys.Max(k => k.Value) + 1);
@@ -2864,7 +2904,7 @@ public sealed partial class Game
         // It enters with the counters other permanents give it (rule 614.1c), so they are there when its enters triggers are collected.
         var entering = new List<(CounterKind Kind, int Count)>();
         if (card.IsCreature && ExtraEnterCounters(card) is var extra and > 0) entering.Add((CounterKind.PlusOnePlusOne, extra));
-        var placed = PlaceEnterCounters(card, entering);
+        var placed = PlaceEnterCounters(card, entering, await OrderEnterCountersAsync(card, entering));
         Emit(new TokenCreated(id, controller));
         Emit(new CardMoved(id, controller, Zone.Exile, Zone.Battlefield, controller));
         AnnounceEnterCounters(card, placed);
@@ -2905,7 +2945,8 @@ public sealed partial class Game
     /// <summary>
     /// How many counters are put on after the replacement effects that modify them ("that many plus one", "twice that many"); null
     /// when both kinds apply, since the permanent's controller then chooses their order (rule 616.1) as soon as the engine can ask
-    /// (right after the current effect): the counters wait in <see cref="_pendingCounters"/>.
+    /// (right after the current effect): the counters wait in <see cref="_pendingCounters"/>. Counters a permanent enters with
+    /// are ordered as it enters instead (<see cref="OrderEnterCountersAsync"/>), so they never wait.
     /// </summary>
     private int? CountersAfterReplacements(Card card, CounterKind kind, int count, PlayerId? placedBy)
     {
@@ -2923,19 +2964,58 @@ public sealed partial class Game
     /// Puts on a permanent the counters it enters with, before it is announced as entered: it enters with them (rules 614.1c,
     /// 122.6), so its enters triggers and their intervening "if" conditions (rule 603.4) see them. Counter replacement effects
     /// still apply. Returns what was placed, to be announced afterwards with <see cref="AnnounceEnterCounters"/>. Counters whose
-    /// replacement effects need their controller to choose an order are put right after the current effect instead
-    /// (see <see cref="PutCounters"/>).
+    /// replacement effects need their controller to choose an order have it asked first (<see cref="OrderEnterCountersAsync"/>,
+    /// the result passed as <paramref name="ordered"/>); without it (a move that can't ask) they are put right after the
+    /// current effect instead (see <see cref="PutCounters"/>).
     /// </summary>
-    private List<(CounterKind Kind, int Count)> PlaceEnterCounters(Card card, IEnumerable<(CounterKind Kind, int Count)> counters)
+    private List<(CounterKind Kind, int Count)> PlaceEnterCounters(Card card, IReadOnlyList<(CounterKind Kind, int Count)> counters, IReadOnlyDictionary<int, int>? ordered = null)
     {
         var placed = new List<(CounterKind, int)>();
-        foreach (var (kind, count) in counters)
+        for (int i = 0; i < counters.Count; i++)
         {
-            if (CountersAfterReplacements(card, kind, count, card.Controller) is not { } amount) continue;
+            var (kind, count) = counters[i];
+            int amount;
+            if (ordered is not null && ordered.TryGetValue(i, out var orderedAmount)) amount = orderedAmount;
+            else if (CountersAfterReplacements(card, kind, count, card.Controller) is { } plain) amount = plain;
+            else continue;
             card.Counters[kind] = card.CounterCount(kind) + amount;
             placed.Add((kind, amount));
         }
         return placed;
+    }
+
+    /// <summary>
+    /// For a permanent entering with counters, has its controller order the "plus one" and "twice that many" replacement effects
+    /// where both apply (rule 616.1), as it enters and before its counters are put on. Returns the resulting amounts, by index.
+    /// </summary>
+    private async Task<Dictionary<int, int>> OrderEnterCountersAsync(Card card, IReadOnlyList<(CounterKind Kind, int Count)> counters)
+    {
+        var ordered = new Dictionary<int, int>();
+        for (int i = 0; i < counters.Count; i++)
+        {
+            var (kind, count) = counters[i];
+            if (count > 0 && ExtraCounterInstances(card, kind) > 0 && Instances(card.Controller, Replacements.DoubleCounters) > 0)
+                ordered[i] = await OrderedCounterCountAsync(card, kind, count);
+        }
+        return ordered;
+    }
+
+    /// <summary>
+    /// The number of counters after every "that many plus one" and "twice that many" effect applied once, in the order the
+    /// permanent's controller chooses (rules 614.5 and 616.1).
+    /// </summary>
+    private async Task<int> OrderedCounterCountAsync(Card card, CounterKind kind, int count)
+    {
+        int plusOnes = ExtraCounterInstances(card, kind), doublings = Instances(card.Controller, Replacements.DoubleCounters);
+        while (plusOnes > 0 || doublings > 0)
+        {
+            bool plusFirst = doublings == 0 || (plusOnes > 0 && await ControllerOf(card.Controller).ChooseOptionAsync(ViewFor(card.Controller),
+                new OptionRequest($"{count} {CounterName(kind)} counter{(count == 1 ? "" : "s")} on {card.Name}: which replacement applies next?", card.Id,
+                    new[] { "That many plus one", "Twice that many" }, OptionKind.Other)) == 0);
+            if (plusFirst) { count += 1; plusOnes--; }
+            else { count *= 2; doublings--; }
+        }
+        return count;
     }
 
     /// <summary>Announces counters placed by <see cref="PlaceEnterCounters"/>.</summary>
@@ -2967,16 +3047,7 @@ public sealed partial class Game
             _pendingCounters.RemoveAt(0);
             var card = State.GetCard(id);
             if (card.Zone != Zone.Battlefield || card.Version != version) continue;
-            int plusOnes = ExtraCounterInstances(card, kind), doublings = Instances(card.Controller, Replacements.DoubleCounters);
-            while (plusOnes > 0 || doublings > 0)
-            {
-                bool plusFirst = doublings == 0 || (plusOnes > 0 && await ControllerOf(card.Controller).ChooseOptionAsync(ViewFor(card.Controller),
-                    new OptionRequest($"{count} {CounterName(kind)} counter{(count == 1 ? "" : "s")} on {card.Name}: which replacement applies next?", card.Id,
-                        new[] { "That many plus one", "Twice that many" }, OptionKind.Other)) == 0);
-                if (plusFirst) { count += 1; plusOnes--; }
-                else { count *= 2; doublings--; }
-            }
-            PlaceCounters(card, kind, count, placedBy);
+            PlaceCounters(card, kind, await OrderedCounterCountAsync(card, kind, count), placedBy);
         }
     }
 
@@ -3057,6 +3128,7 @@ public sealed partial class Game
         var top = player.Library.Take(count).ToList();
         if (top.Count == 0) return;
         bool scry = purpose == CardChoicePurpose.ScryToBottom;
+        Look(who, top);
         var prompt = scry
             ? $"Scry {count}: choose cards to put on the bottom of your library"
             : $"Surveil {count}: choose cards to put into your graveyard";
@@ -3076,6 +3148,8 @@ public sealed partial class Game
                 player.Library.Insert(0, id); // briefly back on top so it moves from the library
                 await MoveCardAsync(id, Zone.Graveyard);
             }
+        // The cards go back face down: only the player who looked follows them, unless a single one stays in the library.
+        PlacedInUnseenOrder(top, who);
         Emit(new LookedAtTop(who, top.Count, chosen.Count, scry));
         if (scry)
             foreach (var card in State.PermanentsControlledBy(who).ToList()) Queue(card.Id, TriggerEvent.YouScry, who, new TriggerInfo(Player: who, Amount: top.Count));
@@ -3090,6 +3164,7 @@ public sealed partial class Game
     private async Task<IReadOnlyList<CardId>> SearchLibraryAsync(PlayerId who, SearchLibrary search, Card source)
     {
         var player = State.GetPlayer(who);
+        Look(who, player.Library); // searching is looking through the whole library (rule 701.23a)
         var filter = search.Filter with { Controller = ControllerFilter.Any };
         var options = player.Library.Select(State.GetCard).Where(c => Matches(filter, c, who, source, who))
             .Select(c => ViewBuilder.Card(State, c.Id, who, reveal: true)).ToList();
@@ -3149,6 +3224,10 @@ public sealed partial class Game
             EndEnteringTogether();
             Shuffle(player);
             foreach (var id in onTop) { player.Library.Remove(id); player.Library.Insert(0, id); }
+            // The cards found are put on top after the shuffle: the searcher knows them (everyone, when they were revealed).
+            Look(who, onTop);
+            if (search.Reveal) RevealToAll(onTop);
+            PlacedInUnseenOrder(onTop, who);
             return chosen;
         }
         if (search.WithExiled)
@@ -3256,6 +3335,7 @@ public sealed partial class Game
         var player = State.GetPlayer(who);
         var top = player.Library.Take(look.Count).ToList();
         if (top.Count == 0) return;
+        Look(who, top);
         if (look.RevealAll) Emit(new CardsRevealed(who, top));
         var options = top.Select(id => ViewBuilder.Card(State, id, who, reveal: true)).ToList();
         var eligible = top.Where(id => look.Filter is null || Matches(look.Filter with { Controller = ControllerFilter.Any }, State.GetCard(id), who, source, who)).ToList();
@@ -3291,6 +3371,7 @@ public sealed partial class Game
                 foreach (var id in rest) player.Library.Remove(id);
                 var ordered = await OrderAsync(who, rest, "Choose the card to put on top next", source);
                 player.Library.InsertRange(0, ordered);
+                PlacedInUnseenOrder(ordered, who);
             }
             Emit(new LookedAtTop(who, top.Count, 0, Scry: false)); // otherwise the rest stays where it was
             return;
@@ -3307,6 +3388,7 @@ public sealed partial class Game
                 player.Library.Add(id);
             }
         }
+        if (!look.RestToGraveyard) PlacedInUnseenOrder(rest, look.RestOrder == RestOrder.Chosen ? who : null);
         Emit(new LookedAtTop(who, top.Count, top.Count - chosen.Count, Scry: !look.RestToGraveyard));
     }
 
@@ -3362,14 +3444,18 @@ public sealed partial class Game
         return opponents[i];
     }
 
-    /// <summary>Discards a card; a card that says so goes to the battlefield instead when an opponent's spell or ability caused the discard.</summary>
+    /// <summary>
+    /// Discards a card: it moves from its owner's hand to the graveyard after the replacement effects that modify that (rule 614),
+    /// among them a card that says so going onto the battlefield instead when a spell or ability an opponent controls caused the
+    /// discard. Those effects replace only where the card goes ("instead of putting it into your graveyard"), not the discard, so
+    /// the card is discarded wherever it ends up (as with madness, rule 702.35).
+    /// </summary>
     private async Task DiscardCardAsync(PlayerId who, CardId card, PlayerId? causedBy)
     {
-        if (causedBy is { } cause && cause != who && State.GetCard(card).Definition.OntoBattlefieldIfOpponentMakesYouDiscard)
-        {
-            await MoveCardAsync(card, Zone.Battlefield);
-            return;
-        }
+        var discarded = State.GetCard(card);
+        bool byOpponent = causedBy is { } cause && State.OpponentsOf(who).Contains(cause);
+        var plan = await PlanMoveAsync(discarded, Zone.Graveyard, discardedByOpponent: byOpponent);
+        _movePlans[(card, discarded.Version)] = (Zone.Graveyard, plan);
         await MoveCardAsync(card, Zone.Graveyard);
         Emit(new CardDiscarded(who, card));
     }

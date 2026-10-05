@@ -60,6 +60,8 @@ public class SetGamesTests
                 var recent = string.Join(" | ", game.Log.TakeLast(6).Select(e => e.ToString()));
                 errors.Add($"game {g} turn {game.State.TurnNumber}: {ex.GetType().Name}: {ex.Message}\n   {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}\n   recent: {recent}");
             }
+            // A legal action that came to nothing without the bot backing out of it is an engine error too.
+            errors.AddRange(game.FailedActions.Select(f => $"game {g}: chosen action came to nothing: {f}"));
         }
         var never = pool.Select(d => d.Name).Where(name => !cast.Contains(name) && !(db.Find(name)?.Definition.Is(CardType.Land) ?? false)).ToList();
         Console.WriteLine($"set {code}: {games} games, {errors.Count} errors, {cast.Count} different cards cast; never cast: {string.Join(", ", never)}");
@@ -130,6 +132,8 @@ public class SetGamesTests
                 var recent = string.Join(" | ", game.Log.TakeLast(8).Select(e => e.ToString()));
                 errors.Add($"game {g} turn {game.State.TurnNumber}: {ex.GetType().Name}: {ex.Message}\n   {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}\n   recent: {recent}");
             }
+            // A legal action that came to nothing without the bot backing out of it is an engine error too.
+            errors.AddRange(game.FailedActions.Select(f => $"game {g}: chosen action came to nothing: {f}"));
         }
         var all = decks.SelectMany(d => d.Main.Concat(d.Commander)).Select(e => e.Name).Distinct()
             .Where(name => !(db.Find(name)?.Definition.Is(CardType.Land) ?? false)).ToList();

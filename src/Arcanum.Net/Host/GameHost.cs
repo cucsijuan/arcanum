@@ -89,6 +89,7 @@ public sealed class GameHost
         Game = new Game(config, seats.Select((s, i) => new PlayerSetup(s.Name, _seats[i], s.Deck, s.Commanders)).ToList());
         foreach (var seat in _seats) seat.UseCardRules(Game);
         Game.EventRaised += OnEvent;
+        Game.KnowledgeLost += ForgetHiddenLibraryCards;
     }
 
     /// <summary>The secret a player presents to take (or retake) this seat.</summary>
@@ -239,16 +240,22 @@ public sealed class GameHost
             foreach (var seat in _seats)
                 seat.Peer?.Send(new Happened(EventViews.Build(Game.State, e, seat.Id, revealAll: false, tax)));
         }
-        // A card going into a library becomes a new, unknown object: no one may follow it in there.
-        switch (e)
-        {
-            case CardMoved { To: Zone.Library } moved:
-                foreach (var seat in _seats) seat.Aliases.Forget(moved.Card.Value);
-                break;
-            case LibraryShuffled shuffled:
-                foreach (var card in Game.State.GetPlayer(shuffled.Player).Library)
-                    foreach (var seat in _seats) seat.Aliases.Forget(card.Value);
-                break;
-        }
+        ForgetHiddenLibraryCards();
+    }
+
+    /// <summary>
+    /// A card in a library keeps its id only for the players who know it there (see <see cref="Engine.State.Card.KnownTo"/>):
+    /// for everyone else it becomes a new, unknown object, so no one can follow a card into a library, through a shuffle,
+    /// or through an order they didn't see.
+    /// </summary>
+    private void ForgetHiddenLibraryCards()
+    {
+        foreach (var player in Game.State.Players)
+            foreach (var id in player.Library)
+            {
+                var card = Game.State.GetCard(id);
+                foreach (var seat in _seats)
+                    if (!card.IsVisibleTo(seat.Id)) seat.Aliases.Forget(id.Value);
+            }
     }
 }

@@ -56,7 +56,7 @@ it. Suspend also sets `HasteOnEnter` before the cast and doesn't undo it.
 haste rider applied only when the spell is actually cast.
 **Test:** decline the free cast; the card is not castable afterwards.
 
-### R7. Casting steps out of order: alternative costs after targets
+### R7. Casting steps out of order: alternative costs after targets — **done**
 `CastAsItIsAsync` (`Game.Priority.cs` ~535-620) asks for dash and for "without paying its mana cost" (with X) after targets.
 Rule 601.2b: the alternative cost is announced with modes, kicker and splice, before targets (601.2c). It matters when an
 alternative cost changes what can be targeted or when targets depend on the total cost.
@@ -98,7 +98,7 @@ the owner out.
 
 ## P2 — duplicated paths
 
-### D1. "Can this be cast?" and "what does casting cost?" are two implementations
+### D1. "Can this be cast?" and "what does casting cost?" are two implementations — **done**
 `CanCast` (`Game.Priority.cs` ~261) rebuilds the cost (delve, dash, extra flash cost, graveyard costs, paying life) separately
 from `CastAsItIsAsync`. When they disagree, an action is offered and then can't be paid: that is how the dash bug of the
 Commander soak happened, and the bots now carry a guard (`BotController`, backed-out actions) that hides such cases.
@@ -144,7 +144,7 @@ Against the project rule, the main repository names real cards in identifiers an
 **Fix:** rename to describe the rule, write the comments generically, make the sandbox use generic test cards
 (`Arcanum.Cards`), rename the test cards. Add a test that greps the main repository for the module's card names.
 
-### H2. A test hook in the bots hides engine errors
+### H2. A test hook in the bots hides engine errors — **done**
 See D1: the backed-out-action guard in `BotController` should go once D1 is done; until then, soak tests should report how
 often it fires.
 
@@ -154,19 +154,33 @@ wakes on queued work (and a slower tick when nothing is going on) would save bat
 
 ## Left over from the fixes
 
-### L1. Entering counters with both "plus one" and "twice that many" replacements
-Counters a permanent enters with are now on it before it is announced (R2), except when both kinds of counter replacement
-apply: their controller must order them (rule 616.1) and `MoveCard` can't ask, so those counters are still placed right
-after the current effect. Now that moves are planned asynchronously (`PlanMoveAsync`), the order can be asked as the
-permanent moves: do that.
+### L1. Entering counters with both "plus one" and "twice that many" replacements — **done**
+Counters a permanent enters with are on it before it is announced (R2), also when both kinds of counter replacement apply:
+`MoveCardAsync` has the controller order them (rule 616.1) right after the move is made and before anything is announced
+(`OrderEnterCountersAsync`, sharing `OrderedCounterCountAsync` with the deferred path), and tokens do the same
+(`CreateTokenAsync`). Left: a permanent that returns from an "until an opponent becomes the monarch" exile is moved by a
+synchronous caller (`ReturnFromMonarchExile`, reached from `LoseAll`), so in that one case its counters are still ordered
+right after the current effect.
 
-### L2. A commander drawn and put into the command zone instead
-`DrawAsync` still announces the draw when the commander goes to the command zone instead of the hand (903.9b). Check the
-rules on whether a draw replaced that way is still a draw ("cards drawn this turn", "whenever you draw") and match them.
+### L2. A commander drawn and put into the command zone instead — **done**
+Decision: it is still a draw and still announced (`CardDrawn`). Rule 903.9b only modifies where the drawn card goes, the
+modified event happens instead of the original (614.6), and the player still drew the top card (121.1); no different event
+replaces the draw, so it counts for "cards drawn this turn" and "whenever you draw" triggers. The rules text is not
+explicit about this case; the choice matches how other engines treat it. Pinned by a test, comment in `DrawOneAsync`.
 
-### L3. The "onto the battlefield instead of being discarded" replacement
-It is still applied before the move, outside `ZoneReplacements`; it should become one of the options there so it can be
-ordered with the others when something else also applies.
+### L3. The "onto the battlefield instead of being discarded" replacement — **done**
+It is now one of the zone-change replacements (`OntoBattlefieldInsteadOfDiscard`, only for a discard from the hand caused
+by an opponent's spell or ability), so it is ordered with the others when several apply. These effects replace only where
+the card goes ("instead of putting it into your graveyard"), so the card is discarded wherever it ends up, like madness.
+
+### L4. Left over from the single casting-cost function
+- A reduction "if it targets X" steers target choice only for single-target spells; with several targets a cast that turns
+  out unaffordable is reversed (601.2h) and recorded instead.
+- Separate costs that each sacrifice, discard or tap are checked one by one for candidates; only life and graveyard exiles
+  are summed across them.
+- A card with its own flashback that is also granted flashback offers only one flashback cost.
+- Activated abilities still announce X after targets (except when a target filter uses X): apply 602.2b like spells.
+- `CastFromHand` is set before announcements and not reset when the cast is backed out of.
 
 ## Suggested order
 

@@ -69,11 +69,13 @@ public partial class GameBoard : Control
     private int _damageToPlayer;                                   // trample damage to the defending player
     private readonly ArrowLayer _arrows = new();
     private readonly Announcer _announcer = new();
+    private readonly TurnChime _turnChime = new();
     private readonly MulliganView _mulligan = new();
     private ulong _holdUntilMs;
     private readonly List<EventView> _pendingAttacks = new();
     private readonly List<EventView> _pendingBlocks = new();
     private bool _combatFlushQueued;
+    private PlayerId? _handLookedAt;                    // whose hand another player is looking at right now
     private readonly PhaseBar _phaseBar = new();
     private readonly StackView _stackView = new();
     private Button _undoButton = null!;
@@ -365,6 +367,7 @@ public partial class GameBoard : Control
         _announcer.ZIndex = BoardStyle.Z.Announcer;
         _announcer.ArrowsChanged += arrows => _arrows.SetOverlayArrows(arrows);
         AddChild(_announcer);
+        AddChild(_turnChime);
 
         // Top-right: menu, turn counter, log toggle.
         var corner = new VBoxContainer { AnchorLeft = 1, AnchorRight = 1, OffsetLeft = -62, OffsetTop = 14, OffsetRight = -14 };
@@ -651,6 +654,8 @@ public partial class GameBoard : Control
         _turnNumber.Text = Math.Max(1, view.TurnNumber).ToString();
         _stepLabel.Text = view.TurnNumber == 0 ? "Mulligan" : EventLogFormatter.StepName(view.Step);
         _phaseBar.SetCurrentStep(view.TurnNumber == 0 ? null : view.Step);
+        _phaseBar.SetActivePlayer(view.TurnNumber == 0 ? null : view.Players[view.ActivePlayer.Value].Name, view.ActivePlayer == Bottom,
+            BoardStyle.PlayerColor(view.ActivePlayer.Value));
         _stackView.Refresh(view.Stack);
         _undoButton.Disabled = !_session.CanUndo || _match?.Event is not null; // no take-backs in event games
 
@@ -1906,8 +1911,27 @@ public partial class GameBoard : Control
     /// <summary>Turns what other players (the computer, people elsewhere) do into announcements, and holds the game on key moments.</summary>
     private void Announce(EventView ev)
     {
+        // A look at a hand lasts until a card is chosen from it or the spell or ability is done.
+        if (_handLookedAt is { } looked && ev.Event is ChosenFromHand or SpellResolved or AbilityResolved or PriorityGiven or StepBegan)
+        {
+            AreaOf(looked).SetHandNote(null);
+            _handLookedAt = null;
+        }
         switch (ev.Event)
         {
+            case TurnBegan t:
+                AnnounceTurn(t);
+                break;
+            case HandLookedAt l when _session.Announces(l.Looker):
+                AnnounceHandLook(l.Looker, l.Player);
+                break;
+            case HandRevealed { Chooser: { } chooser } h when _session.Announces(chooser):
+                AnnounceHandLook(chooser, h.Player);
+                break;
+            case ChosenFromHand c when _session.Announces(c.Chooser):
+                foreach (var card in c.Cards)
+                    _announcer.Enqueue(new($"{PlayerName(c.Chooser)} chooses {ev.Name(card)} from {Whose(c.Player)} hand", ViewOf(ev, card), 2.5));
+                break;
             case SpellCast c when _session.Announces(c.Player):
                 AnnounceStackObject(ev, c.Player, c.Card, "casts", null);
                 break;
@@ -1941,6 +1965,27 @@ public partial class GameBoard : Control
                 _announcer.Enqueue(new($"{PlayerName(l.Player)} loses: {l.Reason}", null, 2.5));
                 break;
         }
+    }
+
+    /// <summary>The large "whose turn" banner (queued like any announcement), with a soft chime when the turn is yours.</summary>
+    private void AnnounceTurn(TurnBegan turn)
+    {
+        bool own = turn.ActivePlayer == Bottom;
+        _announcer.Enqueue(new(own ? "Your turn" : $"{PlayerName(turn.ActivePlayer)}'s turn", null, 1.1,
+            Turn: new($"Turn {turn.TurnNumber}", BoardStyle.PlayerColor(turn.ActivePlayer.Value)),
+            OnShown: own ? _turnChime.Chime : null));
+    }
+
+    private string Whose(PlayerId player) => player == Bottom ? "your" : $"{PlayerName(player)}'s";
+
+    /// <summary>Another player looks at a hand (to choose from it, or just to see it): said, and noted beside that hand while it lasts.</summary>
+    private void AnnounceHandLook(PlayerId looker, PlayerId owner)
+    {
+        var text = $"{PlayerName(looker)} is looking at {Whose(owner)} hand";
+        _announcer.Enqueue(new(text, null, 2));
+        if (_handLookedAt is { } earlier) AreaOf(earlier).SetHandNote(null);
+        AreaOf(owner).SetHandNote(text);
+        _handLookedAt = owner;
     }
 
     /// <summary>The card as it was when the event happened (falls back to the current view).</summary>
