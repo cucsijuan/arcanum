@@ -73,6 +73,9 @@ public partial class PlayerArea : Control
     private Vector2 PileSize => BoardStyle.PileCardSize * Scale;
     private float Peek => PilePeek * Scale;
 
+    /// <summary>Room kept above the hand for the cost pips its cards show over their top edge.</summary>
+    private const float HandPipsRoom = 22;
+
     private bool _poolShown;
     private readonly Label _commanderDamage = BoardStyle.MakeLabel("", 13, BoardStyle.Attacking);
 
@@ -550,7 +553,7 @@ public partial class PlayerArea : Control
         float pitch = FieldSize.Y + (Compact ? 14 : 22);
         int deepest = Math.Max(otherSlot, landSlot);
         if (deepest > 0 && Size.Y > 100)
-            pitch = Mathf.Min(pitch, Mathf.Max(36, (Size.Y - Peek - 4 - creatureY - FieldSize.Y) / deepest));
+            pitch = Mathf.Min(pitch, Mathf.Max(36, (Size.Y - Peek - HandPipsRoom - creatureY - FieldSize.Y) / deepest));
         // Slot 0 (creatures) is nearest the middle, further slots lead to this player's edge.
         float RowY(int slot) => FlipY(creatureY + slot * pitch, FieldSize.Y);
         LayoutRow(creatures, RowY(0), CreaturesZ);

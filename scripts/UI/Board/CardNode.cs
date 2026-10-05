@@ -206,6 +206,9 @@ public partial class CardNode : Control
     /// <summary>Use a Lanczos-resampled texture at this node's exact size (for the large hover preview).</summary>
     public bool SharpImage { get; set; }
 
+    /// <summary>Shows the counters tag (off for the large preview, which lists counters beside the card).</summary>
+    public bool ShowCounterBadge { get; set; } = true;
+
     public void Setup(CardView view, bool showCostPips)
     {
         Id = view.Id;
@@ -303,13 +306,12 @@ public partial class CardNode : Control
         _loreBadge.Visible = showLore;
         if (showLore) _loreLabel.Text = $"{Roman(view.LoreCounters)}/{Roman(view.FinalChapter)}";
 
-        // Counters, top-right: one line each.
+        // Counters, top-right: one line each, only for kinds nothing else shows (+1/+1 and -1/-1 are in the power/toughness,
+        // lore in the chapter tag, and the large preview lists them all beside the card).
         var counters = new List<string>();
-        if (view.PlusOneCounters > 0) counters.Add($"+1/+1 \u00d7{view.PlusOneCounters}");
-        if (view.MinusOneCounters > 0) counters.Add($"-1/-1 \u00d7{view.MinusOneCounters}");
         foreach (var (kind, count) in view.OtherCounters.OrderBy(kv => kv.Key, StringComparer.Ordinal))
-            if (count > 0) counters.Add($"{kind} \u00d7{count}");
-        _counterBadge.Visible = counters.Count > 0 && onBattlefield;
+            if (count > 0 && !(kind == nameof(Arcanum.Engine.Abilities.CounterKind.Lore) && view.FinalChapter > 0)) counters.Add($"{kind} \u00d7{count}");
+        _counterBadge.Visible = counters.Count > 0 && onBattlefield && ShowCounterBadge;
         _counterLabel.Text = string.Join("\n", counters);
 
         // Status marks, bottom-left.

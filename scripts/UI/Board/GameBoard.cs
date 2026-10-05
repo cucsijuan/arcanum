@@ -474,6 +474,7 @@ public partial class GameBoard : Control
         // Hover preview on the left edge.
         _preview.MouseFilter = MouseFilterEnum.Ignore;
         _preview.SharpImage = true;
+        _preview.ShowCounterBadge = false;
         _preview.Size = BoardStyle.PreviewSize;
         _preview.Visible = false;
         _preview.ZIndex = BoardStyle.Z.Preview;

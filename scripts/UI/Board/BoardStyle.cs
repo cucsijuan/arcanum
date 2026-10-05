@@ -51,7 +51,7 @@ public static class BoardStyle
     public static string CardBack { get; set; } = "arcane";
 
     public static readonly Vector2 HandCardSize = new(84, 117);
-    public static readonly Vector2 BattlefieldCardSize = new(92, 128);
+    public static readonly Vector2 BattlefieldCardSize = new(86, 120);
     public static readonly Vector2 PileCardSize = new(84, 117);
     public static readonly Vector2 PreviewSize = new(375, 523);
 
