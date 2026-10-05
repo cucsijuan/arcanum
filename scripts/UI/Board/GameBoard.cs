@@ -58,6 +58,8 @@ public partial class GameBoard : Control
     private readonly HashSet<CardId> _attackGroup = new();                // picked since the last change of target
     private readonly Dictionary<CardId, CardId> _blocks = new(); // blocker -> attacker
     private CardId? _pendingBlocker;
+    private readonly List<CardId> _pendingGroup = new();  // more tokens of the pending blocker's stack that block along with it
+    private StackPicker? _picker;
     private readonly List<ManaTap> _staged = new();  // sources picked for an unconfirmed payment
     private ManaSourceOption? _comboSource;          // a source whose mana combination is being chosen
     private CardId? _abilityChoiceSource;              // permanent with several abilities waiting for a choice
@@ -206,7 +208,7 @@ public partial class GameBoard : Control
     /// ARCANUM_SANDBOX=1: start from a prepared board of the generic cards for manual testing of attachments, static
     /// abilities, targeted spells and activated abilities: player one has a creature carrying an aura and an equipment,
     /// a spare equipment, a creature with a tap ability and burn, pump and destroy in hand; player two has creatures, a
-    /// creature-boosting enchantment and burn and bounce in hand. It needs no card module.
+    /// creature-boosting enchantment and burn and bounce in hand; both have stacks of identical tokens. It needs no card module.
     /// </summary>
     private static Action<Arcanum.Engine.Game> SandboxSetup()
     {
@@ -228,6 +230,11 @@ public partial class GameBoard : Control
             Put(p1, Arcanum.Cards.GenericCards.IronBlade);
             Put(p1, Arcanum.Cards.GenericCards.SparkMage);
             Put(p1, Arcanum.Cards.GenericCards.HillBrute);
+            // Identical tokens show as one stack with a count.
+            var sprite = Arcanum.Cards.GenericCards.RiverScout with { Name = "Sprite", ManaCost = Arcanum.Engine.Mana.ManaCost.Zero, IsToken = true };
+            var gem = new Arcanum.Engine.Cards.CardDefinition { Name = "Gem", Types = Arcanum.Engine.Cards.CardType.Artifact, IsToken = true };
+            Put(p1, sprite, 4);
+            Put(p1, gem, 3);
             game.SetupInHand(p1, Arcanum.Cards.GenericCards.EmberBolt);
             game.SetupInHand(p1, Arcanum.Cards.GenericCards.MightySurge);
             game.SetupInHand(p1, Arcanum.Cards.GenericCards.Rend);
@@ -236,6 +243,7 @@ public partial class GameBoard : Control
             Put(p2, Arcanum.Cards.GenericCards.Island, 2);
             Put(p2, Arcanum.Cards.GenericCards.OgreBrute, 2);
             Put(p2, Arcanum.Cards.GenericCards.StoneElemental);
+            Put(p2, sprite, 3);
             Put(p2, Arcanum.Cards.GenericCards.RallyBanner);
             game.SetupInHand(p2, Arcanum.Cards.GenericCards.EmberBolt);
             game.SetupInHand(p2, Arcanum.Cards.GenericCards.GustAway);
@@ -578,6 +586,7 @@ public partial class GameBoard : Control
                 area.FacesDown = true;
             }
             area.CardClicked += OnCardClicked;
+            area.StackMark = StackMark;
             area.ZoneClicked += OpenZone;
             area.PlayerClicked += OnPlayerClicked;
             area.CardHoverStarted += ShowPreview;
@@ -609,6 +618,8 @@ public partial class GameBoard : Control
                 }
             _blocks.Clear();
             _pendingBlocker = null;
+            _pendingGroup.Clear();
+            ClosePicker();
             _abilityChoiceSource = null;
             _chosenTargets.Clear();
             _chosenModes.Clear();
@@ -687,7 +698,7 @@ public partial class GameBoard : Control
                 GetTree().CreateTimer(0.2).Timeout += Undo;
                 return;
             }
-            GetTree().CreateTimer(0.35).Timeout += () => AutoAnswer(decision, view);
+            GetTree().CreateTimer(0.35).Timeout += () => { if (!TestStackPick(decision)) AutoAnswer(decision, view); };
         }
     }
 
@@ -700,6 +711,72 @@ public partial class GameBoard : Control
     private readonly string? _showcase = AutoplayEnv.StartsWith("showcase")
         ? (AutoplayEnv.Contains(':') ? AutoplayEnv[(AutoplayEnv.IndexOf(':') + 1)..] : nameof(ManaPaymentDecision))
         : null;
+
+    /// <summary>
+    /// ARCANUM_TEST_STACKS=1 (with autoplay): attacks and blocks go through the same code as the stack picker, choosing
+    /// half of every group of identical creatures, so smoke tests exercise stacks. Returns whether it handled the decision.
+    /// ARCANUM_TEST_STACKS=picker stops on the first attack with identical creatures, with the picker open (screenshots).
+    /// </summary>
+    private static readonly string TestStacksEnv = OS.GetEnvironment("ARCANUM_TEST_STACKS");
+    private readonly bool _testStacks = TestStacksEnv is "1" or "picker";
+
+    private bool TestStackPick(Decision decision)
+    {
+        if (!_testStacks || decision.IsAnswered) return false;
+        var view = _session.ViewFor(decision.Player);
+        CardNode? NodeOf(CardId id) => view.FindCard(id) is { } card ? AreaOf(card.Controller).FindCard(id) : null;
+        switch (decision)
+        {
+            case AttackDecision a:
+            {
+                var done = new HashSet<CardId>();
+                foreach (var id in a.PossibleAttackers)
+                {
+                    if (!done.Add(id) || NodeOf(id) is not { } node) continue;
+                    var same = SameKindAmong(node, a.PossibleAttackers);
+                    if (same.Count > 1 && TestStacksEnv == "picker")
+                    {
+                        OpenAttackPicker(a, same, node.View?.Name);
+                        return true;
+                    }
+                    if (same.Count > 1)
+                    {
+                        done.UnionWith(same);
+                        ApplyAttackCount(a, same, (same.Count + 1) / 2);
+                        GD.Print($"STACKTEST attack with {same.Count - same.Count / 2} of {same.Count} {node.View?.Name}");
+                    }
+                    else _attackTargets[id] = AllowedDefender(a, id, a.Defenders[0]);
+                }
+                a.Answer(_attackTargets.Select(kv => new AttackDeclaration(kv.Key, kv.Value, null)).ToList());
+                return true;
+            }
+            case BlockDecision b when b.Request.MinimumBlockers.Count == 0 && b.Request.MustBeBlocked.Count == 0:
+            {
+                var target = b.Attackers[0];
+                var done = new HashSet<CardId>();
+                foreach (var id in b.PossibleBlockers.Where(bl => b.Request.CanBlock[bl].Contains(target)))
+                {
+                    if (!done.Add(id) || NodeOf(id) is not { } node) continue;
+                    var same = SameKindAmong(node, b.PossibleBlockers);
+                    done.UnionWith(same);
+                    if (same.Count > 1)
+                    {
+                        ChoosePendingBlockers(same, (same.Count + 1) / 2);
+                        GD.Print($"STACKTEST block with {(same.Count + 1) / 2} of {same.Count} {node.View?.Name}");
+                    }
+                    else _pendingBlocker = id;
+                    foreach (var picked in PendingBlockers().Where(p => b.Request.CanBlock[p].Contains(target))) _blocks[picked] = target;
+                    ClearPendingBlockers();
+                    ApplyBlockCount(same, same.Count);
+                }
+                var blocks = _blocks.Select(kv => new BlockDeclaration(kv.Key, kv.Value)).ToList();
+                if (b.Request.IsLegal(blocks, out _)) { b.Answer(blocks); return true; }
+                _blocks.Clear();
+                return false;
+            }
+        }
+        return false;
+    }
 
     private static void AutoAnswer(Decision decision, GameView view)
     {
@@ -826,7 +903,7 @@ public partial class GameBoard : Control
                 }
                 foreach (var id in b.PossibleBlockers)
                 {
-                    var h = _pendingBlocker == id ? CardHighlight.Selected
+                    var h = IsPendingBlocker(id) ? CardHighlight.Selected
                         : _blocks.ContainsKey(id) ? CardHighlight.Blocking
                         : CardHighlight.Playable;
                     FindCard(id)?.SetHighlight(h);
@@ -1491,6 +1568,127 @@ public partial class GameBoard : Control
         else Refresh();
     }
 
+    // ---------------------------------------------------------------- stacks of identical tokens
+
+    private PlayerArea? AreaHolding(CardNode node) => _areas.FirstOrDefault(a => a.FindCard(node.Id) == node);
+
+    /// <summary>Every card that looks like this one (a stack's tokens, attacking or not) and is among <paramref name="eligible"/>.</summary>
+    private List<CardId> SameKindAmong(CardNode node, IEnumerable<CardId> eligible)
+    {
+        var set = eligible.ToHashSet();
+        return (AreaHolding(node)?.SameKind(node.Id) ?? new[] { node.Id }).Where(set.Contains).ToList();
+    }
+
+    private IEnumerable<CardId> PendingBlockers() => _pendingBlocker is { } first ? _pendingGroup.Prepend(first) : Enumerable.Empty<CardId>();
+
+    private bool IsPendingBlocker(CardId id) => _pendingBlocker == id || _pendingGroup.Contains(id);
+
+    private void ClearPendingBlockers()
+    {
+        _pendingBlocker = null;
+        _pendingGroup.Clear();
+    }
+
+    /// <summary>What sets a token apart from identical ones right now, so a stack splits when some of its tokens are picked for something.</summary>
+    private string? StackMark(CardId id)
+    {
+        var decision = _session.CurrentDecision;
+        var mark = new System.Text.StringBuilder();
+        if (_selected.Contains(id)) mark.Append('s');
+        if (_chosenTargets.Any(t => t.Card == id)) mark.Append('t');
+        if (_attackTargets.TryGetValue(id, out var defender)) mark.Append($"a{defender.Value}/{(_attackWalkers.TryGetValue(id, out var w) ? w.Value : -1)}");
+        if (_attackGroup.Contains(id)) mark.Append('g');
+        if (_blocks.TryGetValue(id, out var blocked)) mark.Append($"b{blocked.Value}");
+        if (IsPendingBlocker(id)) mark.Append('p');
+        if (_damageSplit.TryGetValue(id, out var dmg)) mark.Append($"d{dmg}");
+        mark.Append(decision switch
+        {
+            ManaPaymentDecision pay => pay.Request.Sources.Any(src => src.Source == id) ? "m" : "",
+            AttackDecision a => a.PossibleAttackers.Contains(id) ? "k" : "",
+            BlockDecision b => (b.PossibleBlockers.Contains(id) ? "k" : "") + (b.Attackers.Contains(id) ? "a" : ""),
+            DamageAssignmentDecision damage => damage.Request.Blockers.Contains(id) ? "k" : "",
+            _ => UsableNow(decision, id) ? "u" : "",
+        });
+        return mark.ToString();
+    }
+
+    private void OpenPicker(string title, int min, int max, int initial, Action<int> chosen, Decision decision)
+    {
+        ClosePicker();
+        _picker = new StackPicker();
+        _picker.Chosen += count =>
+        {
+            // Ignore the answer if the decision moved on while the picker was open.
+            if (ReferenceEquals(_session.CurrentDecision, decision) && !decision.IsAnswered) chosen(count);
+        };
+        AddChild(_picker);
+        _picker.Open(title, min, max, initial);
+    }
+
+    private void ClosePicker()
+    {
+        if (_picker is { } picker && IsInstanceValid(picker)) picker.Close();
+        _picker = null;
+    }
+
+    /// <summary>"Attack with how many?": exactly that many of the identical creatures attack (the ones already attacking first).</summary>
+    private void OpenAttackPicker(AttackDecision decision, IReadOnlyList<CardId> same, string? name)
+    {
+        int attacking = same.Count(_attackTargets.ContainsKey);
+        OpenPicker($"Attack with how many {name}?", 0, same.Count, attacking > 0 ? attacking : same.Count,
+            count => ApplyAttackCount(decision, same, count), decision);
+    }
+
+    private void ApplyAttackCount(AttackDecision decision, IReadOnlyList<CardId> same, int count)
+    {
+        var (add, remove) = BattlefieldLayout.Pick(same, _attackTargets.ContainsKey, count);
+        foreach (var id in remove)
+        {
+            _attackTargets.Remove(id);
+            _attackGroup.Remove(id);
+            _attackWalkers.Remove(id);
+        }
+        foreach (var id in add)
+        {
+            _attackTargets[id] = AllowedDefender(decision, id, _attackDefender ?? decision.Defenders[0]);
+            if (_attackWalker is { } walker) _attackWalkers[id] = walker;
+            _attackGroup.Add(id);
+        }
+        Refresh();
+    }
+
+    /// <summary>
+    /// Blocking with part of a stack. For tokens not blocking yet: how many block, then click the attacker they block.
+    /// For a stack already blocking: how many of them keep blocking.
+    /// </summary>
+    private void OpenBlockPicker(BlockDecision decision, string? name, IReadOnlyList<CardId> members, bool blocking)
+    {
+        if (blocking)
+            OpenPicker($"Block with how many {name}?", 0, members.Count, members.Count,
+                count => ApplyBlockCount(members, count), decision);
+        else
+            OpenPicker($"Block with how many {name}?", 0, members.Count, members.Count,
+                count => ChoosePendingBlockers(members, count), decision);
+    }
+
+    private void ApplyBlockCount(IReadOnlyList<CardId> members, int count)
+    {
+        var (_, remove) = BattlefieldLayout.Pick(members, _blocks.ContainsKey, count);
+        foreach (var id in remove) _blocks.Remove(id);
+        Refresh();
+    }
+
+    private void ChoosePendingBlockers(IReadOnlyList<CardId> members, int count)
+    {
+        ClearPendingBlockers();
+        if (count > 0)
+        {
+            _pendingBlocker = members[0];
+            _pendingGroup.AddRange(members.Skip(1).Take(count - 1));
+        }
+        Refresh();
+    }
+
     private void OnCardClicked(CardNode node)
     {
         var id = node.Id;
@@ -1534,6 +1732,12 @@ public partial class GameBoard : Control
                 break;
 
             case AttackDecision a when a.PossibleAttackers.Contains(id):
+                // Identical creatures (a stack of tokens): choose how many of them attack.
+                if (SameKindAmong(node, a.PossibleAttackers) is { Count: > 1 } sameAttackers)
+                {
+                    OpenAttackPicker(a, sameAttackers, node.View?.Name);
+                    return;
+                }
                 if (_attackTargets.Remove(id))
                 {
                     _attackGroup.Remove(id);
@@ -1554,13 +1758,31 @@ public partial class GameBoard : Control
             case BlockDecision b:
                 if (b.PossibleBlockers.Contains(id))
                 {
-                    if (_blocks.Remove(id) || _pendingBlocker == id) _pendingBlocker = null;
-                    else _pendingBlocker = id;
+                    var stack = AreaHolding(node)?.StackMembers(id) ?? new[] { id };
+                    var same = SameKindAmong(node, b.PossibleBlockers);
+                    if (IsPendingBlocker(id)) ClearPendingBlockers(); // picked again: not blocking after all
+                    else if (_blocks.ContainsKey(id) && stack.Count > 1 && stack.All(_blocks.ContainsKey))
+                    {
+                        OpenBlockPicker(b, node.View?.Name, stack, blocking: true);
+                        return;
+                    }
+                    else if (_blocks.Remove(id)) ClearPendingBlockers();
+                    else if (same is { Count: > 1 } && same.Where(m => !_blocks.ContainsKey(m)).ToList() is { Count: > 1 } idle)
+                    {
+                        OpenBlockPicker(b, node.View?.Name, idle, blocking: false);
+                        return;
+                    }
+                    else
+                    {
+                        ClearPendingBlockers();
+                        _pendingBlocker = id;
+                    }
                 }
                 else if (b.Attackers.Contains(id) && _pendingBlocker is { } blocker && b.Request.CanBlock[blocker].Contains(id))
                 {
-                    _blocks[blocker] = id;
-                    _pendingBlocker = null;
+                    foreach (var picked in PendingBlockers().Where(p => b.Request.CanBlock[p].Contains(id)))
+                        _blocks[picked] = id;
+                    ClearPendingBlockers();
                 }
                 break;
 

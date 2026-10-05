@@ -29,9 +29,18 @@ public partial class CardNode : Control
     private readonly ColorRect _glow = new();
     private readonly Panel _selectedOverlay = new();
     private readonly HBoxContainer _pips = new();
-    private readonly Label _damage = BoardStyle.MakeLabel("", 13, Colors.White);
+
+    // Number tags, one per corner so they never overlap: bottom-right power/toughness (damage shown in it) or loyalty,
+    // with the Saga chapter beside it; top-left the size of a stack of identical tokens; top-right counters;
+    // bottom-left status marks such as summoning sickness. All of them hide on the cards behind the top of a stack.
+    private readonly Control _badgeLayer = new();
     private readonly PanelContainer _ptBadge = new();
     private readonly Label _ptLabel = BoardStyle.MakeLabel("", 13, Colors.White, bold: true);
+    private readonly Label _toughnessLabel = BoardStyle.MakeLabel("", 13, Colors.White, bold: true);
+    private readonly PanelContainer _stackBadge = new();
+    private readonly Label _stackLabel = BoardStyle.MakeLabel("", 14, Colors.White, bold: true);
+    private readonly PanelContainer _marksBadge = new();
+    private readonly Label _marksLabel = BoardStyle.MakeLabel("", 12, Colors.White, bold: true);
     private readonly PanelContainer _loreBadge = new();
     private readonly Label _loreLabel = BoardStyle.MakeLabel("", 13, Colors.White, bold: true);
     private readonly PanelContainer _counterBadge = new();
@@ -118,30 +127,44 @@ public partial class CardNode : Control
         _pips.Position = new Vector2(2, -15);
         AddChild(_pips);
 
-        var damageBg = new Panel { MouseFilter = MouseFilterEnum.Ignore, Name = "DamageBadge", Visible = false };
-        damageBg.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color("c0392b"), 10));
-        damageBg.Size = new Vector2(24, 20);
-        _damage.HorizontalAlignment = HorizontalAlignment.Center;
-        _damage.Size = damageBg.Size;
-        damageBg.AddChild(_damage);
-        AddChild(damageBg);
+        _badgeLayer.MouseFilter = MouseFilterEnum.Ignore;
+        _badgeLayer.SetAnchorsPreset(LayoutPreset.FullRect);
+        AddChild(_badgeLayer);
 
-        // Current power/toughness when it differs from the printed values (effects, counters).
+        // Current power/toughness (with the damage marked on it) in the bottom-right corner.
         _ptBadge.MouseFilter = MouseFilterEnum.Ignore;
-        _ptBadge.AddChild(_ptLabel);
+        var ptRow = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
+        ptRow.AddThemeConstantOverride("separation", 0);
+        ptRow.AddChild(_ptLabel);
+        ptRow.AddChild(_toughnessLabel);
+        _ptBadge.AddChild(ptRow);
         _ptBadge.Visible = false;
-        AddChild(_ptBadge);
+        _badgeLayer.AddChild(_ptBadge);
         // A Saga's chapter reached / final chapter, in the same corner (left of the power/toughness if it has both).
         _loreBadge.MouseFilter = MouseFilterEnum.Ignore;
         _loreBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color("4a3a6b"), 6, new Color("0b0b0d"), 1));
         _loreBadge.AddChild(_loreLabel);
         _loreBadge.Visible = false;
-        AddChild(_loreBadge);
+        _badgeLayer.AddChild(_loreBadge);
+        // Counters in the top-right corner.
         _counterBadge.MouseFilter = MouseFilterEnum.Ignore;
         _counterBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.1f, 0.1f, 0.12f, 0.9f), 8, BoardStyle.Playable, 1));
+        _counterLabel.HorizontalAlignment = HorizontalAlignment.Right;
         _counterBadge.AddChild(_counterLabel);
         _counterBadge.Visible = false;
-        AddChild(_counterBadge);
+        _badgeLayer.AddChild(_counterBadge);
+        // How many identical tokens this card stands for, top-left.
+        _stackBadge.MouseFilter = MouseFilterEnum.Ignore;
+        _stackBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.06f, 0.06f, 0.08f, 0.94f), 9, Colors.White, 1));
+        _stackBadge.AddChild(_stackLabel);
+        _stackBadge.Visible = false;
+        _badgeLayer.AddChild(_stackBadge);
+        // Status marks (summoning sickness...), bottom-left.
+        _marksBadge.MouseFilter = MouseFilterEnum.Ignore;
+        _marksBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.1f, 0.1f, 0.12f, 0.9f), 6, new Color("8c8f99"), 1));
+        _marksBadge.AddChild(_marksLabel);
+        _marksBadge.Visible = false;
+        _badgeLayer.AddChild(_marksBadge);
 
         // Short caption over the card, e.g. which player an attacker goes after.
         _caption.MouseFilter = MouseFilterEnum.Ignore;
@@ -245,12 +268,15 @@ public partial class CardNode : Control
             _fallbackPt.Visible = view.Zone != Arcanum.Engine.State.Zone.Battlefield; // on the battlefield the corner badge shows P/T
         }
 
+        bool onBattlefield = !view.IsHidden && view.Zone == Arcanum.Engine.State.Zone.Battlefield;
+
         // Creatures on the battlefield always show P/T in their bottom-right corner (it rotates with the card):
-        // gray as printed, green when raised, red when lowered.
-        bool showPt = !view.IsHidden && view.Zone == Arcanum.Engine.State.Zone.Battlefield && view.Power is not null && view.Toughness is not null;
-        bool showLoyalty = !showPt && !view.IsHidden && view.Zone == Arcanum.Engine.State.Zone.Battlefield
-                           && (view.Types & Arcanum.Engine.Cards.CardType.Planeswalker) != 0;
+        // gray as printed, green when raised, red when lowered. Damage marked on it is shown in the same tag:
+        // the toughness left, in red.
+        bool showPt = onBattlefield && view.Power is not null && view.Toughness is not null;
+        bool showLoyalty = !showPt && onBattlefield && (view.Types & Arcanum.Engine.Cards.CardType.Planeswalker) != 0;
         _ptBadge.Visible = showPt || showLoyalty;
+        _toughnessLabel.Text = "";
         if (showLoyalty)
         {
             // Planeswalkers show their loyalty in the same corner.
@@ -261,22 +287,50 @@ public partial class CardNode : Control
         {
             int now = view.Power!.Value + view.Toughness!.Value, printed = (view.BasePower ?? 0) + (view.BaseToughness ?? 0);
             bool changed = view.Power != view.BasePower || view.Toughness != view.BaseToughness;
-            var color = !changed ? new Color("3a3b42") : now >= printed ? new Color("1f7a43") : new Color("a3302a");
-            _ptBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(color, 6, new Color("0b0b0d"), 1));
-            _ptLabel.Text = $"{view.Power}/{view.Toughness}";
+            bool damaged = view.Damage > 0;
+            var color = damaged ? new Color("1a1214") : !changed ? new Color("3a3b42") : now >= printed ? new Color("1f7a43") : new Color("a3302a");
+            _ptBadge.AddThemeStyleboxOverride("panel", damaged
+                ? BoardStyle.Box(color, 6, new Color("e0453a"), 2)
+                : BoardStyle.Box(color, 6, new Color("0b0b0d"), 1));
+            _ptLabel.Text = $"{view.Power}/";
+            _toughnessLabel.Text = (view.Toughness!.Value - view.Damage).ToString();
+            var toughnessColor = damaged ? new Color("ff6b5e") : Colors.White;
+            _toughnessLabel.AddThemeColorOverride("font_color", toughnessColor);
+            _toughnessLabel.AddThemeColorOverride("font_outline_color", toughnessColor);
         }
-        bool showLore = !view.IsHidden && view.Zone == Arcanum.Engine.State.Zone.Battlefield && view.FinalChapter > 0;
+        else _ptLabel.AddThemeColorOverride("font_color", Colors.White);
+        bool showLore = onBattlefield && view.FinalChapter > 0;
         _loreBadge.Visible = showLore;
         if (showLore) _loreLabel.Text = $"{Roman(view.LoreCounters)}/{Roman(view.FinalChapter)}";
+
+        // Counters, top-right: one line each.
         var counters = new List<string>();
         if (view.PlusOneCounters > 0) counters.Add($"+1/+1 \u00d7{view.PlusOneCounters}");
         if (view.MinusOneCounters > 0) counters.Add($"-1/-1 \u00d7{view.MinusOneCounters}");
-        _counterBadge.Visible = counters.Count > 0 && view.Zone == Arcanum.Engine.State.Zone.Battlefield;
-        _counterLabel.Text = string.Join("  ", counters);
+        foreach (var (kind, count) in view.OtherCounters.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+            if (count > 0) counters.Add($"{kind} \u00d7{count}");
+        _counterBadge.Visible = counters.Count > 0 && onBattlefield;
+        _counterLabel.Text = string.Join("\n", counters);
 
-        var damageBadge = GetNode<Panel>("DamageBadge");
-        damageBadge.Visible = view.Damage > 0;
-        _damage.Text = view.Damage.ToString();
+        // Status marks, bottom-left.
+        var marks = new List<string>();
+        if (onBattlefield && view.SummoningSick && (view.Types & Arcanum.Engine.Cards.CardType.Creature) != 0) marks.Add("zz");
+        if (onBattlefield && view.AttacksEachCombat) marks.Add("\u2694");
+        _marksBadge.Visible = marks.Count > 0;
+        _marksLabel.Text = string.Join(" ", marks);
+        ApplySize();
+    }
+
+    /// <summary>
+    /// This card stands for a stack of <paramref name="count"/> identical tokens (the "\u00d7N" tag shows when more than one).
+    /// A card behind the top of a stack shows no tags and ignores the mouse.
+    /// </summary>
+    public void SetStack(int count, bool behind)
+    {
+        _stackBadge.Visible = count > 1 && !behind;
+        _stackLabel.Text = $"\u00d7{count}";
+        _badgeLayer.Visible = !behind;
+        MouseFilter = behind ? MouseFilterEnum.Ignore : MouseFilterEnum.Stop;
         ApplySize();
     }
 
@@ -317,13 +371,18 @@ public partial class CardNode : Control
 
     private void ApplySize()
     {
+        const float Inset = 2;
         _ptBadge.ResetSize();
-        _ptBadge.Position = new Vector2(Size.X - _ptBadge.Size.X - 2, Size.Y - _ptBadge.Size.Y - 2);
+        _ptBadge.Position = new Vector2(Size.X - _ptBadge.Size.X - Inset, Size.Y - _ptBadge.Size.Y - Inset);
         _loreBadge.ResetSize();
-        float loreRight = _ptBadge.Visible ? _ptBadge.Position.X - 2 : Size.X - 2;
-        _loreBadge.Position = new Vector2(loreRight - _loreBadge.Size.X, Size.Y - _loreBadge.Size.Y - 2);
+        float loreRight = _ptBadge.Visible ? _ptBadge.Position.X - 2 : Size.X - Inset;
+        _loreBadge.Position = new Vector2(loreRight - _loreBadge.Size.X, Size.Y - _loreBadge.Size.Y - Inset);
         _counterBadge.ResetSize();
-        _counterBadge.Position = new Vector2(2, Size.Y * 0.35f);
+        _counterBadge.Position = new Vector2(Size.X - _counterBadge.Size.X - Inset, Inset);
+        _stackBadge.ResetSize();
+        _stackBadge.Position = new Vector2(Inset, Inset);
+        _marksBadge.ResetSize();
+        _marksBadge.Position = new Vector2(Inset, Size.Y - _marksBadge.Size.Y - Inset);
         _assigned.Position = Size / 2 - _assigned.Size / 2;
         _assigned.PivotOffset = _assigned.Size / 2;
         _assigned.Rotation = -Rotation; // stays upright on tapped cards
@@ -337,8 +396,6 @@ public partial class CardNode : Control
         glow.SetShaderParameter("pad", GlowPad);
         glow.SetShaderParameter("radius", radius);
         PivotOffset = Size / 2;
-        var badge = GetNodeOrNull<Panel>("DamageBadge");
-        if (badge is not null) badge.Position = new Vector2(Size.X - 26, Size.Y * 0.55f);
     }
 
     private void BuildPips(string? cost)

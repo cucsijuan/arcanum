@@ -169,7 +169,27 @@ public partial class PlayerArea : Control
         Playmat.Apply(_grid, _playmat, id, Player.Value);
     }
 
-    public CardNode? FindCard(CardId id) => _cards.GetValueOrDefault(id);
+    /// <summary>
+    /// The node that shows a card: its own, or the top of the stack of identical tokens it is part of
+    /// (so highlights, arrows and effects aimed at any token of a stack land on what the player sees).
+    /// </summary>
+    public CardNode? FindCard(CardId id) => _shownBy.TryGetValue(id, out var top) ? top : _cards.GetValueOrDefault(id);
+
+    /// <summary>Marks that make otherwise identical tokens differ for now (picked as an attacker, a target...); a different mark splits a stack.</summary>
+    public Func<CardId, string?>? StackMark { get; set; }
+
+    private readonly Dictionary<CardId, CardNode> _shownBy = new();
+    private readonly Dictionary<CardId, CardStack> _stackOf = new();
+    private readonly Dictionary<CardId, string> _kindOf = new();
+    private readonly Dictionary<string, List<CardId>> _kinds = new();
+
+    /// <summary>Every token on the stack this card is part of, the one drawn on top first; just the card when it stands alone.</summary>
+    public IReadOnlyList<CardId> StackMembers(CardId id) =>
+        _stackOf.TryGetValue(id, out var stack) ? stack.Cards.Select(c => c.Id).ToList() : new[] { id };
+
+    /// <summary>Every token that looks the same as this one, whatever their marks (the stacks of attackers and non-attackers of one kind).</summary>
+    public IReadOnlyList<CardId> SameKind(CardId id) =>
+        _kindOf.TryGetValue(id, out var kind) ? _kinds[kind] : new[] { id };
 
     public IEnumerable<CardNode> Cards => _cards.Values;
 
@@ -259,12 +279,13 @@ public partial class PlayerArea : Control
             node.SetHighlight(CardHighlight.None);
             node.SetAssignedDamage(null);
             node.SetCaption(null);
+            node.SetStack(1, false);
         }
 
         _handOrder.Clear();
         _handOrder.AddRange(me.Hand.Select(c => _cards[c.Id]));
         LayoutHand();
-        LayoutBattlefield(battlefield);
+        LayoutBattlefield(battlefield, view);
         SortByDrawOrder();
     }
 
@@ -434,45 +455,111 @@ public partial class PlayerArea : Control
         }
     }
 
-    private void LayoutBattlefield(IReadOnlyList<CardView> battlefield)
-    {
-        var lands = battlefield.Where(c => (c.Types & CardType.Land) != 0).ToList();
-        var others = battlefield.Where(c => (c.Types & CardType.Land) == 0).ToList();
-        float creatureY = Compact ? 56 : 62;
-        float landY = creatureY + FieldSize.Y + (Compact ? 14 : 22);
+    // Z index of the first card of each row: the front row draws over the ones behind it when a short table squeezes them together.
+    private const int LandsZ = 10, OtherZ = 110, CreaturesZ = 210, BlockersZ = 270;
+    private const float StackStep = 4;   // how far each token behind the top of a stack peeks out
+    private const int StackPeeks = 3;
 
-        // Auras and Equipment attached to one of our permanents sit tucked behind it instead of taking a slot.
+    /// <summary>
+    /// Rows from the top of this half: creatures, then the other permanents (artifacts, enchantments, planeswalkers,
+    /// unattached Equipment), then lands. Identical tokens stand as one stack; an Aura or Equipment attached to one of our
+    /// permanents tucks behind it instead of taking a slot.
+    /// </summary>
+    private void LayoutBattlefield(IReadOnlyList<CardView> battlefield, GameView view)
+    {
+        _shownBy.Clear();
+        _stackOf.Clear();
+        _kindOf.Clear();
+        _kinds.Clear();
+
         var hosts = battlefield.Select(c => c.Id).ToHashSet();
         var attached = battlefield.Where(c => c.AttachedTo is { } host && hosts.Contains(host)).ToList();
-        others = others.Except(attached).ToList();
-        lands = lands.Except(attached).ToList();
+        var carrying = attached.Select(c => c.AttachedTo!.Value).ToHashSet();
+        var free = battlefield.Except(attached).ToList();
 
         // Blockers leave their row and stand in front of the attacker they block.
-        var blockers = others.Where(c => _blockerAlign.ContainsKey(c.Id)).ToList();
-        LayoutRow(others.Except(blockers).ToList(), creatureY);
-        LayoutRow(lands, landY);
-        LayoutBlockers(blockers, creatureY);
+        var blockers = free.Where(c => BattlefieldLayout.RowOf(c) != BattlefieldRow.Lands && _blockerAlign.ContainsKey(c.Id)).ToList();
+        var inRows = free.Except(blockers).ToList();
+
+        var attacks = view.Attacks.ToDictionary(a => a.Attacker);
+        bool Tapped(CardView c) => c.Tapped || _staged.Contains(c.Id);
+        string? KeyOf(CardView c)
+        {
+            if (BattlefieldLayout.StackKey(c, Tapped(c), carrying.Contains(c.Id)) is not { } kind) return null;
+            if (!_kindOf.ContainsKey(c.Id))
+            {
+                _kindOf[c.Id] = kind;
+                if (!_kinds.TryGetValue(kind, out var list)) _kinds[kind] = list = new List<CardId>();
+                list.Add(c.Id);
+            }
+            string attack = attacks.TryGetValue(c.Id, out var a) ? $"{a.Defender.Value}/{a.Planeswalker}/{a.IsBlocked}/{string.Join(',', a.Blockers)}" : "";
+            return $"{kind}#{StackMark?.Invoke(c.Id)}#{attack}#{(_attacking.Contains(c.Id) ? 1 : 0)}#{(_blockerAlign.TryGetValue(c.Id, out var x) ? x : 0):0}";
+        }
+
+        IReadOnlyList<CardStack> Stacks(IEnumerable<CardView> cards)
+        {
+            var stacks = BattlefieldLayout.Stack(cards, KeyOf);
+            foreach (var stack in stacks)
+                foreach (var card in stack.Cards) _stackOf[card.Id] = stack;
+            return stacks;
+        }
+
+        var creatures = Stacks(inRows.Where(c => BattlefieldLayout.RowOf(c) == BattlefieldRow.Creatures));
+        var others = Stacks(inRows.Where(c => BattlefieldLayout.RowOf(c) == BattlefieldRow.Other));
+        var lands = Stacks(inRows.Where(c => BattlefieldLayout.RowOf(c) == BattlefieldRow.Lands));
+        var blockerStacks = Stacks(blockers);
+
+        float creatureY = Compact ? 56 : 62;
+        int otherSlot = others.Count > 0 ? 1 : 0;
+        int landSlot = lands.Count > 0 ? otherSlot + 1 : 0;
+        // Rows are a card and a gap apart, closer together when a short window leaves less room above the hand.
+        float pitch = FieldSize.Y + (Compact ? 14 : 22);
+        int deepest = Math.Max(otherSlot, landSlot);
+        if (deepest > 0 && Size.Y > 100)
+            pitch = Mathf.Min(pitch, Mathf.Max(36, (Size.Y - Peek - 4 - creatureY - FieldSize.Y) / deepest));
+        LayoutRow(creatures, creatureY, CreaturesZ);
+        if (others.Count > 0) LayoutRow(others, creatureY + otherSlot * pitch, OtherZ);
+        if (lands.Count > 0) LayoutRow(lands, creatureY + landSlot * pitch, LandsZ);
+        LayoutBlockers(blockerStacks, creatureY);
         LayoutAttachments(attached);
     }
 
-    private void LayoutRow(IReadOnlyList<CardView> row, float y)
+    private void LayoutRow(IReadOnlyList<CardStack> row, float y, int zBase)
     {
         if (row.Count == 0) return;
         var size = FieldSize;
-        float slot = size.Y + 6; // tapped cards are rotated, so reserve their full height
+        float peek = StackStep * Math.Min(row.Max(s => s.Count) - 1, StackPeeks);
+        float slot = size.Y + 6 + peek; // tapped cards are rotated, so reserve their full height
         float available = Size.X - 2 * (Compact ? 40 : 230);
         float spacing = Mathf.Min(slot, available / row.Count);
         float totalWidth = spacing * (row.Count - 1) + slot;
-        float startX = (Size.X - totalWidth) / 2 + (slot - size.X) / 2;
+        float startX = (Size.X - totalWidth) / 2 + (slot - peek - size.X) / 2;
 
         for (int i = 0; i < row.Count; i++)
         {
-            var node = _cards[row[i].Id];
-            node.ZIndex = 10 + i; // room below for attachments tucked behind their host
-            bool tapped = row[i].Tapped || _staged.Contains(row[i].Id);
+            var top = row[i].Top;
+            bool tapped = top.Tapped || _staged.Contains(top.Id);
             // Attackers step forward towards the opponent.
-            float forward = _attacking.Contains(row[i].Id) ? (FacesDown ? 28 : -28) * Scale : 0;
-            MoveTo(node, new Vector2(startX + i * spacing, y + forward), size, tapped ? 90 : 0);
+            float forward = _attacking.Contains(top.Id) ? (FacesDown ? 28 : -28) * Scale : 0;
+            PlaceStack(row[i], new Vector2(startX + i * spacing, y + forward), size, tapped ? 90 : 0, zBase + Math.Min(i * 4, 90) + StackPeeks);
+        }
+    }
+
+    /// <summary>Puts the top token of a stack at <paramref name="position"/> and the others just behind it, peeking out.</summary>
+    private void PlaceStack(CardStack stack, Vector2 position, Vector2 size, float rotationDegrees, int z)
+    {
+        var top = _cards[stack.Top.Id];
+        top.ZIndex = z;
+        top.SetStack(stack.Count, false);
+        MoveTo(top, position, size, rotationDegrees);
+        for (int k = 0; k < stack.Count; k++) _shownBy[stack.Cards[k].Id] = top;
+        for (int k = 1; k < stack.Count; k++)
+        {
+            var behind = _cards[stack.Cards[k].Id];
+            int depth = Math.Min(k, StackPeeks);
+            behind.ZIndex = z - depth;
+            behind.SetStack(1, true);
+            MoveTo(behind, position + new Vector2(StackStep * depth, -StackStep * depth), size, rotationDegrees);
         }
     }
 
@@ -493,12 +580,12 @@ public partial class PlayerArea : Control
         }
     }
 
-    private void LayoutBlockers(IReadOnlyList<CardView> blockers, float y)
+    private void LayoutBlockers(IReadOnlyList<CardStack> blockers, float y)
     {
         var size = FieldSize;
         float forward = (FacesDown ? 40 : -40) * Scale;
         // Several blockers on the same attacker stand side by side, centered on it.
-        foreach (var group in blockers.GroupBy(b => _blockerAlign[b.Id]))
+        foreach (var group in blockers.GroupBy(b => _blockerAlign[b.Top.Id]))
         {
             var list = group.ToList();
             float slot = size.Y + 6;
@@ -506,10 +593,9 @@ public partial class PlayerArea : Control
             for (int i = 0; i < list.Count; i++)
             {
                 float x = localCenter + (i - (list.Count - 1) / 2f) * slot - size.X / 2;
-                var node = _cards[list[i].Id];
-                node.ZIndex = 50 + i;
-                bool tapped = list[i].Tapped || _staged.Contains(list[i].Id);
-                MoveTo(node, new Vector2(x, y + forward), size, tapped ? 90 : 0);
+                var top = list[i].Top;
+                bool tapped = top.Tapped || _staged.Contains(top.Id);
+                PlaceStack(list[i], new Vector2(x, y + forward), size, tapped ? 90 : 0, BlockersZ + Math.Min(i * 4, 20) + StackPeeks);
             }
         }
     }

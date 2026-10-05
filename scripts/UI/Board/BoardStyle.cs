@@ -31,6 +31,7 @@ public static class BoardStyle
         public const int ActionPanel = 450;
         public const int Log = 460;
         public const int Announcer = 480;
+        public const int Picker = 485;
         public const int Floaters = 500;
         public const int Preview = 550;
         public const int GameOver = 600;
