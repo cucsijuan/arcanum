@@ -148,8 +148,9 @@ public sealed class BotController : IPlayerController
 
     public async Task<PlayerAction> ChooseActionAsync(GameView view, IReadOnlyList<PlayerAction> legal)
     {
-        // Asked again with nothing changed: the last action was backed out of (a choice made along the way cancelled it),
-        // so it isn't tried again from this same position.
+        // Asked again with nothing changed: the last action came to nothing (the bot backed out of a target choice it had no
+        // good answer for), so it isn't tried again from this same position. Only a safety net against looping: an action
+        // that fails without the bot backing out is recorded by the engine (Game.FailedActions) and reported as an error.
         var signature = (view.TurnNumber, view.Step, view.Stack.Count, view.Self.Hand.Count, view.Self.ManaPoolTotal,
             view.Battlefield.Count, view.Battlefield.Count(c => c.Tapped), view.Players.Sum(p => p.Life));
         if (!signature.Equals(_lastSignature)) _backedOut.Clear();

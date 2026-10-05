@@ -257,33 +257,15 @@ public sealed partial class Game
         return actions;
     }
 
-    /// <summary>Whether the card (as it is now: the card, or its Adventure) can be cast: timing, targets and every cost.</summary>
+    /// <summary>
+    /// Whether the card (as it is now: the card, or its Adventure) can be cast: timing (or paying extra to cast it as though
+    /// it had flash), targets and some way to pay for it.
+    /// </summary>
     private bool CanCast(Card card, PlayerId playerId, bool sorcerySpeed)
     {
-        bool timingOk = card.Is(CardType.Instant) || card.Definition.KeywordAbilities.Contains(Keyword.Flash) || sorcerySpeed
-                        || Has(playerId, Replacements.YourSpellsHaveFlash)
-                        || (card.Definition.FlashIf is { } flashIf && Holds(flashIf, playerId, card))
-                        || GrantedFlash(card, playerId);
-        if (PaysLife(card) && State.GetPlayer(playerId).Life < card.Definition.ManaCost.ManaValue) return false;
-        // A legendary instant or sorcery needs a legendary creature or planeswalker (rule 205.4d).
-        if ((card.Definition.Supertypes & Supertype.Legendary) != 0 && (card.Is(CardType.Instant) || card.Is(CardType.Sorcery))
-            && !State.PermanentsControlledBy(playerId).Any(c => (c.Supertypes & Supertype.Legendary) != 0 && (c.IsCreature || c.Is(CardType.Planeswalker))))
-            return false;
-        var cost = PaysLife(card) ? ManaCost.Zero : CastingCost(card).WithX(0);
-        if (card.Definition.Delve) cost = cost.MinusGeneric(State.GetPlayer(playerId).Graveyard.Count(id => id != card.Id));
-        if (card.Zone == Zone.Hand && card.Definition.Dash is { } dashCost
-            && dashCost.MinusGeneric(CostReductionFor(card)).Variants().Any(v => ManaPayment.FindPlan(State, playerId, v, usable: UsableFor(card, isAbility: false)) is not null))
-            cost = ManaCost.Zero; // castable for its dash cost
-        if (!timingOk && card.Definition.FlashExtraCost is { } flashExtra)
-        {
-            timingOk = true; // "as though it had flash if you pay {2} more"
-            cost = cost.Plus(flashExtra);
-        }
-        return timingOk && HasLegalTargets(CastingTargets(card.Definition), playerId, card.Id)
-               && CanPayExtra(playerId, card.Definition.AdditionalCost, card.Id)
-               && (card.Zone != Zone.Graveyard || CanPayExtra(playerId, GraveyardCost(card), card.Id))
-               && (card.Zone != Zone.Graveyard || card.Definition.Flashback is null || CanPayExtra(playerId, card.Definition.FlashbackExtra, card.Id))
-               && (CanPayFromCostOptions(playerId, card, cost) || AlternativeCostPayable(playerId, card));
+        bool timing = TimingAllows(card, playerId, sorcerySpeed);
+        if (!timing && card.Definition.FlashExtraCost is null) return false;
+        return CanBeCast(card, playerId, flashExtra: !timing);
     }
 
     /// <summary>Lands the player may play this turn.</summary>
@@ -341,37 +323,6 @@ public sealed partial class Game
         State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version) || card.Definition.Flashback is not null
         || State.FlashbackGranted.Any(p => p.Card == card.Id && p.Version == card.Version)
             ? null : card.Definition.GraveyardCastCost;
-
-    /// <summary>Whether some way of paying the mana cost plus one of the additional-cost options works.</summary>
-    private bool CanPayFromCostOptions(PlayerId player, Card card, ManaCost cost)
-    {
-        if (card.Definition.AdditionalCostOptions is not { Count: > 0 } options)
-            return cost.Variants().Any(v => ManaPayment.FindPlan(State, player, v, usable: SpellManaUsable(card, null), unitUsable: UnitUsableFor(card, isAbility: false)) is not null);
-        return options.Any(o => CanPayExtra(player, o.Extra, card.Id)
-                                && cost.Plus(o.Mana ?? ManaCost.Zero).Variants().Any(v => ManaPayment.FindPlan(State, player, v, usable: SpellManaUsable(card, o.Extra), unitUsable: UnitUsableFor(card, isAbility: false)) is not null));
-    }
-
-    /// <summary>
-    /// Mana sources usable for a spell, keeping back sources that sacrifice themselves for mana (Treasures) when they're
-    /// needed for a sacrifice the spell also costs (its additional cost, or <paramref name="option"/>).
-    /// </summary>
-    private ManaPayment.OptionUsable SpellManaUsable(Card card, ExtraCost? option)
-    {
-        var usable = UsableFor(card, isAbility: false);
-        var reserved = new HashSet<CardId>();
-        foreach (var extra in new[] { card.Definition.AdditionalCost, option })
-        {
-            if (extra?.Sacrifice is not { } filter) continue;
-            var candidates = SacrificeCandidates(card.Owner, filter, card.Id);
-            var selfSacrificing = candidates.Where(c => c.Definition.SacrificeForMana).ToList();
-            if (candidates.Count - selfSacrificing.Count < extra.SacrificeCount) reserved.UnionWith(selfSacrificing.Select(c => c.Id));
-        }
-        return reserved.Count == 0 ? usable : (source, o) => !reserved.Contains(source.Id) && usable(source, o);
-    }
-
-    private bool AlternativeCostPayable(PlayerId player, Card card) =>
-        card.Definition.AlternativeCost is { } alt && (alt.If is null || Holds(alt.If, player, card))
-        && alt.Cost.Variants().Any(v => ManaPayment.FindPlan(State, player, v, usable: UsableFor(card, isAbility: false), unitUsable: UnitUsableFor(card, isAbility: false)) is not null);
 
     /// <summary>Exiled cards <paramref name="player"/> may currently play.</summary>
     private IEnumerable<CardId> PlayableExile(PlayerId player) =>
@@ -469,6 +420,24 @@ public sealed partial class Game
         return cost.MinusGeneric(hosts.Select(id => State.GetCard(id).Definition.EquipDiscount).DefaultIfEmpty(0).Max());
     }
 
+    /// <summary>Times a player backed out of something they were doing (a target, mode or mana payment request answered with nothing).</summary>
+    private int _playerCancels;
+
+    private readonly List<string> _failedActions = new();
+
+    /// <summary>
+    /// Legal actions that were chosen and then came to nothing without the player backing out: the list of legal actions
+    /// offered something that couldn't be done, which is an engine error.
+    /// </summary>
+    public IReadOnlyList<string> FailedActions => _failedActions;
+
+    private string Describe(PlayerAction action) => action switch
+    {
+        CastSpell c => $"cast {State.GetCard(c.Card).Name}{(c.Adventure ? " (adventure)" : "")}{(c.Half is { } half ? $" (half {half})" : "")}",
+        ActivateAbility a => $"activate {State.GetCard(a.Source).Name} #{a.Index}",
+        _ => action.ToString() ?? "",
+    };
+
     /// <returns>False if the action was cancelled and nothing happened.</returns>
     private async Task<bool> PerformAsync(PlayerId playerId, PlayerAction action)
     {
@@ -500,11 +469,16 @@ public sealed partial class Game
                 return true;
             }
 
-            case CastSpell cast:
-                return await CastSpellAsync(player, cast.Card, cast.Adventure, half: cast.Half);
-
-            case ActivateAbility activate:
-                return await ActivateAbilityAsync(player, activate);
+            case CastSpell or ActivateAbility:
+            {
+                int cancels = _playerCancels;
+                bool done = action is CastSpell cast
+                    ? await CastSpellAsync(player, cast.Card, cast.Adventure, half: cast.Half, withPriority: true)
+                    : await ActivateAbilityAsync(player, (ActivateAbility)action);
+                // A legal action can only come to nothing because the player backed out of it; anything else is an engine error.
+                if (!done && _playerCancels == cancels) _failedActions.Add($"turn {State.TurnNumber}, {playerId}: {Describe(action)}");
+                return done;
+            }
 
             default:
                 throw new InvalidDecisionException($"Unsupported action {action}.");
@@ -512,18 +486,19 @@ public sealed partial class Game
     }
 
     /// <summary>
-    /// Casting (rule 601.2): choose modes and targets, the value of X and whether to kick, then pay every cost.
-    /// Every step up to paying mana can be cancelled with nothing changed.
+    /// Casting (rule 601.2): announce how it's paid for, additional costs, modes and X (601.2b), choose targets (601.2c),
+    /// work out the total cost (601.2f), then pay it (601.2g-h). Every step up to paying mana can be cancelled with nothing changed.
     /// </summary>
     /// <param name="exileAfter">Exiled instead of going anywhere else when it leaves the stack (as with flashback).</param>
-    private async Task<bool> CastSpellAsync(Player player, CardId cardId, bool adventure = false, bool exileAfter = false, int? half = null)
+    /// <param name="withPriority">Cast as an action with priority, rather than by an effect that's resolving (which ignores timing).</param>
+    private async Task<bool> CastSpellAsync(Player player, CardId cardId, bool adventure = false, bool exileAfter = false, int? half = null, bool withPriority = false)
     {
         var card = State.GetCard(cardId);
         card.AsAdventure = adventure;
         card.CastHalf = half;
         // An aftermath half is exiled whenever it would leave the stack (702.127a).
         if (half is { } h && card.PrintedDefinition.SplitHalves?[h].Aftermath == true) exileAfter = true;
-        if (!await CastAsItIsAsync(player, card, exileAfter))
+        if (!await CastAsItIsAsync(player, card, exileAfter, withPriority))
         {
             card.AsAdventure = false;
             card.CastHalf = null;
@@ -532,41 +507,64 @@ public sealed partial class Game
         return true;
     }
 
-    private async Task<bool> CastAsItIsAsync(Player player, Card card, bool exileAfter)
+    private async Task<bool> CastAsItIsAsync(Player player, Card card, bool exileAfter, bool withPriority)
     {
         var cardId = card.Id;
-        // A spell whose additional costs can't be paid can't be cast (rule 601.2h), however it's being cast.
-        if (!CanPayExtra(player.Id, card.Definition.AdditionalCost, cardId)) return false;
-        if (card.Definition.AdditionalCostOptions is { Count: > 0 } extraOptions && !extraOptions.Any(o => CanPayExtra(player.Id, o.Extra, cardId))) return false;
-        bool flashback = exileAfter || (card.Zone == Zone.Graveyard
-                         && (card.Definition.Flashback is not null || State.FlashbackGranted.Any(p => p.Card == cardId && p.Version == card.Version))
-                         && !State.PlayableFromGraveyard.Any(p => p.Card == cardId && p.Version == card.Version));
+        // Only a spell cast with priority needs flash or the extra cost for it: an effect that casts it ignores timing.
+        bool sorceryTiming = player.Id == State.ActivePlayer && State.Step.IsMain() && State.Stack.Count == 0;
+        bool flashExtra = withPriority && !TimingAllows(card, player.Id, sorceryTiming);
+        // A spell none of whose ways to pay can be paid can't be cast (rule 601.2h), however it's being cast.
+        if (!LegendarySpellAllowed(card, player.Id)) return false;
+        var payable = PayableCastingWays(card, player.Id, flashExtra);
+        if (payable.Count == 0) return false;
+        bool flashback = exileAfter || IsFlashbackCast(card);
         bool fromGraveyard = card.Zone == Zone.Graveyard;
-        bool paysLife = PaysLife(card);
         if (card.Zone == Zone.Hand) card.CastFromHand = true;
+
+        // 601.2b: announcements, each one only if what's been announced so far can still be paid with it.
         // A gift is promised (or not) as the spell is cast, to an opponent (rule 702.174a).
         PlayerId? giftTo = null;
         if (card.Definition.Gift is not null && State.OpponentsOf(player.Id).Any()
             && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Promise an opponent a gift ({card.Definition.Gift.Name}) for {card.Name}?", cardId)))
             giftTo = await ChooseOpponentAsync(player.Id, card, "Choose the opponent who gets the gift");
-        // Kicker is announced before targets (601.2b): a kicked spell may target differently.
-        bool kicked = false;
-        if (card.Definition.Kicker is { } announcedKicker && Payable(player.Id, CastingCost(card).WithX(0).Plus(announcedKicker), null))
-            kicked = await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Pay kicker {announcedKicker} for {card.Name}?", cardId));
-        // Costs that may be paid any number of times are announced with the kicker (601.2b).
-        var announceBase = CastingCost(card).WithX(0);
-        int kickCount = card.Definition.Multikicker is { } multi ? await ChooseTimesAsync(player.Id, card, announceBase, multi, "multikicker") : 0;
-        if (kickCount > 0) kicked = true;
-        int replicateCount = card.Definition.Replicate is { } replicate ? await ChooseTimesAsync(player.Id, card, announceBase, replicate, "replicate") : 0;
-        int squadCount = card.Definition.Squad is { } squad ? await ChooseTimesAsync(player.Id, card, announceBase, squad, "squad") : 0;
+        // The mana cost or an alternative cost (118.9), such as dash or "without paying its mana cost".
+        var way = await ChooseCastingWayAsync(player.Id, card, payable.Select(c => c.Way).Distinct().ToList());
+        // Additional cost with alternatives: the caster picks one that can be paid.
+        var withWay = payable.Where(c => c.Way == way).ToList();
+        int pick = 0;
+        if (withWay.Count > 1)
+        {
+            var labels = withWay.Select(c => c.Option!.Extra is { } e ? DescribeCost(e) : $"Pay {c.Option.Mana}").ToList();
+            pick = await ControllerOf(player.Id).ChooseOptionAsync(ViewFor(player.Id), new OptionRequest($"{card.Name}: choose the additional cost", cardId, labels, OptionKind.Other));
+            Require(pick >= 0 && pick < withWay.Count, "Choose one of the costs.");
+        }
+        var choices = withWay[pick];
+        // Kicker, and costs that may be paid any number of times.
+        if (card.Definition.Kicker is { } kicker && CanPayToCast(card, player.Id, choices with { Kicked = true })
+            && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Pay kicker {kicker} for {card.Name}?", cardId)))
+            choices = choices with { Kicked = true };
+        if (card.Definition.Multikicker is { } multi)
+            choices = choices with { KickCount = await ChooseTimesAsync(player.Id, card, n => choices with { KickCount = n }, multi, "multikicker") };
+        if (card.Definition.Replicate is { } replicate)
+            choices = choices with { ReplicateCount = await ChooseTimesAsync(player.Id, card, n => choices with { ReplicateCount = n }, replicate, "replicate") };
+        if (card.Definition.Squad is { } squad)
+            choices = choices with { SquadCount = await ChooseTimesAsync(player.Id, card, n => choices with { SquadCount = n }, squad, "squad") };
         // Splice onto instant or sorcery (702.47): cards revealed from the hand add their effects to this spell.
-        var spliced = new List<Card>();
         if (card.Is(CardType.Instant) || card.Is(CardType.Sorcery))
             foreach (var other in player.Hand.Where(h => h != cardId).Select(State.GetCard).Where(c => c.Definition.Splice is not null).ToList())
-                if (Payable(player.Id, announceBase.Plus(other.Definition.Splice!), null)
+            {
+                var spliced = choices with { Spliced = choices.Spliced.Append(other).ToList() };
+                if (CanPayToCast(card, player.Id, spliced)
                     && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Splice {other.Name} onto {card.Name} (pay {other.Definition.Splice})?", other.Id)))
-                    spliced.Add(other);
-        if (spliced.Count > 0) Emit(new CardsRevealed(player.Id, spliced.Select(c => c.Id).ToList()));
+                    choices = spliced;
+            }
+        if (choices.Spliced.Count > 0) Emit(new CardsRevealed(player.Id, choices.Spliced.Select(c => c.Id).ToList()));
+        // Conspire (702.78): you may tap two untapped creatures you control that share a color with it.
+        if (card.Definition.Conspire && CanPayToCast(card, player.Id, choices with { Conspire = true })
+            && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Conspire: tap two untapped creatures that share a color with {card.Name} to copy it?", cardId)))
+            choices = choices with { Conspire = true };
+        bool kicked = choices.Kicked || choices.KickCount > 0;
+        // Modes.
         var ability = CastingTargets(card.Definition);
         if (kicked && ability?.WhenKicked is { } kickedVersion) ability = kickedVersion;
         if (ability is not null)
@@ -574,128 +572,70 @@ public sealed partial class Game
             ability = await ChooseModesAsync(player.Id, ability, cardId, canCancel: true);
             if (ability is null) return false;
         }
-        if (spliced.Count > 0)
-            ability = (ability ?? new SpellAbility()) with { Effects = (ability?.Effects ?? Array.Empty<Effect>()).Concat(spliced.SelectMany(c => c.Definition.Spell?.Effects ?? Array.Empty<Effect>())).ToList() };
-        // "Costs {N} less if it targets …": when the full cost can't be paid, only targets that make it affordable can be chosen.
-        Func<Abilities.Target, bool>? affordable = ability is { Targets.Count: 1 } && card.Definition.SelfCostReduction?.IfTargets is not null && !paysLife
-            ? t => Payable(player.Id, CastingCost(card, new[] { new ChosenTarget(t, VersionOf(t)) }).WithX(0), null, SpellManaUsable(card, null))
+        if (choices.Spliced.Count > 0)
+            ability = (ability ?? new SpellAbility()) with { Effects = (ability?.Effects ?? Array.Empty<Effect>()).Concat(choices.Spliced.SelectMany(c => c.Definition.Spell?.Effects ?? Array.Empty<Effect>())).ToList() };
+        // X: in the cost it's cast for, or in an additional cost ("pay X life", "exile X cards from your graveyard").
+        bool exilesX = flashback && card.Zone == Zone.Graveyard && card.Definition.FlashbackExilesX;
+        if (choices.Way.Mana.XCount > 0 || card.Definition.PayXLife || exilesX)
+        {
+            int max = 0;
+            while (max < 99 && CanPayToCast(card, player.Id, choices with { X = max + 1 })) max++;
+            var prompt = choices.Way.Mana.XCount > 0 ? $"{card.Name}: choose X"
+                : card.Definition.PayXLife ? $"{card.Name}: choose X (pay X life)" : $"{card.Name}: choose X (exile X cards from your graveyard)";
+            int chosenX = await ControllerOf(player.Id).ChooseNumberAsync(ViewFor(player.Id), new NumberRequest(prompt, cardId, 0, max));
+            Require(chosenX >= 0 && chosenX <= max, $"X must be between 0 and {max}.");
+            choices = choices with { X = chosenX };
+        }
+        int x = choices.X;
+
+        // 601.2c: targets. "Costs {N} less if it targets …": when the announcements need that reduction, only targets that
+        // give it can be chosen.
+        Func<Abilities.Target, bool>? affordable = ability is { Targets.Count: 1 } && card.Definition.SelfCostReduction?.IfTargets is not null
+            ? t => CanPayToCast(card, player.Id, choices, new[] { new ChosenTarget(t, VersionOf(t)) })
             : null;
-        var targets = await ChooseTargetsAsync(player.Id, ability, cardId, card.Name, canCancel: true, affordable);
+        IReadOnlyList<ChosenTarget>? targets;
+        _announcedX = x;
+        try { targets = await ChooseTargetsAsync(player.Id, ability, cardId, card.Name, canCancel: true, affordable); }
+        finally { _announcedX = -1; }
         if (targets is null) return false;
 
-        var cost = CastingCost(card, targets);
-        // "Without paying its mana cost" with X: X is 0, so the player may prefer to pay.
-        if (card.Zone == Zone.Hand && cost.XCount > 0 && Has(player.Id, Replacements.CastFromHandFree)
-            && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Cast {card.Name} without paying its mana cost (X = 0)?", cardId)))
-            cost = ManaCost.Zero;
-        bool sorceryTiming = player.Id == State.ActivePlayer && State.Step.IsMain() && State.Stack.Count == 0;
-        if (!sorceryTiming && !card.Is(CardType.Instant) && !card.Definition.KeywordAbilities.Contains(Keyword.Flash)
-            && !Has(player.Id, Replacements.YourSpellsHaveFlash) && card.Definition.FlashExtraCost is { } flashExtra)
-            cost = cost.Plus(flashExtra);
-        // Dash (702.109): an alternative cost from the hand.
-        bool dashed = false;
-        if (card.Zone == Zone.Hand && card.Definition.Dash is { } dash
-            && dash.MinusGeneric(CostReductionFor(card, targets)).Variants().Any(v => ManaPayment.FindPlan(State, player.Id, v, usable: UsableFor(card, isAbility: false)) is not null)
-            && (!Payable(player.Id, cost.WithX(0), null)
-                || await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Cast {card.Name} for its dash cost {dash}?", cardId))))
-        {
-            cost = dash.MinusGeneric(CostReductionFor(card, targets));
-            dashed = true;
-        }
-        // Alternative cost ("pay {B} rather than this spell's mana cost").
-        if (!dashed && card.Definition.AlternativeCost is { } alt && AlternativeCostPayable(player.Id, card)
-            && (!Payable(player.Id, cost.WithX(0), null)
-                || await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Pay {alt.Cost} instead of the mana cost?", cardId))))
-            cost = alt.Cost;
-        // Additional cost with alternatives: the caster picks one that can be paid.
-        CostOption? option = null;
-        if (card.Definition.AdditionalCostOptions is { Count: > 0 } options)
-        {
-            var payable = options.Where(o => CanPayExtra(player.Id, o.Extra, cardId) && Payable(player.Id, cost.WithX(0).Plus(o.Mana ?? ManaCost.Zero), null, SpellManaUsable(card, o.Extra))).ToList();
-            if (payable.Count == 0) return false;
-            int pick = 0;
-            if (payable.Count > 1)
-            {
-                var labels = payable.Select(o => o.Extra is { } e ? DescribeCost(e) : $"Pay {o.Mana}").ToList();
-                pick = await ControllerOf(player.Id).ChooseOptionAsync(ViewFor(player.Id), new OptionRequest($"{card.Name}: choose the additional cost", cardId, labels, OptionKind.Other));
-                Require(pick >= 0 && pick < payable.Count, "Choose one of the costs.");
-            }
-            option = payable[pick];
-            if (option.Mana is { } extraMana) cost = cost.Plus(extraMana);
-        }
-        int x = 0;
-        if (cost.XCount > 0)
-        {
-            int max = MaxAffordableX(player.Id, cost, null);
-            x = await ControllerOf(player.Id).ChooseNumberAsync(ViewFor(player.Id), new NumberRequest($"{card.Name}: choose X", cardId, 0, max));
-            Require(x >= 0 && x <= max, $"X must be between 0 and {max}.");
-        }
-        else if (card.Definition.PayXLife)
-        {
-            // "As an additional cost to cast this spell, pay X life."
-            int max = player.CantLoseLifeTurn == State.TurnNumber ? 0 : Math.Max(0, player.Life);
-            x = await ControllerOf(player.Id).ChooseNumberAsync(ViewFor(player.Id), new NumberRequest($"{card.Name}: choose X (pay X life)", cardId, 0, max));
-            Require(x >= 0 && x <= max, $"X must be between 0 and {max}.");
-        }
-        else if (flashback && card.Definition.FlashbackExilesX)
-        {
-            // "Flashback—…, Exile X cards from your graveyard": X is the number of cards exiled.
-            int max = player.Graveyard.Count(id => id != cardId);
-            x = await ControllerOf(player.Id).ChooseNumberAsync(ViewFor(player.Id), new NumberRequest($"{card.Name}: choose X (exile X cards from your graveyard)", cardId, 0, max));
-            Require(x >= 0 && x <= max, $"X must be between 0 and {max}.");
-        }
-        cost = cost.WithX(x);
-
-        if (kicked && card.Definition.Kicker is { } kicker) cost = cost.Plus(kicker);
-        for (int i = 0; i < kickCount; i++) cost = cost.Plus(card.Definition.Multikicker!);
-        for (int i = 0; i < replicateCount; i++) cost = cost.Plus(card.Definition.Replicate!);
-        for (int i = 0; i < squadCount; i++) cost = cost.Plus(card.Definition.Squad!);
-        foreach (var other in spliced) cost = cost.Plus(other.Definition.Splice!);
-        // Conspire (702.78): you may tap two untapped creatures you control that share a color with it.
-        List<Card>? conspirators = null;
-        if (card.Definition.Conspire)
-        {
-            var candidates = State.PermanentsControlledBy(player.Id).Where(c => c.IsCreature && !c.Tapped && c.Colors.Any(card.Colors.Contains)).ToList();
-            if (candidates.Count >= 2 && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Conspire: tap two untapped creatures that share a color with {card.Name} to copy it?", cardId)))
-            {
-                var pick = await ControllerOf(player.Id).ChooseCardsAsync(ViewFor(player.Id), new CardChoiceRequest("Conspire: tap two creatures", cardId,
-                    candidates.Select(c => ViewBuilder.Card(State, c.Id, player.Id)).ToList(), 2, 2, CardChoicePurpose.Sacrifice));
-                Require(pick.Count == 2 && pick.Distinct().Count() == 2 && pick.All(id => candidates.Any(c => c.Id == id)), "Choose two of the listed creatures.");
-                conspirators = pick.Select(State.GetCard).ToList();
-            }
-        }
-        // Delve (702.66): each card exiled from the graveyard while casting pays for {1}.
+        // 601.2f: the total cost, locked in.
+        var cost = TotalCastingCost(card, player.Id, choices, targets);
+        if (!CanPayCastingCost(card, player.Id, choices, cost)) return false; // the targets chosen don't allow what was announced
+        var nonMana = NonManaCastingCosts(card, choices);
+        // 601.2g-h: paying. Delve (702.66): each card exiled from the graveyard while casting pays for {1}.
         List<CardId> delved = new();
         if (card.Definition.Delve && cost.Generic > 0)
         {
             var graveyard = player.Graveyard.Where(id => id != cardId).ToList();
-            int most = Math.Min(cost.Generic, graveyard.Count);
+            int most = Math.Min(cost.Generic, graveyard.Count - nonMana.Sum(e => e.ExileFromGraveyard));
+            int least = 0;
+            while (least < most && !CanPayCastingMana(card, player.Id, choices, cost.MinusGeneric(least))) least++;
             if (most > 0)
             {
-                var pick = await ControllerOf(player.Id).ChooseCardsAsync(ViewFor(player.Id), new CardChoiceRequest($"Delve: exile up to {most} cards from your graveyard (each pays for {{1}})", cardId,
-                    graveyard.Select(id => ViewBuilder.Card(State, id, player.Id)).ToList(), 0, most, CardChoicePurpose.Discard));
-                Require(pick.Count <= most && pick.Distinct().Count() == pick.Count && pick.All(graveyard.Contains), "Choose cards from your graveyard.");
-                delved = pick.ToList();
+                var exiled = await ControllerOf(player.Id).ChooseCardsAsync(ViewFor(player.Id), new CardChoiceRequest($"Delve: exile up to {most} cards from your graveyard (each pays for {{1}})", cardId,
+                    graveyard.Select(id => ViewBuilder.Card(State, id, player.Id)).ToList(), least, most, CardChoicePurpose.Discard));
+                Require(exiled.Count >= least && exiled.Count <= most && exiled.Distinct().Count() == exiled.Count && exiled.All(graveyard.Contains), "Choose cards from your graveyard.");
+                delved = exiled.ToList();
                 cost = cost.MinusGeneric(delved.Count);
             }
         }
-
-        // Ward: targeting an opponent's warded permanent costs extra; unpaid, the spell is countered (702.21).
-
-        if (paysLife) cost = ManaCost.Zero;
-        var paidMana = await PayManaTapsAsync(player, cardId, cost, exclude: null, SpellManaUsable(card, option?.Extra), UnitUsableFor(card, isAbility: false));
+        var paidMana = await PayManaTapsAsync(player, cardId, cost, exclude: null, SpellManaUsable(card, player.Id, choices), UnitUsableFor(card, isAbility: false));
         if (paidMana is null) return false;
-        if (paysLife) ChangeLife(player.Id, -card.Definition.ManaCost.ManaValue);
+        if (choices.Way.Life > 0) ChangeLife(player.Id, -choices.Way.Life);
         foreach (var id in delved) MoveCard(id, Zone.Exile);
-        foreach (var c in conspirators ?? new List<Card>())
-            Tap(c);
+        List<Card>? conspirators = null;
+        if (choices.Conspire)
+        {
+            var candidates = ConspireCandidates(card, player.Id);
+            var tapped = await ControllerOf(player.Id).ChooseCardsAsync(ViewFor(player.Id), new CardChoiceRequest("Conspire: tap two creatures", cardId,
+                candidates.Select(c => ViewBuilder.Card(State, c.Id, player.Id)).ToList(), 2, 2, CardChoicePurpose.Sacrifice));
+            Require(tapped.Count == 2 && tapped.Distinct().Count() == 2 && tapped.All(id => candidates.Any(c => c.Id == id)), "Choose two of the listed creatures.");
+            conspirators = tapped.Select(State.GetCard).ToList();
+            foreach (var c in conspirators) Tap(c);
+        }
         bool treasure = paidMana.Taps.Any(t => State.GetCard(t.Source).HasSubtype("Treasure")) || paidMana.SpecialSpent.Any(u => State.GetCard(u.Source).HasSubtype("Treasure"));
-        await PayExtraAsync(player.Id, card.Definition.AdditionalCost, cardId);
-        if (option?.Extra is { } chosenExtra) await PayExtraAsync(player.Id, chosenExtra, cardId);
-        if (card.Zone == Zone.Graveyard && GraveyardCost(card) is { } graveyardCost) await PayExtraAsync(player.Id, graveyardCost, cardId);
-        if (flashback && card.Zone == Zone.Graveyard && card.Definition.FlashbackExtra is { } flashbackExtra) await PayExtraAsync(player.Id, flashbackExtra, cardId);
-        if (flashback && card.Zone == Zone.Graveyard && card.Definition.FlashbackExilesX && x > 0)
-            await PayExtraAsync(player.Id, new ExtraCost { ExileFromGraveyard = x }, cardId);
+        foreach (var extra in nonMana) await PayExtraAsync(player.Id, extra, cardId);
         if (card.Definition.PayXLife && x > 0) ChangeLife(player.Id, -x);
         if (card.Zone == Zone.Graveyard && Has(player.Id, Replacements.PermanentsFromGraveyard) && GraveyardCost(card) is null
             && card.Definition.Flashback is null && !State.PlayableFromGraveyard.Any(p => p.Card == cardId && p.Version == card.Version))
@@ -745,7 +685,7 @@ public sealed partial class Game
         PushStack(new SpellOnStack(cardId, player.Id, targets)
         {
             Ability = ability != CastingTargets(card.Definition) ? ability : null,
-            X = x, Kicked = kicked, Flashback = flashback, GiftTo = giftTo, KickCount = kickCount, SquadCount = squadCount, Dashed = dashed,
+            X = x, Kicked = kicked, Flashback = flashback, GiftTo = giftTo, KickCount = choices.KickCount, SquadCount = choices.SquadCount, Dashed = choices.Way.Kind == CastingWayKind.Dash,
         });
         Emit(new SpellCast(player.Id, cardId));
         foreach (var castThis in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.Trigger == TriggerEvent.CastThis))
@@ -753,8 +693,8 @@ public sealed partial class Game
         // Storm, replicate and conspire trigger as the spell is cast (702.40a, 702.56a, 702.78a).
         if (card.Definition.Storm && castBefore > 0)
             _pendingTriggers.Add(new PendingTrigger(cardId, StormTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, castBefore)));
-        if (replicateCount > 0)
-            _pendingTriggers.Add(new PendingTrigger(cardId, ReplicateTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, replicateCount)));
+        if (choices.ReplicateCount > 0)
+            _pendingTriggers.Add(new PendingTrigger(cardId, ReplicateTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, choices.ReplicateCount)));
         if (conspirators is not null)
             _pendingTriggers.Add(new PendingTrigger(cardId, ConspireTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, 1)));
         for (int i = 0; i < card.Definition.Cascade; i++) // cascade triggers as the spell is cast (rule 702.85a)
@@ -780,18 +720,6 @@ public sealed partial class Game
     {
         Text = "Conspire: copy this spell. You may choose new targets for the copy.",
     };
-
-    /// <summary>How many times to pay a cost that may be paid any number of times (as many as can be paid, at most).</summary>
-    private async Task<int> ChooseTimesAsync(PlayerId player, Card card, ManaCost baseCost, ManaCost each, string what)
-    {
-        int max = 0;
-        var total = baseCost;
-        while (max < 30 && Payable(player, total.Plus(each), null, UsableFor(card, isAbility: false))) { total = total.Plus(each); max++; }
-        if (max == 0) return 0;
-        int n = await ControllerOf(player).ChooseNumberAsync(ViewFor(player), new NumberRequest($"{card.Name}: pay its {what} cost {each} how many times?", card.Id, 0, max));
-        Require(n >= 0 && n <= max, $"Choose between 0 and {max}.");
-        return n;
-    }
 
     private static readonly TriggeredAbility ScryOneForSharedType = new()
     {
@@ -1140,7 +1068,11 @@ public sealed partial class Game
         var request = new ManaPaymentRequest(source, cost, fromPool, remaining, plan.Taps, sources);
 
         var taps = await ControllerOf(player.Id).ChooseManaPaymentAsync(ViewFor(player.Id), request);
-        if (taps is null) return null;
+        if (taps is null)
+        {
+            _playerCancels++;
+            return null;
+        }
 
         Require(taps.Select(t => t.Source).Distinct().Count() == taps.Count, "Each source can be tapped only once.");
         Require(taps.All(t => sources.Any(s => s.Source == t.Source && s.Option == t.Option && s.Types.Contains(t.Type)) && ManaPayment.IsValid(State.GetCard(t.Source), t)), "Illegal mana source.");
@@ -1191,38 +1123,6 @@ public sealed partial class Game
         if (source.Definition.SacrificeForMana) await SacrificePermanentAsync(source.Id);
     }
 
-    /// <summary>
-    /// Total cost to cast a card (601.2f): its mana cost (or flashback cost from the graveyard), plus commander tax
-    /// when cast from the command zone (903.8), minus cost reductions. X stays unresolved.
-    /// </summary>
-    public ManaCost CastingCost(Card card) => CastingCost(card, null);
-
-    private ManaCost CastingCost(Card card, IReadOnlyList<ChosenTarget>? targets)
-    {
-        if ((card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.WithoutPaying)) || _castFree.Contains(card.Id))
-            return ManaCost.Zero; // "without paying its mana cost"
-        if (_miracleCost.TryGetValue(card.Id, out var miracleCost)) return miracleCost.MinusGeneric(CostReductionFor(card, targets));
-        bool byFlashback = card.Zone == Zone.Graveyard && card.Definition.Flashback is not null
-                           && !State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version);
-        var cost = byFlashback ? card.Definition.Flashback! : card.Definition.ManaCost;
-        if (byFlashback && card.Definition.FlashbackReduction is { } flashbackReduction)
-            cost = cost.MinusGeneric(Math.Max(0, Eval(flashbackReduction, new EffectContext(card.Owner, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
-        if (card.Zone == Zone.Command && Config.Commander is { } rules)
-            cost = cost.PlusGeneric(rules.TaxPerCast * State.GetPlayer(card.Owner).CommanderCasts.GetValueOrDefault(card.Id));
-        var caster = card.Zone == Zone.Exile && card.Owner != State.ActivePlayer ? State.ActivePlayer : card.Owner;
-        if (card.Zone == Zone.Hand && Has(card.Owner, Replacements.CastFromHandFree) && card.Definition.ManaCost.XCount == 0) return ManaCost.Zero;
-        // "Mana of any type can be spent": colored symbols become generic.
-        bool anyType = (card.Is(CardType.Creature) && Has(card.Owner, Replacements.CreaturesFromLibraryTop)) // "spend mana of any type to cast creature spells"
-                       || (card.Zone == Zone.Exile && card.CounterCount(CounterKind.Stash) > 0 && Has(caster, Replacements.PlayStashedCards))
-                       || (card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType));
-        if (anyType) cost = new ManaCost(cost.ManaValue, Array.Empty<ManaType>(), null, cost.XCount);
-        // Cost increases apply before reductions (rule 601.2f).
-        foreach (var taxer in State.Battlefield.Select(State.GetCard))
-            foreach (var increase in taxer.Abilities.OfType<SpellCostIncrease>())
-                if (Matches(increase.Spells with { Controller = ControllerFilter.Any }, card, caster, taxer, taxer.Controller)) cost = cost.PlusGeneric(increase.Amount);
-        return cost.MinusGeneric(CostReductionFor(card, targets));
-    }
-
     /// <summary>Cards being cast for their miracle cost right now.</summary>
     private readonly Dictionary<CardId, ManaCost> _miracleCost = new();
 
@@ -1261,9 +1161,9 @@ public sealed partial class Game
         return cast;
     }
 
-    private int CostReductionFor(Card card, IReadOnlyList<ChosenTarget>? targets = null)
+    /// <summary>How much generic mana the reductions that apply take off casting the card (601.2f).</summary>
+    private int CostReductionFor(Card card, PlayerId caster, IReadOnlyList<ChosenTarget>? targets)
     {
-        var caster = card.Owner;
         int total = 0;
         if (card.Definition.SelfCostReduction is { AmountFrom: { } amountFrom })
             total += Math.Max(0, Eval(amountFrom, new EffectContext(caster, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>())));

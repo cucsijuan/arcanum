@@ -153,6 +153,7 @@ public sealed partial class Game
         if (chosen is null)
         {
             Require(canCancel, "These targets must be chosen.");
+            _playerCancels++;
             return null;
         }
         Require(request.IsComplete(chosen.Count) && (request.LastIsAnyNumber || chosen.Count == legal.Count), $"Choose {legal.Count} target(s).");
@@ -272,6 +273,7 @@ public sealed partial class Game
                 if (answer is null)
                 {
                     Require(canCancel && n == 0, "Modes must be chosen.");
+                    _playerCancels++;
                     return null;
                 }
                 Require(answer.Count == 1 && possible.Contains(answer[0]), "Choose one of the possible modes.");
@@ -287,6 +289,7 @@ public sealed partial class Game
             if (answer is null)
             {
                 Require(canCancel, "Modes must be chosen.");
+                _playerCancels++;
                 return null;
             }
             Require(answer.Count >= min && answer.Count <= max && answer.Distinct().Count() == answer.Count && answer.All(possible.Contains),
@@ -2130,8 +2133,21 @@ public sealed partial class Game
                 var castable = pool
                     .Where(c => c.Zone == Zone.Graveyard && !c.Is(CardType.Land) && Matches(cg.Filter with { Controller = ControllerFilter.Any }, c, c.Owner, ctx.Source, who)
                                 && (maxValue is null || c.Definition.ManaCost.ManaValue <= maxValue)
-                                && HasLegalTargets(CastingTargets(c.Definition), who, c.Id) && (cg.Free || Payable(who, CastingCost(c).WithX(0), null)))
+                                && CastableWith(c))
                     .ToList();
+                // Whether it could be cast with the permission this effect gives (tried, then taken back).
+                bool CastableWith(Card c)
+                {
+                    var trial = new PlayableFromExile(c.Id, c.Version, who, State.TurnNumber);
+                    State.PlayableFromGraveyard.Add(trial);
+                    bool free = cg.Free && _castFree.Add(c.Id);
+                    try { return CanBeCast(c, who, flashExtra: false); }
+                    finally
+                    {
+                        State.PlayableFromGraveyard.Remove(trial);
+                        if (free) _castFree.Remove(c.Id);
+                    }
+                }
                 if (castable.Count == 0) break;
                 var pick = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest(cg.Free ? "You may cast a spell without paying its mana cost" : "You may cast a spell from your graveyard", ctx.Source.Id,
                     castable.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 0, 1, CardChoicePurpose.ToBattlefield));
@@ -2677,10 +2693,13 @@ public sealed partial class Game
             {
                 if (ctx.Trigger?.Subject is not { } drawn || State.GetCard(drawn) is not { Zone: Zone.Hand } card || card.Version != ctx.Trigger.SubjectVersion
                     || card.Definition.Miracle is not { } miracle) break;
-                if (!HasLegalTargets(CastingTargets(card.Definition), ctx.Controller, card.Id) || !Payable(ctx.Controller, miracle.WithX(0), null, UsableFor(card, isAbility: false))) break;
-                if (!await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast {card.Name} for its miracle cost {miracle}?", card.Id))) break;
                 _miracleCost[card.Id] = miracle;
-                try { await CastSpellAsync(State.GetPlayer(ctx.Controller), card.Id); }
+                try
+                {
+                    if (!CanBeCast(card, ctx.Controller, flashExtra: false)
+                        || !await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast {card.Name} for its miracle cost {miracle}?", card.Id))) break;
+                    await CastSpellAsync(State.GetPlayer(ctx.Controller), card.Id);
+                }
                 finally { _miracleCost.Remove(card.Id); }
                 break;
             }
