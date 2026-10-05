@@ -2640,8 +2640,8 @@ public sealed partial class Game
                 var hidden = State.GetCard(pick[0]);
                 hidden.FaceDown = true;
                 hidden.ExiledWith = (ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version);
-                var rest = top.Where(id => id != pick[0]).ToList();
-                Rng.Shuffle(rest);
+                // "Put the rest on the bottom of your library in any order" (rule 702.75a).
+                var rest = (await OrderAsync(ctx.Controller, top.Where(id => id != pick[0]).ToList(), "Choose the next card for the bottom (first goes deepest)", ctx.Source)).ToList();
                 foreach (var id in rest) { player.Library.Remove(id); player.Library.Add(id); }
                 break;
             }
@@ -3263,10 +3263,19 @@ public sealed partial class Game
         var rest = top.Where(id => !chosen.Contains(id)).ToList();
         if (look.RestOnTop)
         {
-            Emit(new LookedAtTop(who, top.Count, 0, Scry: false)); // the rest stays where it was
+            if (look.RestOrder == RestOrder.Chosen && rest.Count > 1)
+            {
+                // "Put the rest back on top of your library in any order."
+                foreach (var id in rest) player.Library.Remove(id);
+                var ordered = await OrderAsync(who, rest, "Choose the card to put on top next", source);
+                player.Library.InsertRange(0, ordered);
+            }
+            Emit(new LookedAtTop(who, top.Count, 0, Scry: false)); // otherwise the rest stays where it was
             return;
         }
-        if (!look.RestToGraveyard) Rng.Shuffle(rest); // "on the bottom of your library in a random order"
+        if (look.RestToGraveyard) { }
+        else if (look.RestOrder == RestOrder.Chosen) rest = (await OrderAsync(who, rest, "Choose the next card for the bottom (first goes deepest)", source)).ToList(); // "in any order"
+        else Rng.Shuffle(rest); // "on the bottom of your library in a random order"
         foreach (var id in rest)
         {
             if (look.RestToGraveyard) MoveCard(id, Zone.Graveyard);

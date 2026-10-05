@@ -276,7 +276,8 @@ Quantities also: `sacrificedToughness`, `lifeLostThisWay`, `destroyedThisWay`, `
   triggered ability once the effect before it happened; it chooses its own targets when it goes on the stack.
 - `{ "doubleCounters": "target", "kind": "+1/+1" }` doubles one kind of counter (without `kind`: every kind).
 - `{ "spellsCastBefore": f }` counts the spells you cast this turn before the spell that triggered the ability.
-- `lookAtTop` takes `revealAll` ("reveal the top X cards").
+- `lookAtTop` takes `revealAll` ("reveal the top X cards") and `restAnyOrder` ("in any order": the player orders the cards
+  left over, on the bottom or, with `"rest": "top"`, back on top; without it they go to the bottom in a random order).
 - Copies of a token (`copy`) with `sacrificeAtEndStep` get the ability "At the beginning of the end step, sacrifice
   this token" as part of the copy.
 

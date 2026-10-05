@@ -1251,6 +1251,7 @@ public static class CardScriptParser
                 Tapped = Flag("tapped"),
                 RestShuffled = Str("rest") == "shuffle",
                 RestOnTop = Str("rest") == "top",
+                RestOrder = Flag("restAnyOrder") ? RestOrder.Chosen : RestOrder.Random,
                 CountIsX = Flag("countIsX"),
                 MaxManaValueX = Flag("maxManaValueX"),
                 Reveal = Flag("reveal"),

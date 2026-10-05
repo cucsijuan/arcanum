@@ -280,11 +280,24 @@ public sealed record ExileIfDiesThisTurn(Subject What) : Effect;
 /// <summary>Prevent all combat damage that would be dealt to the subject this turn.</summary>
 public sealed record PreventCombatDamageTo(Subject What) : Effect;
 
+/// <summary>How the cards left over from a look at the top of the library are ordered.</summary>
+public enum RestOrder
+{
+    /// <summary>"In a random order" (bottom); on top they stay as they were.</summary>
+    Random,
+
+    /// <summary>"In any order": the player chooses.</summary>
+    Chosen,
+}
+
 /// <summary>Look at the top cards of your library; take up to <paramref name="Take"/> matching ones, the rest go to the bottom (or graveyard).</summary>
 public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, State.Zone TakeTo, bool RestToGraveyard = false) : Effect
 {
     /// <summary>The cards not taken stay on top of the library (a look at the top card).</summary>
     public bool RestOnTop { get; init; }
+
+    /// <summary>How the rest are ordered when they go to the bottom (random by default) or back on top (as they were by default).</summary>
+    public RestOrder RestOrder { get; init; }
 
     /// <summary>How many cards, worked out on resolution ("the top X cards, where X is that creature's mana value").</summary>
     public Quantity? CountFrom { get; init; }

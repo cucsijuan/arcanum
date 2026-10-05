@@ -170,7 +170,7 @@ public sealed partial class Game
         foreach (var player in State.Players) Shuffle(player);
         RecomputeContinuousEffects(); // permanents set up before the game may have static abilities
         State.ActivePlayer = startingPlayer;
-        foreach (var playerId in State.ApnapOrder().ToList()) await ResolveMulliganAsync(playerId);
+        await ResolveMulliganAsync(State.ApnapOrder().ToList());
         // "If this card is in your opening hand, you may begin the game with it on the battlefield."
         var starting = State.ActivePlayer;
         foreach (var playerId in State.ApnapOrder().ToList())
@@ -217,35 +217,56 @@ public sealed partial class Game
         }
     }
 
-    private async Task ResolveMulliganAsync(PlayerId playerId)
+    /// <summary>
+    /// Rule 103.5: everyone draws a hand; in turn order each player who may still mulligan declares keep or mulligan, then everyone
+    /// who chose to mulligan shuffles their hand into their library and draws a new hand at the same time; this repeats until
+    /// everyone keeps, and then each player who mulliganed puts cards on the bottom (a free first mulligan in multiplayer, rule
+    /// 103.5c, puts one fewer). A player may mulligan down to no cards.
+    /// </summary>
+    private async Task ResolveMulliganAsync(IReadOnlyList<PlayerId> order)
     {
-        var player = State.GetPlayer(playerId);
         bool freeFirst = Config.FreeFirstMulligan ?? IsMultiplayer;
         int handSize = Config.StartingHandSize;
-        int mulligans = 0;
-        await DrawAsync(playerId, handSize);
+        var mulligans = order.ToDictionary(p => p, _ => 0);
+        foreach (var playerId in order) await DrawAsync(playerId, handSize);
 
         int ToBottom(int m) => Math.Max(0, m - (freeFirst ? 1 : 0));
 
-        // A further mulligan is only offered while it would still leave at least one card.
-        while (ToBottom(mulligans + 1) < handSize && !await ControllerOf(playerId).KeepHandAsync(ViewFor(playerId), mulligans))
+        var deciding = order.ToList();
+        while (deciding.Count > 0)
         {
-            mulligans++;
-            Emit(new MulliganTaken(playerId, mulligans));
-            foreach (var card in player.Hand.ToList()) MoveCard(card, Zone.Library);
-            Shuffle(player);
-            await DrawAsync(playerId, handSize);
+            var taking = new List<PlayerId>();
+            foreach (var playerId in deciding)
+            {
+                // Another mulligan is pointless once keeping would already leave no cards.
+                if (ToBottom(mulligans[playerId]) >= handSize) continue;
+                if (!await ControllerOf(playerId).KeepHandAsync(ViewFor(playerId), mulligans[playerId])) taking.Add(playerId);
+            }
+            foreach (var playerId in taking)
+            {
+                var player = State.GetPlayer(playerId);
+                mulligans[playerId]++;
+                Emit(new MulliganTaken(playerId, mulligans[playerId]));
+                foreach (var card in player.Hand.ToList()) MoveCard(card, Zone.Library);
+                Shuffle(player);
+            }
+            foreach (var playerId in taking) await DrawAsync(playerId, handSize);
+            deciding = taking;
         }
 
-        int bottom = ToBottom(mulligans);
-        if (bottom > 0)
+        foreach (var playerId in order)
         {
-            var chosen = await ControllerOf(playerId).ChooseCardsToBottomAsync(ViewFor(playerId), bottom);
-            Require(chosen.Count == bottom && chosen.Distinct().Count() == bottom && chosen.All(player.Hand.Contains),
-                $"Must choose exactly {bottom} distinct cards from hand to put on the bottom.");
-            foreach (var card in chosen) MoveCard(card, Zone.Library, toBottom: true);
+            var player = State.GetPlayer(playerId);
+            int bottom = Math.Min(ToBottom(mulligans[playerId]), player.Hand.Count);
+            if (bottom > 0)
+            {
+                var chosen = await ControllerOf(playerId).ChooseCardsToBottomAsync(ViewFor(playerId), bottom);
+                Require(chosen.Count == bottom && chosen.Distinct().Count() == bottom && chosen.All(player.Hand.Contains),
+                    $"Must choose exactly {bottom} distinct cards from hand to put on the bottom.");
+                foreach (var card in chosen) MoveCard(card, Zone.Library, toBottom: true);
+            }
+            Emit(new HandKept(playerId, player.Hand.Count));
         }
-        Emit(new HandKept(playerId, player.Hand.Count));
     }
 
     private static void Require(bool condition, string message)

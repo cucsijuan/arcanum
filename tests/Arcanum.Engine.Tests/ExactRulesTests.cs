@@ -134,6 +134,64 @@ public class ExactRulesTests
         Assert.Equal(chosenTop, library[0]);
     }
 
+    private static CardDefinition Filler(string name) => Creature(name, 1, 1);
+
+    /// <summary>Casts a look at the top three taking one, the rest left over per <paramref name="look"/>; returns the cards in order.</summary>
+    private static async Task<(Scenario S, CardId[] Cards, CardId Taken, int OrderRequests)> LookAtThree(Func<LookAtTopTake, LookAtTopTake> configure, bool bottomLast = true)
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        var cards = new[] { s.Game.SetupInLibrary(P0, Filler("Alpha")), s.Game.SetupInLibrary(P0, Filler("Beta")), s.Game.SetupInLibrary(P0, Filler("Gamma")) };
+        s.InHand(P0, Spell("Peek", "{1}", new SpellAbility { Effects = new Effect[] { configure(new LookAtTopTake(3, null, 1, Zone.Hand)) } }));
+        bool stacked = false;
+        var cast = s.Attacker.Act;
+        s.Attacker.Act = (v, legal) =>
+        {
+            if (!stacked) { stacked = true; s.Restack(P0, cards); }
+            return cast(v, legal);
+        };
+        int orders = 0;
+        s.Attacker.Choose = (_, r) =>
+        {
+            if (r.Purpose != CardChoicePurpose.Order) return new[] { r.Options[0].Id }; // take the first
+            orders++;
+            return new[] { bottomLast ? r.Options[^1].Id : r.Options[0].Id };
+        };
+        await s.RunUntilTurn();
+        return (s, cards, cards[0], orders);
+    }
+
+    [Fact]
+    public async Task RestInAnyOrderLetsThePlayerOrderTheBottom()
+    {
+        var (s, cards, taken, orders) = await LookAtThree(l => l with { RestOrder = RestOrder.Chosen });
+        var library = s.Game.State.GetPlayer(P0).Library;
+        Assert.NotEqual(Zone.Library, s.Card(taken).Zone); // taken (it may be discarded down to hand size at the end of the turn)
+        Assert.Equal(1, orders);
+        // The player puts the last offered card first (deepest): Gamma, then Beta, at the very bottom.
+        Assert.Equal(cards[2], library[^2]);
+        Assert.Equal(cards[1], library[^1]);
+    }
+
+    [Fact]
+    public async Task RestInARandomOrderAsksForNoOrder()
+    {
+        var (s, cards, _, orders) = await LookAtThree(l => l);
+        var library = s.Game.State.GetPlayer(P0).Library;
+        Assert.Equal(0, orders);
+        Assert.Equal(new[] { cards[1], cards[2] }.OrderBy(c => c.Value), library.TakeLast(2).OrderBy(c => c.Value));
+    }
+
+    [Fact]
+    public async Task RestBackOnTopInAnyOrderLetsThePlayerOrderThem()
+    {
+        var (s, cards, _, orders) = await LookAtThree(l => l with { RestOnTop = true, RestOrder = RestOrder.Chosen }, bottomLast: true);
+        var library = s.Game.State.GetPlayer(P0).Library;
+        Assert.Equal(1, orders);
+        Assert.Equal(cards[2], library[0]);
+        Assert.Equal(cards[1], library[1]);
+    }
+
     [Fact]
     public async Task RestrictedManaOnlyPaysForMatchingSpells()
     {

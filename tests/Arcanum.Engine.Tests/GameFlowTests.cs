@@ -114,6 +114,47 @@ public class GameFlowTests
     }
 
     [Fact]
+    public async Task AMulliganDownToNoCardsIsOffered()
+    {
+        int offers = 0;
+        var mulliganer = new TestController { Keep = (_, _) => { offers++; return false; } };
+        var game = Decks.NewGame(4, (Decks.ForestCubs, mulliganer), (Decks.ForestCubs, new TestController()));
+        await game.RunWithTimeout();
+
+        Assert.Equal(7, offers); // after the seventh mulligan keeping already means no cards
+        Assert.Equal(7, game.Log.OfType<MulliganTaken>().Count(m => m.Player.Value == 0));
+        Assert.Equal(0, game.Log.OfType<HandKept>().Single(k => k.Player.Value == 0).HandSize);
+    }
+
+    [Fact]
+    public async Task MulligansAreDeclaredInTurnOrderThenTakenTogether()
+    {
+        var game = default(Game)!;
+        var calls = new List<string>();
+        TestController Player(string name, int mulligansWanted) => new()
+        {
+            Keep = (_, taken) =>
+            {
+                // How many mulligans have been taken by everyone when this player is asked.
+                calls.Add($"{name}{taken}:{game.Log.OfType<MulliganTaken>().Count()}");
+                return taken >= mulligansWanted;
+            },
+        };
+        game = new Game(new GameConfig { Seed = 5, StartingPlayer = new Core.PlayerId(0) }, new[]
+        {
+            new PlayerSetup("A", Player("A", 2), Decks.ForestCubs),
+            new PlayerSetup("B", Player("B", 1), Decks.ForestCubs),
+        });
+        await game.RunWithTimeout();
+
+        // A and B declare, both mulligan together; then A declares again, B keeps; then A alone mulligans once more.
+        Assert.Equal(new[] { "A0:0", "B0:0", "A1:2", "B1:2", "A2:3" }, calls);
+        var kept = game.Log.OfType<HandKept>().ToDictionary(k => k.Player.Value, k => k.HandSize);
+        Assert.Equal(5, kept[0]);
+        Assert.Equal(6, kept[1]);
+    }
+
+    [Fact]
     public async Task ThreePlayerGameEndsWithOneWinner()
     {
         var game = new Game(new GameConfig { Seed = 11 }, new[]
