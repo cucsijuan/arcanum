@@ -56,21 +56,31 @@ public partial class OnlineScreen : Control
     /// Quick testing without the menus: ARCANUM_ONLINE_HOST=port[,players] hosts with the first deck (the computer takes
     /// seats left free after ARCANUM_ONLINE_WAIT seconds, default 20) and starts when the lobby is complete
     /// (ARCANUM_ONLINE_EVENT=draft|sealed hosts an event with the first booster source instead);
-    /// ARCANUM_ONLINE_JOIN=address joins; ARCANUM_ONLINE_REJOIN=1 gets back into the last joined game.
+    /// ARCANUM_ONLINE_JOIN=address joins; ARCANUM_ONLINE_CODE=invite code joins by code; ARCANUM_ONLINE_BROWSE=1 joins the first
+    /// lobby the browser finds; ARCANUM_ONLINE_REJOIN=1 gets back into the last joined game.
     /// </summary>
     private void AutoStart()
     {
         var host = OS.GetEnvironment("ARCANUM_ONLINE_HOST");
         var join = OS.GetEnvironment("ARCANUM_ONLINE_JOIN");
+        var code = OS.GetEnvironment("ARCANUM_ONLINE_CODE");
+        bool browse = OS.GetEnvironment("ARCANUM_ONLINE_BROWSE") == "1";
         if (OS.GetEnvironment("ARCANUM_ONLINE_REJOIN") == "1")
         {
             Online.Status += text => GD.Print($"ONLINE {text}");
             Online.Rejoin("Guest");
             return;
         }
-        if (_decks.Count == 0 || (host.Length == 0 && join.Length == 0)) return;
+        if (_decks.Count == 0 || (host.Length == 0 && join.Length == 0 && code.Length == 0 && !browse)) return;
         Online.Status += text => GD.Print($"ONLINE {text}");
         Online.Changed += () => GD.Print($"ONLINE lobby: {Online.HostedLobby?.StartProblem ?? Online.Lobby?.State?.Seats.Count.ToString() ?? "-"}");
+        bool playing = false;
+        Online.Changed += () =>
+        {
+            if (playing || Online.Session is null) return;
+            playing = true;
+            GD.Print("ONLINE game started");
+        };
         int deckIndex = int.TryParse(OS.GetEnvironment("ARCANUM_ONLINE_DECK"), out int d) ? d % _decks.Count : 0;
         var deck = _decks[deckIndex];
         if (join.Length > 0)
@@ -78,6 +88,23 @@ public partial class OnlineScreen : Control
             Online.Join($"Guest {OS.GetProcessId() % 100}", join, deck);
             return;
         }
+        if (code.Length > 0)
+        {
+            Online.JoinByCode($"Guest {OS.GetProcessId() % 100}", code, deck);
+            return;
+        }
+        if (browse)
+        {
+            BrowseAndJoin(deck);
+            return;
+        }
+        string? printedCode = null;
+        Online.Changed += () =>
+        {
+            if (Online.PublishedLobby is not { } published || published.InviteCode == printedCode) return;
+            printedCode = published.InviteCode;
+            GD.Print($"ONLINE invite code {Arcanum.Net.Services.InviteCode.Display(printedCode)}");
+        };
         var parts = host.Split(',');
         int port = int.TryParse(parts[0], out int p) ? p : OnlineService.DefaultPort;
         int players = parts.Length > 1 && int.TryParse(parts[1], out int n) ? Math.Clamp(n, 2, 4) : 2;
@@ -102,6 +129,13 @@ public partial class OnlineScreen : Control
         {
             if (Online.HostedLobby is { Game: null, Event: null, StartProblem: null }) Online.StartGame();
         };
+    }
+
+    private async void BrowseAndJoin(DeckInfo deck)
+    {
+        var found = await Online.SearchLobbiesAsync();
+        GD.Print($"ONLINE browser found {found.Count}: {string.Join("; ", found.Select(l => $"{l.HostName} {l.Format} {l.OpenSeats}/{l.Seats}"))}");
+        if (found.FirstOrDefault() is { } first) Online.JoinListing($"Guest {OS.GetProcessId() % 100}", first, deck);
     }
 
     public override void _ExitTree()
