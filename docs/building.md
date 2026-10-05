@@ -34,6 +34,7 @@ Environment variables useful while developing and testing:
 | `ARCANUM_SANDBOX=1` | Demo game starts from the prepared sandbox board |
 | `ARCANUM_DECKS=<a>,<b>` | Demo game uses these module decks |
 | `ARCANUM_COMMANDER=1` | Demo game is a commander game with the module's commander decks |
+| `ARCANUM_COMMANDER_DECKS=<prefix>` | With `ARCANUM_COMMANDER`: use the module decks whose names start with the prefix |
 | `ARCANUM_LIMITED=draft\|sealed` | Opening the limited screen runs a whole event on its own (with `ARCANUM_AUTOPLAY=1`) |
 | `ARCANUM_LIMITED_SOURCE=<text>` | That event uses the first set or cube whose id contains the text (`cube`, `set:abc`) |
 | `ARCANUM_PLAYERS=<2-4>` | Number of players for `ARCANUM_COMMANDER` (default 4) |
@@ -51,6 +52,8 @@ Online play can be tested with two instances on one machine (run `res://scenes/o
 | `ARCANUM_ONLINE_HOST=<port>[,<players>]` | Hosts at once with the first deck; free seats go to the computer after `ARCANUM_ONLINE_WAIT` seconds (default 20); starts when the lobby is complete |
 | `ARCANUM_ONLINE_EVENT=draft\|sealed` | With `ARCANUM_ONLINE_HOST`: hosts a limited event with the first booster source instead |
 | `ARCANUM_ONLINE_JOIN=<address>` | Joins the game at that address (`127.0.0.1:47013`) |
+| `ARCANUM_ONLINE_CODE=<code>` | Joins the lobby with that invite code (the host prints it) |
+| `ARCANUM_ONLINE_BROWSE=1` | Joins the first lobby the lobby browser finds |
 | `ARCANUM_ONLINE_DECK=<n>` | Deck to bring (n-th in the list) |
 | `ARCANUM_ONLINE_REJOIN=1` | Gets back into the online game this device last joined |
 
@@ -59,3 +62,7 @@ A player hosts from the Online screen and gives the others an address. The host 
 default): players on the same network join with its local address; players elsewhere need the port forwarded to the
 host (it is tried automatically with UPnP), and a firewall on the host must allow it (on Fedora:
 `sudo firewall-cmd --add-port=47013/tcp`). Every player needs the same game version and content module.
+
+On the same network the host's lobby also shows up in every player's **Open lobbies** list and can be joined with its
+invite code: lobbies are announced on UDP port 47014 and players connect to a TCP port the system picks, so a firewall
+on the host must allow those too. See [online-services.md](online-services.md).
