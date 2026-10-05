@@ -176,7 +176,7 @@ public partial class OnlineService
         {
             Settings.Current.LastSeatToken = client.Identity.Token;
             Settings.Current.LastSeatIsEvent = true;
-            Settings.Current.LastHostAddress = _address.Contains(':') ? $"[{_address}]:{_port}" : $"{_address}:{_port}";
+            RememberRoute();
             Settings.Save();
         }
         EventSession = new NetEventSession(client);
@@ -285,18 +285,9 @@ public partial class OnlineService
     }
 
     /// <summary>Gets back into the event this device had joined.</summary>
-    private async void RejoinEvent(string name, string host, int port)
+    private async Task RejoinEvent(string name)
     {
-        _address = host;
-        _port = port;
-        try
-        {
-            var connection = await TcpConnection.ConnectAsync(host, port, TimeSpan.FromSeconds(8));
-            StartEventSession(new EventClient(connection, new ClientIdentity(name, Settings.Current.LastSeatToken, Version, ContentId), greet: true));
-        }
-        catch (Exception e)
-        {
-            Status?.Invoke($"Couldn't connect: {e.Message}");
-        }
+        if (await ReconnectAsync(name) is not { } connection) return;
+        StartEventSession(new EventClient(connection, new ClientIdentity(name, Settings.Current.LastSeatToken, Version, ContentId), greet: true));
     }
 }

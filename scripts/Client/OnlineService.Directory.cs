@@ -109,13 +109,37 @@ public partial class OnlineService
         catch (Exception) { /* the next change tries again */ }
     }
 
-    private async void UnpublishHostedLobby()
+    /// <summary>Removing the listing in progress (waited for, briefly, when the game quits).</summary>
+    private Task _unpublishing = Task.CompletedTask;
+
+    private void UnpublishHostedLobby()
     {
         if (_published is not { } published) return;
         _published = null;
-        try { await Services.Lobbies.RemoveAsync(published.LobbyId); }
+        _unpublishing = RemoveListingAsync(published.LobbyId);
+    }
+
+    private async Task RemoveListingAsync(string lobbyId)
+    {
+        try { await Services.Lobbies.RemoveAsync(lobbyId).ConfigureAwait(false); }
         catch (Exception) { /* the listing expires on its own */ }
     }
+
+    /// <summary>Quitting: stops hosting and removes the listing, then closes the services, waiting a short while so a lobby on the internet is destroyed.</summary>
+    private void ShutDownServices()
+    {
+        Leave();
+        try { _unpublishing.Wait(ShutdownWait); }
+        catch (Exception) { /* quitting anyway */ }
+        var services = _services;
+        _services = null;
+        if (services is null) return;
+        try { Task.Run(services.Dispose).Wait(ShutdownWait); }
+        catch (Exception) { /* quitting anyway */ }
+    }
+
+    /// <summary>The longest quitting waits for the services, so closing the game never hangs.</summary>
+    private static readonly TimeSpan ShutdownWait = TimeSpan.FromSeconds(2);
 
     /// <summary>Lobbies the browser shows: same version and content, with free seats.</summary>
     public async Task<IReadOnlyList<LobbyListing>> SearchLobbiesAsync()

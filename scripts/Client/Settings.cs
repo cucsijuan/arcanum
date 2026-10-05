@@ -16,6 +16,8 @@ public sealed class SettingsData
     public string LastHostAddress { get; set; } = "";
     /// <summary>Seat token of the online game in progress (to get back in after this device closed); empty when none.</summary>
     public string LastSeatToken { get; set; } = "";
+    /// <summary>How the game in progress was reached when joined through the online services (a saved lobby route); empty for an address.</summary>
+    public string LastLobbyRoute { get; set; } = "";
     /// <summary>That token is an event's (draft, sealed), not a single game's.</summary>
     public bool LastSeatIsEvent { get; set; }
     /// <summary>Online games this device hosts: seconds a player has for each decision before the computer makes it (0: no limit).</summary>

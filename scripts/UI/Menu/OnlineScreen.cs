@@ -296,7 +296,7 @@ public partial class OnlineScreen : Control
         join.AddChild(joinButton);
         if (OnlineService.CanRejoin)
         {
-            var rejoin = BoardStyle.MakeButton($"Get back into the game at {Settings.Current.LastHostAddress}", 16);
+            var rejoin = BoardStyle.MakeButton($"Get back into the game at {OnlineService.RejoinPlace}", 16);
             rejoin.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
             rejoin.Pressed += () => Online.Rejoin(PlayerName);
             join.AddChild(rejoin);

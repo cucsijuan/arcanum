@@ -9,6 +9,7 @@ using Arcanum.Net.Client;
 using Arcanum.Net.Host;
 using Arcanum.Net.Lobby;
 using Arcanum.Net.Protocol;
+using Arcanum.Net.Services;
 using Arcanum.Net.Transport;
 using Godot;
 
@@ -308,29 +309,56 @@ public partial class OnlineService : Node
     }
 
     /// <summary>A game this device joined is still in progress (as far as it knows): it can get back in.</summary>
-    public static bool CanRejoin => Settings.Current.LastSeatToken.Length > 0 && Settings.Current.LastHostAddress.Length > 0;
+    public static bool CanRejoin => Settings.Current.LastSeatToken.Length > 0
+        && (Settings.Current.LastHostAddress.Length > 0 || Settings.Current.LastLobbyRoute.Length > 0);
+
+    /// <summary>The place the last joined game is at, for the button: the host's address, or the service it was found on.</summary>
+    public static string RejoinPlace => LobbyRoute.TryLoad(Settings.Current.LastLobbyRoute, out var route)
+        ? $"{route.HostName}'s lobby" + (route.Provider is { } provider ? $" ({provider})" : "")
+        : Settings.Current.LastHostAddress;
+
+    /// <summary>Remembers how the lobby just joined was reached: through the services, or by address.</summary>
+    private void RememberRoute()
+    {
+        Settings.Current.LastLobbyRoute = _route is { } route ? LobbyRoute.Save(route) : "";
+        Settings.Current.LastHostAddress = _route is not null ? "" : _address.Contains(':') ? $"[{_address}]:{_port}" : $"{_address}:{_port}";
+    }
+
+    /// <summary>A connection back to the lobby of the saved route: through the same service (the internet one signed in first), otherwise to the address.</summary>
+    private async Task<IConnection?> ReconnectAsync(string name)
+    {
+        if (LobbyRoute.TryLoad(Settings.Current.LastLobbyRoute, out var route))
+        {
+            _route = route;
+            _address = route.Address ?? "";
+            _port = route.Port;
+            SignIn(name);
+            await SignedInAsync();
+            return await ConnectToHostAsync(TimeSpan.FromSeconds(8));
+        }
+        _route = null;
+        if (!TryParseAddress(Settings.Current.LastHostAddress, out var host, out int port)) return null;
+        _address = host;
+        _port = port;
+        return await TcpConnection.ConnectAsync(host, port, TimeSpan.FromSeconds(8));
+    }
 
     /// <summary>Gets back into the game in progress this device had joined, with its seat's token.</summary>
     public async void Rejoin(string name)
     {
         Leave();
-        if (!CanRejoin || !TryParseAddress(Settings.Current.LastHostAddress, out var host, out int port)) return;
-        if (Settings.Current.LastSeatIsEvent)
-        {
-            Status?.Invoke($"Reconnecting to {host}:{port}…");
-            RejoinEvent(name, host, port);
-            return;
-        }
-        _address = host;
-        _port = port;
-        Status?.Invoke($"Reconnecting to {host}:{port}…");
+        if (!CanRejoin) return;
+        Status?.Invoke($"Reconnecting to {RejoinPlace}…");
         try
         {
-            var connection = await TcpConnection.ConnectAsync(host, port, TimeSpan.FromSeconds(8));
+            if (Settings.Current.LastSeatIsEvent) { await RejoinEvent(name); return; }
+            var connection = await ReconnectAsync(name);
+            if (connection is null) return;
             StartGameClient(connection, new ClientIdentity(name, Settings.Current.LastSeatToken, Version, ContentId));
         }
         catch (Exception e)
         {
+            _route = null;
             Status?.Invoke($"Couldn't connect: {e.Message}");
         }
     }
@@ -398,7 +426,7 @@ public partial class OnlineService : Node
             // Remembered so this player can get back in even if this device closes.
             Settings.Current.LastSeatToken = identity.Token;
             Settings.Current.LastSeatIsEvent = false;
-            Settings.Current.LastHostAddress = _address.Contains(':') ? $"[{_address}]:{_port}" : $"{_address}:{_port}";
+            RememberRoute();
             Settings.Save();
         }
         var client = connection is null ? _lobbyClient!.JoinGame() : new GameClient(connection, identity);
@@ -528,7 +556,12 @@ public partial class OnlineService : Node
         }
     }
 
-    public override void _ExitTree() => Leave();
+    public override void _ExitTree() => ShutDownServices();
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationWMCloseRequest) ShutDownServices();
+    }
 
     /// <summary>What a hosted game needs to be resumed.</summary>
     public sealed class HostedSave
