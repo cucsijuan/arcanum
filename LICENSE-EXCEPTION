@@ -1,0 +1,13 @@
+Additional permission under GNU AGPL version 3 section 7
+
+Copyright (C) 2026 Juan (cucsijuan)
+
+If you modify this Program, or any covered work, by linking or combining it with the Epic Online Services SDK
+(or a modified version of that library), containing parts covered by the terms of the Epic Online Services SDK
+license agreement, the licensors of this Program grant you additional permission to convey the resulting work.
+Corresponding Source for a non-source form of such a combination shall not include the source code for the parts
+of the Epic Online Services SDK used as well as that of the covered work.
+
+This additional permission applies only to the Epic Online Services SDK. It does not change the terms of the
+GNU Affero General Public License for any other library, and it does not apply to the SDK's own terms, which
+continue to govern the SDK itself (it is not part of this repository and is not distributed under the AGPL).

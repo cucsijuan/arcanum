@@ -31,6 +31,10 @@ Code is licensed under the **GNU Affero General Public License v3.0 or later** (
 Anyone distributing modified versions, or running them as a network service, must make their source available
 under the same license. Plugins that run inside Arcanum are considered part of the combined work.
 
+As an additional permission under section 7 of the license (see `LICENSE-EXCEPTION`), builds may be linked with the
+Epic Online Services SDK, which online lobbies and relayed connections use; the SDK itself is not part of this
+repository and keeps its own license.
+
 ## Disclaimer
 Arcanum is unofficial, non-commercial fan software. It is not affiliated with, endorsed or sponsored by any game
 publisher. Card names, rules text and card images belong to their respective owners; this project does not
