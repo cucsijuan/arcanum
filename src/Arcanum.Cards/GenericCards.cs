@@ -72,11 +72,86 @@ public static class GenericCards
         OracleText = "{T}: Spark Mage deals 1 damage to any target.",
     };
 
+    /// <summary>Aura: enchanted creature gets +2/+2.</summary>
+    public static readonly CardDefinition StoneSkin = new()
+    {
+        Name = "Stone Skin",
+        ManaCost = ManaCost.Parse("{1}{G}"),
+        Types = CardType.Enchantment,
+        Subtypes = new[] { "Aura" },
+        EnchantTarget = new TargetSpec(TargetKind.Creature),
+        Abilities = new AbilityDefinition[] { new StaticAbility(new AffectedFilter(AffectedScope.Enchanted), 2, 2) },
+        OracleText = "Enchant creature\nEnchanted creature gets +2/+2.",
+    };
+
+    /// <summary>Equipment: equipped creature gets +2/+0; equip {1}.</summary>
+    public static readonly CardDefinition IronBlade = new()
+    {
+        Name = "Iron Blade",
+        ManaCost = ManaCost.Parse("{1}"),
+        Types = CardType.Artifact,
+        Subtypes = new[] { "Equipment" },
+        Abilities = new AbilityDefinition[]
+        {
+            new StaticAbility(new AffectedFilter(AffectedScope.Equipped), 2, 0),
+            new ActivatedAbility
+            {
+                Cost = new AbilityCost(ManaCost.Parse("{1}")),
+                SorcerySpeed = true,
+                Targets = new[] { new TargetSpec(TargetKind.Creature, ControllerFilter.You) },
+                Effects = new Effect[] { new AttachSelf(Subject.TargetAt(0)) },
+                Text = "Equip {1}",
+                IsEquip = true,
+            },
+        },
+        OracleText = "Equipped creature gets +2/+0.\nEquip {1}",
+    };
+
+    /// <summary>Enchantment: creatures you control get +1/+1.</summary>
+    public static readonly CardDefinition RallyBanner = new()
+    {
+        Name = "Rally Banner",
+        ManaCost = ManaCost.Parse("{2}{W}"),
+        Types = CardType.Enchantment,
+        Abilities = new AbilityDefinition[] { new StaticAbility(new AffectedFilter(AffectedScope.YourCreatures), 1, 1) },
+        OracleText = "Creatures you control get +1/+1.",
+    };
+
+    /// <summary>Instant: target creature gets +3/+3 until end of turn.</summary>
+    public static readonly CardDefinition MightySurge = new()
+    {
+        Name = "Mighty Surge",
+        ManaCost = ManaCost.Parse("{G}"),
+        Types = CardType.Instant,
+        Spell = new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Creature) }, Effects = new Effect[] { new PumpUntilEndOfTurn(3, 3, Subject.TargetAt(0)) } },
+        OracleText = "Target creature gets +3/+3 until end of turn.",
+    };
+
+    /// <summary>Sorcery: destroy target creature.</summary>
+    public static readonly CardDefinition Rend = new()
+    {
+        Name = "Rend",
+        ManaCost = ManaCost.Parse("{2}{B}"),
+        Types = CardType.Sorcery,
+        Spell = new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Creature) }, Effects = new Effect[] { new Destroy(Subject.TargetAt(0)) } },
+        OracleText = "Destroy target creature.",
+    };
+
+    /// <summary>Instant: return target creature to its owner's hand.</summary>
+    public static readonly CardDefinition GustAway = new()
+    {
+        Name = "Gust Away",
+        ManaCost = ManaCost.Parse("{U}"),
+        Types = CardType.Instant,
+        Spell = new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Creature) }, Effects = new Effect[] { new ReturnToHand(Subject.TargetAt(0)) } },
+        OracleText = "Return target creature to its owner's hand.",
+    };
+
     public static IReadOnlyList<CardDefinition> All { get; } = new[]
     {
         Plains, Island, Swamp, Mountain, Forest, BarrenFlats,
         PlainsLion, GladeCub, OgreBrute, HillBrute, GreatWurm, StoneElemental, RiverScout,
-        EmberBolt, SparkMage,
+        EmberBolt, SparkMage, StoneSkin, IronBlade, RallyBanner, MightySurge, Rend, GustAway,
     };
 }
 

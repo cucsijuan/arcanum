@@ -99,12 +99,12 @@ public sealed partial class Game
         if (unattach.Count > 0) { RecomputeContinuousEffects(); any = true; }
 
         foreach (var survivor in permanents) survivor.DamagedByDeathtouch = false;
-        await ChooseDeathReplacementsAsync(died.Concat(toGraveyard).Where(c => c.Zone == Zone.Battlefield).Select(c => c.Id).Distinct());
+        await PlanMovesAsync(died.Concat(toGraveyard).Where(c => c.Zone == Zone.Battlefield).Select(c => c.Id).Distinct(), Zone.Graveyard);
         BeginSimultaneous(); // all at once (rule 704.3)
         foreach (var card in died.Concat(toGraveyard).Distinct().ToList())
         {
             if (card.Zone != Zone.Battlefield) continue;
-            MoveCard(card.Id, Zone.Graveyard);
+            await MoveCardAsync(card.Id, Zone.Graveyard);
             if (died.Contains(card)) Emit(new CreatureDied(card.Id));
             any = true;
         }

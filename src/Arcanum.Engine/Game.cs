@@ -179,7 +179,7 @@ public sealed partial class Game
                 var card = State.GetCard(id);
                 if (card.Zone != Zone.Hand || (card.Definition.StartsOnlyIfNotStartingPlayer && playerId == starting)) continue;
                 if (!await ControllerOf(playerId).ChooseYesNoAsync(ViewFor(playerId), new YesNoRequest($"Begin the game with {card.Name} on the battlefield?", id))) continue;
-                MoveCard(id, Zone.Battlefield);
+                await MoveCardAsync(id, Zone.Battlefield);
                 if (card.Definition.StartsWithCounter is { } kind) PutCounters(card, kind, 1, playerId);
                 // "If you do, exile a card from your hand."
                 var hand = State.GetPlayer(playerId).Hand.ToList();
@@ -189,7 +189,7 @@ public sealed partial class Game
                     var chosen = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId), new CardChoiceRequest($"{card.Name}: exile {exile} card(s) from your hand", id,
                         hand.Select(h => ViewBuilder.Card(State, h, playerId)).ToList(), exile, exile, CardChoicePurpose.Discard));
                     Require(chosen.Count == exile && chosen.Distinct().Count() == exile && chosen.All(hand.Contains), "Exile cards from your hand.");
-                    foreach (var h in chosen) MoveCard(h, Zone.Exile);
+                    foreach (var h in chosen) await MoveCardAsync(h, Zone.Exile);
                 }
             }
 
@@ -247,7 +247,7 @@ public sealed partial class Game
                 var player = State.GetPlayer(playerId);
                 mulligans[playerId]++;
                 Emit(new MulliganTaken(playerId, mulligans[playerId]));
-                foreach (var card in player.Hand.ToList()) MoveCard(card, Zone.Library);
+                foreach (var card in player.Hand.ToList()) await MoveCardAsync(card, Zone.Library);
                 Shuffle(player);
             }
             foreach (var playerId in taking) await DrawAsync(playerId, handSize);
@@ -263,7 +263,7 @@ public sealed partial class Game
                 var chosen = await ControllerOf(playerId).ChooseCardsToBottomAsync(ViewFor(playerId), bottom);
                 Require(chosen.Count == bottom && chosen.Distinct().Count() == bottom && chosen.All(player.Hand.Contains),
                     $"Must choose exactly {bottom} distinct cards from hand to put on the bottom.");
-                foreach (var card in chosen) MoveCard(card, Zone.Library, toBottom: true);
+                foreach (var card in chosen) await MoveCardAsync(card, Zone.Library, toBottom: true);
             }
             Emit(new HandKept(playerId, player.Hand.Count));
         }

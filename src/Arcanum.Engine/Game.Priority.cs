@@ -448,7 +448,7 @@ public sealed partial class Game
                 NoteExilePlay(State.GetCard(play.Card), playerId);
                 player.LandsPlayedThisTurn++;
                 if (State.GetCard(play.Card).Zone == Zone.Graveyard) player.GraveyardTypesUsedThisTurn |= CardType.Land;
-                MoveCard(play.Card, Zone.Battlefield);
+                await MoveCardAsync(play.Card, Zone.Battlefield);
                 Emit(new LandPlayed(playerId, play.Card));
                 return true;
 
@@ -623,7 +623,7 @@ public sealed partial class Game
         var paidMana = await PayManaTapsAsync(player, cardId, cost, exclude: null, SpellManaUsable(card, player.Id, choices), UnitUsableFor(card, isAbility: false));
         if (paidMana is null) return false;
         if (choices.Way.Life > 0) ChangeLife(player.Id, -choices.Way.Life);
-        foreach (var id in delved) MoveCard(id, Zone.Exile);
+        foreach (var id in delved) await MoveCardAsync(id, Zone.Exile);
         List<Card>? conspirators = null;
         if (choices.Conspire)
         {
@@ -662,7 +662,7 @@ public sealed partial class Game
         NoteExilePlay(card, player.Id);
         // "When you next cast a creature spell of that type this turn": the spell will enter with an additional +1/+1 counter.
         var bonus = card.IsCreature ? State.NextCreatureSpellBonus.Where(b => b.Player == player.Id && b.Turn == State.TurnNumber && card.HasSubtype(b.Type)).ToList() : new();
-        MoveCard(cardId, Zone.Stack, controller: player.Id);
+        await MoveCardAsync(cardId, Zone.Stack, controller: player.Id);
         foreach (var b in bonus)
         {
             State.NextCreatureSpellBonus.Remove(b);
@@ -795,10 +795,10 @@ public sealed partial class Game
         }
         if (ability.Cost.RemoveCounters > 0)
             source.Counters[ability.Cost.RemoveCounterKind] = source.CounterCount(ability.Cost.RemoveCounterKind) - ability.Cost.RemoveCounters;
-        if (ability.Cost.ExileSelf) MoveCard(source.Id, Zone.Exile);
+        if (ability.Cost.ExileSelf) await MoveCardAsync(source.Id, Zone.Exile);
         if (ability.Cost.FromHand)
         {
-            DiscardCard(player.Id, source.Id, null); // cycling: discard this card
+            await DiscardCardAsync(player.Id, source.Id, null); // cycling: discard this card
             // "When you cycle this card" (the discarded card's own ability, from wherever it went).
             foreach (var cycled in source.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.Trigger == TriggerEvent.Cycled))
                 AddPending(source.Id, cycled, player.Id, new TriggerInfo(source.Id, source.Version, player.Id, x));
@@ -813,7 +813,7 @@ public sealed partial class Game
             PutCounters(source, ability.Cost.AddCounterKind, ability.Cost.AddCounters, player.Id);
             await ResolvePendingCountersAsync();
         }
-        if (ability.Cost.ReturnSelfToHand) MoveCard(source.Id, Zone.Hand);
+        if (ability.Cost.ReturnSelfToHand) await MoveCardAsync(source.Id, Zone.Hand);
         if (ability.Cost.TapGranter && ability.GrantedBy is { } granter)
         {
             Tap(State.GetCard(granter));
@@ -826,7 +826,7 @@ public sealed partial class Game
         }
         if (ability.Cost.SacrificeSelf)
         {
-            if (source.Zone == Zone.Graveyard) MoveCard(source.Id, Zone.Exile); // "Exile this card from your graveyard"
+            if (source.Zone == Zone.Graveyard) await MoveCardAsync(source.Id, Zone.Exile); // "Exile this card from your graveyard"
             else await SacrificePermanentAsync(source.Id);
         }
 
@@ -934,7 +934,7 @@ public sealed partial class Game
             var exiled = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId), new CardChoiceRequest($"Exile {extra.ExileFromGraveyard} cards from your graveyard", source,
                 cards.Select(id => ViewBuilder.Card(State, id, playerId)).ToList(), extra.ExileFromGraveyard, extra.ExileFromGraveyard, CardChoicePurpose.Sacrifice));
             Require(exiled.Count == extra.ExileFromGraveyard && exiled.Distinct().Count() == exiled.Count && exiled.All(cards.Contains), "Exile cards from your graveyard.");
-            foreach (var id in exiled) MoveCard(id, Zone.Exile);
+            foreach (var id in exiled) await MoveCardAsync(id, Zone.Exile);
         }
         if (extra.ReturnExiledWithSource is { } returnFilter)
         {
@@ -942,7 +942,7 @@ public sealed partial class Game
             var pick = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId), new CardChoiceRequest("Choose a card exiled with it to put into its owner's graveyard", source,
                 exiled.Select(c => ViewBuilder.Card(State, c.Id, playerId, reveal: true)).ToList(), 1, 1, CardChoicePurpose.Discard));
             Require(pick.Count == 1 && exiled.Any(c => c.Id == pick[0]), "Choose one of the exiled cards.");
-            MoveCard(pick[0], Zone.Graveyard);
+            await MoveCardAsync(pick[0], Zone.Graveyard);
         }
         if (extra.TapCreatures is { } tapFilter || extra.CrewPower > 0)
         {
@@ -990,7 +990,7 @@ public sealed partial class Game
             var chosen = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId),
                 new CardChoiceRequest($"Discard {extra.Discard} to pay the cost", source, options, extra.Discard, extra.Discard, CardChoicePurpose.Discard));
             Require(chosen.Count == extra.Discard && chosen.Distinct().Count() == chosen.Count && chosen.All(hand.Contains), "Discard from your hand.");
-            foreach (var id in chosen) DiscardCard(playerId, id, causedBy);
+            foreach (var id in chosen) await DiscardCardAsync(playerId, id, causedBy);
             _lastDiscardedForCost.AddRange(chosen);
         }
         if (extra.Sacrifice is { } filter)
@@ -1216,7 +1216,7 @@ public sealed partial class Game
                 _exileResolvingSpell = null;
                 if ((spell.Ability ?? CastingTargets(card.Definition)) is { } effect && !await ApplyResolutionAsync(item, effect, card))
                 {
-                    MoveCard(spell.Card, discard);
+                    await MoveCardAsync(spell.Card, discard);
                     Emit(new FizzledOnResolution(spell.Card));
                     break;
                 }
@@ -1225,7 +1225,7 @@ public sealed partial class Game
                 // "Exile that card with three time counters on it instead of putting it into your graveyard as it resolves."
                 if (!card.Types.IsPermanent() && discard == Zone.Graveyard && State.SuspendOnResolution.Remove((card.Id, card.Version), out int timeCounters))
                 {
-                    MoveCard(spell.Card, Zone.Exile);
+                    await MoveCardAsync(spell.Card, Zone.Exile);
                     if (card.Zone == Zone.Exile)
                     {
                         card.Counters[CounterKind.Time] = timeCounters;
@@ -1237,14 +1237,14 @@ public sealed partial class Game
                 if (_spellToLibraryBottom == card.Id && !spell.Flashback)
                 {
                     _spellToLibraryBottom = null;
-                    MoveCard(spell.Card, Zone.Library, toBottom: true);
+                    await MoveCardAsync(spell.Card, Zone.Library, toBottom: true);
                     Emit(new SpellResolved(spell.Card));
                     break;
                 }
                 if (card.AsAdventure && !card.Definition.IsToken)
                 {
                     // A resolved Adventure goes on an adventure: exiled, castable from there later (rule 715.4).
-                    MoveCard(spell.Card, Zone.Exile);
+                    await MoveCardAsync(spell.Card, Zone.Exile);
                     if (card.Zone == Zone.Exile) card.OnAdventure = true;
                     Emit(new SpellResolved(spell.Card));
                     break;
@@ -1253,7 +1253,7 @@ public sealed partial class Game
                 int castVersion = card.Version;
                 // An Aura spell enters attached to the object it targeted (rule 303.4f).
                 var attachTo = card.Definition.EnchantTarget is not null ? item.Targets[0].Target.Card : null;
-                MoveCard(spell.Card, card.Types.IsPermanent() ? Zone.Battlefield : discard, controller: spell.Controller, attachTo: attachTo,
+                await MoveCardAsync(spell.Card, card.Types.IsPermanent() ? Zone.Battlefield : discard, controller: spell.Controller, attachTo: attachTo,
                     kicked: spell.Kicked && card.Types.IsPermanent(), castFromHand: card.CastFromHand && card.Types.IsPermanent(),
                     wasCast: card.Types.IsPermanent() && !card.Definition.IsToken, timesKicked: spell.KickCount, squadPaid: spell.SquadCount);
                 if (card.Zone == Zone.Battlefield && spell.Dashed)

@@ -8,7 +8,7 @@ kind of bug come back; **P3** hygiene. "To confirm" items were found by reading 
 
 ## P1 — rules
 
-### R1. Permanents that "enter tapped" are tapped after they entered
+### R1. Permanents that "enter tapped" are tapped after they entered — **done**
 `MoveCard` has no way to say "tapped", so about eight effects move the card and set `Tapped` afterwards
 (`Game.Abilities.cs` ~721, 1064, 1390, 1869, 2028, 3123, 3254, `Game.Voting.cs`). Rule 614.1c: the permanent enters
 already tapped. Between the move and the tap, triggers of the entering are collected and static effects recomputed with the
@@ -17,21 +17,21 @@ permanent untapped.
 **Test:** an enters trigger with an intervening "if it's untapped/tapped" condition on a permanent put onto the battlefield
 tapped by an effect.
 
-### R2. Counters a permanent enters with are put on after its enters triggers were collected (to confirm)
+### R2. Counters a permanent enters with are put on after its enters triggers were collected (to confirm) — **done**
 In `MoveCard` the `CardMoved` event is emitted, which collects triggers and checks intervening "if" conditions
 (`AddPending`, rule 603.4), and only then are the enter counters placed. Rule 614.1c / 122.6: it enters with them. An
 enters trigger whose condition looks at counters or at power or toughness raised by them doesn't trigger.
 **Fix:** put the counters on as part of the move, before `CardMoved`, still emitting "counters put" events afterwards.
 **Test:** a creature that enters with +1/+1 counters and an enters trigger "if its power is N or greater".
 
-### R3. A commander going to a hand or library is offered the command zone after the move
+### R3. A commander going to a hand or library is offered the command zone after the move — **done**
 `Game.Commander.cs` `OfferCommanderReturnsAsync` says so itself: rule 903.9b is a replacement effect, but the card first
 goes to the hand or library (shuffles included) and is then offered.
 **Fix:** treat the hand and library case as a replacement in `MoveCard` (the owner chooses as it would move), keep the
 graveyard and exile case as the state-based choice (903.9a).
 **Test:** a commander bounced or tucked: the choice comes before it reaches the zone, no shuffle with the commander inside.
 
-### R4. Only one zone-change replacement is applied, in a fixed order
+### R4. Only one zone-change replacement is applied, in a fixed order — **done**
 `MoveCard` is an `if / else if` chain: death replacements, then "exile instead of the graveyard", then the card's own
 "shuffle into its library instead", then exiling instants and sorceries. Rule 616.1: when several apply, the affected
 object's controller (or owner) chooses one, applies it, and the rest are checked again.
@@ -39,7 +39,7 @@ object's controller (or owner) chooses one, applies it, and the rest are checked
 counter and token replacements), reapply until none are left.
 **Test:** a card with its own "shuffle instead" while "exile instead of the graveyard" also applies: the player chooses.
 
-### R5. "Put the rest on the bottom in any order" is always random
+### R5. "Put the rest on the bottom in any order" is always random — **done**
 `LookAtTopTakeAsync` (`Game.Abilities.cs` ~3260) shuffles the rest unless they go to the graveyard, and `RestOnTop` leaves
 them as they were. Effects that say "in any order" (bottom) or "put the rest back in any order" (top) must let the player
 order them; only "in a random order" is random.
@@ -47,7 +47,7 @@ order them; only "in a random order" is random.
 that use the effect and set it from the card's text.
 **Test:** look at three, take one, the player chooses the order of the other two at the bottom.
 
-### R6. A free-cast permission outlives the effect that granted it
+### R6. A free-cast permission outlives the effect that granted it — **done**
 Effects that let a player cast a card during their resolution (`Game.Abilities.cs` ~801, 1034, 1831, 1943, 2560, 2664) add a
 `PlayableFromExile` entry "without paying" valid for the whole turn and then call `CastSpellAsync`. When the player backs
 out (or the cast fails), the entry stays: the card can be cast for free later that turn, at any time the player could cast
@@ -63,7 +63,7 @@ alternative cost changes what can be targeted or when targets depend on the tota
 **Fix:** move every alternative and additional cost choice into the announcement step, before modes and targets.
 **Test:** sequence check through the controller calls (announcement before target request).
 
-### R8. Mulligans
+### R8. Mulligans — **done**
 `Game.cs` `ResolveMulliganAsync`: a further mulligan is only offered while at least one card would be kept (rule 103.5
 allows going to zero), and each player finishes all their mulligans before the next player starts (rule 103.5: each player
 in turn order declares, then everyone who chose to mulligans at the same time, repeated).
@@ -84,13 +84,13 @@ otherwise, loops fall back to timestamps), covered by the classic dependency cas
 
 ## P1 — program
 
-### N1. Getting back into an internet game after restarting doesn't work
+### N1. Getting back into an internet game after restarting doesn't work — **done**
 `OnlineService.StartGameClient` saves `LastHostAddress` as `address:port`. For a lobby joined through the internet service the
 "address" is the host's online id and the port is 0, so "Get back into the game" (`Rejoin`) tries a TCP connection to it.
 **Fix:** save how the lobby was reached (provider and listing) with the seat token; rejoin through the same provider.
 **Test:** service test with the in-memory provider: join by code, drop, rejoin from saved settings.
 
-### N2. Hosted internet lobbies stay listed when the game closes
+### N2. Hosted internet lobbies stay listed when the game closes — **done**
 `EosOnlineServices.Dispose` destroys the lobbies, but nothing disposes the services when the game quits, and `Leave` removes
 the listing with an `async void` call that the quitting process doesn't wait for. The listing stays until the service times
 the owner out.
@@ -106,7 +106,7 @@ Commander soak happened, and the bots now carry a guard (`BotController`, backed
 reductions, increases) used both to list legal actions and to cast; the legal-action check becomes "some way is payable".
 Remove the bot guard and make the soak tests fail on any backed-out action.
 
-### D2. Tapping and untapping are done in about twenty places
+### D2. Tapping and untapping are done in about twenty places — **done**
 `Tapped = true/false` appears across `Game.Priority.cs`, `Game.Abilities.cs`, `Game.Combat.cs`, `Game.Turn.cs`,
 `Game.Voting.cs`, `Game.Monarch.cs`; most emit `PermanentTapped`/`PermanentUntapped`, some (entering, untap step) on purpose
 don't. A new site that forgets the event breaks "becomes tapped" triggers and conditions silently.
@@ -136,7 +136,7 @@ one place for timers, pairing and match results.
 
 ## P3 — hygiene
 
-### H1. Real card names in the generic repository
+### H1. Real card names in the generic repository — **done**
 Against the project rule, the main repository names real cards in identifiers and comments: a local variable in `MoveCard`
 (`Game.Zones.cs` ~142), a field and comment in the layer code (`Game.Abilities.cs` ~3756), comments in
 `AbilityDefinition.cs` (~472), `Effects.cs` (~477), `Conditions.cs` (~94) and `Game.Priority.cs` (~587); the demo sandbox in
@@ -151,6 +151,22 @@ often it fires.
 ### H3. The online services thread polls every few milliseconds
 `EosOnlineServices.Run` loops with `Thread.Sleep(8)` for the whole session even when idle. Fine for now; a wait handle that
 wakes on queued work (and a slower tick when nothing is going on) would save battery on mobile (M12).
+
+## Left over from the fixes
+
+### L1. Entering counters with both "plus one" and "twice that many" replacements
+Counters a permanent enters with are now on it before it is announced (R2), except when both kinds of counter replacement
+apply: their controller must order them (rule 616.1) and `MoveCard` can't ask, so those counters are still placed right
+after the current effect. Now that moves are planned asynchronously (`PlanMoveAsync`), the order can be asked as the
+permanent moves: do that.
+
+### L2. A commander drawn and put into the command zone instead
+`DrawAsync` still announces the draw when the commander goes to the command zone instead of the hand (903.9b). Check the
+rules on whether a draw replaced that way is still a draw ("cards drawn this turn", "whenever you draw") and match them.
+
+### L3. The "onto the battlefield instead of being discarded" replacement
+It is still applied before the move, outside `ZoneReplacements`; it should become one of the options there so it can be
+ordered with the others when something else also applies.
 
 ## Suggested order
 

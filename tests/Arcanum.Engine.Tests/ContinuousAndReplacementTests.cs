@@ -221,6 +221,44 @@ public class ContinuousAndReplacementTests
         Assert.Equal(Zone.Library, s.Card(colossus).Zone);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TheSpellsControllerChoosesBetweenItsOwnShuffleAndAnExileReplacement(bool chooseShuffle)
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.Add(P1, Creature("Ash Warden", 1, 1) with { Replaces = Replacements.ExileInstantsAndSorceries });
+        var echo = s.InHand(P0, Spell("Circling Thought", "{1}", new SpellAbility { Effects = new Effect[] { new GainLife(1, Subject.You) } }, CardType.Instant)
+            with { Replaces = Replacements.ShuffleIntoLibraryInsteadOfGraveyard });
+        List<string>? offered = null;
+        s.Attacker.Option = (_, r) =>
+        {
+            offered = r.Options.ToList();
+            return offered.FindIndex(o => o.Contains("library") == chooseShuffle);
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(2, offered!.Count);
+        Assert.Equal(chooseShuffle ? Zone.Library : Zone.Exile, s.Card(echo).Zone);
+        int moved = s.Game.Log.ToList().FindIndex(e => e is CardMoved { From: Zone.Stack } m && m.Card == echo);
+        Assert.Equal(chooseShuffle, s.Game.Log.Skip(moved).Any(e => e is LibraryShuffled { Player.Value: 0 }));
+        Assert.DoesNotContain(s.Game.Log, e => e is CardMoved m && m.Card == echo && m.To == Zone.Graveyard);
+    }
+
+    [Fact]
+    public async Task OnlyOneApplicableReplacementAppliesWithoutAsking()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.Add(P1, Creature("Ash Warden", 1, 1) with { Replaces = Replacements.ExileInstantsAndSorceries });
+        var insight = s.InHand(P0, Spell("Plain Insight", "{1}", new SpellAbility { Effects = new Effect[] { new GainLife(1, Subject.You) } }, CardType.Instant));
+        bool asked = false;
+        s.Attacker.Option = (_, _) => { asked = true; return 0; };
+        await s.RunUntilTurn();
+        Assert.False(asked);
+        Assert.Equal(Zone.Exile, s.Card(insight).Zone);
+    }
+
     [Fact]
     public async Task OpponentChoosesWhatYouDiscardFromARevealedHand()
     {

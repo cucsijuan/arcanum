@@ -91,6 +91,8 @@ public static class ViewBuilder
             PlusOneCounters = card.CounterCount(Abilities.CounterKind.PlusOnePlusOne),
             MinusOneCounters = card.CounterCount(Abilities.CounterKind.MinusOneMinusOne),
             Loyalty = card.CounterCount(Abilities.CounterKind.Loyalty),
+            LoreCounters = card.CounterCount(Abilities.CounterKind.Lore),
+            FinalChapter = card.Definition.FinalChapter,
             AttacksEachCombat = card.Definition.AttacksEachCombat,
             IsToken = card.Definition.IsToken,
             OracleText = card.Definition.OracleText,
