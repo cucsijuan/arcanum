@@ -86,8 +86,11 @@ public sealed record PlayerView
     public required bool HasLost { get; init; }
     public required int LibraryCount { get; init; }
 
-    /// <summary>The top card of the library when the viewer may look at it ("You may look at the top card of your library any time").</summary>
+    /// <summary>The top card of the library when the viewer knows it, or may look at it ("You may look at the top card of your library any time").</summary>
     public CardView? LibraryTop { get; init; }
+
+    /// <summary>The cards of the library the viewer knows (looked at or revealed, and not shuffled away since), by place.</summary>
+    public IReadOnlyList<LibraryCardView> KnownLibrary { get; init; } = Array.Empty<LibraryCardView>();
     public required IReadOnlyList<CardView> Hand { get; init; }
     public required IReadOnlyList<CardView> Graveyard { get; init; }
     public required IReadOnlyList<CardView> Exile { get; init; }
@@ -122,6 +125,9 @@ public sealed record PlayerView
     /// <summary>Floating mana by type (only types with a non-zero amount).</summary>
     public required IReadOnlyDictionary<Mana.ManaType, int> ManaPool { get; init; }
 }
+
+/// <summary>A library card the viewer knows, <paramref name="Position"/> cards from the top (0 is the top card).</summary>
+public sealed record LibraryCardView(int Position, CardView Card);
 
 /// <summary>An emblem in the command zone (rule 114).</summary>
 public sealed record EmblemView(string Name, string Text, bool UntilEndOfTurn);

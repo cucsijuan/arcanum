@@ -26,6 +26,12 @@ public sealed partial class Game
     /// <summary>Raised synchronously for every event, in order.</summary>
     public event Action<GameEvent>? EventRaised;
 
+    /// <summary>
+    /// Players stopped knowing some library cards without an event saying so (cards put back in an order they didn't
+    /// see); a shuffle or a card moving is announced by its own event.
+    /// </summary>
+    public event Action? KnowledgeLost;
+
     public Game(GameConfig config, IReadOnlyList<PlayerSetup> players)
     {
         if (players.Count < 2) throw new ArgumentException("A game needs at least two players.", nameof(players));
@@ -108,6 +114,7 @@ public sealed partial class Game
         if (e is PermanentTapped or PermanentUntapped or CountersPlaced or LifeChanged or ControlChanged or AttacksDeclared or AttackerDeclared or BlockerDeclared)
             RecomputeContinuousEffects();
         CollectTriggers(e);
+        NoteKnowledge(e);
         EventRaised?.Invoke(e);
     }
 

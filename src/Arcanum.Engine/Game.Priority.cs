@@ -150,7 +150,7 @@ public sealed partial class Game
                 if (await ChooseOpponentAsync(who, card, "Choose the opponent whose hand you look at") is { } opponent)
                 {
                     var hand = State.GetPlayer(opponent).Hand;
-                    Emit(new HandRevealed(opponent, hand.ToList()));
+                    Emit(new HandLookedAt(who, opponent, hand.ToList()));
                     names.AddRange(hand.Select(c => State.GetCard(c).Name));
                 }
                 // Any card name: every name in the game is offered (seen ones first).

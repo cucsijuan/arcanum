@@ -28,10 +28,13 @@ public static class ViewBuilder
                 Life = p.Life,
                 HasLost = p.HasLost,
                 LibraryCount = p.Library.Count,
-                LibraryTop = p.Id == viewer && p.Library.Count > 0
-                             && state.PermanentsControlledBy(p.Id).Any(c => (c.Definition.Replaces & (Cards.Replacements.CreaturesFromLibraryTop | Cards.Replacements.CastCreaturesFromLibraryTop | Cards.Replacements.LookAtLibraryTop)) != 0)
-                    ? Card(state, p.Library[0], viewer, reveal: true)
-                    : null,
+                LibraryTop = p.Library.Count == 0 ? null
+                    : (p.Id == viewer && MayLookAtLibraryTop(state, p.Id)) || state.GetCard(p.Library[0]).IsVisibleTo(viewer)
+                        ? Card(state, p.Library[0], viewer, reveal: true)
+                        : null,
+                KnownLibrary = p.Library.Select((id, i) => (Id: id, Position: i))
+                    .Where(x => state.GetCard(x.Id).IsVisibleTo(viewer))
+                    .Select(x => new LibraryCardView(x.Position, View(x.Id))).ToList(),
                 Hand = Views(p.Hand),
                 Graveyard = Views(p.Graveyard),
                 Exile = Views(p.Exile),
@@ -60,11 +63,16 @@ public static class ViewBuilder
         };
     }
 
+    /// <summary>"You may look at the top card of your library any time" (a permanent the player controls says so).</summary>
+    public static bool MayLookAtLibraryTop(GameState state, PlayerId player) =>
+        state.PermanentsControlledBy(player).Any(c => (c.Definition.Replaces & (Cards.Replacements.CreaturesFromLibraryTop
+            | Cards.Replacements.CastCreaturesFromLibraryTop | Cards.Replacements.LookAtLibraryTop)) != 0);
+
     /// <summary>One card as <paramref name="viewer"/> may see it; <paramref name="reveal"/> shows it even if hidden.</summary>
     public static CardView Card(GameState state, CardId id, PlayerId viewer, bool reveal = false, int commanderTaxPerCast = 0)
     {
         var card = state.GetCard(id);
-        bool visible = reveal || (card.Zone.IsPublic() && !(card.FaceDown && card.Owner != viewer && !card.FaceDownLookers.Contains(viewer))) || (card.Zone == Zone.Hand && card.Owner == viewer);
+        bool visible = reveal || card.IsVisibleTo(viewer);
         if (!visible)
         {
             return new CardView

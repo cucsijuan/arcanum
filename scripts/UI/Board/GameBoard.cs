@@ -73,6 +73,7 @@ public partial class GameBoard : Control
     private readonly List<EventView> _pendingAttacks = new();
     private readonly List<EventView> _pendingBlocks = new();
     private bool _combatFlushQueued;
+    private PlayerId? _handLookedAt;                    // whose hand another player is looking at right now
     private readonly PhaseBar _phaseBar = new();
     private readonly StackView _stackView = new();
     private Button _undoButton = null!;
@@ -1688,10 +1689,26 @@ public partial class GameBoard : Control
     /// <summary>Turns what other players (the computer, people elsewhere) do into announcements, and holds the game on key moments.</summary>
     private void Announce(EventView ev)
     {
+        // A look at a hand lasts until a card is chosen from it or the spell or ability is done.
+        if (_handLookedAt is { } looked && ev.Event is ChosenFromHand or SpellResolved or AbilityResolved or PriorityGiven or StepBegan)
+        {
+            AreaOf(looked).SetHandNote(null);
+            _handLookedAt = null;
+        }
         switch (ev.Event)
         {
             case TurnBegan t:
                 AnnounceTurn(t);
+                break;
+            case HandLookedAt l when _session.Announces(l.Looker):
+                AnnounceHandLook(l.Looker, l.Player);
+                break;
+            case HandRevealed { Chooser: { } chooser } h when _session.Announces(chooser):
+                AnnounceHandLook(chooser, h.Player);
+                break;
+            case ChosenFromHand c when _session.Announces(c.Chooser):
+                foreach (var card in c.Cards)
+                    _announcer.Enqueue(new($"{PlayerName(c.Chooser)} chooses {ev.Name(card)} from {Whose(c.Player)} hand", ViewOf(ev, card), 2.5));
                 break;
             case SpellCast c when _session.Announces(c.Player):
                 AnnounceStackObject(ev, c.Player, c.Card, "casts", null);
@@ -1735,6 +1752,18 @@ public partial class GameBoard : Control
         _announcer.Enqueue(new(own ? "Your turn" : $"{PlayerName(turn.ActivePlayer)}'s turn", null, 1.1,
             Turn: new($"Turn {turn.TurnNumber}", BoardStyle.PlayerColor(turn.ActivePlayer.Value)),
             OnShown: own ? _turnChime.Chime : null));
+    }
+
+    private string Whose(PlayerId player) => player == Bottom ? "your" : $"{PlayerName(player)}'s";
+
+    /// <summary>Another player looks at a hand (to choose from it, or just to see it): said, and noted beside that hand while it lasts.</summary>
+    private void AnnounceHandLook(PlayerId looker, PlayerId owner)
+    {
+        var text = $"{PlayerName(looker)} is looking at {Whose(owner)} hand";
+        _announcer.Enqueue(new(text, null, 2));
+        if (_handLookedAt is { } earlier) AreaOf(earlier).SetHandNote(null);
+        AreaOf(owner).SetHandNote(text);
+        _handLookedAt = owner;
     }
 
     /// <summary>The card as it was when the event happened (falls back to the current view).</summary>

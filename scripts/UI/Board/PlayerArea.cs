@@ -32,6 +32,9 @@ public partial class PlayerArea : Control
     /// <summary>What applies to the player for the rest of the game or for now (Ring, city's blessing, poison…), beside the name.</summary>
     private readonly HBoxContainer _tags = new();
     private readonly Label _handLabel = BoardStyle.MakeLabel("Hand (0)", 12, BoardStyle.TextDim);
+
+    /// <summary>Who is looking at this hand right now (an opponent's spell or ability lets them), beside the hand label.</summary>
+    private readonly Label _handNote = BoardStyle.MakeLabel("", 12, new Color("f2c14e"), bold: true);
     private readonly ZonePile _library = new("Library");
     private readonly ZonePile _graveyard = new("Graveyard");
     private readonly ZonePile _exile = new("Exile");
@@ -120,6 +123,8 @@ public partial class PlayerArea : Control
         AddChild(_tags);
 
         AddChild(_handLabel);
+        _handNote.Visible = false;
+        AddChild(_handNote);
         _command2.Visible = false;
         _graveyard.CardClicked += _ => ZoneClicked?.Invoke(Player, Zone.Graveyard);
         _exile.CardClicked += _ => ZoneClicked?.Invoke(Player, Zone.Exile);
@@ -190,6 +195,16 @@ public partial class PlayerArea : Control
             x -= PileSize.X + gap;
         }
         _handLabel.Position = new Vector2(_library.Position.X - 78, Size.Y - 22);
+        _handNote.ResetSize();
+        _handNote.Position = new Vector2(_handLabel.Position.X - _handNote.Size.X - 10, _handLabel.Position.Y);
+    }
+
+    /// <summary>Shows who is looking at this hand ("Ana is looking at your hand"); null hides it.</summary>
+    public void SetHandNote(string? note)
+    {
+        _handNote.Text = note ?? "";
+        _handNote.Visible = note is not null;
+        LayoutStatic();
     }
 
     /// <param name="stagedTaps">Sources picked in an unconfirmed mana payment; drawn as tapped.</param>

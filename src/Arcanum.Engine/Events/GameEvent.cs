@@ -65,7 +65,12 @@ public sealed record RingTempted(PlayerId Player, int Level, CardId? Bearer) : G
 /// <summary>Permanents phased out or in.</summary>
 public sealed record PhasedOut(CardId Card) : GameEvent;
 public sealed record PhasedIn(CardId Card) : GameEvent;
-public sealed record HandRevealed(PlayerId Player, IReadOnlyList<CardId> Cards) : GameEvent;
+/// <summary>A player reveals their hand; <paramref name="Chooser"/>, when set, looks through it to choose cards from it.</summary>
+public sealed record HandRevealed(PlayerId Player, IReadOnlyList<CardId> Cards, PlayerId? Chooser = null) : GameEvent;
+/// <summary><paramref name="Looker"/> looks at <paramref name="Player"/>'s hand: only they (and its owner) see those cards.</summary>
+public sealed record HandLookedAt(PlayerId Looker, PlayerId Player, IReadOnlyList<CardId> Cards) : GameEvent;
+/// <summary><paramref name="Chooser"/> chose these cards from <paramref name="Player"/>'s hand (for that player to discard).</summary>
+public sealed record ChosenFromHand(PlayerId Chooser, PlayerId Player, IReadOnlyList<CardId> Cards) : GameEvent;
 public sealed record PermanentSacrificed(CardId Card) : GameEvent;
 public sealed record ControlChanged(CardId Card, PlayerId NewController) : GameEvent;
 public sealed record CardDiscarded(PlayerId Player, CardId Card) : GameEvent;

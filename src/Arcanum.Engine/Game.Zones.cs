@@ -2,6 +2,7 @@
 using Arcanum.Engine.Core;
 using Arcanum.Engine.Events;
 using Arcanum.Engine.State;
+using Arcanum.Engine.Views;
 
 namespace Arcanum.Engine;
 
@@ -149,12 +150,12 @@ public sealed partial class Game
 
     /// <summary>Moves a card, asking for the choices its zone-change replacement effects need (rule 616.1).</summary>
     private async Task MoveCardAsync(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
-        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false)
+        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false, bool faceDown = false)
     {
         var card = State.GetCard(id);
         if (!(_movePlans.TryGetValue((id, card.Version), out var planned) && planned.Requested == to))
             _movePlans[(id, card.Version)] = (to, await PlanMoveAsync(card, to));
-        var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped);
+        var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped, faceDown);
         // A permanent that enters with counters its controller must order replacement effects for (rule 616.1): asked as it
         // enters, so the counters are on it before it is announced, as in every other case.
         var ordered = await OrderEnterCountersAsync(move.Card, move.EnterCounters);
@@ -168,10 +169,11 @@ public sealed partial class Game
     /// </summary>
     /// <param name="tapped">A permanent entering the battlefield tapped (rule 614.1c): it is tapped from the start, with no event.</param>
     /// <param name="kicked">A spell cast with kicker becoming a permanent: it remembers it was kicked (for "if it was kicked").</param>
+    /// <param name="faceDown">Exiled face down (rule 406.3): only the players who could see it as it moved know it.</param>
     private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
-        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false)
+        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false, bool faceDown = false)
     {
-        var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped);
+        var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped, faceDown);
         foreach (var returning in FinishMove(move, null)) MoveCard(returning, Zone.Battlefield, controller: State.GetCard(returning).Owner);
     }
 
@@ -180,13 +182,16 @@ public sealed partial class Game
 
     /// <summary>The move itself, with its replacement effects applied: the card is in its new zone but nothing has been announced yet.</summary>
     private MoveInProgress BeginMove(CardId id, Zone to, bool toBottom, PlayerId? controller, CardId? attachTo, bool kicked,
-        bool castFromHand, bool wasCast, int timesKicked, int squadPaid, bool tapped)
+        bool castFromHand, bool wasCast, int timesKicked, int squadPaid, bool tapped, bool faceDown)
     {
         var enterCounters = new List<(Abilities.CounterKind Kind, int Count)>();
         var card = State.GetCard(id);
         var from = card.Zone;
         var owner = State.GetPlayer(card.Owner);
         var lastController = card.Controller;
+        if (from == Zone.Battlefield) NoteLibraryTopLooks(); // a permission to look at it may be leaving with this card
+        // The players who see the card as it moves keep knowing it where it goes, even into a hidden zone.
+        var knewIt = State.Players.Where(p => card.IsVisibleTo(p.Id)).Select(p => p.Id).ToList();
 
         // Replacement effects on where the card goes (rule 614), decided as it moves or ahead for a simultaneous move.
         var plan = _movePlans.Remove((id, card.Version), out var planned) && planned.Requested == to
@@ -228,6 +233,8 @@ public sealed partial class Game
         card.CastFromHand = castFromHand;
         card.WasCast = wasCast;
         card.Zone = to;
+        card.FaceDown = faceDown && to == Zone.Exile;
+        card.KnownTo.UnionWith(knewIt);
         NoteCommanderMove(card, to);
         switch (to)
         {
@@ -359,6 +366,52 @@ public sealed partial class Game
     private void Shuffle(Player player)
     {
         Rng.Shuffle(player.Library);
+        // No one knows where any card of a shuffled library is (rule 701.24a).
+        foreach (var id in player.Library) State.GetCard(id).KnownTo.Clear();
         Emit(new LibraryShuffled(player.Id));
+    }
+
+    /// <summary><paramref name="who"/> looks at these cards: they know them where they are, and as they move from there.</summary>
+    private void Look(PlayerId who, IEnumerable<CardId> cards)
+    {
+        foreach (var id in cards) State.GetCard(id).KnownTo.Add(who);
+    }
+
+    /// <summary>Revealed cards (rule 701.20a): every player knows them.</summary>
+    private void RevealToAll(IEnumerable<CardId> cards)
+    {
+        foreach (var id in cards) State.GetCard(id).KnownTo.UnionWith(State.Players.Select(p => p.Id));
+    }
+
+    /// <summary>
+    /// Cards just put into a library together in an order only <paramref name="arranger"/> sees (rule 401.4), or in a random
+    /// order (null): when more than one of them went there, the other players can no longer tell which card is where.
+    /// </summary>
+    private void PlacedInUnseenOrder(IEnumerable<CardId> cards, PlayerId? arranger)
+    {
+        var placed = cards.Where(id => State.GetCard(id).Zone == Zone.Library).ToList();
+        if (placed.Count < 2) return;
+        foreach (var id in placed) State.GetCard(id).KnownTo.RemoveWhere(p => p != arranger);
+        KnowledgeLost?.Invoke();
+    }
+
+    /// <summary>"You may look at the top card of your library any time": the player knows that card.</summary>
+    private void NoteLibraryTopLooks()
+    {
+        foreach (var player in State.Players)
+            if (player.Library.Count > 0 && ViewBuilder.MayLookAtLibraryTop(State, player.Id))
+                State.GetCard(player.Library[0]).KnownTo.Add(player.Id);
+    }
+
+    /// <summary>What players learn from an event as it happens: revealed cards, and hands looked at.</summary>
+    private void NoteKnowledge(GameEvent e)
+    {
+        switch (e)
+        {
+            case CardsRevealed r: RevealToAll(r.Cards); break;
+            case HandRevealed h: RevealToAll(h.Cards); break;
+            case HandLookedAt l: Look(l.Looker, l.Cards); break;
+        }
+        NoteLibraryTopLooks();
     }
 }

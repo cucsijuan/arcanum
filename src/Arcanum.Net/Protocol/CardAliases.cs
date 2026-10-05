@@ -5,8 +5,9 @@ namespace Arcanum.Net.Protocol;
 
 /// <summary>
 /// The card ids one player sees. Real ids follow the order of each deck list, so sending them would tell an opponent
-/// which card a hidden one is. Each connection gets its own random ids instead, and a card gets a new one whenever it
-/// goes into a library or its library is shuffled, so it can't be followed through a hidden zone.
+/// which card a hidden one is. Each connection gets its own random ids instead, and a card in a library the player
+/// doesn't know (it went in unseen, its library was shuffled, or it was put back in an order they didn't see) gets a new
+/// one, so it can't be followed through a hidden zone.
 /// </summary>
 public sealed class CardAliases
 {

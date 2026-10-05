@@ -71,11 +71,24 @@ public sealed class Card
     /// <summary>As a spell: its caster promised the gift.</summary>
     public bool GiftPromised { get; set; }
 
-    /// <summary>Exiled face down: only its owner may look at it.</summary>
+    /// <summary>Exiled face down: only the players in <see cref="KnownTo"/> may look at it (rule 406.3).</summary>
     public bool FaceDown { get; set; }
 
-    /// <summary>Players besides its owner who may look at it while it's face down ("look at … and exile those cards face down").</summary>
-    public HashSet<PlayerId> FaceDownLookers { get; } = new();
+    /// <summary>
+    /// Players who know this card although where it is hides it from them: in a hand (besides its owner), in a library,
+    /// or exiled face down. A player learns it by looking at it or when it's revealed, and keeps knowing it as it moves
+    /// from where they could see it, until its place is lost to them: its library is shuffled, or it's put among other
+    /// cards in an order they don't see (rule 401.4).
+    /// </summary>
+    public HashSet<PlayerId> KnownTo { get; } = new();
+
+    /// <summary>Whether <paramref name="viewer"/> may see this card's face where it is now.</summary>
+    public bool IsVisibleTo(PlayerId viewer) => Zone switch
+    {
+        Zone.Hand => Owner == viewer || KnownTo.Contains(viewer),
+        Zone.Library => KnownTo.Contains(viewer),
+        _ => !FaceDown || KnownTo.Contains(viewer),
+    };
 
     /// <summary>As a spell: it can't be countered (mana with that rider was spent on it).</summary>
     public bool Uncounterable { get; set; }
@@ -462,7 +475,7 @@ public sealed class Card
         PaidWithTreasure = false;
         GiftPromised = false;
         FaceDown = false;
-        FaceDownLookers.Clear();
+        KnownTo.Clear();
         Uncounterable = false;
         GrantedWards.Clear();
         Version++;
