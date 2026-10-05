@@ -47,18 +47,34 @@ public partial class ZonePile : Control
         Size = size;
         _slot.Size = size;
         _top.Size = size;
-        _label.Size = new Vector2(size.X + 40, 20);
+        PlaceLabel();
     }
 
     public CardNode TopCard => _top;
+
+    private bool _compact, _labelBelow;
+
+    /// <summary>Puts the title under the pile instead of above it (piles hanging from the top edge of the screen).</summary>
+    public bool LabelBelow
+    {
+        get => _labelBelow;
+        set { _labelBelow = value; PlaceLabel(); }
+    }
+
+    private void PlaceLabel()
+    {
+        float pad = _compact ? 6 : 20, height = _compact ? 18 : 20;
+        _label.Size = new Vector2(Size.X + 2 * pad, height);
+        _label.Position = new Vector2(-pad, _labelBelow ? Size.Y + 2 : -height - 2);
+    }
 
     /// <summary>Short title and smaller font for compact areas, where full labels would overlap.</summary>
     public void UseCompactLabel(string shortTitle)
     {
         _title = shortTitle;
         _label.AddThemeFontSizeOverride("font_size", 11);
-        _label.Position = new Vector2(-6, -18);
-        _label.Size = new Vector2(Size.X + 12, 18);
+        _compact = true;
+        PlaceLabel();
     }
 
     /// <summary>Changes the title shown above the pile.</summary>

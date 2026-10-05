@@ -49,8 +49,14 @@ public partial class PlayerArea : Control
     private IReadOnlyDictionary<CardId, float> _blockerAlign = new Dictionary<CardId, float>();
     private Panel _lifeBox = null!;
 
-    /// <summary>True for the top half: its creatures attack downwards, towards the opponent.</summary>
+    /// <summary>
+    /// True for the top half, laid out as the bottom half turned over: its edge (hand, piles, lands) is the top of the
+    /// screen, its creatures stand nearest the middle and attack downwards, towards the opponent.
+    /// </summary>
     public bool FacesDown { get; set; }
+
+    /// <summary>Top of a rectangle <paramref name="fromMiddle"/> pixels from the middle-facing side of this half (the top side in the bottom half, the bottom side in the top half).</summary>
+    private float FlipY(float fromMiddle, float height) => FacesDown ? Size.Y - fromMiddle - height : fromMiddle;
     private readonly List<CardNode> _handOrder = new();
 
     public PlayerId Player { get; set; }
@@ -58,12 +64,16 @@ public partial class PlayerArea : Control
     /// <summary>Smaller cards and margins, for tables with three or four players.</summary>
     public bool Compact { get; init; }
 
+    /// <summary>Room kept free at the right edge (the menu buttons sit over the top half's piles there).</summary>
+    public float RightInset { get; init; }
+
     private float Scale => Compact ? 0.7f : 1f;
     private Vector2 HandSize => BoardStyle.HandCardSize * Scale;
     private Vector2 FieldSize => BoardStyle.BattlefieldCardSize * Scale;
     private Vector2 PileSize => BoardStyle.PileCardSize * Scale;
     private float Peek => PilePeek * Scale;
 
+    private bool _poolShown;
     private readonly Label _commanderDamage = BoardStyle.MakeLabel("", 13, BoardStyle.Attacking);
 
     public event Action<CardNode>? CardClicked;
@@ -151,7 +161,11 @@ public partial class PlayerArea : Control
 
     public override void _Ready()
     {
-        foreach (var pile in new[] { _library, _graveyard, _exile, _command, _command2 }) pile.SetCardSize(PileSize);
+        foreach (var pile in new[] { _library, _graveyard, _exile, _command, _command2 })
+        {
+            pile.LabelBelow = FacesDown;
+            pile.SetCardSize(PileSize);
+        }
         if (!Compact) return;
         _library.UseCompactLabel("Library");
         _graveyard.UseCompactLabel("Grave");
@@ -201,20 +215,23 @@ public partial class PlayerArea : Control
     private void LayoutStatic()
     {
         if (_grid.Material is ShaderMaterial gridMaterial) gridMaterial.SetShaderParameter("rect_size", Size);
-        _nameBadge.Position = new Vector2((Size.X - _nameBadge.Size.X) / 2, 6);
+        _lifeBox.Position = new Vector2(6, FlipY(6, _lifeBox.Size.Y));
+        _pool.Position = new Vector2(8, FlipY(58, _pool.GetCombinedMinimumSize().Y));
+        _commanderDamage.Position = new Vector2(8, FlipY(_poolShown ? 84 : 58, _commanderDamage.GetCombinedMinimumSize().Y));
+        _nameBadge.Position = new Vector2((Size.X - _nameBadge.Size.X) / 2, FlipY(6, _nameBadge.Size.Y));
         _tags.ResetSize();
-        _tags.Position = new Vector2(_nameBadge.Position.X + _nameBadge.Size.X + 6, 6 + (_nameBadge.Size.Y - _tags.Size.Y) / 2);
+        _tags.Position = new Vector2(_nameBadge.Position.X + _nameBadge.Size.X + 6, _nameBadge.Position.Y + (_nameBadge.Size.Y - _tags.Size.Y) / 2);
 
         float gap = PileGap * Scale;
-        float x = Size.X - SideMargin - PileSize.X;
-        float y = Size.Y - Peek;
+        float x = Size.X - SideMargin - RightInset - PileSize.X;
+        float y = FacesDown ? Peek - PileSize.Y : Size.Y - Peek;
         foreach (var pile in new[] { _command2, _command, _exile, _graveyard, _library })
         {
             if (!pile.Visible) continue;
             pile.Position = new Vector2(x, y);
             x -= PileSize.X + gap;
         }
-        _handLabel.Position = new Vector2(_library.Position.X - 78, Size.Y - 22);
+        _handLabel.Position = new Vector2(_library.Position.X - 78, FacesDown ? 4 : Size.Y - 22);
         _handNote.ResetSize();
         _handNote.Position = new Vector2(_handLabel.Position.X - _handNote.Size.X - 10, _handLabel.Position.Y);
     }
@@ -245,7 +262,7 @@ public partial class PlayerArea : Control
         RefreshTags(me, view);
         _activeBorder.Visible = isActive;
         ApplyTurnGlow(isActive);
-        _handLabel.Text = $"⌄ Hand ({me.Hand.Count})";
+        _handLabel.Text = $"{(FacesDown ? "⌃" : "⌄")} Hand ({me.Hand.Count})";
 
         // The library always shows the card back; we build a hidden view rather than reveal its top.
         CardView? libraryTop = me.LibraryTop ?? (me.LibraryCount > 0
@@ -266,7 +283,7 @@ public partial class PlayerArea : Control
         _command2.Refresh(1, secondCommander, Tax(secondCommander));
         _commanderDamage.Text = string.Join("\n", me.CommanderDamage.Where(kv => kv.Value > 0)
             .Select(kv => $"\u2694 {view.FindCard(kv.Key)?.Name ?? "Commander"}: {kv.Value}/21"));
-        _commanderDamage.Position = new Vector2(8, me.ManaPool.Count > 0 ? 84 : 58);
+        _poolShown = me.ManaPool.Count > 0;
         LayoutStatic();
 
         // An Aura or Equipment is shown on the permanent it's attached to, even on another player's side.
@@ -404,7 +421,7 @@ public partial class PlayerArea : Control
 
     /// <summary>Whether a global point is over this player's hand strip (dropping a card there cancels a drag).</summary>
     public bool IsOverHand(Vector2 globalPoint) =>
-        GetGlobalRect().HasPoint(globalPoint) && globalPoint.Y > GlobalPosition.Y + Size.Y - 150;
+        GetGlobalRect().HasPoint(globalPoint) && (FacesDown ? globalPoint.Y < GlobalPosition.Y + 150 : globalPoint.Y > GlobalPosition.Y + Size.Y - 150);
 
     /// <summary>Where a card's current layout animation will end, as a global center point.</summary>
     public Vector2? TargetGlobalCenter(CardId id) =>
@@ -459,11 +476,12 @@ public partial class PlayerArea : Control
             var node = _handOrder[i];
             float t = n == 1 ? 0 : (i / (float)(n - 1)) * 2 - 1; // -1 .. 1 across the fan
             bool hovered = node.IsHovered;
-            var target = new Vector2(startX + i * spacing, Size.Y - Peek + t * t * 8);
-            float rotation = t * 6f;
+            // The fan hangs from the top edge in the top half (the bottom half's fan turned over).
+            var target = new Vector2(startX + i * spacing, FacesDown ? Peek - size.Y - t * t * 8 : Size.Y - Peek + t * t * 8);
+            float rotation = FacesDown ? -t * 6f : t * 6f;
             if (hovered)
             {
-                target.Y = Size.Y - size.Y - 2; // bottom edge stays under the cursor, so hover never flickers
+                target.Y = FacesDown ? 2 : Size.Y - size.Y - 2; // the edge stays under the cursor, so hover never flickers
                 rotation = 0;
             }
             node.ZIndex = hovered ? 100 : i;
@@ -533,10 +551,12 @@ public partial class PlayerArea : Control
         int deepest = Math.Max(otherSlot, landSlot);
         if (deepest > 0 && Size.Y > 100)
             pitch = Mathf.Min(pitch, Mathf.Max(36, (Size.Y - Peek - 4 - creatureY - FieldSize.Y) / deepest));
-        LayoutRow(creatures, creatureY, CreaturesZ);
-        if (others.Count > 0) LayoutRow(others, creatureY + otherSlot * pitch, OtherZ);
-        if (lands.Count > 0) LayoutRow(lands, creatureY + landSlot * pitch, LandsZ);
-        LayoutBlockers(blockerStacks, creatureY);
+        // Slot 0 (creatures) is nearest the middle, further slots lead to this player's edge.
+        float RowY(int slot) => FlipY(creatureY + slot * pitch, FieldSize.Y);
+        LayoutRow(creatures, RowY(0), CreaturesZ);
+        if (others.Count > 0) LayoutRow(others, RowY(otherSlot), OtherZ);
+        if (lands.Count > 0) LayoutRow(lands, RowY(landSlot), LandsZ);
+        LayoutBlockers(blockerStacks, RowY(0));
         LayoutAttachments(attached);
     }
 
@@ -589,8 +609,8 @@ public partial class PlayerArea : Control
             {
                 var node = _cards[card.Id];
                 node.ZIndex = host.ZIndex - 1;
-                // Peek out above the host so the attachment stays visible and hoverable.
-                MoveTo(node, host.TargetPosition + new Vector2(10 * i, -22 * i), FieldSize, 0);
+                // Peek out towards the middle of the table so the attachment stays visible and hoverable.
+                MoveTo(node, host.TargetPosition + new Vector2(10 * i, (FacesDown ? 22 : -22) * i), FieldSize, 0);
                 i++;
             }
         }

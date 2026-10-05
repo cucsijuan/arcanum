@@ -578,7 +578,8 @@ public partial class GameBoard : Control
         for (int i = 0; i < count; i++)
         {
             int place = (i - Bottom.Value + count) % count; // 0: bottom, then left to right on top
-            var area = new PlayerArea { Player = new PlayerId(i), Compact = count > 2 };
+            // The menu buttons stand at the right edge of the screen, over the top half's piles.
+            var area = new PlayerArea { Player = new PlayerId(i), Compact = count > 2, RightInset = place == opponents ? 64 : 0 };
             if (place == 0)
             {
                 area.AnchorTop = 0.5f; area.AnchorRight = 1; area.AnchorBottom = 1;

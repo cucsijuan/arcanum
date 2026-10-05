@@ -146,14 +146,14 @@ public partial class CardNode : Control
         _loreBadge.AddChild(_loreLabel);
         _loreBadge.Visible = false;
         _badgeLayer.AddChild(_loreBadge);
-        // Counters in the top-right corner.
+        // Counters in the top-right corner, under the title.
         _counterBadge.MouseFilter = MouseFilterEnum.Ignore;
         _counterBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.1f, 0.1f, 0.12f, 0.9f), 8, BoardStyle.Playable, 1));
         _counterLabel.HorizontalAlignment = HorizontalAlignment.Right;
         _counterBadge.AddChild(_counterLabel);
         _counterBadge.Visible = false;
         _badgeLayer.AddChild(_counterBadge);
-        // How many identical tokens this card stands for, top-left.
+        // How many identical tokens this card stands for, top-left under the title.
         _stackBadge.MouseFilter = MouseFilterEnum.Ignore;
         _stackBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.06f, 0.06f, 0.08f, 0.94f), 9, Colors.White, 1));
         _stackBadge.AddChild(_stackLabel);
@@ -377,10 +377,16 @@ public partial class CardNode : Control
         _loreBadge.ResetSize();
         float loreRight = _ptBadge.Visible ? _ptBadge.Position.X - 2 : Size.X - Inset;
         _loreBadge.Position = new Vector2(loreRight - _loreBadge.Size.X, Size.Y - _loreBadge.Size.Y - Inset);
-        _counterBadge.ResetSize();
-        _counterBadge.Position = new Vector2(Size.X - _counterBadge.Size.X - Inset, Inset);
+        // Top tags start below the title and type lines, so the card's name stays readable.
+        float top = Mathf.Round(Size.Y * 0.28f);
         _stackBadge.ResetSize();
-        _stackBadge.Position = new Vector2(Inset, Inset);
+        _stackBadge.Position = new Vector2(Inset, top);
+        _counterBadge.ResetSize();
+        float counterTop = top;
+        // On a narrow card the two tags would meet: counters go below the count.
+        if (_stackBadge.Visible && _counterBadge.Visible && _stackBadge.Size.X + _counterBadge.Size.X + 3 * Inset > Size.X)
+            counterTop += _stackBadge.Size.Y + 2;
+        _counterBadge.Position = new Vector2(Size.X - _counterBadge.Size.X - Inset, counterTop);
         _marksBadge.ResetSize();
         _marksBadge.Position = new Vector2(Inset, Size.Y - _marksBadge.Size.Y - Inset);
         _assigned.Position = Size / 2 - _assigned.Size / 2;
