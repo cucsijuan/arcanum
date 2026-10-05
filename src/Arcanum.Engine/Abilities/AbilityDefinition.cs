@@ -105,7 +105,7 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>"Return this [permanent] to its owner's hand" as a cost.</summary>
     public bool ReturnSelfToHand { get; init; }
 
-    /// <summary>"Tap [the permanent that granted this ability]" as a cost ("Tap Fishing Pole").</summary>
+    /// <summary>"Tap [the permanent that granted this ability]" as a cost ("Tap this equipment").</summary>
     public bool TapGranter { get; init; }
 
     /// <summary>Activated from the hand by discarding this card (cycling, rule 702.29).</summary>
@@ -469,7 +469,7 @@ public sealed record ObjectFilter(
     /// <summary>A spell with {X} in its mana cost.</summary>
     public bool HasXInCost { get; init; }
 
-    /// <summary>Exiled with the source ("a creature card exiled with Shelob").</summary>
+    /// <summary>Exiled with the source ("a creature card exiled with this permanent").</summary>
     public bool ExiledWithSource { get; init; }
 
     /// <summary>Mana value exactly X ("target creature card with mana value X"; X is announced first).</summary>

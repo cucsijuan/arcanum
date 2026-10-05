@@ -145,7 +145,7 @@ public class ImportTests
         var friend = new CardRecord
         {
             OracleId = "o-f", Name = "Loyal Friend", Layout = "normal", TypeLine = "Legendary Creature — Halfling", ManaCost = "{1}{G}", Power = "2", Toughness = "2",
-            OracleText = "Partner with Hobbit Hero (When this creature enters, target player may put Hobbit Hero into their hand from their library, then shuffle.)",
+            OracleText = "Partner with Meadow Hero (When this creature enters, target player may put Meadow Hero into their hand from their library, then shuffle.)",
             Keywords = new[] { "Partner with", "Partner" },
         };
         var (definition, support) = CardFactory.Create(friend);
@@ -154,7 +154,7 @@ public class ImportTests
         Assert.Equal(Arcanum.Engine.Abilities.TriggerEvent.EntersBattlefield, trigger.Trigger);
         Assert.Equal(Arcanum.Engine.Abilities.TargetKind.Player, Assert.Single(trigger.Targets).Kind);
         var search = Assert.IsType<Arcanum.Engine.Abilities.SearchLibrary>(Assert.Single(trigger.Effects));
-        Assert.Equal("Hobbit Hero", search.Filter.Name);
+        Assert.Equal("Meadow Hero", search.Filter.Name);
         Assert.True(search.Optional);
         Assert.Equal(Arcanum.Engine.Abilities.Subject.TargetAt(0), search.Who);
     }

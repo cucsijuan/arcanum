@@ -3556,7 +3556,7 @@ public sealed partial class Game
 
 
     /// <summary>Activated abilities a permanent has from lands its controller's opponents control.</summary>
-    private readonly Dictionary<CardId, List<ActivatedAbility>> _sharkeyAbilities = new();
+    private readonly Dictionary<CardId, List<ActivatedAbility>> _borrowedLandAbilities = new();
 
     private static bool IsManaAbilityOf(ActivatedAbility ability) =>
         ability.Targets.Count == 0 && ability.Cost.Loyalty is null && ability.Effects.Count > 0 && ability.Effects.All(AddsManaOnly);
@@ -3789,11 +3789,11 @@ public sealed partial class Game
         // with printed characteristics, then again once types and colors are settled (rule 613.8 dependency).
         ApplyAbilityLayer(battlefield, effects, Statics, AffectedBy);
 
-        // "Sharkey has all activated abilities of lands your opponents control except mana abilities" (layer 6, worked out here
+        // "This creature has all activated abilities of lands your opponents control except mana abilities" (layer 6, worked out here
         // with control known).
-        _sharkeyAbilities.Clear();
+        _borrowedLandAbilities.Clear();
         foreach (var thief in battlefield.Where(c => (c.Definition.Replaces & Replacements.AnyManaForItsAbilities) != 0))
-            _sharkeyAbilities[thief.Id] = State.OpponentsOf(thief.Controller).SelectMany(o => State.PermanentsControlledBy(o)).Where(c => c.Is(CardType.Land))
+            _borrowedLandAbilities[thief.Id] = State.OpponentsOf(thief.Controller).SelectMany(o => State.PermanentsControlledBy(o)).Where(c => c.Is(CardType.Land))
                 .SelectMany(c => c.Abilities.OfType<ActivatedAbility>().Where(a => !IsManaAbilityOf(a))).ToList();
 
         // Layer 2: control-changing effects and static abilities ("You control enchanted permanent"), in timestamp order.
@@ -3856,7 +3856,7 @@ public sealed partial class Game
 
         // Layer 6 again with the final types (filters such as "artifact creatures" depend on them).
         ApplyAbilityLayer(battlefield, effects, Statics, AffectedBy);
-        foreach (var (thief, stolen) in _sharkeyAbilities)
+        foreach (var (thief, stolen) in _borrowedLandAbilities)
             if (State.GetCard(thief) is { Zone: Zone.Battlefield, LosesAbilities: false } holder) holder.GrantedAbilities.AddRange(stolen);
 
         foreach (var card in battlefield.Where(c => c.Definition.ExtraManaOptions.Any(o => o.ColorsAmongLegendaryCreatureCardsInGraveyard)))

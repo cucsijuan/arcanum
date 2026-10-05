@@ -135,8 +135,8 @@ public class CommanderFormatTests
         Card("Anvil Duke", "Legendary Creature — Dwarf", new[] { "R" }),
         Card("Twin A", "Legendary Creature — Elf", new[] { "G" }, "Partner (You can have two commanders if both have partner.)", new[] { "Partner" }),
         Card("Twin B", "Legendary Creature — Dwarf", new[] { "R" }, "Partner", new[] { "Partner" }),
-        Card("Hobbit Hero", "Legendary Creature — Halfling", new[] { "G" }, "Partner with Loyal Friend\nVigilance", new[] { "Partner with", "Partner", "Vigilance" }),
-        Card("Loyal Friend", "Legendary Creature — Halfling", new[] { "G" }, "Partner with Hobbit Hero (When this creature enters, target player may put Hobbit Hero into their hand from their library, then shuffle.)", new[] { "Partner with", "Partner" }),
+        Card("Meadow Hero", "Legendary Creature — Halfling", new[] { "G" }, "Partner with Loyal Friend\nVigilance", new[] { "Partner with", "Partner", "Vigilance" }),
+        Card("Loyal Friend", "Legendary Creature — Halfling", new[] { "G" }, "Partner with Meadow Hero (When this creature enters, target player may put Meadow Hero into their hand from their library, then shuffle.)", new[] { "Partner with", "Partner" }),
         Card("Bard Hero", "Legendary Creature — Human", new[] { "R" }, "Choose a Background (You can have a Background as a second commander.)", new[] { "Choose a background" }),
         Card("Noble Upbringing", "Legendary Enchantment — Background", new[] { "G" }, "Commander creatures you own get +1/+1."),
         Card("Plain Bear", "Creature — Bear", new[] { "G" }),
@@ -214,9 +214,9 @@ public class CommanderFormatTests
     [Fact]
     public void PartnerWithPairsOnlyWithTheNamedCard()
     {
-        Assert.Empty(PairErrors("Hobbit Hero", "Loyal Friend"));
+        Assert.Empty(PairErrors("Meadow Hero", "Loyal Friend"));
         // "Partner with" is not plain partner: it doesn't pair with other partners.
-        Assert.Contains(PairErrors("Hobbit Hero", "Twin A"), e => e.Contains("two that can be together"));
+        Assert.Contains(PairErrors("Meadow Hero", "Twin A"), e => e.Contains("two that can be together"));
     }
 
     [Fact]

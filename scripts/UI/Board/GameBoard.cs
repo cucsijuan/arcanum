@@ -148,7 +148,7 @@ public partial class GameBoard : Control
     private void UseMatch(MatchSetup match)
     {
         _match = match;
-        var setup = match.Sandbox && App.Instance.Cards is { } cards ? SandboxSetup(cards) : null;
+        var setup = match.Sandbox ? SandboxSetup() : null;
         _newSession = MatchFactory(match.Seats, match.StartingLife, match.Commander, setup);
     }
 
@@ -173,7 +173,7 @@ public partial class GameBoard : Control
             bool bot = index == 1 && OS.GetEnvironment("ARCANUM_VS_BOT") == "1";
             seats.Add(new GameSession.Seat(bot ? "Computer" : Settings.Current.PlayerNames.ElementAtOrDefault(index) ?? $"Player {index + 1}", deck, bot));
         }
-        var setup = OS.GetEnvironment("ARCANUM_SANDBOX") == "1" ? SandboxSetup(cards) : null;
+        var setup = OS.GetEnvironment("ARCANUM_SANDBOX") == "1" ? SandboxSetup() : null;
         _newSession = MatchFactory(seats, 20, commander: false, setup);
     }
 
@@ -203,48 +203,33 @@ public partial class GameBoard : Control
     }
 
     /// <summary>
-    /// ARCANUM_SANDBOX=1: start from a prepared board for manual testing of attachments, static abilities,
-    /// counters, targeted spells and activated abilities. Card names come from the module's card data.
+    /// ARCANUM_SANDBOX=1: start from a prepared board of the generic cards for manual testing of combat, targeted
+    /// spells and activated abilities. It needs no card module.
     /// </summary>
-    private static Action<Arcanum.Engine.Game>? SandboxSetup(Arcanum.Engine.Cards.ICardDatabase cards)
+    private static Action<Arcanum.Engine.Game> SandboxSetup()
     {
-        Arcanum.Engine.Cards.CardDefinition? Get(string name) => cards.TryGet(name, out var d) ? d : null;
         var p1 = new PlayerId(0);
         var p2 = new PlayerId(1);
         return game =>
         {
-            void Put(PlayerId owner, string name, int count = 1)
+            void Put(PlayerId owner, Arcanum.Engine.Cards.CardDefinition d, int count = 1)
             {
-                if (Get(name) is { } d) for (int i = 0; i < count; i++) game.SetupPermanent(owner, d);
-            }
-            void Hand(PlayerId owner, string name)
-            {
-                if (Get(name) is { } d) game.SetupInHand(owner, d);
+                for (int i = 0; i < count; i++) game.SetupPermanent(owner, d);
             }
 
-            Put(p1, "Forest", 3);
-            Put(p1, "Mountain", 2);
-            if (Get("Grizzly Bears") is { } bears)
-            {
-                var bear = game.SetupPermanent(p1, bears);
-                if (Get("Leonin Scimitar") is { } scimitar) game.SetupPermanent(p1, scimitar, attachTo: bear);
-                if (Get("Giant Strength") is { } strength) game.SetupPermanent(p1, strength, attachTo: bear);
-            }
-            Put(p1, "Bonesplitter");
-            Put(p1, "Prodigal Sorcerer");
-            Put(p1, "Giant Spider");
-            Hand(p1, "Shock");
-            Hand(p1, "Giant Growth");
-            Hand(p1, "Timberland Guide");
-            Hand(p1, "Murder");
+            Put(p1, Arcanum.Cards.GenericCards.Forest, 3);
+            Put(p1, Arcanum.Cards.GenericCards.Mountain, 2);
+            Put(p1, Arcanum.Cards.GenericCards.GladeCub);
+            Put(p1, Arcanum.Cards.GenericCards.SparkMage);
+            Put(p1, Arcanum.Cards.GenericCards.HillBrute);
+            game.SetupInHand(p1, Arcanum.Cards.GenericCards.EmberBolt);
+            game.SetupInHand(p1, Arcanum.Cards.GenericCards.EmberBolt);
+            game.SetupInHand(p1, Arcanum.Cards.GenericCards.OgreBrute);
 
-            Put(p2, "Mountain", 3);
-            Put(p2, "Goblin Chieftain");
-            Put(p2, "Raging Goblin", 2);
-            Put(p2, "Mogg Fanatic");
-            Put(p2, "Glorious Anthem");
-            Hand(p2, "Lightning Strike");
-            Hand(p2, "Unsummon");
+            Put(p2, Arcanum.Cards.GenericCards.Mountain, 3);
+            Put(p2, Arcanum.Cards.GenericCards.OgreBrute, 2);
+            Put(p2, Arcanum.Cards.GenericCards.StoneElemental);
+            game.SetupInHand(p2, Arcanum.Cards.GenericCards.EmberBolt);
         };
     }
 

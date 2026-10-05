@@ -487,7 +487,7 @@ public sealed record Become(Subject What, int? Power = null, int? Toughness = nu
     IReadOnlyList<string>? AddSubtypes = null, IReadOnlyList<Cards.Keyword>? Keywords = null, IReadOnlyList<AbilityDefinition>? Abilities = null,
     bool Permanent = false) : Effect
 {
-    /// <summary>Base power and toughness worked out: once as the effect starts ("equal to Galion's power"), or continuously when <see cref="Continuous"/>.</summary>
+    /// <summary>Base power and toughness worked out: once as the effect starts ("equal to this creature's power"), or continuously when <see cref="Continuous"/>.</summary>
     public Quantity? PowerFrom { get; init; }
     public Quantity? ToughnessFrom { get; init; }
     public bool Continuous { get; init; }

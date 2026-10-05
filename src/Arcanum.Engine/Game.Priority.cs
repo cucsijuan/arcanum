@@ -584,7 +584,7 @@ public sealed partial class Game
         if (targets is null) return false;
 
         var cost = CastingCost(card, targets);
-        // "Without paying its mana cost" with X: X is 0, so the player may prefer to pay (Omniscience).
+        // "Without paying its mana cost" with X: X is 0, so the player may prefer to pay.
         if (card.Zone == Zone.Hand && cost.XCount > 0 && Has(player.Id, Replacements.CastFromHandFree)
             && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Cast {card.Name} without paying its mana cost (X = 0)?", cardId)))
             cost = ManaCost.Zero;

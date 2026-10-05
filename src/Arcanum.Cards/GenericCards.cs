@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using Arcanum.Engine.Abilities;
 using Arcanum.Engine.Cards;
 using Arcanum.Engine.Mana;
 
@@ -45,10 +46,37 @@ public static class GenericCards
     public static readonly CardDefinition StoneElemental = Vanilla("Stone Elemental", "{3}{R}{R}", "Elemental", 4, 5);
     public static readonly CardDefinition RiverScout = Vanilla("River Scout", "{U}", "Merfolk", 1, 1);
 
+    /// <summary>Instant dealing 3 damage to any target.</summary>
+    public static readonly CardDefinition EmberBolt = new()
+    {
+        Name = "Ember Bolt",
+        Types = CardType.Instant,
+        ManaCost = ManaCost.Parse("{R}"),
+        Spell = new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Any) }, Effects = new Effect[] { new DealDamage(3, Subject.TargetAt(0)) } },
+        OracleText = "Ember Bolt deals 3 damage to any target.",
+    };
+
+    /// <summary>Creature with a tap ability dealing 1 damage to any target.</summary>
+    public static readonly CardDefinition SparkMage = new()
+    {
+        Name = "Spark Mage",
+        ManaCost = ManaCost.Parse("{2}{R}"),
+        Types = CardType.Creature,
+        Subtypes = new[] { "Wizard" },
+        Power = 1,
+        Toughness = 1,
+        Abilities = new AbilityDefinition[]
+        {
+            new ActivatedAbility { Cost = AbilityCost.TapOnly, Text = "{T}: Spark Mage deals 1 damage to any target.", Targets = new[] { new TargetSpec(TargetKind.Any) }, Effects = new Effect[] { new DealDamage(1, Subject.TargetAt(0)) } },
+        },
+        OracleText = "{T}: Spark Mage deals 1 damage to any target.",
+    };
+
     public static IReadOnlyList<CardDefinition> All { get; } = new[]
     {
         Plains, Island, Swamp, Mountain, Forest, BarrenFlats,
         PlainsLion, GladeCub, OgreBrute, HillBrute, GreatWurm, StoneElemental, RiverScout,
+        EmberBolt, SparkMage,
     };
 }
 
