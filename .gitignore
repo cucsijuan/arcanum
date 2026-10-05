@@ -21,3 +21,6 @@ TestResults/
 
 # Local tool folders
 /.claude/
+
+# Third-party UI art (licensed; not redistributable in this repository)
+/source-ui/
