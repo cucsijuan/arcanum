@@ -116,7 +116,7 @@ public sealed partial class Game
                 bool pay = State.GetPlayer(who).Life >= life
                            && await ControllerOf(who).ChooseYesNoAsync(ViewFor(who), new YesNoRequest($"Pay {life} life so {card.Name} enters untapped?", id));
                 if (pay) ChangeLife(who, -life);
-                else card.Tapped = true;
+                else EnterTapped(card);
                 continue;
             }
             else if (card.Definition.ChooseOnEnter == EnterChoice.RevealOrTapped)
@@ -132,7 +132,7 @@ public sealed partial class Game
                     Require(shown.Count <= 1 && shown.All(eligible.Contains), "Reveal one of the listed cards.");
                 }
                 if (shown.Count == 1) Emit(new CardsRevealed(who, shown.ToList()));
-                else card.Tapped = true;
+                else EnterTapped(card);
                 continue;
             }
             else if (card.Definition.ChooseOnEnter == EnterChoice.OddOrEven)
@@ -688,7 +688,7 @@ public sealed partial class Game
         if (paysLife) ChangeLife(player.Id, -card.Definition.ManaCost.ManaValue);
         foreach (var id in delved) MoveCard(id, Zone.Exile);
         foreach (var c in conspirators ?? new List<Card>())
-            if (!c.Tapped) { c.Tapped = true; Emit(new PermanentTapped(c.Id)); }
+            Tap(c);
         bool treasure = paidMana.Taps.Any(t => State.GetCard(t.Source).HasSubtype("Treasure")) || paidMana.SpecialSpent.Any(u => State.GetCard(u.Source).HasSubtype("Treasure"));
         await PayExtraAsync(player.Id, card.Definition.AdditionalCost, cardId);
         if (option?.Extra is { } chosenExtra) await PayExtraAsync(player.Id, chosenExtra, cardId);
@@ -863,8 +863,7 @@ public sealed partial class Game
         if (await PayManaTapsAsync(player, source.Id, cost, exclude, AbilityManaUsable(source, ability, player.Id), UnitUsableFor(source, isAbility: true)) is null) return false;
         if (ability.Cost.Tap)
         {
-            source.Tapped = true;
-            Emit(new PermanentTapped(source.Id));
+            Tap(source);
         }
         if (ability.Cost.RemoveCounters > 0)
             source.Counters[ability.Cost.RemoveCounterKind] = source.CounterCount(ability.Cost.RemoveCounterKind) - ability.Cost.RemoveCounters;
@@ -889,8 +888,7 @@ public sealed partial class Game
         if (ability.Cost.ReturnSelfToHand) MoveCard(source.Id, Zone.Hand);
         if (ability.Cost.TapGranter && ability.GrantedBy is { } granter)
         {
-            State.GetCard(granter).Tapped = true;
-            Emit(new PermanentTapped(granter));
+            Tap(State.GetCard(granter));
         }
         if (ability.Cost.Loyalty is { } loyalty)
         {
@@ -1030,8 +1028,7 @@ public sealed partial class Game
             Require(extra.CrewPower > 0 ? chosen.Sum(id => State.GetCard(id).Power) >= extra.CrewPower : chosen.Count == extra.TapCount, "Not enough to pay the cost.");
             foreach (var id in chosen)
             {
-                State.GetCard(id).Tapped = true;
-                Emit(new PermanentTapped(id));
+                Tap(State.GetCard(id));
             }
         }
         if (extra.RemoveCountersFromYourCreatures > 0)
@@ -1167,8 +1164,7 @@ public sealed partial class Game
     private async Task TapForManaAsync(Player player, ManaTap tap)
     {
         var source = State.GetCard(tap.Source);
-        source.Tapped = true;
-        Emit(new PermanentTapped(tap.Source));
+        Tap(source);
         Emit(new TappedForMana(player.Id, tap.Source));
         var option = tap.Option < source.ManaOptions.Count ? source.ManaOptions[tap.Option] : null;
         // Restricted mana remembers what it may pay for; the source's "chosen" type or color is fixed now.

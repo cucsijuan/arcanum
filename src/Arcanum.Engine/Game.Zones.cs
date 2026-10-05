@@ -55,9 +55,10 @@ public sealed partial class Game
     }
 
     /// <summary>Moves a card between zones. Cards always go to their owner's per-player zones (rule 400.3).</summary>
+    /// <param name="tapped">A permanent entering the battlefield tapped (rule 614.1c): it is tapped from the start, with no event.</param>
     /// <param name="kicked">A spell cast with kicker becoming a permanent: it remembers it was kicked (for "if it was kicked").</param>
     private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
-        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0)
+        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false)
     {
         bool shuffleAfter = false;
         var enterCounters = new List<(Abilities.CounterKind Kind, int Count)>();
@@ -123,10 +124,10 @@ public sealed partial class Game
                 card.BaseController = card.Controller;
                 card.AttachedTo = attachTo;
                 // Replacement effects that modify how the permanent enters (rule 614.1c).
-                if (card.Definition.EntersTapped) card.Tapped = true;
+                if (tapped || card.Definition.EntersTapped) card.Tapped = true;
                 if (card.Definition.EntersTappedUnless is { } unless && !Holds(unless, card.Controller, card)) card.Tapped = true;
                 if (card.IsCreature && OpponentsCreaturesEnterTapped(card.Controller)) card.Tapped = true;
-                // Counters it enters with are "put on" it (rule 122.6): they're applied right after it enters.
+                // Counters it enters with (rule 122.6) are on it before it is announced as entered, so its enters triggers see them.
                 if (card.Definition.EntersWithCounters > 0
                     && (card.Definition.EntersWithCountersIf is not { } cond || Holds(cond, card.Controller, card)))
                     enterCounters.Add((card.Definition.EntersWithCounterKind, card.Definition.EntersWithCounters));
@@ -139,9 +140,9 @@ public sealed partial class Game
                 if (card.HasSubtype("Angel"))
                 {
                     int angels = State.Battlefield.Select(State.GetCard).Count(c => c.Controller == card.Controller && c.HasSubtype("Angel"));
-                    int giadas = State.Battlefield.Select(State.GetCard)
+                    int extraCounterSources = State.Battlefield.Select(State.GetCard)
                         .Count(c => c.Controller == card.Controller && (c.Definition.Replaces & Cards.Replacements.AngelsEnterWithCounters) != 0);
-                    enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, angels * giadas));
+                    enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, angels * extraCounterSources));
                 }
                 State.Battlefield.Add(id);
                 if (card.IsCreature && ExtraEnterCounters(card) is var extraCounters and > 0) enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, extraCounters));
@@ -158,10 +159,12 @@ public sealed partial class Game
                 owner.GetZone(to).Add(id);
                 break;
         }
+        // The permanent is on the battlefield with its counters before anything reacts to it entering (rule 614.1c).
+        var placedCounters = to == Zone.Battlefield ? PlaceEnterCounters(card, enterCounters) : new List<(Abilities.CounterKind Kind, int Count)>();
         RecomputeContinuousEffects();
         int leavingVersion = card.Version - 1;
         Emit(new CardMoved(id, card.Owner, from, to, lastController));
-        foreach (var (kind, count) in enterCounters) PutCounters(card, kind, count, card.Controller);
+        AnnounceEnterCounters(card, placedCounters);
         if (shuffleAfter) Shuffle(owner);
 
         // Cards exiled "until this leaves the battlefield" come back (rule 610.3).

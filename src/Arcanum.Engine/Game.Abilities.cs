@@ -717,8 +717,7 @@ public sealed partial class Game
                 BeginEnteringTogether();
                 foreach (var id in chosen.Where(id => State.GetCard(id).Is(CardType.Land)))
                 {
-                    MoveCard(id, Zone.Battlefield, controller: ctx.Controller);
-                    State.GetCard(id).Tapped = true;
+                    MoveCard(id, Zone.Battlefield, controller: ctx.Controller, tapped: true);
                 }
                 EndEnteringTogether();
                 var rest = top.Where(id => !chosen.Contains(id)).ToList();
@@ -1058,8 +1057,7 @@ public sealed partial class Game
                              && Matches(toBattlefield with { Controller = ControllerFilter.Any }, State.GetCard(hit), ctx.Controller, ctx.Source, ctx.Controller)
                         ? Zone.Battlefield : ru.To;
                     var host = ru.AttachTo is { } attachTo ? CardsFor(attachTo, ctx).FirstOrDefault(c => c.Zone == Zone.Battlefield && c.IsCreature) : null;
-                    MoveCard(hit, to, controller: ctx.Controller, attachTo: to == Zone.Battlefield && host is not null && State.GetCard(hit).HasSubtype("Equipment") ? host.Id : null);
-                    if (ru.Tapped && State.GetCard(hit).Zone == Zone.Battlefield) State.GetCard(hit).Tapped = true;
+                    MoveCard(hit, to, controller: ctx.Controller, attachTo: to == Zone.Battlefield && host is not null && State.GetCard(hit).HasSubtype("Equipment") ? host.Id : null, tapped: ru.Tapped);
                 }
                 if (hits.Count > 0) EndEnteringTogether();
                 if (ru.RestToGraveyard)
@@ -1168,8 +1166,7 @@ public sealed partial class Game
                     new CardChoiceRequest($"Untap up to {uu.Count}", ctx.Source.Id, options, 0, Math.Min(uu.Count, tapped.Count), CardChoicePurpose.ToBattlefield));
                 foreach (var id in chosen.Where(id => tapped.Any(c => c.Id == id)))
                 {
-                    State.GetCard(id).Tapped = false;
-                    Emit(new PermanentUntapped(id));
+                    Untap(State.GetCard(id));
                 }
                 break;
             }
@@ -1195,8 +1192,7 @@ public sealed partial class Game
                 if (ac.UntapCreatures)
                     foreach (var card in State.PermanentsControlledBy(ctx.Controller).Where(c => c.IsCreature && c.Tapped).ToList())
                     {
-                        card.Tapped = false;
-                        Emit(new PermanentUntapped(card.Id));
+                        Untap(card);
                     }
                 break;
             case CopySpell cs:
@@ -1384,8 +1380,7 @@ public sealed partial class Game
                 if (p.AttachTo is not null && attachTo is null) break; // an Aura returned attached to a creature that is gone stays where it is
                 foreach (var card in cards)
                 {
-                    MoveCard(card.Id, Zone.Battlefield, controller: p.UnderOwnersControl ? card.Owner : ctx.Controller, attachTo: attachTo);
-                    if (p.Tapped && !card.Tapped) card.Tapped = true;
+                    MoveCard(card.Id, Zone.Battlefield, controller: p.UnderOwnersControl ? card.Owner : ctx.Controller, attachTo: attachTo, tapped: p.Tapped);
                     if (p.Attacking && State.Combat is { } combat && card.IsCreature)
                     {
                         // Put onto the battlefield attacking: its controller chooses which player it attacks (rule 508.4).
@@ -1654,10 +1649,10 @@ public sealed partial class Game
                     }
                 break;
             case TapIt t:
-                foreach (var card in CardsFor(t.What, ctx).Where(c => !c.Tapped)) { card.Tapped = true; Emit(new PermanentTapped(card.Id)); }
+                foreach (var card in CardsFor(t.What, ctx).Where(c => !c.Tapped)) Tap(card);
                 break;
             case UntapIt u:
-                foreach (var card in CardsFor(u.What, ctx).Where(c => c.Tapped)) { card.Tapped = false; Emit(new PermanentUntapped(card.Id)); }
+                foreach (var card in CardsFor(u.What, ctx).Where(c => c.Tapped)) Untap(card);
                 break;
             case Mill m:
                 foreach (var player in PlayersFor(m.Who, ctx).ToList())
@@ -1858,10 +1853,9 @@ public sealed partial class Game
                 BeginEnteringTogether();
                 foreach (var id in pick.Where(id => options.Any(c => c.Id == id)))
                 {
-                    MoveCard(id, Zone.Battlefield, controller: who);
+                    MoveCard(id, Zone.Battlefield, controller: who, tapped: ph.Tapped);
                     var entered = State.GetCard(id);
                     if (entered.Zone != Zone.Battlefield) continue;
-                    if (ph.Tapped) entered.Tapped = true;
                     if (ph.Attacking && State.Combat is { } combat && entered.IsCreature)
                         combat.Attacks.Add(new AttackInfo { Attacker = id, Defender = await AttackedPlayerFor(entered, ctx) });
                 }
@@ -1908,9 +1902,8 @@ public sealed partial class Game
                     options.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 0, options.Count, CardChoicePurpose.Sacrifice));
                 foreach (var card in options.Where(c => pick.Contains(c.Id)))
                 {
-                    card.Tapped = true;
+                    Tap(card);
                     ctx.Results.Tapped++;
-                    Emit(new PermanentTapped(card.Id));
                 }
                 break;
             }
@@ -2018,8 +2011,7 @@ public sealed partial class Game
                 BeginEnteringTogether();
                 foreach (var card in blinked)
                 {
-                    MoveCard(card.Id, Zone.Battlefield, controller: card.Owner);
-                    if (bl.Tapped && card.Zone == Zone.Battlefield) card.Tapped = true;
+                    MoveCard(card.Id, Zone.Battlefield, controller: card.Owner, tapped: bl.Tapped);
                 }
                 EndEnteringTogether();
                 break;
@@ -2867,13 +2859,19 @@ public sealed partial class Game
     {
         var token = definition with { IsToken = true };
         var id = new CardId(State.Cards.Keys.Max(k => k.Value) + 1);
-        var card = new Card(id, token, controller) { Zone = Zone.Battlefield, Tapped = tapped || token.EntersTapped };
+        var card = new Card(id, token, controller)
+        {
+            Zone = Zone.Battlefield, Tapped = tapped || token.EntersTapped || (definition.IsCreature() && OpponentsCreaturesEnterTapped(controller)),
+        };
         State.Cards.Add(id, card);
         State.Battlefield.Add(id);
-        if (definition.IsCreature() && OpponentsCreaturesEnterTapped(controller)) card.Tapped = true;
+        // It enters with the counters other permanents give it (rule 614.1c), so they are there when its enters triggers are collected.
+        var entering = new List<(CounterKind Kind, int Count)>();
+        if (card.IsCreature && ExtraEnterCounters(card) is var extra and > 0) entering.Add((CounterKind.PlusOnePlusOne, extra));
+        var placed = PlaceEnterCounters(card, entering);
         Emit(new TokenCreated(id, controller));
         Emit(new CardMoved(id, controller, Zone.Exile, Zone.Battlefield, controller));
-        if (card.IsCreature && ExtraEnterCounters(card) is var extra and > 0) PutCounters(card, CounterKind.PlusOnePlusOne, extra, controller);
+        AnnounceEnterCounters(card, placed);
         return id;
     }
 
@@ -2915,6 +2913,38 @@ public sealed partial class Game
             return;
         }
         PlaceCounters(card, kind, (count + plusOnes) << doublings, placedBy);
+    }
+
+    /// <summary>
+    /// Puts on a permanent the counters it enters with, before it is announced as entered: it enters with them (rules 614.1c,
+    /// 122.6), so its enters triggers and their intervening "if" conditions (rule 603.4) see them. Counter replacement effects
+    /// still apply. Returns what was placed, to be announced afterwards with <see cref="AnnounceEnterCounters"/>. Counters whose
+    /// replacement effects need their controller to choose an order are put right after the current effect instead
+    /// (see <see cref="PutCounters"/>).
+    /// </summary>
+    private List<(CounterKind Kind, int Count)> PlaceEnterCounters(Card card, IEnumerable<(CounterKind Kind, int Count)> counters)
+    {
+        var placed = new List<(CounterKind, int)>();
+        foreach (var (kind, count) in counters)
+        {
+            if (count <= 0) continue;
+            int plusOnes = ExtraCounterInstances(card, kind), doublings = Instances(card.Controller, Replacements.DoubleCounters);
+            if (plusOnes > 0 && doublings > 0)
+            {
+                _pendingCounters.Add((card.Id, card.Version, kind, count, card.Controller));
+                continue;
+            }
+            int amount = (count + plusOnes) << doublings;
+            card.Counters[kind] = card.CounterCount(kind) + amount;
+            placed.Add((kind, amount));
+        }
+        return placed;
+    }
+
+    /// <summary>Announces counters placed by <see cref="PlaceEnterCounters"/>.</summary>
+    private void AnnounceEnterCounters(Card card, List<(CounterKind Kind, int Count)> placed)
+    {
+        foreach (var (kind, amount) in placed) Emit(new CountersPlaced(card.Id, kind, amount, card.Controller));
     }
 
     private void PlaceCounters(Card card, CounterKind kind, int count, PlayerId? placedBy)
@@ -3117,8 +3147,7 @@ public sealed partial class Game
             {
                 if (search.To == Zone.Library) { onTop.Add(id); continue; }
                 var to = toBattlefield is null ? search.To : id == toBattlefield ? Zone.Battlefield : Zone.Hand;
-                MoveCard(id, to, controller: who);
-                if (to == Zone.Battlefield && (search.Tapped || toBattlefield is not null)) State.GetCard(id).Tapped = true;
+                MoveCard(id, to, controller: who, tapped: search.Tapped || toBattlefield is not null);
             }
             EndEnteringTogether();
             Shuffle(player);
@@ -3248,8 +3277,7 @@ public sealed partial class Game
         foreach (var id in chosen)
         {
             if (look.TakeTo == Zone.Library) continue; // stays on top
-            MoveCard(id, look.TakeTo, controller: who);
-            if (look.Tapped && State.GetCard(id).Zone == Zone.Battlefield) State.GetCard(id).Tapped = true;
+            MoveCard(id, look.TakeTo, controller: who, tapped: look.Tapped);
         }
         EndEnteringTogether();
         if (look.RestShuffled)

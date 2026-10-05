@@ -83,8 +83,7 @@ public sealed partial class Game
                 var attacker = State.GetCard(d.Attacker);
                 if (!attacker.Has(Keyword.Vigilance))
                 {
-                    attacker.Tapped = true;
-                    Emit(new PermanentTapped(d.Attacker));
+                    Tap(attacker);
                 }
                 Emit(new AttackerDeclared(d.Attacker, d.Defender));
                 // The Ring, level 2: "Whenever your Ring-bearer attacks, draw a card, then discard a card."

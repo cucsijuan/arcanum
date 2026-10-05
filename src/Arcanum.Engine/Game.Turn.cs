@@ -135,8 +135,7 @@ public sealed partial class Game
                         if (permanent.CounterCount(Abilities.CounterKind.PlusOnePlusOne) == 0) continue;
                         permanent.Counters[Abilities.CounterKind.PlusOnePlusOne]--;
                     }
-                    permanent.Tapped = false;
-                    Emit(new PermanentUntapped(permanent.Id));
+                    Untap(permanent);
                 }
                 givesPriority = false; // rule 502.4
                 break;

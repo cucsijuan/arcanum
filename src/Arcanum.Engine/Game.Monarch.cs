@@ -112,11 +112,7 @@ public sealed partial class Game
         card.Damage = 0;
         card.DamagedByDeathtouch = false;
         State.Combat?.Remove(card.Id);
-        if (!card.Tapped)
-        {
-            card.Tapped = true;
-            Emit(new PermanentTapped(card.Id));
-        }
+        Tap(card);
         Emit(new ChoiceMade(card.Id, "regenerated"));
         return true;
     }

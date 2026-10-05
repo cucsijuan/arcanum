@@ -102,11 +102,7 @@ public sealed partial class Game
             if (card.Zone != Zone.Battlefield) continue;
             PutCounters(card, CounterKind.Stun, group.Count(), ctx.Controller);
             await ResolvePendingCountersAsync();
-            if (!card.Tapped)
-            {
-                card.Tapped = true;
-                Emit(new PermanentTapped(card.Id));
-            }
+            Tap(card);
         }
     }
 
