@@ -56,7 +56,7 @@ it. Suspend also sets `HasteOnEnter` before the cast and doesn't undo it.
 haste rider applied only when the spell is actually cast.
 **Test:** decline the free cast; the card is not castable afterwards.
 
-### R7. Casting steps out of order: alternative costs after targets
+### R7. Casting steps out of order: alternative costs after targets — **done**
 `CastAsItIsAsync` (`Game.Priority.cs` ~535-620) asks for dash and for "without paying its mana cost" (with X) after targets.
 Rule 601.2b: the alternative cost is announced with modes, kicker and splice, before targets (601.2c). It matters when an
 alternative cost changes what can be targeted or when targets depend on the total cost.
@@ -98,7 +98,7 @@ the owner out.
 
 ## P2 — duplicated paths
 
-### D1. "Can this be cast?" and "what does casting cost?" are two implementations
+### D1. "Can this be cast?" and "what does casting cost?" are two implementations — **done**
 `CanCast` (`Game.Priority.cs` ~261) rebuilds the cost (delve, dash, extra flash cost, graveyard costs, paying life) separately
 from `CastAsItIsAsync`. When they disagree, an action is offered and then can't be paid: that is how the dash bug of the
 Commander soak happened, and the bots now carry a guard (`BotController`, backed-out actions) that hides such cases.
@@ -144,7 +144,7 @@ Against the project rule, the main repository names real cards in identifiers an
 **Fix:** rename to describe the rule, write the comments generically, make the sandbox use generic test cards
 (`Arcanum.Cards`), rename the test cards. Add a test that greps the main repository for the module's card names.
 
-### H2. A test hook in the bots hides engine errors
+### H2. A test hook in the bots hides engine errors — **done**
 See D1: the backed-out-action guard in `BotController` should go once D1 is done; until then, soak tests should report how
 often it fires.
 
@@ -172,6 +172,15 @@ explicit about this case; the choice matches how other engines treat it. Pinned 
 It is now one of the zone-change replacements (`OntoBattlefieldInsteadOfDiscard`, only for a discard from the hand caused
 by an opponent's spell or ability), so it is ordered with the others when several apply. A card put onto the battlefield
 instead is not discarded (614.6: no `CardDiscarded`); one that goes elsewhere (exile, library) still is.
+
+### L4. Left over from the single casting-cost function
+- A reduction "if it targets X" steers target choice only for single-target spells; with several targets a cast that turns
+  out unaffordable is reversed (601.2h) and recorded instead.
+- Separate costs that each sacrifice, discard or tap are checked one by one for candidates; only life and graveyard exiles
+  are summed across them.
+- A card with its own flashback that is also granted flashback offers only one flashback cost.
+- Activated abilities still announce X after targets (except when a target filter uses X): apply 602.2b like spells.
+- `CastFromHand` is set before announcements and not reset when the cast is backed out of.
 
 ## Suggested order
 
