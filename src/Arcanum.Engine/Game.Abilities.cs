@@ -798,8 +798,7 @@ public sealed partial class Game
                         new CardChoiceRequest("Cast a spell from among the exiled cards for free (or none)", ctx.Source.Id, options, 0, 1, CardChoicePurpose.ToBattlefield));
                     if (pick.Count == 0) break;
                     Require(castable.Any(c => c.Id == pick[0]), "Choose one of the exiled cards.");
-                    State.PlayableFromExile.Add(new PlayableFromExile(pick[0], State.GetCard(pick[0]).Version, ctx.Controller, State.TurnNumber, WithoutPaying: true));
-                    if (!await CastSpellAsync(State.GetPlayer(ctx.Controller), pick[0])) break;
+                    if (!await CastNowWithoutPayingAsync(State.GetPlayer(ctx.Controller), pick[0])) break;
                 }
                 break;
             }
@@ -1031,8 +1030,7 @@ public sealed partial class Game
                     if (revealedHit is { } free && HasLegalTargets(CastingTargets(State.GetCard(free).Definition), ctx.Controller, free)
                         && await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast {State.GetCard(free).Name} without paying its mana cost?", free)))
                     {
-                        State.PlayableFromExile.Add(new PlayableFromExile(free, State.GetCard(free).Version, ctx.Controller, State.TurnNumber, WithoutPaying: true));
-                        await CastSpellAsync(State.GetPlayer(ctx.Controller), free);
+                        await CastNowWithoutPayingAsync(State.GetPlayer(ctx.Controller), free);
                     }
                     var leftover = exiled.Where(id => State.GetCard(id).Zone == Zone.Exile).ToList();
                     Rng.Shuffle(leftover);
@@ -1828,8 +1826,7 @@ public sealed partial class Game
                 if (hit is { } found && HasLegalTargets(CastingTargets(State.GetCard(found).Definition), ctx.Controller, found)
                     && await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cascade: cast {State.GetCard(found).Name} without paying its mana cost?", found)))
                 {
-                    State.PlayableFromExile.Add(new PlayableFromExile(found, State.GetCard(found).Version, ctx.Controller, State.TurnNumber, WithoutPaying: true));
-                    await CastSpellAsync(player, found);
+                    await CastNowWithoutPayingAsync(player, found);
                 }
                 var rest = exiled.Where(id => State.GetCard(id).Zone == Zone.Exile).ToList();
                 Rng.Shuffle(rest);
@@ -1847,9 +1844,7 @@ public sealed partial class Game
                 var pick = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest($"You may cast a spell with mana value {max} or less from your hand for free", ctx.Source.Id,
                     options.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 0, 1, CardChoicePurpose.ToBattlefield));
                 if (pick.Count != 1 || options.All(c => c.Id != pick[0])) break;
-                _castFree.Add(pick[0]);
-                try { await CastSpellAsync(State.GetPlayer(who), pick[0]); }
-                finally { _castFree.Remove(pick[0]); }
+                await CastNowWithoutPayingAsync(State.GetPlayer(who), pick[0]);
                 break;
             }
             case PutFromHand ph:
@@ -1940,8 +1935,7 @@ public sealed partial class Game
                 if (!copy.Is(CardType.Land) && HasLegalTargets(CastingTargets(copy.Definition), ctx.Controller, id)
                     && await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast the copy of {copy.Name} without paying its mana cost?", id)))
                 {
-                    State.PlayableFromExile.Add(new PlayableFromExile(id, copy.Version, ctx.Controller, State.TurnNumber, WithoutPaying: true));
-                    await CastSpellAsync(State.GetPlayer(ctx.Controller), id);
+                    await CastNowWithoutPayingAsync(State.GetPlayer(ctx.Controller), id);
                 }
                 if (copy.Zone == Zone.Exile) State.GetPlayer(ctx.Controller).Exile.Remove(id); // an uncast copy ceases to exist
                 break;
@@ -2151,14 +2145,20 @@ public sealed partial class Game
                     castable.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 0, 1, CardChoicePurpose.ToBattlefield));
                 if (pick.Count != 1 || castable.All(c => c.Id != pick[0])) break;
                 var card = State.GetCard(pick[0]);
-                State.PlayableFromGraveyard.Add(new PlayableFromExile(card.Id, card.Version, who, State.TurnNumber));
+                var permission = new PlayableFromExile(card.Id, card.Version, who, State.TurnNumber);
+                State.PlayableFromGraveyard.Add(permission);
                 if (cg.Free) _castFree.Add(card.Id);
                 try
                 {
                     // "If that spell would be put into a graveyard, exile it instead."
                     if (await CastSpellAsync(player, card.Id)) State.ExileInsteadOfGraveyard.Add((card.Id, card.Version));
                 }
-                finally { _castFree.Remove(card.Id); }
+                finally
+                {
+                    // The permission is for this cast only: a cast that was backed out of leaves the card where it was.
+                    _castFree.Remove(card.Id);
+                    State.PlayableFromGraveyard.Remove(permission);
+                }
                 break;
             }
             case PreventDamageBy pd:
@@ -2557,9 +2557,8 @@ public sealed partial class Game
                 }
                 if (!HasLegalTargets(CastingTargets(suspended.Definition), owner.Id, suspended.Id)
                     || !await ControllerOf(owner.Id).ChooseYesNoAsync(ViewFor(owner.Id), new YesNoRequest($"Cast {suspended.Name} without paying its mana cost?", suspended.Id))) break;
-                State.PlayableFromExile.Add(new PlayableFromExile(suspended.Id, suspended.Version, owner.Id, State.TurnNumber, WithoutPaying: true));
-                if (suspended.IsCreature) suspended.HasteOnEnter = true;
-                await CastSpellAsync(owner, suspended.Id);
+                // A creature cast this way gains haste, but only if it's actually cast.
+                await CastNowWithoutPayingAsync(owner, suspended.Id, hasteOnEnter: suspended.IsCreature);
                 break;
             }
             case SuspendWhenResolves sw:
@@ -2661,8 +2660,7 @@ public sealed partial class Game
                     break;
                 }
                 if (!HasLegalTargets(CastingTargets(hidden.Definition), ctx.Controller, hidden.Id)) break;
-                State.PlayableFromExile.Add(new PlayableFromExile(hidden.Id, hidden.Version, ctx.Controller, State.TurnNumber, WithoutPaying: true));
-                await CastSpellAsync(player, hidden.Id);
+                await CastNowWithoutPayingAsync(player, hidden.Id);
                 break;
             }
             case BecomeRenowned br:

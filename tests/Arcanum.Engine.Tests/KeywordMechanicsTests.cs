@@ -202,6 +202,99 @@ public class KeywordMechanicsTests
         Assert.Equal(Zone.Graveyard, s.Card(spell).Zone);
     }
 
+    private static readonly TargetSpec EnemyPlayer = new(TargetKind.Player, ControllerFilter.Opponent);
+
+    [Fact]
+    public async Task ABackedOutFreeCastOfASuspendedCardLeavesNoPermissionBehind()
+    {
+        var s = Casting();
+        var spell = s.InHand(P0, new CardDefinition
+        {
+            Name = "Delayed Bolt", ManaCost = ManaCost.Parse("{5}"), Types = CardType.Sorcery,
+            Spell = new SpellAbility { Targets = new[] { EnemyPlayer }, Effects = new Effect[] { new DealDamage(3, Subject.TargetAt(0)) } },
+        });
+        bool moved = false, offeredLater = false;
+        s.Attacker.Targets = (_, _) => null; // backs out of choosing targets
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!moved)
+            {
+                moved = true;
+                var card = s.Card(spell);
+                s.Game.State.GetPlayer(P0).Hand.Remove(spell);
+                s.Game.State.GetPlayer(P0).Exile.Add(spell);
+                card.Zone = Zone.Exile;
+                card.Counters[CounterKind.Time] = 1;
+                card.Suspended = true;
+            }
+            if (s.Game.State.TurnNumber == 3 && legal.OfType<CastSpell>().Any(c => c.Card == spell)) offeredLater = true;
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn(4);
+        Assert.Equal(Zone.Exile, s.Card(spell).Zone);
+        Assert.False(offeredLater);
+        Assert.DoesNotContain(s.Game.State.PlayableFromExile, p => p.Card == spell);
+    }
+
+    [Fact]
+    public async Task ABackedOutFreeCastOfASuspendedCreatureDoesNotKeepItsHaste()
+    {
+        var s = Casting();
+        var beast = s.InHand(P0, Creature("Delayed Beast", 3, 3) with
+        {
+            ManaCost = ManaCost.Parse("{5}"),
+            Spell = new SpellAbility { Targets = new[] { EnemyPlayer } },
+        });
+        bool moved = false;
+        s.Attacker.Targets = (_, _) => null;
+        s.Attacker.Act = (_, _) =>
+        {
+            if (!moved)
+            {
+                moved = true;
+                var card = s.Card(beast);
+                s.Game.State.GetPlayer(P0).Hand.Remove(beast);
+                s.Game.State.GetPlayer(P0).Exile.Add(beast);
+                card.Zone = Zone.Exile;
+                card.Counters[CounterKind.Time] = 1;
+                card.Suspended = true;
+            }
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn(4);
+        Assert.Equal(Zone.Exile, s.Card(beast).Zone);
+        Assert.False(s.Card(beast).HasteOnEnter);
+    }
+
+    [Fact]
+    public async Task ABackedOutCascadeCastLeavesNoPermissionBehind()
+    {
+        var s = Casting();
+        s.Lands(P0, 4);
+        var cheap = s.Game.SetupInLibrary(P0, new CardDefinition
+        {
+            Name = "Cascaded Bolt", ManaCost = ManaCost.Parse("{2}"), Types = CardType.Sorcery,
+            Spell = new SpellAbility { Targets = new[] { EnemyPlayer }, Effects = new Effect[] { new DealDamage(2, Subject.TargetAt(0)) } },
+        });
+        s.InHand(P0, Sorcery("Wild Burst", "{3}{R}", new GainLife(1, Subject.You)) with { Cascade = 1 });
+        bool stacked = false, offered = false, stale = false;
+        s.Attacker.Targets = (_, r) => r.Specs.Count == 0 ? Array.Empty<Abilities.Target>() : null;
+        var inner = s.Attacker.Act;
+        s.Attacker.Act = (view, legal) =>
+        {
+            if (!stacked) { stacked = true; s.Restack(P0, cheap); }
+            if (legal.OfType<CastSpell>().Any(c => c.Card == cheap)) offered = true;
+            if (s.Game.State.PlayableFromExile.Any(p => p.WithoutPaying)) stale = true;
+            return inner(view, legal);
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(21, Life(s, P0)); // the cascading spell resolved, so the cascade trigger had its turn
+        Assert.False(offered);
+        Assert.False(stale);
+        Assert.NotEqual(Zone.Battlefield, s.Card(cheap).Zone);
+        Assert.Equal(20, Life(s, P1));
+    }
+
     [Fact]
     public async Task AnOpponentsThiefDrawsInsteadOfExtraDraws()
     {

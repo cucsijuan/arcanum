@@ -1244,6 +1244,27 @@ public sealed partial class Game
     /// <summary>Cards being cast "without paying their mana cost" from the hand right now.</summary>
     private readonly HashSet<CardId> _castFree = new();
 
+    /// <summary>
+    /// Casts a card without paying its mana cost as part of an effect that's resolving (rule 608.2g): the permission
+    /// lasts only for this cast, so a cast that's backed out of or can't be completed leaves nothing behind.
+    /// <paramref name="hasteOnEnter"/> is a rider that applies only if the spell is actually cast.
+    /// </summary>
+    private async Task<bool> CastNowWithoutPayingAsync(Player player, CardId cardId, bool hasteOnEnter = false)
+    {
+        var card = State.GetCard(cardId);
+        bool hadHaste = card.HasteOnEnter;
+        if (hasteOnEnter) card.HasteOnEnter = true;
+        _castFree.Add(cardId);
+        bool cast = false;
+        try { cast = await CastSpellAsync(player, cardId); }
+        finally
+        {
+            _castFree.Remove(cardId);
+            if (!cast) card.HasteOnEnter = hadHaste;
+        }
+        return cast;
+    }
+
     private int CostReductionFor(Card card, IReadOnlyList<ChosenTarget>? targets = null)
     {
         var caster = card.Owner;
