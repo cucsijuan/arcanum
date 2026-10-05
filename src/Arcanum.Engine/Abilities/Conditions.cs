@@ -169,6 +169,39 @@ public sealed record YouControlGreatestPower : Condition;
 /// <summary>"If you have two or more opponents".</summary>
 public sealed record OpponentsAtLeast(int Count) : Condition;
 
+/// <summary>"If [option] gets more votes": strictly more than each other option.</summary>
+public sealed record MoreVotes(int Option) : Condition;
+
+/// <summary>"Each player who received no votes" (the player being affected).</summary>
+public sealed record ReceivedNoVotes : Condition;
+
+/// <summary>"If [another] [filter] entered the battlefield under your control this turn".</summary>
+public sealed record EnteredThisTurn(ObjectFilter Filter) : Condition;
+
+/// <summary>"If it isn't renowned" / "a renowned creature": the source is renowned.</summary>
+public sealed record SourceRenowned : Condition;
+
+/// <summary>"If it's attacking the player with the most life or tied for most life": the player the trigger is about.</summary>
+public sealed record TriggeredPlayerHasMostLife : Condition;
+
+/// <summary>"If this creature hasn't been exerted this turn".</summary>
+public sealed record ExertedThisTurn : Condition;
+
+/// <summary>"If there are N or more card types among cards in your graveyard" (delirium: four).</summary>
+public sealed record CardTypesInGraveyard(int AtLeast) : Condition;
+
+/// <summary>"If an opponent has more life / controls more creatures / lands / has more cards in hand than you".</summary>
+public sealed record OpponentHasMore(string What) : Condition;
+
+/// <summary>"If you cast this spell during your main phase" (addendum).</summary>
+public sealed record CastDuringYourMainPhase : Condition;
+
+/// <summary>"If it had counters on it" (the object a trigger is about, as it last existed).</summary>
+public sealed record TriggeredHadCounters : Condition;
+
+/// <summary>"If [this] has counters on it" (any kind).</summary>
+public sealed record SourceHasAnyCounters : Condition;
+
 /// <summary>"If you're the monarch".</summary>
 public sealed record IsMonarch : Condition;
 

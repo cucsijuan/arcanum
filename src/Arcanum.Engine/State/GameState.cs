@@ -50,6 +50,12 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
     /// <summary>Ends as this player's next turn begins ("until your next turn").</summary>
     public PlayerId? UntilTurnOf { get; init; }
 
+    /// <summary>Protection from these players (layer 6).</summary>
+    public IReadOnlyList<PlayerId>? ProtectionFromPlayers { get; init; }
+
+    /// <summary>It has "This creature can't attack its owner" (layer 6).</summary>
+    public bool CantAttackOwner { get; init; }
+
     /// <summary>Protection from these card types (layer 6).</summary>
     public Cards.CardType ProtectionFromTypes { get; init; }
 }
@@ -86,6 +92,16 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
     /// <summary>Mana of any type can be spent to cast it.</summary>
     public bool AnyManaType { get; init; }
 
+    /// <summary>"Until the end of your next turn": lasts through that player's first turn after <see cref="MadeOnTurn"/>.</summary>
+    public PlayerId? UntilEndOfNextTurnOf { get; init; }
+    public int MadeOnTurn { get; init; }
+
+    /// <summary>"You may cast" (not play): a land can't be played this way.</summary>
+    public bool CastOnly { get; init; }
+
+    /// <summary>"You may play a card exiled with [this]": playing one of the group ends the others' permission.</summary>
+    public int Group { get; init; }
+
     /// <summary>"When you play a card this way": the source and its ability that triggers then.</summary>
     public (CardId Source, Abilities.TriggeredAbility Ability)? WhenPlayed { get; init; }
 }
@@ -102,7 +118,14 @@ public sealed record PreventionShield(int Turn, bool CombatOnly)
 }
 
 /// <summary>A delayed triggered ability waiting for its moment ("at the beginning of the next upkeep").</summary>
-public sealed record DelayedTrigger(CardId Source, Abilities.TriggeredAbility Ability, PlayerId Controller, int Amount);
+public sealed record DelayedTrigger(CardId Source, Abilities.TriggeredAbility Ability, PlayerId Controller, int Amount)
+{
+    /// <summary>Only at this player's upkeep ("your next upkeep").</summary>
+    public PlayerId? OnlyAtUpkeepOf { get; init; }
+
+    /// <summary>"That player" for the delayed ability.</summary>
+    public PlayerId? About { get; init; }
+}
 
 /// <summary>"Prevent all damage that would be dealt by" a permanent, while a source stays on the battlefield.</summary>
 public sealed record DamagePrevention(CardId Card, int Version, CardId Source, int SourceVersion);
@@ -182,6 +205,18 @@ public sealed class GameState
     /// <summary>Creatures to be sacrificed by their controllers at end of combat (the Ring's third ability).</summary>
     public List<(CardId Card, int Version)> SacrificeAtEndOfCombat { get; } = new();
 
+    /// <summary>Permanents that can't be sacrificed this turn ("you can't sacrifice those creatures this turn"), with the player that applies to.</summary>
+    public List<(CardId Card, int Version, PlayerId Player, int Turn)> CantSacrificeThisTurn { get; } = new();
+
+    /// <summary>Objects (card, version) that are exiled instead if they would be put into a graveyard ("if that spell would be put into a graveyard, exile it instead").</summary>
+    public HashSet<(CardId Card, int Version)> ExileInsteadOfGraveyard { get; } = new();
+
+    /// <summary>Spells (card, version) exiled with time counters instead of going to the graveyard as they resolve, gaining suspend.</summary>
+    public Dictionary<(CardId Card, int Version), int> SuspendOnResolution { get; } = new();
+
+    /// <summary>Permanents exiled at end of combat ("exile the token at end of combat").</summary>
+    public List<(CardId Card, int Version)> ExileAtEndOfCombat { get; } = new();
+
     /// <summary>Turn in which players can't cast spells (-1: none).</summary>
     public int SpellsForbiddenTurn { get; set; } = -1;
 
@@ -240,6 +275,9 @@ public sealed class GameState
 
     /// <summary>Cards exiled "until an opponent becomes the monarch", with the player whose ability exiled them.</summary>
     public List<(CardId Card, int Version, PlayerId Controller)> ExiledUntilOpponentIsMonarch { get; } = new();
+
+    /// <summary>Spells cast this turn by all players (storm).</summary>
+    public int SpellsCastThisTurnCount { get; set; }
 
     /// <summary>Combats begun this turn (for "this combat").</summary>
     public int CombatsThisTurn { get; set; }

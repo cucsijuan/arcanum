@@ -27,6 +27,8 @@ public enum TargetKind
     SpellOrPermanent,
     /// <summary>A card in a graveyard ("target creature card from your graveyard": controller filter = owner).</summary>
     GraveyardCard,
+    /// <summary>A card in exile ("target creature card exiled with [this]": controller filter = owner).</summary>
+    ExiledCard,
 }
 
 /// <summary>Restriction on who controls the target ("target creature you control", "target opponent"...).</summary>
@@ -48,6 +50,9 @@ public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = C
 
     /// <summary>The controller must be the player the trigger event was about ("that player controls").</summary>
     public bool ControlledByTriggeredPlayer { get; init; }
+
+    /// <summary>The controller must be the player the creature a trigger is about is attacking ("defending player controls").</summary>
+    public bool ControlledByDefendingPlayer { get; init; }
 
     /// <summary>Text shown when choosing; set by card scripts so the player sees the printed wording.</summary>
     public string? Text { get; init; }
@@ -131,6 +136,29 @@ public enum SubjectKind
     Found,
     /// <summary>One permanent matching <see cref="Subject.Filter"/>, chosen (not targeted) as the effect happens.</summary>
     ChooseOne,
+    /// <summary>The creatures attacking the player (or planeswalker) a trigger is about ("those creatures").</summary>
+    AttackersOfTriggered,
+    /// <summary>Every attacking creature.</summary>
+    Attackers,
+    /// <summary>The player chosen by the last "choose an opponent" of this spell or ability; and that player with you.</summary>
+    ChosenPlayer,
+    YouAndChosenPlayer,
+    /// <summary>Permanents this spell or ability gained control of ("those creatures").</summary>
+    ControlGainedThisWay,
+    /// <summary>Opponents dealt combat damage this game by a creature with the source's name.</summary>
+    OpponentsDamagedBySameName,
+    /// <summary>Cards this spell or ability exiled ("the exiled card").</summary>
+    ExiledThisWay,
+    /// <summary>The objects chosen by the last "chooses" of this spell or ability.</summary>
+    Chosen,
+    /// <summary>"The player to your right": the previous living player in turn order (turn order goes to the left).</summary>
+    PlayerToYourRight,
+    /// <summary>The controller's Ring-bearer, if they have one.</summary>
+    RingBearer,
+    /// <summary>Opponents who voted for a choice the controller voted for (from the votes a trigger is about).</summary>
+    OpponentsWhoVotedWithYou,
+    /// <summary>The controller and the opponents who voted for a choice the controller voted for.</summary>
+    YouAndOpponentsWhoVotedWithYou,
     /// <summary>Permanents this spell or ability dealt damage to, matching <see cref="Subject.Filter"/> ("if a Dragon is dealt damage this way").</summary>
     DamagedThisWay,
 }

@@ -41,7 +41,10 @@ public sealed class BotController : IPlayerController
 
     /// <summary>What casting it means: the card, or its Adventure.</summary>
     private CardDefinition? SpellRules(GameView view, CastSpell cast) =>
-        Rules(view, cast.Card) is { } rules ? cast.Adventure ? rules.Adventure : rules.Adventure is not null ? rules with { Adventure = null } : rules : null;
+        Rules(view, cast.Card) is { } rules
+            ? cast.Half is { } half && rules.SplitHalves is { } halves ? halves[half]
+            : cast.Adventure ? rules.Adventure : rules.Adventure is not null ? rules with { Adventure = null } : rules
+            : null;
 
     private async Task PaceAsync()
     {

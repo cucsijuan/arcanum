@@ -121,6 +121,13 @@ public sealed partial class Game
                 State.GetPlayer(m.LastController).CreaturesDiedThisTurn++;
                 State.GetPlayer(m.LastController).PermanentLeftThisTurn = true;
                 break;
+            case DamageDealt { TargetPlayer: { } hurtPlayer } dealt:
+                State.GetPlayer(hurtPlayer).DamageTakenThisTurn += dealt.Amount;
+                if (dealt.IsCombat && State.GetCard(dealt.Source).IsCreature) State.GetPlayer(hurtPlayer).CombatDamagedByNames.Add(State.GetCard(dealt.Source).Name);
+                break;
+            case CardMoved { To: Zone.Battlefield } entered:
+                State.GetPlayer(State.GetCard(entered.Card).Controller).EnteredThisTurn.Add((entered.Card, State.GetCard(entered.Card).Version));
+                break;
             case CardMoved { From: Zone.Battlefield } left:
                 State.GetPlayer(left.LastController).PermanentLeftThisTurn = true;
                 break;
@@ -216,7 +223,7 @@ public sealed partial class Game
         bool freeFirst = Config.FreeFirstMulligan ?? IsMultiplayer;
         int handSize = Config.StartingHandSize;
         int mulligans = 0;
-        Draw(playerId, handSize);
+        await DrawAsync(playerId, handSize);
 
         int ToBottom(int m) => Math.Max(0, m - (freeFirst ? 1 : 0));
 
@@ -227,7 +234,7 @@ public sealed partial class Game
             Emit(new MulliganTaken(playerId, mulligans));
             foreach (var card in player.Hand.ToList()) MoveCard(card, Zone.Library);
             Shuffle(player);
-            Draw(playerId, handSize);
+            await DrawAsync(playerId, handSize);
         }
 
         int bottom = ToBottom(mulligans);

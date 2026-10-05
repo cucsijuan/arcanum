@@ -89,6 +89,15 @@ public sealed class Player
 
     public bool HasLost { get; set; }
 
+    /// <summary>Damage dealt to this player this turn.</summary>
+    public int DamageTakenThisTurn { get; set; }
+
+    /// <summary>Names of creatures that dealt combat damage to this player this game.</summary>
+    public HashSet<string> CombatDamagedByNames { get; } = new();
+
+    /// <summary>Permanents that entered the battlefield under this player's control this turn (card, version).</summary>
+    public List<(CardId Card, int Version)> EnteredThisTurn { get; } = new();
+
     /// <summary>"You can't lose life this turn" / "you can't lose the game this turn and your opponents can't win the game this turn": the turn it applies to.</summary>
     public int CantLoseLifeTurn { get; set; } = -1;
     public int CantLoseGameTurn { get; set; } = -1;

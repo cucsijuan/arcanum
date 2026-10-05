@@ -19,15 +19,19 @@ public sealed partial class Game
         State.PermanentsSacrificedThisTurn = 0;
         State.BlocksThisTurn.Clear();
         State.CombatsThisTurn = 0;
+        State.SpellsCastThisTurnCount = 0;
         State.PreventionShields.RemoveAll(p => p.Turn < State.TurnNumber);
         State.DamageTripled.RemoveAll(p => p.Turn < State.TurnNumber);
         State.CantAttackThisCombat.Clear();
+        State.CantSacrificeThisTurn.Clear();
         foreach (var player in State.Players)
         {
             player.CreaturesDiedThisTurn = 0;
             player.PlayersAttackedThisTurn.Clear();
             player.SacrificedThisTurn.Clear();
             player.PermanentLeftThisTurn = false;
+            player.EnteredThisTurn.Clear();
+            player.DamageTakenThisTurn = 0;
             player.AttackedThisTurn = false;
             player.LifeGainedThisTurn = 0;
             player.LifeLostThisTurn = 0;
@@ -58,7 +62,8 @@ public sealed partial class Game
         }
         State.PlayableFromGraveyard.RemoveAll(p => p.UntilTurn < State.TurnNumber);
         State.FlashbackGranted.RemoveAll(p => p.UntilTurn < State.TurnNumber);
-        State.PlayableFromExile.RemoveAll(p => p.UntilTurn < State.TurnNumber);
+        State.PlayableFromExile.RemoveAll(p => p.UntilTurn < State.TurnNumber
+                                               || (p.UntilEndOfNextTurnOf is { } who && State.LastTurnOf.TryGetValue(who, out var last) && last > p.MadeOnTurn));
         Emit(new TurnBegan(State.TurnNumber, active.Id));
 
         _skipCombatDamageSteps = false;
@@ -113,7 +118,10 @@ public sealed partial class Game
                     Emit(new PhasedIn(phased.Card));
                 }
                 RecomputeContinuousEffects();
-                foreach (var permanent in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Tapped && !c.Definition.DoesntUntap && !c.Has(Cards.Keyword.DoesntUntap)).ToList())
+                // An exerted permanent doesn't untap during its controller's next untap step (701.39a).
+                var exerted = State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.SkipsNextUntap).ToList();
+                foreach (var permanent in exerted) permanent.SkipsNextUntap = false;
+                foreach (var permanent in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Tapped && !c.Definition.DoesntUntap && !c.Has(Cards.Keyword.DoesntUntap) && !exerted.Contains(c)).ToList())
                 {
                     // A stun counter is removed instead of untapping (rule 122.1d).
                     if (permanent.CounterCount(Abilities.CounterKind.Stun) > 0)
@@ -133,7 +141,7 @@ public sealed partial class Game
                 givesPriority = false; // rule 502.4
                 break;
             case Step.Draw:
-                Draw(State.ActivePlayer);
+                await DrawAsync(State.ActivePlayer);
                 break;
             case Step.PrecombatMain:
                 // As the precombat main phase begins, its player puts a lore counter on each of their Sagas (714.3b).
@@ -158,6 +166,9 @@ public sealed partial class Game
                 foreach (var (card, version) in State.SacrificeAtEndOfCombat.ToList())
                     if (State.GetCard(card) is { Zone: Zone.Battlefield } doomed && doomed.Version == version) await SacrificePermanentAsync(card);
                 State.SacrificeAtEndOfCombat.Clear();
+                foreach (var (card, version) in State.ExileAtEndOfCombat.ToList())
+                    if (State.GetCard(card) is { Zone: Zone.Battlefield } gone && gone.Version == version) MoveCard(card, Zone.Exile);
+                State.ExileAtEndOfCombat.Clear();
                 break;
             case Step.Cleanup:
                 await CleanupAsync();
@@ -184,7 +195,11 @@ public sealed partial class Game
             foreach (var card in chosen) MoveCard(card, Zone.Graveyard);
         }
         // Damage wears off and "until end of turn" effects end at the same time (rule 514.2).
-        foreach (var permanent in State.Battlefield.Select(State.GetCard)) permanent.Damage = 0;
+        foreach (var permanent in State.Battlefield.Select(State.GetCard))
+        {
+            permanent.Damage = 0;
+            permanent.RegenerationShields = 0; // "the next time it would be destroyed this turn"
+        }
         State.UntilEndOfTurn.Clear();
         // "Until end of turn" and "until the end of your next turn" control effects end now.
         State.ControlEffects.RemoveAll(c => c.UntilEndOfTurn

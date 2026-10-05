@@ -101,8 +101,28 @@ public sealed partial class Game
         _pendingTriggers.Add(new PendingTrigger(MonarchSource(), MonarchTaken, hurt, new TriggerInfo(creature.Id, creature.Version, creature.Controller)));
     }
 
+    /// <summary>
+    /// Regeneration (701.19): if the permanent has a regeneration shield, the destruction is replaced: it's tapped, all damage is
+    /// removed from it and it's removed from combat. Returns true if that happened.
+    /// </summary>
+    private bool Regenerated(Card card, bool canBeRegenerated = true)
+    {
+        if (!canBeRegenerated || card.RegenerationShields <= 0 || card.Zone != Zone.Battlefield) return false;
+        card.RegenerationShields--;
+        card.Damage = 0;
+        card.DamagedByDeathtouch = false;
+        State.Combat?.Remove(card.Id);
+        if (!card.Tapped)
+        {
+            card.Tapped = true;
+            Emit(new PermanentTapped(card.Id));
+        }
+        Emit(new ChoiceMade(card.Id, "regenerated"));
+        return true;
+    }
+
     /// <summary>Whether <paramref name="attacker"/> may attack <paramref name="defender"/> this combat (restrictions only).</summary>
     private bool AttackForbidden(Card attacker, PlayerId defender) =>
-        State.CantAttackThisCombat.Any(r => r.Attacker == attacker.Controller && r.Protected == defender && r.Turn == State.TurnNumber && r.Combat == State.CombatsThisTurn)
-        || attacker.CantAttackPlayers.Contains(defender);
+        State.CantAttackThisCombat.Any(r => r.Attacker == attacker.Controller && r.Protected == defender && r.Turn == State.TurnNumber && (r.Combat == State.CombatsThisTurn || r.Combat == -1))
+        || attacker.CantAttackPlayers.Contains(defender) || (attacker.CantAttackOwner && attacker.Owner == defender);
 }

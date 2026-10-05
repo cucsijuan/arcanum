@@ -35,6 +35,8 @@ public sealed record AttacksDeclared(PlayerId Player, int Count) : GameEvent;
 public sealed record BlockerDeclared(CardId Blocker, CardId Attacker) : GameEvent;
 public sealed record DamageDealt(CardId Source, CardId? TargetCard, PlayerId? TargetPlayer, int Amount, bool IsCombat = false) : GameEvent;
 public sealed record AbilityActivated(PlayerId Player, CardId Source, string Text) : GameEvent;
+/// <summary>A permanent was tapped to activate a mana ability ("whenever a player taps an artifact for mana").</summary>
+public sealed record TappedForMana(PlayerId Player, CardId Source) : GameEvent;
 public sealed record AbilityTriggered(PlayerId Controller, CardId Source, string Text) : GameEvent;
 public sealed record AbilityResolved(CardId Source, string Text) : GameEvent;
 /// <summary>A spell or ability whose targets all became illegal does nothing (rule 608.2b).</summary>

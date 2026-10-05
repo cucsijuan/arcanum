@@ -5,7 +5,11 @@ namespace Arcanum.Engine.Mana;
 /// Mana with strings attached (rule 106.6): it can only be spent on what <see cref="OnlyFor"/> allows (spells, and
 /// abilities too when <see cref="AbilitiesToo"/>), or something happens when it is spent (<see cref="Rider"/>).
 /// </summary>
-public sealed record ManaUnit(ManaType Type, Core.CardId Source, Abilities.ObjectFilter? OnlyFor, bool AbilitiesToo, Abilities.ManaRider Rider);
+public sealed record ManaUnit(ManaType Type, Core.CardId Source, Abilities.ObjectFilter? OnlyFor, bool AbilitiesToo, Abilities.ManaRider Rider)
+{
+    /// <summary>Produced by a snow source ({S} can be paid with it, rule 107.4h).</summary>
+    public bool Snow { get; init; }
+}
 
 public sealed class ManaPool
 {

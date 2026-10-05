@@ -80,6 +80,12 @@ public enum Replacements : long
     ExtraTriggersFromLegendariesAndArtifactsMoving = 1L << 32,
     /// <summary>Mana of any type can be spent to activate this permanent's abilities.</summary>
     AnyManaForItsAbilities = 1L << 33,
+    /// <summary>If an opponent would draw a card except the first one they draw in each of their draw steps, instead that player skips that draw and you draw a card.</summary>
+    StealsOpponentsExtraDraws = 1L << 36,
+    /// <summary>You may look at the top card of your library any time.</summary>
+    LookAtLibraryTop = 1L << 37,
+    /// <summary>As long as an opponent controls more lands than you, you may play lands from the top of your library.</summary>
+    PlayLandsFromLibraryTopWhileBehind = 1L << 38,
     /// <summary>You can't win the game and your opponents can't lose the game.</summary>
     OpponentsCantLoseYouCantWin = 1L << 34,
     /// <summary>If you control a creature, damage that would reduce your life total to less than 1 reduces it to 1 instead.</summary>
@@ -178,6 +184,9 @@ public sealed record CardDefinition
     /// <summary>"This creature enters with X +1/+1 counters on it" (X as chosen when it was cast).</summary>
     public bool EntersWithXCounters { get; init; }
 
+    /// <summary>"Enters with twice X +1/+1 counters": how many counters per point of X (with <see cref="EntersWithXCounters"/>).</summary>
+    public int XCountersMultiplier { get; init; } = 1;
+
     /// <summary>Colors for objects without a mana cost to derive them from (tokens). Letters W, U, B, R, G.</summary>
     public IReadOnlyList<string> Colors
     {
@@ -210,6 +219,55 @@ public sealed record CardDefinition
 
     /// <summary>"Your opponents can't gain life."</summary>
     public bool OpponentsCantGainLife { get; init; }
+
+    /// <summary>Multikicker (702.33c), replicate (702.56), squad (702.157): additional costs that may be paid any number of times.</summary>
+    public ManaCost? Multikicker { get; init; }
+    public ManaCost? Replicate { get; init; }
+    public ManaCost? Squad { get; init; }
+
+    /// <summary>Dash (702.109): cast for this cost, it gains haste and returns to its owner's hand at the next end step.</summary>
+    public ManaCost? Dash { get; init; }
+
+    /// <summary>Splice onto instant or sorcery (702.47): revealed from the hand and paid as such a spell is cast, adding this card's effects.</summary>
+    public ManaCost? Splice { get; init; }
+
+    /// <summary>Miracle (702.94): cast for this cost when drawn as the first card of the turn.</summary>
+    public ManaCost? Miracle { get; init; }
+
+    /// <summary>"As an additional cost to cast this spell, pay X life" (X chosen as it's cast).</summary>
+    public bool PayXLife { get; init; }
+
+    /// <summary>Flashback with more than mana: "Flashback—{1}{U}, Pay 3 life"; "Exile X cards from your graveyard" (X is the number exiled); a reduction of the flashback cost.</summary>
+    public ExtraCost? FlashbackExtra { get; init; }
+    public bool FlashbackExilesX { get; init; }
+    public Quantity? FlashbackReduction { get; init; }
+
+    /// <summary>A split card (rule 709): its two halves; the second may be an aftermath half (cast only from a graveyard, then exiled).</summary>
+    public IReadOnlyList<CardDefinition>? SplitHalves { get; init; }
+    public bool Aftermath { get; init; }
+
+    /// <summary>"This artifact can't be sacrificed."</summary>
+    public bool CantBeSacrificed { get; init; }
+
+    /// <summary>"Creatures with power greater than the number of cards in your hand can't attack."</summary>
+    public bool CantAttackIfPowerAboveHandSize { get; init; }
+
+    /// <summary>"As long as this card is in your graveyard, each [filter] you control enters with an additional +1/+1 counter."</summary>
+    public ObjectFilter? GraveyardEnterBonus { get; init; }
+
+    /// <summary>Devour N (702.82): as it enters, its controller may sacrifice any number of [filter: creatures]; it enters with N +1/+1 counters for each.</summary>
+    public int Devour { get; init; }
+    public ObjectFilter? DevourFilter { get; init; }
+
+    /// <summary>"You may exert this creature as it attacks" (701.39), when <see cref="ExertIf"/> holds (if set).</summary>
+    public bool Exert { get; init; }
+    public Condition? ExertIf { get; init; }
+
+    /// <summary>Storm (702.40), undaunted (702.125), delve (702.66), conspire (702.78).</summary>
+    public bool Storm { get; init; }
+    public bool Undaunted { get; init; }
+    public bool Delve { get; init; }
+    public bool Conspire { get; init; }
 
     /// <summary>Kicker cost: an optional additional cost paid as the spell is cast (rule 702.33).</summary>
     public ManaCost? Kicker { get; init; }

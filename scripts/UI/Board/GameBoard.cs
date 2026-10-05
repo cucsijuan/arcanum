@@ -931,6 +931,7 @@ public partial class GameBoard : Control
                     {
                         PlayLand => $"Play {card?.Name}",
                         CastSpell { Adventure: true } => $"Adventure: {card?.AdventureName} {card?.AdventureCost}",
+                        CastSpell { Half: { } half } when card?.SplitHalves is { } halves && half < halves.Count => $"Cast {halves[half]}",
                         CastSpell => $"Cast {card?.Name}",
                         ActivateManaAbility m => $"Add {{{m.Type.ToSymbol()}}}",
                         ActivateAbility a when card is not null && a.Index < card.AbilityTexts.Count => Shorten(card.AbilityTexts[a.Index]),
@@ -1100,6 +1101,8 @@ public partial class GameBoard : Control
                 {
                     var (id, label) = action switch
                     {
+                        CastSpell { Half: { } half } c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Graveyard, SplitHalves: { } halves } g && half < halves.Count
+                            => (c.Card, $"Cast {halves[half]} (graveyard)"),
                         CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Graveyard } g => (c.Card, $"Flashback {g.Name}"),
                         CastSpell { Adventure: true } c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (c.Card, $"Adventure: {x.AdventureName} (exile)"),
                         CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (c.Card, $"Cast {x.Name} (exile)"),

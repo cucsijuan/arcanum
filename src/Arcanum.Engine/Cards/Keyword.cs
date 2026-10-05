@@ -66,6 +66,12 @@ public enum Keyword
     AssignsDamageByToughness,
     /// <summary>"Attacks each combat if able" (rule 508.1d), when an effect gives it.</summary>
     AttacksEachCombat,
+    /// <summary>While this spell is on the stack, players can't cast spells or activate abilities that aren't mana abilities (rule 702.61).</summary>
+    SplitSecond,
+    /// <summary>Can't be blocked by creatures with greater power (rule 702.118).</summary>
+    Skulk,
+    /// <summary>Whenever a creature you control attacks alone, it gets +1/+1 until end of turn (rule 702.83).</summary>
+    Exalted,
 }
 
 public static class Keywords
@@ -106,6 +112,7 @@ public static class Keywords
         Keyword.UntapsByRemovingCounter => "Untaps only by removing a +1/+1 counter",
         Keyword.AssignsDamageByToughness => "Assigns combat damage equal to its toughness",
         Keyword.AttacksEachCombat => "Attacks each combat if able",
+        Keyword.SplitSecond => "Split second",
         _ => keyword.ToString(),
     };
 

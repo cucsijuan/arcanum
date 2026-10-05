@@ -69,6 +69,9 @@ public sealed record CardView
 
     /// <summary>In exile after its Adventure: its owner may cast it from there.</summary>
     public bool OnAdventure { get; init; }
+
+    /// <summary>A split card's halves: names and mana costs.</summary>
+    public IReadOnlyList<string>? SplitHalves { get; init; }
 }
 
 public sealed record PlayerView

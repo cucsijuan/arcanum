@@ -13,6 +13,8 @@ public enum CardType
     Instant = 1 << 5,
     Sorcery = 1 << 6,
     Battle = 1 << 7,
+    /// <summary>Kindred (rule 308): a card type that lets the card have creature types.</summary>
+    Kindred = 1 << 8,
 }
 
 [Flags]

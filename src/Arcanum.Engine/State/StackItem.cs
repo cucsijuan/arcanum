@@ -22,6 +22,9 @@ public abstract record StackItem(PlayerId Controller, IReadOnlyList<ChosenTarget
     /// <summary>Permanents sacrificed to pay its costs (for "the sacrificed creature's toughness").</summary>
     public IReadOnlyList<CardId> SacrificedForCost { get; init; } = Array.Empty<CardId>();
 
+    /// <summary>Cards discarded to pay its costs (for "if the discarded card was a creature card").</summary>
+    public IReadOnlyList<CardId> DiscardedForCost { get; init; } = Array.Empty<CardId>();
+
     /// <summary>The card the spell is, or the source of the ability.</summary>
     public abstract CardId SourceCard { get; }
 }
@@ -39,6 +42,15 @@ public sealed record SpellOnStack(CardId Card, PlayerId Controller, IReadOnlyLis
 
     /// <summary>The opponent the caster promised the gift to.</summary>
     public PlayerId? GiftTo { get; init; }
+
+    /// <summary>Times its multikicker cost was paid (rule 702.33c).</summary>
+    public int KickCount { get; init; }
+
+    /// <summary>Times its squad cost was paid (rule 702.157).</summary>
+    public int SquadCount { get; init; }
+
+    /// <summary>Cast for its dash cost (rule 702.109).</summary>
+    public bool Dashed { get; init; }
 }
 
 public sealed record AbilityOnStack(CardId Source, AbilityDefinition Ability, PlayerId Controller, IReadOnlyList<ChosenTarget> ChosenTargets)
@@ -61,4 +73,7 @@ public sealed record TriggerInfo(CardId? Subject = null, int SubjectVersion = 0,
 {
     /// <summary>For counters put on a permanent: each kind put on it in the event ("those kinds of counters").</summary>
     public List<Abilities.CounterKind>? CounterKinds { get; init; }
+
+    /// <summary>For "whenever players finish voting": every vote cast, in order (voter, choice).</summary>
+    public IReadOnlyList<(PlayerId Voter, string Choice)>? Votes { get; init; }
 }

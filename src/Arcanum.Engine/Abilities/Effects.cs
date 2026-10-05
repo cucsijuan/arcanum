@@ -14,7 +14,11 @@ public sealed record DealDamage(Quantity Amount, Subject To) : Effect
 public sealed record DrawCards(Quantity Count, Subject Who) : Effect;
 public sealed record GainLife(Quantity Amount, Subject Who) : Effect;
 public sealed record LoseLife(Quantity Amount, Subject Who) : Effect;
-public sealed record Destroy(Subject What) : Effect;
+public sealed record Destroy(Subject What) : Effect
+{
+    /// <summary>"They can't be regenerated."</summary>
+    public bool CantBeRegenerated { get; init; }
+}
 public sealed record ExileIt(Subject What) : Effect
 {
     /// <summary>"Exile it with a [kind] counter on it."</summary>
@@ -73,13 +77,20 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 
     /// <summary>"They gain haste until end of turn."</summary>
     public bool HasteUntilEndOfTurn { get; init; }
+
+    /// <summary>"An X/X token": its power and toughness worked out as it's created.</summary>
+    public Quantity? PowerAndToughness { get; init; }
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
     FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
-public sealed record Scry(int Count) : Effect;
+public sealed record Scry(int Count) : Effect
+{
+    /// <summary>"Scry X": the number worked out as it happens.</summary>
+    public Quantity? CountFrom { get; init; }
+}
 
 /// <summary>Look at the top N cards of your library; put any number into your graveyard, the rest back on top (rule 701.25).</summary>
 public sealed record Surveil(int Count) : Effect;
@@ -98,6 +109,9 @@ public sealed record MayDo(string Prompt, IReadOnlyList<Effect> Effects) : Effec
 {
     /// <summary>"Do this only once each turn": not offered again this turn once done.</summary>
     public bool OncePerTurn { get; init; }
+
+    /// <summary>"If you don't, …".</summary>
+    public IReadOnlyList<Effect>? Else { get; init; }
 }
 
 /// <summary>Put cards (from a graveyard, usually) onto the battlefield; "under your control" unless <paramref name="UnderOwnersControl"/>.</summary>
@@ -119,6 +133,9 @@ public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool 
     /// <summary>It enters with these +1/+1 counters, and keeps these extra creature types and keywords.</summary>
     public int Counters { get; init; }
     public CounterKind CounterKind { get; init; } = CounterKind.PlusOnePlusOne;
+
+    /// <summary>"With a vigilance counter and a lifelink counter on it": one counter of each kind.</summary>
+    public IReadOnlyList<CounterKind>? CounterKinds { get; init; }
     public IReadOnlyList<string>? AddSubtypes { get; init; }
     public IReadOnlyList<Cards.Keyword>? AddKeywords { get; init; }
 }
@@ -146,6 +163,12 @@ public sealed record SearchLibrary(ObjectFilter Filter, int Count, State.Zone To
 
     /// <summary>"With mana value X or less" (the X of the spell or ability).</summary>
     public bool MaxManaValueX { get; init; }
+
+    /// <summary>"Basic land cards that share a land type".</summary>
+    public bool ShareLandType { get; init; }
+
+    /// <summary>"Put both cards onto the battlefield": the cards this effect exiled earlier enter together with what's found.</summary>
+    public bool WithExiled { get; init; }
 }
 
 /// <summary>"[Players] sacrifice N [permanents] of their choice."</summary>
@@ -190,7 +213,11 @@ public sealed record GainControl(Subject What, bool UntilEndOfTurn = false, Subj
 public sealed record ModeEffects(int TargetOffset, IReadOnlyList<Effect> Effects) : Effect;
 
 /// <summary>Exile until the source leaves the battlefield ("until this enchantment leaves the battlefield").</summary>
-public sealed record ExileUntilSourceLeaves(Subject What) : Effect;
+public sealed record ExileUntilSourceLeaves(Subject What) : Effect
+{
+    /// <summary>"You may cast that card for as long as it remains exiled, and mana of any type can be spent to cast that spell."</summary>
+    public bool Castable { get; init; }
+}
 
 /// <summary>Exile, then return to the battlefield at the beginning of the next end step (under its owner's control, or yours).</summary>
 public sealed record ExileAndReturnAtEndStep(Subject What, bool UnderYourControl = false) : Effect;
@@ -198,6 +225,9 @@ public sealed record ExileAndReturnAtEndStep(Subject What, bool UnderYourControl
 /// <summary>Create token copies of a permanent, optionally with haste and "sacrifice it at the beginning of the next end step".</summary>
 public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = false, bool SacrificeAtEndStep = false) : Effect
 {
+    /// <summary>"Exile the token at end of combat."</summary>
+    public bool ExileAtEndOfCombat { get; init; }
+
     /// <summary>"Except the tokens aren't legendary."</summary>
     public bool NotLegendary { get; init; }
 
@@ -352,7 +382,11 @@ public sealed record ProtectionFromColorsOf(Subject Of, Subject What) : Effect;
 public sealed record ExileHandDownTo(int Keep, Subject Who) : Effect;
 
 /// <summary>"You may pay {X}. When you do, [effects]" — the effects use the X paid.</summary>
-public sealed record MayPayX(string Prompt, IReadOnlyList<Effect> Effects) : Effect;
+public sealed record MayPayX(string Prompt, IReadOnlyList<Effect> Effects) : Effect
+{
+    /// <summary>"Where X is less than or equal to …".</summary>
+    public Quantity? Max { get; init; }
+}
 
 /// <summary>"You have no maximum hand size for the rest of the game."</summary>
 public sealed record NoMaximumHandSizeForever : Effect;
@@ -377,6 +411,12 @@ public sealed record ReturnFromGraveyard(ObjectFilter? Filter, int Count, State.
 {
     /// <summary>"Another" card: not one sacrificed by this effect.</summary>
     public bool ExcludeSacrificed { get; init; }
+
+    /// <summary>"Any number of cards with different mana values".</summary>
+    public bool DifferentManaValues { get; init; }
+
+    /// <summary>"From a graveyard" (any player's) instead of yours.</summary>
+    public bool AnyGraveyard { get; init; }
 }
 
 /// <summary>"[Players] discard their hand."</summary>
@@ -395,6 +435,9 @@ public sealed record CreateEmblem(string Name, IReadOnlyList<AbilityDefinition> 
 /// <summary>Exile the top N cards of your library; you choose one (or all with <paramref name="ChooseOne"/> false) and may play it this turn.</summary>
 public sealed record ExileTopPlayable(int Count, bool ChooseOne = true, bool UntilEndOfNextTurn = false, bool WithoutPaying = false) : Effect
 {
+    /// <summary>"Mana of any type can be spent to cast those spells."</summary>
+    public bool AnyManaType { get; init; }
+
     /// <summary>"When you play a card this way, …": a triggered ability of the source when one of these cards is played.</summary>
     public TriggeredAbility? WhenPlayed { get; init; }
 
@@ -452,6 +495,9 @@ public sealed record DistributeCounters(int Total) : Effect;
 /// <summary>Reveal cards from the top of your library until a matching card; put it into <paramref name="To"/>, the rest on the bottom in a random order.</summary>
 public sealed record RevealUntil(ObjectFilter Filter, State.Zone To) : Effect
 {
+    /// <summary>"Put that card onto the battlefield attached to [it]".</summary>
+    public Subject? AttachTo { get; init; }
+
     /// <summary>Until this many matching cards are revealed ("until you reveal X land cards").</summary>
     public Quantity? CountFrom { get; init; }
 
@@ -483,6 +529,9 @@ public sealed record OpponentMaySacrifice(ObjectFilter Filter, IReadOnlyList<Eff
 /// <summary>Look at the top N, split them into a face-down and a face-up pile; an opponent picks the pile you put into your hand, the other goes to your graveyard.</summary>
 public sealed record Piles(int Count) : Effect
 {
+    /// <summary>"Reveal the top N cards …": both piles are face up.</summary>
+    public bool Revealed { get; init; }
+
     /// <summary>An opponent separates the piles and the controller chooses one ("they … separate them … Put one pile into your hand").</summary>
     public bool OpponentSeparates { get; init; }
 }
@@ -613,7 +662,14 @@ public sealed record NoSpellsThisTurn : Effect;
 public sealed record ExchangeControl(Subject First, Subject Second) : Effect;
 
 /// <summary>A delayed triggered ability: "at the beginning of the next upkeep, …", with an amount worked out now.</summary>
-public sealed record AtNextUpkeep(TriggeredAbility Ability, Quantity? Amount = null) : Effect;
+public sealed record AtNextUpkeep(TriggeredAbility Ability, Quantity? Amount = null) : Effect
+{
+    /// <summary>"At the beginning of your next upkeep" (not the next upkeep of any player).</summary>
+    public bool Yours { get; init; }
+
+    /// <summary>The player the delayed ability will call "that player" ("its controller may draw …"), worked out now.</summary>
+    public Subject? Player { get; init; }
+}
 
 /// <summary>"Choose a creature type": the source remembers it (for "creatures of that type").</summary>
 public sealed record ChooseCreatureType : Effect;
@@ -631,7 +687,21 @@ public sealed record AddManaInAnyCombination(Quantity Count, ObjectFilter? OnlyF
 public sealed record Behold(ObjectFilter Filter, IReadOnlyList<Effect> Effects) : Effect;
 
 /// <summary>"You may cast a [filter] spell from your graveyard"; an instant or sorcery cast this way is exiled instead of going to the graveyard.</summary>
-public sealed record CastFromGraveyardNow(ObjectFilter Filter) : Effect;
+public sealed record CastFromGraveyardNow(ObjectFilter Filter) : Effect
+{
+    /// <summary>Whose graveyard (default: yours); "that player's graveyard".</summary>
+    public Subject? Of { get; init; }
+
+    /// <summary>"Without paying its mana cost"; with <see cref="MaxManaValue"/>: "with mana value X or less".</summary>
+    public bool Free { get; init; }
+    public Quantity? MaxManaValue { get; init; }
+
+    /// <summary>The card is the target at this index rather than a card chosen now.</summary>
+    public Subject? Card { get; init; }
+
+    /// <summary>Only among cards milled by this effect ("from among them").</summary>
+    public bool FromMilled { get; init; }
+}
 
 /// <summary>Prevent all damage the subject would deal, for as long as the source remains on the battlefield.</summary>
 public sealed record PreventDamageBy(Subject What) : Effect;
@@ -709,6 +779,126 @@ public sealed record CantLoseThisTurn : Effect;
 
 /// <summary>"Each player gains control of all [filter] they own."</summary>
 public sealed record OwnersGainControl(ObjectFilter Filter) : Effect;
+
+/// <summary>What players vote for (rule 701.38).</summary>
+public enum VoteFor { Options, Player, Creature }
+
+/// <summary>
+/// "Starting with you, each player votes for …" (rule 701.38); secret council votes are made secretly, then revealed. The votes
+/// are kept for the effects after it (conditions and quantities about votes) and trigger "whenever players finish voting".
+/// </summary>
+public sealed record Vote(IReadOnlyList<string> Options, bool Secret = false, VoteFor For = VoteFor.Options, ObjectFilter? CreatureFilter = null) : Effect;
+
+/// <summary>"Each player [who …] [does something]": the effects are carried out by each such player in turn order, as "you".</summary>
+public sealed record ForEachPlayer(Subject Who, Condition? If, IReadOnlyList<Effect> Effects) : Effect;
+
+/// <summary>"For each [thing], [do this]": the effects are carried out that many times, one after another.</summary>
+public sealed record Repeat(Quantity Times, IReadOnlyList<Effect> Effects) : Effect;
+
+/// <summary>"[It] becomes renowned" (renown, rule 702.112).</summary>
+public sealed record BecomeRenowned(Subject What) : Effect;
+
+/// <summary>"[It] gains protection from each of your opponents until end of turn".</summary>
+public sealed record ProtectionFromOpponents(Subject What) : Effect;
+
+/// <summary>"Look at the top card of each opponent's library and exile those cards face down" (linked to this permanent; its controller may look at them).</summary>
+public sealed record ExileTopFaceDown(Subject Whose) : Effect;
+
+/// <summary>"Until end of turn, you may play a card exiled with [this] without paying its mana cost" (one of them).</summary>
+public sealed record PlayOneExiledWithThisFree : Effect;
+
+/// <summary>"Put those counters on [this]": the counters the object a trigger is about had as it left the battlefield.</summary>
+public sealed record TakeCountersOfTriggered : Effect;
+
+/// <summary>"Move all counters from [this] onto [target]".</summary>
+public sealed record MoveAllCounters(Subject From, Subject To) : Effect;
+
+/// <summary>"You may return another permanent you control that shares a permanent type with it to its owner's hand."</summary>
+public sealed record MayBounceAnotherSharingType : Effect;
+
+/// <summary>"Copy that ability. You may choose new targets for the copy." (the ability a trigger is about, by stack object)</summary>
+public sealed record CopyTriggeredAbility : Effect;
+
+/// <summary>"Each player exiles all [filter] cards from their graveyard, then sacrifices all [filter] permanents they control, then puts all cards they exiled this way onto the battlefield."</summary>
+public sealed record SwapGraveyardAndBattlefield(ObjectFilter Filter) : Effect;
+
+/// <summary>Tempting offer (search): you search for a [filter] card onto the battlefield; each opponent may too; you search again for each who did.</summary>
+public sealed record TemptingOfferSearch(ObjectFilter Filter) : Effect;
+
+/// <summary>"For each [filter] you control, create a token that's a copy of that permanent."</summary>
+public sealed record CopyEachYouControl(ObjectFilter Filter) : Effect;
+
+/// <summary>"Each opponent exiles a creature with the greatest power among creatures that player controls"; then, if the condition holds, the source deals each opponent damage equal to the power of the creature they exiled.</summary>
+public sealed record OpponentsExileGreatestPower(Condition? DamageIf) : Effect;
+
+/// <summary>"Each opponent reveals the top card of their library. If any of those cards shares a card type with that spell, copy that spell … and each opponent draws a card. Otherwise, you draw a card."</summary>
+public sealed record CopyIfOpponentsTopSharesType : Effect;
+
+/// <summary>"Exile that card with N time counters on it instead of putting it into your graveyard as it resolves. Then if the exiled card doesn't have suspend, it gains suspend."</summary>
+public sealed record SuspendWhenResolves(int TimeCounters) : Effect;
+
+/// <summary>Suspend's upkeep ability: remove a time counter from this suspended card; when the last is removed, it may be played free.</summary>
+public sealed record SuspendTick : Effect;
+
+/// <summary>Suspend: "you may play it without paying its mana cost if able" (a creature spell cast this way gains haste).</summary>
+public sealed record PlaySuspendedFree : Effect;
+
+/// <summary>"Destroy all creatures with power greater than target creature's power."</summary>
+public sealed record DestroyPowerAbove(Subject What) : Effect;
+
+/// <summary>"Exile a [filter] card from your graveyard" (chosen as this happens): it is "the exiled card" for the effects after it.</summary>
+public sealed record ExileChosenFromGraveyard(ObjectFilter Filter) : Effect;
+
+/// <summary>"Return all [filter] cards from your graveyard to your hand."</summary>
+public sealed record ReturnAllFromGraveyardToHand(ObjectFilter Filter) : Effect;
+
+/// <summary>"Choose an opponent": the chosen player is "that player" for the effects after it.</summary>
+public sealed record ChooseAnOpponent : Effect;
+
+/// <summary>"[Chooser] chooses a [filter]": the chosen objects are "the chosen [objects]" for the effects after it.</summary>
+public sealed record ChooseObjects(Subject Chooser, ObjectFilter Filter, bool Optional = false) : Effect;
+
+/// <summary>"Return target nonland permanent and each other nonland permanent with the same mana value as that permanent to their owners' hands."</summary>
+public sealed record BounceSameManaValue(Subject What) : Effect;
+
+/// <summary>"At the beginning of the next end step, [effects]" about the object of <paramref name="About"/> ("return that card").</summary>
+public sealed record AtNextEndStepAbout(Subject About, IReadOnlyList<Effect> Effects) : Effect;
+
+/// <summary>"[Player] may draw up to N cards".</summary>
+public sealed record DrawUpTo(int Max, Subject Who) : Effect;
+
+/// <summary>Hideaway N (702.75): look at the top N cards, exile one face down (linked to this permanent), the rest on the bottom in a random order.</summary>
+public sealed record Hideaway(int Count) : Effect;
+
+/// <summary>"You may play the exiled card without paying its mana cost" (the card exiled with this permanent).</summary>
+public sealed record PlayLinkedExiledFree : Effect;
+
+/// <summary>Populate (701.30): create a token that's a copy of a creature token you control.</summary>
+public sealed record Populate : Effect;
+
+/// <summary>"Regenerate [it]": the next time it would be destroyed this turn, instead tap it, remove all damage from it and remove it from combat (701.19).</summary>
+public sealed record Regenerate(Subject What) : Effect;
+
+/// <summary>Miracle (702.94): "you may cast it by paying [its miracle cost]" (the card the trigger is about, still in hand).</summary>
+public sealed record CastForMiracle : Effect;
+
+/// <summary>"Put [this spell] on the bottom of its owner's library" as it resolves.</summary>
+public sealed record ThisSpellToLibraryBottom : Effect;
+
+/// <summary>"Then exile [this spell]": the resolving spell goes to exile instead of its owner's graveyard.</summary>
+public sealed record ExileThisSpell : Effect;
+
+/// <summary>"For each creature with one or more votes, put that many stun counters on it, then tap it."</summary>
+public sealed record StunVotedCreatures : Effect;
+
+/// <summary>"For each [option] vote, the voter chooses a creature they control. You gain control of each creature chosen this way, and they gain 'This creature can't attack its owner.'"</summary>
+public sealed record VotersGiveCreatures(int Option) : Effect;
+
+/// <summary>"You can't attack that player this turn".</summary>
+public sealed record CantAttackPlayerThisTurn(Subject Player) : Effect;
+
+/// <summary>"You can't sacrifice those creatures this turn".</summary>
+public sealed record CantSacrificeThisTurn(Subject What) : Effect;
 
 /// <summary>"[Player] can't attack you this combat".</summary>
 public sealed record CantAttackYouThisCombat(Subject Who) : Effect;

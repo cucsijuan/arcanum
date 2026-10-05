@@ -14,7 +14,12 @@ public sealed class Card
     public CardDefinition PrintedDefinition { get; }
 
     /// <summary>Its characteristics now: those of its Adventure while it is cast as one (rule 715.3), otherwise the printed card's.</summary>
-    public CardDefinition Definition => AsAdventure && PrintedDefinition.Adventure is { } adventure ? adventure : PrintedDefinition;
+    public CardDefinition Definition => AsAdventure && PrintedDefinition.Adventure is { } adventure ? adventure
+        : CastHalf is { } half && PrintedDefinition.SplitHalves is { } halves ? halves[half]
+        : PrintedDefinition;
+
+    /// <summary>A split card being cast as (or on the stack as) one of its halves (rule 709.3).</summary>
+    public int? CastHalf { get; set; }
 
     /// <summary>It is being cast, or is on the stack, as its Adventure (rule 715.3).</summary>
     public bool AsAdventure { get; set; }
@@ -68,6 +73,9 @@ public sealed class Card
 
     /// <summary>Exiled face down: only its owner may look at it.</summary>
     public bool FaceDown { get; set; }
+
+    /// <summary>Players besides its owner who may look at it while it's face down ("look at … and exile those cards face down").</summary>
+    public HashSet<PlayerId> FaceDownLookers { get; } = new();
 
     /// <summary>As a spell: it can't be countered (mana with that rider was spent on it).</summary>
     public bool Uncounterable { get; set; }
@@ -126,6 +134,19 @@ public sealed class Card
     /// <summary>Players it can't attack ("can't attack you"), from static abilities.</summary>
     internal HashSet<Core.PlayerId> CantAttackPlayers { get; } = new();
 
+    /// <summary>Players it has protection from (rule 702.16j), and "protection from Ring-bearers".</summary>
+    internal HashSet<Core.PlayerId> ProtectedFromPlayers { get; } = new();
+    internal bool ProtectedFromRingBearers { get; set; }
+
+    /// <summary>It is its controller's Ring-bearer (kept current by the engine).</summary>
+    internal bool IsRingBearerNow { get; set; }
+
+    /// <summary>Players goading it through static abilities ("enchanted creature is goaded").</summary>
+    internal HashSet<Core.PlayerId> StaticGoaders { get; } = new();
+
+    /// <summary>It has "This creature can't attack its owner".</summary>
+    internal bool CantAttackOwner { get; set; }
+
     /// <summary>Its supertypes now.</summary>
     public Supertype Supertypes => Definition.Supertypes | GrantedSupertypes;
     internal HashSet<string> GrantedSubtypes { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -154,6 +175,9 @@ public sealed class Card
 
     /// <summary>The permanent (id, version) that exiled this card "with it" (for "the exiled card").</summary>
     public (CardId Source, int Version)? ExiledWith { get; set; }
+
+    /// <summary>The zone it came from the last time it changed zones ("a permanent that entered from a graveyard").</summary>
+    public Zone EnteredFrom { get; set; }
 
     /// <summary>Turn number when it last changed zones.</summary>
     public int ZoneChangedTurn { get; set; }
@@ -221,7 +245,7 @@ public sealed class Card
         : EnchantmentTypes.Contains(subtype) ? Is(CardType.Enchantment)
         : SpellTypes.Contains(subtype) ? Is(CardType.Instant) || Is(CardType.Sorcery)
         : subtype.Equals("Siege", StringComparison.OrdinalIgnoreCase) ? Is(CardType.Battle)
-        : Is(CardType.Creature) || Is(CardType.Planeswalker);
+        : Is(CardType.Creature) || Is(CardType.Planeswalker) || Is(CardType.Kindred);
 
     private static readonly HashSet<string> LandTypes = new(StringComparer.OrdinalIgnoreCase)
         { "Plains", "Island", "Swamp", "Mountain", "Forest", "Desert", "Gate", "Lair", "Locus", "Mine", "Power-Plant", "Tower", "Urza's", "Cave", "Sphere", "Town" };
@@ -334,6 +358,26 @@ public sealed class Card
     /// <summary>Cast with its kicker cost paid (kept as the spell becomes a permanent, rule 702.33).</summary>
     public bool Kicked { get; set; }
 
+    /// <summary>Suspended (rule 702.62): in exile with time counters and suspend.</summary>
+    public bool Suspended { get; set; }
+
+    /// <summary>As a spell: cast by its controller during their own main phase (addendum).</summary>
+    public bool CastDuringMainPhase { get; set; }
+
+    /// <summary>Renowned (rule 702.112b): stays until it leaves the battlefield.</summary>
+    public bool Renowned { get; set; }
+
+    /// <summary>Exerted: the turn it was exerted, and whether it skips its controller's next untap step (rule 701.39).</summary>
+    public int ExertedTurn { get; set; } = -1;
+    public bool SkipsNextUntap { get; set; }
+
+    /// <summary>Regeneration shields on it this turn (rule 701.19).</summary>
+    public int RegenerationShields { get; set; }
+
+    /// <summary>Times its multikicker / squad cost was paid as it was cast (kept as the spell becomes a permanent).</summary>
+    public int TimesKicked { get; set; }
+    public int SquadPaid { get; set; }
+
     /// <summary>Indices of "activate only once each turn" abilities already activated this turn.</summary>
     public HashSet<int> ActivatedThisTurn { get; } = new();
 
@@ -393,6 +437,13 @@ public sealed class Card
         BasePowerOverride = null;
         BaseToughnessOverride = null;
         Kicked = false;
+        TimesKicked = 0;
+        SquadPaid = 0;
+        Renowned = false;
+        Suspended = false;
+        ExertedTurn = -1;
+        SkipsNextUntap = false;
+        RegenerationShields = 0;
         ChosenColor = null;
         ChosenType = null;
         ActivatedThisTurn.Clear();
@@ -403,6 +454,7 @@ public sealed class Card
         ChosenName = null;
         AttacksThisTurn = 0;
         AsAdventure = false;
+        CastHalf = null;
         OnAdventure = false;
         ChosenParity = null;
         CastFromGraveyard = false;
@@ -410,6 +462,7 @@ public sealed class Card
         PaidWithTreasure = false;
         GiftPromised = false;
         FaceDown = false;
+        FaceDownLookers.Clear();
         Uncounterable = false;
         GrantedWards.Clear();
         Version++;

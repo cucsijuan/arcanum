@@ -40,7 +40,8 @@ public sealed partial class Game
                 "A planeswalker can only be attacked through its controller.");
             // "Attacks each combat if able" (508.1d): such creatures left out attack anyway. A goaded creature also attacks
             // a player other than the one who goaded it if able (rule 701.15b). Restrictions are never broken to obey them.
-            List<PlayerId> Goaders(CardId id) => State.Goads.Where(g => g.Card == id && g.Version == State.GetCard(id).Version).Select(g => g.Goader).ToList();
+            List<PlayerId> Goaders(CardId id) => State.Goads.Where(g => g.Card == id && g.Version == State.GetCard(id).Version).Select(g => g.Goader)
+                .Concat(State.GetCard(id).StaticGoaders).Distinct().ToList();
             PlayerId DefenderFor(CardId id, PlayerId preferred)
             {
                 var legal = defenders.Where(d => !AttackForbidden(State.GetCard(id), d)).ToList();
@@ -89,6 +90,22 @@ public sealed partial class Game
                 // The Ring, level 2: "Whenever your Ring-bearer attacks, draw a card, then discard a card."
                 if (IsRingBearer(attacker, 2)) _pendingTriggers.Add(new PendingTrigger(attacker.Id, RingLoot, active));
             }
+            // Exert (701.39): "you may exert this creature as it attacks".
+            foreach (var d in declared)
+            {
+                var attacker = State.GetCard(d.Attacker);
+                if (!attacker.Definition.Exert || attacker.LosesAbilities || (attacker.Definition.ExertIf is { } exertIf && !Holds(exertIf, active, attacker))) continue;
+                if (!await ControllerOf(active).ChooseYesNoAsync(ViewFor(active), new YesNoRequest($"Exert {attacker.Name}? (It won't untap during your next untap step.)", attacker.Id))) continue;
+                attacker.ExertedTurn = State.TurnNumber;
+                attacker.SkipsNextUntap = true;
+                Emit(new ChoiceMade(attacker.Id, "exerted"));
+                var about = new TriggerInfo(attacker.Id, attacker.Version, active);
+                foreach (var ability in TriggerAbilitiesOf(attacker).Where(a => a.Trigger == Abilities.TriggerEvent.Exerted && a.Filter is null))
+                    AddPending(attacker.Id, ability, active, about);
+                foreach (var (observer, abilities) in Observers())
+                    foreach (var ability in abilities.Where(a => a.Trigger == Abilities.TriggerEvent.Exerted && a.Filter is not null))
+                        if (Matches(ability.Filter!, attacker, active, observer, observer.Controller)) AddPending(observer.Id, ability, observer.Controller, about);
+            }
             var activePlayer = State.GetPlayer(active);
             activePlayer.AttackersThisTurn = Math.Max(activePlayer.AttackersThisTurn, declared.Count);
             if (declared.Count > 0) Emit(new AttacksDeclared(active, declared.Count));
@@ -123,8 +140,10 @@ public sealed partial class Game
         return result;
     }
 
-    private static bool CanAttack(Card c) =>
-        c.IsCreature && !c.Tapped && !c.IsSummoningSick && !c.Has(Keyword.Defender) && !c.Has(Keyword.CantAttack);
+    private bool CanAttack(Card c) =>
+        c.IsCreature && !c.Tapped && !c.IsSummoningSick && !c.Has(Keyword.Defender) && !c.Has(Keyword.CantAttack)
+        // "Creatures with power greater than the number of cards in your hand can't attack" (the permanent's controller's hand).
+        && !State.Battlefield.Select(State.GetCard).Any(b => b.Definition.CantAttackIfPowerAboveHandSize && !b.LosesAbilities && c.Power > State.GetPlayer(b.Controller).Hand.Count);
 
     /// <summary>Evasion: flying can only be blocked by flying or reach (702.9b); "can't be blocked by ..." restrictions.</summary>
     private bool CanBlock(Card blocker, Card attacker) =>
@@ -136,6 +155,7 @@ public sealed partial class Game
         && !Landwalks.Any(w => attacker.Has(w.Keyword) && State.PermanentsControlledBy(blocker.Controller).Any(c => c.Is(CardType.Land) && c.HasSubtype(w.Land)))
         && !(attacker.Has(Keyword.NonbasicLandwalk) && State.PermanentsControlledBy(blocker.Controller).Any(c => c.Is(CardType.Land) && (c.Supertypes & Supertype.Basic) == 0))
         && !(IsRingBearer(attacker, 1) && blocker.Power > attacker.Power) // the Ring, level 1
+        && !(attacker.Has(Keyword.Skulk) && blocker.Power > attacker.Power) // skulk (702.118)
         && !(attacker.Definition.CantBeBlockedBy is { } restriction
              && Matches(restriction with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, attacker, attacker.Controller));
 

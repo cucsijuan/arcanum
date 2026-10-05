@@ -57,7 +57,7 @@ public sealed partial class Game
     /// <summary>Moves a card between zones. Cards always go to their owner's per-player zones (rule 400.3).</summary>
     /// <param name="kicked">A spell cast with kicker becoming a permanent: it remembers it was kicked (for "if it was kicked").</param>
     private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
-        bool castFromHand = false, bool wasCast = false)
+        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0)
     {
         bool shuffleAfter = false;
         var enterCounters = new List<(Abilities.CounterKind Kind, int Count)>();
@@ -75,6 +75,10 @@ public sealed partial class Game
             else to = Zone.Exile;
             // "If a creature an opponent controls would die, exile it instead. When you do, …"
             if (applied.By is { } replacer) Queue(replacer.Id, Abilities.TriggerEvent.CreatureExiledInstead, replacer.Controller);
+        }
+        else if (to == Zone.Graveyard && State.ExileInsteadOfGraveyard.Remove((id, card.Version)))
+        {
+            to = Zone.Exile;
         }
         else if (to == Zone.Graveyard)
         {
@@ -104,7 +108,10 @@ public sealed partial class Game
 
         card.ResetStatus();
         card.ZoneChangedTurn = State.TurnNumber;
+        card.EnteredFrom = from;
         card.Kicked = kicked;
+        card.TimesKicked = to == Zone.Battlefield ? timesKicked : 0;
+        card.SquadPaid = to == Zone.Battlefield ? squadPaid : 0;
         card.CastFromHand = castFromHand;
         card.WasCast = wasCast;
         card.Zone = to;
@@ -138,7 +145,7 @@ public sealed partial class Game
                 }
                 State.Battlefield.Add(id);
                 if (card.IsCreature && ExtraEnterCounters(card) is var extraCounters and > 0) enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, extraCounters));
-                if (card.Definition.ChooseOnEnter != Cards.EnterChoice.None) State.PendingEnterChoices.Add((id, card.Version));
+                if (card.Definition.ChooseOnEnter != Cards.EnterChoice.None || card.Definition.Devour > 0) State.PendingEnterChoices.Add((id, card.Version));
                 break;
             case Zone.Stack:
                 card.Controller = controller ?? card.Owner;
@@ -170,27 +177,46 @@ public sealed partial class Game
         if (card.Definition.IsToken && to != Zone.Battlefield && to != Zone.Stack) owner.GetZone(to).Remove(id);
     }
 
-    private void Draw(PlayerId playerId, int count = 1)
+    private async Task DrawAsync(PlayerId playerId, int count = 1)
+    {
+        for (int i = 0; i < count; i++) await DrawOneAsync(playerId, 0);
+    }
+
+    /// <summary>
+    /// One draw, after replacement effects (rule 614.11): "draw two instead" and "instead that player skips that draw and you draw
+    /// a card"; when both apply the drawing player chooses which applies (rule 616.1).
+    /// </summary>
+    private async Task DrawOneAsync(PlayerId playerId, int depth)
     {
         var player = State.GetPlayer(playerId);
-        for (int i = 0; i < count; i++)
+        // "If you would draw a card except the first one you draw in each of your draw steps …"
+        bool firstInDrawStep = State.Step == Step.Draw && State.ActivePlayer == playerId && !player.DrewInDrawStep;
+        if (State.Step == Step.Draw && State.ActivePlayer == playerId) player.DrewInDrawStep = true;
+        bool doubles = (!firstInDrawStep && Has(playerId, Cards.Replacements.DrawTwoExceptFirstInDrawStep))
+                       || (player.Hand.Count == 0 && Has(playerId, Cards.Replacements.DrawTwoWithEmptyHand));
+        var thief = firstInDrawStep || depth > 8 ? null
+            : State.Battlefield.Select(State.GetCard).FirstOrDefault(c => c.Controller != playerId && (c.Definition.Replaces & Cards.Replacements.StealsOpponentsExtraDraws) != 0 && !c.LosesAbilities);
+        if (thief is not null && (!doubles || await ControllerOf(playerId).ChooseOptionAsync(ViewFor(playerId), new Players.OptionRequest(
+                "Two replacement effects apply to this draw: choose the one that applies", thief.Id,
+                new[] { $"{thief.Name}: skip this draw ({State.GetPlayer(thief.Controller).Name} draws instead)", "Draw two cards instead" }, Players.OptionKind.Other)) == 0))
         {
-            // "If you would draw a card except the first one you draw in each of your draw steps, draw two cards instead."
-            bool firstInDrawStep = State.Step == Step.Draw && State.ActivePlayer == playerId && !player.DrewInDrawStep;
-            if (State.Step == Step.Draw && State.ActivePlayer == playerId) player.DrewInDrawStep = true;
-            int cards = (!firstInDrawStep && Has(playerId, Cards.Replacements.DrawTwoExceptFirstInDrawStep))
-                        || (player.Hand.Count == 0 && Has(playerId, Cards.Replacements.DrawTwoWithEmptyHand)) ? 2 : 1;
-            for (int n = 0; n < cards; n++)
+            Emit(new Events.ChoiceMade(thief.Id, $"{player.Name} skips a draw"));
+            await DrawOneAsync(thief.Controller, depth + 1);
+            return;
+        }
+        for (int n = 0; n < (doubles ? 2 : 1); n++)
+        {
+            if (player.Library.Count == 0)
             {
-                if (player.Library.Count == 0)
-                {
-                    player.AttemptedDrawFromEmptyLibrary = true; // loses at next SBA check (rule 704.5b)
-                    return;
-                }
-                var top = player.Library[0];
-                MoveCard(top, Zone.Hand);
-                Emit(new CardDrawn(playerId, top));
+                player.AttemptedDrawFromEmptyLibrary = true; // loses at next SBA check (rule 704.5b)
+                return;
             }
+            var top = player.Library[0];
+            MoveCard(top, Zone.Hand);
+            Emit(new CardDrawn(playerId, top));
+            // Miracle: the first card a player draws in a turn may be revealed as it's drawn (702.94a).
+            if (State.GetCard(top).Definition.Miracle is not null && player.CardsDrawnThisTurn == 1 && State.GetCard(top).Zone == Zone.Hand)
+                _pendingTriggers.Add(new PendingTrigger(top, MiracleTrigger, playerId, new TriggerInfo(top, State.GetCard(top).Version, playerId)));
         }
     }
 

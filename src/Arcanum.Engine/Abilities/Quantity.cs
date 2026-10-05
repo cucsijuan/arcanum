@@ -92,6 +92,29 @@ public enum QuantityKind
     RingBearerPower,
     /// <summary>The sum of <see cref="Quantity.Parts"/> ("the number of creatures you control plus the number of Foods you control").</summary>
     Sum,
+    /// <summary>The number of opponents the controller has.</summary>
+    OpponentCount,
+    /// <summary>Total power of your attacking creatures matching the filter ("their total power").</summary>
+    AttackingPower,
+    /// <summary>Cards in all players' hands.</summary>
+    CardsInAllHands,
+    /// <summary>Damage dealt to the target player at <see cref="Quantity.Index"/> this turn.</summary>
+    DamageTakenThisTurn,
+    /// <summary>The greatest power among creatures the target player at <see cref="Quantity.Index"/> controls.</summary>
+    TargetPlayersGreatestPower,
+    /// <summary>The greatest mana value of a commander the controller owns on the battlefield or in the command zone.</summary>
+    GreatestCommanderManaValue,
+    /// <summary>Other attacking creatures that share a creature type with the creature a trigger is about.</summary>
+    OtherAttackersSharingTypeWithTriggered,
+    /// <summary>Times the source's multikicker / squad cost was paid.</summary>
+    TimesKicked,
+    SquadPaid,
+    /// <summary>Votes for the option numbered <see cref="Quantity.Value"/>.</summary>
+    VotesFor,
+    /// <summary>Votes the player being affected received.</summary>
+    VotesReceived,
+    /// <summary>Opponents who voted for a choice the controller didn't vote for (from the votes a trigger is about).</summary>
+    OpponentsVotedOtherwise,
     /// <summary>Cards in the hand of the player an effect is being applied to ("the number of cards in their hand").</summary>
     AffectedHandSize,
     /// <summary>Permanents sacrificed this turn by all players.</summary>

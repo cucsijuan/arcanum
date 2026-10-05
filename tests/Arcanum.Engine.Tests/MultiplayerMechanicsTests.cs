@@ -149,4 +149,63 @@ public class MultiplayerMechanicsTests
         Assert.True(game.State.GetPlayer(p2).HasLost);
         Assert.Equal(P0, game.State.Monarch);
     }
+
+    [Theory]
+    [InlineData(0, 0, 3)] // both vote for the first option: it gets more votes
+    [InlineData(0, 1, 1)] // a tie goes to the second option
+    public async Task WillOfTheCouncilFollowsTheMajorityAndTiesGoToTheOtherOption(int mine, int theirs, int expectedLife)
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.InHand(P0, Sorcery("Council", new Vote(new[] { "three", "one" }),
+            new IfThen(new MoreVotes(0), new Effect[] { new GainLife(3, Subject.You) }, new Effect[] { new GainLife(1, Subject.You) })));
+        s.Attacker.Option = (_, r) => r.Prompt.Contains("vote") ? mine : 0;
+        s.Defender.Option = (_, r) => r.Prompt.Contains("vote") ? theirs : 0;
+        int life = s.Game.State.GetPlayer(P0).Life;
+        await s.RunUntilTurn();
+        Assert.Equal(life + expectedLife, s.Game.State.GetPlayer(P0).Life);
+    }
+
+    [Fact]
+    public async Task SecretCouncilVotesForPlayersAreCountedPerPlayer()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        // Each player draws a card for each vote they received.
+        s.InHand(P0, Sorcery("Ballot", new Vote(Array.Empty<string>(), Secret: true, For: VoteFor.Player),
+            new DrawCards(new Quantity(0, QuantityKind.VotesReceived), new Subject(SubjectKind.EachPlayer))));
+        s.Attacker.Option = (_, r) => r.Prompt.Contains("vote") ? 1 : 0; // both vote for the defender
+        s.Defender.Option = (_, r) => r.Prompt.Contains("vote") ? 1 : 0;
+        var drawn = new Dictionary<int, int>();
+        bool voted = false;
+        s.Game.EventRaised += e =>
+        {
+            if (e is ChoiceMade { Choice: var c } && c.Contains("votes for")) voted = true;
+            if (voted && e is CardDrawn d && s.Game.State.Step != Step.Draw) drawn[d.Player.Value] = drawn.GetValueOrDefault(d.Player.Value) + 1;
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(2, drawn.GetValueOrDefault(1));
+        Assert.Equal(0, drawn.GetValueOrDefault(0));
+    }
+
+    [Fact]
+    public async Task FinishingAVoteTriggersAndKnowsWhoAgreed()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        // "Whenever players finish voting, each opponent who voted for a choice you voted for gains 2 life."
+        s.Add(P0, Creature("Clerk", 1, 1) with
+        {
+            Abilities = new AbilityDefinition[]
+            {
+                new TriggeredAbility { Trigger = TriggerEvent.PlayersFinishVoting, Effects = new Effect[] { new GainLife(2, new Subject(SubjectKind.OpponentsWhoVotedWithYou)) }, Text = "agree" },
+            },
+        });
+        s.InHand(P0, Sorcery("Council", new Vote(new[] { "a", "b" })));
+        s.Attacker.Option = (_, _) => 1;
+        s.Defender.Option = (_, _) => 1;
+        int life = s.Game.State.GetPlayer(P1).Life;
+        await s.RunUntilTurn();
+        Assert.Equal(life + 2, s.Game.State.GetPlayer(P1).Life);
+    }
 }

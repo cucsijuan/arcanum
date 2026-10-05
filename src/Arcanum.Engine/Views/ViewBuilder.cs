@@ -29,7 +29,7 @@ public static class ViewBuilder
                 HasLost = p.HasLost,
                 LibraryCount = p.Library.Count,
                 LibraryTop = p.Id == viewer && p.Library.Count > 0
-                             && state.PermanentsControlledBy(p.Id).Any(c => (c.Definition.Replaces & (Cards.Replacements.CreaturesFromLibraryTop | Cards.Replacements.CastCreaturesFromLibraryTop)) != 0)
+                             && state.PermanentsControlledBy(p.Id).Any(c => (c.Definition.Replaces & (Cards.Replacements.CreaturesFromLibraryTop | Cards.Replacements.CastCreaturesFromLibraryTop | Cards.Replacements.LookAtLibraryTop)) != 0)
                     ? Card(state, p.Library[0], viewer, reveal: true)
                     : null,
                 Hand = Views(p.Hand),
@@ -64,7 +64,7 @@ public static class ViewBuilder
     public static CardView Card(GameState state, CardId id, PlayerId viewer, bool reveal = false, int commanderTaxPerCast = 0)
     {
         var card = state.GetCard(id);
-        bool visible = reveal || (card.Zone.IsPublic() && !(card.FaceDown && card.Owner != viewer)) || (card.Zone == Zone.Hand && card.Owner == viewer);
+        bool visible = reveal || (card.Zone.IsPublic() && !(card.FaceDown && card.Owner != viewer && !card.FaceDownLookers.Contains(viewer))) || (card.Zone == Zone.Hand && card.Owner == viewer);
         if (!visible)
         {
             return new CardView
@@ -118,6 +118,7 @@ public static class ViewBuilder
             AdventureCost = card.PrintedDefinition.Adventure?.ManaCost.ToString(),
             AdventureText = card.PrintedDefinition.Adventure?.OracleText,
             OnAdventure = card.OnAdventure,
+            SplitHalves = card.PrintedDefinition.SplitHalves?.Select(h => $"{h.Name} {h.ManaCost}").ToList(),
         };
     }
 }

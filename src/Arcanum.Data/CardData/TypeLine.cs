@@ -10,7 +10,7 @@ public static class TypeLine
     {
         ["Land"] = CardType.Land, ["Creature"] = CardType.Creature, ["Artifact"] = CardType.Artifact,
         ["Enchantment"] = CardType.Enchantment, ["Planeswalker"] = CardType.Planeswalker, ["Instant"] = CardType.Instant,
-        ["Sorcery"] = CardType.Sorcery, ["Battle"] = CardType.Battle,
+        ["Sorcery"] = CardType.Sorcery, ["Battle"] = CardType.Battle, ["Kindred"] = CardType.Kindred, ["Tribal"] = CardType.Kindred,
     };
 
     private static readonly Dictionary<string, Supertype> Supertypes = new(StringComparer.OrdinalIgnoreCase)
@@ -27,7 +27,7 @@ public static class TypeLine
         {
             if (Types.TryGetValue(word, out var t)) types |= t;
             else if (Supertypes.TryGetValue(word, out var st)) supertypes |= st;
-            // Other words ("Token", "Kindred", ...) don't change the engine's view of the card yet.
+            // Other words ("Token", ...) don't change the engine's view of the card.
         }
         var subtypes = parts.Length > 1
             ? parts[1].Split(' ', StringSplitOptions.RemoveEmptyEntries)

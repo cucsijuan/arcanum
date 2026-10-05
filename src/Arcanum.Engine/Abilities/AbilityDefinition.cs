@@ -39,6 +39,9 @@ public abstract record AbilityDefinition
     /// <summary>"Choose one that hasn't been chosen this turn".</summary>
     public bool ModesOncePerTurn { get; init; }
 
+    /// <summary>"You may choose the same mode more than once."</summary>
+    public bool ModesMayRepeat { get; init; }
+
     /// <summary>One more mode may be chosen if this holds as it is cast ("if you control a Wizard, you may choose two instead").</summary>
     public Condition? ExtraModeIf { get; init; }
 
@@ -108,6 +111,9 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>Activated from the hand by discarding this card (cycling, rule 702.29).</summary>
     public bool FromHand { get; init; }
 
+    /// <summary>{S} symbols: each paid with one mana from a snow source (rule 107.4h).</summary>
+    public int SnowMana { get; init; }
+
     public static readonly AbilityCost TapOnly = new(ManaCost.Zero, Tap: true);
 }
 
@@ -142,6 +148,9 @@ public sealed record ActivatedAbility : AbilityDefinition
 /// <summary>"[Spells matching the filter] you cast cost {N} less to cast" while the source is on the battlefield.</summary>
 /// <summary>"Activated abilities of Foods you control cost {1} less to activate" / "Equip abilities you activate cost {1} less" (generic mana only).</summary>
 public sealed record AbilityCostReduction(ObjectFilter Sources, int Amount, bool EquipOnly) : AbilityDefinition;
+
+/// <summary>"[Spells matching the filter] cost {N} more to cast" (every player's, while the source is on the battlefield).</summary>
+public sealed record SpellCostIncrease(ObjectFilter Spells, int Amount) : AbilityDefinition;
 
 public sealed record SpellCostReduction(ObjectFilter Spells, int Amount) : AbilityDefinition
 {
@@ -285,6 +294,28 @@ public enum TriggerEvent
     MonarchEndStep,
     /// <summary>"Whenever damage that would be dealt to you is prevented" (amount: the damage prevented).</summary>
     DamageToYouPrevented,
+    /// <summary>"Whenever players finish voting".</summary>
+    PlayersFinishVoting,
+    /// <summary>"Whenever an opponent sacrifices a [filter]" (subject: the sacrificed card; player: who sacrificed it).</summary>
+    OpponentSacrifices,
+    /// <summary>"When you exert this creature" / "whenever you exert a creature" (with a filter: any creature you exert).</summary>
+    Exerted,
+    /// <summary>"When you cycle this card" (works from the graveyard it was discarded to; amount: X paid).</summary>
+    Cycled,
+    /// <summary>"When you cast this spell" (the spell's own ability, from the stack).</summary>
+    CastThis,
+    /// <summary>"Whenever an opponent activates an ability of a [filter] on the battlefield" (not a mana ability).</summary>
+    OpponentActivatesAbility,
+    /// <summary>"Whenever an opponent taps an artifact for mana" (subject: that artifact).</summary>
+    OpponentTapsArtifactForMana,
+    /// <summary>"Whenever a [filter] creature you control leaves the battlefield" (subject: that creature as it last existed).</summary>
+    CreatureLeaves,
+    /// <summary>"Whenever one or more creatures attack one of your opponents or a planeswalker they control" (player: that opponent).</summary>
+    CreaturesAttackOpponent,
+    /// <summary>"Whenever a player attacks you" / "whenever a player attacks" (player: the attacking player).</summary>
+    PlayerAttacks,
+    /// <summary>"Whenever you activate an ability that isn't a mana ability" (amount: the ability's stack object).</summary>
+    YouActivateNonManaAbility,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -425,6 +456,30 @@ public sealed record ObjectFilter(
 
     /// <summary>Shares a color with a legendary creature the ability's controller controls.</summary>
     public bool SharesColorWithYourLegendaryCreature { get; init; }
+
+    /// <summary>Attacking the filter's controller or a planeswalker they control ("a creature attacks you or a planeswalker you control").</summary>
+    public bool AttackingYou { get; init; }
+
+    /// <summary>A spell cast from a graveyard / a permanent that entered from a graveyard.</summary>
+    public bool FromGraveyard { get; init; }
+
+    /// <summary>A spell cast from its owner's hand.</summary>
+    public bool CastFromHand { get; init; }
+
+    /// <summary>A spell with {X} in its mana cost.</summary>
+    public bool HasXInCost { get; init; }
+
+    /// <summary>Exiled with the source ("a creature card exiled with Shelob").</summary>
+    public bool ExiledWithSource { get; init; }
+
+    /// <summary>Mana value exactly X ("target creature card with mana value X"; X is announced first).</summary>
+    public bool ManaValueIsX { get; init; }
+
+    /// <summary>Shares a creature type with the object a trigger is about.</summary>
+    public bool SharesCreatureTypeWithTriggered { get; init; }
+
+    /// <summary>Renowned ("a renowned creature").</summary>
+    public bool Renowned { get; init; }
 
     /// <summary>Doesn't share a creature type with a creature the ability's controller controls.</summary>
     public bool NoSharedCreatureTypeWithYours { get; init; }

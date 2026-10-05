@@ -34,6 +34,11 @@ public static partial class CardFactory
         "Scry", "Surveil", "Fight", "Mill", "Treasure", "Food", "Investigate",
         "Raid", "Landfall", "Morbid", "Threshold", "Ferocious", "Hexproof from", "Affinity", "Double", "Formidable", "Alliance", "Crew", "Protection", "Vivid",
         "Amass", "Recruit", "Gift", "Behold", "Landwalk", "Goad",
+        "Revolt", "Delirium", "Battalion", "Fateful hour", "Spell mastery", "Addendum", "Regenerate", "Triple", "Populate", "Exert",
+        "Secret council", "Will of the council", "Council's dilemma", "Tempting offer",
+        // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
+        "Persist", "Undying", "Dethrone", "Hideaway", "Heal", "Aftermath",
+        "Devour", "Multikicker", "Replicate", "Squad", "Dash", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
         // Pairing rules for two commanders (deck construction); "Partner with" also has a trigger derived below.
         "Partner", "Partner with", "Friends forever", "Choose a background", "Doctor's companion",
     };
@@ -48,6 +53,7 @@ public static partial class CardFactory
     public static (CardDefinition Definition, CardSupport Support) Create(CardRecord record, Scripts.CardScript? script = null)
     {
         if (record.Layout == "adventure" && record.Faces.Count == 2) return CreateAdventurer(record, script);
+        if (record.Layout == "split" && record.Faces.Count == 2) return CreateSplit(record, script);
         var (supertypes, types, subtypes) = TypeLine.Parse(record.TypeLine);
         var tapForMana = subtypes.Where(BasicLandTypes.ContainsKey).Select(t => BasicLandTypes[t]).ToList();
         tapForMana.AddRange(ManaAbilityTypes(record.OracleText));
@@ -120,6 +126,46 @@ public static partial class CardFactory
             Adventure = adventure with { ImageKey = record.DefaultPrintingId },
         };
         bool supported = cardSupport == CardSupport.Full && adventureSupport == CardSupport.Full;
+        return (definition, supported ? CardSupport.Full : CardSupport.Unsupported);
+    }
+
+    /// <summary>
+    /// A split card (rule 709): two halves, each castable on its own; everywhere but the stack the card has both halves'
+    /// characteristics combined. An aftermath half (702.127) can be cast only from a graveyard, and is exiled afterwards.
+    /// The script describes the halves under "split": [ { … }, { … } ].
+    /// </summary>
+    private static (CardDefinition Definition, CardSupport Support) CreateSplit(CardRecord record, Scripts.CardScript? script)
+    {
+        var halves = new List<CardDefinition>();
+        bool supported = script?.Split is { Count: 2 };
+        for (int i = 0; i < 2; i++)
+        {
+            var face = record.Faces[i];
+            var faceRecord = record with
+            {
+                Layout = "normal", Name = face.Name, ManaCost = face.ManaCost, TypeLine = face.TypeLine, OracleText = face.OracleText,
+                Power = face.Power, Toughness = face.Toughness, Faces = Array.Empty<CardFaceRecord>(),
+                Keywords = record.Keywords.Where(k => face.OracleText.Contains(k, StringComparison.OrdinalIgnoreCase)).ToList(),
+            };
+            var (half, halfSupport) = Create(faceRecord, script?.Split is { Count: 2 } split ? split[i] : null);
+            supported &= halfSupport == CardSupport.Full;
+            halves.Add(half with { ImageKey = record.DefaultPrintingId, Aftermath = face.OracleText.StartsWith("Aftermath", StringComparison.Ordinal) });
+        }
+        var (supertypes, types, subtypes) = TypeLine.Parse(record.TypeLine);
+        var definition = new CardDefinition
+        {
+            Name = record.Name,
+            OracleId = record.OracleId,
+            ManaCost = halves[0].ManaCost.Plus(halves[1].ManaCost),
+            Types = types,
+            Supertypes = supertypes,
+            Subtypes = subtypes,
+            ColorIdentity = record.ColorIdentity,
+            OracleText = $"{halves[0].Name} {record.Faces[0].ManaCost}\n{record.Faces[0].OracleText}\n//\n{halves[1].Name} {record.Faces[1].ManaCost}\n{record.Faces[1].OracleText}",
+            Keywords = PrintedKeywords(record),
+            SplitHalves = halves,
+            ImageKey = record.DefaultPrintingId,
+        };
         return (definition, supported ? CardSupport.Full : CardSupport.Unsupported);
     }
 
@@ -295,7 +341,7 @@ public static partial class CardFactory
     [GeneratedRegex(@"^(Partner|Partner with .+|Partner\u2014.+|Friends forever|Choose a Background|Doctor's companion)$")]
     private static partial Regex CommanderPairingLine();
 
-    [GeneratedRegex(@"^(?<type>[A-Za-z ]*?)[Cc]ycling (?<cost>(\{[0-9WUBRGC]+\})+)$")]
+    [GeneratedRegex(@"^(?<type>[A-Za-z ]*?)[Cc]ycling (?<cost>(\{[0-9WUBRGCX]+\})+)$")]
     private static partial Regex CyclingLine();
 
     /// <summary>"Kicker {2}", "Flashback {1}{R}", "Ward {2}" / "Ward—Pay 2 life" / "Ward—{3}, Pay 3 life", "This spell can't be countered".</summary>
