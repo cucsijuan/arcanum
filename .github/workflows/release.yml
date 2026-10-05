@@ -55,6 +55,25 @@ jobs:
           unzip -q templates.tpz -d "$HOME/tpz"
           mv "$HOME"/tpz/templates/* "$templates/"
 
+      - name: Online services SDK and keys
+        env:
+          EOS_SDK_TOKEN: ${{ secrets.EOS_SDK_TOKEN }}
+          EOS_PRODUCT_ID: ${{ secrets.EOS_PRODUCT_ID }}
+          EOS_SANDBOX_ID: ${{ secrets.EOS_SANDBOX_ID }}
+          EOS_DEPLOYMENT_ID: ${{ secrets.EOS_DEPLOYMENT_ID }}
+          EOS_CLIENT_ID: ${{ secrets.EOS_CLIENT_ID }}
+          EOS_CLIENT_SECRET: ${{ secrets.EOS_CLIENT_SECRET }}
+        run: |
+          # The SDK can't be in this repository: it comes from a private one; the keys come from secrets
+          # (see docs/online-services.md). Without them the build has only local-network lobbies.
+          if [ -n "$EOS_SDK_TOKEN" ] && [ -n "$EOS_PRODUCT_ID" ]; then
+            git clone -q --depth 1 "https://x-access-token:$EOS_SDK_TOKEN@github.com/cucsijuan/eos-sdk.git" "$HOME/eos-sdk"
+            echo "EosSdkDir=$HOME/eos-sdk/SDK" >> "$GITHUB_ENV"
+            python3 tools/eos_keys.py
+          else
+            echo "::warning::No online services SDK or keys: this build has only local-network lobbies."
+          fi
+
       - name: Export
         run: |
           # The presets used by releases (the local export_presets.cfg is not committed: it can hold signing credentials).
@@ -66,6 +85,10 @@ jobs:
           "$GODOT" --headless --path . --export-release "Windows Desktop" build/windows/Arcanum.exe
           test -x build/linux/Arcanum.x86_64 && test -d build/linux/data_Arcanum_linuxbsd_x86_64
           test -f build/windows/Arcanum.exe && test -d build/windows/data_Arcanum_windows_x86_64
+          if [ -n "$EosSdkDir" ]; then
+            test -f build/linux/data_Arcanum_linuxbsd_x86_64/libEOSSDK-Linux-Shipping.so
+            test -f build/windows/data_Arcanum_windows_x86_64/EOSSDK-Win64-Shipping.dll
+          fi
           (cd build/linux && zip -qr "../../$NAME-linux.zip" .)
           (cd build/windows && zip -qr "../../$NAME-windows.zip" .)
 

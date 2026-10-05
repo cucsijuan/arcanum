@@ -62,7 +62,9 @@ The SDK is not in this repository (its license doesn't allow it; `LICENSE-EXCEPT
    `EOS_DEPLOYMENT_ID`, `EOS_CLIENT_ID`, `EOS_CLIENT_SECRET` set) writes `scripts/Client/Eos/EosKeys.g.cs`, which is
    ignored by git. Without it the build has only the local network.
 
-The release workflow does both from repository secrets.
+The release workflow does both from repository secrets: `EOS_SDK_TOKEN` (a token that can read the private
+`cucsijuan/eos-sdk` repository, which holds the SDK) and the five `EOS_*` keys above. Without them it still releases,
+with local-network lobbies only.
 
 Testing on one computer: `ARCANUM_ONLINE_INTERNET_ONLY=1` leaves the local network out, `ARCANUM_EOS_NEW_DEVICE=1`
 makes a second instance sign in as a new device account, and `ARCANUM_EOS_LOG=1` shows the SDK's log.
