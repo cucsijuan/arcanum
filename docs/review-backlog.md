@@ -170,8 +170,8 @@ explicit about this case; the choice matches how other engines treat it. Pinned 
 
 ### L3. The "onto the battlefield instead of being discarded" replacement — **done**
 It is now one of the zone-change replacements (`OntoBattlefieldInsteadOfDiscard`, only for a discard from the hand caused
-by an opponent's spell or ability), so it is ordered with the others when several apply. A card put onto the battlefield
-instead is not discarded (614.6: no `CardDiscarded`); one that goes elsewhere (exile, library) still is.
+by an opponent's spell or ability), so it is ordered with the others when several apply. These effects replace only where
+the card goes ("instead of putting it into your graveyard"), so the card is discarded wherever it ends up, like madness.
 
 ### L4. Left over from the single casting-cost function
 - A reduction "if it targets X" steers target choice only for single-target spells; with several targets a cast that turns
