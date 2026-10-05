@@ -457,3 +457,65 @@ Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYo
   "that many plus one") each apply once per permanent that has them; when more than one kind applies, the affected
   player chooses the order (rule 616.1). Damage doublers stack the same way. Quantities about a target that changed zones
   use the object as it last existed (a spell returned to hand keeps the mana value it had with its X).
+
+## Multiplayer and commander rules
+
+- **The monarch** (rule 724): `{ "becomeMonarch": "you" | "target" | "triggered" }` ("its controller becomes the monarch");
+  `{ "exileUntilOpponentMonarch": "target" }`; conditions `"monarch"`, `"noMonarch"`; trigger `monarchEndStep` ("at the beginning
+  of the monarch's end step", the monarch is `"triggeredPlayer"`); static `"givesControlToMonarch": true`. The monarch's own
+  triggered abilities (draw at the end step, losing it to combat damage) are built in, and a player tag shows who has it.
+- **Attack restrictions**: static `"cantAttackYou": true`, effects `{ "cantAttackYouThisCombat": "triggeredPlayer" }`,
+  `{ "cantAttackPlayerThisTurn": "target" }`, `{ "playerMayPay": quantity, "who": subject, "ifNot": [ … ] }` ("may pay {X}. If they
+  don't, …"); card-wide `"cantAttackIfPowerAboveHandSize"`. The keyword `Attacks each combat` can be granted.
+- **Voting** (rule 701.38): `{ "vote": ["option a", "option b"], "secret": true }`, or `"vote": "player"` / `"vote": "creature"` (with
+  `"filter"`). After it: condition `{ "moreVotes": 0 }` (strictly more votes than every other option), quantity `{ "votes": 1 }`,
+  `"votesReceived"` (for the player being affected), `"opponentsVotedOtherwise"`, subjects `opponentsWhoVotedWithYou` and
+  `youAndOpponentsWhoVotedWithYou`, effects `{ "stunVoted": true }` and `{ "votersGiveCreatures": 0 }`. Trigger
+  `playersFinishVoting` (it knows every vote).
+- `{ "eachPlayer": [ … ], "who": subject, "onlyIf": condition }`: each player does the effects as "you"; with a single `may`, every
+  player decides first. `{ "repeat": quantity, "effects": [ … ] }` ("for each …, do this"). `{ "chooseOpponent": true }` then subjects
+  `chosenPlayer` / `youAndChosenPlayer`; `{ "choose": filter, "chooser": subject }` then subject `chosen`.
+- **Mana**: `extraMana` entries take `"commanderIdentity"`, `"opponentsLands"` (any color a land an opponent controls could produce),
+  `"yourLands"` (any type a land you control could produce), `"damage": 1`, `"gainLife": 1`, `"while": condition`, and the riders
+  `Uncounterable`, `InstantOrSorceryUncounterable`, `ScryIfSharesTypeWithCommander`. `{S}` in activation costs is paid with mana from
+  a snow source. A land given a basic land type has its mana ability.
+- **Entering**: `"chooseOnEnter": "revealOrTapped"` with `"enterReveal": filter`; `"entersTappedUnless": { "opponents": 2 }`;
+  `"startsOnBattlefield"` with `"startsIfNotStartingPlayer"`, `"startsWithCounter"`, `"startsExilingFromHand"`;
+  `"graveyardEnterBonus": filter` (while this card is in your graveyard, those enter with an additional +1/+1 counter).
+
+## Casting
+
+Card-wide: `"multikicker"`, `"replicate"`, `"squad"`, `"dash"`, `"splice"`, `"miracle"` (costs), `"storm"`, `"undaunted"`, `"delve"`,
+`"conspire"`, `"payXLife"`, `"entersWithXCountersTimes": 2`, `"flashbackExtra"` (non-mana flashback costs), `"flashbackExilesX"`,
+`"flashbackReduction"` (quantity), `"devour": 3` with `"devourFilter"`, `"exert": true` with `"exertIf"`, `"cantBeSacrificed"`.
+Split cards describe their halves under `"split": [ { … }, { … } ]`; an aftermath half is cast only from the graveyard.
+Quantities `"timesKicked"`, `"squadPaid"`. Trigger `castThis` ("when you cast this spell"), `cycled` ("when you cycle this card",
+amount: X), `exerted`. Cycling costs may include `{X}`. `"modesRepeat": true` ("you may choose the same mode more than once").
+
+## More effects
+
+`hideaway` and `playHiddenFree`, `regenerate` (and `destroy` with `"noRegeneration"`), `populate`, `becomeRenowned`,
+`preventDamage` (`"toYou"`, or with `"combatOnly"`, `"dealtBy"`, `"sources"`), `tripleDamage`, `cantLoseThisTurn`,
+`ownersGainControl`, `protectionFromOpponents`, `drawUpTo`, `exileTopFaceDown` and `playOneExiledFree`, `takeCountersOfTriggered`,
+`moveAllCounters`, `mayBounceSharingType`, `copyTriggeredAbility`, `swapGraveyardAndBattlefield`, `temptingOfferSearch`,
+`copyEachYouControl`, `opponentsExileGreatestPower` (with `"damageIf"`), `copyIfOpponentsTopSharesType`, `suspendWhenResolves`,
+`bounceSameManaValue`, `atNextEndStepAbout`, `destroyPowerAbove`, `exileFromGraveyardChosen` (then subject `exiled`),
+`returnFromGraveyardAll`, `thisSpellToLibraryBottom`, `exileThisSpell`. Options: `castFromGraveyard` takes `"of"`, `"free"`,
+`"maxManaValue"`, `"card"` and `"fromMilled"` (a spell cast this way is exiled instead of going to a graveyard); `search` takes
+`"shareLandType"` and `"withExiled"`; `returnFromGraveyard` takes `"differentManaValues"` and `"anyGraveyard"`; `revealUntil` takes
+`"attachTo"`; `reanimate` takes `"counterKinds"`; `may` takes `"else"`; `atNextUpkeep` takes `"yours"` and `"player"`; `mayPayX`
+takes `"max"`; `piles` takes `"revealed"`; `exileTopPlayable` takes `"anyMana"` and several libraries; `tokens` takes `"size"` (an X/X
+token); copies take `"exileAtEndOfCombat"`; `exileUntilLeaves` takes `"castable"`.
+
+Triggers: `opponentSacrifices`, `opponentActivatesAbility`, `opponentTapsArtifactForMana`, `creatureLeaves`, `creaturesAttackOpponent`
+(subject `attackersOfTriggered`), `playerAttacks` (amount: creatures attacking you), `youActivateNonManaAbility`,
+`damageToYouPrevented`. Static abilities: scope `permanents`, `"goads"`, `"protectionFromRingBearers"`, `"fromGraveyard"`,
+`spellCostIncrease`. Keywords: `Split second`, `Skulk`, `Exalted`. Conditions: `"exertedThisTurn"`, `"renowned"`,
+`"triggeredPlayerMostLife"`, `"castDuringMainPhase"`, `"triggeredHadCounters"`, `"hasAnyCounters"`, `{ "cardTypesInGraveyard": 4 }`,
+`{ "opponentHasMore": "life" | "creatures" | "lands" | "cards" }`, `{ "enteredThisTurn": filter }`, `{ "opponents": 2 }`. Filters:
+`renowned`, `attackingYou`, `fromGraveyard`, `hasX`, `castFromHand`, `exiledWithSource`, `manaValueIsX`,
+`sharesCreatureTypeWithTriggered`; target kind `exiledCard`, target option `controlledByDefendingPlayer`. Costs: `returnExiled:creature`.
+Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTakenThisTurn": "target" }`, `{ "greatestPowerOf": "target" }`,
+`"greatestCommanderManaValue"`, `"otherAttackersSharingType"`, `"opponentCount"`, `"affectedHandSize"`. Subjects: `playerToYourRight`,
+`yourRingBearer`, `attackers`, `lastControlled`, `opponentsDamagedBySameName`. Replacements: `OpponentsCantLoseYouCantWin`,
+`DamageCantReduceYourLifeBelowOne`, `StealsOpponentsExtraDraws`, `LookAtLibraryTop`, `PlayLandsFromLibraryTopWhileBehind`.

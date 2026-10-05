@@ -148,10 +148,23 @@ public sealed class BotController : IPlayerController
 
     public async Task<PlayerAction> ChooseActionAsync(GameView view, IReadOnlyList<PlayerAction> legal)
     {
+        // Asked again with nothing changed: the last action was backed out of (a choice made along the way cancelled it),
+        // so it isn't tried again from this same position.
+        var signature = (view.TurnNumber, view.Step, view.Stack.Count, view.Self.Hand.Count, view.Self.ManaPoolTotal,
+            view.Battlefield.Count, view.Battlefield.Count(c => c.Tapped), view.Players.Sum(p => p.Life));
+        if (!signature.Equals(_lastSignature)) _backedOut.Clear();
+        else if (_lastAction is { } previous && previous is not PassPriority) _backedOut.Add(previous);
+        _lastSignature = signature;
+        if (_backedOut.Count > 0) legal = legal.Where(a => !_backedOut.Contains(a)).ToList();
         var action = Decide(view, legal);
+        _lastAction = action;
         if (action is not PassPriority) await PaceAsync();
         return action;
     }
+
+    private object? _lastSignature;
+    private PlayerAction? _lastAction;
+    private readonly HashSet<PlayerAction> _backedOut = new();
 
     private void RememberAttacks(GameView view)
     {
@@ -280,11 +293,19 @@ public sealed class BotController : IPlayerController
                     SearchLibrary => 1.5,
                     Destroy { What.Kind: SubjectKind.Each } d => EachValue(view, d.What.Filter!),
                     DealDamage { To.Kind: SubjectKind.Each } d => EachValue(view, d.To.Filter! with { MaxPower = null }),
+                    PumpUntilEndOfTurn { What.Kind: SubjectKind.Each } p when IsHarmful(p) => EachValue(view, p.What.Filter!),
                     PumpUntilEndOfTurn { What.Kind: SubjectKind.Each } => 0.5,
                     _ => 0.2,
                 };
             }
             return value;
+        }
+        if (spell.Targets[0].Kind == TargetKind.GraveyardCard && spell.Effects.OfType<PutOntoBattlefield>().Any(p => p.What is { Kind: SubjectKind.Target, Index: 0 }))
+        {
+            // Reanimation: worth the best creature card in a graveyard, less the life it may cost.
+            var best = view.Players.SelectMany(p => p.Graveyard).Where(c => (c.Types & CardType.Creature) != 0).Select(c => (Value: CreatureValue(c), c.ManaCost)).DefaultIfEmpty().MaxBy(c => c.Value);
+            double cost = spell.Effects.OfType<LoseLife>().Any(l => l.Who.Kind == SubjectKind.You) ? ManaValue(best.ManaCost) * 0.4 : 0;
+            return best.Value - cost;
         }
         if (!TargetIsHarmed(spell, 0)) return spell.Effects.OfType<DrawCards>().Sum(d => 1.5 * d.Count.Estimate);
         var target = BestHarmTarget(view, spell, 0, LegalHarmTargets(view, spell.Targets[0]));

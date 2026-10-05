@@ -30,7 +30,7 @@ public sealed partial class Game
     {
         if (ability is null) return true;
         if (ability.Modes is { } modes)
-            return modes.Count(m => m.Targets.All(spec => spec.Optional || LegalTargets(spec, controller, source).Any())) >= (ability.UpToModes ? 1 : ability.ModeCount);
+            return modes.Count(m => m.Targets.All(spec => spec.Optional || LegalTargets(spec, controller, source).Any())) >= (ability.UpToModes || ability.ModesMayRepeat ? 1 : ability.ModeCount);
         return ability.Targets.All(spec => spec.Optional || LegalTargets(spec, controller, source).Any());
     }
 

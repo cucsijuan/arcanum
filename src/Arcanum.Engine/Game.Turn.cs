@@ -171,8 +171,17 @@ public sealed partial class Game
                 State.ExileAtEndOfCombat.Clear();
                 break;
             case Step.Cleanup:
-                await CleanupAsync();
-                givesPriority = false; // rule 514.3; a cleanup with pending SBAs or triggers isn't handled yet
+                // Normally no player gets priority in the cleanup step (514.3). If state-based actions apply or abilities
+                // trigger during it, they're handled and players get priority; then another cleanup step follows (514.3a).
+                for (int rounds = 0; rounds < 20 && !State.IsGameOver; rounds++)
+                {
+                    await CleanupAsync();
+                    bool anything = _pendingTriggers.Count > 0 || await ApplyStateBasedActionsOnceAsync();
+                    if (!anything) break;
+                    await RunPriorityAsync();
+                    foreach (var player in State.Players) player.ManaPool.Clear(endOfTurn: false);
+                }
+                givesPriority = false;
                 break;
         }
 
@@ -192,7 +201,7 @@ public sealed partial class Game
             var chosen = await ControllerOf(active.Id).ChooseDiscardAsync(ViewFor(active.Id), excess);
             Require(chosen.Count == excess && chosen.Distinct().Count() == excess && chosen.All(active.Hand.Contains),
                 $"Must discard exactly {excess} distinct cards from hand.");
-            foreach (var card in chosen) MoveCard(card, Zone.Graveyard);
+            foreach (var card in chosen) DiscardCard(active.Id, card, null); // discarding to hand size is discarding (514.1)
         }
         // Damage wears off and "until end of turn" effects end at the same time (rule 514.2).
         foreach (var permanent in State.Battlefield.Select(State.GetCard))

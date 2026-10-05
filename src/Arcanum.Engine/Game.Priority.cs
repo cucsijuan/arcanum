@@ -535,6 +535,9 @@ public sealed partial class Game
     private async Task<bool> CastAsItIsAsync(Player player, Card card, bool exileAfter)
     {
         var cardId = card.Id;
+        // A spell whose additional costs can't be paid can't be cast (rule 601.2h), however it's being cast.
+        if (!CanPayExtra(player.Id, card.Definition.AdditionalCost, cardId)) return false;
+        if (card.Definition.AdditionalCostOptions is { Count: > 0 } extraOptions && !extraOptions.Any(o => CanPayExtra(player.Id, o.Extra, cardId))) return false;
         bool flashback = exileAfter || (card.Zone == Zone.Graveyard
                          && (card.Definition.Flashback is not null || State.FlashbackGranted.Any(p => p.Card == cardId && p.Version == card.Version))
                          && !State.PlayableFromGraveyard.Any(p => p.Card == cardId && p.Version == card.Version));
@@ -591,7 +594,8 @@ public sealed partial class Game
             cost = cost.Plus(flashExtra);
         // Dash (702.109): an alternative cost from the hand.
         bool dashed = false;
-        if (card.Zone == Zone.Hand && card.Definition.Dash is { } dash && dash.Variants().Any(v => ManaPayment.FindPlan(State, player.Id, v, usable: UsableFor(card, isAbility: false)) is not null)
+        if (card.Zone == Zone.Hand && card.Definition.Dash is { } dash
+            && dash.MinusGeneric(CostReductionFor(card, targets)).Variants().Any(v => ManaPayment.FindPlan(State, player.Id, v, usable: UsableFor(card, isAbility: false)) is not null)
             && (!Payable(player.Id, cost.WithX(0), null)
                 || await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Cast {card.Name} for its dash cost {dash}?", cardId))))
         {

@@ -141,10 +141,14 @@ public sealed partial class Game
         }
 
         NoteMonarchLeaving(losers.Select(l => l.Player).ToList());
-        // The game goes on without them: their objects leave the game (rule 800.4a).
+        // The game goes on without them (rule 800.4a): their objects leave the game, effects giving them control of objects
+        // end, and anything they still control is exiled.
+        var leaving = losers.Select(l => l.Player).ToHashSet();
+        State.ControlEffects.RemoveAll(c => leaving.Contains(c.NewController));
+        RecomputeContinuousEffects();
         foreach (var (playerId, _) in losers)
         {
-            foreach (var id in State.Battlefield.Where(id => State.GetCard(id).Owner == playerId).ToList())
+            foreach (var id in State.Battlefield.Where(id => State.GetCard(id).Owner == playerId || State.GetCard(id).Controller == playerId).ToList())
                 MoveCard(id, Zone.Exile);
             State.Stack.RemoveAll(s => s.Controller == playerId);
             State.Combat?.Attacks.RemoveAll(a => a.Defender == playerId);

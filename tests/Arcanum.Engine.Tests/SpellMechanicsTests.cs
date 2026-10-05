@@ -252,7 +252,8 @@ public class SpellMechanicsTests
         s.Lands(P0, 1);
         s.InHand(P0, Spell("Rummage", "{R}", Effects(new DrawCards(2, Subject.You))) with { AdditionalCost = new ExtraCost(Discard: 1) });
         await s.RunUntilTurn();
-        Assert.Equal(1, s.Game.Log.Count(e => e is CardDiscarded { Player.Value: 0 }));
+        // Discards before the cleanup step (where discarding down to hand size is also discarding).
+        Assert.Equal(1, s.Game.Log.TakeWhile(e => e is not StepBegan { Step: State.Step.Cleanup }).Count(e => e is CardDiscarded { Player.Value: 0 }));
     }
 
     [Fact]
