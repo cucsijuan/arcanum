@@ -141,6 +141,18 @@ public class SagaTests
     }
 
     [Fact]
+    public async Task ViewShowsTheChapterReachedAndTheFinalChapter()
+    {
+        var s = new Scenario();
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        var tale = s.Add(P0, Tale);
+        await s.RunUntilTurn(2);
+        var view = Arcanum.Engine.Views.ViewBuilder.Card(s.Game.State, tale, P0);
+        Assert.Equal(1, view.LoreCounters);
+        Assert.Equal(3, view.FinalChapter);
+    }
+
+    [Fact]
     public async Task SagaCastThisTurnStartsAtChapterOne()
     {
         var s = new Scenario();

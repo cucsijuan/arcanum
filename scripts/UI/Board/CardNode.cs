@@ -32,6 +32,8 @@ public partial class CardNode : Control
     private readonly Label _damage = BoardStyle.MakeLabel("", 13, Colors.White);
     private readonly PanelContainer _ptBadge = new();
     private readonly Label _ptLabel = BoardStyle.MakeLabel("", 13, Colors.White, bold: true);
+    private readonly PanelContainer _loreBadge = new();
+    private readonly Label _loreLabel = BoardStyle.MakeLabel("", 13, Colors.White, bold: true);
     private readonly PanelContainer _counterBadge = new();
     private readonly Label _counterLabel = BoardStyle.MakeLabel("", 11, Colors.White);
     private readonly PanelContainer _caption = new();
@@ -129,6 +131,12 @@ public partial class CardNode : Control
         _ptBadge.AddChild(_ptLabel);
         _ptBadge.Visible = false;
         AddChild(_ptBadge);
+        // A Saga's chapter reached / final chapter, in the same corner (left of the power/toughness if it has both).
+        _loreBadge.MouseFilter = MouseFilterEnum.Ignore;
+        _loreBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color("4a3a6b"), 6, new Color("0b0b0d"), 1));
+        _loreBadge.AddChild(_loreLabel);
+        _loreBadge.Visible = false;
+        AddChild(_loreBadge);
         _counterBadge.MouseFilter = MouseFilterEnum.Ignore;
         _counterBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.1f, 0.1f, 0.12f, 0.9f), 8, BoardStyle.Playable, 1));
         _counterBadge.AddChild(_counterLabel);
@@ -257,6 +265,9 @@ public partial class CardNode : Control
             _ptBadge.AddThemeStyleboxOverride("panel", BoardStyle.Box(color, 6, new Color("0b0b0d"), 1));
             _ptLabel.Text = $"{view.Power}/{view.Toughness}";
         }
+        bool showLore = !view.IsHidden && view.Zone == Arcanum.Engine.State.Zone.Battlefield && view.FinalChapter > 0;
+        _loreBadge.Visible = showLore;
+        if (showLore) _loreLabel.Text = $"{Roman(view.LoreCounters)}/{Roman(view.FinalChapter)}";
         var counters = new List<string>();
         if (view.PlusOneCounters > 0) counters.Add($"+1/+1 \u00d7{view.PlusOneCounters}");
         if (view.MinusOneCounters > 0) counters.Add($"-1/-1 \u00d7{view.MinusOneCounters}");
@@ -308,6 +319,9 @@ public partial class CardNode : Control
     {
         _ptBadge.ResetSize();
         _ptBadge.Position = new Vector2(Size.X - _ptBadge.Size.X - 2, Size.Y - _ptBadge.Size.Y - 2);
+        _loreBadge.ResetSize();
+        float loreRight = _ptBadge.Visible ? _ptBadge.Position.X - 2 : Size.X - 2;
+        _loreBadge.Position = new Vector2(loreRight - _loreBadge.Size.X, Size.Y - _loreBadge.Size.Y - 2);
         _counterBadge.ResetSize();
         _counterBadge.Position = new Vector2(2, Size.Y * 0.35f);
         _assigned.Position = Size / 2 - _assigned.Size / 2;
@@ -332,6 +346,13 @@ public partial class CardNode : Control
         foreach (var child in _pips.GetChildren()) child.QueueFree();
         foreach (var symbol in BoardStyle.ParseCostSymbols(cost)) _pips.AddChild(BoardStyle.MakePip(symbol));
     }
+
+    /// <summary>Chapter numbers are written in Roman numerals ("0" before the first lore counter, Arabic past 10).</summary>
+    private static string Roman(int n) => n switch
+    {
+        <= 0 or > 10 => n.ToString(),
+        _ => new[] { "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X" }[n - 1],
+    };
 
     private static string TypeLine(CardView view)
     {

@@ -1109,11 +1109,13 @@ public partial class GameBoard : Control
                     };
                     if (id is not null) AddChoiceButton(label, () => p.Answer(action));
                 }
-                AddButton("End turn", () =>
-                {
-                    _session.Policy.PassTurn(view.TurnNumber); // skip the rest of the turn unless an opponent acts
-                    p.Answer(PassPriority.Instance);
-                });
+                // Only the active player ends the turn; during someone else's turn the player can only pass priority.
+                if (view.ActivePlayer == decision.Player)
+                    AddButton("End turn", () =>
+                    {
+                        _session.Policy.PassTurn(view.TurnNumber); // skip the rest of the turn unless an opponent acts
+                        p.Answer(PassPriority.Instance);
+                    });
                 AddButton(resolve, () => p.Answer(PassPriority.Instance), primary: true);
                 break;
             }

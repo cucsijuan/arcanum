@@ -41,6 +41,10 @@ public sealed record CardView
     public bool AttacksEachCombat { get; init; }
     /// <summary>Loyalty counters (planeswalkers).</summary>
     public int Loyalty { get; init; }
+    /// <summary>Lore counters (Sagas): the chapter reached so far.</summary>
+    public int LoreCounters { get; init; }
+    /// <summary>A Saga's last chapter, or 0 when the card isn't a Saga.</summary>
+    public int FinalChapter { get; init; }
     public bool IsToken { get; init; }
     public string OracleText { get; init; } = "";
     public IReadOnlyList<string> Colors { get; init; } = Array.Empty<string>();
