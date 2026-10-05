@@ -179,11 +179,13 @@ public partial class GameBoard : Control
 
     /// <summary>
     /// ARCANUM_COMMANDER=1 (with ARCANUM_PLAYERS=2..4, default 4): a commander game with the module's commander
-    /// decks; with ARCANUM_VS_BOT=1 every seat but the first is the computer. For quick testing without the menus.
+    /// decks (ARCANUM_COMMANDER_DECKS=prefix picks other decks by name prefix); with ARCANUM_VS_BOT=1 every seat but the
+    /// first is the computer. For quick testing without the menus.
     /// </summary>
     private bool UseCommanderDecks(Arcanum.Data.Modules.ContentModule module, Arcanum.Data.CardData.CardDatabase cards)
     {
-        var names = module.DeckNames().Where(n => n.StartsWith("commander")).ToList();
+        var prefix = OS.GetEnvironment("ARCANUM_COMMANDER_DECKS") is { Length: > 0 } p ? p : "commander";
+        var names = module.DeckNames().Where(n => n.StartsWith(prefix)).ToList();
         int players = int.TryParse(OS.GetEnvironment("ARCANUM_PLAYERS"), out int n) ? Math.Clamp(n, 2, 4) : 4;
         if (names.Count == 0) return false;
         bool vsBot = OS.GetEnvironment("ARCANUM_VS_BOT") == "1";
