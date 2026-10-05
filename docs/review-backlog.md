@@ -24,14 +24,14 @@ enters trigger whose condition looks at counters or at power or toughness raised
 **Fix:** put the counters on as part of the move, before `CardMoved`, still emitting "counters put" events afterwards.
 **Test:** a creature that enters with +1/+1 counters and an enters trigger "if its power is N or greater".
 
-### R3. A commander going to a hand or library is offered the command zone after the move
+### R3. A commander going to a hand or library is offered the command zone after the move — **done**
 `Game.Commander.cs` `OfferCommanderReturnsAsync` says so itself: rule 903.9b is a replacement effect, but the card first
 goes to the hand or library (shuffles included) and is then offered.
 **Fix:** treat the hand and library case as a replacement in `MoveCard` (the owner chooses as it would move), keep the
 graveyard and exile case as the state-based choice (903.9a).
 **Test:** a commander bounced or tucked: the choice comes before it reaches the zone, no shuffle with the commander inside.
 
-### R4. Only one zone-change replacement is applied, in a fixed order
+### R4. Only one zone-change replacement is applied, in a fixed order — **done**
 `MoveCard` is an `if / else if` chain: death replacements, then "exile instead of the graveyard", then the card's own
 "shuffle into its library instead", then exiling instants and sorceries. Rule 616.1: when several apply, the affected
 object's controller (or owner) chooses one, applies it, and the rest are checked again.
@@ -157,7 +157,16 @@ wakes on queued work (and a slower tick when nothing is going on) would save bat
 ### L1. Entering counters with both "plus one" and "twice that many" replacements
 Counters a permanent enters with are now on it before it is announced (R2), except when both kinds of counter replacement
 apply: their controller must order them (rule 616.1) and `MoveCard` can't ask, so those counters are still placed right
-after the current effect. Exact handling needs the choice before the move (like death replacements) or an async move.
+after the current effect. Now that moves are planned asynchronously (`PlanMoveAsync`), the order can be asked as the
+permanent moves: do that.
+
+### L2. A commander drawn and put into the command zone instead
+`DrawAsync` still announces the draw when the commander goes to the command zone instead of the hand (903.9b). Check the
+rules on whether a draw replaced that way is still a draw ("cards drawn this turn", "whenever you draw") and match them.
+
+### L3. The "onto the battlefield instead of being discarded" replacement
+It is still applied before the move, outside `ZoneReplacements`; it should become one of the options there so it can be
+ordered with the others when something else also applies.
 
 ## Suggested order
 
