@@ -22,6 +22,8 @@
 
 ## Backlog
 
+- Code review after M11: rules fixes, duplicated paths and hygiene, prioritized in [review-backlog.md](review-backlog.md).
+
 - Online: the host's device has all the game's information (a modified host could see hidden cards); a dedicated
   headless server (M14+) removes that.
 - Online: spectators.
