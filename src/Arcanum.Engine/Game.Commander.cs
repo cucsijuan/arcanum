@@ -8,20 +8,19 @@ namespace Arcanum.Engine;
 
 public sealed partial class Game
 {
-    /// <summary>Commanders that went to a graveyard, exile, a hand or a library since the last check.</summary>
+    /// <summary>Commanders that went to a graveyard or exile since the last check.</summary>
     private readonly List<CardId> _commandersToOffer = new();
 
     private void NoteCommanderMove(Card card, Zone to)
     {
-        if (Config.Commander is not null && card.IsCommander && to is Zone.Graveyard or Zone.Exile or Zone.Hand or Zone.Library)
+        if (Config.Commander is not null && card.IsCommander && to is Zone.Graveyard or Zone.Exile)
             _commandersToOffer.Add(card.Id);
     }
 
     /// <summary>
-    /// The owner of a commander that was put into a graveyard or exile (903.9a), or into a hand or library (903.9b),
-    /// may move it to the command zone. Offered before the next priority, in APNAP order of owners. The hand and
-    /// library cases are offered right after the move rather than as a true replacement, which only differs when
-    /// something looks at that hand or library in between.
+    /// The owner of a commander that was put into a graveyard or exile may move it to the command zone (903.9a), offered
+    /// before the next priority in APNAP order of owners. A hand or library is a replacement effect (903.9b),
+    /// offered as the commander would move (<see cref="ZoneReplacements"/>).
     /// </summary>
     private async Task OfferCommanderReturnsAsync()
     {
@@ -32,12 +31,12 @@ public sealed partial class Game
         foreach (var id in pending.OrderBy(id => order.IndexOf(State.GetCard(id).Owner)))
         {
             var card = State.GetCard(id);
-            if (card.Zone is not (Zone.Graveyard or Zone.Exile or Zone.Hand or Zone.Library)) continue;
+            if (card.Zone is not (Zone.Graveyard or Zone.Exile)) continue;
             var owner = card.Owner;
             if (State.GetPlayer(owner).HasLost) continue;
             var request = new YesNoRequest($"Move {card.Name} from your {card.Zone.ToString().ToLowerInvariant()} to the command zone?", id);
             if (!await ControllerOf(owner).ChooseYesNoAsync(ViewFor(owner), request)) continue;
-            MoveCard(id, Zone.Command);
+            await MoveCardAsync(id, Zone.Command);
             Emit(new CommanderReturned(id, owner));
         }
     }

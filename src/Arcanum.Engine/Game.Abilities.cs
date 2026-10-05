@@ -585,7 +585,7 @@ public sealed partial class Game
                 if (ctx.Source.Zone != Zone.Battlefield) break;
                 foreach (var card in CardsFor(eu.What, ctx).ToList())
                 {
-                    MoveCard(card.Id, Zone.Exile);
+                    await MoveCardAsync(card.Id, Zone.Exile);
                     if (!card.Definition.IsToken) State.LinkedExiles.Add(new LinkedExile(ctx.Source.Id, ctx.Source.Version, card.Id, card.Version));
                     if (eu.Castable && card.Zone == Zone.Exile)
                         State.PlayableFromExile.Add(new PlayableFromExile(card.Id, card.Version, ctx.Controller, int.MaxValue) { AnyManaType = true, CastOnly = true });
@@ -594,7 +594,7 @@ public sealed partial class Game
             case ExileAndReturnAtEndStep er:
                 foreach (var card in CardsFor(er.What, ctx).ToList())
                 {
-                    MoveCard(card.Id, Zone.Exile);
+                    await MoveCardAsync(card.Id, Zone.Exile);
                     if (!card.Definition.IsToken) State.AtNextEndStep.Add(new DelayedAction(card.Id, card.Version, Return: true, er.UnderYourControl ? ctx.Controller : card.Owner));
                 }
                 break;
@@ -712,12 +712,12 @@ public sealed partial class Game
                 }
                 // Nonland cards first, then lands tapped (two separate events).
                 BeginEnteringTogether();
-                foreach (var id in chosen.Where(id => !State.GetCard(id).Is(CardType.Land))) MoveCard(id, Zone.Battlefield, controller: ctx.Controller);
+                foreach (var id in chosen.Where(id => !State.GetCard(id).Is(CardType.Land))) await MoveCardAsync(id, Zone.Battlefield, controller: ctx.Controller);
                 EndEnteringTogether();
                 BeginEnteringTogether();
                 foreach (var id in chosen.Where(id => State.GetCard(id).Is(CardType.Land)))
                 {
-                    MoveCard(id, Zone.Battlefield, controller: ctx.Controller, tapped: true);
+                    await MoveCardAsync(id, Zone.Battlefield, controller: ctx.Controller, tapped: true);
                 }
                 EndEnteringTogether();
                 var rest = top.Where(id => !chosen.Contains(id)).ToList();
@@ -783,7 +783,7 @@ public sealed partial class Game
                 foreach (var player in State.ApnapOrder().ToList())
                     if (State.GetPlayer(player).Library.FirstOrDefault() is { } top && State.GetPlayer(player).Library.Count > 0)
                     {
-                        MoveCard(top, Zone.Exile);
+                        await MoveCardAsync(top, Zone.Exile);
                         exiled.Add(top);
                     }
                 // Cast any number of the nonland cards, free, timing aside (rule 608.2g).
@@ -815,8 +815,7 @@ public sealed partial class Game
                                          && !c.Has(Keyword.Indestructible)).ToList())
                 {
                     if (Regenerated(card)) continue;
-                    await ChooseDeathReplacementsAsync(new[] { card.Id });
-                    MoveCard(card.Id, Zone.Graveyard);
+                    await MoveCardAsync(card.Id, Zone.Graveyard);
                     Emit(new PermanentDestroyed(card.Id));
                 }
                 break;
@@ -839,7 +838,7 @@ public sealed partial class Game
                     var chosen = await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller),
                         new CardChoiceRequest($"Choose {n} card(s) for {State.GetPlayer(player).Name} to discard", ctx.Source.Id, options, n, n, CardChoicePurpose.Discard));
                     Require(chosen.Count == n && chosen.Distinct().Count() == n && chosen.All(id => options.Any(o => o.Id == id)), "Choose among the revealed cards.");
-                    foreach (var id in chosen) DiscardCard(player, id, ctx.Controller);
+                    foreach (var id in chosen) await DiscardCardAsync(player, id, ctx.Controller);
                 }
                 break;
             case CreateEmblem ce:
@@ -862,7 +861,7 @@ public sealed partial class Game
                 var top = State.ApnapOrder().Where(owners.Contains).SelectMany(o => State.GetPlayer(o).Library.Take(howMany).ToList()).ToList();
                 foreach (var id in top)
                 {
-                    MoveCard(id, Zone.Exile);
+                    await MoveCardAsync(id, Zone.Exile);
                     if (ep.FaceDown) State.GetCard(id).FaceDown = true;
                 }
                 IReadOnlyList<CardId> playable = top;
@@ -942,7 +941,7 @@ public sealed partial class Game
                 if (paid) break;
                 if (item is SpellOnStack sp)
                 {
-                    if (CanBeCountered(State.GetCard(sp.Card))) CounterSpellOnStack(sp.Card);
+                    if (CanBeCountered(State.GetCard(sp.Card))) await CounterSpellOnStackAsync(sp.Card);
                 }
                 else
                 {
@@ -985,9 +984,8 @@ public sealed partial class Game
                     foreach (var card in State.Battlefield.Select(State.GetCard).Where(c => c.Name == name && !c.Has(Keyword.Indestructible)).ToList())
                     {
                         if (Regenerated(card)) continue;
-                        await ChooseDeathReplacementsAsync(new[] { card.Id });
                         bool creature = card.IsCreature;
-                        MoveCard(card.Id, Zone.Graveyard);
+                        await MoveCardAsync(card.Id, Zone.Graveyard);
                         ctx.Results.Destroyed++;
                         Emit(new PermanentDestroyed(card.Id));
                         if (creature) Emit(new CreatureDied(card.Id));
@@ -1022,7 +1020,7 @@ public sealed partial class Game
                     while (player.Library.Count > 0)
                     {
                         var top = player.Library[0];
-                        MoveCard(top, Zone.Exile);
+                        await MoveCardAsync(top, Zone.Exile);
                         exiled.Add(top);
                         if (Matches(ru.Filter with { Controller = ControllerFilter.Any }, State.GetCard(top), player.Id, ctx.Source, ctx.Controller)) { revealedHit = top; break; }
                     }
@@ -1033,7 +1031,7 @@ public sealed partial class Game
                     }
                     var leftover = exiled.Where(id => State.GetCard(id).Zone == Zone.Exile).ToList();
                     Rng.Shuffle(leftover);
-                    foreach (var id in leftover) MoveCard(id, Zone.Library, toBottom: true);
+                    foreach (var id in leftover) await MoveCardAsync(id, Zone.Library, toBottom: true);
                     break;
                 }
                 var revealed = new List<CardId>();
@@ -1057,12 +1055,12 @@ public sealed partial class Game
                              && Matches(toBattlefield with { Controller = ControllerFilter.Any }, State.GetCard(hit), ctx.Controller, ctx.Source, ctx.Controller)
                         ? Zone.Battlefield : ru.To;
                     var host = ru.AttachTo is { } attachTo ? CardsFor(attachTo, ctx).FirstOrDefault(c => c.Zone == Zone.Battlefield && c.IsCreature) : null;
-                    MoveCard(hit, to, controller: ctx.Controller, attachTo: to == Zone.Battlefield && host is not null && State.GetCard(hit).HasSubtype("Equipment") ? host.Id : null, tapped: ru.Tapped);
+                    await MoveCardAsync(hit, to, controller: ctx.Controller, attachTo: to == Zone.Battlefield && host is not null && State.GetCard(hit).HasSubtype("Equipment") ? host.Id : null, tapped: ru.Tapped);
                 }
                 if (hits.Count > 0) EndEnteringTogether();
                 if (ru.RestToGraveyard)
                 {
-                    foreach (var id in revealed) MoveCard(id, Zone.Graveyard);
+                    foreach (var id in revealed) await MoveCardAsync(id, Zone.Graveyard);
                     break;
                 }
                 Rng.Shuffle(revealed);
@@ -1125,8 +1123,8 @@ public sealed partial class Game
                 int chosen = await ControllerOf(ctx.Controller).ChooseOptionAsync(ViewFor(ctx.Controller),
                     new OptionRequest("Choose the pile you put into your hand (the other goes to your graveyard)", ctx.Source.Id, labels, OptionKind.Other));
                 var toHand = chosen == 0 ? faceUp : faceDown;
-                foreach (var id in toHand) MoveCard(id, Zone.Hand);
-                foreach (var id in top.Where(id => !toHand.Contains(id))) MoveCard(id, Zone.Graveyard);
+                foreach (var id in toHand) await MoveCardAsync(id, Zone.Hand);
+                foreach (var id in top.Where(id => !toHand.Contains(id))) await MoveCardAsync(id, Zone.Graveyard);
                 break;
             }
             case Piles pl:
@@ -1148,8 +1146,8 @@ public sealed partial class Game
                 int chosen = await ControllerOf(opponent).ChooseOptionAsync(ViewFor(opponent),
                     new OptionRequest($"Choose the pile {player.Name} puts into their hand", ctx.Source.Id, labels, OptionKind.Other));
                 var toHand = chosen == 0 ? faceUp : faceDown;
-                foreach (var id in toHand) MoveCard(id, Zone.Hand);
-                foreach (var id in top.Where(id => !toHand.Contains(id))) MoveCard(id, Zone.Graveyard);
+                foreach (var id in toHand) await MoveCardAsync(id, Zone.Hand);
+                foreach (var id in top.Where(id => !toHand.Contains(id))) await MoveCardAsync(id, Zone.Graveyard);
                 break;
             }
             case WinGame:
@@ -1182,7 +1180,7 @@ public sealed partial class Game
                 foreach (var item in State.Stack.ToList())
                 {
                     State.Stack.Remove(item);
-                    if (item is SpellOnStack sp) MoveCard(sp.Card, Zone.Exile);
+                    if (item is SpellOnStack sp) await MoveCardAsync(sp.Card, Zone.Exile);
                 }
                 State.Combat = null;
                 _endTurnRequested = true;
@@ -1232,7 +1230,7 @@ public sealed partial class Game
                     Require(pick.Count == rew.Count && pick.All(id => exiled.Any(c => c.Id == id)), "Choose among the exiled cards.");
                     exiled = exiled.Where(c => pick.Contains(c.Id)).ToList();
                 }
-                foreach (var card in exiled) MoveCard(card.Id, Zone.Hand);
+                foreach (var card in exiled) await MoveCardAsync(card.Id, Zone.Hand);
                 break;
             }
             case SearchAndExileWithThis se:
@@ -1246,7 +1244,7 @@ public sealed partial class Game
                         new CardChoiceRequest($"Search your library: choose up to {se.Count} to exile", ctx.Source.Id, options, 0, Math.Min(se.Count, options.Count), CardChoicePurpose.ToHand));
                     foreach (var id in chosen.Where(id => options.Any(o => o.Id == id)))
                     {
-                        MoveCard(id, Zone.Exile);
+                        await MoveCardAsync(id, Zone.Exile);
                         State.GetCard(id).ExiledWith = (ctx.Source.Id, ctx.Source.Version);
                     }
                 }
@@ -1288,7 +1286,7 @@ public sealed partial class Game
                     {
                         var top = State.GetCard(library[0]);
                         bool found = Matches(mu.Until with { Controller = ControllerFilter.Any }, top, player, ctx.Source, ctx.Controller);
-                        MoveCard(top.Id, Zone.Graveyard);
+                        await MoveCardAsync(top.Id, Zone.Graveyard);
                         if (found) break;
                     }
                 }
@@ -1299,7 +1297,7 @@ public sealed partial class Game
                     {
                         var card = State.GetCard(id);
                         if (eg.Filter is { } egFilter && !Matches(egFilter with { Controller = ControllerFilter.Any }, card, card.Owner, ctx.Source, ctx.Controller)) continue;
-                        MoveCard(id, Zone.Exile);
+                        await MoveCardAsync(id, Zone.Exile);
                         if (card.Zone == Zone.Exile) ctx.Results.Exiled.Add(id);
                         if (eg.Playable && card.Zone == Zone.Exile)
                             State.PlayableFromExile.Add(new PlayableFromExile(id, card.Version, ctx.Controller, int.MaxValue) { AnyManaType = true });
@@ -1319,7 +1317,7 @@ public sealed partial class Game
             case ShuffleGraveyardIntoLibrary sg:
                 foreach (var player in PlayersFor(sg.Who, ctx).ToList())
                 {
-                    foreach (var id in State.GetPlayer(player).Graveyard.ToList()) MoveCard(id, Zone.Library);
+                    foreach (var id in State.GetPlayer(player).Graveyard.ToList()) await MoveCardAsync(id, Zone.Library);
                     Shuffle(State.GetPlayer(player));
                 }
                 break;
@@ -1353,7 +1351,7 @@ public sealed partial class Game
                     foreach (var card in State.GetPlayer(player).Graveyard.Select(State.GetCard)
                                  .Where(c => Matches(ra.Filter with { Controller = ControllerFilter.Any }, c, player, ctx.Source, ctx.Controller)).ToList())
                     {
-                        MoveCard(card.Id, Zone.Battlefield, controller: ctx.Controller);
+                        await MoveCardAsync(card.Id, Zone.Battlefield, controller: ctx.Controller);
                         if (ra.As is { } becomes) BecomeAsItEnters(card, becomes, ctx);
                     }
                 EndEnteringTogether();
@@ -1363,7 +1361,7 @@ public sealed partial class Game
                 var relative = ba.RelativeTo is { } rel ? PlayersFor(rel, ctx).FirstOrDefault() : ctx.Controller;
                 foreach (var card in State.Battlefield.Select(State.GetCard)
                              .Where(c => Matches(ba.Filter, c, c.Controller, ctx.Source, relative)).ToList())
-                    MoveCard(card.Id, Zone.Hand);
+                    await MoveCardAsync(card.Id, Zone.Hand);
                 break;
             }
             case PutOntoBattlefield p:
@@ -1380,7 +1378,7 @@ public sealed partial class Game
                 if (p.AttachTo is not null && attachTo is null) break; // an Aura returned attached to a creature that is gone stays where it is
                 foreach (var card in cards)
                 {
-                    MoveCard(card.Id, Zone.Battlefield, controller: p.UnderOwnersControl ? card.Owner : ctx.Controller, attachTo: attachTo, tapped: p.Tapped);
+                    await MoveCardAsync(card.Id, Zone.Battlefield, controller: p.UnderOwnersControl ? card.Owner : ctx.Controller, attachTo: attachTo, tapped: p.Tapped);
                     if (p.Attacking && State.Combat is { } combat && card.IsCreature)
                     {
                         // Put onto the battlefield attacking: its controller chooses which player it attacks (rule 508.4).
@@ -1442,15 +1440,15 @@ public sealed partial class Game
                     if (pl.Position > 0)
                     {
                         // "Second from the top": below that many cards, or at the bottom of a shorter library.
-                        MoveCard(card.Id, Zone.Library);
+                        await MoveCardAsync(card.Id, Zone.Library);
                         var library = State.GetPlayer(card.Owner).Library;
-                        library.Remove(card.Id);
+                        if (!library.Remove(card.Id)) continue; // a replacement effect put it elsewhere
                         library.Insert(Math.Min(pl.Position - 1, library.Count), card.Id);
                         continue;
                     }
                     bool bottom = !pl.Top && (pl.Bottom || await ControllerOf(card.Owner).ChooseYesNoAsync(ViewFor(card.Owner),
                         new YesNoRequest($"Put {card.Name} on the bottom of your library? (No: on top)", card.Id)));
-                    MoveCard(card.Id, Zone.Library, toBottom: bottom);
+                    await MoveCardAsync(card.Id, Zone.Library, toBottom: bottom);
                 }
                 break;
             case GainControl g:
@@ -1549,9 +1547,8 @@ public sealed partial class Game
                 foreach (var card in CardsFor(d.What, ctx).Where(c => !c.Has(Keyword.Indestructible)).ToList())
                 {
                     if (Regenerated(card, !d.CantBeRegenerated)) continue;
-                    await ChooseDeathReplacementsAsync(new[] { card.Id });
                     bool creature = card.IsCreature;
-                    MoveCard(card.Id, Zone.Graveyard);
+                    await MoveCardAsync(card.Id, Zone.Graveyard);
                     ctx.Results.Destroyed++;
                     Emit(new PermanentDestroyed(card.Id));
                     if (creature) Emit(new CreatureDied(card.Id));
@@ -1566,7 +1563,7 @@ public sealed partial class Game
                     : CardsFor(x.What, ctx).ToArray();
                 foreach (var card in exiling.Where(c => !(x.ExceptCreatedThisWay && ctx.Results.Created.Contains(c.Id))))
                 {
-                    MoveCard(card.Id, Zone.Exile);
+                    await MoveCardAsync(card.Id, Zone.Exile);
                     ctx.Results.Exiled.Add(card.Id);
                     if (x.WithCounter is { } kind && card.Zone == Zone.Exile) card.Counters[kind] = card.CounterCount(kind) + 1;
                     if (x.Linked && card.Zone == Zone.Exile) card.ExiledWith = (ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version);
@@ -1587,11 +1584,11 @@ public sealed partial class Game
                     State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, Array.Empty<Keyword>()) { LosesAbilities = true, Timestamp = NewTimestamp() });
                 break;
             case ReturnToHand r:
-                if (r.What.Kind == SubjectKind.Self && ctx.Source.Zone == Zone.Graveyard) MoveCard(ctx.Source.Id, Zone.Hand); // "return this card"
+                if (r.What.Kind == SubjectKind.Self && ctx.Source.Zone == Zone.Graveyard) await MoveCardAsync(ctx.Source.Id, Zone.Hand); // "return this card"
                 foreach (var card in CardsFor(r.What, ctx).ToList())
                 {
-                    MoveCard(card.Id, Zone.Hand);
-                    ctx.Results.Returned.Add(card.Id);
+                    await MoveCardAsync(card.Id, Zone.Hand);
+                    if (State.GetCard(card.Id).Zone == Zone.Hand) ctx.Results.Returned.Add(card.Id);
                 }
                 break;
             case MayPay mp:
@@ -1637,14 +1634,14 @@ public sealed partial class Game
                     "Choose among the listed cards.");
                 // "With different mana values": a card with a mana value already chosen isn't returned.
                 if (rg.DifferentManaValues) chosen = chosen.GroupBy(id => ManaValueOf(State.GetCard(id))).Select(g => g.First()).ToList();
-                foreach (var id in chosen) MoveCard(id, rg.To, controller: who);
+                foreach (var id in chosen) await MoveCardAsync(id, rg.To, controller: who);
                 break;
             }
             case DiscardHand dh:
                 foreach (var player in PlayersFor(dh.Who, ctx).ToList())
                     foreach (var id in State.GetPlayer(player).Hand.ToList())
                     {
-                        DiscardCard(player, id, ctx.Controller);
+                        await DiscardCardAsync(player, id, ctx.Controller);
                         ctx.Results.Discarded.Add(id);
                     }
                 break;
@@ -1663,7 +1660,7 @@ public sealed partial class Game
                         var milled = new List<Card>();
                         foreach (var id in State.GetPlayer(player).Library.Take(Eval(m.Count, ctx)).ToList())
                         {
-                            MoveCard(id, Zone.Graveyard);
+                            await MoveCardAsync(id, Zone.Graveyard);
                             // A card a replacement effect sent elsewhere wasn't put into the graveyard "this way".
                             if (State.GetCard(id).Zone != Zone.Graveyard) continue;
                             ctx.Results.Milled.Add(id);
@@ -1685,16 +1682,16 @@ public sealed partial class Game
                 // "Counter that spell": the spell the trigger was about, if it's still on the stack.
                 if (c.What.Kind == SubjectKind.Triggered && ctx.Trigger?.Subject is { } triggeredSpell && State.GetCard(triggeredSpell) is { Zone: Zone.Stack } onStack
                     && onStack.Version == ctx.Trigger.SubjectVersion && CanBeCountered(onStack))
-                    CounterSpellOnStack(triggeredSpell);
+                    await CounterSpellOnStackAsync(triggeredSpell);
                 else if (c.What.Kind == SubjectKind.Target && ctx.TargetAt(c.What.Index)?.Card is { } spellCard && CanBeCountered(State.GetCard(spellCard)))
                 {
                     var countered = State.GetCard(spellCard);
                     bool permanent = countered.Types.IsPermanent() && !countered.Definition.IsToken;
-                    CounterSpellOnStack(spellCard);
+                    await CounterSpellOnStackAsync(spellCard);
                     if (c.ExilePermanentPlayable && permanent && countered.Zone != Zone.Exile)
                     {
                         // "Exile it instead …; you may cast that card without paying its mana cost for as long as it remains exiled."
-                        MoveCard(spellCard, Zone.Exile);
+                        await MoveCardAsync(spellCard, Zone.Exile);
                         if (countered.Zone == Zone.Exile)
                             State.PlayableFromExile.Add(new PlayableFromExile(spellCard, countered.Version, ctx.Controller, int.MaxValue, WithoutPaying: true));
                     }
@@ -1739,7 +1736,7 @@ public sealed partial class Game
                 int version = (ctx.SourceVersion ?? ctx.Source.Version) - (ctx.Source.Zone == Zone.Battlefield ? 0 : 1);
                 BeginEnteringTogether();
                 foreach (var card in State.Cards.Values.Where(c => c.Zone == Zone.Exile && c.ExiledWith is { } w && w.Source == ctx.Source.Id && w.Version == version).ToList())
-                    MoveCard(card.Id, Zone.Battlefield, controller: card.Owner);
+                    await MoveCardAsync(card.Id, Zone.Battlefield, controller: card.Owner);
                 EndEnteringTogether();
                 break;
             }
@@ -1813,7 +1810,7 @@ public sealed partial class Game
                 while (player.Library.Count > 0)
                 {
                     var top = player.Library[0];
-                    MoveCard(top, Zone.Exile);
+                    await MoveCardAsync(top, Zone.Exile);
                     exiled.Add(top);
                     var card = State.GetCard(top);
                     if (!card.Is(CardType.Land) && card.Definition.ManaCost.ManaValue < manaValue) { hit = top; break; }
@@ -1825,7 +1822,7 @@ public sealed partial class Game
                 }
                 var rest = exiled.Where(id => State.GetCard(id).Zone == Zone.Exile).ToList();
                 Rng.Shuffle(rest);
-                foreach (var id in rest) MoveCard(id, Zone.Library, toBottom: true);
+                foreach (var id in rest) await MoveCardAsync(id, Zone.Library, toBottom: true);
                 break;
             }
             case CastFromHandFree cf:
@@ -1853,7 +1850,7 @@ public sealed partial class Game
                 BeginEnteringTogether();
                 foreach (var id in pick.Where(id => options.Any(c => c.Id == id)))
                 {
-                    MoveCard(id, Zone.Battlefield, controller: who, tapped: ph.Tapped);
+                    await MoveCardAsync(id, Zone.Battlefield, controller: who, tapped: ph.Tapped);
                     var entered = State.GetCard(id);
                     if (entered.Zone != Zone.Battlefield) continue;
                     if (ph.Attacking && State.Combat is { } combat && entered.IsCreature)
@@ -1871,9 +1868,8 @@ public sealed partial class Game
                 foreach (var card in all.Where(c => !keep.Contains(c.Id) && !c.Has(Keyword.Indestructible)))
                 {
                     if (Regenerated(card)) continue;
-                    await ChooseDeathReplacementsAsync(new[] { card.Id });
                     bool creature = card.IsCreature;
-                    MoveCard(card.Id, Zone.Graveyard);
+                    await MoveCardAsync(card.Id, Zone.Graveyard);
                     ctx.Results.Destroyed++;
                     Emit(new PermanentDestroyed(card.Id));
                     if (creature) Emit(new CreatureDied(card.Id));
@@ -1890,7 +1886,7 @@ public sealed partial class Game
                 var pick = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest($"Put {n} card(s) from your hand on the bottom of your library", ctx.Source.Id,
                     hand.Select(id => ViewBuilder.Card(State, id, who)).ToList(), n, n, CardChoicePurpose.ScryToBottom));
                 Require(pick.Count == n && pick.All(hand.Contains), "Choose cards from your hand.");
-                foreach (var id in pick) MoveCard(id, Zone.Library, toBottom: true);
+                foreach (var id in pick) await MoveCardAsync(id, Zone.Library, toBottom: true);
                 break;
             }
             case TapAnyNumber ta:
@@ -1920,7 +1916,7 @@ public sealed partial class Game
             {
                 var original = CardsFor(cc.What, ctx).FirstOrDefault() ?? (ctx.TargetAt(0)?.Card is { } tc ? State.GetCard(tc) : null);
                 if (original is null || original.Zone == Zone.Battlefield) break;
-                MoveCard(original.Id, Zone.Exile);
+                await MoveCardAsync(original.Id, Zone.Exile);
                 var id = new CardId(State.Cards.Keys.Max(k => k.Value) + 1);
                 var copy = new Card(id, original.Definition with { IsToken = true }, ctx.Controller) { Zone = Zone.Exile };
                 State.Cards.Add(id, copy);
@@ -1994,7 +1990,7 @@ public sealed partial class Game
                         eligible.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 0, max, CardChoicePurpose.ToHand));
                     Require(taken.Count <= max && taken.Distinct().Count() == taken.Count && taken.All(id => eligible.Any(c => c.Id == id)), "Choose among the milled cards.");
                 }
-                foreach (var id in taken) MoveCard(id, Zone.Hand);
+                foreach (var id in taken) await MoveCardAsync(id, Zone.Hand);
                 break;
             }
             case RemoveAllCounters rac:
@@ -2005,13 +2001,13 @@ public sealed partial class Game
                 var blinked = new List<Card>();
                 foreach (var card in CardsFor(bl.What, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
                 {
-                    MoveCard(card.Id, Zone.Exile);
+                    await MoveCardAsync(card.Id, Zone.Exile);
                     if (card.Zone == Zone.Exile && !card.Definition.IsToken) blinked.Add(card);
                 }
                 BeginEnteringTogether();
                 foreach (var card in blinked)
                 {
-                    MoveCard(card.Id, Zone.Battlefield, controller: card.Owner, tapped: bl.Tapped);
+                    await MoveCardAsync(card.Id, Zone.Battlefield, controller: card.Owner, tapped: bl.Tapped);
                 }
                 EndEnteringTogether();
                 break;
@@ -2019,7 +2015,7 @@ public sealed partial class Game
             case ShuffleIntoLibrary sil:
                 foreach (var card in (sil.What.Kind == SubjectKind.Self && ctx.Source.Zone != Zone.Library ? new[] { ctx.Source } : CardsFor(sil.What, ctx)).ToList())
                 {
-                    MoveCard(card.Id, Zone.Library);
+                    await MoveCardAsync(card.Id, Zone.Library);
                     Shuffle(State.GetPlayer(card.Owner));
                 }
                 break;
@@ -2066,7 +2062,7 @@ public sealed partial class Game
                 Emit(new CardsRevealed(ctx.Controller, top));
                 var hits = top.Where(id => Matches(rr.Filter with { Controller = ControllerFilter.Any }, State.GetCard(id), ctx.Controller, ctx.Source, ctx.Controller)).ToList();
                 CardId? picked = hits.Count > 0 ? hits[Rng.Next(hits.Count)] : null;
-                if (picked is { } chosen) MoveCard(chosen, rr.To, controller: ctx.Controller);
+                if (picked is { } chosen) await MoveCardAsync(chosen, rr.To, controller: ctx.Controller);
                 var rest = top.Where(id => id != picked).ToList();
                 Rng.Shuffle(rest);
                 foreach (var id in rest) { player.Library.Remove(id); player.Library.Add(id); }
@@ -2086,7 +2082,7 @@ public sealed partial class Game
                     Require(pick.Count <= 1 && pick.All(id => options.Any(o => o.Id == id)), "Choose one of the matching cards.");
                     // "If you search your library this way, shuffle": not when the card comes from the hand.
                     bool fromHand = pick.Count == 1 && State.GetCard(pick[0]).Zone == Zone.Hand;
-                    foreach (var id in pick) MoveCard(id, shl.To, controller: who);
+                    foreach (var id in pick) await MoveCardAsync(id, shl.To, controller: who);
                     if (fromHand) break;
                 }
                 Shuffle(player);
@@ -2258,7 +2254,7 @@ public sealed partial class Game
                     var options = hand.Select(id => ViewBuilder.Card(State, id, who)).ToList();
                     var chosen = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest($"Exile {excess} card{(excess == 1 ? "" : "s")} from your hand", ctx.Source.Id, options, excess, excess, CardChoicePurpose.Discard));
                     Require(chosen.Count == excess && chosen.Distinct().Count() == excess && chosen.All(hand.Contains), $"Exile exactly {excess} cards from your hand.");
-                    foreach (var id in chosen) MoveCard(id, Zone.Exile);
+                    foreach (var id in chosen) await MoveCardAsync(id, Zone.Exile);
                 }
                 break;
             case AddChosenCounter acc:
@@ -2327,7 +2323,7 @@ public sealed partial class Game
             case ExileUntilOpponentIsMonarch eum:
                 foreach (var card in CardsFor(eum.What, ctx).ToList())
                 {
-                    MoveCard(card.Id, Zone.Exile);
+                    await MoveCardAsync(card.Id, Zone.Exile);
                     if (card.Zone == Zone.Exile && !card.Definition.IsToken) State.ExiledUntilOpponentIsMonarch.Add((card.Id, card.Version, ctx.Controller));
                 }
                 break;
@@ -2383,7 +2379,7 @@ public sealed partial class Game
                 {
                     if (State.GetPlayer(whose).Library.Count == 0) continue;
                     var topCard = State.GetPlayer(whose).Library[0];
-                    MoveCard(topCard, Zone.Exile);
+                    await MoveCardAsync(topCard, Zone.Exile);
                     var hidden = State.GetCard(topCard);
                     if (hidden.Zone != Zone.Exile) continue;
                     hidden.FaceDown = true;
@@ -2427,7 +2423,7 @@ public sealed partial class Game
                 if (options.Count == 0) break;
                 var pick = await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller), new CardChoiceRequest($"You may return another permanent that shares a type with {entered.Name}", ctx.Source.Id,
                     options.Select(c => ViewBuilder.Card(State, c.Id, ctx.Controller)).ToList(), 0, 1, CardChoicePurpose.ToHand));
-                foreach (var id in pick.Where(id => options.Any(c => c.Id == id))) MoveCard(id, Zone.Hand);
+                foreach (var id in pick.Where(id => options.Any(c => c.Id == id))) await MoveCardAsync(id, Zone.Hand);
                 break;
             }
             case CopyTriggeredAbility:
@@ -2448,7 +2444,7 @@ public sealed partial class Game
                 foreach (var p in State.ApnapOrder().ToList())
                     foreach (var id in State.GetPlayer(p).Graveyard.Where(id => Matches(filter, State.GetCard(id), p, ctx.Source, ctx.Controller)).ToList())
                     {
-                        MoveCard(id, Zone.Exile);
+                        await MoveCardAsync(id, Zone.Exile);
                         if (State.GetCard(id).Zone == Zone.Exile) exiled.Add((p, id));
                     }
                 BeginSimultaneous();
@@ -2457,7 +2453,7 @@ public sealed partial class Game
                 EndSimultaneous();
                 BeginEnteringTogether();
                 foreach (var (p, id) in exiled)
-                    if (State.GetCard(id).Zone == Zone.Exile) MoveCard(id, Zone.Battlefield, controller: p);
+                    if (State.GetCard(id).Zone == Zone.Exile) await MoveCardAsync(id, Zone.Battlefield, controller: p);
                 EndEnteringTogether();
                 break;
             }
@@ -2500,7 +2496,7 @@ public sealed partial class Game
                     Require(pick.Count == 1 && biggest.Any(c => c.Id == pick[0]), "Choose one of the creatures with the greatest power.");
                     var exiled = State.GetCard(pick[0]);
                     int power = exiled.Power;
-                    MoveCard(exiled.Id, Zone.Exile);
+                    await MoveCardAsync(exiled.Id, Zone.Exile);
                     exiledPower.Add((opponent, exiled.LastKnownInfo?.Power ?? power));
                 }
                 if (og.DamageIf is { } spellMastery && HoldsIn(spellMastery, ctx))
@@ -2544,7 +2540,7 @@ public sealed partial class Game
                     if (owner.LandsPlayedThisTurn >= LandsAllowed(owner.Id) || State.ActivePlayer != owner.Id) break;
                     if (!await ControllerOf(owner.Id).ChooseYesNoAsync(ViewFor(owner.Id), new YesNoRequest($"Play {suspended.Name}?", suspended.Id))) break;
                     owner.LandsPlayedThisTurn++;
-                    MoveCard(suspended.Id, Zone.Battlefield, controller: owner.Id);
+                    await MoveCardAsync(suspended.Id, Zone.Battlefield, controller: owner.Id);
                     break;
                 }
                 if (!HasLegalTargets(CastingTargets(suspended.Definition), owner.Id, suspended.Id)
@@ -2573,13 +2569,13 @@ public sealed partial class Game
                 var pick = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest("Exile a card from your graveyard", ctx.Source.Id,
                     options.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 1, 1, CardChoicePurpose.Discard));
                 Require(pick.Count == 1 && options.Any(c => c.Id == pick[0]), "Choose one of the listed cards.");
-                MoveCard(pick[0], Zone.Exile);
+                await MoveCardAsync(pick[0], Zone.Exile);
                 if (State.GetCard(pick[0]).Zone == Zone.Exile) ctx.Results.Exiled.Add(pick[0]);
                 break;
             }
             case ReturnAllFromGraveyardToHand ra2:
                 foreach (var id in State.GetPlayer(ctx.Controller).Graveyard.Where(id => Matches(ra2.Filter with { Controller = ControllerFilter.Any }, State.GetCard(id), ctx.Controller, ctx.Source, ctx.Controller)).ToList())
-                    MoveCard(id, Zone.Hand);
+                    await MoveCardAsync(id, Zone.Hand);
                 break;
             case ChooseAnOpponent:
                 ctx.Results.ChosenPlayer = await ChooseOpponentAsync(ctx.Controller, ctx.Source, $"{ctx.Source.Name}: choose an opponent");
@@ -2604,7 +2600,7 @@ public sealed partial class Game
                 if (first is null) break;
                 int value = ManaValueOf(first);
                 var all = State.Battlefield.Select(State.GetCard).Where(c => !c.Is(CardType.Land) && (c.Id == first.Id || ManaValueOf(c) == value)).ToList();
-                foreach (var card in all) MoveCard(card.Id, Zone.Hand);
+                foreach (var card in all) await MoveCardAsync(card.Id, Zone.Hand);
                 break;
             }
             case AtNextEndStepAbout an:
@@ -2627,7 +2623,7 @@ public sealed partial class Game
                 var pick = await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller), new CardChoiceRequest("Hideaway: choose a card to exile face down", ctx.Source.Id,
                     top.Select(id => ViewBuilder.Card(State, id, ctx.Controller, reveal: true)).ToList(), 1, 1, CardChoicePurpose.Keep));
                 Require(pick.Count == 1 && top.Contains(pick[0]), "Choose one of the cards.");
-                MoveCard(pick[0], Zone.Exile);
+                await MoveCardAsync(pick[0], Zone.Exile);
                 var hidden = State.GetCard(pick[0]);
                 hidden.FaceDown = true;
                 hidden.ExiledWith = (ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version);
@@ -2647,7 +2643,7 @@ public sealed partial class Game
                     // Playing a land this way uses a land play (rule 305.2).
                     if (player.LandsPlayedThisTurn >= LandsAllowed(ctx.Controller)) break;
                     player.LandsPlayedThisTurn++;
-                    MoveCard(hidden.Id, Zone.Battlefield, controller: ctx.Controller);
+                    await MoveCardAsync(hidden.Id, Zone.Battlefield, controller: ctx.Controller);
                     Emit(new LandPlayed(ctx.Controller, hidden.Id));
                     break;
                 }
@@ -3078,7 +3074,7 @@ public sealed partial class Game
             foreach (var id in chosen)
             {
                 player.Library.Insert(0, id); // briefly back on top so it moves from the library
-                MoveCard(id, Zone.Graveyard);
+                await MoveCardAsync(id, Zone.Graveyard);
             }
         Emit(new LookedAtTop(who, top.Count, chosen.Count, scry));
         if (scry)
@@ -3143,12 +3139,12 @@ public sealed partial class Game
             BeginEnteringTogether();
             if (search.WithExiled)
                 foreach (var exiledId in _searchWithExiled.Where(id => State.GetCard(id).Zone == Zone.Exile).ToList())
-                    MoveCard(exiledId, Zone.Battlefield, controller: who);
+                    await MoveCardAsync(exiledId, Zone.Battlefield, controller: who);
             foreach (var id in chosen)
             {
                 if (search.To == Zone.Library) { onTop.Add(id); continue; }
                 var to = toBattlefield is null ? search.To : id == toBattlefield ? Zone.Battlefield : Zone.Hand;
-                MoveCard(id, to, controller: who, tapped: search.Tapped || toBattlefield is not null);
+                await MoveCardAsync(id, to, controller: who, tapped: search.Tapped || toBattlefield is not null);
             }
             EndEnteringTogether();
             Shuffle(player);
@@ -3159,7 +3155,7 @@ public sealed partial class Game
         {
             BeginEnteringTogether();
             foreach (var exiledId in _searchWithExiled.Where(id => State.GetCard(id).Zone == Zone.Exile).ToList())
-                MoveCard(exiledId, Zone.Battlefield, controller: who);
+                await MoveCardAsync(exiledId, Zone.Battlefield, controller: who);
             EndEnteringTogether();
         }
         Shuffle(player);
@@ -3203,10 +3199,9 @@ public sealed partial class Game
     private async Task SacrificePermanentAsync(CardId id)
     {
         if (State.GetCard(id) is { Zone: Zone.Battlefield } doomed && !CanBeSacrificedBy(doomed, doomed.Controller)) return;
-        await ChooseDeathReplacementsAsync(new[] { id });
         var card = State.GetCard(id);
         bool creature = card.IsCreature;
-        MoveCard(id, Zone.Graveyard);
+        await MoveCardAsync(id, Zone.Graveyard);
         Emit(new PermanentSacrificed(id));
         if (creature) Emit(new CreatureDied(id));
     }
@@ -3278,7 +3273,7 @@ public sealed partial class Game
         foreach (var id in chosen)
         {
             if (look.TakeTo == Zone.Library) continue; // stays on top
-            MoveCard(id, look.TakeTo, controller: who, tapped: look.Tapped);
+            await MoveCardAsync(id, look.TakeTo, controller: who, tapped: look.Tapped);
         }
         EndEnteringTogether();
         if (look.RestShuffled)
@@ -3305,7 +3300,7 @@ public sealed partial class Game
         else Rng.Shuffle(rest); // "on the bottom of your library in a random order"
         foreach (var id in rest)
         {
-            if (look.RestToGraveyard) MoveCard(id, Zone.Graveyard);
+            if (look.RestToGraveyard) await MoveCardAsync(id, Zone.Graveyard);
             else
             {
                 player.Library.Remove(id);
@@ -3316,11 +3311,11 @@ public sealed partial class Game
     }
 
     /// <summary>Removes a spell from the stack to its owner's graveyard (exile if it was cast with flashback).</summary>
-    private void CounterSpellOnStack(CardId spellCard)
+    private async Task CounterSpellOnStackAsync(CardId spellCard)
     {
         var item = State.Stack.OfType<SpellOnStack>().FirstOrDefault(sp => sp.Card == spellCard);
         State.Stack.RemoveAll(s => s is SpellOnStack sp && sp.Card == spellCard);
-        MoveCard(spellCard, item?.Flashback == true ? Zone.Exile : Zone.Graveyard);
+        await MoveCardAsync(spellCard, item?.Flashback == true ? Zone.Exile : Zone.Graveyard);
         Emit(new SpellCountered(spellCard));
     }
 
@@ -3368,14 +3363,14 @@ public sealed partial class Game
     }
 
     /// <summary>Discards a card; a card that says so goes to the battlefield instead when an opponent's spell or ability caused the discard.</summary>
-    private void DiscardCard(PlayerId who, CardId card, PlayerId? causedBy)
+    private async Task DiscardCardAsync(PlayerId who, CardId card, PlayerId? causedBy)
     {
         if (causedBy is { } cause && cause != who && State.GetCard(card).Definition.OntoBattlefieldIfOpponentMakesYouDiscard)
         {
-            MoveCard(card, Zone.Battlefield);
+            await MoveCardAsync(card, Zone.Battlefield);
             return;
         }
-        MoveCard(card, Zone.Graveyard);
+        await MoveCardAsync(card, Zone.Graveyard);
         Emit(new CardDiscarded(who, card));
     }
 
@@ -3387,7 +3382,7 @@ public sealed partial class Game
         var chosen = await ControllerOf(who).ChooseDiscardAsync(ViewFor(who), count);
         Require(chosen.Count == count && chosen.Distinct().Count() == count && chosen.All(player.Hand.Contains),
             $"Must discard exactly {count} distinct cards from hand.");
-        foreach (var card in chosen) DiscardCard(who, card, causedBy);
+        foreach (var card in chosen) await DiscardCardAsync(who, card, causedBy);
         return chosen;
     }
 

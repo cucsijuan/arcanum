@@ -100,6 +100,83 @@ public class CommanderTests
         Assert.Empty(game.Log.OfType<CommanderReturned>());
     }
 
+    /// <summary>P0 casts the commander; P1 then casts <paramref name="answer"/> at it once it is on the battlefield.</summary>
+    private static (Game Game, TestController P0) CommanderAnswered(CardDefinition commander, CardDefinition answer, bool toCommandZone, List<Zone> zonesWhenAsked)
+    {
+        var p0 = new TestController { Attack = (_, _, _) => Array.Empty<AttackDeclaration>() };
+        var p1 = new TestController
+        {
+            Act = (view, legal) => view.Stack.Count == 0 ? legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance : PassPriority.Instance,
+            Targets = (_, r) => r.Legal.Select(l => l[0]).ToList(),
+        };
+        var game = CommanderGame(p0, p1, commander, lands: 3); // not enough to cast it again this turn
+        game.SetupPermanent(P1, GenericCards.Mountain);
+        game.SetupInHand(P1, answer);
+        p0.YesNo = (_, r) =>
+        {
+            if (r.Prompt.Contains("command zone")) zonesWhenAsked.Add(CommanderOf(game).Zone);
+            return toCommandZone;
+        };
+        return (game, p0);
+    }
+
+    private static CardDefinition Instant(string name, Effect effect) => new()
+    {
+        Name = name, Types = CardType.Instant, ManaCost = ManaCost.Parse("{R}"),
+        Spell = new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Creature) }, Effects = new[] { effect } },
+    };
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ABouncedCommanderIsOfferedTheCommandZoneBeforeItReachesTheHand(bool toCommandZone)
+    {
+        var asked = new List<Zone>();
+        var (game, _) = CommanderAnswered(Legend("Leader", 3, 3, "{1}{G}"), Instant("Homeward Gust", new ReturnToHand(Subject.TargetAt(0))), toCommandZone, asked);
+        await RunUntilTurn(game, 2);
+        var commander = CommanderOf(game);
+        Assert.Equal(new[] { Zone.Battlefield }, asked); // asked once, as it would move (903.9b), never again from the hand
+        var left = game.Log.OfType<CardMoved>().First(m => m.Card == commander.Id && m.From == Zone.Battlefield);
+        Assert.Equal(toCommandZone ? Zone.Command : Zone.Hand, left.To);
+        Assert.Equal(!toCommandZone, game.Log.Any(e => e is CardMoved m && m.Card == commander.Id && m.To == Zone.Hand));
+        Assert.Equal(toCommandZone ? 1 : 0, game.Log.OfType<CommanderReturned>().Count());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ATuckedCommanderIsOfferedTheCommandZoneBeforeTheLibraryIsShuffled(bool toCommandZone)
+    {
+        var asked = new List<Zone>();
+        var (game, _) = CommanderAnswered(Legend("Leader", 3, 3, "{1}{G}"), Instant("Undertow Fold", new ShuffleIntoLibrary(Subject.TargetAt(0))), toCommandZone, asked);
+        var commanderId = CommanderOf(game).Id;
+        bool inLibraryWhenShuffled = false;
+        game.EventRaised += e => { if (e is LibraryShuffled { Player.Value: 0 }) inLibraryWhenShuffled |= game.State.GetPlayer(P0).Library.Contains(commanderId); };
+        await RunUntilTurn(game, 2);
+        Assert.Equal(new[] { Zone.Battlefield }, asked);
+        Assert.Equal(toCommandZone ? Zone.Command : Zone.Library, CommanderOf(game).Zone);
+        int moved = game.Log.ToList().FindIndex(e => e is CardMoved { From: Zone.Battlefield } m && m.Card == commanderId);
+        Assert.Contains(game.Log.Skip(moved), e => e is LibraryShuffled { Player.Value: 0 });
+        Assert.Equal(!toCommandZone, inLibraryWhenShuffled);
+        Assert.Equal(!toCommandZone, game.Log.Any(e => e is CardMoved m && m.Card == commanderId && m.To == Zone.Library));
+    }
+
+    [Fact]
+    public async Task AfterItsOwnShuffleReplacementTheCommanderCanStillGoToTheCommandZone()
+    {
+        // Its own "shuffle into the library instead of the graveyard" changes where it goes; then 903.9b applies to the library.
+        var asked = new List<Zone>();
+        var leader = Legend("Leader", 3, 3, "{1}{G}") with { Replaces = Replacements.ShuffleIntoLibraryInsteadOfGraveyard };
+        var (game, _) = CommanderAnswered(leader, Bolt with { ManaCost = ManaCost.Parse("{R}") }, true, asked);
+        await RunUntilTurn(game, 2);
+        var commander = CommanderOf(game);
+        Assert.Equal(new[] { Zone.Battlefield }, asked);
+        Assert.Equal(Zone.Command, commander.Zone);
+        Assert.DoesNotContain(game.Log, e => e is CardMoved m && m.Card == commander.Id && m.To is Zone.Library or Zone.Graveyard);
+        int moved = game.Log.ToList().FindIndex(e => e is CardMoved { From: Zone.Battlefield } m && m.Card == commander.Id);
+        Assert.Contains(game.Log.Skip(moved), e => e is LibraryShuffled { Player.Value: 0 }); // shuffled even though it didn't go there
+    }
+
     [Fact]
     public async Task TwentyOneCommanderDamageLoses()
     {

@@ -7,86 +7,173 @@ namespace Arcanum.Engine;
 
 public sealed partial class Game
 {
-    private enum DeathFate { ExiledThisTurn, Shuffled, ExiledBy }
-
-    /// <summary>One replacement effect that applies to a permanent going from the battlefield to a graveyard.</summary>
-    private readonly record struct DeathReplacement(DeathFate Fate, Card? By);
-
-    /// <summary>The replacement each controller chose for its permanents about to die, by card and version.</summary>
-    private readonly Dictionary<(CardId Card, int Version), DeathReplacement> _deathReplacement = new();
-
-    /// <summary>Every replacement effect that would apply if the permanent went from the battlefield to a graveyard.</summary>
-    private List<DeathReplacement> DeathReplacements(Card card)
+    private enum ZoneReplacementKind
     {
-        var list = new List<DeathReplacement>();
-        if (State.ExileIfDies.Contains((card.Id, card.Version))) list.Add(new(DeathFate.ExiledThisTurn, null));
-        if ((card.Definition.Replaces & Cards.Replacements.ShuffleIntoLibraryInsteadOfGraveyard) != 0) list.Add(new(DeathFate.Shuffled, null));
-        if (card.IsCreature)
-            list.AddRange(State.Battlefield.Select(State.GetCard)
-                .Where(c => c.Controller != card.Controller && (c.Definition.Replaces & Cards.Replacements.OpponentsCreaturesExiledInsteadOfDying) != 0)
-                .Select(c => new DeathReplacement(DeathFate.ExiledBy, c)));
+        /// <summary>"If it would die this turn, exile it instead."</summary>
+        ExileIfDies,
+        /// <summary>The card's own "if it would be put into a graveyard from anywhere, shuffle it into its owner's library instead".</summary>
+        ShuffleIntoLibrary,
+        /// <summary>"If a creature an opponent controls would die, exile it instead" (<see cref="ZoneReplacement.By"/>).</summary>
+        ExiledByOpponentsPermanent,
+        /// <summary>A spell cast with "if it would be put into a graveyard, exile it instead".</summary>
+        ExileInsteadOfGraveyard,
+        /// <summary>A permanent that exiles instants and sorceries that would be put into a graveyard.</summary>
+        ExileInstantsAndSorceries,
+        /// <summary>A commander that would be put into a hand or library may go to the command zone instead (903.9b).</summary>
+        CommandZone,
+    }
+
+    /// <summary>One replacement effect that would modify where a card goes (rule 614.1a).</summary>
+    private readonly record struct ZoneReplacement(ZoneReplacementKind Kind, Card? By = null)
+    {
+        /// <summary>The affected player may decline it ("may put it into the command zone instead").</summary>
+        public bool Optional => Kind == ZoneReplacementKind.CommandZone;
+    }
+
+    /// <summary>Where a card goes once every replacement effect that modifies its zone change has been applied.</summary>
+    private sealed record MovePlan(Zone To, bool Shuffle, IReadOnlyList<ZoneReplacement> Applied);
+
+    /// <summary>Moves already decided (as the card moves, or ahead for cards leaving at the same time), by card and version: the requested zone and the plan.</summary>
+    private readonly Dictionary<(CardId Card, int Version), (Zone Requested, MovePlan Plan)> _movePlans = new();
+
+    /// <summary>The replacement effects that would apply to the card going from one zone to another, except those already applied (rule 614.5).</summary>
+    private List<ZoneReplacement> ZoneReplacements(Card card, Zone from, Zone to, IReadOnlyList<ZoneReplacement> applied)
+    {
+        var list = new List<ZoneReplacement>();
+        if (to is Zone.Hand or Zone.Library && from != to && Config.Commander is not null && card.IsCommander)
+            list.Add(new(ZoneReplacementKind.CommandZone));
+        if (to == Zone.Graveyard)
+        {
+            if (from == Zone.Battlefield && State.ExileIfDies.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileIfDies));
+            if ((card.Definition.Replaces & Cards.Replacements.ShuffleIntoLibraryInsteadOfGraveyard) != 0) list.Add(new(ZoneReplacementKind.ShuffleIntoLibrary));
+            if (from == Zone.Battlefield && card.IsCreature)
+                list.AddRange(State.Battlefield.Select(State.GetCard)
+                    .Where(c => c.Controller != card.Controller && (c.Definition.Replaces & Cards.Replacements.OpponentsCreaturesExiledInsteadOfDying) != 0)
+                    .Select(c => new ZoneReplacement(ZoneReplacementKind.ExiledByOpponentsPermanent, c)));
+            if (State.ExileInsteadOfGraveyard.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileInsteadOfGraveyard));
+            if ((card.Is(Cards.CardType.Instant) || card.Is(Cards.CardType.Sorcery))
+                && State.Battlefield.Any(b => (State.GetCard(b).Definition.Replaces & Cards.Replacements.ExileInstantsAndSorceries) != 0))
+                list.Add(new(ZoneReplacementKind.ExileInstantsAndSorceries));
+        }
+        // A replacement effect gets only one opportunity to affect an event (rule 614.5).
+        list.RemoveAll(applied.Contains);
         return list;
     }
 
+    private static Zone Destination(ZoneReplacement replacement) => replacement.Kind switch
+    {
+        ZoneReplacementKind.ShuffleIntoLibrary => Zone.Library,
+        ZoneReplacementKind.CommandZone => Zone.Command,
+        _ => Zone.Exile,
+    };
+
+    private string Describe(ZoneReplacement replacement, Card card) => replacement.Kind switch
+    {
+        ZoneReplacementKind.ExileIfDies => "Exile it (it would die this turn)",
+        ZoneReplacementKind.ShuffleIntoLibrary => $"Shuffle it into its owner's library ({card.Name})",
+        ZoneReplacementKind.ExiledByOpponentsPermanent => $"Exile it ({replacement.By!.Name}, {State.GetPlayer(replacement.By.Controller).Name})",
+        ZoneReplacementKind.ExileInsteadOfGraveyard => "Exile it (the effect it was cast with)",
+        ZoneReplacementKind.ExileInstantsAndSorceries => "Exile it (instants and sorceries are exiled)",
+        _ => "Put it into the command zone",
+    };
+
     /// <summary>
-    /// For each permanent about to go to a graveyard from the battlefield with more than one replacement effect that
-    /// would apply, its controller chooses which one does (rule 616.1).
+    /// Applies the replacement effects that modify where a card goes (rule 616.1): while any apply, the affected object's
+    /// controller (its owner if it has none) chooses one, applies it, and the rest are checked again against the modified
+    /// event, so one about the new destination may then apply (616.1e). An optional one ("may … instead") can be declined.
+    /// Without <paramref name="canAsk"/> the move must need no choice; it then completes synchronously.
     /// </summary>
-    private async Task ChooseDeathReplacementsAsync(IEnumerable<CardId> ids)
+    private async Task<MovePlan> PlanMoveAsync(Card card, Zone to, bool canAsk = true)
+    {
+        var from = card.Zone;
+        var chooser = from is Zone.Battlefield or Zone.Stack ? card.Controller : card.Owner;
+        var applied = new List<ZoneReplacement>();
+        var declined = new List<ZoneReplacement>();
+        bool shuffle = false;
+        while (ZoneReplacements(card, from, to, applied.Concat(declined).ToList()) is { Count: > 0 } options)
+        {
+            ZoneReplacement? pick = options[0];
+            if (options.Count > 1 || options[0].Optional)
+            {
+                if (!canAsk) throw new InvalidOperationException($"Moving {card.Name} to {to} needs a replacement choice: move it with MoveCardAsync.");
+                var zoneName = to.ToString().ToLowerInvariant();
+                if (options.Count == 1)
+                {
+                    var request = new Players.YesNoRequest($"Put {card.Name} into the command zone instead of your {zoneName}?", card.Id);
+                    if (!await ControllerOf(chooser).ChooseYesNoAsync(ViewFor(chooser), request)) pick = null;
+                }
+                else
+                {
+                    var labels = options.Select(o => Describe(o, card)).ToList();
+                    // Not applying any is possible only when every one left is optional.
+                    if (options.All(o => o.Optional)) labels.Add($"Put it into the {zoneName}");
+                    int index = await ControllerOf(chooser).ChooseOptionAsync(ViewFor(chooser), new Players.OptionRequest(
+                        $"{card.Name} would be put into the {zoneName}: choose which replacement applies", card.Id, labels, Players.OptionKind.Other));
+                    Require(index >= 0 && index < labels.Count, "Choose one of the listed replacements.");
+                    pick = index < options.Count ? options[index] : null;
+                }
+            }
+            if (pick is not { } chosen)
+            {
+                declined.AddRange(options.Where(o => o.Optional));
+                continue;
+            }
+            applied.Add(chosen);
+            to = Destination(chosen);
+            if (chosen.Kind == ZoneReplacementKind.ShuffleIntoLibrary) shuffle = true;
+        }
+        return new MovePlan(to, shuffle, applied);
+    }
+
+    /// <summary>
+    /// Decides how each of these cards moves before any of them does, for cards that leave at the same time (rule 704.3):
+    /// the choices among replacement effects are made as the event happens.
+    /// </summary>
+    private async Task PlanMovesAsync(IEnumerable<CardId> ids, Zone to)
     {
         foreach (var id in ids.ToList())
         {
             var card = State.GetCard(id);
-            if (card.Zone != Zone.Battlefield) continue;
-            _deathReplacement.Remove((id, card.Version));
-            var options = DeathReplacements(card);
-            if (options.Count < 2) continue;
-            var labels = options.Select(o => o.Fate switch
-            {
-                DeathFate.ExiledThisTurn => "Exile it (it would die this turn)",
-                DeathFate.Shuffled => $"Shuffle it into its owner's library ({card.Name})",
-                _ => $"Exile it ({o.By!.Name}, {State.GetPlayer(o.By.Controller).Name})",
-            }).ToList();
-            int pick = await ControllerOf(card.Controller).ChooseOptionAsync(ViewFor(card.Controller),
-                new Players.OptionRequest($"{card.Name} would be put into a graveyard: choose which replacement applies", id, labels, Players.OptionKind.Other));
-            Require(pick >= 0 && pick < options.Count, "Choose one of the listed replacements.");
-            _deathReplacement[(id, card.Version)] = options[pick];
+            _movePlans[(id, card.Version)] = (to, await PlanMoveAsync(card, to));
         }
     }
 
-    /// <summary>Moves a card between zones. Cards always go to their owner's per-player zones (rule 400.3).</summary>
+    /// <summary>Moves a card, asking for the choices its zone-change replacement effects need (rule 616.1).</summary>
+    private async Task MoveCardAsync(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
+        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false)
+    {
+        var card = State.GetCard(id);
+        if (!(_movePlans.TryGetValue((id, card.Version), out var planned) && planned.Requested == to))
+            _movePlans[(id, card.Version)] = (to, await PlanMoveAsync(card, to));
+        MoveCard(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped);
+    }
+
+    /// <summary>
+    /// Moves a card between zones. Cards always go to their owner's per-player zones (rule 400.3). Directly only for moves
+    /// that need no replacement choice (or whose choices were made); everything else goes through <see cref="MoveCardAsync"/>.
+    /// </summary>
     /// <param name="tapped">A permanent entering the battlefield tapped (rule 614.1c): it is tapped from the start, with no event.</param>
     /// <param name="kicked">A spell cast with kicker becoming a permanent: it remembers it was kicked (for "if it was kicked").</param>
     private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
         bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false)
     {
-        bool shuffleAfter = false;
         var enterCounters = new List<(Abilities.CounterKind Kind, int Count)>();
         var card = State.GetCard(id);
         var from = card.Zone;
         var owner = State.GetPlayer(card.Owner);
         var lastController = card.Controller;
 
-        // Replacement effects on where the card goes (rule 614).
-        if (to == Zone.Graveyard && from == Zone.Battlefield && DeathReplacements(card) is { Count: > 0 } replacements)
+        // Replacement effects on where the card goes (rule 614), decided as it moves or ahead for a simultaneous move.
+        var plan = _movePlans.Remove((id, card.Version), out var planned) && planned.Requested == to
+            ? planned.Plan
+            : PlanMoveAsync(card, to, canAsk: false).GetAwaiter().GetResult();
+        to = plan.To;
+        foreach (var applied in plan.Applied)
         {
-            // Only one applies: the controller chose it before the creature died, or there was no choice (rule 616.1).
-            var applied = _deathReplacement.Remove((id, card.Version), out var chosen) && replacements.Contains(chosen) ? chosen : replacements[0];
-            if (applied.Fate == DeathFate.Shuffled) { to = Zone.Library; shuffleAfter = true; }
-            else to = Zone.Exile;
+            if (applied.Kind == ZoneReplacementKind.ExileInsteadOfGraveyard) State.ExileInsteadOfGraveyard.Remove((id, card.Version));
             // "If a creature an opponent controls would die, exile it instead. When you do, …"
-            if (applied.By is { } replacer) Queue(replacer.Id, Abilities.TriggerEvent.CreatureExiledInstead, replacer.Controller);
-        }
-        else if (to == Zone.Graveyard && State.ExileInsteadOfGraveyard.Remove((id, card.Version)))
-        {
-            to = Zone.Exile;
-        }
-        else if (to == Zone.Graveyard)
-        {
-            if ((card.Definition.Replaces & Cards.Replacements.ShuffleIntoLibraryInsteadOfGraveyard) != 0) { to = Zone.Library; shuffleAfter = true; }
-            else if ((card.Is(Cards.CardType.Instant) || card.Is(Cards.CardType.Sorcery))
-                     && State.Battlefield.Any(b => (State.GetCard(b).Definition.Replaces & Cards.Replacements.ExileInstantsAndSorceries) != 0))
-                to = Zone.Exile;
+            if (applied is { Kind: ZoneReplacementKind.ExiledByOpponentsPermanent, By: { } replacer })
+                Queue(replacer.Id, Abilities.TriggerEvent.CreatureExiledInstead, replacer.Controller);
         }
 
         if (from == Zone.Stack) card.LastOnStack = (card.Version, ManaValueOf(card));
@@ -164,8 +251,10 @@ public sealed partial class Game
         RecomputeContinuousEffects();
         int leavingVersion = card.Version - 1;
         Emit(new CardMoved(id, card.Owner, from, to, lastController));
+        if (plan.Applied.Any(r => r.Kind == ZoneReplacementKind.CommandZone)) Emit(new CommanderReturned(id, card.Owner));
         AnnounceEnterCounters(card, placedCounters);
-        if (shuffleAfter) Shuffle(owner);
+        // "Shuffle it into its owner's library": that library is shuffled even if the card went elsewhere instead.
+        if (plan.Shuffle) Shuffle(owner);
 
         // Cards exiled "until this leaves the battlefield" come back (rule 610.3).
         if (from == Zone.Battlefield)
@@ -215,7 +304,7 @@ public sealed partial class Game
                 return;
             }
             var top = player.Library[0];
-            MoveCard(top, Zone.Hand);
+            await MoveCardAsync(top, Zone.Hand);
             Emit(new CardDrawn(playerId, top));
             // Miracle: the first card a player draws in a turn may be revealed as it's drawn (702.94a).
             if (State.GetCard(top).Definition.Miracle is not null && player.CardsDrawnThisTurn == 1 && State.GetCard(top).Zone == Zone.Hand)

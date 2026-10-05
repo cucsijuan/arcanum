@@ -166,7 +166,7 @@ public sealed partial class Game
                     if (State.GetCard(card) is { Zone: Zone.Battlefield } doomed && doomed.Version == version) await SacrificePermanentAsync(card);
                 State.SacrificeAtEndOfCombat.Clear();
                 foreach (var (card, version) in State.ExileAtEndOfCombat.ToList())
-                    if (State.GetCard(card) is { Zone: Zone.Battlefield } gone && gone.Version == version) MoveCard(card, Zone.Exile);
+                    if (State.GetCard(card) is { Zone: Zone.Battlefield } gone && gone.Version == version) await MoveCardAsync(card, Zone.Exile);
                 State.ExileAtEndOfCombat.Clear();
                 break;
             case Step.Cleanup:
@@ -200,7 +200,7 @@ public sealed partial class Game
             var chosen = await ControllerOf(active.Id).ChooseDiscardAsync(ViewFor(active.Id), excess);
             Require(chosen.Count == excess && chosen.Distinct().Count() == excess && chosen.All(active.Hand.Contains),
                 $"Must discard exactly {excess} distinct cards from hand.");
-            foreach (var card in chosen) DiscardCard(active.Id, card, null); // discarding to hand size is discarding (514.1)
+            foreach (var card in chosen) await DiscardCardAsync(active.Id, card, null); // discarding to hand size is discarding (514.1)
         }
         // Damage wears off and "until end of turn" effects end at the same time (rule 514.2).
         foreach (var permanent in State.Battlefield.Select(State.GetCard))
