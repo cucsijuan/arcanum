@@ -317,4 +317,25 @@ public class BotMultiplayerTests
         Assert.DoesNotContain(guard, attackers);
         Assert.Contains(drake, attackers);
     }
+
+    [Fact]
+    public void AurasAreJudgedByEverythingTheyDoToTheEnchantedCreature()
+    {
+        CardDefinition Aura(params AbilityDefinition[] abilities) => new()
+        {
+            Name = "Test Aura", Types = CardType.Enchantment, Subtypes = new[] { "Aura" },
+            EnchantTarget = new TargetSpec(TargetKind.Creature), Abilities = abilities,
+        };
+        var enchanted = new AffectedFilter(AffectedScope.Enchanted);
+        // Loses its abilities and doesn't untap, with no change to power and toughness: meant for an opponent's creature.
+        Assert.True(Evaluation.AuraIsHarmful(Aura(new StaticAbility(enchanted, Keywords: new[] { Keyword.DoesntUntap }) { LosesAllAbilities = true })));
+        // Tapped and stripped of counters as the Aura enters.
+        Assert.True(Evaluation.AuraIsHarmful(Aura(new TriggeredAbility { Trigger = TriggerEvent.EntersBattlefield,
+            Effects = new Effect[] { new TapIt(Subject.Attached), new RemoveAllCounters(Subject.Attached) } })));
+        Assert.True(Evaluation.AuraIsHarmful(Aura(new StaticAbility(enchanted, -2, -2))));
+        Assert.True(Evaluation.AuraIsHarmful(Aura(new StaticAbility(enchanted, Keywords: new[] { Keyword.CantAttack, Keyword.CantBlock }))));
+        // Bonuses, even with a drawback, are for the caster's own creature.
+        Assert.False(Evaluation.AuraIsHarmful(Aura(new StaticAbility(enchanted, 2, 2))));
+        Assert.False(Evaluation.AuraIsHarmful(Aura(new StaticAbility(enchanted, 3, 0, new[] { Keyword.CantBlock }))));
+    }
 }

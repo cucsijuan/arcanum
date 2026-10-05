@@ -321,8 +321,7 @@ public sealed class BotController : IPlayerController
 
     private double AuraScore(GameView view, CardDefinition aura, int manaValue)
     {
-        var st = aura.Abilities.OfType<StaticAbility>().FirstOrDefault();
-        bool beneficial = st is null || st.Power + st.Toughness >= 0;
+        bool beneficial = !AuraIsHarmful(aura);
         var candidates = view.Battlefield.Where(c => (c.Types & CardType.Creature) != 0 && (beneficial ? c.Controller == _me : c.Controller != _me));
         return candidates.Any() ? 1 + manaValue : 0;
     }
@@ -482,7 +481,14 @@ public sealed class BotController : IPlayerController
             && rules.Abilities.FirstOrDefault(a => a.Modes is not null && a.Targets.Count == 0) is { } modal)
             return modal.WithModes(chosenModes);
         if (rules.EnchantTarget is { } enchant && request.Text == rules.Name)
-            return rules.Abilities.OfType<StaticAbility>().FirstOrDefault() is { } st ? st with { Targets = new[] { enchant } } : null;
+        {
+            // The Aura's target is judged by the Aura as a whole: a harmful one goes on an opponent's creature.
+            var statics = rules.Abilities.OfType<StaticAbility>().ToList();
+            var st = AuraIsHarmful(rules)
+                ? statics.FirstOrDefault(StaticIsHarmful) ?? new StaticAbility(new AffectedFilter(AffectedScope.Enchanted)) { LosesAllAbilities = true }
+                : statics.FirstOrDefault(s => !StaticIsHarmful(s)) ?? new StaticAbility(new AffectedFilter(AffectedScope.Enchanted));
+            return st with { Targets = new[] { enchant } };
+        }
         return rules.Abilities.FirstOrDefault(a => a.Text == request.Text && a.Targets.Count == request.Specs.Count)
                ?? rules.Abilities.FirstOrDefault(a => a.Targets.Count == request.Specs.Count);
     }

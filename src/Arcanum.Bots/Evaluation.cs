@@ -48,21 +48,40 @@ public static class Evaluation
             if (!RefersToTarget(effect, index)) continue;
             if (IsHarmful(effect)) harmful = true; else helpful = true;
         }
-        foreach (var st in ability is StaticAbility s ? new[] { s } : Array.Empty<StaticAbility>())
-            if (st.Power + st.Toughness < 0) harmful = true;
+        if (ability is StaticAbility st && StaticIsHarmful(st)) harmful = true;
         return harmful && !helpful;
     }
 
-    public static bool RefersToTarget(Effect effect, int index)
+    /// <summary>Whether a static ability makes what it affects worse: smaller, without abilities, unable to attack, block or untap, or stolen.</summary>
+    public static bool StaticIsHarmful(StaticAbility st) =>
+        st.Power + st.Toughness < 0
+        || (st.PowerBonus?.Estimate ?? 0) + (st.ToughnessBonus?.Estimate ?? 0) < 0
+        || st.LosesAllAbilities
+        || st.GivesControl
+        || st.SetPower is <= 1 && st.SetToughness is <= 1
+        || st.GrantedKeywords.Contains(Keyword.DoesntUntap)
+        // "Can't attack or block" with no bonus is a drawback; with one ("+3/+0 and can't block") it's for your own creature.
+        || (st.Power + st.Toughness <= 0 && st.GrantedKeywords.Any(k => k is Keyword.CantAttack or Keyword.CantBlock or Keyword.Defender));
+
+    /// <summary>
+    /// Whether an Aura is meant for an opponent's creature: a harmful static ability on what it enchants, or an ability that
+    /// harms it when the Aura enters (tap it, destroy it, remove its counters…).
+    /// </summary>
+    public static bool AuraIsHarmful(CardDefinition aura) =>
+        aura.Abilities.OfType<StaticAbility>().Any(s => s.Affects.Scope == AffectedScope.Enchanted && StaticIsHarmful(s))
+        || aura.Abilities.OfType<TriggeredAbility>().SelectMany(t => t.Effects)
+            .Any(e => (IsHarmful(e) || e is RemoveAllCounters or GainControl) && SubjectOf(e) is { Kind: SubjectKind.Attached });
+
+    public static bool RefersToTarget(Effect effect, int index) => SubjectOf(effect) is { Kind: SubjectKind.Target } s && s.Index == index;
+
+    /// <summary>What an effect is applied to, for the effects the computer reasons about.</summary>
+    private static Subject? SubjectOf(Effect effect) => effect switch
     {
-        Subject? subject = effect switch
-        {
-            DealDamage d => d.To, DrawCards d => d.Who, GainLife g => g.Who, LoseLife l => l.Who, Destroy d => d.What,
-            ExileIt x => x.What, ReturnToHand r => r.What, TapIt t => t.What, UntapIt u => u.What, Mill m => m.Who,
-            CounterSpell c => c.What, PumpUntilEndOfTurn p => p.What, AddCounters a => a.What, AttachSelf a => a.To, _ => null,
-        };
-        return subject is { Kind: SubjectKind.Target } s && s.Index == index;
-    }
+        DealDamage d => d.To, DrawCards d => d.Who, GainLife g => g.Who, LoseLife l => l.Who, Destroy d => d.What,
+        ExileIt x => x.What, ReturnToHand r => r.What, TapIt t => t.What, UntapIt u => u.What, Mill m => m.Who,
+        CounterSpell c => c.What, PumpUntilEndOfTurn p => p.What, AddCounters a => a.What, AttachSelf a => a.To,
+        RemoveAllCounters r => r.What, GainControl g => g.What, _ => null,
+    };
 
     /// <summary>Damage an ability deals to target <paramref name="index"/>, if any.</summary>
     public static int DamageTo(AbilityDefinition ability, int index) =>
