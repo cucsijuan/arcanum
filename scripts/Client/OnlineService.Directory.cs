@@ -4,6 +4,7 @@ using Arcanum.Net.Lobby;
 using Arcanum.Net.Protocol;
 using Arcanum.Net.Services;
 using Arcanum.Net.Transport;
+using Godot;
 
 namespace Arcanum.Client;
 
@@ -19,8 +20,56 @@ public partial class OnlineService
     /// <summary>The lobby a joined player reached through the services (null: joined by address).</summary>
     private LobbyListing? _route;
 
-    /// <summary>Where lobbies are listed and how players reach hosts.</summary>
-    public IOnlineServices Services => _services ??= new LanOnlineServices();
+    private Task? _signIn;
+
+    /// <summary>Where lobbies are listed and how players reach hosts: the local network, and the internet when this build can.</summary>
+    /// (ARCANUM_ONLINE_INTERNET_ONLY=1 leaves the local network out, for testing internet lobbies on one network.)
+    public IOnlineServices Services => _services ??= Internet is { } internet
+        ? OS.GetEnvironment("ARCANUM_ONLINE_INTERNET_ONLY") == "1" ? internet : new CombinedOnlineServices(new LanOnlineServices(), internet)
+        : new LanOnlineServices();
+
+    private IOnlineServices? _internet;
+    private bool _internetMade;
+
+    private IOnlineServices? Internet
+    {
+        get
+        {
+            if (!_internetMade)
+            {
+                _internetMade = true;
+                _internet = Eos.InternetServices.Create(Version, message => GD.Print(message));
+            }
+            return _internet;
+        }
+    }
+
+    private string? _internetError;
+    private bool _publishWaiting;
+
+    /// <summary>Whether this build has internet lobbies, and whether they're ready.</summary>
+    public string InternetStatus => Internet is null ? "Internet lobbies aren't part of this build."
+        : Internet.IsAvailable ? "Internet lobbies are on."
+        : _internetError is { } error ? $"Internet lobbies are off: {error}"
+        : "Connecting to internet lobbies…";
+
+    /// <summary>Signs in to the internet service (once; again after a failure).</summary>
+    public async void SignIn(string name)
+    {
+        if (Internet is not { } internet || internet.IsAvailable || _signIn is { IsCompleted: false }) return;
+        _internetError = null;
+        var signIn = internet.SignInAsync(name);
+        _signIn = signIn;
+        try
+        {
+            await signIn;
+            // A lobby hosted before signing in is listed on the internet too now.
+            if (_lobby is not null && _published is { } published) await Services.Lobbies.PublishAsync(published);
+            else if (_lobby is not null && _publishWaiting) PublishHostedLobby();
+        }
+        catch (Exception e) { _internetError = e.GetBaseException().Message; }
+        Changed?.Invoke();
+    }
 
     /// <summary>The hosted lobby as published: its invite code and what the browser shows.</summary>
     public LobbyListing? PublishedLobby => _published;
@@ -29,6 +78,8 @@ public partial class OnlineService
     private async void PublishHostedLobby()
     {
         if (_lobby is not { } lobby) return;
+        _publishWaiting = !Services.IsAvailable; // published once the service signs in
+        if (_publishWaiting) return;
         try
         {
             var listing = ListingOf(lobby, LobbyIds.New(), InviteCode.New());
@@ -67,7 +118,19 @@ public partial class OnlineService
     }
 
     /// <summary>Lobbies the browser shows: same version and content, with free seats.</summary>
-    public Task<IReadOnlyList<LobbyListing>> SearchLobbiesAsync() => Services.Lobbies.SearchAsync(new LobbyQuery(Version, ContentId));
+    public async Task<IReadOnlyList<LobbyListing>> SearchLobbiesAsync()
+    {
+        await SignedInAsync();
+        return await Services.Lobbies.SearchAsync(new LobbyQuery(Version, ContentId));
+    }
+
+    /// <summary>Waits for a sign-in in progress, so a search right after opening the screen includes the internet.</summary>
+    private async Task SignedInAsync()
+    {
+        if (_signIn is not { IsCompleted: false } signIn) return;
+        try { await signIn; }
+        catch (Exception) { /* searched without it */ }
+    }
 
     /// <summary>Joins a lobby found by its invite code.</summary>
     public async void JoinByCode(string name, string code, DeckInfo deck)
@@ -78,6 +141,7 @@ public partial class OnlineService
             return;
         }
         Status?.Invoke($"Looking for {InviteCode.Display(parsed)}…");
+        await SignedInAsync();
         var listing = await Services.Lobbies.FindByCodeAsync(parsed);
         if (listing is null)
         {

@@ -18,4 +18,14 @@
     <ProjectReference Include="src/Arcanum.Bots/Arcanum.Bots.csproj" />
     <ProjectReference Include="src/Arcanum.Net/Arcanum.Net.csproj" />
   </ItemGroup>
+  <!-- Internet lobbies and relayed connections: only when the Epic Online Services SDK is next to the repository (see docs/online-services.md). -->
+  <PropertyGroup>
+    <EosSdkDir Condition="'$(EosSdkDir)' == ''">$(MSBuildThisFileDirectory)../eos-sdk/SDK</EosSdkDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="Exists('$(EosSdkDir)/Source/Core/Common.cs')">
+    <DefineConstants>$(DefineConstants);ARCANUM_EOS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(EosSdkDir)/Source/Core/Common.cs')">
+    <ProjectReference Include="src/Arcanum.EosSdk/Arcanum.EosSdk.csproj" />
+  </ItemGroup>
 </Project>

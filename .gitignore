@@ -14,3 +14,6 @@ TestResults/
 # Export output
 /build/
 /Export/
+
+# Online service keys (tools/eos_keys.py)
+*.g.cs

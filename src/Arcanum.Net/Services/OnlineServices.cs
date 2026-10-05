@@ -12,6 +12,9 @@ public sealed record LobbyListing(string LobbyId, string HostName, string Format
 {
     public string? Address { get; init; }
     public int Port { get; init; }
+
+    /// <summary>The service the lobby was found on (set when several are combined), so joining goes through it.</summary>
+    public string? Provider { get; init; }
 }
 
 /// <summary>What the lobby browser asks for: the player's version and content must match; full lobbies can be hidden.</summary>
@@ -40,7 +43,7 @@ public interface IOnlineServices : IDisposable
     IRelayNetwork Network { get; }
 }
 
-/// <summary>Where lobbies are published, searched and found by invite code.</summary>
+/// <summary>Where lobbies are published, searched and found by invite code. Providers keep the lobby id they are given.</summary>
 public interface ILobbyDirectory
 {
     /// <summary>Lists a lobby (or only makes it findable by its invite code when it isn't <see cref="LobbyListing.Listed"/>).</summary>

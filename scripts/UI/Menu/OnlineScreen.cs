@@ -46,6 +46,7 @@ public partial class OnlineScreen : Control
         loading.QueueFree();
         _decks.AddRange(App.Instance.Decks.List(App.Instance.Module));
 
+        Online.SignIn(PlayerName);
         Online.Changed += Rebuild;
         Online.Status += ShowStatus;
         Rebuild();
@@ -74,6 +75,13 @@ public partial class OnlineScreen : Control
         if (_decks.Count == 0 || (host.Length == 0 && join.Length == 0 && code.Length == 0 && !browse)) return;
         Online.Status += text => GD.Print($"ONLINE {text}");
         Online.Changed += () => GD.Print($"ONLINE lobby: {Online.HostedLobby?.StartProblem ?? Online.Lobby?.State?.Seats.Count.ToString() ?? "-"}");
+        string? internet = null;
+        Online.Changed += () =>
+        {
+            if (Online.InternetStatus == internet) return;
+            internet = Online.InternetStatus;
+            GD.Print($"ONLINE {internet}");
+        };
         bool playing = false;
         Online.Changed += () =>
         {
@@ -321,7 +329,7 @@ public partial class OnlineScreen : Control
         refresh.Pressed += SearchLobbies;
         header.AddChild(refresh);
         box.AddChild(header);
-        box.AddChild(MenuKit.Hint($"Lobbies on: {Online.Services.Name}."));
+        box.AddChild(MenuKit.Hint($"Lobbies on: {Online.Services.Name}. {Online.InternetStatus}"));
         if (_found is null) box.AddChild(MenuKit.Hint(_searching ? "Looking for lobbies…" : "Press Refresh to look for lobbies."));
         else if (_found.Count == 0) box.AddChild(MenuKit.Hint("No open lobby was found."));
         else foreach (var listing in _found) box.AddChild(ListingRow(listing));

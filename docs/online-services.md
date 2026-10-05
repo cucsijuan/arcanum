@@ -36,33 +36,39 @@ TCP listener and port mapping) and through the services at the same time.
 
 The provider today is `LanOnlineServices`. Swapping it is one line (`OnlineService.Services`).
 
-## Internet provider (planned): Epic Online Services
+## Internet provider: Epic Online Services
 
-Chosen because it is free, cross-platform (desktop and mobile, which M12 needs) and covers all three pieces without running our
-own servers:
+`scripts/Client/Eos/EosOnlineServices.cs`, used together with the local network (`CombinedOnlineServices`: a hosted lobby
+is listed on both, the browser shows each lobby once, preferring the local network, and players join through the service
+the lobby was found on).
 
-| Our interface | EOS interface |
+| Our interface | EOS |
 |---|---|
-| `SignInAsync` | Connect interface, **Device ID** login (no account, no launcher, no Epic account needed by players); the display name is ours. |
-| `ILobbyDirectory` | Lobby interface: create a lobby with attributes (version, content, format, commander, seats, invite code, host name) and `PublicAdvertised`/`InviteOnly` permission; search by attributes; find by code with an attribute search on the code. |
-| `IRelayNetwork` | P2P interface: NAT traversal with automatic fallback to Epic's relays. A socket name per lobby; packets carry our existing message framing over a reliable ordered channel. |
+| `SignInAsync` | Connect interface, **Device ID** login: no Epic account; a device account is created on first use. |
+| `ILobbyDirectory` | Lobby interface: the host owns a lobby in bucket `arcanum:<version>` with public attributes (our lobby id, host name, format, commander, seats, free seats, version, content, invite code, listed, event). The browser searches by bucket, content, listed and free seats; invite codes by the code attribute. |
+| `IRelayNetwork` | P2P interface, socket `ArcanumGame`, reliable ordered packets (NAT traversal, relays when needed). `PacketRelay` (in `Arcanum.Net`, tested without the SDK) carries our messages over them: several connections per peer, messages split into 1170-byte packets, open/accept/close. |
 
-What is needed, none of which can go in the repository:
+Every SDK call runs on one thread owned by the provider; packets are handed over through queues.
 
-1. An Epic Games developer account and an organization/product in the Developer Portal.
-2. The product's **ProductId, SandboxId, DeploymentId, ClientId and ClientSecret** (a client policy allowing Connect Device ID,
-   Lobbies and P2P). They are injected at build time (environment variables read by the export step into a generated file that
-   is git-ignored), never committed.
-3. The **EOS C SDK** for each platform (downloaded from the portal after accepting its license) and a C# binding. The SDK ships its
-   own C# wrapper; it would be referenced from the client only, so the engine and net libraries stay provider-free.
-4. Decisions: the product name shown in the portal, whether lobbies are listed publicly by default or only by code, and the
-   region/deployment (one live deployment and one for development).
+### Building with it
 
-Until then everything works on the local network, and the provider can be developed against the in-memory implementation and
-the `Arcanum.Net.Tests` service tests (which every provider should pass).
+The SDK is not in this repository (its license doesn't allow it; `LICENSE-EXCEPTION` allows linking with it):
+
+1. Put the EOS C# SDK at `../eos-sdk/SDK` next to the repository (its `Source` folder and, in `Bin`,
+   `libEOSSDK-Linux-Shipping.so` and `EOSSDK-Win64-Shipping.dll`), or point the `EosSdkDir` property or environment
+   variable to it. `src/Arcanum.EosSdk` compiles it and copies the platform's native library next to the assemblies
+   (also in exports); `Arcanum.csproj` references it and defines `ARCANUM_EOS` only when the SDK is there.
+2. Write the product's keys: `python3 tools/eos_keys.py <keys.json>` (or with `EOS_PRODUCT_ID`, `EOS_SANDBOX_ID`,
+   `EOS_DEPLOYMENT_ID`, `EOS_CLIENT_ID`, `EOS_CLIENT_SECRET` set) writes `scripts/Client/Eos/EosKeys.g.cs`, which is
+   ignored by git. Without it the build has only the local network.
+
+The release workflow does both from repository secrets.
+
+Testing on one computer: `ARCANUM_ONLINE_INTERNET_ONLY=1` leaves the local network out, `ARCANUM_EOS_NEW_DEVICE=1`
+makes a second instance sign in as a new device account, and `ARCANUM_EOS_LOG=1` shows the SDK's log.
 
 ## Not done yet
 
-- The EOS provider itself (needs the items above).
 - Accounts beyond a device identity (friends lists, presence, invites through a platform overlay).
-- Matchmaking (a queue that fills a lobby automatically) — the directory search is the basis for it.
+- Matchmaking (a queue that fills a lobby automatically): the directory search is the basis for it.
+- A host's lobby stays listed until the service notices the host left when the game crashes (the service times it out).
