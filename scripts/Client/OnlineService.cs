@@ -93,6 +93,7 @@ public partial class OnlineService : Node
         OpenRouterPort();
         JoinLobby(_loopback.Connect(), new ClientIdentity(name, _lobby.HostToken, Version, ContentId));
         SubmitDeck(deck);
+        PublishHostedLobby();
     }
 
     private FormatRules? _hostFormat;
@@ -143,6 +144,7 @@ public partial class OnlineService : Node
         _save!.Seed = seed;
         _save.Seats = _lobby.Setup.ToList();
         _lobby.Start(seed, HostOptions());
+        UpdatePublishedLobby(); // started: the listing has no free seats any more
     }
 
     private HostOptions HostOptions() => new()
@@ -291,6 +293,7 @@ public partial class OnlineService : Node
         }
         _address = host;
         _port = port;
+        _route = null;
         Status?.Invoke($"Connecting to {host}:{port}…");
         try
         {
@@ -435,7 +438,7 @@ public partial class OnlineService : Node
         _connecting = true;
         try
         {
-            var connection = await TcpConnection.ConnectAsync(_address, _port, TimeSpan.FromSeconds(5));
+            var connection = await ConnectToHostAsync(TimeSpan.FromSeconds(5));
             if (Session is null) { connection.Close(); return; }
             var client = new GameClient(connection, _identity);
             _gameClient = client;
@@ -495,6 +498,7 @@ public partial class OnlineService : Node
     /// <summary>Leaves (or stops hosting) the current online game.</summary>
     public void Leave()
     {
+        UnpublishHostedLobby();
         _eventClient?.Close();
         _eventClient = null;
         EventSession = null;
@@ -509,6 +513,7 @@ public partial class OnlineService : Node
         _tcp = null;
         _loopback = null;
         _lobby = null;
+        _route = null;
         _resumed = null;
         _save = null;
         _savedAnswers = -1;

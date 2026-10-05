@@ -226,7 +226,18 @@ public partial class OnlineScreen : Control
         var join = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         join.AddThemeConstantOverride("separation", 10);
         join.AddChild(MenuKit.SectionTitle("Join a game"));
-        join.AddChild(MenuKit.Hint("Ask the host for their address."));
+        join.AddChild(MenuKit.Hint("Enter the host's invite code, or their address."));
+        var code = MenuKit.TextField("", "ABC-DEF");
+        join.AddChild(MenuKit.Row("Invite code", code, 90));
+        var codeButton = BoardStyle.MakeButton("Join with code", 16);
+        codeButton.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
+        codeButton.Pressed += () =>
+        {
+            if (SelectedDeck is not { } deck) return;
+            SaveName();
+            Online.JoinByCode(PlayerName, code.Text, deck);
+        };
+        join.AddChild(codeButton);
         var address = MenuKit.TextField(Settings.Current.LastHostAddress, $"192.168.1.20:{OnlineService.DefaultPort}");
         join.AddChild(MenuKit.Row("Address", address, 90));
         var joinButton = BoardStyle.MakePrimaryButton("Join", 20);
@@ -253,6 +264,69 @@ public partial class OnlineScreen : Control
         row.AddChild(joinCard);
 
         _root.AddChild(row);
+        _root.AddChild(BuildBrowser());
+    }
+
+    // ------------------------------------------------------------------ lobby browser
+
+    private IReadOnlyList<Arcanum.Net.Services.LobbyListing>? _found;
+    private bool _searching;
+
+    /// <summary>Open lobbies the online services list (on the local network for now), each joinable with the chosen deck.</summary>
+    private Control BuildBrowser()
+    {
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 10);
+        var header = new HBoxContainer();
+        header.AddThemeConstantOverride("separation", 12);
+        var title = MenuKit.SectionTitle("Open lobbies");
+        title.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        header.AddChild(title);
+        var refresh = BoardStyle.MakeButton(_searching ? "Searching…" : "Refresh", 16);
+        refresh.Disabled = _searching;
+        refresh.Pressed += SearchLobbies;
+        header.AddChild(refresh);
+        box.AddChild(header);
+        box.AddChild(MenuKit.Hint($"Lobbies on: {Online.Services.Name}."));
+        if (_found is null) box.AddChild(MenuKit.Hint(_searching ? "Looking for lobbies…" : "Press Refresh to look for lobbies."));
+        else if (_found.Count == 0) box.AddChild(MenuKit.Hint("No open lobby was found."));
+        else foreach (var listing in _found) box.AddChild(ListingRow(listing));
+        return MenuKit.Card(box);
+    }
+
+    private Control ListingRow(Arcanum.Net.Services.LobbyListing listing)
+    {
+        var line = new HBoxContainer();
+        line.AddThemeConstantOverride("separation", 12);
+        string what = listing.Event ?? (listing.Commander ? $"{listing.Format} (Commander)" : listing.Format);
+        var label = BoardStyle.MakeLabel($"{listing.HostName} · {what} · {listing.OpenSeats} of {listing.Seats} seats free", 16);
+        label.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        line.AddChild(label);
+        var join = BoardStyle.MakePrimaryButton("Join", 16);
+        join.Pressed += () =>
+        {
+            if (SelectedDeck is not { } deck) return;
+            SaveName();
+            Online.JoinListing(PlayerName, listing, deck);
+        };
+        line.AddChild(join);
+        return line;
+    }
+
+    private async void SearchLobbies()
+    {
+        if (_searching) return;
+        if (_name is not null) SaveName();
+        _searching = true;
+        Rebuild();
+        try { _found = await Online.SearchLobbiesAsync(); }
+        catch (Exception e)
+        {
+            _found = Array.Empty<Arcanum.Net.Services.LobbyListing>();
+            ShowStatus($"Couldn't look for lobbies: {e.Message}");
+        }
+        _searching = false;
+        if (IsInsideTree()) Rebuild();
     }
 
     private static int _lastDeck, _kind, _sourceIndex, _bestOfIndex, _playersIndex;
@@ -272,9 +346,20 @@ public partial class OnlineScreen : Control
         var state = lobby.State;
         box.AddChild(MenuKit.SectionTitle(state is null ? "Joining…" : $"Lobby · {state.Event ?? state.Format}"));
 
+        if (Online.IsHosting && Online.PublishedLobby is { } published)
+        {
+            var line = new HBoxContainer();
+            line.AddThemeConstantOverride("separation", 10);
+            line.AddChild(BoardStyle.MakeLabel($"Invite code: {Arcanum.Net.Services.InviteCode.Display(published.InviteCode)}", 18));
+            var copy = BoardStyle.MakeButton("Copy", 13);
+            copy.Pressed += () => DisplayServer.ClipboardSet(Arcanum.Net.Services.InviteCode.Display(published.InviteCode));
+            line.AddChild(copy);
+            box.AddChild(line);
+            box.AddChild(MenuKit.Hint($"The lobby is listed in the lobby browser ({Online.Services.Name})."));
+        }
         if (Online.IsHosting)
         {
-            box.AddChild(MenuKit.Hint("Give the other players one of these addresses:"));
+            box.AddChild(MenuKit.Hint("Or give the other players one of these addresses:"));
             foreach (var address in Online.ShareAddresses)
             {
                 var line = new HBoxContainer();

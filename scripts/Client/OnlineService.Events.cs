@@ -53,6 +53,7 @@ public partial class OnlineService
         ListAddresses();
         OpenRouterPort();
         JoinLobby(_loopback!.Connect(), new ClientIdentity(name, _lobby.HostToken, Version, ContentId));
+        PublishHostedLobby();
     }
 
     private bool Listen(int port)
@@ -85,6 +86,7 @@ public partial class OnlineService
         }
         var title = _lobby.State.Event ?? "Event";
         _lobby.StartEvent(_ => new EventHost(ev, seats.Select(s => s.IsComputer ? null : s.Token).ToList(), Rules(ev), EventOptions()) { Title = title });
+        UpdatePublishedLobby(); // started: the listing has no free seats any more
     }
 
     private static EventRules Rules(LimitedEvent ev)
@@ -209,7 +211,7 @@ public partial class OnlineService
         {
             var connection = _loopback is not null && IsHosting
                 ? _loopback.Connect()
-                : await TcpConnection.ConnectAsync(_address, _port, TimeSpan.FromSeconds(8));
+                : await ConnectToHostAsync(TimeSpan.FromSeconds(8));
             StartGameClient(connection, identity, eventGame: true);
         }
         catch (Exception e)
@@ -265,7 +267,7 @@ public partial class OnlineService
         _connecting = true;
         try
         {
-            var connection = await TcpConnection.ConnectAsync(_address, _port, TimeSpan.FromSeconds(5));
+            var connection = await ConnectToHostAsync(TimeSpan.FromSeconds(5));
             if (EventSession is null) { connection.Close(); return; }
             var client = new EventClient(connection, _eventIdentity, greet: true);
             _eventClient = client;
