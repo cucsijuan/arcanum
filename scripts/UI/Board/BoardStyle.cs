@@ -18,6 +18,11 @@ public static class BoardStyle
     public static readonly Color Blocking = new("4c8dff");
     public static readonly Color Selected = new("2ec4e6");
 
+    private static readonly Color[] PlayerColors = { new("2ec4b6"), new("e0607e"), new("9b7bff"), new("f2a93b"), new("6fd08c"), new("d98ae0") };
+
+    /// <summary>The color that stands for a seat (turn glow, banner, active-player name).</summary>
+    public static Color PlayerColor(int seat) => PlayerColors[(seat % PlayerColors.Length + PlayerColors.Length) % PlayerColors.Length];
+
     /// <summary>
     /// Drawing order of board layers. Cards use 0–300 (hand, rows, attachments, dragged); everything that explains
     /// what is happening must draw above them.

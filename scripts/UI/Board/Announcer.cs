@@ -11,9 +11,16 @@ namespace Arcanum.UI.Board;
 /// </summary>
 public partial class Announcer : Control
 {
-    public sealed record Announcement(string Text, CardView? Card, double Seconds, Func<Control, IEnumerable<ArrowLayer.Arrow>>? Arrows = null);
+    /// <param name="Turn">Show as the large "whose turn it is" banner (<see cref="Announcement.Text"/> is the title) instead of the card banner.</param>
+    /// <param name="OnShown">Runs when this announcement starts being shown (e.g. a sound).</param>
+    public sealed record Announcement(string Text, CardView? Card, double Seconds, Func<Control, IEnumerable<ArrowLayer.Arrow>>? Arrows = null,
+        TurnInfo? Turn = null, Action? OnShown = null);
+
+    /// <summary>What the turn banner shows under its title, and in which color.</summary>
+    public sealed record TurnInfo(string Subtitle, Color Accent);
 
     private readonly Queue<Announcement> _queue = new();
+    private readonly TurnBanner _turnBanner = new();
     private readonly PanelContainer _banner = new();
     private readonly CardNode _card = new() { MouseFilter = MouseFilterEnum.Ignore };
     private readonly Label _text = BoardStyle.MakeLabel("", 20, BoardStyle.Text, bold: true);
@@ -48,6 +55,8 @@ public partial class Announcer : Control
         _banner.AddChild(row);
         _banner.Visible = false;
         AddChild(_banner);
+        _turnBanner.Position = new Vector2(0, 190); // a little above the middle of the screen (this node sits 250 above it)
+        AddChild(_turnBanner);
     }
 
     public void Enqueue(Announcement announcement)
@@ -61,6 +70,7 @@ public partial class Announcer : Control
         _queue.Clear();
         _remaining = 0;
         _banner.Visible = false;
+        _turnBanner.Stop();
         ArrowsChanged?.Invoke(Array.Empty<ArrowLayer.Arrow>());
     }
 
@@ -77,10 +87,20 @@ public partial class Announcer : Control
         {
             _remaining = 0;
             _banner.Visible = false;
+            _turnBanner.Stop();
             ArrowsChanged?.Invoke(Array.Empty<ArrowLayer.Arrow>());
             return;
         }
         _remaining = next.Seconds * BoardStyle.AnimationScale;
+        next.OnShown?.Invoke();
+        if (next.Turn is { } turn)
+        {
+            _banner.Visible = false;
+            ArrowsChanged?.Invoke(Array.Empty<ArrowLayer.Arrow>());
+            _turnBanner.Play(next.Text, turn.Subtitle, turn.Accent, _remaining);
+            return;
+        }
+        _turnBanner.Stop();
         _text.Text = next.Text;
         _card.GetParent<Control>().Visible = next.Card is not null;
         if (next.Card is not null) _card.Setup(next.Card, showCostPips: false);

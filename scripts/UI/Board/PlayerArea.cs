@@ -209,6 +209,7 @@ public partial class PlayerArea : Control
         _nameBadge.ResetSize();
         RefreshTags(me, view);
         _activeBorder.Visible = isActive;
+        ApplyTurnGlow(isActive);
         _handLabel.Text = $"⌄ Hand ({me.Hand.Count})";
 
         // The library always shows the card back; we build a hidden view rather than reveal its top.

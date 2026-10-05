@@ -38,12 +38,21 @@ public partial class PhaseBar : PanelContainer
     private readonly Button _fullControl = BoardStyle.MakeButton("FULL", 11);
     private AutoPassPolicy? _policy;
     private Step? _current;
+    private bool _ownTurn = true;
+    private readonly Label _turnOwner = BoardStyle.MakeLabel("", 11, bold: true);
 
     public PhaseBar()
     {
         AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.06f, 0.06f, 0.07f, 0.9f), 8, BoardStyle.PanelBorder, 1));
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 3);
+
+        _turnOwner.CustomMinimumSize = new Vector2(64, 0);
+        _turnOwner.ClipText = true;
+        _turnOwner.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        _turnOwner.VerticalAlignment = VerticalAlignment.Center;
+        _turnOwner.MouseFilter = MouseFilterEnum.Pass;
+        row.AddChild(_turnOwner);
 
         var legend = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         legend.AddThemeConstantOverride("separation", 4);
@@ -95,6 +104,16 @@ public partial class PhaseBar : PanelContainer
         UpdateVisuals();
     }
 
+    /// <summary>Whose turn it is: shown beside the steps; the current step is blue in another player's turn (like their stop chips).</summary>
+    public void SetActivePlayer(string? name, bool ownTurn, Color color)
+    {
+        _turnOwner.Text = name ?? "";
+        _turnOwner.TooltipText = name is null ? "" : ownTurn ? $"{name}: your turn" : $"{name}'s turn";
+        _turnOwner.AddThemeColorOverride("font_color", color.Lerp(Colors.White, 0.25f));
+        _ownTurn = ownTurn;
+        UpdateVisuals();
+    }
+
     private static Button Marker(string tooltip, Action onPressed)
     {
         var marker = new Button { CustomMinimumSize = new Vector2(38, 9), FocusMode = FocusModeEnum.None, TooltipText = tooltip };
@@ -109,7 +128,7 @@ public partial class PhaseBar : PanelContainer
             StyleMarker(opponent, _policy?.HasStop(ownTurn: false, step) ?? false, OpponentStop);
             StyleMarker(own, _policy?.HasStop(ownTurn: true, step) ?? false, OwnStop);
             bool current = step == _current;
-            chip.AddThemeStyleboxOverride("panel", BoardStyle.Box(current ? BoardStyle.ActiveBorder : new Color("1c1d21"), 4,
+            chip.AddThemeStyleboxOverride("panel", BoardStyle.Box(current ? (_ownTurn ? BoardStyle.ActiveBorder : OpponentStop) : new Color("1c1d21"), 4,
                 current ? null : BoardStyle.PanelBorder, current ? 0 : 1));
             label.AddThemeColorOverride("font_color", current ? new Color("16171a") : BoardStyle.TextDim);
         }
