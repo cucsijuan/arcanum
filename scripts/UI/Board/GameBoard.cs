@@ -203,8 +203,10 @@ public partial class GameBoard : Control
     }
 
     /// <summary>
-    /// ARCANUM_SANDBOX=1: start from a prepared board of the generic cards for manual testing of combat, targeted
-    /// spells and activated abilities. It needs no card module.
+    /// ARCANUM_SANDBOX=1: start from a prepared board of the generic cards for manual testing of attachments, static
+    /// abilities, targeted spells and activated abilities: player one has a creature carrying an aura and an equipment,
+    /// a spare equipment, a creature with a tap ability and burn, pump and destroy in hand; player two has creatures, a
+    /// creature-boosting enchantment and burn and bounce in hand. It needs no card module.
     /// </summary>
     private static Action<Arcanum.Engine.Game> SandboxSetup()
     {
@@ -219,17 +221,24 @@ public partial class GameBoard : Control
 
             Put(p1, Arcanum.Cards.GenericCards.Forest, 3);
             Put(p1, Arcanum.Cards.GenericCards.Mountain, 2);
-            Put(p1, Arcanum.Cards.GenericCards.GladeCub);
+            Put(p1, Arcanum.Cards.GenericCards.Swamp);
+            var cub = game.SetupPermanent(p1, Arcanum.Cards.GenericCards.GladeCub);
+            game.SetupPermanent(p1, Arcanum.Cards.GenericCards.StoneSkin, attachTo: cub);
+            game.SetupPermanent(p1, Arcanum.Cards.GenericCards.IronBlade, attachTo: cub);
+            Put(p1, Arcanum.Cards.GenericCards.IronBlade);
             Put(p1, Arcanum.Cards.GenericCards.SparkMage);
             Put(p1, Arcanum.Cards.GenericCards.HillBrute);
             game.SetupInHand(p1, Arcanum.Cards.GenericCards.EmberBolt);
-            game.SetupInHand(p1, Arcanum.Cards.GenericCards.EmberBolt);
-            game.SetupInHand(p1, Arcanum.Cards.GenericCards.OgreBrute);
+            game.SetupInHand(p1, Arcanum.Cards.GenericCards.MightySurge);
+            game.SetupInHand(p1, Arcanum.Cards.GenericCards.Rend);
 
             Put(p2, Arcanum.Cards.GenericCards.Mountain, 3);
+            Put(p2, Arcanum.Cards.GenericCards.Island, 2);
             Put(p2, Arcanum.Cards.GenericCards.OgreBrute, 2);
             Put(p2, Arcanum.Cards.GenericCards.StoneElemental);
+            Put(p2, Arcanum.Cards.GenericCards.RallyBanner);
             game.SetupInHand(p2, Arcanum.Cards.GenericCards.EmberBolt);
+            game.SetupInHand(p2, Arcanum.Cards.GenericCards.GustAway);
         };
     }
 
