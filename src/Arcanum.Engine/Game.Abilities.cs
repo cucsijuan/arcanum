@@ -3396,8 +3396,8 @@ public sealed partial class Game
     /// <summary>
     /// Discards a card: it moves from its owner's hand to the graveyard after the replacement effects that modify that (rule 614),
     /// among them a card that says so going onto the battlefield instead when a spell or ability an opponent controls caused the
-    /// discard. A card that goes elsewhere instead is still discarded; one put onto the battlefield instead is not, since that
-    /// replaces the discard itself (rule 614.6).
+    /// discard. Those effects replace only where the card goes ("instead of putting it into your graveyard"), not the discard, so
+    /// the card is discarded wherever it ends up (as with madness, rule 702.35).
     /// </summary>
     private async Task DiscardCardAsync(PlayerId who, CardId card, PlayerId? causedBy)
     {
@@ -3406,7 +3406,7 @@ public sealed partial class Game
         var plan = await PlanMoveAsync(discarded, Zone.Graveyard, discardedByOpponent: byOpponent);
         _movePlans[(card, discarded.Version)] = (Zone.Graveyard, plan);
         await MoveCardAsync(card, Zone.Graveyard);
-        if (plan.Applied.All(r => r.Kind != ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard)) Emit(new CardDiscarded(who, card));
+        Emit(new CardDiscarded(who, card));
     }
 
     private async Task<IReadOnlyList<CardId>> DiscardAsync(PlayerId who, int count, PlayerId? causedBy = null)

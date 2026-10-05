@@ -227,7 +227,7 @@ public class MechanicsTests
         s.Lands(P0, 1);
         s.InHand(P0, new CardDefinition
         {
-            Name = "Mind Twist", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Sorcery,
+            Name = "Thought Squeeze", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Sorcery,
             Spell = new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Player, ControllerFilter.Opponent) }, Effects = new Effect[] { new Discard(2, Subject.TargetAt(0)) } },
         });
         await s.RunUntilTurn();

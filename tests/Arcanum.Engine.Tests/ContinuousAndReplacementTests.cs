@@ -298,14 +298,14 @@ public class ContinuousAndReplacementTests
 
     private static CardDefinition MindTwist(Subject who, TargetSpec[]? targets) => new()
     {
-        Name = "Mind Twist", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Sorcery,
+        Name = "Thought Squeeze", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Sorcery,
         Spell = new SpellAbility { Targets = targets ?? Array.Empty<TargetSpec>(), Effects = new Effect[] { new Discard(1, who) } },
     };
 
     [Theory]
-    [InlineData(true, Zone.Battlefield, false)]
-    [InlineData(false, Zone.Library, true)]
-    public async Task AnOpponentsDiscardLetsTheOwnerChooseBetweenTheBattlefieldAndAnotherReplacement(bool battlefield, Zone expected, bool discarded)
+    [InlineData(true, Zone.Battlefield)]
+    [InlineData(false, Zone.Library)]
+    public async Task AnOpponentsDiscardLetsTheOwnerChooseBetweenTheBattlefieldAndAnotherReplacement(bool battlefield, Zone expected)
     {
         var s = Casting();
         s.Lands(P0, 1);
@@ -322,8 +322,8 @@ public class ContinuousAndReplacementTests
         Assert.Single(asked);
         Assert.Equal(2, asked[0].Count);
         Assert.Equal(expected, s.Card(stubborn).Zone);
-        // Shuffled into the library it was still discarded; put onto the battlefield instead, it never was.
-        Assert.Equal(discarded, s.Game.Log.Any(e => e is CardDiscarded d && d.Card == stubborn));
+        // Either way it was discarded: the replacements change only where it goes.
+        Assert.Contains(s.Game.Log, e => e is CardDiscarded d && d.Card == stubborn);
     }
 
     [Fact]
@@ -354,6 +354,6 @@ public class ContinuousAndReplacementTests
         await s.RunUntilTurn();
         Assert.Equal(Zone.Battlefield, s.Card(stubborn).Zone);
         Assert.Equal(P1, s.Card(stubborn).Controller);
-        Assert.DoesNotContain(s.Game.Log, e => e is CardDiscarded d && d.Card == stubborn);
+        Assert.Contains(s.Game.Log, e => e is CardDiscarded d && d.Card == stubborn);
     }
 }
