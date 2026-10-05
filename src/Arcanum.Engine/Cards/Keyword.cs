@@ -64,6 +64,8 @@ public enum Keyword
     UntapsByRemovingCounter,
     /// <summary>"Assigns combat damage equal to its toughness rather than its power" (rule 510.1c).</summary>
     AssignsDamageByToughness,
+    /// <summary>"Attacks each combat if able" (rule 508.1d), when an effect gives it.</summary>
+    AttacksEachCombat,
 }
 
 public static class Keywords
@@ -103,6 +105,7 @@ public static class Keywords
         Keyword.NonbasicLandwalk => "Nonbasic landwalk",
         Keyword.UntapsByRemovingCounter => "Untaps only by removing a +1/+1 counter",
         Keyword.AssignsDamageByToughness => "Assigns combat damage equal to its toughness",
+        Keyword.AttacksEachCombat => "Attacks each combat if able",
         _ => keyword.ToString(),
     };
 

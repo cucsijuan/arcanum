@@ -54,11 +54,22 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
     public Cards.CardType ProtectionFromTypes { get; init; }
 }
 
-/// <summary>"Gain control of it for as long as you control [source]".</summary>
-public sealed record LastingControlEffect(CardId Card, int Version, PlayerId NewController, CardId Source, int SourceVersion);
+/// <summary>
+/// A control-changing effect from a resolved spell or ability (layer 2), applied with the control-changing static abilities
+/// in timestamp order (rule 613.7). It ends with the turn, at the end of a player's next turn, once its source leaves or
+/// changes controller, or never; and always when its object leaves the battlefield.
+/// </summary>
+public sealed record ControlEffect(CardId Card, int Version, PlayerId NewController, long Timestamp)
+{
+    public bool UntilEndOfTurn { get; init; }
 
-/// <summary>Control gained "until end of turn": returned to <paramref name="Original"/> at cleanup.</summary>
-public sealed record TemporaryControlEffect(CardId Card, int Version, PlayerId Original);
+    /// <summary>"Until the end of your next turn": ends at the cleanup of that player's first turn after the effect began.</summary>
+    public PlayerId? UntilEndOfNextTurnOf { get; init; }
+    public int MadeOnTurn { get; init; }
+
+    /// <summary>"For as long as you control [source]".</summary>
+    public (CardId Card, int Version)? WhileSource { get; init; }
+}
 
 /// <summary>A card exiled until a source leaves the battlefield.</summary>
 public sealed record LinkedExile(CardId Source, int SourceVersion, CardId Exiled, int ExiledVersion);
@@ -77,6 +88,17 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
 
     /// <summary>"When you play a card this way": the source and its ability that triggers then.</summary>
     public (CardId Source, Abilities.TriggeredAbility Ability)? WhenPlayed { get; init; }
+}
+
+/// <summary>
+/// "Prevent all [combat] damage that would be dealt [by a creature / by matching sources / to a player] this turn" (rule 615).
+/// </summary>
+public sealed record PreventionShield(int Turn, bool CombatOnly)
+{
+    public (CardId Card, int Version)? DealtBy { get; init; }
+    public Abilities.ObjectFilter? SourceFilter { get; init; }
+    public PlayerId FilterController { get; init; }
+    public PlayerId? ToPlayer { get; init; }
 }
 
 /// <summary>A delayed triggered ability waiting for its moment ("at the beginning of the next upkeep").</summary>
@@ -117,7 +139,11 @@ public sealed class GameState
     /// <summary>The latest timestamp handed out (rule 613.7).</summary>
     public long LastTimestamp { get; set; }
 
-    public List<TemporaryControlEffect> TemporaryControl { get; } = new();
+    /// <summary>Control-changing effects of resolved spells and abilities (layer 2).</summary>
+    public List<ControlEffect> ControlEffects { get; } = new();
+
+    /// <summary>The turn number each player's current or latest turn has (for "until the end of your next turn").</summary>
+    public Dictionary<PlayerId, int> LastTurnOf { get; } = new();
 
     /// <summary>Cards exiled "until [source] leaves the battlefield".</summary>
     public List<LinkedExile> LinkedExiles { get; } = new();
@@ -201,8 +227,25 @@ public sealed class GameState
     /// <summary>Goaded creatures (card, version) and who goaded them, until that player's next turn (rule 701.15).</summary>
     public List<(CardId Card, int Version, PlayerId Goader)> Goads { get; } = new();
 
-    /// <summary>Control effects that last as long as a player controls their source.</summary>
-    public List<LastingControlEffect> LastingControl { get; } = new();
+
+    /// <summary>Damage prevention shields that last this turn.</summary>
+    public List<PreventionShield> PreventionShields { get; } = new();
+
+    /// <summary>"If a source you control would deal damage this turn to an opponent or a permanent an opponent controls, it deals triple that damage instead."</summary>
+    public List<(PlayerId Player, int Turn)> DamageTripled { get; } = new();
+
+    /// <summary>The monarch (rule 724), if there is one, and the object standing for the monarch's inherent triggered abilities.</summary>
+    public PlayerId? Monarch { get; set; }
+    public CardId? MonarchDesignation { get; set; }
+
+    /// <summary>Cards exiled "until an opponent becomes the monarch", with the player whose ability exiled them.</summary>
+    public List<(CardId Card, int Version, PlayerId Controller)> ExiledUntilOpponentIsMonarch { get; } = new();
+
+    /// <summary>Combats begun this turn (for "this combat").</summary>
+    public int CombatsThisTurn { get; set; }
+
+    /// <summary>"[Attacking player] can't attack [protected player] this combat" (turn, combat number).</summary>
+    public List<(PlayerId Attacker, PlayerId Protected, int Turn, int Combat)> CantAttackThisCombat { get; } = new();
 
     public bool IsGameOver { get; set; }
     public PlayerId? Winner { get; set; }

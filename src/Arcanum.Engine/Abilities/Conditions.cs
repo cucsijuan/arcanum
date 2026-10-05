@@ -165,3 +165,12 @@ public sealed record EquippedInCombatWith(ObjectFilter Filter) : Condition;
 
 /// <summary>"If you control a creature with the greatest power among creatures on the battlefield" (ties included).</summary>
 public sealed record YouControlGreatestPower : Condition;
+
+/// <summary>"If you have two or more opponents".</summary>
+public sealed record OpponentsAtLeast(int Count) : Condition;
+
+/// <summary>"If you're the monarch".</summary>
+public sealed record IsMonarch : Condition;
+
+/// <summary>"If there is no monarch".</summary>
+public sealed record NoMonarch : Condition;

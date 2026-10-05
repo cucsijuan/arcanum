@@ -535,7 +535,11 @@ public sealed class BotController : IPlayerController
     public async Task<IReadOnlyList<AttackDeclaration>> DeclareAttackersAsync(
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders)
     {
-        var declared = await ChooseAttackersAsync(view, possibleAttackers, defenders);
+        var declared = (await ChooseAttackersAsync(view, possibleAttackers, defenders))
+            // A creature that can't attack the chosen player attacks another it may attack, or stays home.
+            .Select(d => view.MayAttack(d.Attacker, d.Defender) || d.Planeswalker is not null ? d
+                : defenders.FirstOrDefault(p => view.MayAttack(d.Attacker, p)) is var other && view.MayAttack(d.Attacker, other) ? d with { Defender = other } : null)
+            .OfType<AttackDeclaration>().ToList();
         if (view.AttackTaxes.Count == 0) return declared;
         // Only as many attackers as the attack taxes can be paid for, the strongest first; taxes add up across defenders.
         var budget = view.AttackTaxes.ToDictionary(t => t.Defender, t => t.Affordable);

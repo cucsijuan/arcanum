@@ -86,7 +86,13 @@ public sealed partial class Game
     }
 
     public GameView ViewFor(PlayerId player, bool revealAll = false) =>
-        ViewBuilder.Build(State, player, revealAll, Config.Commander?.TaxPerCast ?? 0) with { AttackTaxes = AttackTaxesFor(player) };
+        ViewBuilder.Build(State, player, revealAll, Config.Commander?.TaxPerCast ?? 0) with
+        {
+            AttackTaxes = AttackTaxesFor(player),
+            AttackRestrictions = State.PermanentsControlledBy(player).Where(c => c.IsCreature)
+                .SelectMany(c => State.OpponentsOf(player).Where(d => AttackForbidden(c, d)).Select(d => new AttackRestrictionView(c.Id, d))).ToList(),
+            Monarch = State.Monarch,
+        };
 
     private IPlayerController ControllerOf(PlayerId player) => _controllers[player.Value];
 
@@ -159,10 +165,26 @@ public sealed partial class Game
         State.ActivePlayer = startingPlayer;
         foreach (var playerId in State.ApnapOrder().ToList()) await ResolveMulliganAsync(playerId);
         // "If this card is in your opening hand, you may begin the game with it on the battlefield."
+        var starting = State.ActivePlayer;
         foreach (var playerId in State.ApnapOrder().ToList())
             foreach (var id in State.GetPlayer(playerId).Hand.Where(c => State.GetCard(c).Definition.StartsOnBattlefieldFromOpeningHand).ToList())
-                if (await ControllerOf(playerId).ChooseYesNoAsync(ViewFor(playerId), new YesNoRequest($"Begin the game with {State.GetCard(id).Name} on the battlefield?", id)))
-                    MoveCard(id, Zone.Battlefield);
+            {
+                var card = State.GetCard(id);
+                if (card.Zone != Zone.Hand || (card.Definition.StartsOnlyIfNotStartingPlayer && playerId == starting)) continue;
+                if (!await ControllerOf(playerId).ChooseYesNoAsync(ViewFor(playerId), new YesNoRequest($"Begin the game with {card.Name} on the battlefield?", id))) continue;
+                MoveCard(id, Zone.Battlefield);
+                if (card.Definition.StartsWithCounter is { } kind) PutCounters(card, kind, 1, playerId);
+                // "If you do, exile a card from your hand."
+                var hand = State.GetPlayer(playerId).Hand.ToList();
+                int exile = Math.Min(card.Definition.StartsExilingFromHand, hand.Count);
+                if (exile > 0)
+                {
+                    var chosen = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId), new CardChoiceRequest($"{card.Name}: exile {exile} card(s) from your hand", id,
+                        hand.Select(h => ViewBuilder.Card(State, h, playerId)).ToList(), exile, exile, CardChoicePurpose.Discard));
+                    Require(chosen.Count == exile && chosen.Distinct().Count() == exile && chosen.All(hand.Contains), "Exile cards from your hand.");
+                    foreach (var h in chosen) MoveCard(h, Zone.Exile);
+                }
+            }
 
         bool firstTurn = true;
         var regular = State.ActivePlayer; // whose turn it is in the normal turn order

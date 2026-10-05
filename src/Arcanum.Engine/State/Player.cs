@@ -89,6 +89,10 @@ public sealed class Player
 
     public bool HasLost { get; set; }
 
+    /// <summary>"You can't lose life this turn" / "you can't lose the game this turn and your opponents can't win the game this turn": the turn it applies to.</summary>
+    public int CantLoseLifeTurn { get; set; } = -1;
+    public int CantLoseGameTurn { get; set; } = -1;
+
     /// <summary>Times each of this player's commanders has been cast from the command zone (commander tax).</summary>
     public Dictionary<CardId, int> CommanderCasts { get; } = new();
 

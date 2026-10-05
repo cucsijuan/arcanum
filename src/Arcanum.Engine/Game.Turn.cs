@@ -18,6 +18,10 @@ public sealed partial class Game
         State.CreaturesDiedThisTurn = 0;
         State.PermanentsSacrificedThisTurn = 0;
         State.BlocksThisTurn.Clear();
+        State.CombatsThisTurn = 0;
+        State.PreventionShields.RemoveAll(p => p.Turn < State.TurnNumber);
+        State.DamageTripled.RemoveAll(p => p.Turn < State.TurnNumber);
+        State.CantAttackThisCombat.Clear();
         foreach (var player in State.Players)
         {
             player.CreaturesDiedThisTurn = 0;
@@ -37,6 +41,7 @@ public sealed partial class Game
             player.GraveyardTypesUsedThisTurn = 0;
         }
         foreach (var permanent in State.PermanentsControlledBy(active.Id)) permanent.ControlledSinceTurnStart = true;
+        State.LastTurnOf[active.Id] = State.TurnNumber;
         State.Goads.RemoveAll(g => g.Goader == active.Id); // "until your next turn"
         State.LastingEffects.RemoveAll(e => e.UntilTurnOf == active.Id);
         active.Protected = false; // "protection from everything until your next turn"
@@ -137,6 +142,7 @@ public sealed partial class Game
                 break;
             case Step.BeginCombat:
                 State.Combat = new CombatState();
+                State.CombatsThisTurn++;
                 break;
             case Step.DeclareAttackers:
                 await DeclareAttackersAsync();
@@ -180,16 +186,9 @@ public sealed partial class Game
         // Damage wears off and "until end of turn" effects end at the same time (rule 514.2).
         foreach (var permanent in State.Battlefield.Select(State.GetCard)) permanent.Damage = 0;
         State.UntilEndOfTurn.Clear();
-        foreach (var control in State.TemporaryControl)
-        {
-            var card = State.GetCard(control.Card);
-            if (card.Version != control.Version || card.Zone != Zone.Battlefield) continue;
-            card.Controller = control.Original;
-            card.BaseController = control.Original;
-            card.ControlledSinceTurnStart = false;
-            Emit(new ControlChanged(card.Id, control.Original));
-        }
-        State.TemporaryControl.Clear();
+        // "Until end of turn" and "until the end of your next turn" control effects end now.
+        State.ControlEffects.RemoveAll(c => c.UntilEndOfTurn
+                                            || (c.UntilEndOfNextTurnOf is { } who && who == State.ActivePlayer && State.TurnNumber > c.MadeOnTurn));
         State.ExileIfDies.Clear();
         State.CombatDamagePrevented.Clear();
         foreach (var emblem in State.EmblemsUntilEndOfTurn)

@@ -126,6 +126,9 @@ public sealed record StackItemView(CardView Card, PlayerId Controller, string? A
 /// <summary>"Creatures can't attack [Defender] unless their controller pays [CostPerCreature] for each": and how many the viewer can pay for now.</summary>
 public sealed record AttackTaxView(PlayerId Defender, string CostPerCreature, int Affordable);
 
+/// <summary>A creature that can't attack a given player ("can't attack you", "can't attack you this combat").</summary>
+public sealed record AttackRestrictionView(CardId Attacker, PlayerId Defender);
+
 public sealed record AttackView(CardId Attacker, PlayerId Defender, IReadOnlyList<CardId> Blockers, bool IsBlocked, CardId? Planeswalker = null);
 
 /// <summary>Snapshot of the game from one player's perspective.</summary>
@@ -144,6 +147,15 @@ public sealed record GameView
 
     /// <summary>Attack taxes the viewer would have to pay, by defending player.</summary>
     public IReadOnlyList<AttackTaxView> AttackTaxes { get; init; } = Array.Empty<AttackTaxView>();
+
+    /// <summary>Players the viewer's creatures can't attack, by creature.</summary>
+    public IReadOnlyList<AttackRestrictionView> AttackRestrictions { get; init; } = Array.Empty<AttackRestrictionView>();
+
+    /// <summary>The monarch (rule 724), if there is one.</summary>
+    public PlayerId? Monarch { get; init; }
+
+    /// <summary>Whether the creature may attack that player, as far as restrictions go.</summary>
+    public bool MayAttack(CardId attacker, PlayerId defender) => !AttackRestrictions.Any(r => r.Attacker == attacker && r.Defender == defender);
     public required PlayerId? Winner { get; init; }
 
     public PlayerView Self => Players[Viewer.Value];

@@ -43,6 +43,7 @@ public static class EventLogFormatter
             ChoiceMade cm => $"{C(cm.Card)}: {cm.Choice} chosen.",
             EnduringStoryGained es => $"{P(es.Player)} has an enduring story.",
             CitysBlessingGained cb => $"{P(cb.Player)} gets the city's blessing.",
+            MonarchChanged mc => $"{P(mc.Player)} becomes the monarch.",
             RingTempted rt => $"The Ring tempts {P(rt.Player)} ({rt.Level}){(rt.Bearer is { } bearer ? $": {C(bearer)} is the Ring-bearer" : "")}.",
             PhasedOut po => $"{C(po.Card)} phases out.",
             PhasedIn pi => $"{C(pi.Card)} phases in.",

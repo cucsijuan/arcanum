@@ -22,34 +22,39 @@ public sealed partial class Game
     {
         var combat = State.Combat ??= new CombatState();
         var active = State.ActivePlayer;
+        var defenders = State.OpponentsOf(active).ToList();
         var possible = State.PermanentsControlledBy(active)
-            .Where(CanAttack)
+            // "Can't attack you" leaves that player's planeswalkers attackable.
+            .Where(c => CanAttack(c) && defenders.Any(d => !AttackForbidden(c, d) || State.PermanentsControlledBy(d).Any(p => p.Is(CardType.Planeswalker))))
             .Select(c => c.Id)
             .ToList();
-        var defenders = State.OpponentsOf(active).ToList();
 
         if (possible.Count > 0 && defenders.Count > 0)
         {
             var declared = await ControllerOf(active).DeclareAttackersAsync(ViewFor(active), possible, defenders);
             Require(declared.Select(d => d.Attacker).Distinct().Count() == declared.Count, "A creature can attack only once.");
             Require(declared.All(d => possible.Contains(d.Attacker) && defenders.Contains(d.Defender)), "Illegal attacker or defender.");
+            Require(declared.All(d => d.Planeswalker is not null || !AttackForbidden(State.GetCard(d.Attacker), d.Defender)), "That creature can't attack that player.");
             Require(declared.All(d => d.Planeswalker is not { } pw
                                       || State.GetCard(pw) is { Zone: Zone.Battlefield } w && w.Is(CardType.Planeswalker) && w.Controller == d.Defender),
                 "A planeswalker can only be attacked through its controller.");
             // "Attacks each combat if able" (508.1d): such creatures left out attack anyway. A goaded creature also attacks
-            // a player other than the one who goaded it if able (rule 701.15b).
+            // a player other than the one who goaded it if able (rule 701.15b). Restrictions are never broken to obey them.
             List<PlayerId> Goaders(CardId id) => State.Goads.Where(g => g.Card == id && g.Version == State.GetCard(id).Version).Select(g => g.Goader).ToList();
             PlayerId DefenderFor(CardId id, PlayerId preferred)
             {
+                var legal = defenders.Where(d => !AttackForbidden(State.GetCard(id), d)).ToList();
                 var goaders = Goaders(id);
-                if (goaders.Count == 0 || !goaders.Contains(preferred)) return preferred;
-                return defenders.FirstOrDefault(d => !goaders.Contains(d)) is var other && defenders.Any(d => !goaders.Contains(d)) ? other : preferred;
+                if (legal.Contains(preferred) && (goaders.Count == 0 || !goaders.Contains(preferred))) return preferred;
+                return legal.FirstOrDefault(d => !goaders.Contains(d)) is var other && legal.Any(d => !goaders.Contains(d)) ? other
+                    : legal.Contains(preferred) ? preferred : legal.FirstOrDefault();
             }
-            var mustAttack = possible.Where(id => (State.GetCard(id).Definition.AttacksEachCombat || Goaders(id).Count > 0) && declared.All(d => d.Attacker != id)).ToList();
+            var mustAttack = possible.Where(id => (State.GetCard(id).Definition.AttacksEachCombat || State.GetCard(id).Has(Keyword.AttacksEachCombat) || Goaders(id).Count > 0)
+                                                  && declared.All(d => d.Attacker != id)).ToList();
             if (mustAttack.Count > 0)
             {
                 var defender = declared.Count > 0 ? declared[0].Defender : defenders[0];
-                declared = declared.Concat(mustAttack.Select(id => new AttackDeclaration(id, defender))).ToList();
+                declared = declared.Concat(mustAttack.Select(id => new AttackDeclaration(id, DefenderFor(id, defender)))).ToList();
             }
             declared = declared.Select(d => Goaders(d.Attacker).Count > 0 && d.Planeswalker is null ? d with { Defender = DefenderFor(d.Attacker, d.Defender) } : d).ToList();
 
@@ -138,6 +143,29 @@ public sealed partial class Game
     {
         (Keyword.Islandwalk, "Island"), (Keyword.Swampwalk, "Swamp"), (Keyword.Forestwalk, "Forest"), (Keyword.Mountainwalk, "Mountain"), (Keyword.Plainswalk, "Plains"),
     };
+
+    /// <summary>
+    /// The life a player loses from damage: "If you control a creature, damage that would reduce your life total to less than 1
+    /// reduces it to 1 instead" (a replacement on the result of the damage, which is still dealt in full).
+    /// </summary>
+    private int LifeLostToDamage(PlayerId playerId, int amount)
+    {
+        var player = State.GetPlayer(playerId);
+        if (player.Life - amount < 1 && Has(playerId, Cards.Replacements.DamageCantReduceYourLifeBelowOne)
+            && State.PermanentsControlledBy(playerId).Any(c => c.IsCreature))
+            return Math.Max(0, player.Life - 1);
+        return amount;
+    }
+
+    /// <summary>Whether a player can't lose the game now (and so whether an opponent can't win against them).</summary>
+    private bool CantLose(PlayerId player) =>
+        Has(player, Cards.Replacements.YouCantLose) || State.GetPlayer(player).CantLoseGameTurn == State.TurnNumber
+        || State.OpponentsOf(player).Any(o => Has(o, Cards.Replacements.OpponentsCantLoseYouCantWin));
+
+    /// <summary>"You can't win the game": a permanent saying so, or an opponent's "your opponents can't win the game this turn".</summary>
+    private bool CantWin(PlayerId player) =>
+        Has(player, Cards.Replacements.OpponentsCantLoseYouCantWin)
+        || State.OpponentsOf(player).Any(o => State.GetPlayer(o).CantLoseGameTurn == State.TurnNumber);
 
     /// <summary>Whether the creature is its controller's Ring-bearer and the Ring has tempted them at least <paramref name="level"/> times.</summary>
     private bool IsRingBearer(Card card, int level) =>
@@ -273,6 +301,7 @@ public sealed partial class Game
 
         // All combat damage is dealt simultaneously (rule 510.2).
         BeginCombatDamage();
+        BeginSimultaneous(); // all combat damage is one event: "one or more" triggers see it once (rule 510.2)
         var lifeGained = new Dictionary<PlayerId, int>();
         foreach (var (source, target, dealt) in toCards)
         {
@@ -295,12 +324,13 @@ public sealed partial class Game
             int amount = ModifyDamage(source, null, target, dealt, combat: true);
             if (amount <= 0) continue;
             Emit(new DamageDealt(source.Id, null, target, amount, IsCombat: true));
-            ChangeLife(target, -amount);
+            ChangeLife(target, -LifeLostToDamage(target, amount));
             RecordCommanderDamage(source, target, amount);
             if (source.Has(Keyword.Lifelink)) lifeGained[source.Controller] = lifeGained.GetValueOrDefault(source.Controller) + amount;
         }
         foreach (var (player, amount) in lifeGained) GainLifeFor(player, amount); // lifelink (702.15b)
         EndCombatDamage();
+        EndSimultaneous();
     }
 
     private async Task<DamageAssignment> AssignDamageAsync(Card attacker, PlayerId defender, List<Card> blockers, int power, bool trample)
@@ -347,6 +377,7 @@ public sealed partial class Game
     private void ChangeLife(PlayerId playerId, int delta)
     {
         var player = State.GetPlayer(playerId);
+        if (delta < 0 && player.CantLoseLifeTurn == State.TurnNumber) return; // "you can't lose life this turn"
         int old = player.Life;
         player.Life += delta;
         Emit(new LifeChanged(playerId, old, player.Life));

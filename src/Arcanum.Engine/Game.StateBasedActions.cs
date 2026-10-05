@@ -28,7 +28,7 @@ public sealed partial class Game
         var losers = new List<(PlayerId Player, string Reason)>();
         foreach (var player in State.LivingPlayers)
         {
-            if (Has(player.Id, Cards.Replacements.YouCantLose)) continue;
+            if (CantLose(player.Id)) continue;
             if (player.Life <= 0) losers.Add((player.Id, "life total 0 or less"));                                  // 704.5a
             else if (player.AttemptedDrawFromEmptyLibrary) losers.Add((player.Id, "drew from an empty library"));    // 704.5b
             else if (player.Poison >= 10) losers.Add((player.Id, "ten poison counters"));                            // 704.5c
@@ -139,6 +139,7 @@ public sealed partial class Game
             return;
         }
 
+        NoteMonarchLeaving(losers.Select(l => l.Player).ToList());
         // The game goes on without them: their objects leave the game (rule 800.4a).
         foreach (var (playerId, _) in losers)
         {

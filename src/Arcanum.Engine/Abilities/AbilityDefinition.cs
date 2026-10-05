@@ -281,6 +281,10 @@ public enum TriggerEvent
     EquippedBlocksOrBecomesBlocked,
     /// <summary>"Whenever a [filter] becomes the target of a spell or ability an opponent controls" (subject: that permanent).</summary>
     PermanentBecomesTargetOfOpponent,
+    /// <summary>"At the beginning of the monarch's end step" (the trigger is about the monarch: "that player").</summary>
+    MonarchEndStep,
+    /// <summary>"Whenever damage that would be dealt to you is prevented" (amount: the damage prevented).</summary>
+    DamageToYouPrevented,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>

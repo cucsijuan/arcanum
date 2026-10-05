@@ -38,6 +38,24 @@ public sealed record ManaOption(IReadOnlyList<ManaType> Types, int Amount = 1, O
     /// <summary>Its types are the colors among legendary creature cards in its controller's graveyard.</summary>
     public bool ColorsAmongLegendaryCreatureCardsInGraveyard { get; init; }
 
+    /// <summary>Its types are the colors in its controller's commander's color identity (none without a commander, rule 903.4f).</summary>
+    public bool CommanderIdentity { get; init; }
+
+    /// <summary>Its types are the colors a land an opponent controls could produce ("Exotic"-style lands).</summary>
+    public bool ColorsOpponentsLandsCouldProduce { get; init; }
+
+    /// <summary>Its types are the types (colorless included) a land its controller controls could produce.</summary>
+    public bool TypesYourLandsCouldProduce { get; init; }
+
+    /// <summary>"This land deals 1 damage to you": damage its source deals to its controller when activated.</summary>
+    public int DamageToController { get; init; }
+
+    /// <summary>"You gain 1 life": life its controller gains when it is activated.</summary>
+    public int GainLife { get; init; }
+
+    /// <summary>The ability adds mana only while this holds ("if it has a luck counter on it, instead …").</summary>
+    public Abilities.Condition? While { get; init; }
+
     /// <summary>How many mana one activation adds.</summary>
     public int Produces => OneOfEach ? Types.Count : Amount;
 }

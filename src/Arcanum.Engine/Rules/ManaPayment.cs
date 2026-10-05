@@ -24,7 +24,8 @@ public static class ManaPayment
 
     /// <summary>Mana abilities usable here that their controller can also afford (life costs, rule 119.4).</summary>
     public static OptionUsable Affordable(GameState state, OptionUsable? usable) =>
-        (source, option) => (usable ?? Unrestricted)(source, option) && option.LifeCost <= state.GetPlayer(source.Controller).Life;
+        (source, option) => (usable ?? Unrestricted)(source, option) && option.LifeCost <= state.GetPlayer(source.Controller).Life
+                            && (option.LifeCost == 0 || state.GetPlayer(source.Controller).CantLoseLifeTurn != state.TurnNumber); // rule 119.8
 
     /// <summary>Indices of the source's mana abilities usable here.</summary>
     public static List<int> UsableOptions(Card source, OptionUsable? usable) =>

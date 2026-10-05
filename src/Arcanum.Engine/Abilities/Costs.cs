@@ -51,4 +51,4 @@ public sealed record CostOption(Mana.ManaCost? Mana, ExtraCost? Extra);
 public sealed record AlternativeCost(Mana.ManaCost Cost, Condition? If = null);
 
 /// <summary>Riders on mana from a source (rule 106.6): what happens when it's spent on matching spells.</summary>
-public enum ManaRider { None, HasteForDragonCreatureSpells, CopyRedInstantOrSorcery, LegendaryUncounterable }
+public enum ManaRider { None, HasteForDragonCreatureSpells, CopyRedInstantOrSorcery, LegendaryUncounterable, Uncounterable, InstantOrSorceryUncounterable, ScryIfSharesTypeWithCommander }

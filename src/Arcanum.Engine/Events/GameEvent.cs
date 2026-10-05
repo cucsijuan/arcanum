@@ -70,5 +70,8 @@ public sealed record CardDiscarded(PlayerId Player, CardId Card) : GameEvent;
 /// <summary>Scry (<paramref name="Scry"/> true) or surveil: <paramref name="Moved"/> of the <paramref name="Looked"/> cards left the top.</summary>
 public sealed record LookedAtTop(PlayerId Player, int Looked, int Moved, bool Scry) : GameEvent;
 
+/// <summary>A player became the monarch (rule 724).</summary>
+public sealed record MonarchChanged(PlayerId Player) : GameEvent;
+
 public sealed record PlayerLost(PlayerId Player, string Reason) : GameEvent;
 public sealed record GameEnded(PlayerId? Winner) : GameEvent;

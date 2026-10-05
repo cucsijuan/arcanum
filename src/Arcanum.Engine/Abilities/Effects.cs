@@ -76,7 +76,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
-    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse }
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect;
@@ -178,6 +178,9 @@ public sealed record GainControl(Subject What, bool UntilEndOfTurn = false, Subj
 {
     /// <summary>"For as long as you control this creature": ends once the source leaves or its controller changes (rule 611.2b).</summary>
     public bool WhileYouControlSource { get; init; }
+
+    /// <summary>"Until the end of your next turn".</summary>
+    public bool UntilEndOfYourNextTurn { get; init; }
 }
 
 /// <summary>
@@ -250,6 +253,9 @@ public sealed record PreventCombatDamageTo(Subject What) : Effect;
 /// <summary>Look at the top cards of your library; take up to <paramref name="Take"/> matching ones, the rest go to the bottom (or graveyard).</summary>
 public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, State.Zone TakeTo, bool RestToGraveyard = false) : Effect
 {
+    /// <summary>The cards not taken stay on top of the library (a look at the top card).</summary>
+    public bool RestOnTop { get; init; }
+
     /// <summary>How many cards, worked out on resolution ("the top X cards, where X is that creature's mana value").</summary>
     public Quantity? CountFrom { get; init; }
 
@@ -680,3 +686,29 @@ public sealed record ReturnLinkedExiled : Effect;
 
 /// <summary>"[Filter] creatures can't block this turn" (a rules effect: creatures that come later are affected too, rule 611.2c).</summary>
 public sealed record CantBlockThisTurn(ObjectFilter Filter) : Effect;
+
+/// <summary>"[Player] becomes the monarch" (rule 724): <paramref name="Who"/> is "you", a target player or the controller of the object a trigger was about.</summary>
+public sealed record BecomeMonarch(Subject Who) : Effect;
+
+/// <summary>"Exile [it] until an opponent becomes the monarch": the card returns under its owner's control when an opponent of this ability's controller does.</summary>
+public sealed record ExileUntilOpponentIsMonarch(Subject What) : Effect;
+
+/// <summary>"[Player] may pay {X}. If they don't, [effects]": X is worked out as the effect happens (the player's hand size …).</summary>
+public sealed record PlayerMayPay(Subject Who, Quantity Generic, IReadOnlyList<Effect> IfNot) : Effect;
+
+/// <summary>
+/// "Prevent all [combat] damage that would be dealt this turn [by target creature / by matching sources / to you]".
+/// </summary>
+public sealed record PreventDamageThisTurn(bool CombatOnly, Subject? DealtBy = null, ObjectFilter? Sources = null, bool ToYou = false) : Effect;
+
+/// <summary>"If a source you control would deal damage this turn to an opponent or a permanent an opponent controls, it deals triple that damage instead."</summary>
+public sealed record TripleDamageThisTurn : Effect;
+
+/// <summary>Fateful hour: "you can't lose life this turn, you can't lose the game this turn, and your opponents can't win the game this turn".</summary>
+public sealed record CantLoseThisTurn : Effect;
+
+/// <summary>"Each player gains control of all [filter] they own."</summary>
+public sealed record OwnersGainControl(ObjectFilter Filter) : Effect;
+
+/// <summary>"[Player] can't attack you this combat".</summary>
+public sealed record CantAttackYouThisCombat(Subject Who) : Effect;

@@ -71,6 +71,7 @@ public static partial class CardFactory
             Toughness = toughness,
             Loyalty = int.TryParse(record.Loyalty, out int loyalty) ? loyalty : null,
             OracleText = record.OracleText,
+            ColorIdentity = record.ColorIdentity,
             Keywords = PrintedKeywords(record),
             TapForMana = tapForMana,
             Spell = WithTokenImages(script?.Spell, record.RelatedTokens),

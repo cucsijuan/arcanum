@@ -20,6 +20,8 @@ public enum AffectedScope
     Equipped,
     /// <summary>Permanents the source's controller controls.</summary>
     YourPermanents,
+    /// <summary>Every permanent (with a filter: "each land", "each other creature").</summary>
+    AllPermanents,
 }
 
 /// <summary>Filter for a static ability: scope, "other" (excludes the source) and an optional subtype.</summary>
@@ -73,6 +75,12 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
 
     /// <summary>"You control enchanted permanent" (layer 2).</summary>
     public bool GivesControl { get; init; }
+
+    /// <summary>"The monarch controls enchanted creature" (layer 2; no effect while there is no monarch).</summary>
+    public bool GivesControlToMonarch { get; init; }
+
+    /// <summary>"[Affected creatures] can't attack you" (the source's controller).</summary>
+    public bool CantAttackYou { get; init; }
 
     /// <summary>Adds the creature type chosen as the source entered ("is the chosen type in addition to its other types").</summary>
     public bool AddChosenType { get; init; }

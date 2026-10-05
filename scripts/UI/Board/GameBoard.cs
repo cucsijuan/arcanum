@@ -608,7 +608,7 @@ public partial class GameBoard : Control
             if (decision is AttackDecision forced)
                 foreach (var id in forced.PossibleAttackers.Where(id => _session.ViewFor(forced.Player).FindCard(id)?.AttacksEachCombat == true))
                 {
-                    _attackTargets[id] = forced.Defenders[0];
+                    _attackTargets[id] = AllowedDefender(forced, id, forced.Defenders[0]);
                     _attackGroup.Add(id);
                 }
             _blocks.Clear();
@@ -732,7 +732,7 @@ public partial class GameBoard : Control
                 break;
             case AttackDecision a:
                 a.Answer(a.PossibleAttackers.Take(view.AttackTaxes.FirstOrDefault(t => t.Defender == a.Defenders[0])?.Affordable ?? int.MaxValue)
-                    .Select(id => new AttackDeclaration(id, a.Defenders[0])).ToList());
+                    .Select(id => new AttackDeclaration(id, view.MayAttack(id, a.Defenders[0]) ? a.Defenders[0] : a.Defenders.FirstOrDefault(d => view.MayAttack(id, d), a.Defenders[0]))).ToList());
                 break;
             // Double-block the first attacker when possible so damage assignment gets exercised too.
             case BlockDecision b:
@@ -1448,10 +1448,18 @@ public partial class GameBoard : Control
     /// New attack target: attackers picked since the last change follow it, later picks go to it too. So "pick A
     /// and B, then choose Computer 3" sends both there, and "pick A, choose P2, pick B, choose P3" splits them.
     /// </summary>
+    /// <summary>The player a creature attacks: the one wanted, or the first it may attack when it can't attack that one.</summary>
+    private PlayerId AllowedDefender(AttackDecision decision, CardId attacker, PlayerId wanted)
+    {
+        var view = _session.ViewFor(decision.Player);
+        return view.MayAttack(attacker, wanted) ? wanted : decision.Defenders.FirstOrDefault(d => view.MayAttack(attacker, d), wanted);
+    }
+
     private void ChooseAttackTarget(PlayerId defender, CardId? walker = null)
     {
         foreach (var id in _attackGroup)
         {
+            if (_session.CurrentDecision is AttackDecision decision && AllowedDefender(decision, id, defender) != defender) continue; // it can't attack that player
             _attackTargets[id] = defender;
             if (walker is { } w) _attackWalkers[id] = w;
             else _attackWalkers.Remove(id);
@@ -1532,7 +1540,7 @@ public partial class GameBoard : Control
                 }
                 else
                 {
-                    _attackTargets[id] = _attackDefender ?? a.Defenders[0];
+                    _attackTargets[id] = AllowedDefender(a, id, _attackDefender ?? a.Defenders[0]);
                     if (_attackWalker is { } w) _attackWalkers[id] = w;
                     _attackGroup.Add(id);
                 }

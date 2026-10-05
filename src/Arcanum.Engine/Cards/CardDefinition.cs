@@ -5,7 +5,7 @@ using Arcanum.Engine.Mana;
 namespace Arcanum.Engine.Cards;
 
 /// <summary>A choice made as a permanent enters (rule 614.12).</summary>
-public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped }
+public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped, RevealOrTapped }
 
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]
@@ -80,6 +80,10 @@ public enum Replacements : long
     ExtraTriggersFromLegendariesAndArtifactsMoving = 1L << 32,
     /// <summary>Mana of any type can be spent to activate this permanent's abilities.</summary>
     AnyManaForItsAbilities = 1L << 33,
+    /// <summary>You can't win the game and your opponents can't lose the game.</summary>
+    OpponentsCantLoseYouCantWin = 1L << 34,
+    /// <summary>If you control a creature, damage that would reduce your life total to less than 1 reduces it to 1 instead.</summary>
+    DamageCantReduceYourLifeBelowOne = 1L << 35,
 }
 
 /// <summary>
@@ -246,6 +250,14 @@ public sealed record CardDefinition
     /// <summary>"If this card is in your opening hand, you may begin the game with it on the battlefield."</summary>
     public bool StartsOnBattlefieldFromOpeningHand { get; init; }
 
+    /// <summary>
+    /// The opening-hand option (<see cref="StartsOnBattlefieldFromOpeningHand"/>) only for a player who isn't the starting player,
+    /// with a counter on it, and exiling cards from the hand if they do.
+    /// </summary>
+    public bool StartsOnlyIfNotStartingPlayer { get; init; }
+    public CounterKind? StartsWithCounter { get; init; }
+    public int StartsExilingFromHand { get; init; }
+
     /// <summary>What happens when mana from this source is spent.</summary>
     public ManaRider ManaRider { get; init; }
 
@@ -282,6 +294,12 @@ public sealed record CardDefinition
 
     /// <summary>Cascade instances (rule 702.85).</summary>
     public int Cascade { get; init; }
+
+    /// <summary>Its color identity (rule 903.4): W, U, B, R, G. Empty: the colors of its mana cost.</summary>
+    public IReadOnlyList<string> ColorIdentity { get; init; } = Array.Empty<string>();
+
+    /// <summary>With <see cref="EnterChoice.RevealOrTapped"/>: the cards that may be revealed from the hand so it enters untapped.</summary>
+    public ObjectFilter? EnterRevealFilter { get; init; }
 
     /// <summary>The life paid with <see cref="EnterChoice.PayLifeOrTapped"/>.</summary>
     public int EnterLife { get; init; }

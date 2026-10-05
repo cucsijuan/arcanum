@@ -123,6 +123,9 @@ public sealed class Card
     /// <summary>Players whose creatures can't block it this turn ("can't be blocked by creatures that player controls").</summary>
     internal HashSet<Core.PlayerId> UnblockableBy { get; } = new();
 
+    /// <summary>Players it can't attack ("can't attack you"), from static abilities.</summary>
+    internal HashSet<Core.PlayerId> CantAttackPlayers { get; } = new();
+
     /// <summary>Its supertypes now.</summary>
     public Supertype Supertypes => Definition.Supertypes | GrantedSupertypes;
     internal HashSet<string> GrantedSubtypes { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -270,13 +273,42 @@ public sealed class Card
                     ? new[] { type }
                     : Definition.TapForMana;
                 if (types.Count > 0 && ManaAmount > 0) options.Add(new ManaOption(types, ManaAmount, Definition.ManaOnlyFor, Definition.ManaOnlyForAbilitiesToo));
-                options.AddRange(Definition.ExtraManaOptions.Select(o => o.ColorsAmongYourPermanents ? o with { Types = ColorsAmongYourPermanents }
-                    : o.ColorsAmongLegendaryCreatureCardsInGraveyard ? o with { Types = ColorsAmongGraveyardLegends } : o));
+                options.AddRange(Definition.ExtraManaOptions.Select((o, i) =>
+                {
+                    var resolved = o.ColorsAmongYourPermanents ? o with { Types = ColorsAmongYourPermanents }
+                        : o.ColorsAmongLegendaryCreatureCardsInGraveyard ? o with { Types = ColorsAmongGraveyardLegends }
+                        : o.CommanderIdentity ? o with { Types = CommanderIdentityTypes }
+                        : o.ColorsOpponentsLandsCouldProduce ? o with { Types = OpponentsLandColors }
+                        : o.TypesYourLandsCouldProduce ? o with { Types = YourLandTypes }
+                        : o;
+                    // An ability that can't add mana now keeps its place (abilities are numbered) but adds none.
+                    return resolved.Types.Count == 0 || InactiveManaOptions.Contains(i) ? resolved with { Amount = 0, OneOfEach = false } : resolved;
+                }));
+                // A land with a basic land type has that type's mana ability (rule 305.6), also when an effect gives it the type.
+                if (Is(CardType.Land))
+                    foreach (var (landType, mana) in BasicLandMana)
+                        if (HasSubtype(landType) && !Definition.Subtypes.Contains(landType, StringComparer.OrdinalIgnoreCase) && !types.Contains(mana))
+                            options.Add(new ManaOption(new[] { mana }));
             }
             options.AddRange(GrantedManaOptions);
             return options;
         }
     }
+
+    private static readonly (string Type, Mana.ManaType Mana)[] BasicLandMana =
+    {
+        ("Plains", Mana.ManaType.White), ("Island", Mana.ManaType.Blue), ("Swamp", Mana.ManaType.Black), ("Mountain", Mana.ManaType.Red), ("Forest", Mana.ManaType.Green),
+    };
+
+    /// <summary>Colors in its controller's commander's color identity, as mana types (kept current by the engine).</summary>
+    internal IReadOnlyList<Mana.ManaType> CommanderIdentityTypes { get; set; } = Array.Empty<Mana.ManaType>();
+
+    /// <summary>Colors lands its controller's opponents could produce / types lands its controller could produce.</summary>
+    internal IReadOnlyList<Mana.ManaType> OpponentsLandColors { get; set; } = Array.Empty<Mana.ManaType>();
+    internal IReadOnlyList<Mana.ManaType> YourLandTypes { get; set; } = Array.Empty<Mana.ManaType>();
+
+    /// <summary>Indices of its extra mana abilities whose condition doesn't hold now.</summary>
+    internal HashSet<int> InactiveManaOptions { get; } = new();
 
     /// <summary>Colors among permanents its controller controls, as mana types (kept current by the engine).</summary>
     internal IReadOnlyList<Mana.ManaType> ColorsAmongYourPermanents { get; set; } = Array.Empty<Mana.ManaType>();

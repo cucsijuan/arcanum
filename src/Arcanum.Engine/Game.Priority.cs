@@ -100,6 +100,22 @@ public sealed partial class Game
                 else card.Tapped = true;
                 continue;
             }
+            else if (card.Definition.ChooseOnEnter == EnterChoice.RevealOrTapped)
+            {
+                // "As this land enters, you may reveal a [kind] card from your hand. If you don't, this land enters tapped."
+                var filter = (card.Definition.EnterRevealFilter ?? ObjectFilter.Anything) with { Controller = ControllerFilter.Any };
+                var eligible = State.GetPlayer(who).Hand.Where(h => Matches(filter, State.GetCard(h), who, card, who)).ToList();
+                IReadOnlyList<CardId> shown = Array.Empty<CardId>();
+                if (eligible.Count > 0)
+                {
+                    shown = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest($"{card.Name}: reveal a card from your hand so it enters untapped (or none)", id,
+                        eligible.Select(h => ViewBuilder.Card(State, h, who)).ToList(), 0, 1, CardChoicePurpose.Keep));
+                    Require(shown.Count <= 1 && shown.All(eligible.Contains), "Reveal one of the listed cards.");
+                }
+                if (shown.Count == 1) Emit(new CardsRevealed(who, shown.ToList()));
+                else card.Tapped = true;
+                continue;
+            }
             else if (card.Definition.ChooseOnEnter == EnterChoice.OddOrEven)
             {
                 int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose odd or even", id, new[] { "Odd", "Even" }, OptionKind.Other));
@@ -555,7 +571,13 @@ public sealed partial class Game
         // Mana riders: haste for Dragon creature spells, copies of red instants and sorceries.
         var riders = paidMana.SpecialSpent.Select(u => u.Rider).ToList();
         if (riders.Contains(ManaRider.HasteForDragonCreatureSpells) && card.Is(CardType.Creature) && card.HasSubtype("Dragon")) card.HasteOnEnter = true;
-        bool uncounterable = riders.Contains(ManaRider.LegendaryUncounterable) && (card.Supertypes & Supertype.Legendary) != 0;
+        bool uncounterable = (riders.Contains(ManaRider.LegendaryUncounterable) && (card.Supertypes & Supertype.Legendary) != 0)
+                             || riders.Contains(ManaRider.Uncounterable)
+                             || (riders.Contains(ManaRider.InstantOrSorceryUncounterable) && (card.Is(CardType.Instant) || card.Is(CardType.Sorcery)));
+        // "When that mana is spent to cast a creature spell that shares a creature type with your commander, scry 1."
+        var scrySources = card.IsCreature && SharesCreatureTypeWithCommander(card, player.Id)
+            ? paidMana.SpecialSpent.Where(u => u.Rider == ManaRider.ScryIfSharesTypeWithCommander).Select(u => u.Source).ToList()
+            : new List<CardId>();
         // "When that mana is spent to cast a red instant or sorcery spell, copy that spell": one trigger of the mana's
         // source for each such mana spent, put on the stack above the spell.
         var copySources = (card.Is(CardType.Instant) || card.Is(CardType.Sorcery)) && card.Colors.Contains("R")
@@ -593,8 +615,22 @@ public sealed partial class Game
         for (int i = 0; i < card.Definition.Cascade; i++) // cascade triggers as the spell is cast (rule 702.85a)
             _pendingTriggers.Add(new PendingTrigger(cardId, CascadeTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, card.Definition.ManaCost.ManaValue)));
         foreach (var source in copySources) QueueCopyThatSpell(source, player.Id, card);
+        foreach (var source in scrySources) _pendingTriggers.Add(new PendingTrigger(source, ScryOneForSharedType, player.Id));
         return true;
     }
+
+    private static readonly TriggeredAbility ScryOneForSharedType = new()
+    {
+        Trigger = TriggerEvent.YouCastSpell,
+        Effects = new Effect[] { new Scry(1) },
+        Text = "That mana was spent on a creature spell that shares a creature type with your commander: scry 1.",
+    };
+
+    /// <summary>Whether a creature spell shares a creature type with a commander the player owns (in any zone).</summary>
+    private bool SharesCreatureTypeWithCommander(Card spell, PlayerId player) =>
+        State.Cards.Values.Where(c => c.IsCommander && c.Owner == player)
+            .Any(commander => spell.CurrentSubtypes.Where(Card.IsCreatureType).Any(t => commander.HasSubtype(t)) || (spell.Has(Keyword.Changeling) && commander.CurrentSubtypes.Any(Card.IsCreatureType))
+                              || (commander.Has(Keyword.Changeling) && spell.CurrentSubtypes.Any(Card.IsCreatureType)));
 
     /// <summary>Which permanent type a card cast from the graveyard uses up ("a permanent spell of each permanent type").</summary>
     private async Task<CardType> ChoosePermanentTypeAsync(Player player, Card card)
@@ -696,8 +732,7 @@ public sealed partial class Game
     }
 
     /// <summary>An activated ability that only adds mana and has no targets (rule 605.1a).</summary>
-    private static bool IsManaAbility(ActivatedAbility ability) =>
-        ability.Targets.Count == 0 && ability.Cost.Loyalty is null && ability.Effects.Count > 0 && ability.Effects.All(e => e is AddMana or AddManaOfAnyColor or AddManaInAnyCombination);
+    private static bool IsManaAbility(ActivatedAbility ability) => IsManaAbilityOf(ability);
 
     private bool Payable(PlayerId player, ManaCost cost, CardId? exclude, ManaPayment.OptionUsable? usable = null) =>
         cost.Variants().Any(v => ManaPayment.FindPlan(State, player, v, exclude, usable) is not null);
@@ -734,7 +769,7 @@ public sealed partial class Game
         if (extra is null) return true;
         var player = State.GetPlayer(playerId);
         if (player.Hand.Count(id => id != source && DiscardableFor(extra, id, playerId, source)) < extra.Discard) return false;
-        if (extra.PayLife > player.Life) return false;
+        if (extra.PayLife > player.Life || (extra.PayLife > 0 && player.CantLoseLifeTurn == State.TurnNumber)) return false; // rule 119.8
         if (player.Graveyard.Count(id => id != source) < extra.ExileFromGraveyard) return false;
         if (extra.Sacrifice is { } filter && SacrificeCandidates(playerId, filter, source).Count < extra.SacrificeCount) return false;
         if (extra.TapCreatures is { } tapFilter && TapCandidates(playerId, tapFilter, source).Count < extra.TapCount) return false;
@@ -906,6 +941,9 @@ public sealed partial class Game
             else player.ManaPool.Add(type);
             Emit(new ManaAdded(player.Id, type, tap.Source));
         }
+        // "This land deals 1 damage to you" / "You gain 1 life" (part of the mana ability, rule 605.3b).
+        if (option is { DamageToController: > 0 } hurts) DamagePlayer(source, player.Id, hurts.DamageToController);
+        if (option is { GainLife: > 0 } heals) GainLifeFor(player.Id, heals.GainLife);
         if (source.Definition.SacrificeForMana) await SacrificePermanentAsync(source.Id);
     }
 

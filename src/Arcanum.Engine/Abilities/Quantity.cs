@@ -92,6 +92,8 @@ public enum QuantityKind
     RingBearerPower,
     /// <summary>The sum of <see cref="Quantity.Parts"/> ("the number of creatures you control plus the number of Foods you control").</summary>
     Sum,
+    /// <summary>Cards in the hand of the player an effect is being applied to ("the number of cards in their hand").</summary>
+    AffectedHandSize,
     /// <summary>Permanents sacrificed this turn by all players.</summary>
     PermanentsSacrificedThisTurn,
     /// <summary>Permanents sacrificed by this effect ("for each creature sacrificed this way").</summary>
