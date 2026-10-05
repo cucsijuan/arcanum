@@ -2903,16 +2903,24 @@ public sealed partial class Game
 
     private void PutCounters(Card card, CounterKind kind, int count, PlayerId? placedBy = null)
     {
-        if (count <= 0) return;
+        if (CountersAfterReplacements(card, kind, count, placedBy) is { } amount) PlaceCounters(card, kind, amount, placedBy);
+    }
+
+    /// <summary>
+    /// How many counters are put on after the replacement effects that modify them ("that many plus one", "twice that many"); null
+    /// when both kinds apply, since the permanent's controller then chooses their order (rule 616.1) as soon as the engine can ask
+    /// (right after the current effect): the counters wait in <see cref="_pendingCounters"/>.
+    /// </summary>
+    private int? CountersAfterReplacements(Card card, CounterKind kind, int count, PlayerId? placedBy)
+    {
+        if (count <= 0) return null;
         int plusOnes = ExtraCounterInstances(card, kind), doublings = Instances(card.Controller, Replacements.DoubleCounters);
         if (plusOnes > 0 && doublings > 0)
         {
-            // Both kinds of replacement apply: the permanent's controller chooses their order (rule 616.1), as soon as the
-            // engine can ask (right after the current effect).
             _pendingCounters.Add((card.Id, card.Version, kind, count, placedBy));
-            return;
+            return null;
         }
-        PlaceCounters(card, kind, (count + plusOnes) << doublings, placedBy);
+        return (count + plusOnes) << doublings;
     }
 
     /// <summary>
@@ -2927,14 +2935,7 @@ public sealed partial class Game
         var placed = new List<(CounterKind, int)>();
         foreach (var (kind, count) in counters)
         {
-            if (count <= 0) continue;
-            int plusOnes = ExtraCounterInstances(card, kind), doublings = Instances(card.Controller, Replacements.DoubleCounters);
-            if (plusOnes > 0 && doublings > 0)
-            {
-                _pendingCounters.Add((card.Id, card.Version, kind, count, card.Controller));
-                continue;
-            }
-            int amount = (count + plusOnes) << doublings;
+            if (CountersAfterReplacements(card, kind, count, card.Controller) is not { } amount) continue;
             card.Counters[kind] = card.CounterCount(kind) + amount;
             placed.Add((kind, amount));
         }
