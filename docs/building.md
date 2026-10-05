@@ -24,6 +24,11 @@ because it can contain signing credentials):
 
 Command-line export (after creating the presets): `godot --headless --path . --export-release "Linux" build/linux/Arcanum.x86_64`.
 
+Releases are built by GitHub Actions (`.github/workflows/release.yml`): pushing a tag `vX.Y.Z` (matching
+`config/version` in `project.godot`) runs the tests, exports Linux and Windows with the presets in
+`.github/export/export_presets.cfg` and publishes a release with both zips and the notes in `docs/releases/vX.Y.Z.md`.
+Running the workflow by hand only exports, keeping the zips as workflow artifacts.
+
 ## Debug options
 Environment variables useful while developing and testing:
 

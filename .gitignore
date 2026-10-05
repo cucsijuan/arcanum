@@ -1,7 +1,7 @@
 # Godot 4+
 .godot/
 /android/
-export_presets.cfg
+/export_presets.cfg
 
 # .NET
 bin/
@@ -10,3 +10,7 @@ obj/
 .vs/
 .idea/
 TestResults/
+
+# Export output
+/build/
+/Export/

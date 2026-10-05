@@ -1,0 +1,85 @@
+name: Release
+
+# Pushing a tag like v0.7.0 exports the game for Linux and Windows and publishes a release with both zips.
+# Running it by hand (Actions → Release → Run workflow) only exports, keeping the zips as workflow artifacts.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: 4.6.3
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Check the version
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(sed -n 's/^config\/version="\(.*\)"/\1/p' project.godot)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "project.godot says $version but the tag is $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+      - name: Name the build
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then echo "NAME=Arcanum-$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          else echo "NAME=Arcanum-${GITHUB_SHA::7}" >> "$GITHUB_ENV"; fi
+
+      - name: Tests
+        run: |
+          dotnet test tests/Arcanum.Engine.Tests --configuration Release
+          dotnet test tests/Arcanum.Data.Tests --configuration Release
+          dotnet test tests/Arcanum.Net.Tests --configuration Release
+
+      - name: Install Godot (.NET) and its export templates
+        run: |
+          base="https://github.com/godotengine/godot-builds/releases/download/$GODOT_VERSION-stable"
+          curl -fsSL -o godot.zip "$base/Godot_v$GODOT_VERSION-stable_mono_linux_x86_64.zip"
+          curl -fsSL -o templates.tpz "$base/Godot_v$GODOT_VERSION-stable_mono_export_templates.tpz"
+          unzip -q godot.zip -d "$HOME/godot"
+          echo "GODOT=$HOME/godot/Godot_v$GODOT_VERSION-stable_mono_linux_x86_64/Godot_v$GODOT_VERSION-stable_mono_linux.x86_64" >> "$GITHUB_ENV"
+          templates="$HOME/.local/share/godot/export_templates/$GODOT_VERSION.stable.mono"
+          mkdir -p "$templates"
+          unzip -q templates.tpz -d "$HOME/tpz"
+          mv "$HOME"/tpz/templates/* "$templates/"
+
+      - name: Export
+        run: |
+          # The presets used by releases (the local export_presets.cfg is not committed: it can hold signing credentials).
+          cp .github/export/export_presets.cfg export_presets.cfg
+          dotnet build Arcanum.csproj --configuration Release
+          "$GODOT" --headless --path . --import
+          mkdir -p build/linux build/windows
+          "$GODOT" --headless --path . --export-release "Linux" build/linux/Arcanum.x86_64
+          "$GODOT" --headless --path . --export-release "Windows Desktop" build/windows/Arcanum.exe
+          test -x build/linux/Arcanum.x86_64 && test -d build/linux/data_Arcanum_linuxbsd_x86_64
+          test -f build/windows/Arcanum.exe && test -d build/windows/data_Arcanum_windows_x86_64
+          (cd build/linux && zip -qr "../../$NAME-linux.zip" .)
+          (cd build/windows && zip -qr "../../$NAME-windows.zip" .)
+
+      - uses: actions/upload-artifact@v4
+        if: github.ref_type != 'tag'
+        with:
+          name: ${{ env.NAME }}
+          path: ${{ env.NAME }}-*.zip
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="docs/releases/$GITHUB_REF_NAME.md"
+          if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
+          gh release create "$GITHUB_REF_NAME" "$NAME-linux.zip" "$NAME-windows.zip" --title "Arcanum $GITHUB_REF_NAME" "$@"
