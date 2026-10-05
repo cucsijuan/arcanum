@@ -13,8 +13,16 @@ public partial class MainMenu : Control
 {
     private readonly Label _status = BoardStyle.MakeLabel("", 14, BoardStyle.TextDim);
 
+    private static bool _opened;
+
     public override void _Ready()
     {
+        // ARCANUM_OPEN=online opens the online screen at start (testing exported builds, which can't be given a scene).
+        if (OS.GetEnvironment("ARCANUM_OPEN") == "online" && !_opened)
+        {
+            _opened = true;
+            Callable.From(() => App.Instance.GoTo(App.OnlineScene)).CallDeferred();
+        }
         SetAnchorsPreset(LayoutPreset.FullRect);
         MenuKit.AddBackdrop(this);
         AddFannedCardBacks();
