@@ -142,7 +142,14 @@ public static class UiArt
             for (int x = 0; x < shape.GetWidth(); x++)
                 if (inside[y * shape.GetWidth() + x]) result.SetPixel(x, y, core);
         result.BlendRect(Tint(shape, fill), new Rect2I(Vector2I.Zero, shape.GetSize()), Vector2I.Zero);
-        var frame = Tint(Prepare(recipe, recipe.Frame), frameTint);
+        var rawFrame = Prepare(recipe, recipe.Frame);
+        // The fill stays inside the frame: only what lies within a few pixels of the frame's hollow is kept, which drops
+        // corner pieces, hollow ornaments and soft shadows outside the lines.
+        var keep = Dilate(Hollow(rawFrame), 4, result.GetWidth(), result.GetHeight());
+        for (int y = 0; y < result.GetHeight(); y++)
+            for (int x = 0; x < result.GetWidth(); x++)
+                if (!keep[y * result.GetWidth() + x]) result.SetPixel(x, y, new Color(0, 0, 0, 0));
+        var frame = Tint(rawFrame, frameTint);
         result.BlendRect(frame, new Rect2I(Vector2I.Zero, frame.GetSize()), Vector2I.Zero);
         var texture = ImageTexture.CreateFromImage(result);
         Composed[key] = texture;
@@ -171,6 +178,46 @@ public static class UiArt
             }
         }
         return inside;
+    }
+
+    /// <summary>Pixels reachable from the center without crossing the frame's drawn lines.</summary>
+    private static bool[] Hollow(Image frame)
+    {
+        int w = frame.GetWidth(), h = frame.GetHeight();
+        var inside = new bool[w * h];
+        var data = frame.GetData();
+        bool Open(int x, int y) => data[(y * w + x) * 4 + 3] < 40;
+        var pending = new Stack<(int X, int Y)>();
+        void Seed(int x, int y)
+        {
+            if (x < 0 || y < 0 || x >= w || y >= h || inside[y * w + x] || !Open(x, y)) return;
+            inside[y * w + x] = true;
+            pending.Push((x, y));
+        }
+        Seed(w / 2, h / 2);
+        while (pending.Count > 0)
+        {
+            var (x, y) = pending.Pop();
+            Seed(x + 1, y); Seed(x - 1, y); Seed(x, y + 1); Seed(x, y - 1);
+        }
+        return inside;
+    }
+
+    private static bool[] Dilate(bool[] mask, int radius, int w, int h)
+    {
+        var result = new bool[mask.Length];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                if (!mask[y * w + x]) continue;
+                for (int dy = -radius; dy <= radius; dy++)
+                    for (int dx = -radius; dx <= radius; dx++)
+                    {
+                        int nx = x + dx, ny = y + dy;
+                        if (nx >= 0 && ny >= 0 && nx < w && ny < h) result[ny * w + nx] = true;
+                    }
+            }
+        return result;
     }
 
     /// <summary>The cropped image scaled to the size the recipe is used at.</summary>
