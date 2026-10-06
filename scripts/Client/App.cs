@@ -64,6 +64,8 @@ public partial class App : Node
         Instance = this;
         Settings.Load();
         Settings.Apply();
+        // Kit scroll bars everywhere (screens set the rest of their look themselves).
+        if (Arcanum.UI.UiArt.Theme() is { } theme) GetTree().Root.Theme = theme;
         AddChild(Content);
         AddChild(Online);
         Content.Progress += message =>

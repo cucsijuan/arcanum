@@ -75,8 +75,13 @@ public static class MenuKit
     {
         var option = new OptionButton { FocusMode = Control.FocusModeEnum.None, CustomMinimumSize = new Vector2(0, 40) };
         option.AddThemeFontSizeOverride("font_size", 15);
-        option.AddThemeStyleboxOverride("normal", BoardStyle.Box(BoardStyle.Panel, 6, BoardStyle.PanelBorder, 1));
-        option.AddThemeStyleboxOverride("hover", BoardStyle.Box(new Color("26272c"), 6, BoardStyle.TextDim, 1));
+        // Room for the drop-down arrow inside the frame's right corner.
+        if (UiArt.StyleButton(option, false)) option.AddThemeConstantOverride("arrow_margin", 22);
+        else
+        {
+            option.AddThemeStyleboxOverride("normal", BoardStyle.Box(BoardStyle.Panel, 6, BoardStyle.PanelBorder, 1));
+            option.AddThemeStyleboxOverride("hover", BoardStyle.Box(new Color("26272c"), 6, BoardStyle.TextDim, 1));
+        }
         foreach (var item in items) option.AddItem(item);
         if (option.ItemCount > 0) option.Selected = Math.Clamp(selected, 0, option.ItemCount - 1);
         return option;
@@ -86,8 +91,15 @@ public static class MenuKit
     {
         var field = new LineEdit { Text = text, PlaceholderText = placeholder, CustomMinimumSize = new Vector2(0, 40) };
         field.AddThemeFontSizeOverride("font_size", 15);
-        field.AddThemeStyleboxOverride("normal", BoardStyle.Box(new Color("101114"), 6, BoardStyle.PanelBorder, 1));
-        field.AddThemeStyleboxOverride("focus", BoardStyle.Box(new Color("101114"), 6, BoardStyle.Playable, 1));
+        // A dark well with a faint gold edge (gold when typing in it).
+        var well = UiArt.Available ? UiArt.Well : new Color("101114");
+        var edge = UiArt.Available ? UiArt.Gold with { A = 0.3f } : BoardStyle.PanelBorder;
+        var normal = BoardStyle.Box(well, 4, edge, 1);
+        normal.ContentMarginLeft = normal.ContentMarginRight = 10;
+        var focus = (StyleBoxFlat)normal.Duplicate();
+        focus.BorderColor = UiArt.Available ? UiArt.Gold : BoardStyle.Playable;
+        field.AddThemeStyleboxOverride("normal", normal);
+        field.AddThemeStyleboxOverride("focus", focus);
         return field;
     }
 
@@ -106,7 +118,8 @@ public static class MenuKit
         {
             bool pressed = button.ButtonPressed;
             button.Text = pressed ? "✓" : "";
-            var box = BoardStyle.Box(pressed ? onColor : new Color("1c1d21"), 6, pressed ? onColor : BoardStyle.TextDim with { A = 0.5f }, 1);
+            var box = UiArt.ButtonFill(pressed ? onColor : UiArt.Well, compact: true)
+                ?? BoardStyle.Box(pressed ? onColor : new Color("1c1d21"), 6, pressed ? onColor : BoardStyle.TextDim with { A = 0.5f }, 1);
             foreach (var state in new[] { "normal", "hover", "pressed", "hover_pressed" }) button.AddThemeStyleboxOverride(state, box);
             button.AddThemeColorOverride("font_color", new Color("16171a"));
             button.AddThemeColorOverride("font_pressed_color", new Color("16171a"));

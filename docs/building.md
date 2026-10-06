@@ -14,9 +14,12 @@
 
 ## Interface art
 The gold frames, buttons and dividers come from a private art pack that is not in this repository (`ui-art/` is
-ignored). To get it locally, run `tools/ui-art.sh` (it copies from `../arcanum-ui-art`, or from the folder in
-`ARCANUM_UI_ART`) and re-import the project. Without it the game runs and draws the plain panels and buttons it
-used before. Release builds clone the pack with the `EOS_SDK_TOKEN` secret and warn when that fails.
+ignored). The game uses only its baked kit (`kit/`: each piece cropped and scaled to the size it is drawn at, with
+`kit.json` giving the 9-slice margins that keep corners whole); `tools/bake_kit.py` in the art repository rebuilds it
+from the source art (`python tools/bake_kit.py --preview out.png` draws every piece stretched, to check the slicing).
+To get it locally, run `tools/ui-art.sh` (it copies the kit from `../arcanum-ui-art`, or from the folder in
+`ARCANUM_UI_ART`) and re-import the project. Without it the game runs and draws plain panels and buttons. Release
+builds clone the pack with the `EOS_SDK_TOKEN` secret, keep only the kit, and warn when that fails.
 
 ## Desktop exports
 Create the presets once in Project → Export (they are stored in `export_presets.cfg`, which is not committed

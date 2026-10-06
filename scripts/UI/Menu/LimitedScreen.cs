@@ -293,11 +293,7 @@ public partial class LimitedScreen : Control
             var button = BoardStyle.MakeButton(label, 18);
             button.CustomMinimumSize = new Vector2(180, 48);
             button.TooltipText = tip;
-            var style = mode == _mode ? BoardStyle.Box(BoardStyle.ActiveBorder, 8) : BoardStyle.Box(BoardStyle.Panel, 6, BoardStyle.PanelBorder, 1);
-            button.AddThemeStyleboxOverride("normal", style);
-            button.AddThemeStyleboxOverride("hover", style);
-            button.AddThemeColorOverride("font_color", mode == _mode ? new Color("16171a") : BoardStyle.Text);
-            button.AddThemeColorOverride("font_hover_color", mode == _mode ? new Color("16171a") : BoardStyle.Text);
+            BoardStyle.StyleChoice(button, mode == _mode);
             button.Pressed += () => { _mode = mode; Show(); };
             modes.AddChild(button);
         }

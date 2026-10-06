@@ -11,7 +11,6 @@ if [ ! -d "$src" ]; then
 fi
 rm -rf "$root/ui-art"
 mkdir -p "$root/ui-art"
-for dir in frames buttons dividers scroll general; do
-  [ -d "$src/$dir" ] && cp -r "$src/$dir" "$root/ui-art/$dir"
-done
+# Only the baked kit is used (tools/bake_kit.py in the art repository makes it from the source art).
+cp -r "$src/kit" "$root/ui-art/kit"
 echo "UI art copied to $root/ui-art"

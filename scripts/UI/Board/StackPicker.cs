@@ -12,7 +12,7 @@ public partial class StackPicker : Control
     private readonly Label _title = BoardStyle.MakeTitle("", 20);
     private readonly Label _value = BoardStyle.MakeLabel("", 22, BoardStyle.Playable, bold: true);
     private readonly HSlider _slider = new() { Step = 1, CustomMinimumSize = new Vector2(280, 28), FocusMode = FocusModeEnum.None };
-    private readonly Button _confirm = BoardStyle.MakePrimaryButton("OK", 16);
+    private readonly Button _confirm = BoardStyle.MakeModalButton("OK", primary: true, size: 16);
     private int _max;
 
     /// <summary>The player confirmed this many.</summary>
@@ -30,7 +30,7 @@ public partial class StackPicker : Control
         panel.SetAnchorsPreset(LayoutPreset.Center);
         panel.GrowHorizontal = GrowDirection.Both;
         panel.GrowVertical = GrowDirection.Both;
-        panel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Board, BoardStyle.Panel, 12, BoardStyle.ActiveBorder, 2, padding: 16));
+        panel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Modal, BoardStyle.Panel, 12, BoardStyle.ActiveBorder, 2, padding: 16));
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 10);
         _title.HorizontalAlignment = HorizontalAlignment.Center;
@@ -41,11 +41,11 @@ public partial class StackPicker : Control
 
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         buttons.AddThemeConstantOverride("separation", 8);
-        var none = BoardStyle.MakeButton("None", 15);
+        var none = BoardStyle.MakeModalButton("None", size: 15);
         none.Pressed += () => _slider.Value = 0;
-        var all = BoardStyle.MakeButton("All", 15);
+        var all = BoardStyle.MakeModalButton("All", size: 15);
         all.Pressed += () => _slider.Value = _max;
-        var cancel = BoardStyle.MakeButton("Cancel", 15);
+        var cancel = BoardStyle.MakeModalButton("Cancel", size: 15);
         cancel.Pressed += Close;
         _confirm.Pressed += () =>
         {
@@ -55,7 +55,8 @@ public partial class StackPicker : Control
         };
         foreach (var b in new[] { none, all, cancel, _confirm })
         {
-            b.CustomMinimumSize = new Vector2(76, 36);
+            if (b != none) buttons.AddChild(BoardStyle.MakeModalSeparator());
+            b.CustomMinimumSize = new Vector2(60, 34);
             buttons.AddChild(b);
         }
         column.AddChild(buttons);

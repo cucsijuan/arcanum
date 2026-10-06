@@ -117,14 +117,7 @@ public partial class PlaySetup : Control
     private void SetMode(bool vsBot)
     {
         _vsBot = vsBot;
-        foreach (var (button, active) in new[] { (_botMode, vsBot), (_hotseatMode, !vsBot) })
-        {
-            var style = active ? BoardStyle.Box(BoardStyle.ActiveBorder, 8) : BoardStyle.Box(BoardStyle.Panel, 6, BoardStyle.PanelBorder, 1);
-            button.AddThemeStyleboxOverride("normal", style);
-            button.AddThemeStyleboxOverride("hover", style);
-            button.AddThemeColorOverride("font_color", active ? new Color("16171a") : BoardStyle.Text);
-            button.AddThemeColorOverride("font_hover_color", active ? new Color("16171a") : BoardStyle.Text);
-        }
+        foreach (var (button, active) in new[] { (_botMode, vsBot), (_hotseatMode, !vsBot) }) BoardStyle.StyleChoice(button, active);
         for (int i = 0; i < _seats.Count; i++)
         {
             bool bot = vsBot && i > 0;

@@ -125,18 +125,84 @@ public static class BoardStyle
         return label;
     }
 
-    public static Button MakeButton(string text, int size = 16, bool compact = false)
+    /// <param name="plain">The flat look even with the interface art (the phase bar keeps it).</param>
+    public static Button MakeButton(string text, int size = 16, bool compact = false, bool plain = false)
     {
         var button = new Button { Text = text, FocusMode = Control.FocusModeEnum.None };
         button.AddThemeFontSizeOverride("font_size", size);
         button.AddThemeColorOverride("font_color", Text);
-        if (UiArt.StyleButton(button, false, compact)) return button;
+        if (!plain && UiArt.StyleButton(button, false, compact)) return button;
         button.AddThemeStyleboxOverride("normal", Box(Panel, 6, PanelBorder, 1));
         button.AddThemeStyleboxOverride("hover", Box(new Color("26272c"), 6, TextDim, 1));
         button.AddThemeStyleboxOverride("pressed", Box(new Color("0f1012"), 6, TextDim, 1));
         button.AddThemeStyleboxOverride("disabled", Box(Panel, 6, PanelBorder, 1));
         return button;
     }
+
+    /// <summary>
+    /// Raises a button's label by <paramref name="pixels"/>: symbol glyphs (≡, ↶) come from fallback fonts whose
+    /// metrics leave them sitting low in the frame.
+    /// </summary>
+    public static void RaiseLabel(Button button, float pixels)
+    {
+        foreach (var state in new[] { "normal", "hover", "pressed", "hover_pressed", "disabled", "focus" })
+        {
+            if (!button.HasThemeStyleboxOverride(state)) continue;
+            // The label is centered between the margins: moving it up by p takes p off the top and puts it at the bottom
+            // (twice what the top can't give, when the top margin runs out).
+            var box = button.GetThemeStylebox(state);
+            float cut = Math.Min(pixels, Math.Max(0, box.ContentMarginTop));
+            box.ContentMarginTop -= cut;
+            box.ContentMarginBottom += 2 * pixels - cut;
+        }
+    }
+
+    /// <summary>One of a row of exclusive choices (game mode, event kind): the chosen one is highlighted.</summary>
+    public static void StyleChoice(Button button, bool chosen)
+    {
+        if (UiArt.StyleButton(button, chosen)) return;
+        var style = chosen ? Box(ActiveBorder, 8) : Box(Panel, 6, PanelBorder, 1);
+        button.AddThemeStyleboxOverride("normal", style);
+        button.AddThemeStyleboxOverride("hover", style);
+        button.AddThemeColorOverride("font_color", chosen ? new Color("16171a") : Text);
+        button.AddThemeColorOverride("font_hover_color", chosen ? new Color("16171a") : Text);
+    }
+
+    /// <summary>An answer in a modal dialog: text without a frame; the default answer is set in gold.</summary>
+    public static Button MakeModalButton(string text, bool primary = false, int size = 18)
+    {
+        var button = new Button { Text = text, FocusMode = Control.FocusModeEnum.None };
+        button.AddThemeFontSizeOverride("font_size", size);
+        var color = primary ? UiArt.Gold : new Color(0.86f, 0.87f, 0.9f);
+        button.AddThemeColorOverride("font_color", color);
+        button.AddThemeColorOverride("font_hover_color", primary ? color.Lightened(0.3f) : Colors.White);
+        button.AddThemeColorOverride("font_pressed_color", color.Darkened(0.2f));
+        button.AddThemeColorOverride("font_hover_pressed_color", color.Darkened(0.2f));
+        button.AddThemeColorOverride("font_disabled_color", new Color(0.5f, 0.5f, 0.55f));
+        StyleBox Back(float alpha)
+        {
+            var box = Box(new Color(1, 1, 1, alpha), 4);
+            box.ContentMarginLeft = box.ContentMarginRight = 14;
+            box.ContentMarginTop = box.ContentMarginBottom = 4;
+            return box;
+        }
+        button.AddThemeStyleboxOverride("normal", Back(0));
+        button.AddThemeStyleboxOverride("disabled", Back(0));
+        button.AddThemeStyleboxOverride("hover", Back(0.06f));
+        button.AddThemeStyleboxOverride("pressed", Back(0.03f));
+        button.AddThemeStyleboxOverride("hover_pressed", Back(0.03f));
+        button.AddThemeStyleboxOverride("focus", new StyleBoxEmpty());
+        return button;
+    }
+
+    /// <summary>The thin gold line between a modal's answers.</summary>
+    public static Control MakeModalSeparator(float height = 22) => new ColorRect
+    {
+        Color = UiArt.Gold with { A = 0.6f },
+        CustomMinimumSize = new Vector2(1.5f, height),
+        SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        MouseFilter = Control.MouseFilterEnum.Ignore,
+    };
 
     public static Button MakePrimaryButton(string text, int size = 18)
     {

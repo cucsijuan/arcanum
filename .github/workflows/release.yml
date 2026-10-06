@@ -80,7 +80,8 @@ jobs:
         run: |
           # The art comes from a private repository; without it the build uses the plain panels and buttons.
           if [ -n "$UI_ART_TOKEN" ] && git clone -q --depth 1 "https://x-access-token:$UI_ART_TOKEN@github.com/cucsijuan/arcanum-ui-art.git" ui-art; then
-            rm -rf ui-art/.git
+            # Only the baked kit is used: the source art would just be imported and shipped.
+            find ui-art -mindepth 1 -maxdepth 1 ! -name kit -exec rm -rf {} +
           else
             rm -rf ui-art
             echo "::warning::Interface art not available: this build uses the plain panels and buttons."

@@ -28,7 +28,7 @@ public partial class GameBoard : Control
     private readonly CardNode _preview = new();
     private readonly CardStatusPanel _status = new() { Visible = false };
     private readonly Label _turnNumber = BoardStyle.MakeLabel("1", 22, bold: true);
-    private readonly Label _stepLabel = BoardStyle.MakeLabel("", 12, BoardStyle.TextDim);
+    private readonly Label _stepLabel = BoardStyle.MakeTitle("", 20);
     /// <summary>Online: time left for the pending decision before the computer makes it.</summary>
     private readonly Label _decisionTimer = BoardStyle.MakeLabel("", 14, BoardStyle.Attacking, bold: true);
     private readonly PanelContainer _actionPanel = new();
@@ -373,6 +373,7 @@ public partial class GameBoard : Control
         var corner = new VBoxContainer { AnchorLeft = 1, AnchorRight = 1, OffsetLeft = -62, OffsetTop = 14, OffsetRight = -14 };
         corner.AddThemeConstantOverride("separation", 8);
         var menu = BoardStyle.MakeButton("≡", 22, compact: true);
+        BoardStyle.RaiseLabel(menu, 3);
         menu.CustomMinimumSize = new Vector2(48, 40);
         menu.Pressed += () => _menu.Visible = true;
         menu.TooltipText = "Menu";
@@ -391,12 +392,14 @@ public partial class GameBoard : Control
         corner.AddChild(turnBox);
 
         _undoButton = BoardStyle.MakeButton("↶", 22, compact: true);
+        BoardStyle.RaiseLabel(_undoButton, 4);
         _undoButton.CustomMinimumSize = new Vector2(48, 40);
         _undoButton.TooltipText = "Undo (Ctrl+Z)";
         _undoButton.Pressed += Undo;
         corner.AddChild(_undoButton);
 
         var logToggle = BoardStyle.MakeButton("▤", 18, compact: true);
+        BoardStyle.RaiseLabel(logToggle, 1);
         logToggle.CustomMinimumSize = new Vector2(48, 40);
         logToggle.TooltipText = "Game log";
         logToggle.Pressed += ToggleLog;
@@ -428,14 +431,14 @@ public partial class GameBoard : Control
         _actionPanel.ZIndex = BoardStyle.Z.ActionPanel;
         _actionPanel.GrowVertical = GrowDirection.Both;
         _actionPanel.OffsetRight = -16;
-        _actionPanel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Board, new Color(0.06f, 0.06f, 0.07f, 0.92f), 10, BoardStyle.PanelBorder, 1, artPadding: 12));
+        _actionPanel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Modal, new Color(0.06f, 0.06f, 0.07f, 0.92f), 10, BoardStyle.PanelBorder, 1, artPadding: 14));
         var actionBox = new VBoxContainer();
         actionBox.AddThemeConstantOverride("separation", 6);
-        _stepLabel.HorizontalAlignment = HorizontalAlignment.Right;
-        _prompt.HorizontalAlignment = HorizontalAlignment.Right;
-        _actionButtons.Alignment = BoxContainer.AlignmentMode.End;
+        _stepLabel.HorizontalAlignment = HorizontalAlignment.Center;
+        _prompt.HorizontalAlignment = HorizontalAlignment.Center;
+        _actionButtons.Alignment = BoxContainer.AlignmentMode.Center;
         _actionButtons.AddThemeConstantOverride("separation", 8);
-        _decisionTimer.HorizontalAlignment = HorizontalAlignment.Right;
+        _decisionTimer.HorizontalAlignment = HorizontalAlignment.Center;
         _decisionTimer.Visible = false;
         actionBox.AddChild(_decisionTimer);
         actionBox.AddChild(_stepLabel);
@@ -535,16 +538,17 @@ public partial class GameBoard : Control
         panel.SetAnchorsPreset(LayoutPreset.Center);
         panel.GrowHorizontal = GrowDirection.Both;
         panel.GrowVertical = GrowDirection.Both;
-        panel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Menu, BoardStyle.Panel, 12, BoardStyle.PanelBorder, 1, artPadding: 16));
+        panel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Modal, BoardStyle.Panel, 12, BoardStyle.PanelBorder, 1, artPadding: 24));
         var box = new VBoxContainer();
-        box.AddThemeConstantOverride("separation", 12);
+        box.AddThemeConstantOverride("separation", 6);
         var title = BoardStyle.MakeTitle("Menu", 24);
         title.HorizontalAlignment = HorizontalAlignment.Center;
         box.AddChild(title);
+        box.AddChild(UiArt.Divider());
         Button Item(string text, Action action, bool primary = false)
         {
-            var button = primary ? BoardStyle.MakePrimaryButton(text, 18) : BoardStyle.MakeButton(text, 18);
-            button.CustomMinimumSize = new Vector2(280, 48);
+            var button = BoardStyle.MakeModalButton(text, primary, 20);
+            button.CustomMinimumSize = new Vector2(280, 40);
             button.Pressed += () => { _menu.Visible = false; action(); };
             box.AddChild(button);
             return button;
@@ -1378,8 +1382,8 @@ public partial class GameBoard : Control
     /// <summary>A full-width option button in the panel's extra area (modes, long choices).</summary>
     private Button AddChoiceButton(string text, Action onPressed)
     {
-        var button = BoardStyle.MakeButton(text, 15);
-        button.CustomMinimumSize = new Vector2(320, 40);
+        var button = BoardStyle.MakeModalButton(text, size: 15);
+        button.CustomMinimumSize = new Vector2(320, 34);
         button.Alignment = HorizontalAlignment.Left;
         button.Pressed += () =>
         {
@@ -1394,8 +1398,10 @@ public partial class GameBoard : Control
 
     private Button AddButton(string text, Action onPressed, bool primary = false)
     {
-        var button = primary ? BoardStyle.MakePrimaryButton(text) : BoardStyle.MakeButton(text, 17);
-        button.CustomMinimumSize = new Vector2(primary ? 150 : 100, 44);
+        // Answers are plain text with a gold line between them; the default one is gold.
+        if (_actionButtons.GetChildren().Any(c => !c.IsQueuedForDeletion())) _actionButtons.AddChild(BoardStyle.MakeModalSeparator());
+        var button = BoardStyle.MakeModalButton(text, primary);
+        button.CustomMinimumSize = new Vector2(80, 36);
         button.Pressed += () =>
         {
             if (_session.CurrentDecision is null) return;
