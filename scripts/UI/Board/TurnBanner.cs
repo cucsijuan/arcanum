@@ -14,7 +14,7 @@ public partial class TurnBanner : Control
     private const float SlideDistance = 90;
 
     private readonly PanelContainer _panel = new();
-    private readonly Label _title = BoardStyle.MakeLabel("", 52, BoardStyle.Text, bold: true);
+    private readonly Label _title = BoardStyle.MakeTitle("", 52, BoardStyle.Text);
     private readonly Label _subtitle = BoardStyle.MakeLabel("", 22, BoardStyle.TextDim);
     private Tween? _tween;
 
@@ -44,11 +44,16 @@ public partial class TurnBanner : Control
         _title.Text = title;
         _subtitle.Text = subtitle;
         _subtitle.AddThemeColorOverride("font_color", accent.Lerp(Colors.White, 0.35f));
-        var box = BoardStyle.Box(new Color(0.05f, 0.05f, 0.07f, 0.88f), 16, accent, 3);
-        box.SetContentMarginAll(12);
-        box.ShadowColor = new Color(accent, 0.35f);
-        box.ShadowSize = 22;
-        _panel.AddThemeStyleboxOverride("panel", box);
+        var art = UiArt.Panel(PanelKind.Board, UiArt.BoardFill.Lerp(accent, 0.4f) with { A = 0.92f }, Colors.White.Lerp(accent, 0.3f), 12);
+        if (art is not null) _panel.AddThemeStyleboxOverride("panel", art);
+        else
+        {
+            var box = BoardStyle.Box(new Color(0.05f, 0.05f, 0.07f, 0.88f), 16, accent, 3);
+            box.SetContentMarginAll(12);
+            box.ShadowColor = new Color(accent, 0.35f);
+            box.ShadowSize = 22;
+            _panel.AddThemeStyleboxOverride("panel", box);
+        }
 
         double fadeIn = seconds * 0.26, fadeOut = seconds * 0.3;
         var home = -BannerSize / 2;

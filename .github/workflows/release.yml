@@ -74,6 +74,18 @@ jobs:
             echo "::warning::No online services SDK or keys: this build has only local-network lobbies."
           fi
 
+      - name: Interface art
+        env:
+          UI_ART_TOKEN: ${{ secrets.EOS_SDK_TOKEN }}
+        run: |
+          # The art comes from a private repository; without it the build uses the plain panels and buttons.
+          if [ -n "$UI_ART_TOKEN" ] && git clone -q --depth 1 "https://x-access-token:$UI_ART_TOKEN@github.com/cucsijuan/arcanum-ui-art.git" ui-art; then
+            rm -rf ui-art/.git
+          else
+            rm -rf ui-art
+            echo "::warning::Interface art not available: this build uses the plain panels and buttons."
+          fi
+
       - name: Export
         run: |
           # The presets used by releases (the local export_presets.cfg is not committed: it can hold signing credentials).

@@ -68,6 +68,50 @@ public static class BoardStyle
         return box;
     }
 
+    /// <summary>
+    /// A frame for dialog-like panels: the art frame (tinted by <paramref name="fill"/>, with the accent on the frame when
+    /// given) or, without the art, the plain bordered box.
+    /// </summary>
+    public static StyleBox DialogBox(PanelKind kind, Color plainBg, int radius, Color plainBorder, int borderWidth, Color? fill = null, Color? accent = null, float padding = -1, float artPadding = -1)
+    {
+        var art = UiArt.Panel(kind, fill, accent, artPadding >= 0 ? artPadding : padding);
+        if (art is not null) return art;
+        var box = Box(plainBg, radius, plainBorder, borderWidth);
+        if (padding >= 0) box.SetContentMarginAll(padding);
+        return box;
+    }
+
+    private static Font? _titleFont;
+    private static bool _titleFontLoaded;
+
+    /// <summary>Display font for titles and headers (null when missing, so labels keep the default font).</summary>
+    public static Font? TitleFont
+    {
+        get
+        {
+            if (!_titleFontLoaded)
+            {
+                _titleFontLoaded = true;
+                const string path = "res://fonts/lt-museum/LTMuseum-Bold.ttf";
+                if (ResourceLoader.Exists(path)) _titleFont = GD.Load<Font>(path);
+            }
+            return _titleFont;
+        }
+    }
+
+    /// <summary>A header label in the display font.</summary>
+    public static Label MakeTitle(string text, int size = 20, Color? color = null)
+    {
+        var label = MakeLabel(text, size, color);
+        if (TitleFont is { } font) label.AddThemeFontOverride("font", font);
+        else
+        {
+            label.AddThemeConstantOverride("outline_size", 1);
+            label.AddThemeColorOverride("font_outline_color", color ?? Text);
+        }
+        return label;
+    }
+
     public static Label MakeLabel(string text, int size = 14, Color? color = null, bool bold = false)
     {
         var label = new Label { Text = text, MouseFilter = Control.MouseFilterEnum.Ignore };
@@ -81,11 +125,12 @@ public static class BoardStyle
         return label;
     }
 
-    public static Button MakeButton(string text, int size = 16)
+    public static Button MakeButton(string text, int size = 16, bool compact = false)
     {
         var button = new Button { Text = text, FocusMode = Control.FocusModeEnum.None };
         button.AddThemeFontSizeOverride("font_size", size);
         button.AddThemeColorOverride("font_color", Text);
+        if (UiArt.StyleButton(button, false, compact)) return button;
         button.AddThemeStyleboxOverride("normal", Box(Panel, 6, PanelBorder, 1));
         button.AddThemeStyleboxOverride("hover", Box(new Color("26272c"), 6, TextDim, 1));
         button.AddThemeStyleboxOverride("pressed", Box(new Color("0f1012"), 6, TextDim, 1));
@@ -99,6 +144,7 @@ public static class BoardStyle
         button.AddThemeColorOverride("font_color", new Color("16171a"));
         button.AddThemeColorOverride("font_hover_color", new Color("16171a"));
         button.AddThemeColorOverride("font_pressed_color", new Color("16171a"));
+        if (UiArt.StyleButton(button, true)) return button;
         button.AddThemeStyleboxOverride("normal", Box(ActiveBorder, 8));
         button.AddThemeStyleboxOverride("hover", Box(ActiveBorder.Lightened(0.15f), 8));
         button.AddThemeStyleboxOverride("pressed", Box(ActiveBorder.Darkened(0.15f), 8));

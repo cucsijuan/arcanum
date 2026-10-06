@@ -29,7 +29,7 @@ public partial class MainMenu : Control
 
         var column = new VBoxContainer { AnchorTop = 0.5f, AnchorBottom = 0.5f, OffsetLeft = 140, GrowVertical = GrowDirection.Both };
         column.AddThemeConstantOverride("separation", 14);
-        var title = BoardStyle.MakeLabel("ARCANUM", 84, bold: true);
+        var title = BoardStyle.MakeTitle("ARCANUM", 84);
         title.AddThemeConstantOverride("outline_size", 2);
         column.AddChild(title);
         column.AddChild(BoardStyle.MakeLabel("A tabletop card game engine", 20, BoardStyle.TextDim));

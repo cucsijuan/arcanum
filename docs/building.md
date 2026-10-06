@@ -12,6 +12,12 @@
   found automatically; otherwise set `ARCANUM_MODULE_PATH` or install it under `user://modules/<module-id>`
   (Extras → "Install module from zip…" does this from a module's release zip).
 
+## Interface art
+The gold frames, buttons and dividers come from a private art pack that is not in this repository (`ui-art/` is
+ignored). To get it locally, run `tools/ui-art.sh` (it copies from `../arcanum-ui-art`, or from the folder in
+`ARCANUM_UI_ART`) and re-import the project. Without it the game runs and draws the plain panels and buttons it
+used before. Release builds clone the pack with the `EOS_SDK_TOKEN` secret and warn when that fails.
+
 ## Desktop exports
 Create the presets once in Project → Export (they are stored in `export_presets.cfg`, which is not committed
 because it can contain signing credentials):

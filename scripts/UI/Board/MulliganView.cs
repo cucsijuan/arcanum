@@ -15,7 +15,7 @@ public partial class MulliganView : Control
     private const float Gap = 14;
 
     private readonly ColorRect _shade = new() { Color = new Color(0, 0, 0, 0.55f), MouseFilter = MouseFilterEnum.Stop };
-    private readonly Label _title = BoardStyle.MakeLabel("", 24, BoardStyle.Text, bold: true);
+    private readonly Label _title = BoardStyle.MakeTitle("", 26, BoardStyle.Text);
     private readonly Control _row = new() { MouseFilter = MouseFilterEnum.Ignore };
 
     public event Action<CardNode>? CardClicked;

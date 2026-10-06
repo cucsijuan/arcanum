@@ -23,7 +23,7 @@ public partial class Announcer : Control
     private readonly TurnBanner _turnBanner = new();
     private readonly PanelContainer _banner = new();
     private readonly CardNode _card = new() { MouseFilter = MouseFilterEnum.Ignore };
-    private readonly Label _text = BoardStyle.MakeLabel("", 20, BoardStyle.Text, bold: true);
+    private readonly Label _text = BoardStyle.MakeTitle("", 22, BoardStyle.Text);
     private double _remaining;
 
     /// <summary>Arrows of the current announcement changed (from the banner card to its targets).</summary>
@@ -38,9 +38,7 @@ public partial class Announcer : Control
         GrowHorizontal = GrowDirection.Both;
         GrowVertical = GrowDirection.Both;
         OffsetTop = -250;
-        var box = BoardStyle.Box(new Color(0.05f, 0.05f, 0.07f, 0.94f), 12, BoardStyle.ActiveBorder, 2);
-        box.SetContentMarginAll(14);
-        _banner.AddThemeStyleboxOverride("panel", box);
+        _banner.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Board, new Color(0.05f, 0.05f, 0.07f, 0.94f), 12, BoardStyle.ActiveBorder, 2, padding: 14));
         _banner.MouseFilter = MouseFilterEnum.Ignore;
         var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
         row.AddThemeConstantOverride("separation", 16);

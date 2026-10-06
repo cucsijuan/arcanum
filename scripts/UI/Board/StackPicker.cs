@@ -9,7 +9,7 @@ namespace Arcanum.UI.Board;
 /// </summary>
 public partial class StackPicker : Control
 {
-    private readonly Label _title = BoardStyle.MakeLabel("", 18, bold: true);
+    private readonly Label _title = BoardStyle.MakeTitle("", 20);
     private readonly Label _value = BoardStyle.MakeLabel("", 22, BoardStyle.Playable, bold: true);
     private readonly HSlider _slider = new() { Step = 1, CustomMinimumSize = new Vector2(280, 28), FocusMode = FocusModeEnum.None };
     private readonly Button _confirm = BoardStyle.MakePrimaryButton("OK", 16);
@@ -30,9 +30,7 @@ public partial class StackPicker : Control
         panel.SetAnchorsPreset(LayoutPreset.Center);
         panel.GrowHorizontal = GrowDirection.Both;
         panel.GrowVertical = GrowDirection.Both;
-        var box = BoardStyle.Box(BoardStyle.Panel, 12, BoardStyle.ActiveBorder, 2);
-        box.SetContentMarginAll(16);
-        panel.AddThemeStyleboxOverride("panel", box);
+        panel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Board, BoardStyle.Panel, 12, BoardStyle.ActiveBorder, 2, padding: 16));
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 10);
         _title.HorizontalAlignment = HorizontalAlignment.Center;

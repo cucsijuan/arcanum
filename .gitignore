@@ -24,3 +24,6 @@ TestResults/
 
 # Third-party UI art (licensed; not redistributable in this repository)
 /source-ui/
+
+# Interface art from a private pack (tools/ui-art.sh copies it here)
+/ui-art/

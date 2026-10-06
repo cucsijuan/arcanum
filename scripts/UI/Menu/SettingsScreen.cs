@@ -33,7 +33,7 @@ public partial class SettingsScreen : Control
 
         var tabs = new TabContainer { AnchorRight = 1, AnchorBottom = 1, OffsetLeft = 140, OffsetTop = 100, OffsetRight = -140, OffsetBottom = -40 };
         tabs.AddThemeFontSizeOverride("font_size", 16);
-        tabs.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.09f, 0.09f, 0.11f, 0.92f), 12, BoardStyle.PanelBorder, 1));
+        tabs.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Menu, new Color(0.09f, 0.09f, 0.11f, 0.92f), 12, BoardStyle.PanelBorder, 1, artPadding: 12));
         AddChild(tabs);
 
         tabs.AddChild(Page("Gameplay", GameplayPage()));

@@ -14,7 +14,7 @@ public partial class ZoneViewer : PanelContainer
 {
     private static readonly Vector2 CardSize = BoardStyle.HandCardSize * 1.25f;
 
-    private readonly Label _title = BoardStyle.MakeLabel("", 16, BoardStyle.Text, bold: true);
+    private readonly Label _title = BoardStyle.MakeTitle("", 18, BoardStyle.Text);
     private readonly Label _hint = BoardStyle.MakeLabel("", 13, BoardStyle.TextDim);
     private readonly HFlowContainer _grid = new();
 
@@ -31,7 +31,7 @@ public partial class ZoneViewer : PanelContainer
         Visible = false;
         MouseFilter = MouseFilterEnum.Stop;
         ZIndex = BoardStyle.Z.ActionPanel - 5;
-        AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.06f, 0.06f, 0.07f, 0.97f), 10, BoardStyle.PanelBorder, 1));
+        AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Board, new Color(0.06f, 0.06f, 0.07f, 0.97f), 10, BoardStyle.PanelBorder, 1, artPadding: 10));
 
         var box = new VBoxContainer();
         box.AddThemeConstantOverride("separation", 8);

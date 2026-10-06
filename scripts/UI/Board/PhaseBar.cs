@@ -35,7 +35,7 @@ public partial class PhaseBar : PanelContainer
     private static readonly Color OpponentStop = BoardStyle.Blocking;
 
     private readonly Dictionary<Step, (Button Opponent, Panel Chip, Label Label, Button Own)> _chips = new();
-    private readonly Button _fullControl = BoardStyle.MakeButton("FULL", 11);
+    private readonly Button _fullControl = BoardStyle.MakeButton("FULL", 11, compact: true);
     private AutoPassPolicy? _policy;
     private Step? _current;
     private bool _ownTurn = true;

@@ -31,7 +31,7 @@ public static class MenuKit
         back.CustomMinimumSize = new Vector2(120, 44);
         back.Pressed += onBack ?? (() => App.Instance.GoTo(App.MainMenuScene));
         bar.AddChild(back);
-        var label = BoardStyle.MakeLabel(title, 30, bold: true);
+        var label = BoardStyle.MakeTitle(title, 32);
         label.VerticalAlignment = VerticalAlignment.Center;
         bar.AddChild(label);
         bar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
@@ -42,14 +42,24 @@ public static class MenuKit
     public static PanelContainer Card(Control content, int padding = 20)
     {
         var panel = new PanelContainer();
-        var box = BoardStyle.Box(new Color(0.09f, 0.09f, 0.11f, 0.92f), 12, BoardStyle.PanelBorder, 1);
-        box.SetContentMarginAll(padding);
-        panel.AddThemeStyleboxOverride("panel", box);
+        panel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Menu, new Color(0.09f, 0.09f, 0.11f, 0.92f), 12, BoardStyle.PanelBorder, 1, padding: padding));
         panel.AddChild(content);
         return panel;
     }
 
-    public static Label SectionTitle(string text) => BoardStyle.MakeLabel(text, 18, BoardStyle.Text, bold: true);
+    /// <summary>A section heading in the display font with a divider under it (a plain line without the art).</summary>
+    public static Label SectionTitle(string text)
+    {
+        var label = BoardStyle.MakeTitle(text, 20);
+        const float dividerHeight = 20;
+        label.AddThemeStyleboxOverride("normal", new StyleBoxEmpty { ContentMarginBottom = dividerHeight + 4 });
+        var divider = UiArt.Divider(dividerHeight);
+        divider.SetAnchorsPreset(Control.LayoutPreset.BottomWide);
+        divider.OffsetTop = -dividerHeight;
+        divider.OffsetBottom = 0;
+        label.AddChild(divider);
+        return label;
+    }
 
     public static Label Hint(string text)
     {

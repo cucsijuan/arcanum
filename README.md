@@ -35,6 +35,10 @@ As an additional permission under section 7 of the license (see `LICENSE-EXCEPTI
 Epic Online Services SDK, which online lobbies and relayed connections use; the SDK itself is not part of this
 repository and keeps its own license.
 
+## Fonts
+Interface fonts in `fonts/` are licensed under the SIL Open Font License 1.1 (each folder carries its `OFL.txt`):
+LT Museum (LyonsType), Alegreya Sans (The Alegreya Sans Project Authors) and Ortica (Google Inc., Florian Karsten).
+
 ## Disclaimer
 Arcanum is unofficial, non-commercial fan software. It is not affiliated with, endorsed or sponsored by any game
 publisher. Card names, rules text and card images belong to their respective owners; this project does not

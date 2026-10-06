@@ -38,7 +38,7 @@ public partial class GameBoard : Control
     private readonly RichTextLabel _log = new();
     private readonly Label _logBadge = BoardStyle.MakeLabel("", 10, Colors.White);
     private readonly Control _gameOver = new();
-    private readonly Label _gameOverText = BoardStyle.MakeLabel("", 40, bold: true);
+    private readonly Label _gameOverText = BoardStyle.MakeTitle("", 42);
     private readonly Label _gameOverReasons = BoardStyle.MakeLabel("", 18, BoardStyle.TextDim);
 
     // A game that belongs to an event (limited): the result is reported once and the game ends with a way back.
@@ -372,7 +372,7 @@ public partial class GameBoard : Control
         // Top-right: menu, turn counter, log toggle.
         var corner = new VBoxContainer { AnchorLeft = 1, AnchorRight = 1, OffsetLeft = -62, OffsetTop = 14, OffsetRight = -14 };
         corner.AddThemeConstantOverride("separation", 8);
-        var menu = BoardStyle.MakeButton("≡", 22);
+        var menu = BoardStyle.MakeButton("≡", 22, compact: true);
         menu.CustomMinimumSize = new Vector2(48, 40);
         menu.Pressed += () => _menu.Visible = true;
         menu.TooltipText = "Menu";
@@ -390,13 +390,13 @@ public partial class GameBoard : Control
         turnBox.AddChild(turnStack);
         corner.AddChild(turnBox);
 
-        _undoButton = BoardStyle.MakeButton("↶", 22);
+        _undoButton = BoardStyle.MakeButton("↶", 22, compact: true);
         _undoButton.CustomMinimumSize = new Vector2(48, 40);
         _undoButton.TooltipText = "Undo (Ctrl+Z)";
         _undoButton.Pressed += Undo;
         corner.AddChild(_undoButton);
 
-        var logToggle = BoardStyle.MakeButton("▤", 18);
+        var logToggle = BoardStyle.MakeButton("▤", 18, compact: true);
         logToggle.CustomMinimumSize = new Vector2(48, 40);
         logToggle.TooltipText = "Game log";
         logToggle.Pressed += ToggleLog;
@@ -428,7 +428,7 @@ public partial class GameBoard : Control
         _actionPanel.ZIndex = BoardStyle.Z.ActionPanel;
         _actionPanel.GrowVertical = GrowDirection.Both;
         _actionPanel.OffsetRight = -16;
-        _actionPanel.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.06f, 0.06f, 0.07f, 0.92f), 10, BoardStyle.PanelBorder, 1));
+        _actionPanel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Board, new Color(0.06f, 0.06f, 0.07f, 0.92f), 10, BoardStyle.PanelBorder, 1, artPadding: 12));
         var actionBox = new VBoxContainer();
         actionBox.AddThemeConstantOverride("separation", 6);
         _stepLabel.HorizontalAlignment = HorizontalAlignment.Right;
@@ -447,7 +447,7 @@ public partial class GameBoard : Control
         AddChild(_actionPanel);
 
         // Bottom-left log button with unread badge.
-        var logButton = BoardStyle.MakeButton("Log", 13);
+        var logButton = BoardStyle.MakeButton("Log", 13, compact: true);
         logButton.AnchorTop = 1; logButton.AnchorBottom = 1;
         logButton.OffsetLeft = 14; logButton.OffsetTop = -54; logButton.OffsetRight = 54; logButton.OffsetBottom = -14;
         logButton.Pressed += ToggleLog;
@@ -461,7 +461,7 @@ public partial class GameBoard : Control
 
         _logPanel.AnchorTop = 1; _logPanel.AnchorBottom = 1;
         _logPanel.OffsetLeft = 14; _logPanel.OffsetTop = -420; _logPanel.OffsetRight = 384; _logPanel.OffsetBottom = -64;
-        _logPanel.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.06f, 0.06f, 0.07f, 0.95f), 8, BoardStyle.PanelBorder, 1));
+        _logPanel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Board, new Color(0.06f, 0.06f, 0.07f, 0.95f), 8, BoardStyle.PanelBorder, 1, artPadding: 8));
         _log.ScrollFollowing = true;
         _log.BbcodeEnabled = true;
         _log.AddThemeFontSizeOverride("normal_font_size", 13);
@@ -535,10 +535,10 @@ public partial class GameBoard : Control
         panel.SetAnchorsPreset(LayoutPreset.Center);
         panel.GrowHorizontal = GrowDirection.Both;
         panel.GrowVertical = GrowDirection.Both;
-        panel.AddThemeStyleboxOverride("panel", BoardStyle.Box(BoardStyle.Panel, 12, BoardStyle.PanelBorder, 1));
+        panel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Menu, BoardStyle.Panel, 12, BoardStyle.PanelBorder, 1, artPadding: 16));
         var box = new VBoxContainer();
         box.AddThemeConstantOverride("separation", 12);
-        var title = BoardStyle.MakeLabel("Menu", 22, bold: true);
+        var title = BoardStyle.MakeTitle("Menu", 24);
         title.HorizontalAlignment = HorizontalAlignment.Center;
         box.AddChild(title);
         Button Item(string text, Action action, bool primary = false)
@@ -1301,14 +1301,14 @@ public partial class GameBoard : Control
         row.AddChild(BoardStyle.MakeLabel(card?.Name ?? "?", 14));
         row.AddChild(BoardStyle.MakeLabel($"lethal {lethal}", 12, amount >= lethal ? new Color("6fd08c") : BoardStyle.TextDim));
 
-        var minus = BoardStyle.MakeButton("\u2212", 16);
+        var minus = BoardStyle.MakeButton("\u2212", 16, compact: true);
         minus.CustomMinimumSize = new Vector2(34, 32);
         minus.Disabled = amount == 0;
         minus.Pressed += () => { _damageSplit[blocker] = amount - 1; Refresh(); };
         var value = BoardStyle.MakeLabel(amount.ToString(), 18, bold: true);
         value.CustomMinimumSize = new Vector2(28, 0);
         value.HorizontalAlignment = HorizontalAlignment.Center;
-        var plus = BoardStyle.MakeButton("+", 16);
+        var plus = BoardStyle.MakeButton("+", 16, compact: true);
         plus.CustomMinimumSize = new Vector2(34, 32);
         plus.Disabled = remaining == 0;
         plus.Pressed += () => { _damageSplit[blocker] = amount + 1; Refresh(); };
@@ -1333,14 +1333,14 @@ public partial class GameBoard : Control
         row.AddThemeConstantOverride("separation", 6);
         row.AddChild(BoardStyle.MakeLabel(view.Players[dmg.Request.Defender.Value].Name, 14));
         row.AddChild(BoardStyle.MakeLabel("trample", 12, lethalToAll ? new Color("6fd08c") : BoardStyle.TextDim));
-        var minus = BoardStyle.MakeButton("\u2212", 16);
+        var minus = BoardStyle.MakeButton("\u2212", 16, compact: true);
         minus.CustomMinimumSize = new Vector2(34, 32);
         minus.Disabled = _damageToPlayer == 0;
         minus.Pressed += () => { _damageToPlayer--; Refresh(); };
         var value = BoardStyle.MakeLabel(_damageToPlayer.ToString(), 18, bold: true);
         value.CustomMinimumSize = new Vector2(28, 0);
         value.HorizontalAlignment = HorizontalAlignment.Center;
-        var plus = BoardStyle.MakeButton("+", 16);
+        var plus = BoardStyle.MakeButton("+", 16, compact: true);
         plus.CustomMinimumSize = new Vector2(34, 32);
         plus.Disabled = remaining == 0 || !lethalToAll;
         plus.Pressed += () => { _damageToPlayer++; Refresh(); };
