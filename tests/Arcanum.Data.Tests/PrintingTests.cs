@@ -16,8 +16,9 @@ public class PrintingTests
         """;
 
     private const string Printings = """
-        {"oracle_id":"o-1","id":"p-new","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"10","rarity":"common","released_at":"2024-01-01","set_type":"expansion","booster":true,"lang":"en"}
-        {"oracle_id":"o-1","id":"p-old","name":"Glade Cub","set":"old","set_name":"Old Set","collector_number":"2","rarity":"uncommon","released_at":"1999-01-01","set_type":"core","booster":true,"lang":"en"}
+        {"oracle_id":"o-1","id":"p-new","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"10","rarity":"common","released_at":"2024-01-01","set_type":"expansion","booster":true,"lang":"en","finishes":["nonfoil","foil"]}
+        {"oracle_id":"o-1","id":"p-star","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"10★","rarity":"common","released_at":"2024-01-01","set_type":"expansion","lang":"en","finishes":["foil"]}
+        {"oracle_id":"o-1","id":"p-old","name":"Glade Cub","set":"old","set_name":"Old Set","collector_number":"2","rarity":"uncommon","released_at":"1999-01-01","set_type":"core","booster":true,"lang":"en","finishes":["nonfoil"]}
         {"oracle_id":"o-1","id":"p-alt","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"300","rarity":"common","released_at":"2024-01-01","set_type":"expansion","booster":false,"lang":"en"}
         {"oracle_id":"o-1","id":"p-online","name":"Glade Cub","set":"web","set_name":"Online","collector_number":"1","rarity":"common","released_at":"2025-01-01","set_type":"expansion","digital":true,"lang":"en"}
         {"oracle_id":"o-1","id":"p-replica","name":"Glade Cub","set":"rep","set_name":"Replicas","collector_number":"1","rarity":"common","released_at":"2025-01-01","set_type":"memorabilia","lang":"en"}
@@ -95,5 +96,35 @@ public class PrintingTests
         Assert.Equal(3, deck.Main.Single(e => e.Set == "OLD").Count);
         DeckList.Adjust(deck.Main, "Glade Cub", -1);
         Assert.Equal(2, deck.Main.Count); // only the line without a printing went away
+    }
+
+    [Fact]
+    public void FoilIsAFinishOfPrintingsThatWereMadeInFoil()
+    {
+        var db = Database();
+        var cub = db.Find("Glade Cub")!.Record;
+        // A printing made only in foil is not a printing to choose: its picture shows the foil.
+        Assert.Null(cub.FindPrinting("new", "10★"));
+        Assert.True(cub.FindPrinting("new", "10")!.Foil);
+        Assert.False(cub.FindPrinting("old", "2")!.Foil);
+        Assert.True(db.CanBeFoil("Glade Cub", "NEW", "10"));
+        Assert.False(db.CanBeFoil("Glade Cub", "OLD", "2"));
+
+        var deck = DeckList.Parse("""
+            2 Glade Cub (NEW) 10 *F*
+            1 Glade Cub (NEW) 10
+            1 Glade Cub (OLD) 2 *F*
+            """);
+        Assert.Equal(new[] { true, false, true }, deck.Main.Select(e => e.Foil));
+        // Foil only where the printing exists in foil; same picture either way.
+        Assert.Equal(new[] { true, true, false, false }, deck.Resolve(db).Cards.Select(c => c.Foil));
+        Assert.All(deck.Resolve(db).Cards.Take(3), c => Assert.Equal("p-new", c.ImageKey));
+        Assert.Contains("2 Glade Cub (NEW) 10 *F*", deck.Export());
+        Assert.Equal(deck.Export(), DeckList.Parse(deck.Export()).Export());
+
+        // Foil and regular copies of a printing are separate lines.
+        DeckList.Adjust(deck.Main, "Glade Cub", 1, "NEW", "10", foil: true);
+        Assert.Equal(3, deck.Main.Single(e => e.Set == "NEW" && e.Foil).Count);
+        Assert.Equal(1, deck.Main.Single(e => e.Set == "NEW" && !e.Foil).Count);
     }
 }

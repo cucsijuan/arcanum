@@ -104,15 +104,22 @@ public static class OracleJsonl
         if (Str(c, "set") is not { } set || Str(c, "id") is not { } id || Str(c, "collector_number") is not { } number) return null;
         return new Printing(set, Str(c, "set_name") ?? set.ToUpperInvariant(), number, Str(c, "rarity") ?? "common", id,
             Str(c, "released_at") ?? "", Str(c, "set_type") ?? "", c.TryGetProperty("booster", out var b) && b.ValueKind == JsonValueKind.True,
-            Tokens(c));
+            Tokens(c), Finishes(c).Contains("foil") || (c.TryGetProperty("foil", out var f) && f.ValueKind == JsonValueKind.True));
     }
+
+    /// <summary>The finishes a printing was made in ("nonfoil", "foil", "etched"); empty when the source doesn't say.</summary>
+    private static List<string> Finishes(JsonElement c) =>
+        c.TryGetProperty("finishes", out var finishes) && finishes.ValueKind == JsonValueKind.Array
+            ? finishes.EnumerateArray().Select(f => f.GetString() ?? "").ToList()
+            : new List<string>();
 
     /// <summary>Set types whose printings are not playing cards (collector replicas, token sets) and are skipped.</summary>
     private static readonly HashSet<string> SkippedSetTypes = new() { "memorabilia", "token", "minigame" };
 
     /// <summary>
     /// Reads the printings source (one line per printing) and returns the paper printings of each card by oracle id,
-    /// oldest first. Digital-only printings, oversized cards and other languages are skipped.
+    /// oldest first. Digital-only printings, oversized cards and other languages are skipped, and so are printings made
+    /// only in foil: their pictures show the foil, which the game draws itself on foil copies of the other printings.
     /// </summary>
     public static Dictionary<string, List<Printing>> ImportPrintings(Stream source)
     {
@@ -129,6 +136,7 @@ public static class OracleJsonl
             if (c.TryGetProperty("oversized", out var oversized) && oversized.ValueKind == JsonValueKind.True) continue;
             if (Str(c, "lang") is { } lang && lang != "en") continue;
             if (SkippedSetTypes.Contains(Str(c, "set_type") ?? "") || Str(c, "layout") == "token") continue;
+            if (Finishes(c) is { Count: > 0 } finishes && !finishes.Contains("nonfoil")) continue;
             if (PrintingFrom(c) is not { } printing) continue;
             if (!byCard.TryGetValue(oracleId, out var list)) byCard[oracleId] = list = new List<Printing>();
             list.Add(printing);
@@ -203,6 +211,7 @@ public static class OracleJsonl
                         WriteIf(writer, "released_at", p.Released);
                         WriteIf(writer, "set_type", p.SetType);
                         if (p.Booster) writer.WriteBoolean("booster", true);
+                        if (p.Foil) writer.WriteBoolean("foil", true);
                         WriteTokens(writer, p.Tokens);
                         writer.WriteEndObject();
                     }

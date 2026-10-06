@@ -50,6 +50,8 @@ public sealed record CardView
     public IReadOnlyList<string> Colors { get; init; } = Array.Empty<string>();
     /// <summary>Exact image identifier when the name is ambiguous (tokens); see <c>CardDefinition.ImageKey</c>.</summary>
     public string? ImageKey { get; init; }
+    /// <summary>A foil copy: the client draws its foil shine.</summary>
+    public bool Foil { get; init; }
 
     // What effects changed compared with the printed card (shown beside the card preview).
     public Supertype Supertypes { get; init; }

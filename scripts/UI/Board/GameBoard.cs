@@ -1818,6 +1818,7 @@ public partial class GameBoard : Control
     private void ShowPreview(CardNode node)
     {
         if (node.View is not { IsHidden: false } view) return;
+        _preview.MirrorFoil(node); // a foil card shines on the preview as it does under the pointer
         _preview.Setup(view, showCostPips: false);
         _preview.Position = new Vector2(16, (Size.Y - _preview.Size.Y) / 2);
         _preview.Visible = true;
@@ -1829,6 +1830,7 @@ public partial class GameBoard : Control
 
     private void HidePreview(CardNode node)
     {
+        _preview.MirrorFoil(null);
         _preview.Visible = false;
         _status.Visible = false;
     }

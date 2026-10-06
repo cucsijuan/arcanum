@@ -546,7 +546,7 @@ public partial class LimitedScreen : Control
             var buttons = new HBoxContainer();
             foreach (var (text, delta) in new[] { ("−", -1), ("+", 1) })
             {
-                var b = BoardStyle.MakeButton(text, 14);
+                var b = BoardStyle.MakeButton(text, 14, compact: true);
                 b.CustomMinimumSize = new Vector2(34, 30);
                 b.Disabled = delta < 0 && count == 0;
                 b.Pressed += () =>

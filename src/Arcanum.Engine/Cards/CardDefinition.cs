@@ -202,6 +202,9 @@ public sealed record CardDefinition
     /// </summary>
     public string? ImageKey { get; init; }
 
+    /// <summary>A foil copy (how it looks only: a deck can ask for foil copies of printings that exist in foil).</summary>
+    public bool Foil { get; init; }
+
     /// <summary>"This spell can't be countered."</summary>
     public bool CantBeCountered { get; init; }
 

@@ -106,6 +106,7 @@ public static class ViewBuilder
             OracleText = card.Definition.OracleText,
             Colors = card.Colors,
             ImageKey = card.Definition.ImageKey,
+            Foil = card.Definition.Foil,
             AttachedTo = card.AttachedTo,
             IsCommander = card.IsCommander,
             CommanderTax = card.IsCommander ? commanderTaxPerCast * state.GetPlayer(card.Owner).CommanderCasts.GetValueOrDefault(card.Id) : 0,

@@ -184,13 +184,15 @@ public partial class CardNode : Control
         _assigned.Visible = false;
         AddChild(_assigned);
 
-        MouseEntered += () => { IsHovered = true; HoverStarted?.Invoke(this); };
-        MouseExited += () => { IsHovered = false; HoverEnded?.Invoke(this); };
+        MouseEntered += () => { IsHovered = true; ShineFoil(true); HoverStarted?.Invoke(this); };
+        MouseExited += () => { IsHovered = false; ShineFoil(false); HoverEnded?.Invoke(this); };
         Resized += ApplySize;
     }
 
     public override void _GuiInput(InputEvent @event)
     {
+        if (@event is InputEventMouseMotion motion && IsFoil && Size.X > 0 && Size.Y > 0)
+            FoilAt = (motion.Position / Size).Clamp(Vector2.Zero, Vector2.One);
         if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
         {
             Clicked?.Invoke(this);
@@ -201,6 +203,63 @@ public partial class CardNode : Control
             RightClicked?.Invoke(this);
             AcceptEvent();
         }
+    }
+
+    // ---------------------------------------------------------------- foil
+
+    private float _foilShine;
+    private Vector2 _foilAt = new(0.5f, 0.5f);
+    private Tween? _foilTween;
+    private CardNode? _foilSource;
+
+    /// <summary>A foil copy shown face up: its picture shines under the pointer.</summary>
+    public bool IsFoil => View is { Foil: true, IsHidden: false };
+
+    /// <summary>Where the pointer is on the card (0..1 across and down): the center of the foil shine.</summary>
+    public Vector2 FoilAt
+    {
+        get => _foilAt;
+        set { _foilAt = value; ((ShaderMaterial)_face.Material).SetShaderParameter("foil_at", value); }
+    }
+
+    /// <summary>How much the foil shines (0–1): it fades in while the pointer is on the card.</summary>
+    public float FoilShine
+    {
+        get => _foilShine;
+        set { _foilShine = value; ((ShaderMaterial)_face.Material).SetShaderParameter("foil", IsFoil ? value : 0f); }
+    }
+
+    /// <summary>Fades the foil shine in or out.</summary>
+    public void ShineFoil(bool on)
+    {
+        if (_foilSource is not null) return;
+        _foilTween?.Kill();
+        if (!IsFoil) { FoilShine = 0; return; }
+        _foilTween = CreateTween();
+        _foilTween.TweenMethod(Callable.From<float>(v => FoilShine = v), FoilShine, on ? 1f : 0f, 0.25);
+    }
+
+    /// <summary>
+    /// Shines like <paramref name="source"/> (the large preview of a hovered card follows the pointer on the small one);
+    /// null to stop.
+    /// </summary>
+    public void MirrorFoil(CardNode? source)
+    {
+        _foilSource = source;
+        _foilTween?.Kill();
+        SetProcess(source is not null);
+        if (source is null) FoilShine = 0;
+    }
+
+    // Only a mirroring preview needs to run every frame (overriding _Process turns processing on at ready).
+    public override void _Ready() => SetProcess(_foilSource is not null);
+
+    public override void _Process(double delta)
+    {
+        if (_foilSource is null) return;
+        if (!IsInstanceValid(_foilSource)) { MirrorFoil(null); return; }
+        FoilAt = _foilSource.FoilAt;
+        FoilShine = _foilSource.FoilShine;
     }
 
     /// <summary>Use a Lanczos-resampled texture at this node's exact size (for the large hover preview).</summary>
@@ -215,6 +274,7 @@ public partial class CardNode : Control
         View = view;
 
         _back.Visible = view.IsHidden;
+        FoilShine = _foilSource is not null ? FoilShine : IsHovered ? 1 : 0;
         if (view.IsHidden)
         {
             // Applied on every setup so the current card back setting is used even by nodes created earlier.

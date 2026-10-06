@@ -4,20 +4,25 @@ using Arcanum.Engine.Cards;
 
 namespace Arcanum.Data.Decks;
 
-/// <summary>A deck line: count and card name, optionally the printing (set code and collector number) whose art to show.</summary>
-public sealed record DeckEntry(int Count, string Name, string? Set = null, string? Number = null)
+/// <summary>
+/// A deck line: count and card name, optionally the printing (set code and collector number) whose art to show, and
+/// whether the copies are foil.
+/// </summary>
+public sealed record DeckEntry(int Count, string Name, string? Set = null, string? Number = null, bool Foil = false)
 {
-    /// <summary>Whether two entries name the same card in the same printing.</summary>
-    public bool SameCard(string name, string? set, string? number) =>
+    /// <summary>Whether two entries name the same card in the same printing and finish.</summary>
+    public bool SameCard(string name, string? set, string? number, bool foil = false) =>
         Name.Equals(name, StringComparison.OrdinalIgnoreCase)
         && string.Equals(Set, set, StringComparison.OrdinalIgnoreCase)
-        && string.Equals(Number, number, StringComparison.OrdinalIgnoreCase);
+        && string.Equals(Number, number, StringComparison.OrdinalIgnoreCase)
+        && Foil == foil;
 }
 
 /// <summary>
 /// Plain-text deck list: one "count name" per line ("4 Glade Cub"), "#" comments, blank lines ignored.
 /// A "Sideboard" line starts the sideboard section. A set code in parentheses and a collector number after the name
-/// ("4 Glade Cub (ABC) 123") choose the printing, and with it the card's art.
+/// ("4 Glade Cub (ABC) 123") choose the printing, and with it the card's art; "*F*" at the end makes the copies foil
+/// (as deck sites write it).
 /// </summary>
 public sealed partial class DeckList
 {
@@ -56,11 +61,13 @@ public sealed partial class DeckList
                 continue;
             }
 
+            bool foil = line.EndsWith(FoilMark, StringComparison.OrdinalIgnoreCase);
+            if (foil) line = line[..^FoilMark.Length].TrimEnd();
             var match = EntryLine().Match(line);
             if (!match.Success) throw new FormatException($"Can't read deck line '{line}'.");
             section.Add(new DeckEntry(int.Parse(match.Groups["count"].Value), match.Groups["name"].Value.Trim(),
                 match.Groups["set"].Success && match.Groups["set"].Value.Trim() is { Length: > 0 } set ? set.ToUpperInvariant() : null,
-                match.Groups["number"].Success ? match.Groups["number"].Value : null));
+                match.Groups["number"].Success ? match.Groups["number"].Value : null, foil));
         }
         return deck;
     }
@@ -79,6 +86,7 @@ public sealed partial class DeckList
                 sb.Append(e.Count).Append(' ').Append(e.Name);
                 if (e.Set is not null) sb.Append(" (").Append(e.Set).Append(')');
                 if (e.Set is not null && e.Number is not null) sb.Append(' ').Append(e.Number);
+                if (e.Foil) sb.Append(' ').Append(FoilMark);
                 sb.Append('\n');
             }
         }
@@ -88,10 +96,13 @@ public sealed partial class DeckList
         return sb.ToString();
     }
 
-    /// <summary>Adds (or with a negative <paramref name="delta"/> removes) copies of a card (in a given printing) in a section.</summary>
-    public static void Adjust(List<DeckEntry> section, string name, int delta, string? set = null, string? number = null)
+    /// <summary>The end of a line of foil copies.</summary>
+    private const string FoilMark = "*F*";
+
+    /// <summary>Adds (or with a negative <paramref name="delta"/> removes) copies of a card (in a given printing and finish) in a section.</summary>
+    public static void Adjust(List<DeckEntry> section, string name, int delta, string? set = null, string? number = null, bool foil = false)
     {
-        int index = section.FindIndex(e => e.SameCard(name, set, number));
+        int index = section.FindIndex(e => e.SameCard(name, set, number, foil));
         int count = (index >= 0 ? section[index].Count : 0) + delta;
         if (index >= 0)
         {
@@ -100,14 +111,14 @@ public sealed partial class DeckList
         }
         else if (count > 0)
         {
-            section.Add(new DeckEntry(count, name, set, number));
+            section.Add(new DeckEntry(count, name, set, number, foil));
         }
     }
 
-    /// <summary>The definition for a deck line: in its printing when the database knows printings.</summary>
+    /// <summary>The definition for a deck line: in its printing (and foil when asked) when the database knows printings.</summary>
     public static bool TryResolve(ICardDatabase database, DeckEntry entry, out CardDefinition definition) =>
         database is CardData.CardDatabase cards
-            ? cards.TryGet(entry.Name, entry.Set, entry.Number, out definition)
+            ? cards.TryGet(entry.Name, entry.Set, entry.Number, entry.Foil, out definition)
             : database.TryGet(entry.Name, out definition);
 
     /// <summary>One definition per copy for the lines the database knows.</summary>

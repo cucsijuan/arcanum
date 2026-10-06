@@ -79,17 +79,34 @@ public sealed class CardDatabase : ICardDatabase
     /// The card's definition as printed in a set (its picture and tokens). Without a set, or when the card was never
     /// printed there, the card's default definition.
     /// </summary>
-    public bool TryGet(string name, string? set, string? collectorNumber, out CardDefinition definition)
+    /// <param name="foil">A foil copy: granted when the printing (or, without one, the default printing) exists in foil.</param>
+    public bool TryGet(string name, string? set, string? collectorNumber, out CardDefinition definition) =>
+        TryGet(name, set, collectorNumber, foil: false, out definition);
+
+    /// <inheritdoc cref="TryGet(string, string?, string?, out CardDefinition)"/>
+    public bool TryGet(string name, string? set, string? collectorNumber, bool foil, out CardDefinition definition)
     {
         if (!_byName.TryGetValue(name, out var entry)) { definition = null!; return false; }
-        if (set is null || entry.Record.FindPrinting(set, collectorNumber) is not { } printing) { definition = entry.Definition; return true; }
+        var printing = set is null ? null : entry.Record.FindPrinting(set, collectorNumber);
+        foil &= (printing ?? entry.Record.DefaultPrinting)?.Foil == true;
+        if (printing is null && !foil) { definition = entry.Definition; return true; }
+        string key = (printing?.Id ?? "default:" + entry.Record.OracleId) + (foil ? "|foil" : "");
         lock (_byPrinting)
         {
-            if (!_byPrinting.TryGetValue(printing.Id, out definition!))
-                _byPrinting[printing.Id] = definition = CardFactory.ForPrinting(entry.Definition, printing);
+            if (!_byPrinting.TryGetValue(key, out definition!))
+            {
+                definition = printing is null ? entry.Definition : CardFactory.ForPrinting(entry.Definition, printing);
+                if (foil) definition = definition with { Foil = true };
+                _byPrinting[key] = definition;
+            }
         }
         return true;
     }
+
+    /// <summary>Whether the card can be a foil copy in this printing (or, without a set, in its default printing).</summary>
+    public bool CanBeFoil(string name, string? set, string? collectorNumber) =>
+        _byName.TryGetValue(name, out var entry)
+        && ((set is null ? null : entry.Record.FindPrinting(set, collectorNumber)) ?? entry.Record.DefaultPrinting)?.Foil == true;
 
     public int Count => _sorted.Count;
 

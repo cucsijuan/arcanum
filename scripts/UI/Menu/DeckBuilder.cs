@@ -308,12 +308,12 @@ public partial class DeckBuilder : Control
     {
         Id = new CardId(id), Owner = new PlayerId(0), Controller = new PlayerId(0), Zone = Zone.Hand, IsHidden = false,
         Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
-        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey,
+        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil,
     };
 
-    /// <summary>The card's definition in a printing (its art), or its default one.</summary>
-    private CardDefinition DefinitionOf(string name, string? set, string? number) =>
-        Cards.TryGet(name, set, number, out var d) ? d : Cards.Find(name)!.Definition;
+    /// <summary>The card's definition in a printing (its art, foil when asked and possible), or its default one.</summary>
+    private CardDefinition DefinitionOf(string name, string? set, string? number, bool foil = false) =>
+        Cards.TryGet(name, set, number, foil, out var d) ? d : Cards.Find(name)!.Definition;
 
     private Control Tile(CardEntry entry, Printing? printing)
     {
@@ -326,7 +326,7 @@ public partial class DeckBuilder : Control
         card.RightClicked += _ => Add(entry.Name, -1, set, number);
         if (printing is not null) card.TooltipText = $"{printing.SetName} #{printing.CollectorNumber} · {printing.Rarity}";
         card.HoverStarted += c => ShowPreview(c, tile);
-        card.HoverEnded += _ => _preview.Visible = false;
+        card.HoverEnded += _ => HidePreview();
         if (entry.Support != CardSupport.Full)
         {
             card.Modulate = new Color(1, 1, 1, 0.6f);
@@ -347,6 +347,7 @@ public partial class DeckBuilder : Control
     private void ShowPreview(CardNode card, Control anchor)
     {
         if (card.View is not { } view) return;
+        _preview.MirrorFoil(card); // a foil card shines on the preview as it does under the pointer
         _preview.Setup(view, showCostPips: false);
         var rect = anchor.GetGlobalRect();
         // Show it beside the hovered card, on whichever side has room.
@@ -355,16 +356,22 @@ public partial class DeckBuilder : Control
         _preview.Visible = true;
     }
 
+    private void HidePreview()
+    {
+        _preview.MirrorFoil(null);
+        _preview.Visible = false;
+    }
+
     // ---------------------------------------------------------------- deck editing
 
     private List<DeckEntry> Section => _editingCommander ? _deck.Commander : _editingSideboard ? _deck.Sideboard : _deck.Main;
 
-    private void Add(string name, int delta, string? set = null, string? number = null)
+    private void Add(string name, int delta, string? set = null, string? number = null, bool foil = false)
     {
         // Removing from the results grid takes a copy of any printing when that exact printing isn't in the deck.
-        if (delta < 0 && !Section.Any(e => e.SameCard(name, set, number)) && Section.LastOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } other)
-            (set, number) = (other.Set, other.Number);
-        DeckList.Adjust(Section, name, delta, set, number);
+        if (delta < 0 && !Section.Any(e => e.SameCard(name, set, number, foil)) && Section.LastOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } other)
+            (set, number, foil) = (other.Set, other.Number, other.Foil);
+        DeckList.Adjust(Section, name, delta, set, number, foil);
         MarkDirty();
         RefreshDeck();
         ShowPage(_page); // update copy badges
@@ -430,9 +437,13 @@ public partial class DeckBuilder : Control
         _ => "Other",
     };
 
+    /// <summary>
+    /// A deck line: count, name, cost and its printing (a ✦ when foil). Click the line to add a copy, right-click to take
+    /// one away; the printing opens a menu of printings and the foil finish.
+    /// </summary>
     private Control DeckRow(DeckEntry entry, CardEntry? card)
     {
-        var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Pass };
+        var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Stop, TooltipText = "Click: one more copy · Right-click: one fewer" };
         row.AddThemeConstantOverride("separation", 8);
         var count = BoardStyle.MakeLabel(entry.Count.ToString(), 15, bold: true);
         count.CustomMinimumSize = new Vector2(26, 0);
@@ -441,47 +452,67 @@ public partial class DeckBuilder : Control
         var name = BoardStyle.MakeLabel(entry.Name, 15, card is null ? BoardStyle.Attacking : card.Support == CardSupport.Full ? BoardStyle.Text : new Color("e0b050"));
         name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         name.ClipText = true;
-        name.MouseFilter = MouseFilterEnum.Pass;
+        row.GuiInput += e =>
+        {
+            if (e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left or MouseButton.Right } click)
+                Add(entry.Name, click.ButtonIndex == MouseButton.Left ? 1 : -1, entry.Set, entry.Number, entry.Foil);
+            // A foil line shines on the preview as the pointer moves along the line.
+            else if (e is InputEventMouseMotion motion && row.Size.X > 0)
+                _preview.FoilAt = (motion.Position / row.Size).Clamp(Vector2.Zero, Vector2.One);
+        };
         if (card is not null)
         {
             row.MouseEntered += () =>
             {
-                _preview.Setup(ViewOf(DefinitionOf(entry.Name, entry.Set, entry.Number), -2), false);
+                _preview.MirrorFoil(null);
+                _preview.Setup(ViewOf(DefinitionOf(entry.Name, entry.Set, entry.Number, entry.Foil), -2), false);
                 var rect = row.GetGlobalRect();
                 _preview.Position = new Vector2(rect.Position.X - _preview.Size.X - 16, Math.Clamp(rect.Position.Y - 120, 90, GetViewportRect().Size.Y - _preview.Size.Y - 20));
                 _preview.Visible = true;
+                _preview.ShineFoil(true);
             };
-            row.MouseExited += () => _preview.Visible = false;
+            row.MouseExited += HidePreview;
         }
         row.AddChild(name);
         if (card is not null) row.AddChild(BoardStyle.MakeCostRow(card.Definition.ManaCost.ToString(), 18, 11));
         if (card is { Record.Printings.Count: > 0 }) row.AddChild(PrintingButton(entry, card));
-        foreach (var (text, delta) in new[] { ("−", -1), ("+", 1) })
-        {
-            var b = BoardStyle.MakeButton(text, 14);
-            b.CustomMinimumSize = new Vector2(30, 28);
-            b.Pressed += () => Add(entry.Name, delta, entry.Set, entry.Number);
-            row.AddChild(b);
-        }
         return row;
     }
 
-    /// <summary>The line's set code; pressing it lists the card's printings to switch to.</summary>
+    /// <summary>
+    /// The line's set code as plain text (a ✦ when foil); pressing it opens a menu: the foil finish (when the printing
+    /// exists in foil) and the card's printings to switch to.
+    /// </summary>
     private Control PrintingButton(DeckEntry entry, CardEntry card)
     {
-        var button = BoardStyle.MakeButton(entry.Set ?? "Any", 12);
-        button.CustomMinimumSize = new Vector2(52, 28);
-        button.TooltipText = entry.Set is null ? "Default art: choose a printing" : $"{card.Record.FindPrinting(entry.Set, entry.Number)?.SetName ?? entry.Set} #{entry.Number}: choose another printing";
+        var button = BoardStyle.MakeModalButton((entry.Set ?? "Any") + (entry.Foil ? " ✦" : ""), entry.Foil, 13);
+        button.CustomMinimumSize = new Vector2(56, 0);
+        var printing = entry.Set is null ? null : card.Record.FindPrinting(entry.Set, entry.Number);
+        button.TooltipText = (printing is null ? "Default art" : $"{printing.SetName} #{entry.Number}") + (entry.Foil ? ", foil" : "") + ": choose the printing or the finish";
         button.Pressed += () =>
         {
+            const int foilId = 1000000;
             var menu = new PopupMenu();
+            menu.AddCheckItem("Foil  ✦", foilId);
+            menu.SetItemChecked(0, entry.Foil);
+            menu.SetItemDisabled(0, !entry.Foil && !Cards.CanBeFoil(entry.Name, entry.Set, entry.Number));
+            menu.AddSeparator();
             var printings = card.Record.Printings.Reverse().ToList(); // newest first
-            menu.AddItem("Default art");
-            foreach (var p in printings) menu.AddItem($"{p.SetName} ({p.Set.ToUpperInvariant()}) #{p.CollectorNumber}");
+            menu.AddItem("Default art", 0);
+            // ✦: the printing was also made in foil (the line can then be made foil).
+            for (int i = 0; i < printings.Count; i++)
+            {
+                var p = printings[i];
+                menu.AddItem($"{p.SetName} ({p.Set.ToUpperInvariant()}) #{p.CollectorNumber}{(p.Foil ? "  ✦" : "")}", i + 1);
+            }
             menu.IdPressed += id =>
             {
-                var chosen = id == 0 ? null : printings[(int)id - 1];
-                SetPrinting(entry, chosen?.Set.ToUpperInvariant(), chosen?.CollectorNumber);
+                if (id == foilId) MoveLine(entry, entry.Set, entry.Number, !entry.Foil);
+                else
+                {
+                    var chosen = id == 0 ? null : printings[(int)id - 1];
+                    SetPrinting(entry, chosen?.Set.ToUpperInvariant(), chosen?.CollectorNumber);
+                }
                 menu.QueueFree();
             };
             menu.PopupHide += () => menu.QueueFree();
@@ -492,12 +523,16 @@ public partial class DeckBuilder : Control
         return button;
     }
 
-    /// <summary>Moves every copy of a line to another printing (joining a line of that printing if there is one).</summary>
-    private void SetPrinting(DeckEntry entry, string? set, string? number)
+    /// <summary>Moves every copy of a line to another printing, keeping foil when that printing exists in foil.</summary>
+    private void SetPrinting(DeckEntry entry, string? set, string? number) =>
+        MoveLine(entry, set, number, entry.Foil && Cards.CanBeFoil(entry.Name, set, number));
+
+    /// <summary>Moves every copy of a line to another printing or finish (joining a line of it if there is one).</summary>
+    private void MoveLine(DeckEntry entry, string? set, string? number, bool foil)
     {
-        if (entry.SameCard(entry.Name, set, number)) return;
-        DeckList.Adjust(Section, entry.Name, -entry.Count, entry.Set, entry.Number);
-        DeckList.Adjust(Section, entry.Name, entry.Count, set, number);
+        if (entry.SameCard(entry.Name, set, number, foil)) return;
+        DeckList.Adjust(Section, entry.Name, -entry.Count, entry.Set, entry.Number, entry.Foil);
+        DeckList.Adjust(Section, entry.Name, entry.Count, set, number, foil);
         MarkDirty();
         RefreshDeck();
     }
