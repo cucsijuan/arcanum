@@ -316,6 +316,10 @@ public enum TriggerEvent
     PlayerAttacks,
     /// <summary>"Whenever you activate an ability that isn't a mana ability" (amount: the ability's stack object).</summary>
     YouActivateNonManaAbility,
+    /// <summary>"Whenever this creature blocks or becomes blocked by a creature": once per such creature (subject: that creature).</summary>
+    BlocksOrBecomesBlockedByCreature,
+    /// <summary>"Whenever this creature blocks a creature": once per creature it blocks (subject: that creature, rule 509.3d).</summary>
+    BlocksCreature,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -444,6 +448,9 @@ public sealed record ObjectFilter(
 
     /// <summary>Power exactly X ("target creature with power X").</summary>
     public bool PowerIsX { get; init; }
+
+    /// <summary>Toughness less than the source's power ("with toughness less than this creature's power").</summary>
+    public bool ToughnessLessThanSourcePower { get; init; }
 
     /// <summary>Power less than the source's ("with lesser power").</summary>
     public bool LesserPowerThanSource { get; init; }

@@ -10,7 +10,7 @@ public sealed record DamageAssignment(IReadOnlyDictionary<CardId, int> ToBlocker
 }
 
 /// <summary>
-/// An attacker blocked by several creatures (or with trample) divides its combat damage (rule 510.1c-d). Since the
+/// An attacker blocked by several creatures (or with trample), or a creature blocking several attackers (<see cref="ByBlocker"/>), divides its combat damage (rule 510.1c-d). Since the
 /// 2024 rules update there is no damage assignment order: any split adding up to <see cref="Power"/> is legal, except
 /// that trample may only send damage to the player once every blocker has been assigned lethal damage (702.19c).
 /// </summary>
@@ -23,4 +23,14 @@ public sealed record DamageAssignmentRequest(
     IReadOnlyDictionary<CardId, int> Lethal,
     bool Trample,
     PlayerId Defender,
-    DamageAssignment Suggested);
+    DamageAssignment Suggested)
+{
+    /// <summary>
+    /// The damage of a creature blocking several attackers (rule 510.1d): <see cref="Attacker"/> is then the blocker and
+    /// <see cref="Blockers"/> the attackers it blocks; no damage can go to a player.
+    /// </summary>
+    public bool ByBlocker { get; init; }
+
+    /// <summary>What the division is for, when it isn't combat damage ("Wolf pack: Grizzly deals 3 damage divided among").</summary>
+    public string? Prompt { get; init; }
+}

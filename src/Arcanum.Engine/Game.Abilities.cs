@@ -109,6 +109,9 @@ public sealed partial class Game
         if (card.ProtectedFromPlayers.Contains(sourceController)) return true;
         if (card.ProtectedFromRingBearers && source.IsRingBearerNow && source.Zone == Zone.Battlefield) return true;
         if ((card.ProtectionFromTypes & (source.Zone is not (Zone.Battlefield or Zone.Stack) && source.LastKnownInfo is { } lkt ? lkt.Types : source.Types)) != 0) return true;
+        // Protection from a creature type ("from Demons and from Dragons"): sources with that subtype, as they last existed.
+        if (!card.LosesAbilities && card.Definition.ProtectionFromSubtypes.Any(t =>
+                source.Zone is not (Zone.Battlefield or Zone.Stack) && source.LastKnownInfo is { } lks ? lks.HasSubtype(t) : source.HasSubtype(t))) return true;
         var colors = source.Zone is not (Zone.Battlefield or Zone.Stack) && source.LastKnownInfo is { } lki ? lki.Colors : source.Colors;
         return colors.Any(c => Keywords.ProtectionFrom(c) is { } protection && card.Has(protection));
     }
@@ -121,6 +124,16 @@ public sealed partial class Game
     /// <summary>"Hexproof from [color]": opponents' sources of that color can't target it.</summary>
     private static bool HexproofFrom(Card card, Card source) =>
         card.Definition.HexproofFromColors.Count > 0 && ColorsOf(source).Any(card.Definition.HexproofFromColors.Contains);
+
+    /// <summary>
+    /// Whether an Aura can be attached to that permanent: everything its enchant ability says ("enchant tapped creature",
+    /// "enchant creature you control") and no protection from it (rule 303.4d, 702.16c).
+    /// </summary>
+    private bool CanEnchant(Card aura, TargetSpec enchant, Card host) =>
+        MatchesKind(host, enchant.Kind)
+        && enchant.Controller switch { ControllerFilter.You => host.Controller == aura.Controller, ControllerFilter.Opponent => host.Controller != aura.Controller, _ => true }
+        && (enchant.Filter is not { } filter || Matches(filter with { Controller = ControllerFilter.Any }, host, host.Controller, aura, aura.Controller))
+        && !ProtectedFrom(host, aura);
 
     private static bool MatchesKind(Card card, TargetKind kind) => kind switch
     {
@@ -1991,7 +2004,7 @@ public sealed partial class Game
                 {
                     // Equipment attaches only to creatures; an Aura only to what it can enchant (rule 701.3b).
                     if (card.HasSubtype("Equipment") && !host.IsCreature) continue;
-                    if (card.Definition.EnchantTarget is { } enchant && !MatchesKind(host, enchant.Kind)) continue;
+                    if (card.Definition.EnchantTarget is { } enchant && !CanEnchant(card, enchant, host)) continue;
                     if (card.AttachedTo == host.Id) continue;
                     card.AttachedTo = host.Id;
                     card.Timestamp = 0; // a new timestamp as it becomes attached (rule 613.7e)
@@ -2637,6 +2650,48 @@ public sealed partial class Game
                 int value = ManaValueOf(first);
                 var all = State.Battlefield.Select(State.GetCard).Where(c => !c.Is(CardType.Land) && (c.Id == first.Id || ManaValueOf(c) == value)).ToList();
                 foreach (var card in all) await MoveCardAsync(card.Id, Zone.Hand);
+                break;
+            }
+            case AttacksYouThisTurn ay:
+                foreach (var card in CardsFor(ay.What, ctx).Where(c => c.IsCreature).ToList())
+                    State.AttackPlayerRequirements.Add((card.Id, card.Version, ctx.Controller, State.TurnNumber));
+                break;
+            case SkipNextUntap sn:
+            {
+                PlayerId? whose = sn.Player is { } who ? PlayersFor(who, ctx).Cast<PlayerId?>().FirstOrDefault() : null;
+                if (sn.Player is not null && whose is null) break;
+                foreach (var card in CardsFor(sn.What, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
+                    State.SkipNextUntap.Add((card.Id, card.Version, whose));
+                break;
+            }
+            case TapAllToDamage tad:
+            {
+                if (CardsFor(tad.Target, ctx).FirstOrDefault() is not { } prey) break;
+                var pack = State.PermanentsControlledBy(ctx.Controller)
+                    .Where(c => !c.Tapped && Matches(tad.Filter with { Controller = ControllerFilter.Any }, c, c.Controller, ctx.Source, ctx.Controller)).ToList();
+                foreach (var wolf in pack) Tap(wolf);
+                pack = pack.Where(w => w.Tapped && w.Zone == Zone.Battlefield).ToList(); // "each one tapped this way"
+                var hits = pack.Select(w => (Source: w, Target: prey, Amount: w.Power)).ToList();
+                // "That creature deals damage equal to its power divided as its controller chooses among any number of those" ones.
+                int bite = prey.IsCreature ? prey.Power : 0;
+                if (bite > 0 && pack.Count > 0)
+                {
+                    var lethal = pack.ToDictionary(w => w.Id, w => LethalDamage(w, prey));
+                    var suggested = SuggestDamage(bite, pack, lethal, trample: false);
+                    var chooser = prey.Controller;
+                    var split = await ControllerOf(chooser).AssignCombatDamageAsync(ViewFor(chooser),
+                        new DamageAssignmentRequest(prey.Id, bite, pack.Select(w => w.Id).ToList(), lethal, false, chooser, suggested)
+                        {
+                            ByBlocker = true, Prompt = $"{prey.Name} deals {bite} damage divided among",
+                        });
+                    Require(split.ToBlockers.Keys.All(lethal.ContainsKey) && split.ToBlockers.Values.All(v => v >= 0) && split.ToPlayer == 0 && split.Total == bite,
+                        $"Divide exactly {bite} damage among those creatures.");
+                    hits.AddRange(split.ToBlockers.Where(kv => kv.Value > 0).Select(kv => (Source: prey, Target: State.GetCard(kv.Key), Amount: kv.Value)));
+                }
+                BeginSimultaneous(); // all of it is dealt at once
+                foreach (var (source, target, amount) in hits)
+                    if (amount > 0) DamageCreature(source, target, amount);
+                EndSimultaneous();
                 break;
             }
             case AtNextEndStepAbout an:
@@ -3775,6 +3830,7 @@ public sealed partial class Game
                 (d.Zone == Zone.Battlefield ? d.HasSubtype("Spider") : d.LastKnownInfo?.HasSubtype("Spider") == true)
                 && (d.Zone == Zone.Battlefield ? d.Controller : d.LastKnownInfo?.Controller ?? d.Owner) == sourceController)) return false;
         if (filter.LesserPowerThanSource && (source is null || power >= PowerOrLastKnown(source))) return false;
+        if (filter.ToughnessLessThanSourcePower && (source is null || toughness >= PowerOrLastKnown(source))) return false;
         if (filter.SharesColorWithYourLegendaryCreature && !State.PermanentsControlledBy(sourceController)
                 .Where(c => c.IsCreature && (c.Supertypes & Supertype.Legendary) != 0).Any(c => c.Colors.Intersect(colors).Any())) return false;
         if (filter.NoSharedCreatureTypeWithYours && State.PermanentsControlledBy(sourceController).Where(c => c.IsCreature)
@@ -4272,7 +4328,8 @@ public sealed partial class Game
                     foreach (var card in State.PermanentsControlledBy(a.Player).Where(c => c.Has(Keyword.Exalted)).ToList())
                         _pendingTriggers.Add(new PendingTrigger(card.Id, ExaltedTrigger, a.Player, new TriggerInfo(alone.Attacker, State.GetCard(alone.Attacker).Version, a.Player)));
                 break;
-            case BlockerDeclared b:
+            // "Whenever this creature blocks" triggers once even when it blocks several attackers (rule 509.3c): on its first block.
+            case BlockerDeclared b when State.Combat is not { } blockCombat || blockCombat.Attacks.Count(a => a.Blockers.Contains(b.Blocker)) <= 1:
                 Queue(b.Blocker, TriggerEvent.Blocks, State.GetCard(b.Blocker).Controller, About(State.GetCard(b.Attacker)));
                 Queue(b.Blocker, TriggerEvent.AttacksOrBlocks, State.GetCard(b.Blocker).Controller);
                 break;

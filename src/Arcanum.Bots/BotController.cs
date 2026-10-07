@@ -571,6 +571,8 @@ public sealed class BotController : IPlayerController
             .Select(d => view.MayAttack(d.Attacker, d.Defender) || d.Planeswalker is not null ? d
                 : defenders.FirstOrDefault(p => view.MayAttack(d.Attacker, p)) is var other && view.MayAttack(d.Attacker, other) ? d with { Defender = other } : null)
             .OfType<AttackDeclaration>().ToList();
+        // Requirements and restrictions ("attacks each combat if able", goad, "can't attack alone"): made legal, keeping the plan.
+        if (view.AttackRequest is { } rules && !rules.IsLegal(declared, out _)) declared = rules.Complete(declared).ToList();
         if (view.AttackTaxes.Count == 0) return declared;
         // Only as many attackers as the attack taxes can be paid for, the strongest first; taxes add up across defenders.
         var budget = view.AttackTaxes.ToDictionary(t => t.Defender, t => t.Affordable);
@@ -584,6 +586,8 @@ public sealed class BotController : IPlayerController
             kept.Add(d);
             taxedSoFar++;
         }
+        // Leaving taxed attackers home may leave a creature that can't attack alone on its own: keep the rest legal.
+        if (view.AttackRequest is { } rest && !rest.IsLegal(kept, out _)) kept = rest.WithoutTaxedDefenders().Complete(kept).ToList();
         return kept;
     }
 
@@ -702,8 +706,8 @@ public sealed class BotController : IPlayerController
     {
         RememberAttacks(view);
         var blocks = PlanBlocks(view, request);
-        if (!request.IsLegal(blocks, out _)) blocks = request.WithRequirements(blocks).ToList();
-        if (!request.IsLegal(blocks, out _)) blocks = request.WithRequirements(Array.Empty<BlockDeclaration>()).ToList();
+        // Requirements (lures, "must be blocked") and restrictions: the closest legal declaration to the plan (rule 509.1c).
+        if (!request.IsLegal(blocks, out _)) blocks = request.Complete(blocks).ToList();
         if (blocks.Count > 0) await PaceAsync();
         return blocks;
     }

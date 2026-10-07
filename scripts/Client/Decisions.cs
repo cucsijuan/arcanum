@@ -47,6 +47,9 @@ public sealed class AttackDecision : Decision<IReadOnlyList<AttackDeclaration>>
 {
     public required IReadOnlyList<CardId> PossibleAttackers { get; init; }
     public required IReadOnlyList<PlayerId> Defenders { get; init; }
+
+    /// <summary>Who may attack whom, and the restrictions and requirements the declaration must obey (null: none known).</summary>
+    public AttackRequest? Request { get; init; }
 }
 
 public sealed class BlockDecision : Decision<IReadOnlyList<BlockDeclaration>>

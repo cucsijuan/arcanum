@@ -95,6 +95,8 @@ public sealed record CardScript(
     public IReadOnlyList<CardScript>? Split { get; init; }
     public bool CantBeSacrificed { get; init; }
     public bool CantAttackIfPowerAboveHandSize { get; init; }
+    public ObjectFilter? CantAttackUnless { get; init; }
+    public IReadOnlyList<string>? ProtectionFromSubtypes { get; init; }
     public ObjectFilter? GraveyardEnterBonus { get; init; }
     public int Devour { get; init; }
     public ObjectFilter? DevourFilter { get; init; }
@@ -177,6 +179,8 @@ public sealed record CardScript(
         FlashbackReduction = FlashbackReduction ?? d.FlashbackReduction,
         CantBeSacrificed = CantBeSacrificed || d.CantBeSacrificed,
         CantAttackIfPowerAboveHandSize = CantAttackIfPowerAboveHandSize || d.CantAttackIfPowerAboveHandSize,
+        CantAttackUnlessDefenderControls = CantAttackUnless ?? d.CantAttackUnlessDefenderControls,
+        ProtectionFromSubtypes = ProtectionFromSubtypes ?? d.ProtectionFromSubtypes,
         GraveyardEnterBonus = GraveyardEnterBonus ?? d.GraveyardEnterBonus,
         Devour = Devour > 0 ? Devour : d.Devour,
         DevourFilter = DevourFilter ?? d.DevourFilter,
@@ -379,6 +383,8 @@ public static class CardScriptParser
             Split = root.TryGetProperty("split", out var spl2) ? spl2.EnumerateArray().Select(h => Parse(h.GetRawText())).ToList() : null,
             CantBeSacrificed = Bool(root, "cantBeSacrificed"),
             CantAttackIfPowerAboveHandSize = Bool(root, "cantAttackIfPowerAboveHandSize"),
+            CantAttackUnless = root.TryGetProperty("cantAttackUnlessDefenderControls", out var cau) ? ParseFilter(cau, ControllerFilter.Any) : null,
+            ProtectionFromSubtypes = root.TryGetProperty("protectionFromSubtypes", out var pfs) ? pfs.EnumerateArray().Select(t => t.GetString()!).ToList() : null,
             GraveyardEnterBonus = root.TryGetProperty("graveyardEnterBonus", out var geb) ? ParseFilter(geb, ControllerFilter.You) : null,
             Devour = root.TryGetProperty("devour", out var dvr) ? dvr.GetInt32() : 0,
             DevourFilter = root.TryGetProperty("devourFilter", out var dvf) ? ParseFilter(dvf, ControllerFilter.You) : null,
@@ -677,6 +683,8 @@ public static class CardScriptParser
         "creaturesAttackOpponent" => TriggerEvent.CreaturesAttackOpponent,
         "playerAttacks" => TriggerEvent.PlayerAttacks,
         "youActivateNonManaAbility" => TriggerEvent.YouActivateNonManaAbility,
+        "blocksOrBlockedBy" => TriggerEvent.BlocksOrBecomesBlockedByCreature,
+        "blocksCreature" => TriggerEvent.BlocksCreature,
         _ => throw new FormatException($"Unknown trigger '{text}'."),
     };
 
@@ -753,6 +761,7 @@ public static class CardScriptParser
             PowerIsX = Bool(f, "powerIsX"),
             DamagedThisTurnByYourSpider = Bool(f, "damagedThisTurnByYourSpider"),
             LesserPowerThanSource = Bool(f, "lesserPower"),
+            ToughnessLessThanSourcePower = Bool(f, "toughnessLessThanPower"),
             GreaterPowerThanSource = Bool(f, "greaterPower"),
             BlockedOrBlockedByLegendaryThisTurn = Bool(f, "blockedOrBlockedByLegendary"),
             SharesColorWithYourLegendaryCreature = Bool(f, "sharesColorWithYourLegendary"),
@@ -1400,6 +1409,9 @@ public static class CardScriptParser
         if (e.TryGetProperty("choose", out var chf) && chf.ValueKind == JsonValueKind.Object)
             return new ChooseObjects(Subj("chooser", "you"), ParseFilter(chf, ControllerFilter.Any), Flag("optional"));
         if (Value("bounceSameManaValue") is { } bsm) return new BounceSameManaValue(bsm);
+        if (Value("attacksYouThisTurn") is { } ayt) return new AttacksYouThisTurn(ayt);
+        if (Value("skipNextUntap") is { } snu) return new SkipNextUntap(snu, Value("player"));
+        if (e.TryGetProperty("tapAllToDamage", out var tatd)) return new TapAllToDamage(ParseFilter(tatd, ControllerFilter.You), Subj("to", "target"));
         if (e.TryGetProperty("atNextEndStepAbout", out var anea)) return new AtNextEndStepAbout(ParseSubject(anea), EffectList(e.GetProperty("effects")));
         if (e.TryGetProperty("drawUpTo", out _)) return new DrawUpTo(Int("drawUpTo"), Subj("who", "you"));
         if (e.TryGetProperty("hideaway", out _)) return new Hideaway(Int("hideaway"));

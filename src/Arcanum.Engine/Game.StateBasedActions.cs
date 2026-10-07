@@ -49,8 +49,7 @@ public sealed partial class Game
             // Auras attached to nothing legal go to the graveyard (704.5m); Equipment just becomes unattached (704.5n).
             if (card.Definition.EnchantTarget is { } enchant)
             {
-                bool legal = card.AttachedTo is { } host && State.GetCard(host) is { Zone: Zone.Battlefield } h
-                             && (enchant.Kind != Abilities.TargetKind.Creature || h.IsCreature) && !ProtectedFrom(h, card);
+                bool legal = card.AttachedTo is { } host && State.GetCard(host) is { Zone: Zone.Battlefield } h && CanEnchant(card, enchant, h);
                 if (!legal) toGraveyard.Add(card);
             }
             else if (card.AttachedTo is { } equipped && (State.GetCard(equipped) is not { Zone: Zone.Battlefield, IsCreature: true } eq || ProtectedFrom(eq, card)))

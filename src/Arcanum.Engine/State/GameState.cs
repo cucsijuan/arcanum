@@ -259,6 +259,15 @@ public sealed class GameState
     /// <summary>The turn during which damage can't be prevented.</summary>
     public int DamageCantBePreventedTurn { get; set; } = -1;
 
+    /// <summary>"[Creature] attacks [player] this turn if able": the creature (card, version), the player and the turn.</summary>
+    public List<(CardId Card, int Version, PlayerId Player, int Turn)> AttackPlayerRequirements { get; } = new();
+
+    /// <summary>
+    /// "Doesn't untap during its controller's next untap step" (no player) or "during [player]'s next untap step": the
+    /// permanent (card, version) and the player whose next untap step it is.
+    /// </summary>
+    public List<(CardId Card, int Version, PlayerId? Player)> SkipNextUntap { get; } = new();
+
     /// <summary>Goaded creatures (card, version) and who goaded them, until that player's next turn (rule 701.15).</summary>
     public List<(CardId Card, int Version, PlayerId Goader)> Goads { get; } = new();
 

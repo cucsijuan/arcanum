@@ -51,7 +51,7 @@ public sealed class UiPlayerController(PlayerId player, DecisionHub hub, Decisio
 
     public Task<IReadOnlyList<AttackDeclaration>> DeclareAttackersAsync(
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders) =>
-        Ask(new AttackDecision { Player = player, PossibleAttackers = possibleAttackers, Defenders = defenders });
+        Ask(new AttackDecision { Player = player, PossibleAttackers = possibleAttackers, Defenders = defenders, Request = view.AttackRequest });
 
     public Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(GameView view, BlockRequest request) =>
         Ask(new BlockDecision { Player = player, Request = request });
