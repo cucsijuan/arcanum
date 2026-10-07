@@ -187,6 +187,12 @@ public sealed record EnteredThisTurn(ObjectFilter Filter) : Condition;
 /// <summary>"If it isn't renowned" / "a renowned creature": the source is renowned.</summary>
 public sealed record SourceRenowned : Condition;
 
+/// <summary>"If this permanent is transformed": the source is a double-faced permanent with its back face up (rule 701.27g).</summary>
+public sealed record SourceTransformed : Condition;
+
+/// <summary>"As long as it's front face up": the source is a double-faced permanent with its front face up.</summary>
+public sealed record SourceFrontFaceUp : Condition;
+
 /// <summary>"If it's attacking the player with the most life or tied for most life": the player the trigger is about.</summary>
 public sealed record TriggeredPlayerHasMostLife : Condition;
 

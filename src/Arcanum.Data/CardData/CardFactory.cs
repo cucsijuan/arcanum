@@ -35,7 +35,7 @@ public static partial class CardFactory
         "Raid", "Landfall", "Morbid", "Threshold", "Ferocious", "Hexproof from", "Affinity", "Double", "Formidable", "Alliance", "Crew", "Protection", "Vivid",
         "Amass", "Recruit", "Gift", "Behold", "Landwalk", "Goad",
         "Revolt", "Delirium", "Battalion", "Fateful hour", "Spell mastery", "Addendum", "Regenerate", "Triple", "Populate", "Exert",
-        "Secret council", "Will of the council", "Council's dilemma", "Tempting offer",
+        "Secret council", "Will of the council", "Council's dilemma", "Tempting offer", "Transform",
         // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
         "Persist", "Undying", "Dethrone", "Hideaway", "Heal", "Aftermath",
         "Devour", "Multikicker", "Replicate", "Squad", "Dash", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
@@ -54,6 +54,7 @@ public static partial class CardFactory
     {
         if (record.Layout == "adventure" && record.Faces.Count == 2) return CreateAdventurer(record, script);
         if (record.Layout == "split" && record.Faces.Count == 2) return CreateSplit(record, script);
+        if (record.Layout == "transform" && record.Faces.Count == 2) return CreateTransforming(record, script);
         var (supertypes, types, subtypes) = TypeLine.Parse(record.TypeLine);
         var tapForMana = subtypes.Where(BasicLandTypes.ContainsKey).Select(t => BasicLandTypes[t]).ToList();
         tapForMana.AddRange(ManaAbilityTypes(record.OracleText));
@@ -126,6 +127,29 @@ public static partial class CardFactory
             Adventure = adventure with { ImageKey = record.DefaultPrintingId },
         };
         bool supported = cardSupport == CardSupport.Full && adventureSupport == CardSupport.Full;
+        return (definition, supported ? CardSupport.Full : CardSupport.Unsupported);
+    }
+
+    /// <summary>
+    /// A nonmodal double-faced card (rule 712.2): the card is its front face, with its back face beside it. The script describes
+    /// the front face as usual and the back face under <c>"back": { … }</c> (a script of its own). The back face has no mana
+    /// cost; its colors are those of its color indicator. Supported only when both faces are.
+    /// </summary>
+    private static (CardDefinition Definition, CardSupport Support) CreateTransforming(CardRecord record, Scripts.CardScript? script)
+    {
+        CardRecord FaceRecord(CardFaceRecord face) => record with
+        {
+            Layout = "normal", Name = face.Name, ManaCost = face.ManaCost, TypeLine = face.TypeLine, OracleText = face.OracleText,
+            Power = face.Power, Toughness = face.Toughness, Loyalty = face.Loyalty, Faces = Array.Empty<CardFaceRecord>(),
+            // The card source lists the keywords of both faces together: each face keeps those its own text uses.
+            Keywords = record.Keywords.Where(k => face.OracleText.Contains(k, StringComparison.OrdinalIgnoreCase)).ToList(),
+        };
+        var (front, frontSupport) = Create(FaceRecord(record.Faces[0]), script);
+        var (back, backSupport) = Create(FaceRecord(record.Faces[1]), script?.Back);
+        // A face without a mana cost has the colors of its color indicator (rule 202.2e); with one, its cost's.
+        if (string.IsNullOrEmpty(record.Faces[1].ManaCost)) back = back with { Colors = record.Faces[1].Colors };
+        var definition = front with { BackFace = back };
+        bool supported = frontSupport == CardSupport.Full && backSupport == CardSupport.Full;
         return (definition, supported ? CardSupport.Full : CardSupport.Unsupported);
     }
 
@@ -224,6 +248,7 @@ public static partial class CardFactory
         Spell = WithTokenImages(definition.Spell, printing.Tokens, replace: true),
         Abilities = definition.Abilities.Select(a => WithTokenImages(a, printing.Tokens, replace: true)!).ToList(),
         Adventure = definition.Adventure is { } adventure ? ForPrinting(adventure, printing) : null,
+        BackFace = definition.BackFace is { } back ? ForPrinting(back, printing) : null,
     };
 
     /// <summary>

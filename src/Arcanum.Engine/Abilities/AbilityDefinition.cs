@@ -303,6 +303,11 @@ public enum TriggerEvent
     OpponentSacrifices,
     /// <summary>"When you exert this creature" / "whenever you exert a creature" (with a filter: any creature you exert).</summary>
     Exerted,
+    /// <summary>
+    /// "Whenever this permanent transforms" (rule 701.27); with a filter, "transforms into [a permanent matching it]", judged
+    /// right after it transforms (701.27e). Without <c>OnSelf</c>, a filter watches other permanents ("whenever a permanent you control transforms").
+    /// </summary>
+    Transforms,
     /// <summary>"When you cycle this card" (works from the graveyard it was discarded to; amount: X paid).</summary>
     Cycled,
     /// <summary>"When you cast this spell" (the spell's own ability, from the stack).</summary>
@@ -502,6 +507,9 @@ public sealed record ObjectFilter(
 
     /// <summary>Renowned ("a renowned creature").</summary>
     public bool Renowned { get; init; }
+
+    /// <summary>"A transformed permanent" (true: back face up, rule 701.27g) or a double-faced permanent front face up (false).</summary>
+    public bool? Transformed { get; init; }
 
     /// <summary>Doesn't share a creature type with a creature the ability's controller controls.</summary>
     public bool NoSharedCreatureTypeWithYours { get; init; }

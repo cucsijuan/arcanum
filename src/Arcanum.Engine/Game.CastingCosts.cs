@@ -46,7 +46,7 @@ public sealed partial class Game
     {
         if ((card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.WithoutPaying)) || _castFree.Contains(card.Id))
             return new() { new(CastingWayKind.WithoutPaying, ManaCost.Zero) };
-        if (PaysLife(card)) return new() { new(CastingWayKind.PayLife, ManaCost.Zero, card.Definition.ManaCost.ManaValue) };
+        if (PaysLife(card)) return new() { new(CastingWayKind.PayLife, ManaCost.Zero, card.ManaValue) };
         if (_miracleCost.TryGetValue(card.Id, out var miracle)) return new() { new(CastingWayKind.ManaCost, miracle) };
         if (card.Zone == Zone.Graveyard && card.Definition.Flashback is { } flashback && !State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version))
         {

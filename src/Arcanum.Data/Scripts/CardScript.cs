@@ -59,6 +59,9 @@ public sealed record CardScript(
     /// <summary>For an adventurer card: the script of its Adventure (the card's second face).</summary>
     public CardScript? Adventure { get; init; }
 
+    /// <summary>For a transforming double-faced card: the script of its back face.</summary>
+    public CardScript? Back { get; init; }
+
     public CardDefinition? Gift { get; init; }
     public Condition? FlashIf { get; init; }
     public ManaCost? AttackTax { get; init; }
@@ -353,6 +356,7 @@ public static class CardScriptParser
                 : null,
             EntersWithCountersFrom = root.TryGetProperty("entersWithCounters", out var ewcf) && (ewcf.ValueKind == JsonValueKind.Object || (ewcf.ValueKind == JsonValueKind.String && ewcf.GetString() != "X")) ? ParseQuantity(ewcf) : null,
             Adventure = root.TryGetProperty("adventure", out var adv) ? Parse(adv.GetRawText()) : null,
+            Back = root.TryGetProperty("back", out var backFace) ? Parse(backFace.GetRawText()) : null,
             Gift = root.TryGetProperty("gift", out var gift) ? ParseToken(gift) : null,
             FlashIf = root.TryGetProperty("flashIf", out var fli) ? ParseCondition(fli) : null,
             AttackTax = root.TryGetProperty("attackTax", out var atx) ? ManaCost.Parse(atx.GetString()!) : null,
@@ -690,6 +694,7 @@ public static class CardScriptParser
         "playersFinishVoting" => TriggerEvent.PlayersFinishVoting,
         "opponentSacrifices" => TriggerEvent.OpponentSacrifices,
         "exerted" => TriggerEvent.Exerted,
+        "transforms" => TriggerEvent.Transforms,
         "cycled" => TriggerEvent.Cycled,
         "castThis" => TriggerEvent.CastThis,
         "opponentActivatesAbility" => TriggerEvent.OpponentActivatesAbility,
@@ -788,6 +793,7 @@ public static class CardScriptParser
             SharesColorWithYourLegendaryCreature = Bool(f, "sharesColorWithYourLegendary"),
             NoSharedCreatureTypeWithYours = Bool(f, "noSharedCreatureType"),
             Renowned = Bool(f, "renowned"),
+            Transformed = OptBool("transformed"),
             AttackingYou = Bool(f, "attackingYou"),
             FromGraveyard = Bool(f, "fromGraveyard"),
             HasXInCost = Bool(f, "hasX"),
@@ -839,6 +845,8 @@ public static class CardScriptParser
                 "noMonarch" => new NoMonarch(),
                 "noVotes" => new ReceivedNoVotes(),
                 "renowned" => new SourceRenowned(),
+                "transformed" => new SourceTransformed(),
+                "frontFaceUp" => new SourceFrontFaceUp(),
                 "triggeredHadCounters" => new TriggeredHadCounters(),
                 "hasAnyCounters" => new SourceHasAnyCounters(),
                 "castDuringMainPhase" => new CastDuringYourMainPhase(),
@@ -1465,6 +1473,7 @@ public static class CardScriptParser
         if (e.TryGetProperty("hideaway", out _)) return new Hideaway(Int("hideaway"));
         if (Flag("playHiddenFree")) return new PlayLinkedExiledFree();
         if (Value("becomeRenowned") is { } renowned) return new BecomeRenowned(renowned);
+        if (Value("transform") is { } transform) return new Transform(transform);
         if (Value("regenerate") is { } regen) return new Regenerate(regen);
         if (Flag("populate")) return new Populate();
         if (e.TryGetProperty("repeat", out _)) return new Repeat(Qty("repeat"), Effects(e));
@@ -1518,6 +1527,7 @@ public static class CardScriptParser
             AddColors = Strings("addColors"),
             AddKeywords = ParseKeywords(e),
             AttachTo = e.TryGetProperty("attachTo", out var at) ? ParseSubject(at) : null,
+            Transformed = Flag("transformed"),
             SetTypes = e.TryGetProperty("setTypes", out var st) ? ParseTypes(st) : null,
             SetSubtypes = Strings("setSubtypes"),
             AddAbilities = e.TryGetProperty("abilities", out var ab) ? Parse("{\"abilities\":" + ab.GetRawText() + "}").Abilities : null,

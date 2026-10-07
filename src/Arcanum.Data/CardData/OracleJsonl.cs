@@ -59,7 +59,11 @@ public static class OracleJsonl
         var faces = c.TryGetProperty("card_faces", out var f)
             ? f.EnumerateArray().Select(face => new CardFaceRecord(
                 Str(face, "name") ?? "", Str(face, "mana_cost") ?? "", Str(face, "type_line") ?? "", Str(face, "oracle_text") ?? "",
-                Str(face, "power"), Str(face, "toughness"))).ToList()
+                Str(face, "power"), Str(face, "toughness"))
+            {
+                Loyalty = Str(face, "loyalty"),
+                Colors = StrList(face, "colors"),
+            }).ToList()
             : new List<CardFaceRecord>();
 
         return new CardRecord
@@ -229,6 +233,8 @@ public static class OracleJsonl
                         WriteIf(writer, "oracle_text", face.OracleText);
                         WriteIf(writer, "power", face.Power);
                         WriteIf(writer, "toughness", face.Toughness);
+                        WriteIf(writer, "loyalty", face.Loyalty);
+                        WriteList(writer, "colors", face.Colors);
                         writer.WriteEndObject();
                     }
                     writer.WriteEndArray();

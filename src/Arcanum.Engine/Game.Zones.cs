@@ -149,18 +149,20 @@ public sealed partial class Game
     }
 
     /// <summary>Moves a card, asking for the choices its zone-change replacement effects need (rule 616.1).</summary>
+    /// <param name="transformed">"Put onto the battlefield transformed": a double-faced card enters with its back face up (rule 712.14a).</param>
     private async Task MoveCardAsync(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
-        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false, bool faceDown = false)
+        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false, bool faceDown = false, bool transformed = false)
     {
         var card = State.GetCard(id);
+        transformed &= to == Zone.Battlefield && card.Zone != Zone.Battlefield && card.IsDoubleFaced;
         if (to == Zone.Battlefield && card.Zone != Zone.Battlefield)
         {
             var newController = controller ?? card.Owner;
             // "You may have this creature enter as a copy of …": chosen as it enters, so it enters with the copy's characteristics.
-            if (await ChooseCopyAsync(card, newController) is { } copied) _pendingCopies[(id, card.Version)] = copied;
+            if (await ChooseCopyAsync(card, newController, transformed) is { } copied) _pendingCopies[(id, card.Version)] = copied;
             // An Aura put onto the battlefield without being cast: the player putting it there chooses what it enchants; with
             // nothing legal to enchant it stays where it is (rules 303.4f, 303.4g).
-            if (attachTo is null && card.Zone != Zone.Stack && (_pendingCopies.GetValueOrDefault((id, card.Version)) ?? card.Definition) is { EnchantTarget: { } enchant } aura
+            if (attachTo is null && card.Zone != Zone.Stack && (_pendingCopies.GetValueOrDefault((id, card.Version)) ?? EnteringFace(card, transformed)) is { EnchantTarget: { } enchant } aura
                 && aura.Subtypes.Contains("Aura", StringComparer.OrdinalIgnoreCase))
             {
                 var hosts = AuraHosts(card, aura, enchant, newController);
@@ -174,7 +176,7 @@ public sealed partial class Game
         }
         if (!(_movePlans.TryGetValue((id, card.Version), out var planned) && planned.Requested == to))
             _movePlans[(id, card.Version)] = (to, await PlanMoveAsync(card, to));
-        var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped, faceDown);
+        var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped, faceDown, transformed);
         // A permanent that enters with counters its controller must order replacement effects for (rule 616.1): asked as it
         // enters, so the counters are on it before it is announced, as in every other case.
         var ordered = await OrderEnterCountersAsync(move.Card, move.EnterCounters);
@@ -190,37 +192,43 @@ public sealed partial class Game
     /// <param name="kicked">A spell cast with kicker becoming a permanent: it remembers it was kicked (for "if it was kicked").</param>
     /// <param name="faceDown">Exiled face down (rule 406.3): only the players who could see it as it moved know it.</param>
     private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
-        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false, bool faceDown = false)
+        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false, bool faceDown = false, bool transformed = false)
     {
         var card = State.GetCard(id);
+        transformed &= to == Zone.Battlefield && card.Zone != Zone.Battlefield && card.IsDoubleFaced;
         if (to == Zone.Battlefield && card.Zone != Zone.Battlefield && attachTo is null)
         {
             // Entering needs a choice that can't be asked here (a copy, or what an Aura enchants): it enters as soon as the
             // choice can be made, before anything else happens. An Aura with nothing to enchant stays where it is (303.4g).
             var newController = controller ?? card.Owner;
-            bool copyChoice = card.Definition.EntersAsCopyOf is { } copyFilter && CopyCandidates(card, copyFilter, newController).Count > 0;
-            if (card.Definition.EnchantTarget is { } enchant && card.Definition.Subtypes.Contains("Aura", StringComparer.OrdinalIgnoreCase))
+            var entering = EnteringFace(card, transformed);
+            bool copyChoice = entering.EntersAsCopyOf is { } copyFilter && CopyCandidates(card, copyFilter, newController).Count > 0;
+            if (entering.EnchantTarget is { } enchant && entering.Subtypes.Contains("Aura", StringComparer.OrdinalIgnoreCase))
             {
-                var hosts = AuraHosts(card, card.Definition, enchant, newController);
+                var hosts = AuraHosts(card, entering, enchant, newController);
                 if (hosts.Count == 0) return;
                 if (hosts.Count == 1 && !copyChoice) attachTo = hosts[0];
                 else copyChoice = true;
             }
             if (copyChoice)
             {
-                _deferredEnters.Add((id, card.Version, newController));
+                _deferredEnters.Add((id, card.Version, newController, transformed));
                 return;
             }
         }
-        var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped, faceDown);
+        var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped, faceDown, transformed);
         foreach (var returning in FinishMove(move, null)) MoveCard(returning, Zone.Battlefield, controller: State.GetCard(returning).Owner);
     }
+
+    /// <summary>The face a card about to enter the battlefield will have up: its back face if it enters transformed (rule 712.14a).</summary>
+    private static Cards.CardDefinition EnteringFace(Card card, bool transformed) =>
+        transformed && card.PrintedDefinition.BackFace is { } back ? back : card.Definition;
 
     /// <summary>Copies chosen for cards about to enter (by card and version before the move).</summary>
     private readonly Dictionary<(CardId Card, int Version), Cards.CardDefinition> _pendingCopies = new();
 
     /// <summary>Cards that were to enter the battlefield where no choice could be asked: they enter (asking) before the next priority.</summary>
-    private readonly List<(CardId Card, int Version, PlayerId Controller)> _deferredEnters = new();
+    private readonly List<(CardId Card, int Version, PlayerId Controller, bool Transformed)> _deferredEnters = new();
 
     private async Task EnterDeferredAsync()
     {
@@ -228,9 +236,9 @@ public sealed partial class Game
         var entering = _deferredEnters.ToList();
         _deferredEnters.Clear();
         BeginEnteringTogether();
-        foreach (var (id, version, controller) in entering)
+        foreach (var (id, version, controller, transformed) in entering)
             if (State.GetCard(id) is { } card && card.Version == version && card.Zone != Zone.Battlefield)
-                await MoveCardAsync(id, Zone.Battlefield, controller: controller);
+                await MoveCardAsync(id, Zone.Battlefield, controller: controller, transformed: transformed);
         EndEnteringTogether();
     }
 
@@ -242,9 +250,9 @@ public sealed partial class Game
             .ToList();
 
     /// <summary>"You may have this enter as a copy of …": the player chooses one (or none); the copy's copiable values (rule 707.2).</summary>
-    private async Task<Cards.CardDefinition?> ChooseCopyAsync(Card card, PlayerId controller)
+    private async Task<Cards.CardDefinition?> ChooseCopyAsync(Card card, PlayerId controller, bool transformed = false)
     {
-        if (card.Definition.EntersAsCopyOf is not { } filter) return null;
+        if (EnteringFace(card, transformed).EntersAsCopyOf is not { } filter) return null;
         var candidates = CopyCandidates(card, filter, controller);
         if (candidates.Count == 0) return null;
         var chosen = await ControllerOf(controller).ChooseCardsAsync(ViewFor(controller), new Players.CardChoiceRequest(
@@ -295,7 +303,7 @@ public sealed partial class Game
 
     /// <summary>The move itself, with its replacement effects applied: the card is in its new zone but nothing has been announced yet.</summary>
     private MoveInProgress BeginMove(CardId id, Zone to, bool toBottom, PlayerId? controller, CardId? attachTo, bool kicked,
-        bool castFromHand, bool wasCast, int timesKicked, int squadPaid, bool tapped, bool faceDown)
+        bool castFromHand, bool wasCast, int timesKicked, int squadPaid, bool tapped, bool faceDown, bool transformed = false)
     {
         var enterCounters = new List<(Abilities.CounterKind Kind, int Count)>();
         var card = State.GetCard(id);
@@ -338,6 +346,8 @@ public sealed partial class Game
         }
 
         card.ResetStatus();
+        // A double-faced card enters front face up unless it's put onto the battlefield transformed (rule 712.14).
+        card.Transformed = transformed && to == Zone.Battlefield && card.IsDoubleFaced;
         if (to == Zone.Battlefield && _pendingCopies.Remove((id, card.Version - 1), out var copied)) card.CopiedDefinition = copied;
         _pendingCopies.Remove((id, card.Version - 1));
         card.ZoneChangedTurn = State.TurnNumber;

@@ -21,7 +21,12 @@ public sealed record Printing(
 public sealed record SetInfo(string Code, string Name, string Released, string Type, int CardCount);
 
 /// <summary>One face of a card with several (split, transforming, adventure...).</summary>
-public sealed record CardFaceRecord(string Name, string ManaCost, string TypeLine, string OracleText, string? Power, string? Toughness);
+/// <param name="Colors">The face's colors (from its mana cost, or its color indicator on a back face without one); empty when the source doesn't say.</param>
+public sealed record CardFaceRecord(string Name, string ManaCost, string TypeLine, string OracleText, string? Power, string? Toughness)
+{
+    public string? Loyalty { get; init; }
+    public IReadOnlyList<string> Colors { get; init; } = Array.Empty<string>();
+}
 
 /// <summary>
 /// Raw card data as imported from a module's card source, before it becomes an engine

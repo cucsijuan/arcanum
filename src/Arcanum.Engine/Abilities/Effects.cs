@@ -145,6 +145,12 @@ public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool 
 
     /// <summary>"That creature is black in addition to its other colors."</summary>
     public IReadOnlyList<string>? AddColors { get; init; }
+
+    /// <summary>
+    /// "Return it to the battlefield transformed": a double-faced card enters with its back face up (rule 712.14a); a card
+    /// that isn't double-faced stays where it is.
+    /// </summary>
+    public bool Transformed { get; init; }
 }
 
 /// <summary>
@@ -882,6 +888,13 @@ public sealed record Repeat(Quantity Times, IReadOnlyList<Effect> Effects) : Eff
 
 /// <summary>"[It] becomes renowned" (renown, rule 702.112).</summary>
 public sealed record BecomeRenowned(Subject What) : Effect;
+
+/// <summary>
+/// "Transform [it]" (rule 701.27): a double-faced permanent turns over to its other face and stays the same object. Anything
+/// else is unaffected (701.27c), as is a face that would be an instant or sorcery (701.27d); an ability of the permanent
+/// transforms it only if it hasn't transformed since the ability was put on the stack (or a delayed one was created, 701.27f).
+/// </summary>
+public sealed record Transform(Subject What) : Effect;
 
 /// <summary>"[It] gains protection from each of your opponents until end of turn".</summary>
 public sealed record ProtectionFromOpponents(Subject What) : Effect;

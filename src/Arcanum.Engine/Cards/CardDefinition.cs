@@ -419,6 +419,13 @@ public sealed record CardDefinition
     /// </summary>
     public CardDefinition? Adventure { get; init; }
 
+    /// <summary>
+    /// For a nonmodal double-faced card (rule 712.2): its back face. This definition is the front face; the card is cast
+    /// with it up and has only its characteristics everywhere but the battlefield (712.8a). On the battlefield it can
+    /// transform (701.27) and then has only the back face's characteristics, whose mana value is the front face's (712.8e).
+    /// </summary>
+    public CardDefinition? BackFace { get; init; }
+
     public bool Is(CardType type) => (Types & type) != 0;
 
     public bool IsCreature() => Is(CardType.Creature);

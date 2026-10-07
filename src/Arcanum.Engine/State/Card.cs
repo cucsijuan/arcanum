@@ -14,9 +14,37 @@ public sealed class Card
     public CardDefinition PrintedDefinition { get; }
 
     /// <summary>Its characteristics now: those of its Adventure while it is cast as one (rule 715.3), otherwise the printed card's.</summary>
-    public CardDefinition Definition => CopiedDefinition ?? (AsAdventure && PrintedDefinition.Adventure is { } adventure ? adventure
+    public CardDefinition Definition => CopiedDefinition ?? (Transformed && BackFaceDefinition is { } back ? back
+        : AsAdventure && PrintedDefinition.Adventure is { } adventure ? adventure
         : CastHalf is { } half && PrintedDefinition.SplitHalves is { } halves ? halves[half]
         : PrintedDefinition);
+
+    /// <summary>
+    /// A double-faced permanent with its back face up (rule 701.27g: a "transformed permanent"). Only a permanent can be
+    /// transformed: in every other zone the card has its front face up (712.8a), and it enters the battlefield front face
+    /// up unless an effect puts it there transformed (712.14).
+    /// </summary>
+    public bool Transformed { get; internal set; }
+
+    /// <summary>Times this object has transformed (rule 701.27f: an ability of it transforms it only if it hasn't since).</summary>
+    public int TransformCount { get; internal set; }
+
+    /// <summary>A double-faced card or token (rule 712.2): it can transform; a copy of one isn't (701.27c).</summary>
+    public bool IsDoubleFaced => PrintedDefinition.BackFace is not null;
+
+    private CardDefinition? _backFace;
+
+    /// <summary>The back face as this object has it: a token's back face is a token too, a foil card's back is foil.</summary>
+    private CardDefinition? BackFaceDefinition => PrintedDefinition.BackFace is not { } back ? null
+        : _backFace ??= back with { IsToken = PrintedDefinition.IsToken, Foil = PrintedDefinition.Foil, OracleId = back.OracleId ?? PrintedDefinition.OracleId };
+
+    /// <summary>
+    /// Its mana value (rule 202.3): with its back face up, that of its front face's mana cost (712.8e), or 0 for a copy of a
+    /// back face (202.3b) — a double-faced token is one (707.8a). A spell's X is added where it is on the stack.
+    /// </summary>
+    public int ManaValue => CopiedDefinition is null && Transformed && PrintedDefinition.BackFace is not null
+        ? (PrintedDefinition.IsToken ? 0 : PrintedDefinition.ManaCost.ManaValue)
+        : Definition.ManaCost.ManaValue;
 
     /// <summary>
     /// The copiable values it has from a copy effect ("enter as a copy of any creature", rule 707): while on the battlefield
@@ -455,7 +483,7 @@ public sealed class Card
                 Supertypes = Supertypes,
                 AttachedTo = AttachedTo,
                 Version = Version,
-                ManaValue = Definition.ManaCost.ManaValue,
+                ManaValue = ManaValue,
             };
         }
         Tapped = false;
@@ -479,6 +507,8 @@ public sealed class Card
         LosesAbilities = false;
         LosesTextAbilities = false;
         CopiedDefinition = null;
+        Transformed = false; // it leaves the battlefield and is front face up again (712.8a)
+        TransformCount = 0;
         GrantedManaOptions.Clear();
         CastFromHand = false;
         WasCast = false;

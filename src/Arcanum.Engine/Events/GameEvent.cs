@@ -79,6 +79,9 @@ public sealed record CardDiscarded(PlayerId Player, CardId Card) : GameEvent;
 /// <summary>Scry (<paramref name="Scry"/> true) or surveil: <paramref name="Moved"/> of the <paramref name="Looked"/> cards left the top.</summary>
 public sealed record LookedAtTop(PlayerId Player, int Looked, int Moved, bool Scry) : GameEvent;
 
+/// <summary>A double-faced permanent transformed (rule 701.27); <paramref name="BackFaceUp"/>: it is transformed now.</summary>
+public sealed record PermanentTransformed(CardId Card, bool BackFaceUp) : GameEvent;
+
 /// <summary>A player became the monarch (rule 724).</summary>
 public sealed record MonarchChanged(PlayerId Player) : GameEvent;
 

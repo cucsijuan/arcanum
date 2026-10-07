@@ -141,6 +141,9 @@ public sealed record DelayedTrigger(CardId Source, Abilities.TriggeredAbility Ab
 
     /// <summary>"That player" for the delayed ability.</summary>
     public PlayerId? About { get; init; }
+
+    /// <summary>How many times its source had transformed when it was created (rule 701.27f).</summary>
+    public int? SourceTransforms { get; init; }
 }
 
 /// <summary>"Prevent all damage that would be dealt by" a permanent, while a source stays on the battlefield.</summary>
@@ -243,7 +246,7 @@ public sealed class GameState
     public List<DelayedTrigger> AtNextUpkeep { get; } = new();
 
     /// <summary>"At the beginning of the next end step, exile that token unless …": per token made.</summary>
-    public List<(CardId Source, PlayerId Controller, CardId Token, int TokenVersion, IReadOnlyList<Abilities.Effect> Effects, Abilities.Condition? Unless)> AtNextEndStepEffects { get; } = new();
+    public List<(CardId Source, PlayerId Controller, CardId Token, int TokenVersion, IReadOnlyList<Abilities.Effect> Effects, Abilities.Condition? Unless, int? SourceTransforms)> AtNextEndStepEffects { get; } = new();
 
     /// <summary>"When you next cast a creature spell of that type this turn, that creature enters with an additional +1/+1 counter."</summary>
     public List<(PlayerId Player, string Type, int Turn)> NextCreatureSpellBonus { get; } = new();

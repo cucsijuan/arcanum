@@ -205,7 +205,8 @@ public sealed partial class Game
         IEnumerable<string> all = Config.CardNames
             ?? State.Cards.Values.Where(c => !c.PrintedDefinition.IsToken && !c.PrintedDefinition.IsEmblem
                                              && (c.Owner == who || c.IsVisibleTo(who) || Views.ViewBuilder.RevealedByEffect(State, c, who)))
-                .Select(c => c.PrintedDefinition.Name);
+                // Either face of a double-faced card, but not both together (rule 712.19).
+                .SelectMany(c => c.PrintedDefinition.BackFace is { } back ? new[] { c.PrintedDefinition.Name, back.Name } : new[] { c.PrintedDefinition.Name });
         return (first ?? Array.Empty<string>()).Concat(all.Distinct().OrderBy(n => n, StringComparer.OrdinalIgnoreCase)).Distinct().ToList();
     }
 
@@ -750,7 +751,7 @@ public sealed partial class Game
         if (conspirators is not null)
             _pendingTriggers.Add(new PendingTrigger(cardId, ConspireTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, 1)));
         for (int i = 0; i < card.Definition.Cascade; i++) // cascade triggers as the spell is cast (rule 702.85a)
-            _pendingTriggers.Add(new PendingTrigger(cardId, CascadeTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, card.Definition.ManaCost.ManaValue)));
+            _pendingTriggers.Add(new PendingTrigger(cardId, CascadeTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, card.ManaValue)));
         foreach (var source in copySources) QueueCopyThatSpell(source, player.Id, card);
         foreach (var source in scrySources) _pendingTriggers.Add(new PendingTrigger(source, ScryOneForSharedType, player.Id));
         return true;
@@ -902,7 +903,7 @@ public sealed partial class Game
         var item = new AbilityOnStack(source.Id, ability, player.Id, targets)
         {
             X = x, SacrificedForCost = sacrificed, SourceVersion = source.Version, DiscardedForCost = _lastDiscardedForCost.ToList(), Division = division,
-            AbilityIndex = action.Index,
+            AbilityIndex = action.Index, SourceTransforms = source.TransformCount,
         };
         if (IsManaAbility(ability))
         {
@@ -1329,7 +1330,7 @@ public sealed partial class Game
                 {
                     // Dash: it gains haste, and it returns to its owner's hand at the beginning of the next end step.
                     State.LastingEffects.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });
-                    State.AtNextEndStepEffects.Add((card.Id, spell.Controller, card.Id, card.Version, new Effect[] { new ReturnToHand(Subject.Triggered) }, null));
+                    State.AtNextEndStepEffects.Add((card.Id, spell.Controller, card.Id, card.Version, new Effect[] { new ReturnToHand(Subject.Triggered) }, null, null));
                 }
                 if (card.Zone == Zone.Battlefield && hasteOnEnter)
                     State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });

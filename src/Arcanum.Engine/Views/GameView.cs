@@ -78,6 +78,18 @@ public sealed record CardView
 
     /// <summary>A split card's halves: names and mana costs.</summary>
     public IReadOnlyList<string>? SplitHalves { get; init; }
+
+    /// <summary>A double-faced permanent with its back face up (rule 701.27g).</summary>
+    public bool Transformed { get; init; }
+
+    /// <summary>This view shows a double-faced card's back face (its picture is the back's).</summary>
+    public bool IsBackFace { get; init; }
+
+    /// <summary>
+    /// For a double-faced card: its other face as printed (players who may see a double-faced card may look at both sides,
+    /// rule 712.6) — the back face while the front is up, the front while it's transformed.
+    /// </summary>
+    public CardView? OtherFace { get; init; }
 }
 
 public sealed record PlayerView

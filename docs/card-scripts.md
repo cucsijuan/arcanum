@@ -287,6 +287,29 @@ Quantities also: `sacrificedToughness`, `lifeLostThisWay`, `destroyedThisWay`, `
   `"adventure": { "spell": { … }, "additionalCost": … }` (a script of its own). The card can be cast as its
   Adventure; once that spell resolves the card is exiled and its owner may cast the card itself from exile. A
   countered Adventure goes to the graveyard.
+- **Transforming double-faced cards** (layout `transform`): the script describes the front face as usual and the back
+  face under `"back": { "abilities": [ … ], … }` (a script of its own, with the same shape). The card is supported only
+  when both faces are: a back face whose rules text needs a script stays unsupported until `"back"` has one. The card
+  is cast with its front face, and has only the front face's characteristics everywhere but the battlefield; there it
+  has the face that's up, and with its back face up its mana value is still the front face's. It enters front face up,
+  and leaving the battlefield turns it front face up again.
+  - Effect `{ "transform": "self" }` (or any subject: `"target"`, `"triggered"` …) turns a double-faced permanent over.
+    It stays the same object: counters, damage, Auras and Equipment, tapped status and effects on it stay, and it
+    doesn't enter or leave the battlefield. Anything that isn't a double-faced card or token doesn't transform. An
+    ability of the permanent transforms it only if it hasn't transformed since that ability was put on the stack (for
+    a delayed ability: since it was created), so two activations waiting on the stack turn it over once.
+  - Putting a card onto the battlefield transformed: `"transformed": true` on `reanimate` (any subject, e.g.
+    `{ "reanimate": "self", "transformed": true }` for "return it to the battlefield transformed") and `reanimateAll`.
+    A card that isn't double-faced stays where it is.
+  - Trigger `transforms`: "whenever this permanent transforms"; with `"onSelf": true` and a `"filter"`, "transforms into
+    [a permanent matching it]" (judged right after it transformed); with only a `"filter"`, it watches other permanents
+    ("whenever a creature you control transforms"). The abilities of the face that's now up are the ones that trigger.
+  - Conditions `"transformed"` (the source is a double-faced permanent with its back face up) and `"frontFaceUp"`
+    (a double-faced permanent with its front face up), usable in `"if"`, `"activateIf"` and static `"while"`.
+    Filter `"transformed": true / false` ("a transformed permanent").
+  - Copies copy the face that's up: a copy of a transformed permanent has the back face and mana value 0 and can't
+    transform; a token copy of a double-faced permanent is a double-faced token, entering with the same face up.
+  - Day/night cards (daybound, nightbound) and cards cast transformed (disturb …) are not run yet.
 - **Sagas** (layout `saga`): chapter abilities are triggered abilities with `"trigger": "chapter", "chapters": [3, 4]`.
   A Saga enters with a lore counter, gets one as its controller's precombat main phase begins, and is sacrificed
   once it has as many lore counters as its last chapter and no chapter ability is waiting or on the stack.

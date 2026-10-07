@@ -75,6 +75,12 @@ public sealed record AbilityOnStack(CardId Source, AbilityDefinition Ability, Pl
 
     /// <summary>For an activated ability: its index among its source's abilities.</summary>
     public int? AbilityIndex { get; init; }
+
+    /// <summary>
+    /// How many times its source had transformed when it was put on the stack (for a delayed ability: when it was created).
+    /// An ability of a permanent transforms it only if it hasn't transformed since (rule 701.27f).
+    /// </summary>
+    public int? SourceTransforms { get; init; }
 }
 
 /// <summary>What a trigger event was about: an object (with its version then), a player and an amount.</summary>

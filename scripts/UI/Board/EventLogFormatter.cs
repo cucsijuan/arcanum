@@ -45,6 +45,8 @@ public static class EventLogFormatter
             CitysBlessingGained cb => $"{P(cb.Player)} gets the city's blessing.",
             MonarchChanged mc => $"{P(mc.Player)} becomes the monarch.",
             RingTempted rt => $"The Ring tempts {P(rt.Player)} ({rt.Level}){(rt.Bearer is { } bearer ? $": {C(bearer)} is the Ring-bearer" : "")}.",
+            PermanentTransformed tf when ev.Card(tf.Card) is { IsHidden: false, OtherFace: { } before } now => $"{before.Name} transforms into {now.Name}.",
+            PermanentTransformed tf => $"{C(tf.Card)} transforms.",
             PhasedOut po => $"{C(po.Card)} phases out.",
             PhasedIn pi => $"{C(pi.Card)} phases in.",
             CardsRevealed cr => $"{P(cr.Player)} reveals {string.Join(", ", cr.Cards.Select(C))}.",

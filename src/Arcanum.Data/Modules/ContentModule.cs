@@ -15,7 +15,9 @@ public sealed record CardSource(
 }
 
 /// <param name="ByIdTemplate">URL for an exact image id ({id}), used when a name is ambiguous (tokens).</param>
-public sealed record ImageSource(string UrlTemplate, int MinIntervalMs, string? ByIdTemplate = null);
+/// <param name="BackUrlTemplate">URL of a double-faced card's back face picture by name ({name}); without it the back shows as text.</param>
+/// <param name="BackByIdTemplate">URL of a double-faced printing's back face picture by its image id ({id}).</param>
+public sealed record ImageSource(string UrlTemplate, int MinIntervalMs, string? ByIdTemplate = null, string? BackUrlTemplate = null, string? BackByIdTemplate = null);
 
 /// <summary>Where every printing of every card comes from (sets, collector numbers, rarities, exact images).</summary>
 public sealed record PrintingSource(string Index, string DownloadField);
@@ -62,7 +64,7 @@ public sealed class ContentModule
             new CardSource(Required(cards, "format"), Required(cards, "index"), Required(cards, "downloadField"), Required(cards, "updatedField"),
                 StringList(cards, "includeIfLegalIn"), StringList(cards, "excludeLayouts")),
             new ImageSource(Required(images, "urlTemplate"), images.TryGetProperty("minIntervalMs", out var ms) ? ms.GetInt32() : 100,
-                Optional(images, "byIdTemplate")),
+                Optional(images, "byIdTemplate"), Optional(images, "backUrlTemplate"), Optional(images, "backByIdTemplate")),
             s.TryGetProperty("printings", out var printings)
                 ? new PrintingSource(Required(printings, "index"), Required(printings, "downloadField"))
                 : null);
@@ -143,6 +145,10 @@ public sealed class ContentModule
 
     /// <summary>URL for an exact image id, or null if the module's image source doesn't support it.</summary>
     public string? ImageUrlById(string id) => Sources.Images.ByIdTemplate?.Replace("{id}", Uri.EscapeDataString(id));
+
+    /// <summary>URL of a double-faced card's back face picture, by the back face's name or by image id; null if the module has none.</summary>
+    public string? BackImageUrl(string faceName) => Sources.Images.BackUrlTemplate?.Replace("{name}", Uri.EscapeDataString(faceName));
+    public string? BackImageUrlById(string id) => Sources.Images.BackByIdTemplate?.Replace("{id}", Uri.EscapeDataString(id));
 
     private string DecksDirectory => Path.Combine(Directory, "decks");
 

@@ -26,6 +26,11 @@ public partial class GameBoard : Control
     /// <summary>One area per player: seat 0 across the bottom half, opponents side by side across the top half.</summary>
     private readonly List<PlayerArea> _areas = new();
     private readonly CardNode _preview = new();
+
+    /// <summary>The card shown in the preview, whether it shows that card's other face (double-faced cards), and the hint saying so.</summary>
+    private CardView? _previewView;
+    private bool _previewOtherFace;
+    private readonly Label _previewHint = new();
     private readonly CardStatusPanel _status = new() { Visible = false };
     private readonly Label _turnNumber = BoardStyle.MakeLabel("1", 22, bold: true);
     private readonly Label _stepLabel = BoardStyle.MakeTitle("", 20);
@@ -484,6 +489,15 @@ public partial class GameBoard : Control
         _preview.Visible = false;
         _preview.ZIndex = BoardStyle.Z.Preview;
         AddChild(_preview);
+        _previewHint.MouseFilter = MouseFilterEnum.Ignore;
+        _previewHint.HorizontalAlignment = HorizontalAlignment.Center;
+        _previewHint.AddThemeFontSizeOverride("font_size", 13);
+        _previewHint.AddThemeColorOverride("font_color", BoardStyle.Text);
+        _previewHint.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0));
+        _previewHint.AddThemeConstantOverride("outline_size", 4);
+        _previewHint.Visible = false;
+        _previewHint.ZIndex = BoardStyle.Z.Preview;
+        AddChild(_previewHint);
         _status.ZIndex = BoardStyle.Z.Preview;
         AddChild(_status);
 
@@ -1551,6 +1565,15 @@ public partial class GameBoard : Control
             return;
         }
 
+        // F flips the preview of a double-faced card to its other face and back.
+        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.F } && _preview.Visible && _previewView?.OtherFace is not null)
+        {
+            _previewOtherFace = !_previewOtherFace;
+            ShowPreviewFace();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         // Space confirms the primary action.
         if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Space } && _actionPanel.Visible)
         {
@@ -1915,7 +1938,9 @@ public partial class GameBoard : Control
     {
         if (node.View is not { IsHidden: false } view) return;
         _preview.MirrorFoil(node); // a foil card shines on the preview as it does under the pointer
-        _preview.Setup(view, showCostPips: false);
+        _previewView = view;
+        _previewOtherFace = false;
+        ShowPreviewFace();
         _preview.Position = new Vector2(16, (Size.Y - _preview.Size.Y) / 2);
         _preview.Visible = true;
         // Beside it: what effects changed about the card and its state now.
@@ -1929,6 +1954,23 @@ public partial class GameBoard : Control
         _preview.MirrorFoil(null);
         _preview.Visible = false;
         _status.Visible = false;
+        _previewHint.Visible = false;
+        _previewView = null;
+    }
+
+    /// <summary>
+    /// The previewed card with the face that's up, or its other face once flipped (a double-faced card: players who may see
+    /// it may look at both sides). A hint under the preview says the card has another face and how to see it.
+    /// </summary>
+    private void ShowPreviewFace()
+    {
+        if (_previewView is not { } view) return;
+        _preview.Setup(_previewOtherFace && view.OtherFace is { } other ? other : view, showCostPips: false);
+        _previewHint.Visible = view.OtherFace is not null;
+        if (!_previewHint.Visible) return;
+        _previewHint.Text = _previewOtherFace ? $"Other face of {view.Name} — [F] flip back" : "Double-faced — [F] see the other face";
+        _previewHint.Size = new Vector2(_preview.Size.X, 20);
+        _previewHint.Position = new Vector2(16, (Size.Y + _preview.Size.Y) / 2 + 4);
     }
 
     private bool _refreshQueued;
@@ -2060,6 +2102,9 @@ public partial class GameBoard : Control
                 break;
             case PermanentDestroyed d:
                 _announcer.Enqueue(new($"{ev.Name(d.Card)} is destroyed", ViewOf(ev, d.Card), 1.5));
+                break;
+            case PermanentTransformed tf when ViewOf(ev, tf.Card) is { } turned:
+                _announcer.Enqueue(new($"{turned.OtherFace?.Name ?? ev.Name(tf.Card)} transforms into {turned.Name}", turned, 1.5));
                 break;
             case CardMoved { From: Arcanum.Engine.State.Zone.Battlefield, To: Arcanum.Engine.State.Zone.Exile } m when !_session.ViewFor(Bottom).Players[m.Owner.Value].HasLost:
                 _announcer.Enqueue(new($"{ev.Name(m.Card)} is exiled", ViewOf(ev, m.Card), 1.5));

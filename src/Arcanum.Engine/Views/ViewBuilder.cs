@@ -97,7 +97,7 @@ public static class ViewBuilder
                 Id = card.Id, Owner = card.Owner, Controller = card.Controller, Zone = card.Zone, IsHidden = true,
             };
         }
-        return new CardView
+        var face = new CardView
         {
             Id = card.Id,
             Owner = card.Owner,
@@ -147,6 +147,46 @@ public static class ViewBuilder
             AdventureText = card.PrintedDefinition.Adventure?.OracleText,
             OnAdventure = card.OnAdventure,
             SplitHalves = card.PrintedDefinition.SplitHalves?.Select(h => $"{h.Name} {h.ManaCost}").ToList(),
+            Transformed = card.Transformed,
+            IsBackFace = card.Transformed && card.CopiedDefinition is null && card.IsDoubleFaced,
         };
+        // A double-faced card shows its other face on request; a copy of one has only the face it copied (rule 707.8).
+        if (card.IsDoubleFaced && card.CopiedDefinition is null && card.PrintedDefinition.BackFace is { } back)
+            face = face with { OtherFace = PrintedFace(card, card.Transformed ? card.PrintedDefinition : back, isBack: !card.Transformed) };
+        return face;
     }
+
+    /// <summary>One face of a double-faced card as printed (its own characteristics, without effects or counters).</summary>
+    private static CardView PrintedFace(State.Card card, Cards.CardDefinition face, bool isBack) => new()
+    {
+        Id = card.Id,
+        Owner = card.Owner,
+        Controller = card.Controller,
+        Zone = card.Zone,
+        IsHidden = false,
+        Name = face.Name,
+        ManaCost = face.ManaCost.ToString(),
+        Types = face.Types,
+        Power = face.Power,
+        Toughness = face.Toughness,
+        BasePower = face.Power,
+        BaseToughness = face.Toughness,
+        Keywords = face.KeywordAbilities.Select(Cards.Keywords.DisplayName).ToList(),
+        PrintedKeywords = face.KeywordAbilities.Select(Cards.Keywords.DisplayName).ToList(),
+        Loyalty = face.Loyalty ?? 0,
+        FinalChapter = face.FinalChapter,
+        IsToken = card.PrintedDefinition.IsToken,
+        OracleText = face.OracleText,
+        Colors = face.ColorList,
+        PrintedColors = face.ColorList,
+        ImageKey = face.ImageKey ?? card.PrintedDefinition.ImageKey,
+        Foil = card.PrintedDefinition.Foil,
+        Supertypes = face.Supertypes,
+        Subtypes = face.Subtypes,
+        PrintedTypes = face.Types,
+        PrintedSubtypes = face.Subtypes,
+        AbilityTexts = face.Abilities.Select(a => a.Text).ToList(),
+        Transformed = isBack,
+        IsBackFace = isBack,
+    };
 }
