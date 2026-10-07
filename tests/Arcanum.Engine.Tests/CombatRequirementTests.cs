@@ -52,13 +52,25 @@ public class CombatRequirementTests
         var s = new Scenario();
         var jackal = s.Add(P0, Jackal);
         AttackRequest? request = null;
-        s.Attacker.Attack = (view, attackers, defenders) => { request = view.AttackRequest; return All(attackers, defenders[0]); };
+        // It wants to attack; the request makes the declaration legal (an illegal one is rejected).
+        s.Attacker.Attack = (view, attackers, defenders) => { request = view.AttackRequest; return request!.Complete(All(attackers, defenders[0])); };
         await s.RunUntilTurn();
         Assert.NotNull(request);
         Assert.False(request!.IsLegal(new[] { new AttackDeclaration(jackal, P1) }, out var reason));
         Assert.Contains("alone", reason);
         Assert.True(request.IsLegal(Array.Empty<AttackDeclaration>(), out _));
         Assert.Equal(20, s.Game.State.GetPlayer(P1).Life);
+    }
+
+    [Fact]
+    public async Task AnIllegalAttackIsRejected()
+    {
+        // Like blocks, an attack that breaks a restriction (or doesn't obey requirements as far as possible) isn't repaired.
+        var s = new Scenario();
+        s.Add(P0, Jackal);
+        s.Attacker.Attack = (_, attackers, defenders) => All(attackers, defenders[0]);
+        var error = await Assert.ThrowsAsync<InvalidDecisionException>(() => s.RunUntilTurn());
+        Assert.Contains("alone", error.Message);
     }
 
     [Fact]
@@ -287,7 +299,7 @@ public class CombatRequirementTests
         game.State.GetCard(siren).ControlledSinceTurnStart = true;
         players[2].Act = (_, legal) => legal.OfType<ActivateAbility>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
         AttackRequest? request = null;
-        players[0].Attack = (view, attackers, _) => { request = view.AttackRequest; return All(attackers, P1); }; // wants to attack P1
+        players[0].Attack = (view, attackers, _) => { request = view.AttackRequest; return request!.Complete(All(attackers, P1)); }; // wants to attack P1
         await Run(game);
         Assert.NotNull(request);
         Assert.False(request!.IsLegal(new[] { new AttackDeclaration(bear, P1) }, out _));
@@ -329,7 +341,7 @@ public class CombatRequirementTests
         game.SetupPermanent(P1, GenericCards.Island);
         var walker = game.SetupPermanent(P2, new CardDefinition { Name = "Walker", ManaCost = ManaCost.Parse("{3}"), Types = CardType.Planeswalker, Loyalty = 3 });
         AttackRequest? request = null;
-        players[0].Attack = (view, attackers, _) => { request = view.AttackRequest; return All(attackers, P2); };
+        players[0].Attack = (view, attackers, _) => { request = view.AttackRequest; return request!.Complete(All(attackers, P2)); };
         await Run(game);
         Assert.True(request!.MayAttack(serpent, P1));
         Assert.False(request.MayAttack(serpent, P2));

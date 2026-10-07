@@ -288,7 +288,8 @@ public class LegendaryJourneyTests
         s.Lands(P0, 1);
         var bear = s.Add(P1, Creature("Bear", 2, 2));
         s.InHand(P0, TargetedSorcery("Taunt", new TargetSpec(TargetKind.Creature, ControllerFilter.Opponent), new Goad(Subject.TargetAt(0))));
-        s.Defender.Attack = (_, _, _) => Array.Empty<AttackDeclaration>(); // it attacks anyway
+        // It would rather stay home, but a goaded creature must attack: the legal declaration has it attack.
+        s.Defender.Attack = (view, _, _) => view.AttackRequest!.Complete(Array.Empty<AttackDeclaration>());
         int life = s.Game.State.GetPlayer(P0).Life;
         await s.RunUntilTurn(3);
         Assert.Equal(life - 2, s.Game.State.GetPlayer(P0).Life);

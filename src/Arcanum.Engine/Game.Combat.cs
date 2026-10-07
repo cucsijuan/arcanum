@@ -43,10 +43,9 @@ public sealed partial class Game
                                       || State.GetCard(pw) is { Zone: Zone.Battlefield } w && w.Is(CardType.Planeswalker) && w.Controller == d.Defender),
                 "A planeswalker can only be attacked through its controller.");
             // Restrictions are never broken and requirements are obeyed as far as possible (508.1c-d): a declaration that
-            // doesn't is made legal, keeping as much of it as possible ("attacks each combat if able" creatures left out
-            // attack anyway, a goaded creature goes after a player other than the one who goaded it, a creature that can't
-            // attack alone doesn't).
-            if (!request.IsLegal(declared, out _)) declared = request.Complete(declared);
+            // doesn't is illegal, like an illegal block (the request's Complete makes one legal, keeping as much of it as
+            // possible).
+            Require(request.IsLegal(declared, out var reason), reason ?? "Illegal attack.");
 
             // "Creatures can't attack you unless their controller pays {1} for each of those creatures" (rule 508.1g–h): the
             // costs are paid as attackers are declared; a declaration whose costs aren't paid is illegal and is made again.
