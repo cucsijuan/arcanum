@@ -340,6 +340,16 @@ public enum TriggerEvent
     BlocksOrBecomesBlockedByCreature,
     /// <summary>"Whenever this creature blocks a creature": once per creature it blocks (subject: that creature, rule 509.3d).</summary>
     BlocksCreature,
+    /// <summary>"Whenever you become the target of a spell or ability an opponent controls" (player: that opponent, amount: the stack object).</summary>
+    YouBecomeTargetOfOpponent,
+    /// <summary>"When a spell or ability an opponent controls causes you to discard this card" (works from the graveyard it went to).</summary>
+    DiscardedByOpponent,
+    /// <summary>"Whenever this creature is dealt damage" (combat or not; amount: the damage, one trigger per source).</summary>
+    DealtDamage,
+    /// <summary>"When enchanted/equipped creature blocks" (once however many creatures it blocks; subject: that creature).</summary>
+    AttachedBlocks,
+    /// <summary>"Whenever a [filter] permanent you control dies" (any permanent put into a graveyard from the battlefield; subject: that permanent as it last existed).</summary>
+    PermanentDies,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -516,6 +526,15 @@ public sealed record ObjectFilter(
 
     /// <summary>Has none of these colors ("nonblack": ["B"]).</summary>
     public IReadOnlyList<string>? NotColors { get; init; }
+
+    /// <summary>Has the card name the source chose as it entered ("lands with the chosen name").</summary>
+    public bool ChosenName { get; init; }
+
+    /// <summary>Mana value exactly the amount the trigger is about ("with mana value X" once X was paid for a reflexive ability).</summary>
+    public bool ManaValueIsTriggerAmount { get; init; }
+
+    /// <summary>Only the source itself ("sacrifice this enchantment").</summary>
+    public bool IsSource { get; init; }
 
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 

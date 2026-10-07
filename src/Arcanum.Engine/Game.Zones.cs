@@ -24,6 +24,8 @@ public sealed partial class Game
         CommandZone,
         /// <summary>The card's own "if a spell or ability an opponent controls causes you to discard it, put it onto the battlefield instead".</summary>
         OntoBattlefieldInsteadOfDiscard,
+        /// <summary>"If it would leave the battlefield, exile it instead of putting it anywhere else" (a permanent put there by such an effect).</summary>
+        ExileIfLeaves,
     }
 
     /// <summary>One replacement effect that would modify where a card goes (rule 614.1a).</summary>
@@ -46,6 +48,7 @@ public sealed partial class Game
     private List<ZoneReplacement> ZoneReplacements(Card card, Zone from, Zone to, IReadOnlyList<ZoneReplacement> applied, bool discardedByOpponent = false)
     {
         var list = new List<ZoneReplacement>();
+        if (from == Zone.Battlefield && to != Zone.Exile && State.ExileIfLeaves.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileIfLeaves));
         if (to is Zone.Hand or Zone.Library && from != to && Config.Commander is not null && card.IsCommander)
             list.Add(new(ZoneReplacementKind.CommandZone));
         if (to == Zone.Graveyard)
@@ -79,6 +82,7 @@ public sealed partial class Game
     private string Describe(ZoneReplacement replacement, Card card) => replacement.Kind switch
     {
         ZoneReplacementKind.ExileIfDies => "Exile it (it would die this turn)",
+        ZoneReplacementKind.ExileIfLeaves => "Exile it instead (it would leave the battlefield)",
         ZoneReplacementKind.ShuffleIntoLibrary => $"Shuffle it into its owner's library ({card.Name})",
         ZoneReplacementKind.ExiledByOpponentsPermanent => $"Exile it ({replacement.By!.Name}, {State.GetPlayer(replacement.By.Controller).Name})",
         ZoneReplacementKind.ExileInsteadOfGraveyard => "Exile it (the effect it was cast with)",

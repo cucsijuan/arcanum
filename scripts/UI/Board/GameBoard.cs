@@ -1354,7 +1354,8 @@ public partial class GameBoard : Control
             {
                 var blocks = BlockPairs();
                 bool legal = b.Request.IsLegal(blocks, out var reason);
-                _prompt.Text = _pendingBlocker is { } choosing && b.Request.CanBlockAny.Contains(choosing) ? $"{who}: choose what it blocks (any number; click it again when done)"
+                _prompt.Text = _pendingBlocker is { } choosing && b.Request.CanBlockSeveral(choosing)
+                        ? $"{who}: choose what it blocks ({(b.Request.CanBlockAny.Contains(choosing) ? "any number" : "up to two")}; click it again when done)"
                     : !legal ? $"{who}: {reason}"
                     : _pendingBlocker is null ? $"{who}: choose a blocker" : $"{who}: choose what it blocks";
                 var confirmBlocks = AddButton(_blocks.Count == 0 ? "No blocks" : $"Confirm blocks ({_blocks.Count})", () => b.Answer(blocks), primary: true);
@@ -1876,7 +1877,7 @@ public partial class GameBoard : Control
                     var stack = AreaHolding(node)?.StackMembers(id) ?? new[] { id };
                     var same = SameKindAmong(node, b.PossibleBlockers);
                     if (IsPendingBlocker(id)) ClearPendingBlockers(); // picked again: not blocking after all (or done picking attackers)
-                    else if (_blocks.ContainsKey(id) && b.Request.CanBlockAny.Contains(id))
+                    else if (_blocks.ContainsKey(id) && b.Request.CanBlockSeveral(id))
                     {
                         // A creature that can block any number of creatures: pick it again to add or remove attackers it blocks.
                         ClearPendingBlockers();
@@ -1904,7 +1905,7 @@ public partial class GameBoard : Control
                     bool keepPicking = false;
                     foreach (var picked in PendingBlockers().Where(p => b.Request.CanBlock[p].Contains(id)).ToList())
                     {
-                        if (b.Request.CanBlockAny.Contains(picked))
+                        if (b.Request.CanBlockSeveral(picked))
                         {
                             // Toggles this attacker among the ones it blocks; it stays picked for more.
                             var list = _blocks.TryGetValue(picked, out var existing) ? existing : _blocks[picked] = new List<CardId>();

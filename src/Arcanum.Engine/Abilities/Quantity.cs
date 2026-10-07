@@ -127,6 +127,8 @@ public enum QuantityKind
     OtherCreaturesSharingTypeWithAffected,
     /// <summary>Half the cards in the library of the player being affected (or else the controller's), rounded down.</summary>
     HalfLibrary,
+    /// <summary>Half of <see cref="Quantity.Parts"/>[0], rounded up (rule 107.1a: "round up each time").</summary>
+    HalfRoundedUp,
 }
 
 /// <summary>

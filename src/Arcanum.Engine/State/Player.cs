@@ -102,6 +102,9 @@ public sealed class Player
     public int CantLoseLifeTurn { get; set; } = -1;
     public int CantLoseGameTurn { get; set; } = -1;
 
+    /// <summary>The turn this player's spells and abilities can target hexproof opponents and their hexproof creatures ("as though they didn't have hexproof").</summary>
+    public int IgnoresHexproofTurn { get; set; } = -1;
+
     /// <summary>Times each of this player's commanders has been cast from the command zone (commander tax).</summary>
     public Dictionary<CardId, int> CommanderCasts { get; } = new();
 

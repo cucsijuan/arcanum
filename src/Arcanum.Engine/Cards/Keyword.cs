@@ -80,6 +80,10 @@ public enum Keyword
     CantAttackAlone,
     /// <summary>"This creature can't block alone" (rule 506.5): it blocks only if another creature also blocks.</summary>
     CantBlockAlone,
+    /// <summary>"Can attack as though it didn't have defender" (rule 702.3b).</summary>
+    CanAttackWithDefender,
+    /// <summary>"This creature can block an additional creature each combat" (rule 509.1a).</summary>
+    CanBlockAdditional,
 }
 
 public static class Keywords
@@ -129,6 +133,8 @@ public static class Keywords
         Keyword.CanBlockAnyNumber => "Can block any number of creatures",
         Keyword.CantAttackAlone => "Can't attack alone",
         Keyword.CantBlockAlone => "Can't block alone",
+        Keyword.CanAttackWithDefender => "Can attack as though it didn't have defender",
+        Keyword.CanBlockAdditional => "Can block an additional creature each combat",
         _ => keyword.ToString(),
     };
 

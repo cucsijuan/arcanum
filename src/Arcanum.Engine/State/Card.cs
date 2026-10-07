@@ -190,6 +190,9 @@ public sealed class Card
     /// <summary>Players whose creatures can't block it this turn ("can't be blocked by creatures that player controls").</summary>
     internal HashSet<Core.PlayerId> UnblockableBy { get; } = new();
 
+    /// <summary>Blockers matching one of these can't block it ("can't be blocked by creatures with power 2 or less"), from effects.</summary>
+    internal List<Abilities.ObjectFilter> BlockRestrictions { get; } = new();
+
     /// <summary>Players it can't attack ("can't attack you"), from static abilities.</summary>
     internal HashSet<Core.PlayerId> CantAttackPlayers { get; } = new();
 

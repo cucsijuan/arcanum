@@ -98,6 +98,8 @@ public enum Replacements : long
     OpponentsCantLoseYouCantWin = 1L << 34,
     /// <summary>If you control a creature, damage that would reduce your life total to less than 1 reduces it to 1 instead.</summary>
     DamageCantReduceYourLifeBelowOne = 1L << 35,
+    /// <summary>"You may play lands from your graveyard" (no limit besides the land plays allowed).</summary>
+    LandsFromGraveyard = 1L << 43,
 }
 
 /// <summary>
@@ -215,6 +217,9 @@ public sealed record CardDefinition
 
     /// <summary>"This spell can't be countered."</summary>
     public bool CantBeCountered { get; init; }
+
+    /// <summary>"If X is 5 or more, this spell can't be countered": the least X (null: never).</summary>
+    public int? CantBeCounteredIfXAtLeast { get; init; }
 
     /// <summary>"This spell can't be copied."</summary>
     public bool CantBeCopied { get; init; }

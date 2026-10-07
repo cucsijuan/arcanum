@@ -160,6 +160,9 @@ public sealed record YourPermanentLeftThisTurn : Condition;
 /// <summary>"If this creature attacked this turn".</summary>
 public sealed record SourceAttackedThisTurn : Condition;
 
+/// <summary>"If this creature attacked or blocked this turn".</summary>
+public sealed record SourceAttackedOrBlockedThisTurn : Condition;
+
 /// <summary>"If the sacrificed creature was legendary": a permanent sacrificed for this spell or ability matches (as it last existed).</summary>
 public sealed record SacrificedMatches(ObjectFilter Filter) : Condition;
 

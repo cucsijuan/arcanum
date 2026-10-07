@@ -236,6 +236,8 @@ public sealed partial class Game
             .Concat(State.PlayableFromGraveyard.Concat(State.FlashbackGranted)
                 .Where(p => p.Player == playerId && State.GetCard(p.Card) is { Zone: Zone.Graveyard } c && c.Version == p.Version).Select(p => p.Card))
             .Concat(OtherCastableCards(playerId))
+            .Concat(State.GraveyardCastRights.Any(r => r.Player == playerId && r.Turn == State.TurnNumber)
+                ? player.Graveyard.Where(id => HasGraveyardCastRight(State.GetCard(id))) : Array.Empty<CardId>())
             .Distinct();
         foreach (var card in castable.Select(State.GetCard))
         {
@@ -348,6 +350,9 @@ public sealed partial class Game
                 var types = card.Types & (CardType.Artifact | CardType.Creature | CardType.Enchantment | CardType.Land | CardType.Planeswalker);
                 if (types != 0 && (types & ~player.GraveyardTypesUsedThisTurn) != 0) yield return id;
             }
+        // "You may play lands from your graveyard."
+        if (Has(playerId, Replacements.LandsFromGraveyard))
+            foreach (var id in player.Graveyard.Where(id => State.GetCard(id).Is(CardType.Land))) yield return id;
         foreach (var id in player.Graveyard)
             if (State.GetCard(id).Definition.GraveyardCastCost is not null || State.GetCard(id).PrintedDefinition.SplitHalves?.Any(h => h.Aftermath) == true) yield return id;
         // Cards that went on an adventure (rule 715.4).
@@ -357,9 +362,15 @@ public sealed partial class Game
 
     /// <summary>The extra cost of casting from the graveyard, if the card has one.</summary>
     private ExtraCost? GraveyardCost(Card card) =>
-        State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version) || card.Definition.Flashback is not null
+        State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version) || HasGraveyardCastRight(card) || card.Definition.Flashback is not null
         || State.FlashbackGranted.Any(p => p.Card == card.Id && p.Version == card.Version)
             ? null : card.Definition.GraveyardCastCost;
+
+    /// <summary>"This turn, you may cast [filter] spells from your graveyard": whether the card in its owner's graveyard is one of them.</summary>
+    private bool HasGraveyardCastRight(Card card) =>
+        card.Zone == Zone.Graveyard && !card.Is(CardType.Land)
+        && State.GraveyardCastRights.Any(r => r.Player == card.Owner && r.Turn == State.TurnNumber
+                                              && Matches(r.Filter with { Controller = ControllerFilter.Any }, card, card.Owner, null, r.Player));
 
     /// <summary>Exiled cards <paramref name="player"/> may currently play.</summary>
     private IEnumerable<CardId> PlayableExile(PlayerId player) =>
@@ -487,7 +498,8 @@ public sealed partial class Game
             case PlayLand play:
                 NoteExilePlay(State.GetCard(play.Card), playerId);
                 player.LandsPlayedThisTurn++;
-                if (State.GetCard(play.Card).Zone == Zone.Graveyard) player.GraveyardTypesUsedThisTurn |= CardType.Land;
+                // A land played from the graveyard uses up that type's permission, unless a permission without that limit covers it.
+                if (State.GetCard(play.Card).Zone == Zone.Graveyard && !Has(playerId, Replacements.LandsFromGraveyard)) player.GraveyardTypesUsedThisTurn |= CardType.Land;
                 await MoveCardAsync(play.Card, Zone.Battlefield);
                 Emit(new LandPlayed(playerId, play.Card));
                 return true;
@@ -691,7 +703,7 @@ public sealed partial class Game
         foreach (var extra in nonMana) await PayExtraAsync(player.Id, extra, cardId);
         if (card.Definition.PayXLife && x > 0) ChangeLife(player.Id, -x);
         if (card.Zone == Zone.Graveyard && Has(player.Id, Replacements.PermanentsFromGraveyard) && GraveyardCost(card) is null
-            && card.Definition.Flashback is null && !State.PlayableFromGraveyard.Any(p => p.Card == cardId && p.Version == card.Version))
+            && card.Definition.Flashback is null && !State.PlayableFromGraveyard.Any(p => p.Card == cardId && p.Version == card.Version) && !HasGraveyardCastRight(card))
             player.GraveyardTypesUsedThisTurn |= await ChoosePermanentTypeAsync(player, card);
         // Mana riders: haste for Dragon creature spells, copies of red instants and sorceries.
         var riders = paidMana.SpecialSpent.Select(u => u.Rider).ToList();
@@ -965,7 +977,7 @@ public sealed partial class Game
         var player = State.GetPlayer(playerId);
         if (player.Hand.Count(id => id != source && DiscardableFor(extra, id, playerId, source)) < extra.Discard) return false;
         if (extra.PayLife > player.Life || (extra.PayLife > 0 && player.CantLoseLifeTurn == State.TurnNumber)) return false; // rule 119.8
-        if (player.Graveyard.Count(id => id != source) < extra.ExileFromGraveyard) return false;
+        if (ExilableFromGraveyard(player, extra, source).Count < extra.ExileFromGraveyard) return false;
         if (extra.ReturnExiledWithSource is { } exiledFilter && !ExiledWith(State.GetCard(source), exiledFilter).Any()) return false;
         if (extra.Sacrifice is { } filter && SacrificeCandidates(playerId, filter, source).Count < extra.SacrificeCount) return false;
         if (extra.TapCreatures is { } tapFilter && TapCandidates(playerId, tapFilter, source).Count < extra.TapCount) return false;
@@ -974,6 +986,11 @@ public sealed partial class Game
             && State.PermanentsControlledBy(playerId).Where(c => c.IsCreature).Sum(c => c.Counters.Values.Sum()) < extra.RemoveCountersFromYourCreatures) return false;
         return true;
     }
+
+    /// <summary>The cards in a graveyard that can be exiled to pay a cost (other than the source, which may be in it); only matching ones when it names a kind.</summary>
+    private List<CardId> ExilableFromGraveyard(Player player, ExtraCost extra, CardId source) =>
+        player.Graveyard.Where(id => id != source && (extra.ExileFromGraveyardFilter is not { } filter
+            || Matches(filter with { Controller = ControllerFilter.Any }, State.GetCard(id), player.Id, State.GetCard(source), player.Id))).ToList();
 
     /// <summary>Whether a card in hand can be discarded to pay the cost ("discard a legendary card with the same name as …").</summary>
     private bool DiscardableFor(ExtraCost extra, CardId card, PlayerId player, CardId source) =>
@@ -1000,7 +1017,7 @@ public sealed partial class Game
         if (extra.PayLife > 0) ChangeLife(playerId, -extra.PayLife);
         if (extra.ExileFromGraveyard > 0)
         {
-            var cards = player.Graveyard.Where(id => id != source).ToList();
+            var cards = ExilableFromGraveyard(player, extra, source);
             var exiled = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId), new CardChoiceRequest($"Exile {extra.ExileFromGraveyard} cards from your graveyard", source,
                 cards.Select(id => ViewBuilder.Card(State, id, playerId)).ToList(), extra.ExileFromGraveyard, extra.ExileFromGraveyard, CardChoicePurpose.Sacrifice));
             Require(exiled.Count == extra.ExileFromGraveyard && exiled.Distinct().Count() == exiled.Count && exiled.All(cards.Contains), "Exile cards from your graveyard.");

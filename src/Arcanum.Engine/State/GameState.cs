@@ -62,6 +62,9 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
 
     /// <summary>Protection from these card types (layer 6).</summary>
     public Cards.CardType ProtectionFromTypes { get; init; }
+
+    /// <summary>"Can't be blocked by [filter] creatures" (layer 6): blockers matching it can't block the creature.</summary>
+    public Abilities.ObjectFilter? CantBeBlockedBy { get; init; }
 }
 
 /// <summary>
@@ -214,6 +217,12 @@ public sealed class GameState
 
     /// <summary>Objects that are exiled instead if they would die this turn.</summary>
     public HashSet<(CardId Card, int Version)> ExileIfDies { get; } = new();
+
+    /// <summary>Permanents (card, version) that are exiled instead if they would leave the battlefield, for as long as they stay.</summary>
+    public HashSet<(CardId Card, int Version)> ExileIfLeaves { get; } = new();
+
+    /// <summary>"Until end of turn, you may cast [filter] spells from your graveyard": the player, the turn and what they may cast.</summary>
+    public List<(PlayerId Player, int Turn, Abilities.ObjectFilter Filter)> GraveyardCastRights { get; } = new();
 
     /// <summary>"Creatures without flying can't block this turn": filters (with the player whose effect it is) for this turn.</summary>
     public List<(Abilities.ObjectFilter Filter, PlayerId Controller, int Turn)> CantBlockThisTurn { get; } = new();

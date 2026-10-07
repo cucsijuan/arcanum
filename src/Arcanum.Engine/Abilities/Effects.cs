@@ -8,6 +8,9 @@ public abstract record Effect;
 
 public sealed record DealDamage(Quantity Amount, Subject To) : Effect
 {
+    /// <summary>"The damage can't be prevented" (this damage only, rule 615.12).</summary>
+    public bool Unpreventable { get; init; }
+
     /// <summary>"Excess damage is dealt to that creature's controller instead".</summary>
     public bool ExcessToController { get; init; }
 }
@@ -61,6 +64,9 @@ public sealed record PumpUntilEndOfTurn(Quantity Power, Quantity Toughness, Subj
 
     /// <summary>Lasts until the ability's controller's next turn instead of until end of turn.</summary>
     public bool UntilYourNextTurn { get; init; }
+
+    /// <summary>"Can't be blocked by [filter] creatures" ("except by Spirits": the creatures that aren't): blockers matching this can't block it.</summary>
+    public ObjectFilter? CantBeBlockedBy { get; init; }
 }
 
 /// <summary>Put +1/+1 (or -1/-1) counters on a creature.</summary>
@@ -83,7 +89,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
-    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time }
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect
@@ -151,6 +157,9 @@ public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool 
     /// that isn't double-faced stays where it is.
     /// </summary>
     public bool Transformed { get; init; }
+
+    /// <summary>"If it would leave the battlefield, exile it instead of putting it anywhere else" (rule 614.1a), for as long as it stays.</summary>
+    public bool ExileIfLeaves { get; init; }
 }
 
 /// <summary>
@@ -332,6 +341,9 @@ public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, St
 
     /// <summary>"Reveal the top X cards": every card looked at is shown to every player.</summary>
     public bool RevealAll { get; init; }
+
+    /// <summary>"Put one of them into your hand" (no "may"): exactly <see cref="Take"/> cards are taken, as many as there are matching ones.</summary>
+    public bool Required { get; init; }
 }
 
 /// <summary>"[Player] reveals their hand; you choose a [filter] card from it; they discard it."</summary>
@@ -500,6 +512,9 @@ public sealed record ExileTopPlayable(int Count, bool ChooseOne = true, bool Unt
 
     /// <summary>They may be played only while this holds ("if you control a Wizard").</summary>
     public Condition? While { get; init; }
+
+    /// <summary>"You may cast spells from among them": lands can't be played.</summary>
+    public bool CastOnly { get; init; }
 }
 
 /// <summary>Divide damage as you choose among the chosen targets (at least 1 to each, rule 601.2d).</summary>
@@ -1016,3 +1031,12 @@ public sealed record CantSacrificeThisTurn(Subject What) : Effect;
 
 /// <summary>"[Player] can't attack you this combat".</summary>
 public sealed record CantAttackYouThisCombat(Subject Who) : Effect;
+
+/// <summary>"Counter that spell or ability unless its controller pays [mana]": the stack object the trigger is about (amount).</summary>
+public sealed record CounterTriggeringUnlessPays(Mana.ManaCost Mana) : Effect;
+
+/// <summary>"Until end of turn, your opponents and creatures your opponents control with hexproof can be the targets of spells and abilities you control as though they didn't have hexproof."</summary>
+public sealed record IgnoreHexproofThisTurn : Effect;
+
+/// <summary>"Until end of turn, you may cast [filter] spells from your graveyard."</summary>
+public sealed record MayCastFromGraveyardThisTurn(ObjectFilter Filter) : Effect;

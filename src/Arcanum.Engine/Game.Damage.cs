@@ -33,6 +33,9 @@ public sealed partial class Game
 
         /// <summary>Whether damage beyond lethal counts as excess damage for <see cref="Report"/>.</summary>
         public bool CountExcess { get; init; } = true;
+
+        /// <summary>"This damage can't be prevented" (rule 615.12): prevention effects don't apply to it.</summary>
+        public bool Unpreventable { get; init; }
     }
 
     /// <summary>One replacement or prevention effect that could modify a part of a damage event.</summary>
@@ -205,7 +208,7 @@ public sealed partial class Game
             if (!part.Applied.Contains(m.Id)) list.Add(m);
         }
         var source = part.Source;
-        bool preventable = State.DamageCantBePreventedTurn != State.TurnNumber; // "damage can't be prevented this turn"
+        bool preventable = State.DamageCantBePreventedTurn != State.TurnNumber && !part.Unpreventable; // "damage can't be prevented (this turn)"
         if (preventable)
         {
             if (PreventsAll(source, part.ToCard, part.ToPlayer, part.Combat) is { } reason)
@@ -236,7 +239,7 @@ public sealed partial class Game
                 if (moved <= 0) return n;
                 shield.Remaining -= moved;
                 var newCard = to.Card is { } id ? State.GetCard(id) : null;
-                redirected.Add(new DamagePart(part.Source, newCard, to.Player, moved, part.Combat) { Applied = new HashSet<string>(applied) { $"redirect:{shield.Id}" } });
+                redirected.Add(new DamagePart(part.Source, newCard, to.Player, moved, part.Combat) { Applied = new HashSet<string>(applied) { $"redirect:{shield.Id}" }, Unpreventable = part.Unpreventable });
                 return n - moved;
             }));
         }
@@ -360,6 +363,7 @@ public sealed partial class Game
             if (part.CountExcess) report.ExcessDamage += Math.Max(0, amount - lethalBefore); // rule 120.4a
         }
         Emit(new DamageDealt(source.Id, target.Id, null, amount, part.Combat));
+        Queue(target.Id, TriggerEvent.DealtDamage, target.Controller, new TriggerInfo(target.Id, target.Version, Amount: amount)); // once for each source
         if (!part.Combat)
         {
             // "Is dealt excess noncombat damage": more than lethal damage (rule 120.4a).

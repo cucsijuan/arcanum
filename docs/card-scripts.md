@@ -642,3 +642,35 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   creatures".
 - **Tokens** take `"powerFrom"` / `"toughnessFrom"` (a characteristic-defining ability, e.g. "equal to your life total"). Such abilities
   work in every zone (rule 604.3): a card in a hand, library, graveyard or exile, or a spell, has the power and toughness they define.
+
+## Costs, filters, triggers and effects for graveyard, blocking and targeting rules
+
+- **Costs**: `sacrificeAny:creature` / `sacrificeAny:Goblin` is "sacrifice a creature / a Goblin" (the source may sacrifice itself;
+  `sacrifice:…` is still "another"), and `exileGraveyardCards:1:creature` exiles a card of that kind from your graveyard (the source,
+  if it is in the graveyard, never pays for itself; without a kind, any card).
+- **Filters**: `"chosenName": true` (has the name the source chose as it entered: `chooseOnEnter: "cardName"`; the effect only reaches
+  what matches, so a name that no land has does nothing), `"manaValueIsTriggerAmount": true` (mana value exactly the amount the
+  ability is about, for a reflexive ability made with `"amount": "X"` after `mayPayX`), `"self": true` (only the source).
+- **Conditions**: `"attackedOrBlockedThisTurn"` (the source attacked or blocked this turn). **Quantities**: `{ "halfUp": quantity }`
+  (half, rounded up, rule 107.1a; with `eachPlayer` the quantity is the player's own: `"life"`, `"handSize"`, a `count`).
+- **Triggers**: `youBecomeTargetOfOpponent` (you become the target of a spell or ability an opponent controls; once however often) with
+  the effect `{ "counterTriggeringUnlessPays": "{1}" }` (counters that spell or ability unless its controller pays); `discardedByOpponent`
+  ("when a spell or ability an opponent controls causes you to discard this card": the card's own ability, it triggers from the
+  graveyard it went to, with an intervening `"if"` as usual); `dealtDamage` (this creature is dealt damage, combat or not; once for each
+  source; amount: the damage); `attachedBlocks` ("when enchanted creature blocks", once however many it blocks; the creature is
+  `"triggered"`); `permanentDies` (any permanent put into a graveyard from the battlefield that matches `filter`, e.g. a creature or
+  a planeswalker you control: `{ "anyOf": [{ "types": ["creature"] }, { "types": ["planeswalker"] }] }`). An emblem's "at the beginning
+  of your upkeep / beginning of combat / end step" abilities trigger like those of your permanents.
+- **Effects**: `pump` takes `"cantBeBlockedBy": filter` (until end of turn, creatures matching the filter can't block it: `{ "maxPower": 2 }`;
+  "can't be blocked except by Spirits" is `{ "notSubtype": "Spirit" }`, also card-wide as `"cantBeBlockedBy"`); `damage` takes
+  `"cantBePrevented": true` (only that damage, rule 615.12); `{ "ignoreHexproof": true }` (until end of turn your spells and abilities can
+  target hexproof opponents and their hexproof creatures); `{ "mayCastFromGraveyard": filter }` (until end of turn you may cast
+  matching spells from your graveyard, paying their costs; they go to the graveyard as usual); `exileTopPlayable` takes `"castOnly": true`
+  (spells only, no lands); `reanimate` takes `"exileIfLeaves": true` ("if it would leave the battlefield, exile it instead of putting it
+  anywhere else") and counter kinds `corpse` and `gold` exist; `lookAtTop` takes `"required": true` ("put one of them into your hand",
+  no "may").
+- **Card-wide**: `"uncounterableIfXAtLeast": 5` ("if X is 5 or more, this spell can't be countered"), `replaces` `LandsFromGraveyard`
+  ("you may play lands from your graveyard", not limited to one per turn beyond the land plays).
+- **Keywords**: `Can attack as though it didn't have defender`; `Can block an additional creature each combat` (up to two attackers; the
+  search for the most requirements to obey counts such a creature as blocking one, so a second block that would alone satisfy one more
+  requirement isn't demanded, though it is always allowed).

@@ -172,7 +172,7 @@ public sealed partial class Game
     }
 
     private bool CanAttack(Card c) =>
-        c.IsCreature && !c.Tapped && !c.IsSummoningSick && !c.Has(Keyword.Defender) && !c.Has(Keyword.CantAttack)
+        c.IsCreature && !c.Tapped && !c.IsSummoningSick && (!c.Has(Keyword.Defender) || c.Has(Keyword.CanAttackWithDefender)) && !c.Has(Keyword.CantAttack)
         // "Creatures with power greater than the number of cards in your hand can't attack" (the permanent's controller's hand).
         && !State.Battlefield.Select(State.GetCard).Any(b => b.Definition.CantAttackIfPowerAboveHandSize && !b.LosesAbilities && c.Power > State.GetPlayer(b.Controller).Hand.Count);
 
@@ -188,7 +188,9 @@ public sealed partial class Game
         && !(IsRingBearer(attacker, 1) && blocker.Power > attacker.Power) // the Ring, level 1
         && !(attacker.Has(Keyword.Skulk) && blocker.Power > attacker.Power) // skulk (702.118)
         && !(attacker.Definition.CantBeBlockedBy is { } restriction
-             && Matches(restriction with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, attacker, attacker.Controller));
+             && Matches(restriction with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, attacker, attacker.Controller))
+        // "Can't be blocked by creatures with power 2 or less" / "can't be blocked except by Spirits" from an effect.
+        && !attacker.BlockRestrictions.Any(r => Matches(r with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, attacker, attacker.Controller));
 
     private static readonly (Keyword Keyword, string Land)[] Landwalks =
     {
@@ -253,6 +255,7 @@ public sealed partial class Game
                 MaximumBlockers = attackers.Where(a => a.Has(Keyword.CantBeBlockedByMoreThanOne)).ToDictionary(a => a.Id, _ => 1),
                 Lures = attackers.Where(a => a.Has(Keyword.Lure)).Select(a => a.Id).ToList(),                          // 509.1c
                 CanBlockAny = possible.Where(id => State.GetCard(id).Has(Keyword.CanBlockAnyNumber)).ToList(),         // 509.1a
+                CanBlockAdditional = possible.Where(id => State.GetCard(id).Has(Keyword.CanBlockAdditional)).ToList(), // 509.1a
                 CantBlockAlone = possible.Where(id => State.GetCard(id).Has(Keyword.CantBlockAlone)).ToList(),         // 506.5
             };
 
@@ -284,6 +287,10 @@ public sealed partial class Game
                 if (IsRingBearer(State.GetCard(b.Attacker), 3)) State.SacrificeAtEndOfCombat.Add((b.Blocker, State.GetCard(b.Blocker).Version));
             }
             foreach (var attacker in newlyBlocked) Queue(attacker, Abilities.TriggerEvent.BecomesBlocked, State.GetCard(attacker).Controller);
+            // "When enchanted creature blocks": once however many creatures it blocks.
+            foreach (var blocker in declared.Select(b => b.Blocker).Distinct())
+                foreach (var aura in State.Battlefield.Select(State.GetCard).Where(e => e.AttachedTo == blocker).ToList())
+                    Queue(aura.Id, Abilities.TriggerEvent.AttachedBlocks, aura.Controller, new TriggerInfo(blocker, State.GetCard(blocker).Version, State.GetCard(blocker).Controller));
         }
     }
 

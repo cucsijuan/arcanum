@@ -38,6 +38,19 @@ public sealed record BlockRequest(
     /// <summary>Blockers that "can block any number of creatures" (rule 509.1a: the others block one attacker each).</summary>
     public IReadOnlyList<CardId> CanBlockAny { get; init; } = Array.Empty<CardId>();
 
+    /// <summary>Blockers that "can block an additional creature each combat": they block up to two attackers (rule 509.1a).</summary>
+    /// <remarks>
+    /// The restrictions treat them exactly; the search for the most requirements to obey counts them as blocking one attacker,
+    /// so a second block that alone would satisfy one more requirement isn't demanded (it is always allowed).
+    /// </remarks>
+    public IReadOnlyList<CardId> CanBlockAdditional { get; init; } = Array.Empty<CardId>();
+
+    /// <summary>Whether the creature can block more than one attacker.</summary>
+    public bool CanBlockSeveral(CardId blocker) => CanBlockAny.Contains(blocker) || CanBlockAdditional.Contains(blocker);
+
+    /// <summary>The most attackers a creature can block.</summary>
+    private int Capacity(CardId blocker) => CanBlockAny.Contains(blocker) ? int.MaxValue : CanBlockAdditional.Contains(blocker) ? 2 : 1;
+
     /// <summary>Blockers that "can't block alone": they block only if another creature also blocks (rule 506.5).</summary>
     public IReadOnlyList<CardId> CantBlockAlone { get; init; } = Array.Empty<CardId>();
 
@@ -89,9 +102,9 @@ public sealed record BlockRequest(
                 return false;
             }
         }
-        if (blocks.GroupBy(b => b.Blocker).Any(g => g.Count() > 1 && !CanBlockAny.Contains(g.Key)))
+        if (blocks.GroupBy(b => b.Blocker).Any(g => g.Count() > Capacity(g.Key)))
         {
-            reason = "A creature can block only one attacker.";
+            reason = "A creature can block only one attacker (two with an additional block).";
             return false;
         }
         foreach (var (attacker, minimum) in MinimumBlockers)
@@ -169,8 +182,8 @@ public sealed record BlockRequest(
     private List<BlockDeclaration> Repair(IEnumerable<BlockDeclaration> wanted)
     {
         var blocks = wanted.Distinct().Where(b => Able(b.Blocker, b.Attacker)).ToList();
-        var busy = new HashSet<CardId>();
-        blocks = blocks.Where(b => CanBlockAny.Contains(b.Blocker) || busy.Add(b.Blocker)).ToList();
+        var busy = new Dictionary<CardId, int>();
+        blocks = blocks.Where(b => (busy[b.Blocker] = busy.GetValueOrDefault(b.Blocker) + 1) <= Capacity(b.Blocker)).ToList();
         var count = new Dictionary<CardId, int>();
         blocks = blocks.Where(b =>
         {
@@ -186,9 +199,7 @@ public sealed record BlockRequest(
 
     /// <summary>Whether a creature is free to add a block of this attacker to a declaration.</summary>
     private bool Free(List<BlockDeclaration> blocks, CardId blocker, CardId attacker) =>
-        Able(blocker, attacker) && (CanBlockAny.Contains(blocker)
-            ? !blocks.Contains(new BlockDeclaration(blocker, attacker))
-            : blocks.All(x => x.Blocker != blocker));
+        Able(blocker, attacker) && !blocks.Contains(new BlockDeclaration(blocker, attacker)) && blocks.Count(x => x.Blocker == blocker) < Capacity(blocker);
 
     /// <summary>A legal declaration obeying requirements greedily: the repaired wanted blocks, then free creatures added for requirements.</summary>
     private List<BlockDeclaration> Greedy(IReadOnlyList<BlockDeclaration> wanted)

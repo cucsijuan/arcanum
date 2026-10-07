@@ -25,6 +25,9 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
     /// <summary>"Exile three cards from your graveyard".</summary>
     public int ExileFromGraveyard { get; init; }
 
+    /// <summary>The exiled cards must match this ("exile a creature card from your graveyard").</summary>
+    public ObjectFilter? ExileFromGraveyardFilter { get; init; }
+
     /// <summary>"Put a [filter] card exiled with [this] into its owner's graveyard".</summary>
     public ObjectFilter? ReturnExiledWithSource { get; init; }
 }
