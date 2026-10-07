@@ -128,7 +128,7 @@ public static class UiArt
         box.Add(Get(name + "_fill")!, fill);
         box.Add(Get(name + "_frame")!, frameTint ?? Colors.White);
         // Tall enough content margins that even a button given no minimum height keeps room for the frame's corners.
-        box.SetContent(compact ? 12 : 26, compact ? 6 : 8);
+        box.SetContent(compact ? 10 : 20, compact ? 6 : 8);
         return box;
     }
 
@@ -142,7 +142,7 @@ public static class UiArt
         button.CustomMinimumSize = new Vector2(Math.Max(button.CustomMinimumSize.X, piece.Left + piece.Right + 4),
             Math.Max(button.CustomMinimumSize.Y, piece.Top + piece.Bottom));
         // Text small for the frame looks lost in it.
-        if (!compact && button.GetThemeFontSize("font_size") < 18) button.AddThemeFontSizeOverride("font_size", 18);
+        if (!compact && button.GetThemeFontSize("font_size") < 20) button.AddThemeFontSizeOverride("font_size", 20);
         button.AddThemeStyleboxOverride("normal", Button(ButtonState.Normal, primary, compact)!);
         button.AddThemeStyleboxOverride("hover", Button(ButtonState.Hover, primary, compact)!);
         button.AddThemeStyleboxOverride("pressed", Button(ButtonState.Pressed, primary, compact)!);
@@ -200,8 +200,11 @@ public static class UiArt
             theme.SetStylebox("grabber_highlight", type, Bar("scroll_grabber", new Color(1.15f, 1.1f, 1.05f)));
             theme.SetStylebox("grabber_pressed", type, Bar("scroll_grabber", new Color(1.25f, 1.2f, 1.1f)));
         }
-        // Drop-down lists and context menus open in a board panel.
-        theme.SetStylebox("panel", "PopupMenu", Panel(PanelKind.Board, padding: 0)!);
+        // Drop-down lists and context menus: a dark list edged by a thin gold line, no frame.
+        var list = new StyleBoxFlat { BgColor = ModalFill, BorderColor = Gold with { A = 0.85f } };
+        list.SetBorderWidthAll(1);
+        list.SetContentMarginAll(6);
+        theme.SetStylebox("panel", "PopupMenu", list);
         theme.SetStylebox("hover", "PopupMenu", new StyleBoxFlat { BgColor = Highlight with { A = 0.7f } });
         return theme;
     }
