@@ -35,6 +35,8 @@ public sealed class SettingsData
     // Appearance
     public string[] Playmats { get; set; } = { "grid", "grid" };
     public string CardBack { get; set; } = "arcane";
+    /// <summary>How strongly foil cards shine under the pointer (0 = not at all, 1 = full).</summary>
+    public double FoilShine { get; set; } = 0.45;
 
     // Audio (0..1)
     public double MasterVolume { get; set; } = 0.8;
@@ -91,6 +93,7 @@ public static class Settings
         AudioServer.SetBusVolumeDb(0, Mathf.LinearToDb((float)Math.Clamp(s.MasterVolume, 0, 1)));
         UI.Board.BoardStyle.AnimationScale = (float)(1.0 / Math.Clamp(s.AnimationSpeed, 0.25, 4));
         UI.Board.BoardStyle.CardBack = s.CardBack;
+        UI.Board.BoardStyle.FoilShine = (float)Math.Clamp(s.FoilShine, 0, 1);
     }
 
     public static IEnumerable<Step> ParseSteps(IEnumerable<string> names) =>

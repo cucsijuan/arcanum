@@ -47,6 +47,9 @@ public static class BoardStyle
     /// <summary>Multiplier for animation durations (from the animation speed setting).</summary>
     public static float AnimationScale { get; set; } = 1f;
 
+    /// <summary>How strongly foil cards shine (from the foil shine setting), 0–1.</summary>
+    public static float FoilShine { get; set; } = 0.45f;
+
     /// <summary>Selected card back design (see <see cref="CardBackColors"/>).</summary>
     public static string CardBack { get; set; } = "arcane";
 

@@ -224,6 +224,10 @@ public partial class SettingsScreen : Control
         }), "The back of every hidden card: libraries, opponents' hands and face-down cards."));
         box.AddChild(holder);
         RebuildBackPreview(holder);
+
+        box.AddChild(SettingsKit.Section("Foil"));
+        box.AddChild(Row("Foil shine", SettingsKit.Slider(0, 1, 0.05, S.FoilShine, v => $"{Math.Round(v * 100)}%", v => { S.FoilShine = v; Settings.Save(); }),
+            "How strongly foil cards shine under the pointer. Lower it if the shine makes rules text hard to read; 0 turns it off."));
         return box;
     }
 

@@ -226,7 +226,7 @@ public partial class CardNode : Control
     public float FoilShine
     {
         get => _foilShine;
-        set { _foilShine = value; ((ShaderMaterial)_face.Material).SetShaderParameter("foil", IsFoil ? value : 0f); }
+        set { _foilShine = value; ((ShaderMaterial)_face.Material).SetShaderParameter("foil", IsFoil ? value * BoardStyle.FoilShine : 0f); }
     }
 
     /// <summary>Fades the foil shine in or out.</summary>
