@@ -39,6 +39,9 @@ public sealed record HostOptions
     /// </summary>
     public IReadOnlyList<string>? CardNames { get; init; }
 
+    /// <summary>The nonbasic land card names among them (<see cref="GameConfig.NonbasicLandNames"/>).</summary>
+    public IReadOnlyList<string>? NonbasicLandNames { get; init; }
+
     /// <summary>
     /// How long a connected player may take over one decision before the computer makes it for them (they keep their
     /// seat); null for no limit. Priority passed by the player's own stops never waits.

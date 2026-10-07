@@ -565,6 +565,26 @@ public class Magic2010Tests
         Assert.Equal("Omega", game.State.Battlefield.Select(game.State.GetCard).Single(c => c.Name == "Needle Golem").ChosenName);
     }
 
+    [Fact]
+    public async Task ChoosingANonbasicLandCardNameOffersOnlyThoseNames()
+    {
+        var lands = Decks.Of((GenericCards.Forest, 20));
+        var a = new TestController();
+        var b = new TestController { Act = (_, _) => PassPriority.Instance };
+        var game = new Game(new GameConfig { Seed = 1, StartingPlayer = P0, CardNames = new[] { "Alpha", "Omega", "Shifting Dunes" }, NonbasicLandNames = new[] { "Shifting Dunes" } },
+            new[] { new PlayerSetup("A", a, lands), new PlayerSetup("B", b, lands) });
+        game.SetupPermanent(P0, GenericCards.Mountain);
+        game.SetupInHand(P0, Creature("Moon Golem", 1, 1) with { ChooseOnEnter = EnterChoice.NonbasicLandCardName });
+        a.Act = (_, legal) => legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
+        IReadOnlyList<string>? offered = null;
+        a.Option = (_, r) => { offered = r.Options; return 0; };
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        game.EventRaised += e => { if (e is TurnBegan { TurnNumber: 2 }) cts.Cancel(); };
+        try { await game.RunAsync(cts.Token); } catch (OperationCanceledException) { }
+        Assert.Equal(new[] { "Shifting Dunes" }, offered); // rule 201.3: not Alpha, Omega nor a basic land's name
+        Assert.Equal("Shifting Dunes", game.State.Battlefield.Select(game.State.GetCard).Single(c => c.Name == "Moon Golem").ChosenName);
+    }
+
     // ------------------------------------------------------------------ Clone
 
     private static CardDefinition Token(string name, int power, int toughness) => Creature(name, power, toughness) with { IsToken = true, Subtypes = new[] { "Soldier" } };

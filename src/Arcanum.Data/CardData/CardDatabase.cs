@@ -118,6 +118,14 @@ public sealed class CardDatabase : ICardDatabase
         .SelectMany(e => e.Record.Layout == "transform" && e.Record.Faces.Count == 2 ? e.Record.Faces.Select(f => f.Name) : new[] { e.Record.Name })
         .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
 
+    private IReadOnlyList<string>? _nonbasicLandNames;
+
+    /// <summary>The names of nonbasic land cards (faces), for "choose a nonbasic land card name".</summary>
+    public IReadOnlyList<string> NonbasicLandNames => _nonbasicLandNames ??= _sorted
+        .SelectMany(e => e.Definition.BackFace is { } back ? new[] { e.Definition, back } : new[] { e.Definition })
+        .Where(f => f.Is(CardType.Land) && (f.Supertypes & Supertype.Basic) == 0)
+        .Select(f => f.Name).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
+
     public bool TryGet(string name, out CardDefinition definition)
     {
         if (_byName.TryGetValue(name, out var entry)) { definition = entry.Definition; return true; }

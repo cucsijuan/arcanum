@@ -223,7 +223,7 @@ from your graveyard, exiling this card). An activated ability can add `"oncePerT
 (`{ "cost": "{B}", "if": condition }`), `flashExtraCost`, `startsOnBattlefield` (from the opening hand),
 `manaRider` (`HasteForDragonCreatureSpells`, `CopyRedInstantOrSorcery`), `manaOnlyFor` (filter: spells its mana can pay
 for), `extraMana` (`[{ "types": "any", "amount": 1, "onlyFor": filter, "abilitiesToo": true }]`), `tapForMana`,
-`manaAmount`, `manaAmountFrom`, `manaFromChosenColor`, `chooseOnEnter` (`color`, `creatureType`, `cardName`, `lookAtOpponentsHandThenCardName`, `basicLandType`),
+`manaAmount`, `manaAmountFrom`, `manaFromChosenColor`, `chooseOnEnter` (`color`, `creatureType`, `cardName`, `lookAtOpponentsHandThenCardName`, `nonbasicLandCardName`, `basicLandType`),
 `countersPerChosenType`, `entersWithCounterKind`, `entersWithCountersIf`, `graveyardCastCost`, `powerFrom` /
 `toughnessFrom` (quantities), `cantBeBlockedBy` (filter), `ontoBattlefieldIfDiscarded`, and `replaces`: a list of
 `DoubleDamageToOpponents`, `DoubleCreatureDamage`, `DoubleTokens`, `DoubleCounters`, `PreventCombatDamageToAndBySelf`,
@@ -617,7 +617,7 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   what it enchants, among what its enchant ability allows that it isn't protected from and that isn't entering at the same time;
   with nothing legal it stays where it is (rules 303.4f–g).
 - **Names**: `"chooseOnEnter": "cardName"` chooses any card name without looking at anything;
-  `"lookAtOpponentsHandThenCardName"` first looks at an opponent's hand. Names come from the game's card database
+  `"lookAtOpponentsHandThenCardName"` first looks at an opponent's hand; `"nonbasicLandCardName"` offers only names of nonbasic land cards. Names come from the game's card database
   (`GameConfig.CardNames`) or, without one, from the cards the chooser knows of, so a hidden card is never given away.
 - **Effects**: `{ "copySpell": "triggered", "eachOtherPlayer": true }` (each player other than the spell's controller copies it, in APNAP
   order; a spell that already left the stack is copied as it last existed there), `{ "warpWorld": true }`,

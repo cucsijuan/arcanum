@@ -155,7 +155,7 @@ public sealed partial class Game
                 Emit(new ChoiceMade(id, i == 0 ? "Odd" : "Even"));
                 continue;
             }
-            else if (card.Definition.ChooseOnEnter is EnterChoice.CardName or EnterChoice.LookAtOpponentsHandThenCardName)
+            else if (card.Definition.ChooseOnEnter is EnterChoice.CardName or EnterChoice.LookAtOpponentsHandThenCardName or EnterChoice.NonbasicLandCardName)
             {
                 // "Look at an opponent's hand, then choose any card name" / "choose a card name".
                 var seen = new List<string>();
@@ -166,7 +166,8 @@ public sealed partial class Game
                     Emit(new HandLookedAt(who, opponent, hand.ToList()));
                     seen.AddRange(hand.Select(c => State.GetCard(c).PrintedDefinition.Name));
                 }
-                if (await ChooseCardNameAsync(who, card.Id, $"{card.Name}: choose a card name", seen) is not { } name) continue;
+                bool nonbasicLand = card.Definition.ChooseOnEnter == EnterChoice.NonbasicLandCardName;
+                if (await ChooseCardNameAsync(who, card.Id, $"{card.Name}: choose a {(nonbasicLand ? "nonbasic land " : "")}card name", seen, nonbasicLand) is not { } name) continue;
                 card.ChosenName = name;
                 Emit(new ChoiceMade(id, name));
                 continue;
@@ -190,9 +191,10 @@ public sealed partial class Game
     /// (<see cref="GameConfig.CardNames"/>) or, without one, every card name the chooser knows of — their own cards and
     /// the cards they can see or have seen — so the list never gives away a hidden card. <paramref name="first"/> come first.
     /// </summary>
-    private async Task<string?> ChooseCardNameAsync(PlayerId who, CardId? source, string prompt, IReadOnlyList<string>? first = null)
+    /// <param name="nonbasicLand">"Choose a nonbasic land card name": only names of nonbasic land cards.</param>
+    private async Task<string?> ChooseCardNameAsync(PlayerId who, CardId? source, string prompt, IReadOnlyList<string>? first = null, bool nonbasicLand = false)
     {
-        var names = CardNameOptions(who, first);
+        var names = CardNameOptions(who, first, nonbasicLand);
         if (names.Count == 0) return null;
         int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest(prompt, source, names, OptionKind.CardName));
         Require(i >= 0 && i < names.Count, "Choose one of the names.");
@@ -200,13 +202,18 @@ public sealed partial class Game
     }
 
     /// <summary>The card names offered to <paramref name="who"/> for "choose a card name".</summary>
-    private List<string> CardNameOptions(PlayerId who, IReadOnlyList<string>? first)
+    private List<string> CardNameOptions(PlayerId who, IReadOnlyList<string>? first, bool nonbasicLand = false)
     {
-        IEnumerable<string> all = Config.CardNames
-            ?? State.Cards.Values.Where(c => !c.PrintedDefinition.IsToken && !c.PrintedDefinition.IsEmblem
-                                             && (c.Owner == who || c.IsVisibleTo(who) || Views.ViewBuilder.RevealedByEffect(State, c, who)))
-                // Either face of a double-faced card, but not both together (rule 712.19).
-                .SelectMany(c => c.PrintedDefinition.BackFace is { } back ? new[] { c.PrintedDefinition.Name, back.Name } : new[] { c.PrintedDefinition.Name });
+        static bool IsNonbasicLand(Cards.CardDefinition face) => face.Is(CardType.Land) && (face.Supertypes & Supertype.Basic) == 0;
+        var known = State.Cards.Values.Where(c => !c.PrintedDefinition.IsToken && !c.PrintedDefinition.IsEmblem
+                                                  && (c.Owner == who || c.IsVisibleTo(who) || Views.ViewBuilder.RevealedByEffect(State, c, who)))
+            // Either face of a double-faced card, but not both together (rule 712.19).
+            .SelectMany(c => c.PrintedDefinition.BackFace is { } back ? new[] { c.PrintedDefinition, back } : new[] { c.PrintedDefinition });
+        IEnumerable<string> all = nonbasicLand
+            ? Config.NonbasicLandNames ?? known.Where(IsNonbasicLand).Select(f => f.Name)
+            : Config.CardNames ?? known.Select(f => f.Name);
+        if (nonbasicLand && first is not null)
+            first = first.Where(n => known.Any(f => f.Name == n && IsNonbasicLand(f))).ToList();
         return (first ?? Array.Empty<string>()).Concat(all.Distinct().OrderBy(n => n, StringComparer.OrdinalIgnoreCase)).Distinct().ToList();
     }
 

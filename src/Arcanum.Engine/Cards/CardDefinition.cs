@@ -5,7 +5,7 @@ using Arcanum.Engine.Mana;
 namespace Arcanum.Engine.Cards;
 
 /// <summary>A choice made as a permanent enters (rule 614.12).</summary>
-public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped, RevealOrTapped, BasicLandType, LookAtOpponentsHandThenCardName }
+public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped, RevealOrTapped, BasicLandType, LookAtOpponentsHandThenCardName, NonbasicLandCardName }
 
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]

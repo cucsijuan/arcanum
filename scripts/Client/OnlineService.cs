@@ -153,6 +153,7 @@ public partial class OnlineService : Node
         ComputerPace = ComputerPaceAsync,
         DecisionTime = DecisionTime,
         CardNames = App.Instance?.Cards?.Names,
+        NonbasicLandNames = App.Instance?.Cards?.NonbasicLandNames,
     };
 
     /// <summary>The decision time limit chosen in the settings (null: no limit).</summary>
@@ -199,7 +200,7 @@ public partial class OnlineService : Node
         // The same config as when the game started (LobbyHost.Start), so the recorded answers replay the same game.
         var config = new GameConfig
         {
-            Seed = save.Seed, StartingLife = format.StartingLife, Commander = format.Commander ? new CommanderRules() : null, CardNames = options.CardNames,
+            Seed = save.Seed, StartingLife = format.StartingLife, Commander = format.Commander ? new CommanderRules() : null, CardNames = options.CardNames, NonbasicLandNames = options.NonbasicLandNames,
         };
         var game = new GameHost(config, seats, options);
         try

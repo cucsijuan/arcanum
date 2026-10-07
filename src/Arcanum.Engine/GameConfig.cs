@@ -31,6 +31,9 @@ public sealed record GameConfig
     /// the names of the cards the choosing player knows of in this game.
     /// </summary>
     public IReadOnlyList<string>? CardNames { get; init; }
+
+    /// <summary>The names among <see cref="CardNames"/> of nonbasic land cards ("choose a nonbasic land card name"). Null: those the chooser knows of.</summary>
+    public IReadOnlyList<string>? NonbasicLandNames { get; init; }
 }
 
 /// <param name="Commanders">The player's commander(s) in a commander game; they start in the command zone.</param>
