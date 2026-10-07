@@ -488,4 +488,311 @@ public class Magic2010Tests
         Assert.Equal(new[] { "Alpha", "Omega" }, offered);
         Assert.Equal("Omega", game.State.Battlefield.Select(game.State.GetCard).Single(c => c.Name == "Needle Golem").ChosenName);
     }
+
+    // ------------------------------------------------------------------ Clone
+
+    private static CardDefinition Token(string name, int power, int toughness) => Creature(name, power, toughness) with { IsToken = true, Subtypes = new[] { "Soldier" } };
+
+    [Fact]
+    public async Task CloneEntersAsACopyWithTheCopiedReplacementEffects()
+    {
+        var s = Casting();
+        Lands(s, P0, GenericCards.Island, 4);
+        var djinn = s.Add(P1, M("Djinn of Wishes"));
+        var clone = s.InHand(P0, M("Clone"));
+        s.Attacker.Choose = (_, r) => r.Options.Where(o => o.Id == djinn).Select(o => o.Id).ToList();
+        await s.RunUntilTurn();
+        var card = s.Card(clone);
+        Assert.Equal(Zone.Battlefield, card.Zone);
+        Assert.Equal("Djinn of Wishes", card.Name);
+        Assert.Equal((4, 4), (card.Power, card.Toughness));
+        Assert.True(card.Has(Keyword.Flying));
+        Assert.Equal(3, card.CounterCount(CounterKind.Wish)); // "enters with three wish counters" is part of what it copies
+        Assert.Equal(P0, card.Controller);
+        Assert.False(card.Definition.IsToken);
+    }
+
+    [Fact]
+    public async Task CloneCopyingATokenOrACopyGetsTheOriginalsValuesAndStaysACard()
+    {
+        var s = Casting();
+        Lands(s, P0, GenericCards.Island, 8);
+        var soldier = s.Add(P1, Token("Soldier", 1, 1));
+        var first = s.InHand(P0, M("Clone"));
+        var second = s.InHand(P0, M("Clone"));
+        s.Attacker.Choose = (_, r) => s.Card(first).Zone != Zone.Battlefield
+            ? r.Options.Where(o => o.Id == soldier).Select(o => o.Id).ToList()
+            : r.Options.Where(o => o.Id == first).Select(o => o.Id).ToList();
+        await s.RunUntilTurn();
+        foreach (var id in new[] { first, second })
+        {
+            var card = s.Card(id);
+            Assert.Equal(Zone.Battlefield, card.Zone);
+            Assert.Equal("Soldier", card.Name);
+            Assert.Equal(1, card.Power);
+            Assert.False(card.Definition.IsToken);
+        }
+        Assert.Equal("Clone", s.Card(second).CopyOfName);
+    }
+
+    [Fact]
+    public async Task CloneCopyingNothingIsAZeroZeroAndDies()
+    {
+        var s = Casting();
+        Lands(s, P0, GenericCards.Island, 4);
+        s.Add(P1, Creature("Bear", 2, 2));
+        var clone = s.InHand(P0, M("Clone"));
+        s.Attacker.Choose = (_, r) => Array.Empty<CardId>();
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(clone).Zone);
+        Assert.Equal("Clone", s.Card(clone).Name);
+    }
+
+    // ------------------------------------------------------------------ Hive Mind
+
+    [Fact]
+    public async Task HiveMindGivesEachOtherPlayerACopyTheyMayRetarget()
+    {
+        var s = Casting();
+        s.Add(P0, M("Hive Mind"));
+        Lands(s, P0, GenericCards.Mountain, 1);
+        var mine = s.Add(P0, Creature("Mine", 3, 3));
+        var theirs = s.Add(P1, Creature("Theirs", 3, 3));
+        s.InHand(P0, GenericCards.EmberBolt);
+        s.Attacker.Targets = (_, r) => new[] { Target.Of(theirs) };
+        s.Defender.YesNo = (_, r) => true;
+        s.Defender.Targets = (_, r) => new[] { Target.Of(mine) };
+        await s.RunUntilTurn();
+        var copied = Assert.Single(s.Game.Log.OfType<SpellCopied>());
+        Assert.Equal(P1, copied.Controller);
+        Assert.Equal(Zone.Graveyard, s.Card(theirs).Zone);
+        Assert.Equal(Zone.Graveyard, s.Card(mine).Zone);
+    }
+
+    [Fact]
+    public async Task HiveMindCopiesInApnapOrder()
+    {
+        var a = new TestController();
+        var b = new TestController { Act = (_, _) => PassPriority.Instance };
+        var c = new TestController { Act = (_, _) => PassPriority.Instance };
+        var lands = Decks.Of((GenericCards.Forest, 20));
+        var game = new Game(new GameConfig { Seed = 1, StartingPlayer = P0 },
+            new[] { new PlayerSetup("A", a, lands), new PlayerSetup("B", b, lands), new PlayerSetup("C", c, lands) });
+        game.SetupPermanent(P1, M("Hive Mind"));
+        game.SetupPermanent(P0, GenericCards.Mountain);
+        game.SetupInHand(P0, GenericCards.EmberBolt with { Spell = new SpellAbility { Effects = new Effect[] { new GainLife(1, Subject.You) } } });
+        a.Act = (_, legal) => legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
+        a.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        game.EventRaised += e => { if (e is TurnBegan { TurnNumber: 2 }) cts.Cancel(); };
+        try { await game.RunAsync(cts.Token); } catch (OperationCanceledException) { }
+        var copies = game.Log.OfType<SpellCopied>().Select(x => x.Controller).ToList();
+        Assert.Equal(new[] { new PlayerId(1), new PlayerId(2) }, copies); // APNAP order from the active player who cast it
+        Assert.Equal(21, game.State.GetPlayer(new PlayerId(1)).Life);
+        Assert.Equal(21, game.State.GetPlayer(new PlayerId(2)).Life);
+        Assert.Equal(21, game.State.GetPlayer(P0).Life);
+    }
+
+    // ------------------------------------------------------------------ Warp World, Open the Vaults
+
+    private static CardDefinition Might => new()
+    {
+        Name = "Might", Types = CardType.Enchantment, Subtypes = new[] { "Aura" }, ManaCost = ManaCost.Parse("{G}"),
+        EnchantTarget = new TargetSpec(TargetKind.Creature),
+        Abilities = new AbilityDefinition[] { new StaticAbility(new AffectedFilter(AffectedScope.Enchanted), 1, 1) },
+    };
+
+    private static CardDefinition Relic => new() { Name = "Relic", Types = CardType.Artifact, ManaCost = ManaCost.Parse("{1}") };
+
+    [Fact]
+    public async Task WarpWorldReshufflesPermanentsAndPutsRevealedPermanentCardsOntoTheBattlefield()
+    {
+        var s = Casting(seed: 3);
+        Lands(s, P0, GenericCards.Mountain, 8);
+        var bear = s.Add(P0, Creature("Bear", 2, 2));
+        var aura = s.Game.SetupPermanent(P0, Might, bear);
+        var token = s.Add(P0, Token("Soldier", 1, 1));
+        s.Add(P1, Creature("Theirs", 2, 2));
+        var warp = s.InHand(P0, M("Warp World"));
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(warp).Zone);
+        Assert.DoesNotContain(token, s.Game.State.Battlefield);
+        Assert.DoesNotContain(token, P(s, P0).Library); // tokens cease to exist
+        var revealed = s.Game.Log.OfType<CardsRevealed>().Last(r => r.Player == P0).Cards;
+        Assert.Equal(11, revealed.Count); // 8 lands, the Bear, the Aura and the token were shuffled in
+        var theirs = s.Game.Log.OfType<CardsRevealed>().Last(r => r.Player == P1).Cards;
+        Assert.Single(theirs);
+        foreach (var id in revealed.Where(id => s.Card(id).Zone != Zone.Battlefield))
+        {
+            Assert.True(s.Card(id).HasSubtype("Aura")); // every land and creature card revealed entered
+            Assert.Contains(id, P(s, P0).Library.TakeLast(revealed.Count)); // the rest on the bottom
+        }
+        Assert.All(revealed.Where(id => s.Card(id).Zone == Zone.Battlefield), id => Assert.Equal(P0, s.Card(id).Controller));
+        if (s.Card(aura).Zone == Zone.Battlefield) Assert.True(s.Card(s.Card(aura).AttachedTo!.Value).IsCreature);
+        Assert.Equal(revealed.Concat(theirs).Count(id => s.Card(id).Zone == Zone.Battlefield), s.Game.State.Battlefield.Count);
+    }
+
+    [Fact]
+    public async Task OpenTheVaultsReturnsArtifactsAndEnchantmentsAndAnAuraNeedsSomethingAlreadyThere()
+    {
+        var s = Casting();
+        Lands(s, P0, GenericCards.Plains, 6);
+        var relic = s.Game.SetupInLibrary(P0, Relic);
+        var aura = s.Game.SetupInLibrary(P0, Might);
+        var golem = s.Game.SetupInLibrary(P1, Creature("Golem", 3, 3) with { Types = CardType.Artifact | CardType.Creature });
+        s.InHand(P0, M("Open the Vaults"));
+        OnFirstAction(s, () => { MoveTo(s, relic, Zone.Graveyard); MoveTo(s, aura, Zone.Graveyard); MoveTo(s, golem, Zone.Graveyard); });
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(relic).Zone);
+        Assert.Equal(Zone.Battlefield, s.Card(golem).Zone);
+        Assert.Equal(P1, s.Card(golem).Controller); // under its owner's control
+        Assert.Equal(Zone.Graveyard, s.Card(aura).Zone); // the Golem entered at the same time: nothing to enchant
+    }
+
+    [Fact]
+    public async Task AnAuraReturnedByOpenTheVaultsEnchantsWhatItsOwnerChooses()
+    {
+        var s = Casting();
+        Lands(s, P0, GenericCards.Plains, 6);
+        var mine = s.Add(P0, Creature("Mine", 2, 2));
+        s.Add(P1, Creature("Theirs", 2, 2));
+        var aura = s.Game.SetupInLibrary(P1, Might);
+        s.InHand(P0, M("Open the Vaults"));
+        OnFirstAction(s, () => MoveTo(s, aura, Zone.Graveyard));
+        TargetRequest? asked = null;
+        s.Defender.Targets = (_, r) => { asked = r; return new[] { Target.Of(mine) }; };
+        await s.RunUntilTurn();
+        Assert.NotNull(asked);
+        Assert.Equal(Zone.Battlefield, s.Card(aura).Zone);
+        Assert.Equal(P1, s.Card(aura).Controller);
+        Assert.Equal(mine, s.Card(aura).AttachedTo);
+        Assert.Equal(3, s.Card(mine).Power);
+    }
+
+    // ------------------------------------------------------------------ Mirror of Fate, Haunting Echoes, Sphinx Ambassador
+
+    [Fact]
+    public async Task MirrorOfFateRebuildsTheLibraryFromChosenExiledCards()
+    {
+        var s = Casting();
+        var mirror = s.Add(P0, M("Mirror of Fate"));
+        var a = s.Game.SetupInLibrary(P0, Creature("Alpha", 1, 1));
+        var b = s.Game.SetupInLibrary(P0, Creature("Beta", 1, 1));
+        var c = s.Game.SetupInLibrary(P0, Creature("Gamma", 1, 1));
+        var theirs = s.Game.SetupInLibrary(P1, Creature("Theirs", 1, 1));
+        OnFirstAction(s, () => { MoveTo(s, a, Zone.Exile); MoveTo(s, b, Zone.Exile); MoveTo(s, c, Zone.Exile); MoveTo(s, theirs, Zone.Exile); });
+        CardChoiceRequest? offer = null;
+        s.Attacker.Choose = (_, r) =>
+        {
+            if (r.Purpose == CardChoicePurpose.Order) return new[] { r.Options.FirstOrDefault(o => o.Id == c)?.Id ?? r.Options[0].Id };
+            offer = r;
+            return new[] { a, c };
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(mirror).Zone);
+        Assert.NotNull(offer);
+        Assert.Equal(new[] { a, b, c }.OrderBy(x => x.Value), offer!.Options.Select(o => o.Id).OrderBy(x => x.Value)); // only cards you own
+        Assert.Equal(new[] { c, a }, P(s, P0).Library);
+        Assert.Equal(Zone.Exile, s.Card(b).Zone);
+        Assert.True(P(s, P0).Exile.Count >= 13);
+    }
+
+    [Fact]
+    public async Task HauntingEchoesExilesTheGraveyardAndTheNamesakesFound()
+    {
+        var s = Casting();
+        Lands(s, P0, GenericCards.Swamp, 5);
+        var dead = s.Game.SetupInLibrary(P1, GenericCards.GladeCub);
+        var forest = s.Game.SetupInLibrary(P1, GenericCards.Forest);
+        var copies = new[] { s.Game.SetupInLibrary(P1, GenericCards.GladeCub), s.Game.SetupInLibrary(P1, GenericCards.GladeCub) };
+        s.InHand(P0, M("Haunting Echoes"));
+        OnFirstAction(s, () => { MoveTo(s, dead, Zone.Graveyard); MoveTo(s, forest, Zone.Graveyard); s.Restack(P1, copies); });
+        s.Attacker.Targets = (_, r) => new[] { Target.Of(P1) };
+        CardChoiceRequest? search = null;
+        s.Attacker.Choose = (_, r) => { search = r; return new[] { copies[0] }; }; // may find fewer than all (rule 701.19b)
+        await s.RunUntilTurn();
+        Assert.Equal(new[] { forest }, P(s, P1).Graveyard); // basic land cards stay
+        Assert.Equal(Zone.Exile, s.Card(dead).Zone);
+        Assert.Equal(0, search!.Min);
+        Assert.Equal(2, search.Options.Count);
+        Assert.Equal(Zone.Exile, s.Card(copies[0]).Zone);
+        Assert.Equal(Zone.Library, s.Card(copies[1]).Zone);
+        Assert.Contains(s.Game.Log, e => e is LibraryShuffled { Player.Value: 1 });
+    }
+
+    private static Scenario SphinxAttacks(out CardId wurm)
+    {
+        var s = new Scenario();
+        s.Add(P0, M("Sphinx Ambassador"));
+        var found = wurm = s.Game.SetupInLibrary(P1, GenericCards.GreatWurm);
+        s.Attacker.Act = (_, _) => PassPriority.Instance;
+        s.Attacker.Choose = (_, r) => r.Options.Where(o => o.Id == found).Select(o => o.Id).ToList();
+        OnFirstAction(s, () => s.Restack(P1, found));
+        return s;
+    }
+
+    [Fact]
+    public async Task SphinxAmbassadorTakesTheFoundCreatureIfItsOwnerNamesAnotherCard()
+    {
+        var s = SphinxAttacks(out var wurm);
+        bool sawIt = true;
+        OptionKind? kind = null;
+        s.Defender.Option = (view, r) =>
+        {
+            kind = r.Kind;
+            sawIt = view.Self.KnownLibrary.Any(x => x.Card.Id == wurm);
+            return r.Options.ToList().IndexOf("Forest");
+        };
+        await s.RunUntilTurn(2);
+        Assert.Equal(OptionKind.CardName, kind);
+        Assert.False(sawIt); // the namer doesn't know which card was found
+        Assert.Equal(Zone.Battlefield, s.Card(wurm).Zone);
+        Assert.Equal(P0, s.Card(wurm).Controller);
+        Assert.Equal(15, P(s, P1).Life);
+    }
+
+    [Fact]
+    public async Task SphinxAmbassadorGetsNothingWhenTheNameIsRight()
+    {
+        var s = SphinxAttacks(out var wurm);
+        bool askedToPut = false;
+        s.Attacker.YesNo = (_, r) => { askedToPut |= r.Prompt.Contains("onto the battlefield"); return true; };
+        s.Defender.Option = (_, r) => r.Options.ToList().IndexOf("Great Wurm");
+        await s.RunUntilTurn(2);
+        Assert.False(askedToPut);
+        Assert.Equal(Zone.Library, s.Card(wurm).Zone);
+        Assert.Contains(s.Game.Log, e => e is LibraryShuffled { Player.Value: 1 });
+    }
+
+    // ------------------------------------------------------------------ Djinn of Wishes
+
+    [Fact]
+    public async Task DjinnOfWishesPlaysALandAsTheLandDropThenExilesWhatItCantPlay()
+    {
+        var s = Casting();
+        Lands(s, P0, GenericCards.Island, 17);
+        var djinn = s.InHand(P0, M("Djinn of Wishes"));
+        var first = s.Game.SetupInLibrary(P0, GenericCards.Mountain);
+        var second = s.Game.SetupInLibrary(P0, GenericCards.Plains);
+        var third = s.Game.SetupInLibrary(P0, GenericCards.GladeCub);
+        bool stacked = false;
+        int activations = 0;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!stacked) { stacked = true; s.Restack(P0, first, second, third); return PassPriority.Instance; }
+            if (legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == djinn) is { } cast) return cast;
+            if (activations < 3 && legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == djinn) is { } activate) { activations++; return activate; }
+            return PassPriority.Instance;
+        };
+        var onEnter = new List<int>();
+        s.Game.EventRaised += e => { if (e is CardMoved { To: Zone.Battlefield } m && m.Card == djinn) onEnter.Add(s.Card(djinn).CounterCount(CounterKind.Wish)); };
+        s.Attacker.YesNo = (_, _) => true;
+        await s.RunUntilTurn();
+        Assert.Equal(new[] { 3 }, onEnter);
+        Assert.Equal(Zone.Battlefield, s.Card(first).Zone); // played as the land drop
+        Assert.Single(s.Game.Log.OfType<LandPlayed>());
+        Assert.Equal(Zone.Exile, s.Card(second).Zone); // no land play left: exiled
+        Assert.Equal(Zone.Battlefield, s.Card(third).Zone); // cast without paying its mana cost
+        Assert.Equal(0, s.Card(djinn).CounterCount(CounterKind.Wish));
+    }
 }
