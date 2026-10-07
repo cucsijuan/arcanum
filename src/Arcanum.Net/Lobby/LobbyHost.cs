@@ -139,6 +139,7 @@ public sealed class LobbyHost
             Seed = seed,
             StartingLife = _settings.StartingLife,
             Commander = _settings.Commander ? new CommanderRules() : null,
+            CardNames = options.CardNames,
         };
         var seats = _slots.Select(s => new HostSeat(s.Name, s.Deck!.Deck, s.Deck.Commanders, s.Kind == LobbySeatKind.Computer,
             s.Kind == LobbySeatKind.Person ? s.Token : null)).ToList();

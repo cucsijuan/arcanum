@@ -152,6 +152,7 @@ public partial class OnlineService : Node
     {
         ComputerPace = ComputerPaceAsync,
         DecisionTime = DecisionTime,
+        CardNames = App.Instance?.Cards?.Names,
     };
 
     /// <summary>The decision time limit chosen in the settings (null: no limit).</summary>
@@ -194,8 +195,13 @@ public partial class OnlineService : Node
             }
             seats.Add(new HostSeat(seat.Name, check.Deck, check.Commanders, seat.IsComputer, seat.IsComputer ? null : seat.Token));
         }
-        var config = new GameConfig { Seed = save.Seed, StartingLife = format.StartingLife, Commander = format.Commander ? new CommanderRules() : null };
-        var game = new GameHost(config, seats, HostOptions() with { Version = Version, Content = ContentId, Replay = save.Answers });
+        var options = HostOptions() with { Version = Version, Content = ContentId, Replay = save.Answers };
+        // The same config as when the game started (LobbyHost.Start), so the recorded answers replay the same game.
+        var config = new GameConfig
+        {
+            Seed = save.Seed, StartingLife = format.StartingLife, Commander = format.Commander ? new CommanderRules() : null, CardNames = options.CardNames,
+        };
+        var game = new GameHost(config, seats, options);
         try
         {
             _tcp = new TcpConnectionListener(save.Port);

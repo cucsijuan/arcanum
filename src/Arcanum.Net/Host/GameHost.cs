@@ -34,6 +34,12 @@ public sealed record HostOptions
     public string Content { get; init; } = "";
 
     /// <summary>
+    /// Every card name of that content, for choices of "a card name" (rule 201.3, <see cref="GameConfig.CardNames"/>); the games a
+    /// lobby or an event starts use it. Null: only names the chooser knows of are offered.
+    /// </summary>
+    public IReadOnlyList<string>? CardNames { get; init; }
+
+    /// <summary>
     /// How long a connected player may take over one decision before the computer makes it for them (they keep their
     /// seat); null for no limit. Priority passed by the player's own stops never waits.
     /// </summary>
