@@ -24,6 +24,9 @@ public enum AffectedScope
     AllPermanents,
 }
 
+/// <summary>Damage a static ability prevents to the permanents it affects.</summary>
+public enum StaticDamagePrevention { None, Noncombat, All }
+
 /// <summary>Filter for a static ability: scope, "other" (excludes the source) and an optional subtype.</summary>
 public sealed record AffectedFilter(AffectedScope Scope, bool Other = false, string? Subtype = null);
 
@@ -102,6 +105,15 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
 
     /// <summary>"Has all activated abilities of all [filter] cards in your graveyard."</summary>
     public ObjectFilter? GrantsGraveyardAbilities { get; init; }
+
+    /// <summary>Keywords the affected permanents lose ("loses flying", layer 6).</summary>
+    public IReadOnlyList<Keyword>? LosesKeywords { get; init; }
+
+    /// <summary>"Prevent all [noncombat] damage that would be dealt to [affected permanents]".</summary>
+    public StaticDamagePrevention PreventsDamage { get; init; }
+
+    /// <summary>"Its activated abilities can't be activated" (mana abilities included).</summary>
+    public bool CantActivateAbilities { get; init; }
 }
 
 /// <summary>Attach the source Aura/Equipment to a permanent ("Equip {2}").</summary>

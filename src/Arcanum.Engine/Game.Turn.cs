@@ -52,6 +52,7 @@ public sealed partial class Game
         foreach (var card in State.Cards.Values)
         {
             card.ActivatedThisTurn.Clear();
+            card.ActivationsThisTurn.Clear();
             card.TriggeredThisTurn.Clear();
             card.DoneThisTurn.Clear();
             card.LoyaltyActivatedThisTurn = false;
@@ -126,14 +127,14 @@ public sealed partial class Game
                     // A stun counter is removed instead of untapping (rule 122.1d).
                     if (permanent.CounterCount(Abilities.CounterKind.Stun) > 0)
                     {
-                        permanent.Counters[Abilities.CounterKind.Stun]--;
+                        RemoveCountersFrom(permanent, Abilities.CounterKind.Stun, 1);
                         continue;
                     }
                     if (permanent.Has(Cards.Keyword.UntapsByRemovingCounter))
                     {
                         // "Remove a +1/+1 counter from it instead. If you do, untap it. (Otherwise, it doesn't untap.)"
                         if (permanent.CounterCount(Abilities.CounterKind.PlusOnePlusOne) == 0) continue;
-                        permanent.Counters[Abilities.CounterKind.PlusOnePlusOne]--;
+                        RemoveCountersFrom(permanent, Abilities.CounterKind.PlusOnePlusOne, 1);
                     }
                     Untap(permanent);
                 }

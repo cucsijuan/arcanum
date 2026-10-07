@@ -86,6 +86,10 @@ public enum Replacements : long
     LookAtLibraryTop = 1L << 37,
     /// <summary>As long as an opponent controls more lands than you, you may play lands from the top of your library.</summary>
     PlayLandsFromLibraryTopWhileBehind = 1L << 38,
+    /// <summary>"If a source an opponent controls would deal damage to you, prevent 1 of that damage."</summary>
+    PreventOneDamageFromOpponentsSources = 1L << 39,
+    /// <summary>"If damage would be dealt to this creature, prevent that damage and remove that many +1/+1 counters from it."</summary>
+    PreventDamageRemoveCounters = 1L << 40,
     /// <summary>You can't win the game and your opponents can't lose the game.</summary>
     OpponentsCantLoseYouCantWin = 1L << 34,
     /// <summary>If you control a creature, damage that would reduce your life total to less than 1 reduces it to 1 instead.</summary>
@@ -239,6 +243,12 @@ public sealed record CardDefinition
 
     /// <summary>"As an additional cost to cast this spell, pay X life" (X chosen as it's cast).</summary>
     public bool PayXLife { get; init; }
+
+    /// <summary>"Spend only [color] mana on X": the X of its mana cost is paid with mana of this type only.</summary>
+    public Mana.ManaType? XManaType { get; init; }
+
+    /// <summary>"This spell costs {N} more to cast for each target beyond the first" (rule 601.2f).</summary>
+    public int ExtraTargetCost { get; init; }
 
     /// <summary>Flashback with more than mana: "Flashback—{1}{U}, Pay 3 life"; "Exile X cards from your graveyard" (X is the number exiled); a reduction of the flashback cost.</summary>
     public ExtraCost? FlashbackExtra { get; init; }

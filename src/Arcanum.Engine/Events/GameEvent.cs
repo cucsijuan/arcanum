@@ -43,6 +43,8 @@ public sealed record AbilityResolved(CardId Source, string Text) : GameEvent;
 public sealed record FizzledOnResolution(CardId Source) : GameEvent;
 public sealed record SpellCountered(CardId Card) : GameEvent;
 /// <param name="By">The player whose spell, ability or cost put them (null: not known).</param>
+/// <summary>Counters were removed from a permanent.</summary>
+public sealed record CountersRemoved(CardId Card, Abilities.CounterKind Kind, int Count) : GameEvent;
 public sealed record CountersPlaced(CardId Card, Abilities.CounterKind Kind, int Count, PlayerId? By = null) : GameEvent;
 /// <summary>Cards shown to every player ("reveal it").</summary>
 public sealed record CardsRevealed(PlayerId Player, IReadOnlyList<CardId> Cards) : GameEvent;

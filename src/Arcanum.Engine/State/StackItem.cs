@@ -16,6 +16,12 @@ public abstract record StackItem(PlayerId Controller, IReadOnlyList<ChosenTarget
     /// <summary>The value chosen for X.</summary>
     public int X { get; init; }
 
+    /// <summary>
+    /// How damage or counters are divided among the targets (rule 601.2d), by target index; announced as it's cast or put on
+    /// the stack (null: nothing divided).
+    /// </summary>
+    public IReadOnlyList<int>? Division { get; init; }
+
     /// <summary>The kicker cost was paid.</summary>
     public bool Kicked { get; init; }
 
@@ -66,6 +72,9 @@ public sealed record AbilityOnStack(CardId Source, AbilityDefinition Ability, Pl
     /// object (a card that changed zones since then is a new object, rule 400.7).
     /// </summary>
     public int? SourceVersion { get; init; }
+
+    /// <summary>For an activated ability: its index among its source's abilities.</summary>
+    public int? AbilityIndex { get; init; }
 }
 
 /// <summary>What a trigger event was about: an object (with its version then), a player and an amount.</summary>

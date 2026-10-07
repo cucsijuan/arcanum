@@ -21,6 +21,12 @@ public sealed record TargetRequest(
     /// </summary>
     public Func<int, Target, IReadOnlyList<Target>, bool>? Allowed { get; init; }
 
+    /// <summary>At most this many targets in all (an "any number" requirement limited by what can be paid or divided).</summary>
+    public int? MaxCount { get; init; }
+
+    /// <summary>Whether another target can still be added after <paramref name="chosen"/> ones.</summary>
+    public bool CanAddMore(int chosen) => (chosen < Legal.Count || LastIsAnyNumber) && (MaxCount is not { } max || chosen < max);
+
     /// <summary>The last requirement takes any number of targets.</summary>
     public bool LastIsAnyNumber => Specs.Count > 0 && Specs[^1].AnyNumber;
 
@@ -40,5 +46,5 @@ public sealed record TargetRequest(
 
     /// <summary>Enough targets chosen to finish (all requirements, the "any number" one at least once unless optional).</summary>
     /// <summary>Enough targets chosen: "any number" includes zero (rule 601.2c).</summary>
-    public bool IsComplete(int chosen) => LastIsAnyNumber ? chosen >= Specs.Count - 1 : chosen == Specs.Count;
+    public bool IsComplete(int chosen) => (LastIsAnyNumber ? chosen >= Specs.Count - 1 : chosen == Specs.Count) && (MaxCount is not { } max || chosen <= max);
 }

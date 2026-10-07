@@ -98,6 +98,9 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>A loyalty ability's cost: +N / −N loyalty counters (null: not a loyalty ability, rule 606).</summary>
     public int? Loyalty { get; init; }
 
+    /// <summary>A loyalty cost of −X ("−X: … X damage"): X is chosen as it's activated, at most the loyalty it has.</summary>
+    public bool LoyaltyX { get; init; }
+
     /// <summary>"Put a [kind] counter on this" as a cost.</summary>
     public int AddCounters { get; init; }
     public CounterKind AddCounterKind { get; init; } = CounterKind.PlusOnePlusOne;
@@ -316,6 +319,16 @@ public enum TriggerEvent
     PlayerAttacks,
     /// <summary>"Whenever you activate an ability that isn't a mana ability" (amount: the ability's stack object).</summary>
     YouActivateNonManaAbility,
+    /// <summary>"Whenever this creature deals damage to an opponent" (combat or noncombat; player: that opponent, amount: the damage).</summary>
+    DealsDamageToOpponent,
+    /// <summary>"When this becomes the target of a spell or ability" (anyone's; player: that spell or ability's controller).</summary>
+    BecomesTarget,
+    /// <summary>"When enchanted/equipped creature becomes the target of a spell or ability" (subject: that creature).</summary>
+    AttachedBecomesTarget,
+    /// <summary>"Whenever a [kind] counter is removed from this": once for each counter removed.</summary>
+    CounterRemoved,
+    /// <summary>"Whenever a player taps a land for mana" (player: that player, subject: the land).</summary>
+    PlayerTapsLandForMana,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>

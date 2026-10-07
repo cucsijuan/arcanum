@@ -859,7 +859,7 @@ public partial class GameBoard : Control
                 FindCard(t.Request.Source)?.SetHighlight(CardHighlight.Selected);
                 foreach (var chosen in _chosenTargets)
                     if (chosen.Card is { } c) FindCard(c)?.SetHighlight(CardHighlight.Selected);
-                if (_chosenTargets.Count < t.Request.Legal.Count || t.Request.LastIsAnyNumber)
+                if (t.Request.CanAddMore(_chosenTargets.Count))
                 {
                     foreach (var option in t.Request.LegalAt(_chosenTargets.Count).Where(o => t.Request.IsAllowed(_chosenTargets.Count, o, _chosenTargets)))
                     {
@@ -973,7 +973,7 @@ public partial class GameBoard : Control
         {
             foreach (var chosen in _chosenTargets)
                 if (TargetControl(chosen) is { } to) arrows.Add(new(sourceNode, to, BoardStyle.Selected));
-            if (_chosenTargets.Count < td.Request.Legal.Count || td.Request.LastIsAnyNumber) arrows.Add(new(sourceNode, null, BoardStyle.Playable));
+            if (td.Request.CanAddMore(_chosenTargets.Count)) arrows.Add(new(sourceNode, null, BoardStyle.Playable));
         }
 
         if (decision is BlockDecision)
@@ -1516,7 +1516,7 @@ public partial class GameBoard : Control
     private bool UsableNow(Decision? decision, CardId id) => decision switch
     {
         PriorityDecision p => SourceActions(p, id).Count > 0,
-        TargetDecision t => _chosenTargets.Count < t.Request.Specs.Count || t.Request.LastIsAnyNumber
+        TargetDecision t => t.Request.CanAddMore(_chosenTargets.Count)
             ? t.Request.LegalAt(_chosenTargets.Count).Any(o => o.Card == id && t.Request.IsAllowed(_chosenTargets.Count, o, _chosenTargets))
             : false,
         ChooseCardsDecision c => c.Request.Options.Any(o => o.Id == id),
@@ -1574,10 +1574,10 @@ public partial class GameBoard : Control
     /// <summary>Adds a target if it is legal for the next requirement; answers once every target is chosen.</summary>
     private void PickTarget(Arcanum.Engine.Abilities.Target target)
     {
-        if (_session.CurrentDecision is not TargetDecision t || (_chosenTargets.Count >= t.Request.Legal.Count && !t.Request.LastIsAnyNumber)) return;
+        if (_session.CurrentDecision is not TargetDecision t || !t.Request.CanAddMore(_chosenTargets.Count)) return;
         if (!t.Request.IsAllowed(_chosenTargets.Count, target, _chosenTargets)) return;
         _chosenTargets.Add(target);
-        if (!t.Request.LastIsAnyNumber && _chosenTargets.Count == t.Request.Legal.Count) t.Answer(_chosenTargets.ToList());
+        if ((!t.Request.LastIsAnyNumber && _chosenTargets.Count == t.Request.Legal.Count) || (t.Request.LastIsAnyNumber && !t.Request.CanAddMore(_chosenTargets.Count) && t.Request.IsComplete(_chosenTargets.Count))) t.Answer(_chosenTargets.ToList());
         else Refresh();
     }
 

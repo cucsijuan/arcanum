@@ -322,31 +322,8 @@ public sealed partial class Game
         BeginCombatDamage();
         BeginSimultaneous(); // all combat damage is one event: "one or more" triggers see it once (rule 510.2)
         var lifeGained = new Dictionary<PlayerId, int>();
-        foreach (var (source, target, dealt) in toCards)
-        {
-            int amount = ModifyDamage(source, target, null, dealt, combat: true);
-            if (amount <= 0) continue;
-            if (!target.IsCreature)
-            {
-                target.Counters[Abilities.CounterKind.Loyalty] = Math.Max(0, target.CounterCount(Abilities.CounterKind.Loyalty) - amount);
-                Emit(new DamageDealt(source.Id, target.Id, null, amount, IsCombat: true));
-                if (source.Has(Keyword.Lifelink)) lifeGained[source.Controller] = lifeGained.GetValueOrDefault(source.Controller) + amount;
-                continue;
-            }
-            target.Damage += amount;
-            if (source.Has(Keyword.Deathtouch)) target.DamagedByDeathtouch = true;
-            Emit(new DamageDealt(source.Id, target.Id, null, amount, IsCombat: true));
-            if (source.Has(Keyword.Lifelink)) lifeGained[source.Controller] = lifeGained.GetValueOrDefault(source.Controller) + amount;
-        }
-        foreach (var (source, target, dealt) in toPlayers)
-        {
-            int amount = ModifyDamage(source, null, target, dealt, combat: true);
-            if (amount <= 0) continue;
-            Emit(new DamageDealt(source.Id, null, target, amount, IsCombat: true));
-            ChangeLife(target, -LifeLostToDamage(target, amount));
-            RecordCommanderDamage(source, target, amount);
-            if (source.Has(Keyword.Lifelink)) lifeGained[source.Controller] = lifeGained.GetValueOrDefault(source.Controller) + amount;
-        }
+        await DealDamageEventAsync(toCards.Select(d => new DamagePart(d.Source, d.Target, null, d.Amount, true))
+            .Concat(toPlayers.Select(d => new DamagePart(d.Source, null, d.Target, d.Amount, true))).ToList(), lifeGained);
         foreach (var (player, amount) in lifeGained) GainLifeFor(player, amount); // lifelink (702.15b)
         EndCombatDamage();
         EndSimultaneous();

@@ -33,6 +33,8 @@ public static class Evaluation
     public static bool IsHarmful(Effect effect) => effect switch
     {
         DealDamage or Destroy or ExileIt or TapIt or CounterSpell or LoseLife or Mill => true,
+        DealDamageDivided or DealDamageDividedEvenly or DestroyOneAtRandom => true,
+        Discard => true,
         ReturnToHand => true,
         PumpUntilEndOfTurn p => p.Power.Estimate + p.Toughness.Estimate < 0,
         AddCounters a => a.Kind == CounterKind.MinusOneMinusOne,
@@ -72,7 +74,10 @@ public static class Evaluation
         || aura.Abilities.OfType<TriggeredAbility>().SelectMany(t => t.Effects)
             .Any(e => (IsHarmful(e) || e is RemoveAllCounters or GainControl) && SubjectOf(e) is { Kind: SubjectKind.Attached });
 
-    public static bool RefersToTarget(Effect effect, int index) => SubjectOf(effect) is { Kind: SubjectKind.Target } s && s.Index == index;
+    public static bool RefersToTarget(Effect effect, int index) =>
+        effect is DealDamageDivided or DealDamageDividedEvenly // among all the targets
+        || SubjectOf(effect) is { Kind: SubjectKind.Target } s && s.Index == index
+        || SubjectOf(effect) is { Kind: SubjectKind.EachTarget } each && index >= each.Index;
 
     /// <summary>What an effect is applied to, for the effects the computer reasons about.</summary>
     private static Subject? SubjectOf(Effect effect) => effect switch
@@ -80,7 +85,7 @@ public static class Evaluation
         DealDamage d => d.To, DrawCards d => d.Who, GainLife g => g.Who, LoseLife l => l.Who, Destroy d => d.What,
         ExileIt x => x.What, ReturnToHand r => r.What, TapIt t => t.What, UntapIt u => u.What, Mill m => m.Who,
         CounterSpell c => c.What, PumpUntilEndOfTurn p => p.What, AddCounters a => a.What, AttachSelf a => a.To,
-        RemoveAllCounters r => r.What, GainControl g => g.What, _ => null,
+        RemoveAllCounters r => r.What, GainControl g => g.What, DestroyOneAtRandom d => d.Among, Discard d => d.Who, _ => null,
     };
 
     /// <summary>Damage an ability deals to target <paramref name="index"/>, if any.</summary>

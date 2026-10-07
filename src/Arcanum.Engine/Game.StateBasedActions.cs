@@ -90,8 +90,8 @@ public sealed partial class Game
         {
             int pairs = Math.Min(card.CounterCount(Abilities.CounterKind.PlusOnePlusOne), card.CounterCount(Abilities.CounterKind.MinusOneMinusOne));
             if (pairs == 0) continue;
-            card.Counters[Abilities.CounterKind.PlusOnePlusOne] -= pairs;
-            card.Counters[Abilities.CounterKind.MinusOneMinusOne] -= pairs;
+            RemoveCountersFrom(card, Abilities.CounterKind.PlusOnePlusOne, pairs);
+            RemoveCountersFrom(card, Abilities.CounterKind.MinusOneMinusOne, pairs);
             any = true;
         }
 

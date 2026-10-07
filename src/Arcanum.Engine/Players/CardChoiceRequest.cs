@@ -23,6 +23,8 @@ public enum CardChoicePurpose
     Order,
     /// <summary>The chosen permanents stay; the others go to the graveyard (legend rule).</summary>
     Keep,
+    /// <summary>Choose a source of damage ("a source of your choice").</summary>
+    DamageSource,
 }
 
 /// <summary>

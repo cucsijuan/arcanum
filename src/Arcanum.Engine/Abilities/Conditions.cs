@@ -82,6 +82,9 @@ public sealed record DifferentNames(ObjectFilter Filter, int AtLeast) : Conditio
 /// <summary>This ability has resolved at least <paramref name="Times"/> times this turn (including now).</summary>
 public sealed record ResolvedThisTurn(int Times, bool Exactly = false) : Condition;
 
+/// <summary>"If this ability has been activated N or more times this turn" (checked as it resolves; every activation counts).</summary>
+public sealed record ActivatedThisTurn(int Times) : Condition;
+
 /// <summary>"If you cast it from your hand" / "if you cast it".</summary>
 public sealed record WasCastFromHand : Condition;
 

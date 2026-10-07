@@ -115,6 +115,18 @@ public sealed record PreventionShield(int Turn, bool CombatOnly)
     public Abilities.ObjectFilter? SourceFilter { get; init; }
     public PlayerId FilterController { get; init; }
     public PlayerId? ToPlayer { get; init; }
+
+    /// <summary>"… and creatures you control": also damage to creatures this player controls when it would be dealt.</summary>
+    public PlayerId? ToCreaturesOf { get; init; }
+}
+
+/// <summary>
+/// "The next N damage that a source of your choice would deal to you and/or permanents you control this turn is dealt to
+/// [the target] instead" (a redirection effect, rule 614.9): <see cref="Remaining"/> goes down as damage is redirected.
+/// </summary>
+public sealed record RedirectShield(int Id, PlayerId Controller, CardId Card, CardId Source, int SourceVersion, ChosenTarget To, int Turn)
+{
+    public int Remaining { get; set; }
 }
 
 /// <summary>A delayed triggered ability waiting for its moment ("at the beginning of the next upkeep").</summary>
@@ -265,6 +277,10 @@ public sealed class GameState
 
     /// <summary>Damage prevention shields that last this turn.</summary>
     public List<PreventionShield> PreventionShields { get; } = new();
+
+    /// <summary>Damage redirection shields that last this turn.</summary>
+    public List<RedirectShield> RedirectShields { get; } = new();
+    public int NextRedirectShieldId { get; set; } = 1;
 
     /// <summary>"If a source you control would deal damage this turn to an opponent or a permanent an opponent controls, it deals triple that damage instead."</summary>
     public List<(PlayerId Player, int Turn)> DamageTripled { get; } = new();

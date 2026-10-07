@@ -105,8 +105,9 @@ public sealed class BotController : IPlayerController
 
     private static string ColorLetter(string color) => color switch { "Blue" => "U", _ => color[..1] };
 
-    /// <summary>Use everything available for X.</summary>
-    public Task<int> ChooseNumberAsync(GameView view, NumberRequest request) => Task.FromResult(request.Max);
+    /// <summary>Use everything available for X; a loyalty cost of −X keeps the planeswalker alive.</summary>
+    public Task<int> ChooseNumberAsync(GameView view, NumberRequest request) =>
+        Task.FromResult(request.Prompt.Contains("loyalty counters", StringComparison.Ordinal) ? Math.Max(request.Min, request.Max - 1) : request.Max);
 
     public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request)
     {
@@ -120,6 +121,8 @@ public sealed class BotController : IPlayerController
         {
             CardChoicePurpose.ScryToBottom or CardChoicePurpose.SurveilToGraveyard => request.Options.Where(Unwanted),
             CardChoicePurpose.ToHand or CardChoicePurpose.ToBattlefield or CardChoicePurpose.Keep => request.Options.OrderByDescending(Value).Take(request.Max),
+            // "A source of your choice": the opponents' most dangerous creature.
+            CardChoicePurpose.DamageSource => request.Options.OrderByDescending(c => c.Controller != _me).ThenByDescending(c => c.Power ?? 0).ThenByDescending(Value).Take(request.Min),
             _ => request.Options.OrderBy(Value).Take(request.Min),
         };
         var chosen = picks.Take(request.Max).Select(c => c.Id).ToList();
@@ -347,7 +350,7 @@ public sealed class BotController : IPlayerController
     {
         var options = legal.OfType<ActivateAbility>()
             .Select(a => (Action: a, Ability: Rules(view, a.Source)?.Abilities.ElementAtOrDefault(a.Index) as ActivatedAbility, Card: view.FindCard(a.Source)))
-            .Where(o => o.Ability?.Cost.Loyalty is not null && o.Card is not null)
+            .Where(o => (o.Ability?.Cost.Loyalty is not null || o.Ability?.Cost.LoyaltyX == true) && o.Card is not null)
             .ToList();
         if (options.Count == 0) return null;
         foreach (var group in options.GroupBy(o => o.Action.Source))
@@ -355,6 +358,9 @@ public sealed class BotController : IPlayerController
             int loyalty = group.First().Card!.Loyalty;
             var ultimate = group.Where(o => o.Ability!.Cost.Loyalty! < 0).OrderBy(o => o.Ability!.Cost.Loyalty).FirstOrDefault();
             if (ultimate.Ability is not null && -ultimate.Ability.Cost.Loyalty! >= 6) return ultimate.Action;
+            // −X: worth it when X (all but one loyalty) does something good.
+            var minusX = group.FirstOrDefault(o => o.Ability!.Cost.LoyaltyX);
+            if (minusX.Ability is not null && loyalty > 1 && SpellScore(view, minusX.Ability) >= 4) return minusX.Action;
             var minus = group.Where(o => o.Ability!.Cost.Loyalty! < 0 && loyalty + o.Ability.Cost.Loyalty! > 0)
                 .OrderByDescending(o => SpellScore(view, o.Ability!)).FirstOrDefault();
             if (minus.Ability is not null && SpellScore(view, minus.Ability) >= 4) return minus.Action;
@@ -369,7 +375,7 @@ public sealed class BotController : IPlayerController
         foreach (var activate in legal.OfType<ActivateAbility>())
         {
             var ability = Rules(view, activate.Source)?.Abilities.ElementAtOrDefault(activate.Index) as ActivatedAbility;
-            if (ability is null || ability.Effects.Any(e => e is AttachSelf) || ability.Cost.Loyalty is not null) continue;
+            if (ability is null || ability.Effects.Any(e => e is AttachSelf) || ability.Cost.Loyalty is not null || ability.Cost.LoyaltyX) continue;
             if (ability.Cost.SacrificeSelf) continue; // keep sacrifice outlets for emergencies
             if (ability.Targets.Count == 0)
             {
@@ -435,7 +441,7 @@ public sealed class BotController : IPlayerController
         for (int i = 0; ; i++)
         {
             bool extra = i >= request.Specs.Count; // more targets for an "any number" requirement
-            if (extra && !request.LastIsAnyNumber) break;
+            if (extra && !request.CanAddMore(i)) break;
             var allowed = request.LegalAt(i).Where(t => request.IsAllowed(i, t, chosen)).ToList();
             var real = allowed.Where(t => !t.IsNone).ToList();
             if (extra)
