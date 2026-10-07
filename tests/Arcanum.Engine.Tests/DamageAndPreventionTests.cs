@@ -734,6 +734,29 @@ public class DamageAndPreventionTests
         Assert.Equal(Zone.Battlefield, s.Card(mine).Zone);
     }
 
+    [Fact]
+    public async Task DamageThisWayAndExcessDamageCountOnceASimultaneousEventIsDealt()
+    {
+        // Inside "simultaneously" the damage is dealt when the whole event is put together: "excess damage" and
+        // "each creature dealt damage this way" still see it (rule 120.4a).
+        var s = Casting();
+        s.InHand(P0, Spell("Overload", "{1}", new SpellAbility
+        {
+            Targets = new[] { new TargetSpec(TargetKind.Creature) },
+            Effects = new Effect[]
+            {
+                new Simultaneously(new Effect[] { new DealDamage(5, Subject.TargetAt(0)) }),
+                new GainLife(new Quantity(0, QuantityKind.ExcessDamage), Subject.You),
+                new ExileIt(new Subject(SubjectKind.DamagedThisWay)),
+            },
+        }));
+        s.Lands(P0, 1);
+        var bear = s.Add(P1, Creature("Bear", 2, 2));
+        await s.RunUntilTurn();
+        Assert.Equal(23, Life(s, P0));
+        Assert.Equal(Zone.Exile, s.Card(bear).Zone);
+    }
+
     // ---------------------------------------------------------------- last known information, turn order
 
     private static CardDefinition Mine(bool tapCost) => new()

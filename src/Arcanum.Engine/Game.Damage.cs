@@ -23,6 +23,16 @@ public sealed partial class Game
     {
         /// <summary>Replacement and prevention effects that already modified this damage (each applies once, rule 614.5).</summary>
         public IReadOnlySet<string> Applied { get; init; } = new HashSet<string>();
+
+        /// <summary>
+        /// The resolving effect's results this damage counts toward ("each creature dealt damage this way", "excess damage"),
+        /// noted when it's actually dealt (inside "simultaneously" that's after the whole event is put together). Damage
+        /// redirected elsewhere doesn't keep it.
+        /// </summary>
+        public EffectResults? Report { get; init; }
+
+        /// <summary>Whether damage beyond lethal counts as excess damage for <see cref="Report"/>.</summary>
+        public bool CountExcess { get; init; } = true;
     }
 
     /// <summary>One replacement or prevention effect that could modify a part of a damage event.</summary>
@@ -334,6 +344,7 @@ public sealed partial class Game
         {
             // Damage to a planeswalker removes that many loyalty counters (rule 120.3c).
             target.Counters[CounterKind.Loyalty] = Math.Max(0, target.CounterCount(CounterKind.Loyalty) - amount);
+            part.Report?.Damaged.Add(target.Id);
             Emit(new DamageDealt(source.Id, target.Id, null, amount, part.Combat));
             Lifelink();
             return;
@@ -343,6 +354,11 @@ public sealed partial class Game
         if (source.Has(Keyword.Deathtouch) && lethalBefore > 0) lethalBefore = 1;
         target.Damage += amount;
         if (source.Has(Keyword.Deathtouch)) target.DamagedByDeathtouch = true;
+        if (part.Report is { } report)
+        {
+            report.Damaged.Add(target.Id);
+            if (part.CountExcess) report.ExcessDamage += Math.Max(0, amount - lethalBefore); // rule 120.4a
+        }
         Emit(new DamageDealt(source.Id, target.Id, null, amount, part.Combat));
         if (!part.Combat)
         {

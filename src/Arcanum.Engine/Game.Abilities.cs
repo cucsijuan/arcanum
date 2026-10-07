@@ -1452,14 +1452,9 @@ public sealed partial class Game
                 if (biter is null || !biter.IsCreature) break;
                 int power = biter.Power;
                 var bitten = CardsFor(dp.To, ctx).ToList();
-                var before = bitten.ToDictionary(c => c.Id, c => (c.Damage, Lethal: biter.Has(Keyword.Deathtouch) && c.Toughness - c.Damage > 0 ? 1 : Math.Max(0, c.Toughness - c.Damage)));
-                await DealDamageEventAsync(bitten.Select(c => new DamagePart(biter, c, null, power, false))
+                // "Dealt damage this way" and excess damage are noted as the damage is dealt (DamagePart.Report).
+                await DealDamageEventAsync(bitten.Select(c => new DamagePart(biter, c, null, power, false) { Report = ctx.Results })
                     .Concat(PlayersFor(dp.To, ctx).Select(p => new DamagePart(biter, null, p, power, false))).ToList());
-                foreach (var card in bitten)
-                {
-                    if (card.Damage > before[card.Id].Damage) ctx.Results.Damaged.Add(card.Id);
-                    if (card.IsCreature) ctx.Results.ExcessDamage += Math.Max(0, card.Damage - before[card.Id].Damage - before[card.Id].Lethal);
-                }
                 break;
             }
             case ReanimateAll ra:
@@ -1640,30 +1635,24 @@ public sealed partial class Game
                 var parts = new List<DamagePart>();
                 // Lethal damage is 1 from a deathtouch source (rule 702.2c).
                 int LethalFor(Card card) => Math.Max(0, card.Toughness - card.Damage) is var l && ctx.Source.Has(Keyword.Deathtouch) && l > 0 ? 1 : Math.Max(0, card.Toughness - card.Damage);
-                var before = cards.ToDictionary(c => c.Id, c => (c.Damage, Loyalty: c.CounterCount(CounterKind.Loyalty), Lethal: LethalFor(c)));
-                var excessSplit = new HashSet<CardId>();
+                // "Dealt damage this way" and excess damage are noted as the damage is dealt (DamagePart.Report): inside
+                // "simultaneously" that's once the whole event has been put together and dealt.
                 foreach (var card in cards)
                 {
-                    if (d.ExcessToController && card.IsCreature && amount > before[card.Id].Lethal)
+                    int lethal = LethalFor(card);
+                    if (d.ExcessToController && card.IsCreature && amount > lethal)
                     {
                         // "Excess damage is dealt to that creature's controller instead."
-                        parts.Add(new DamagePart(ctx.Source, card, null, before[card.Id].Lethal, false));
-                        parts.Add(new DamagePart(ctx.Source, null, card.Controller, amount - before[card.Id].Lethal, false));
-                        excessSplit.Add(card.Id);
+                        parts.Add(new DamagePart(ctx.Source, card, null, lethal, false) { Report = ctx.Results, CountExcess = false });
+                        parts.Add(new DamagePart(ctx.Source, null, card.Controller, amount - lethal, false));
                         continue;
                     }
-                    parts.Add(new DamagePart(ctx.Source, card, null, amount, false));
+                    parts.Add(new DamagePart(ctx.Source, card, null, amount, false) { Report = ctx.Results });
                 }
                 // "That creature" is the object the trigger is about, never its controller as well.
                 if (d.To.Kind != SubjectKind.Triggered)
                     foreach (var player in PlayersFor(d.To, ctx)) parts.Add(new DamagePart(ctx.Source, null, player, amount, false));
                 await DealDamageEventAsync(parts);
-                foreach (var card in cards)
-                {
-                    var (damage, loyalty, lethal) = before[card.Id];
-                    if (excessSplit.Contains(card.Id) || card.Damage > damage || card.CounterCount(CounterKind.Loyalty) < loyalty) ctx.Results.Damaged.Add(card.Id);
-                    if (!excessSplit.Contains(card.Id) && card.IsCreature) ctx.Results.ExcessDamage += Math.Max(0, card.Damage - damage - lethal);
-                }
             }
                 break;
             case DrawCards d:
