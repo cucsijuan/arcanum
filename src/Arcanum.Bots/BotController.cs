@@ -461,7 +461,8 @@ public sealed class BotController : IPlayerController
         int specIndex(int i) => Math.Min(i, request.Specs.Count - 1);
         for (int i = 0; ; i++)
         {
-            bool extra = i >= request.Specs.Count; // more targets for an "any number" requirement
+            // An "any number" requirement (the last one) takes zero or more targets, within the request's cap (Fireball pays per target).
+            bool extra = i >= request.Specs.Count - (request.LastIsAnyNumber ? 1 : 0);
             if (extra && !request.CanAddMore(i)) break;
             var allowed = request.LegalAt(i).Where(t => request.IsAllowed(i, t, chosen)).ToList();
             var real = allowed.Where(t => !t.IsNone).ToList();

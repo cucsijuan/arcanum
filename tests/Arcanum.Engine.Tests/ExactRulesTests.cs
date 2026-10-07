@@ -316,4 +316,35 @@ public class ExactRulesTests
         Assert.Equal(3, s.Card(mono).Power);
         Assert.Equal(3, s.Card(golem).Power);
     }
+
+    [Fact]
+    public void TargetsThatMustBeDifferentNeedEnoughDifferentObjects()
+    {
+        // "Untap two target lands" (one "target" word, rule 115.3): with a single land the ability can't be activated (601.2c).
+        static CardDefinition Untapper() => new()
+        {
+            Name = "Untapper", Types = CardType.Artifact,
+            Abilities = new AbilityDefinition[]
+            {
+                new ActivatedAbility
+                {
+                    Cost = new AbilityCost(ManaCost.Zero), TargetRule = TargetRule.AllDifferent,
+                    Targets = new[] { new TargetSpec(TargetKind.Permanent, ControllerFilter.Any, new ObjectFilter(Types: CardType.Land)),
+                                      new TargetSpec(TargetKind.Permanent, ControllerFilter.Any, new ObjectFilter(Types: CardType.Land)) },
+                    Effects = new Effect[] { new UntapIt(new Subject(SubjectKind.Target, 0)), new UntapIt(new Subject(SubjectKind.Target, 1)) },
+                    Text = "Untap two target lands.",
+                },
+            },
+        };
+        var one = new Scenario();
+        one.Add(P0, Untapper());
+        one.Add(P0, new CardDefinition { Name = "Field", Types = CardType.Land, TapForMana = new[] { ManaType.Green } });
+        Assert.DoesNotContain(one.Game.GetLegalActions(P0), a => a is ActivateAbility);
+
+        var two = new Scenario();
+        two.Add(P0, Untapper());
+        two.Add(P0, new CardDefinition { Name = "Field", Types = CardType.Land, TapForMana = new[] { ManaType.Green } });
+        two.Add(P1, new CardDefinition { Name = "Field", Types = CardType.Land, TapForMana = new[] { ManaType.Green } });
+        Assert.Contains(two.Game.GetLegalActions(P0), a => a is ActivateAbility);
+    }
 }

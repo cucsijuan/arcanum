@@ -31,7 +31,32 @@ public sealed partial class Game
         if (ability is null) return true;
         if (ability.Modes is { } modes)
             return modes.Count(m => m.Targets.All(spec => spec.Optional || LegalTargets(spec, controller, source).Any())) >= (ability.UpToModes || ability.ModesMayRepeat ? 1 : ability.ModeCount);
-        return ability.Targets.All(spec => spec.Optional || LegalTargets(spec, controller, source).Any());
+        if (!ability.Targets.All(spec => spec.Optional || LegalTargets(spec, controller, source).Any())) return false;
+        if (ability.TargetRule == TargetRule.None && ability.Targets.All(t => t.AttachedToTarget is null)) return true;
+        // Rules between targets ("two target lands" must be different ones, "attached to that creature"...): there must be
+        // a whole choice of the required targets that follows them (rule 601.2c), not just a legal choice for each alone.
+        var legal = ability.Targets.Select(spec => LegalTargets(spec, controller, source).ToList()).ToList();
+        bool Choose(int index, List<Target> before)
+        {
+            if (index == legal.Count) return true;
+            if (ability.Targets[index].Optional)
+            {
+                before.Add(Target.None); // keeps later "attached to target N" indexes in place
+                bool skipped = Choose(index + 1, before);
+                before.RemoveAt(before.Count - 1);
+                if (skipped) return true;
+            }
+            foreach (var candidate in legal[index])
+            {
+                if (candidate.IsNone || !TargetAllowed(ability, index, candidate, before)) continue;
+                before.Add(candidate);
+                bool found = Choose(index + 1, before);
+                before.RemoveAt(before.Count - 1);
+                if (found) return true;
+            }
+            return false;
+        }
+        return Choose(0, new List<Target>());
     }
 
     /// <summary>The player a pending trigger is about, while its targets are chosen and checked ("that player controls").</summary>
@@ -173,7 +198,8 @@ public sealed partial class Game
             _playerCancels++;
             return null;
         }
-        Require(request.IsComplete(chosen.Count) && (request.LastIsAnyNumber || chosen.Count == legal.Count), $"Choose {legal.Count} target(s).");
+        Require(request.IsComplete(chosen.Count) && (request.LastIsAnyNumber || chosen.Count == legal.Count),
+            $"Choose {legal.Count} target(s) for {State.GetCard(source).Name} (got {chosen.Count}).");
         Require(exactCount is not { } exact || chosen.Count == exact, $"Choose {exactCount} target(s).");
         // Each choice must be legal, different from earlier ones for the same "target" word (115.3), and follow the rules between targets.
         for (int i = 0; i < chosen.Count; i++)
