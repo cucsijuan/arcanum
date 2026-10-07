@@ -445,6 +445,46 @@ public class Magic2010Tests
         }
     }
 
+    /// <summary>A land whose text sets every land's type, like Urborg, Tomb of Yawgmoth.</summary>
+    private static CardDefinition UrborgLike() => Arcanum.Data.CardData.CardFactory.Create(new Arcanum.Data.CardData.CardRecord
+    {
+        OracleId = "db6174d7-211d-4817-b8e4-8384594c83f9", Name = "Urborg, Tomb of Yawgmoth", Layout = "normal", ManaCost = "", TypeLine = "Legendary Land",
+        OracleText = "Each land is a Swamp in addition to its other land types.", Keywords = Array.Empty<string>(),
+    }, Arcanum.Data.Scripts.CardScriptParser.Parse(
+        "{\"name\": \"Urborg, Tomb of Yawgmoth\", \"abilities\": [{\"static\": {\"affects\": \"permanents\", \"filter\": {\"types\": [\"land\"]}, "
+        + "\"addSubtypes\": [\"Swamp\"]}, \"text\": \"Each land is a Swamp in addition to its other land types.\"}]}")).Definition;
+
+    [Fact]
+    public async Task ConvincingMirageOnUrborgMeansUrborgsEffectDoesntExist()
+    {
+        var s = Casting();
+        Lands(s, P0, GenericCards.Island, 2);
+        var urborg = s.Add(P1, UrborgLike());
+        var forest = s.Add(P1, GenericCards.Forest);
+        var mirage = s.InHand(P0, M("Convincing Mirage"));
+        s.Attacker.Targets = (_, r) => new[] { Target.Of(urborg) };
+        s.Attacker.Option = (_, r) => Array.IndexOf(new[] { "Plains", "Island", "Swamp", "Mountain", "Forest" }, "Island");
+        bool forestWasSwampBefore = false;
+        (bool Urborg, bool Forest)? enchanted = null, afterMirageLeft = null;
+        s.Defender.Act = (_, _) =>
+        {
+            if (enchanted is null && s.Card(mirage).Zone == Zone.Battlefield)
+            {
+                enchanted = (s.Card(urborg).HasSubtype("Swamp") || !s.Card(urborg).HasSubtype("Island"), s.Card(forest).HasSubtype("Swamp"));
+                s.Game.State.Battlefield.Remove(mirage);
+                MoveTo(s, mirage, Zone.Graveyard);
+            }
+            else if (enchanted is not null && afterMirageLeft is null)
+                afterMirageLeft = (s.Card(urborg).HasSubtype("Swamp"), s.Card(forest).HasSubtype("Swamp"));
+            return PassPriority.Instance;
+        };
+        OnFirstAction(s, () => forestWasSwampBefore = s.Card(forest).HasSubtype("Swamp"));
+        await s.RunUntilTurn(3);
+        Assert.True(forestWasSwampBefore);
+        Assert.Equal((false, false), enchanted); // Urborg is just an Island: its "each land is a Swamp" doesn't exist (rules 305.7, 613.8a)
+        Assert.Equal((true, true), afterMirageLeft); // with the Mirage gone, Urborg's effect is back
+    }
+
     // ------------------------------------------------------------------ card names
 
     [Fact]

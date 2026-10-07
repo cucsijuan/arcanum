@@ -78,7 +78,7 @@ public static class ViewBuilder
     };
 
     private static bool Revealing(GameState state, PlayerId player, Cards.Replacements rule) =>
-        !state.GetPlayer(player).HasLost && state.PermanentsControlledBy(player).Any(c => (c.Definition.Replaces & rule) != 0 && !c.LostAllAbilities);
+        !state.GetPlayer(player).HasLost && state.PermanentsControlledBy(player).Any(c => (c.Definition.Replaces & rule) != 0 && !c.LosesAbilities && !c.LosesTextAbilities);
 
     /// <summary>"You may look at the top card of your library any time" (a permanent the player controls says so).</summary>
     public static bool MayLookAtLibraryTop(GameState state, PlayerId player) =>

@@ -449,7 +449,7 @@ public sealed partial class Game
         bool doubles = (!firstInDrawStep && Has(playerId, Cards.Replacements.DrawTwoExceptFirstInDrawStep))
                        || (player.Hand.Count == 0 && Has(playerId, Cards.Replacements.DrawTwoWithEmptyHand));
         var thief = firstInDrawStep || depth > 8 ? null
-            : State.Battlefield.Select(State.GetCard).FirstOrDefault(c => c.Controller != playerId && (c.Definition.Replaces & Cards.Replacements.StealsOpponentsExtraDraws) != 0 && !c.LosesAbilities);
+            : State.Battlefield.Select(State.GetCard).FirstOrDefault(c => c.Controller != playerId && (c.Definition.Replaces & Cards.Replacements.StealsOpponentsExtraDraws) != 0 && !c.LosesAbilities && !c.LosesTextAbilities);
         if (thief is not null && (!doubles || await ControllerOf(playerId).ChooseOptionAsync(ViewFor(playerId), new Players.OptionRequest(
                 "Two replacement effects apply to this draw: choose the one that applies", thief.Id,
                 new[] { $"{thief.Name}: skip this draw ({State.GetPlayer(thief.Controller).Name} draws instead)", "Draw two cards instead" }, Players.OptionKind.Other)) == 0))
