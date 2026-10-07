@@ -172,7 +172,7 @@ public sealed partial class Game
     }
 
     private bool CanAttack(Card c) =>
-        c.IsCreature && !c.Tapped && !c.IsSummoningSick && !c.Has(Keyword.Defender) && !c.Has(Keyword.CantAttack)
+        c.IsCreature && !c.Tapped && !c.IsSummoningSick && (!c.Has(Keyword.Defender) || c.Has(Keyword.CanAttackDespiteDefender)) && !c.Has(Keyword.CantAttack)
         // "Creatures with power greater than the number of cards in your hand can't attack" (the permanent's controller's hand).
         && !State.Battlefield.Select(State.GetCard).Any(b => b.Definition.CantAttackIfPowerAboveHandSize && !b.LosesAbilities && c.Power > State.GetPlayer(b.Controller).Hand.Count);
 

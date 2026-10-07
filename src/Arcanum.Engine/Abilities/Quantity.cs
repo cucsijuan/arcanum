@@ -52,6 +52,10 @@ public enum QuantityKind
     ExiledThisWay,
     /// <summary>The number of different mana values among matching permanents you control.</summary>
     DistinctManaValues,
+    /// <summary>The greatest mana value among the permanents you control matching the filter ("the greatest mana value among artifacts you control").</summary>
+    GreatestManaValue,
+    /// <summary>Cards this effect found and moved ("when a creature is put onto the battlefield this way"): those taken from the top of the library.</summary>
+    FoundThisWay,
     /// <summary>Colors of the spell or object the trigger was about.</summary>
     TriggeredColors,
     /// <summary>Spells matching the filter the controller cast this turn.</summary>

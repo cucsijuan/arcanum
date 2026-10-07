@@ -83,7 +83,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
-    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time }
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Phylactery }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect
@@ -693,14 +693,40 @@ public sealed record Attach(Subject What, Subject To) : Effect;
 /// <summary>Put cards milled by this effect into their owner's hand: all matching ones (<paramref name="Count"/> &lt; 0) or up to <paramref name="Count"/> chosen.</summary>
 public sealed record TakeMilled(ObjectFilter? Filter, int Count) : Effect;
 
-/// <summary>Remove every counter from the subject.</summary>
+/// <summary>
+/// Remove every counter from the subject: from a permanent, or from a player (poison counters, the only counters players get).
+/// </summary>
 public sealed record RemoveAllCounters(Subject What) : Effect;
+
+/// <summary>
+/// "Until end of turn, if a [filter] would enter the battlefield and it wasn't cast, exile it instead" (a replacement effect, rule 614.1a):
+/// a card entering from anywhere but the stack is exiled.
+/// </summary>
+public sealed record ExileUncastEntering(ObjectFilter Filter) : Effect;
+
+/// <summary>
+/// Each of the subject players reveals the top card of their library, then puts it onto the battlefield (under their control) if it
+/// matches the filter ("…if it's a permanent card"). The players do so at the same time, in turn order.
+/// </summary>
+public sealed record RevealTopPutOntoBattlefield(Subject Who, ObjectFilter Filter) : Effect;
+
+/// <summary>"Exile all but the bottom [N] card(s) of target player's library": every card of each subject player's library but the bottom <paramref name="Keep"/> goes to exile.</summary>
+public sealed record ExileLibraryAllButBottom(Subject Who, int Keep) : Effect;
+
+/// <summary>
+/// "It can't have counters put on it for as long as this permanent remains on the battlefield" (for a player: "that player can't get
+/// counters"): the subject, as it is now, can't have counters put on it while the source stays on the battlefield.
+/// </summary>
+public sealed record PreventCounters(Subject What) : Effect;
 
 /// <summary>Exile the subject, then return it to the battlefield at once under its owner's control.</summary>
 public sealed record Blink(Subject What) : Effect
 {
     /// <summary>They return tapped.</summary>
     public bool Tapped { get; init; }
+
+    /// <summary>"Return it to the battlefield transformed": a double-faced card returns with its back face up; any other card stays exiled (rule 712.14a).</summary>
+    public bool Transformed { get; init; }
 }
 
 /// <summary>Its owner shuffles the subject into their library.</summary>

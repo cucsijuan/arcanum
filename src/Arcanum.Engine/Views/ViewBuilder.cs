@@ -148,10 +148,10 @@ public static class ViewBuilder
             OnAdventure = card.OnAdventure,
             SplitHalves = card.PrintedDefinition.SplitHalves?.Select(h => $"{h.Name} {h.ManaCost}").ToList(),
             Transformed = card.Transformed,
-            IsBackFace = card.Transformed && card.CopiedDefinition is null && card.IsDoubleFaced,
+            IsBackFace = card.Transformed && !card.IsCopy && card.IsDoubleFaced,
         };
         // A double-faced card shows its other face on request; a copy of one has only the face it copied (rule 707.8).
-        if (card.IsDoubleFaced && card.CopiedDefinition is null && card.PrintedDefinition.BackFace is { } back)
+        if (card.IsDoubleFaced && !card.IsCopy && card.PrintedDefinition.BackFace is { } back)
             face = face with { OtherFace = PrintedFace(card, card.Transformed ? card.PrintedDefinition : back, isBack: !card.Transformed) };
         return face;
     }

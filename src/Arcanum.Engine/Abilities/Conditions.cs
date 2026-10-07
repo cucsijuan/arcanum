@@ -193,6 +193,9 @@ public sealed record SourceTransformed : Condition;
 /// <summary>"As long as it's front face up": the source is a double-faced permanent with its front face up.</summary>
 public sealed record SourceFrontFaceUp : Condition;
 
+/// <summary>"As long as it hasn't dealt damage yet": the source has dealt damage since it came to the battlefield (rule 400.7).</summary>
+public sealed record SourceHasDealtDamage : Condition;
+
 /// <summary>"If it's attacking the player with the most life or tied for most life": the player the trigger is about.</summary>
 public sealed record TriggeredPlayerHasMostLife : Condition;
 

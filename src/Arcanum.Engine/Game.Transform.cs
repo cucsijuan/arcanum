@@ -51,5 +51,5 @@ public sealed partial class Game
     /// original is copied instead.
     /// </summary>
     private static (CardDefinition Definition, bool BackFaceUp) CopiableForToken(Card original) =>
-        original.CopiedDefinition is null && original.IsDoubleFaced ? (original.PrintedDefinition, original.Transformed) : (original.Definition, false);
+        !original.IsCopy && original.IsDoubleFaced ? (original.PrintedDefinition, original.Transformed) : (original.Definition, false);
 }

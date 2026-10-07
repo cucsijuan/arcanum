@@ -147,6 +147,33 @@ public sealed partial class Game
                 RecomputeContinuousEffects();
                 continue;
             }
+            else if (card.Definition.ChooseOnEnter == EnterChoice.Creature)
+            {
+                // "As this Aura enters, choose a creature": any creature on the battlefield; the choice is remembered, not a target.
+                var creatures = State.Battlefield.Select(State.GetCard).Where(c => c.IsCreature).ToList();
+                if (creatures.Count == 0) continue;
+                var pick = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest($"{card.Name}: choose a creature", id,
+                    creatures.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 1, 1, CardChoicePurpose.Keep));
+                Require(pick.Count == 1 && creatures.Any(c => c.Id == pick[0]), "Choose one of the creatures.");
+                card.ChosenCreature = (pick[0], State.GetCard(pick[0]).Version);
+                Emit(new ChoiceMade(id, State.GetCard(pick[0]).Name));
+                RecomputeContinuousEffects();
+                continue;
+            }
+            else if (card.Definition.ChooseOnEnter == EnterChoice.CounterOnPermanent)
+            {
+                // "As this enters, put a [kind] counter on a [permanent] you control": chosen (not targeted) as it enters.
+                var filter = (card.Definition.EnterCounterOn ?? ObjectFilter.Anything) with { Controller = ControllerFilter.Any };
+                var options = State.PermanentsControlledBy(who).Where(c => c.Id != id && Matches(filter, c, who, card, who)).ToList();
+                if (options.Count == 0) continue;
+                var pick = options.Count == 1 ? new[] { options[0].Id } : (await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest(
+                    $"{card.Name}: choose the permanent to put a counter on", id, options.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 1, 1, CardChoicePurpose.Keep))).ToArray();
+                Require(pick.Length == 1 && options.Any(c => c.Id == pick[0]), "Choose one of the permanents.");
+                Emit(new ChoiceMade(id, State.GetCard(pick[0]).Name));
+                PutCounters(State.GetCard(pick[0]), card.Definition.EnterCounterKind, 1, who);
+                await ResolvePendingCountersAsync();
+                continue;
+            }
             else if (card.Definition.ChooseOnEnter == EnterChoice.OddOrEven)
             {
                 int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose odd or even", id, new[] { "Odd", "Even" }, OptionKind.Other));
@@ -688,7 +715,14 @@ public sealed partial class Game
             foreach (var c in conspirators) Tap(c);
         }
         bool treasure = paidMana.Taps.Any(t => State.GetCard(t.Source).HasSubtype("Treasure")) || paidMana.SpecialSpent.Any(u => State.GetCard(u.Source).HasSubtype("Treasure"));
-        foreach (var extra in nonMana) await PayExtraAsync(player.Id, extra, cardId);
+        // What the additional costs sacrificed or discarded stays known to the spell ("the sacrificed creature's power").
+        var costSacrificed = new List<CardId>();
+        var costDiscarded = new List<CardId>();
+        foreach (var extra in nonMana)
+        {
+            costSacrificed.AddRange(await PayExtraAsync(player.Id, extra, cardId));
+            if (extra.Discard > 0) costDiscarded.AddRange(_lastDiscardedForCost);
+        }
         if (card.Definition.PayXLife && x > 0) ChangeLife(player.Id, -x);
         if (card.Zone == Zone.Graveyard && Has(player.Id, Replacements.PermanentsFromGraveyard) && GraveyardCost(card) is null
             && card.Definition.Flashback is null && !State.PlayableFromGraveyard.Any(p => p.Card == cardId && p.Version == card.Version))
@@ -738,7 +772,7 @@ public sealed partial class Game
         PushStack(new SpellOnStack(cardId, player.Id, targets)
         {
             Ability = ability != CastingTargets(card.Definition) ? ability : null,
-            X = x, Kicked = kicked, Flashback = flashback, GiftTo = giftTo, Division = division, KickCount = choices.KickCount, SquadCount = choices.SquadCount, Dashed = choices.Way.Kind == CastingWayKind.Dash,
+            X = x, Kicked = kicked, Flashback = flashback, GiftTo = giftTo, SacrificedForCost = costSacrificed, DiscardedForCost = costDiscarded, Division = division, KickCount = choices.KickCount, SquadCount = choices.SquadCount, Dashed = choices.Way.Kind == CastingWayKind.Dash,
         });
         Emit(new SpellCast(player.Id, cardId));
         foreach (var castThis in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.Trigger == TriggerEvent.CastThis))
