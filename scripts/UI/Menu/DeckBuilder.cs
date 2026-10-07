@@ -46,7 +46,7 @@ public partial class DeckBuilder : Control
     private readonly Dictionary<string, Button> _colorToggles = new();
     private readonly OptionButton _typeFilter = MenuKit.Options(TypeFilters.Select(t => t.Label));
     private readonly OptionButton _mvFilter = MenuKit.Options(ManaValueFilters);
-    private readonly OptionButton _setFilter = MenuKit.Options(new[] { "All sets" });
+    private readonly SearchPicker _setFilter = new();
     private IReadOnlyList<SetInfo> _sets = Array.Empty<SetInfo>();
     private readonly CheckButton _supportedOnly = MenuKit.Toggle("Playable only", true);
     private readonly CheckButton _legalOnly = MenuKit.Toggle("Legal in format", true);
@@ -97,7 +97,8 @@ public partial class DeckBuilder : Control
         foreach (var f in App.Instance.Formats) _format.AddItem(f.Name);
         _format.Selected = 0;
         _sets = Cards.Sets;
-        foreach (var set in _sets) _setFilter.AddItem($"{set.Name} ({set.Code.ToUpperInvariant()})");
+        _setFilter.AddItem("All sets");
+        foreach (var set in _sets) _setFilter.AddItem($"{set.Name} ({set.Code.ToUpperInvariant()})", set.Code);
         _setFilter.Visible = _sets.Count > 0;
         RefreshSavedDecks();
         NewDeck();

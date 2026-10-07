@@ -205,6 +205,7 @@ public static class UiArt
         list.SetBorderWidthAll(1);
         list.SetContentMarginAll(6);
         theme.SetStylebox("panel", "PopupMenu", list);
+        theme.SetStylebox("panel", "PopupPanel", list);
         theme.SetStylebox("hover", "PopupMenu", new StyleBoxFlat { BgColor = Highlight with { A = 0.7f } });
         return theme;
     }
