@@ -1559,7 +1559,9 @@ public sealed partial class Game
                     if (card.Damage > before || card.CounterCount(CounterKind.Loyalty) < loyaltyBefore) ctx.Results.Damaged.Add(card.Id);
                     if (card.IsCreature) ctx.Results.ExcessDamage += Math.Max(0, card.Damage - before - lethal);
                 }
-                foreach (var player in PlayersFor(d.To, ctx)) DamagePlayer(ctx.Source, player, amount);
+                // "That creature" is the object the trigger is about, never its controller as well.
+                if (d.To.Kind != SubjectKind.Triggered)
+                    foreach (var player in PlayersFor(d.To, ctx)) DamagePlayer(ctx.Source, player, amount);
             }
                 break;
             case DrawCards d:
