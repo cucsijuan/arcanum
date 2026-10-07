@@ -58,7 +58,6 @@ public partial class GameBoard : Control
     private PlayerId? _attackDefender;                                    // where newly picked attackers go
     private readonly Dictionary<CardId, CardId> _attackWalkers = new();   // attacker -> planeswalker it attacks
     private CardId? _attackWalker;                                        // planeswalker newly picked attackers go after
-    private readonly HashSet<CardId> _attackGroup = new();                // picked since the last change of target
     private readonly Dictionary<CardId, List<CardId>> _blocks = new(); // blocker -> attackers it blocks (several: "can block any number")
     private CardId? _pendingBlocker;
     private readonly List<CardId> _pendingGroup = new();  // more tokens of the pending blocker's stack that block along with it
@@ -619,7 +618,6 @@ public partial class GameBoard : Control
             _attackTargets.Clear();
             _attackWalkers.Clear();
             _attackWalker = null;
-            _attackGroup.Clear();
             _attackDefender = decision is AttackDecision ad ? ad.Defenders[0] : null;
             // Creatures that must attack (each combat if able, goaded, "attacks you this turn if able") start selected, at the
             // player they have to attack (their target can still be changed where the requirements allow it).
@@ -628,14 +626,10 @@ public partial class GameBoard : Control
                 {
                     _attackTargets[forced.Attacker] = forced.Defender;
                     if (forced.Planeswalker is { } pw) _attackWalkers[forced.Attacker] = pw;
-                    _attackGroup.Add(forced.Attacker);
                 }
             else if (decision is AttackDecision forced)
                 foreach (var id in forced.PossibleAttackers.Where(id => _session.ViewFor(forced.Player).FindCard(id)?.AttacksEachCombat == true))
-                {
                     _attackTargets[id] = AllowedDefender(forced, id, forced.Defenders[0]);
-                    _attackGroup.Add(id);
-                }
             _blocks.Clear();
             _pendingBlocker = null;
             _pendingGroup.Clear();
@@ -1142,16 +1136,26 @@ public partial class GameBoard : Control
             case ChooseOptionDecision od:
             {
                 _prompt.Text = $"{who}: {od.Request.Prompt}";
-                var grid = new GridContainer { Columns = od.Request.Options.Count > 6 ? 3 : 1 };
-                grid.AddThemeConstantOverride("h_separation", 6);
-                grid.AddThemeConstantOverride("v_separation", 6);
+                // One column (long texts such as triggered abilities wrap); past six options it scrolls.
+                var list = new VBoxContainer();
+                list.AddThemeConstantOverride("separation", 6);
+                var scroll = new ScrollContainer
+                {
+                    HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+                    CustomMinimumSize = new Vector2(380, Math.Min(od.Request.Options.Count, 6) * 46),
+                };
+                list.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                scroll.AddChild(list);
                 _actionExtra.Visible = true;
-                _actionExtra.AddChild(grid);
+                _actionExtra.AddChild(scroll);
+                var grid = list;
                 for (int i = 0; i < od.Request.Options.Count; i++)
                 {
                     int option = i;
                     var button = BoardStyle.MakeButton(od.Request.Options[i], 14);
-                    button.CustomMinimumSize = new Vector2(od.Request.Options.Count > 6 ? 110 : 220, 34);
+                    button.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                    button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                    button.CustomMinimumSize = new Vector2(0, 40);
                     button.Pressed += () =>
                     {
                         if (_session.CurrentDecision is null) return;
@@ -1605,10 +1609,6 @@ public partial class GameBoard : Control
         else PickTarget(Arcanum.Engine.Abilities.Target.Of(player));
     }
 
-    /// <summary>
-    /// New attack target: attackers picked since the last change follow it, later picks go to it too. So "pick A
-    /// and B, then choose Computer 3" sends both there, and "pick A, choose P2, pick B, choose P3" splits them.
-    /// </summary>
     /// <summary>The player a creature attacks: the one wanted, or the first it may attack when it can't attack that one.</summary>
     private PlayerId AllowedDefender(AttackDecision decision, CardId attacker, PlayerId wanted)
     {
@@ -1616,21 +1616,21 @@ public partial class GameBoard : Control
         return view.MayAttack(attacker, wanted) ? wanted : decision.Defenders.FirstOrDefault(d => view.MayAttack(attacker, d), wanted);
     }
 
+    /// <summary>
+    /// Chooses where attackers picked from now on go (a player, or one of their planeswalkers). Creatures already attacking
+    /// keep their target: to send one elsewhere, take it out of the attack and pick it again after choosing the new target.
+    /// </summary>
     private void ChooseAttackTarget(PlayerId defender, CardId? walker = null)
     {
-        foreach (var id in _attackGroup)
-        {
-            if (_session.CurrentDecision is AttackDecision decision
-                && (AllowedDefender(decision, id, defender) != defender || decision.Request is { } rules && !rules.MayAttack(id, defender, walker))) continue; // it can't attack that
-            _attackTargets[id] = defender;
-            if (walker is { } w) _attackWalkers[id] = w;
-            else _attackWalkers.Remove(id);
-        }
         _attackWalker = walker;
-        _attackGroup.Clear();
         _attackDefender = defender;
         Refresh();
     }
+
+    /// <summary>Whether a creature attacks the target currently chosen for new attackers (that player, or that planeswalker).</summary>
+    private bool AttacksChosenTarget(CardId id) =>
+        _attackTargets.TryGetValue(id, out var defender) && defender == _attackDefender
+        && (_attackWalkers.TryGetValue(id, out var walker) ? walker == _attackWalker : _attackWalker is null);
 
     /// <summary>How a stack item is targeted: a spell by its card, an ability by its stack object.</summary>
     private static Arcanum.Engine.Abilities.Target StackTarget(StackItemView item) =>
@@ -1684,7 +1684,6 @@ public partial class GameBoard : Control
         if (_selected.Contains(id)) mark.Append('s');
         if (_chosenTargets.Any(t => t.Card == id)) mark.Append('t');
         if (_attackTargets.TryGetValue(id, out var defender)) mark.Append($"a{defender.Value}/{(_attackWalkers.TryGetValue(id, out var w) ? w.Value : -1)}");
-        if (_attackGroup.Contains(id)) mark.Append('g');
         if (_blocks.TryGetValue(id, out var blocked)) mark.Append($"b{string.Join(",", blocked.Select(x => x.Value))}");
         if (IsPendingBlocker(id)) mark.Append('p');
         if (_damageSplit.TryGetValue(id, out var dmg)) mark.Append($"d{dmg}");
@@ -1718,28 +1717,34 @@ public partial class GameBoard : Control
         _picker = null;
     }
 
-    /// <summary>"Attack with how many?": exactly that many of the identical creatures attack (the ones already attacking first).</summary>
+    /// <summary>
+    /// "Attack with how many?" for a stack of identical creatures, about the target chosen for new attackers: the ones
+    /// attacking it plus the ones not attacking yet can be picked; the ones attacking another target are left alone.
+    /// </summary>
     private void OpenAttackPicker(AttackDecision decision, IReadOnlyList<CardId> same, string? name)
     {
-        int attacking = same.Count(_attackTargets.ContainsKey);
-        OpenPicker($"Attack with how many {name}?", 0, same.Count, attacking > 0 ? attacking : same.Count,
-            count => ApplyAttackCount(decision, same, count), decision);
+        var pile = same.Where(id => !_attackTargets.ContainsKey(id) || AttacksChosenTarget(id)).ToList();
+        if (pile.Count == 0) return; // all of them attack someone else
+        int attacking = pile.Count(AttacksChosenTarget);
+        string target = _attackWalker is { } w ? _session.ViewFor(decision.Player).FindCard(w)?.Name ?? "that planeswalker"
+            : _session.ViewFor(decision.Player).Players[(_attackDefender ?? decision.Defenders[0]).Value].Name;
+        OpenPicker($"Attack {target} with how many {name}?", 0, pile.Count, attacking > 0 ? attacking : pile.Count,
+            count => ApplyAttackCount(decision, pile, count), decision);
     }
 
-    private void ApplyAttackCount(AttackDecision decision, IReadOnlyList<CardId> same, int count)
+    /// <summary>Exactly <paramref name="count"/> of the pile attack the chosen target (the ones already attacking it first).</summary>
+    private void ApplyAttackCount(AttackDecision decision, IReadOnlyList<CardId> pile, int count)
     {
-        var (add, remove) = BattlefieldLayout.Pick(same, _attackTargets.ContainsKey, count);
+        var (add, remove) = BattlefieldLayout.Pick(pile, AttacksChosenTarget, count);
         foreach (var id in remove)
         {
             _attackTargets.Remove(id);
-            _attackGroup.Remove(id);
             _attackWalkers.Remove(id);
         }
         foreach (var id in add)
         {
             _attackTargets[id] = AllowedDefender(decision, id, _attackDefender ?? decision.Defenders[0]);
             if (_attackWalker is { } walker) _attackWalkers[id] = walker;
-            _attackGroup.Add(id);
         }
         Refresh();
     }
@@ -1827,14 +1832,12 @@ public partial class GameBoard : Control
                 }
                 if (_attackTargets.Remove(id))
                 {
-                    _attackGroup.Remove(id);
                     _attackWalkers.Remove(id);
                 }
                 else
                 {
                     _attackTargets[id] = AllowedDefender(a, id, _attackDefender ?? a.Defenders[0]);
                     if (_attackWalker is { } w) _attackWalkers[id] = w;
-                    _attackGroup.Add(id);
                 }
                 break;
 
