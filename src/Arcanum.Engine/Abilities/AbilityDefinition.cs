@@ -316,6 +316,8 @@ public enum TriggerEvent
     PlayerAttacks,
     /// <summary>"Whenever you activate an ability that isn't a mana ability" (amount: the ability's stack object).</summary>
     YouActivateNonManaAbility,
+    /// <summary>"At the beginning of the upkeep of enchanted creature's controller" (that player is the triggered player).</summary>
+    EnchantedControllersUpkeep,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -483,6 +485,9 @@ public sealed record ObjectFilter(
 
     /// <summary>Doesn't share a creature type with a creature the ability's controller controls.</summary>
     public bool NoSharedCreatureTypeWithYours { get; init; }
+
+    /// <summary>Has none of these colors ("nonblack": ["B"]).</summary>
+    public IReadOnlyList<string>? NotColors { get; init; }
 
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 

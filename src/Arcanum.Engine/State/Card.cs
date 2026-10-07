@@ -14,9 +14,18 @@ public sealed class Card
     public CardDefinition PrintedDefinition { get; }
 
     /// <summary>Its characteristics now: those of its Adventure while it is cast as one (rule 715.3), otherwise the printed card's.</summary>
-    public CardDefinition Definition => AsAdventure && PrintedDefinition.Adventure is { } adventure ? adventure
+    public CardDefinition Definition => CopiedDefinition ?? (AsAdventure && PrintedDefinition.Adventure is { } adventure ? adventure
         : CastHalf is { } half && PrintedDefinition.SplitHalves is { } halves ? halves[half]
-        : PrintedDefinition;
+        : PrintedDefinition);
+
+    /// <summary>
+    /// The copiable values it has from a copy effect ("enter as a copy of any creature", rule 707): while on the battlefield
+    /// its characteristics are those of the copied object (themselves copiable), not its own.
+    /// </summary>
+    internal CardDefinition? CopiedDefinition { get; set; }
+
+    /// <summary>It entered as a copy of another object: its own printed name (shown with the copy's).</summary>
+    public string? CopyOfName => CopiedDefinition is null ? null : PrintedDefinition.Name;
 
     /// <summary>A split card being cast as (or on the stack as) one of its halves (rule 709.3).</summary>
     public int? CastHalf { get; set; }
@@ -174,6 +183,12 @@ public sealed class Card
     internal IReadOnlyList<string>? ColorsOverride { get; set; }
     internal string? NameOverride { get; set; }
     internal bool LosesAbilities { get; set; }
+
+    /// <summary>
+    /// An effect set its land subtype (rule 305.7): it loses the abilities from its rules text (and its old land types' mana
+    /// abilities) and has the mana ability of each basic land type it has now. Abilities granted by effects stay.
+    /// </summary>
+    internal bool LosesTextAbilities { get; set; }
     internal List<AbilityDefinition> GrantedAbilities { get; } = new();
     internal List<ManaOption> GrantedManaOptions { get; } = new();
 
@@ -227,7 +242,7 @@ public sealed class Card
 
     /// <summary>Its abilities now: printed ones (unless it lost them) plus granted ones. Indices match <c>ActivateAbility.Index</c>.</summary>
     public IReadOnlyList<AbilityDefinition> Abilities =>
-        LosesAbilities ? GrantedAbilities
+        LosesAbilities || LosesTextAbilities ? GrantedAbilities
         : GrantedAbilities.Count == 0 ? Definition.Abilities
         : Definition.Abilities.Concat(GrantedAbilities).ToList();
 
@@ -285,6 +300,9 @@ public sealed class Card
     /// <summary>Whether an effect made it lose its printed abilities.</summary>
     public bool LostAllAbilities => LosesAbilities;
 
+    /// <summary>Whether a subtype is a land type.</summary>
+    internal static bool IsLandType(string subtype) => LandTypes.Contains(subtype);
+
     /// <summary>Whether a subtype is a creature type (not a land, artifact, enchantment, spell or battle type).</summary>
     internal static bool IsCreatureType(string subtype) => !NonCreatureSubtypes.Contains(subtype);
 
@@ -304,7 +322,13 @@ public sealed class Card
         get
         {
             var options = new List<ManaOption>();
-            if (!LosesAbilities)
+            if (LosesTextAbilities && !LosesAbilities)
+            {
+                // Its land types were set: only the intrinsic mana abilities of the basic land types it has now (rule 305.7).
+                foreach (var (landType, mana) in BasicLandMana)
+                    if (HasSubtype(landType)) options.Add(new ManaOption(new[] { mana }));
+            }
+            else if (!LosesAbilities)
             {
                 var types = Definition.ManaFromChosenColor && ChosenColor is { } color && Mana.ManaTypeExtensions.TryParse(color[0], out var type)
                     ? new[] { type }
@@ -400,7 +424,7 @@ public sealed class Card
     /// <summary>"Triggers only once each turn" abilities that already triggered this turn.</summary>
     public HashSet<AbilityDefinition> TriggeredThisTurn { get; } = new(ReferenceEqualityComparer.Instance);
 
-    public bool Has(Keyword keyword) => !LostKeywords.Contains(keyword) && ((!LosesAbilities && Definition.KeywordAbilities.Contains(keyword)) || GrantedKeywords.Contains(keyword));
+    public bool Has(Keyword keyword) => !LostKeywords.Contains(keyword) && ((!LosesAbilities && !LosesTextAbilities && Definition.KeywordAbilities.Contains(keyword)) || GrantedKeywords.Contains(keyword));
 
     /// <summary>A creature that can't attack or use {T} abilities yet (rule 302.6); haste removes the restriction.</summary>
     public bool IsSummoningSick => IsCreature && !ControlledSinceTurnStart && !Has(Keyword.Haste);
@@ -444,6 +468,8 @@ public sealed class Card
         ColorsOverride = null;
         NameOverride = null;
         LosesAbilities = false;
+        LosesTextAbilities = false;
+        CopiedDefinition = null;
         GrantedManaOptions.Clear();
         CastFromHand = false;
         WasCast = false;

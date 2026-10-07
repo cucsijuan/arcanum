@@ -32,7 +32,7 @@ public class HiddenKnowledgeTests
     private static readonly CardDefinition OnefoldGaze = Sorcery("Onefold Gaze", new Scry(1));
 
     /// <summary>"As this enters, look at an opponent's hand, then choose any card name."</summary>
-    private static readonly CardDefinition HandSnooper = Creature("Hand Snooper", 1, 1) with { ChooseOnEnter = EnterChoice.CardName };
+    private static readonly CardDefinition HandSnooper = Creature("Hand Snooper", 1, 1) with { ChooseOnEnter = EnterChoice.LookAtOpponentsHandThenCardName };
 
     /// <summary>Player 0 plays a land and casts whatever it can, targets the opponent when possible and never attacks.</summary>
     private static Scenario Casting()

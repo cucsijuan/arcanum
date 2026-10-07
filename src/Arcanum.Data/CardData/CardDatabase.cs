@@ -110,6 +110,11 @@ public sealed class CardDatabase : ICardDatabase
 
     public int Count => _sorted.Count;
 
+    private IReadOnlyList<string>? _names;
+
+    /// <summary>Every card name, in alphabetical order (what a player may choose for "choose a card name").</summary>
+    public IReadOnlyList<string> Names => _names ??= _sorted.Select(e => e.Record.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
     public bool TryGet(string name, out CardDefinition definition)
     {
         if (_byName.TryGetValue(name, out var entry)) { definition = entry.Definition; return true; }

@@ -19,6 +19,10 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
     /// <summary>Replaces its subtypes ("becomes a Human Faerie Detective").</summary>
     public IReadOnlyList<string>? SetSubtypes { get; init; }
 
+    /// <summary>Colors it has from now on ("becomes a green creature") / colors added ("is black in addition to its other colors"), layer 5.</summary>
+    public IReadOnlyList<string>? SetColors { get; init; }
+    public IReadOnlyList<string>? AddColors { get; init; }
+
     /// <summary>Abilities gained ("gains 'When this creature dies, ...'").</summary>
     public IReadOnlyList<Abilities.AbilityDefinition>? Abilities { get; init; }
 
@@ -219,6 +223,9 @@ public sealed class GameState
 
     /// <summary>Turn in which players can't cast spells (-1: none).</summary>
     public int SpellsForbiddenTurn { get; set; } = -1;
+
+    /// <summary>Players who can't cast spells during a given turn ("your opponents can't cast spells this turn").</summary>
+    public List<(PlayerId Player, int Turn)> SpellsForbiddenFor { get; } = new();
 
     /// <summary>Delayed abilities that trigger at the beginning of the next upkeep.</summary>
     public List<DelayedTrigger> AtNextUpkeep { get; } = new();

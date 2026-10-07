@@ -5,7 +5,7 @@ using Arcanum.Engine.Mana;
 namespace Arcanum.Engine.Cards;
 
 /// <summary>A choice made as a permanent enters (rule 614.12).</summary>
-public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped, RevealOrTapped }
+public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped, RevealOrTapped, BasicLandType, LookAtOpponentsHandThenCardName }
 
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]
@@ -86,6 +86,10 @@ public enum Replacements : long
     LookAtLibraryTop = 1L << 37,
     /// <summary>As long as an opponent controls more lands than you, you may play lands from the top of your library.</summary>
     PlayLandsFromLibraryTopWhileBehind = 1L << 38,
+    /// <summary>"Your opponents play with their hands revealed": this permanent's controller sees its opponents' hands.</summary>
+    OpponentsPlayWithHandsRevealed = 1L << 39,
+    /// <summary>"Play with the top card of your library revealed": every player sees its controller's top card.</summary>
+    PlayWithTopCardRevealed = 1L << 40,
     /// <summary>You can't win the game and your opponents can't lose the game.</summary>
     OpponentsCantLoseYouCantWin = 1L << 34,
     /// <summary>If you control a creature, damage that would reduce your life total to less than 1 reduces it to 1 instead.</summary>
@@ -340,6 +344,9 @@ public sealed record CardDefinition
 
     /// <summary>Replacement and rule-changing effects of this permanent while it is on the battlefield.</summary>
     public Replacements Replaces { get; init; }
+
+    /// <summary>"You may have this creature enter as a copy of any [filter] on the battlefield" (rule 707.2, 614.1c).</summary>
+    public ObjectFilter? EntersAsCopyOf { get; init; }
 
     /// <summary>Marks a token definition (tokens cease to exist outside the battlefield, rule 111.7).</summary>
     public bool IsToken { get; init; }

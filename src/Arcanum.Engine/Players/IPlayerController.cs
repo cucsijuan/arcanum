@@ -54,7 +54,14 @@ public interface IPlayerController
     Task<int> ChooseOptionAsync(GameView view, OptionRequest request);
 }
 
-public enum OptionKind { Color, CreatureType, Other }
+public enum OptionKind
+{
+    Color,
+    CreatureType,
+    Other,
+    /// <summary>A card name ("choose a card name"): the options can be every card name, so a chooser should let the player search them.</summary>
+    CardName,
+}
 
 /// <summary>Choose one of <see cref="Options"/>.</summary>
 public sealed record OptionRequest(string Prompt, CardId? Source, IReadOnlyList<string> Options, OptionKind Kind);

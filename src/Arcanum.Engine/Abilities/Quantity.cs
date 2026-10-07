@@ -123,6 +123,10 @@ public enum QuantityKind
     SacrificedThisWay,
     /// <summary>The power of the Army amassed by this effect.</summary>
     AmassedPower,
+    /// <summary>Other creatures on the battlefield that share a creature type with the object a static ability is affecting ("for each other creature … that shares at least one creature type with it").</summary>
+    OtherCreaturesSharingTypeWithAffected,
+    /// <summary>Half the cards in the library of the player being affected (or else the controller's), rounded down.</summary>
+    HalfLibrary,
 }
 
 /// <summary>

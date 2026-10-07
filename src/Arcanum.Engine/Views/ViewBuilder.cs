@@ -30,10 +30,11 @@ public static class ViewBuilder
                 LibraryCount = p.Library.Count,
                 LibraryTop = p.Library.Count == 0 ? null
                     : (p.Id == viewer && MayLookAtLibraryTop(state, p.Id)) || state.GetCard(p.Library[0]).IsVisibleTo(viewer)
+                      || RevealedByEffect(state, state.GetCard(p.Library[0]), viewer)
                         ? Card(state, p.Library[0], viewer, reveal: true)
                         : null,
                 KnownLibrary = p.Library.Select((id, i) => (Id: id, Position: i))
-                    .Where(x => state.GetCard(x.Id).IsVisibleTo(viewer))
+                    .Where(x => state.GetCard(x.Id).IsVisibleTo(viewer) || RevealedByEffect(state, state.GetCard(x.Id), viewer))
                     .Select(x => new LibraryCardView(x.Position, View(x.Id))).ToList(),
                 Hand = Views(p.Hand),
                 Graveyard = Views(p.Graveyard),
@@ -63,6 +64,22 @@ public static class ViewBuilder
         };
     }
 
+    /// <summary>
+    /// A card an effect keeps revealed to <paramref name="viewer"/>: an opponent's hand while the viewer controls a permanent saying
+    /// "your opponents play with their hands revealed", or the top card of a library whose owner controls a permanent saying "play
+    /// with the top card of your library revealed".
+    /// </summary>
+    public static bool RevealedByEffect(GameState state, Card card, PlayerId viewer) => card.Zone switch
+    {
+        Zone.Hand => card.Owner != viewer && Revealing(state, viewer, Cards.Replacements.OpponentsPlayWithHandsRevealed),
+        Zone.Library => state.GetPlayer(card.Owner).Library is { Count: > 0 } library && library[0] == card.Id
+                        && Revealing(state, card.Owner, Cards.Replacements.PlayWithTopCardRevealed),
+        _ => false,
+    };
+
+    private static bool Revealing(GameState state, PlayerId player, Cards.Replacements rule) =>
+        !state.GetPlayer(player).HasLost && state.PermanentsControlledBy(player).Any(c => (c.Definition.Replaces & rule) != 0 && !c.LostAllAbilities);
+
     /// <summary>"You may look at the top card of your library any time" (a permanent the player controls says so).</summary>
     public static bool MayLookAtLibraryTop(GameState state, PlayerId player) =>
         state.PermanentsControlledBy(player).Any(c => (c.Definition.Replaces & (Cards.Replacements.CreaturesFromLibraryTop
@@ -72,7 +89,7 @@ public static class ViewBuilder
     public static CardView Card(GameState state, CardId id, PlayerId viewer, bool reveal = false, int commanderTaxPerCast = 0)
     {
         var card = state.GetCard(id);
-        bool visible = reveal || card.IsVisibleTo(viewer);
+        bool visible = reveal || card.IsVisibleTo(viewer) || RevealedByEffect(state, card, viewer);
         if (!visible)
         {
             return new CardView
@@ -90,8 +107,8 @@ public static class ViewBuilder
             Name = card.Name,
             ManaCost = card.Definition.ManaCost.ToString(),
             Types = card.Types,
-            Power = card.Definition.Power is null ? null : card.Power,
-            Toughness = card.Definition.Toughness is null ? null : card.Toughness,
+            Power = card.Definition.Power is null && card.Definition.PowerFrom is null ? null : card.Power,
+            Toughness = card.Definition.Toughness is null && card.Definition.ToughnessFrom is null ? null : card.Toughness,
             Tapped = card.Tapped,
             Damage = card.Damage,
             SummoningSick = card.Zone == Zone.Battlefield && card.IsSummoningSick,

@@ -87,6 +87,7 @@ public sealed class BotController : IPlayerController
     /// <summary>The color or creature type most common among the bot's own visible cards.</summary>
     public Task<int> ChooseOptionAsync(GameView view, OptionRequest request)
     {
+        if (request.Kind == OptionKind.CardName) return Task.FromResult(ChooseCardName(view, request));
         var mine = view.Battlefield.Where(c => c.Controller == _me).Concat(view.Self.Hand).Where(c => !c.IsHidden).ToList();
         int best = 0, bestScore = -1;
         for (int i = 0; i < request.Options.Count; i++)
@@ -101,6 +102,26 @@ public sealed class BotController : IPlayerController
             if (score > bestScore) { best = i; bestScore = score; }
         }
         return Task.FromResult(best);
+    }
+
+    /// <summary>
+    /// A card name: for its own permanent ("activated abilities of sources with the chosen name …") the name of an opponent's
+    /// visible permanent with the most abilities; asked by an opponent's effect ("that player chooses a card name"), the name
+    /// of its own best creature card it can see, which is what the opponent would most like to find.
+    /// </summary>
+    private int ChooseCardName(GameView view, OptionRequest request)
+    {
+        bool ours = request.Source is { } source && view.FindCard(source) is { } src && src.Controller == _me;
+        var candidates = ours
+            ? view.Battlefield.Where(c => c.Controller != _me && !c.IsHidden).OrderByDescending(c => c.AbilityTexts.Count).ThenByDescending(c => ManaValue(c.ManaCost))
+            : view.Self.Hand.Concat(view.Self.Graveyard).Concat(view.Battlefield.Where(c => c.Owner == _me))
+                .Where(c => !c.IsHidden && (c.Types & CardType.Creature) != 0 && !c.IsToken).OrderByDescending(CreatureValue);
+        foreach (var card in candidates)
+        {
+            int index = request.Options.ToList().IndexOf(card.Name ?? "");
+            if (index >= 0) return index;
+        }
+        return 0;
     }
 
     private static string ColorLetter(string color) => color switch { "Blue" => "U", _ => color[..1] };

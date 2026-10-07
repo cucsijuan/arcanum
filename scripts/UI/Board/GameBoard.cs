@@ -51,6 +51,9 @@ public partial class GameBoard : Control
     private readonly HashSet<CardId> _selected = new();
     private readonly List<int> _chosenModes = new();
     private int _number;
+
+    /// <summary>What the player typed to search card names ("choose a card name").</summary>
+    private string _nameFilter = "";
     private readonly Dictionary<CardId, PlayerId> _attackTargets = new(); // attacker -> player it attacks
     private PlayerId? _attackDefender;                                    // where newly picked attackers go
     private readonly Dictionary<CardId, CardId> _attackWalkers = new();   // attacker -> planeswalker it attacks
@@ -1074,6 +1077,48 @@ public partial class GameBoard : Control
                     var done = AddButton($"Confirm ({_chosenModes.Count})", () => md.Answer(_chosenModes.OrderBy(m => m).ToList()), primary: true);
                     done.Disabled = _chosenModes.Count < md.Request.Min || _chosenModes.Count > md.Request.Max;
                 }
+                break;
+            }
+
+            case ChooseOptionDecision { Request.Kind: OptionKind.CardName } nameDecision:
+            {
+                // "Choose a card name": any card's name, so the player searches the names instead of scrolling through them all.
+                _prompt.Text = $"{who}: {nameDecision.Request.Prompt}";
+                var box = new VBoxContainer();
+                box.AddThemeConstantOverride("separation", 6);
+                var search = new LineEdit { PlaceholderText = "Type part of a card name", Text = _nameFilter, CustomMinimumSize = new Vector2(340, 34) };
+                var results = new GridContainer { Columns = 3 };
+                results.AddThemeConstantOverride("h_separation", 6);
+                results.AddThemeConstantOverride("v_separation", 6);
+                box.AddChild(search);
+                box.AddChild(results);
+                _actionExtra.Visible = true;
+                _actionExtra.AddChild(box);
+                void Fill(string filter)
+                {
+                    foreach (var child in results.GetChildren()) child.QueueFree();
+                    var options = nameDecision.Request.Options;
+                    var matches = Enumerable.Range(0, options.Count)
+                        .Where(i => filter.Length == 0 || options[i].Contains(filter, StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(i => filter.Length > 0 && !options[i].StartsWith(filter, StringComparison.OrdinalIgnoreCase)).Take(24).ToList();
+                    foreach (var index in matches)
+                    {
+                        int option = index;
+                        var button = BoardStyle.MakeButton(options[index], 14);
+                        button.CustomMinimumSize = new Vector2(180, 34);
+                        button.Pressed += () =>
+                        {
+                            if (_session.CurrentDecision is null) return;
+                            _nameFilter = "";
+                            nameDecision.Answer(option);
+                            _actionPanel.Visible = false;
+                        };
+                        results.AddChild(button);
+                    }
+                }
+                search.TextChanged += text => { _nameFilter = text; Fill(text); };
+                Fill(_nameFilter);
+                search.CallDeferred(Control.MethodName.GrabFocus);
                 break;
             }
 

@@ -153,6 +153,25 @@ public sealed partial class Game
         bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false, bool faceDown = false)
     {
         var card = State.GetCard(id);
+        if (to == Zone.Battlefield && card.Zone != Zone.Battlefield)
+        {
+            var newController = controller ?? card.Owner;
+            // "You may have this creature enter as a copy of …": chosen as it enters, so it enters with the copy's characteristics.
+            if (await ChooseCopyAsync(card, newController) is { } copied) _pendingCopies[(id, card.Version)] = copied;
+            // An Aura put onto the battlefield without being cast: the player putting it there chooses what it enchants; with
+            // nothing legal to enchant it stays where it is (rules 303.4f, 303.4g).
+            if (attachTo is null && card.Zone != Zone.Stack && (_pendingCopies.GetValueOrDefault((id, card.Version)) ?? card.Definition) is { EnchantTarget: { } enchant } aura
+                && aura.Subtypes.Contains("Aura", StringComparer.OrdinalIgnoreCase))
+            {
+                var hosts = AuraHosts(card, aura, enchant, newController);
+                if (hosts.Count == 0)
+                {
+                    _pendingCopies.Remove((id, card.Version));
+                    return;
+                }
+                attachTo = hosts.Count == 1 ? hosts[0] : await ChooseAuraHostAsync(card, enchant, hosts, newController);
+            }
+        }
         if (!(_movePlans.TryGetValue((id, card.Version), out var planned) && planned.Requested == to))
             _movePlans[(id, card.Version)] = (to, await PlanMoveAsync(card, to));
         var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped, faceDown);
@@ -173,8 +192,102 @@ public sealed partial class Game
     private void MoveCard(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
         bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false, bool faceDown = false)
     {
+        var card = State.GetCard(id);
+        if (to == Zone.Battlefield && card.Zone != Zone.Battlefield && attachTo is null)
+        {
+            // Entering needs a choice that can't be asked here (a copy, or what an Aura enchants): it enters as soon as the
+            // choice can be made, before anything else happens. An Aura with nothing to enchant stays where it is (303.4g).
+            var newController = controller ?? card.Owner;
+            bool copyChoice = card.Definition.EntersAsCopyOf is { } copyFilter && CopyCandidates(card, copyFilter, newController).Count > 0;
+            if (card.Definition.EnchantTarget is { } enchant && card.Definition.Subtypes.Contains("Aura", StringComparer.OrdinalIgnoreCase))
+            {
+                var hosts = AuraHosts(card, card.Definition, enchant, newController);
+                if (hosts.Count == 0) return;
+                if (hosts.Count == 1 && !copyChoice) attachTo = hosts[0];
+                else copyChoice = true;
+            }
+            if (copyChoice)
+            {
+                _deferredEnters.Add((id, card.Version, newController));
+                return;
+            }
+        }
         var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped, faceDown);
         foreach (var returning in FinishMove(move, null)) MoveCard(returning, Zone.Battlefield, controller: State.GetCard(returning).Owner);
+    }
+
+    /// <summary>Copies chosen for cards about to enter (by card and version before the move).</summary>
+    private readonly Dictionary<(CardId Card, int Version), Cards.CardDefinition> _pendingCopies = new();
+
+    /// <summary>Cards that were to enter the battlefield where no choice could be asked: they enter (asking) before the next priority.</summary>
+    private readonly List<(CardId Card, int Version, PlayerId Controller)> _deferredEnters = new();
+
+    private async Task EnterDeferredAsync()
+    {
+        if (_deferredEnters.Count == 0) return;
+        var entering = _deferredEnters.ToList();
+        _deferredEnters.Clear();
+        BeginEnteringTogether();
+        foreach (var (id, version, controller) in entering)
+            if (State.GetCard(id) is { } card && card.Version == version && card.Zone != Zone.Battlefield)
+                await MoveCardAsync(id, Zone.Battlefield, controller: controller);
+        EndEnteringTogether();
+    }
+
+    /// <summary>Creatures a card entering "as a copy of any [filter] on the battlefield" may copy (not those entering with it).</summary>
+    private List<Card> CopyCandidates(Card card, Abilities.ObjectFilter filter, PlayerId controller) =>
+        State.Battlefield.Select(State.GetCard)
+            .Where(c => c.Id != card.Id && !(_enteringTogether?.Contains(c.Id) ?? false)
+                        && Matches(filter with { Controller = Abilities.ControllerFilter.Any }, c, c.Controller, card, controller))
+            .ToList();
+
+    /// <summary>"You may have this enter as a copy of …": the player chooses one (or none); the copy's copiable values (rule 707.2).</summary>
+    private async Task<Cards.CardDefinition?> ChooseCopyAsync(Card card, PlayerId controller)
+    {
+        if (card.Definition.EntersAsCopyOf is not { } filter) return null;
+        var candidates = CopyCandidates(card, filter, controller);
+        if (candidates.Count == 0) return null;
+        var chosen = await ControllerOf(controller).ChooseCardsAsync(ViewFor(controller), new Players.CardChoiceRequest(
+            $"{card.Name}: choose a creature to enter as a copy of (or none)", card.Id,
+            candidates.Select(c => ViewBuilder.Card(State, c.Id, controller)).ToList(), 0, 1, Players.CardChoicePurpose.ToBattlefield));
+        Require(chosen.Count <= 1 && chosen.All(c => candidates.Any(x => x.Id == c)), "Choose one of the creatures, or none.");
+        if (chosen.Count == 0) return null;
+        var original = State.GetCard(chosen[0]);
+        Emit(new ChoiceMade(card.Id, $"a copy of {original.Name}"));
+        // The copiable values are the original's own (with any copy effect on it), not counters or other effects (rule 707.2);
+        // being a card (or a token) stays the copy's own.
+        return original.Definition with { IsToken = card.PrintedDefinition.IsToken, Foil = card.PrintedDefinition.Foil };
+    }
+
+    /// <summary>
+    /// What an Aura entering without being cast may enchant (rule 303.4f): what its enchant ability allows, under the player it
+    /// enters for, that it isn't protected from, and not anything entering at the same time.
+    /// </summary>
+    private List<CardId> AuraHosts(Card aura, Cards.CardDefinition auraDefinition, Abilities.TargetSpec enchant, PlayerId controller)
+    {
+        var colors = auraDefinition.ColorList;
+        return State.Battlefield.Select(State.GetCard)
+            .Where(h => h.Id != aura.Id && !(_enteringTogether?.Contains(h.Id) ?? false) && MatchesKind(h, enchant.Kind)
+                        && enchant.Controller switch
+                        {
+                            Abilities.ControllerFilter.You => h.Controller == controller,
+                            Abilities.ControllerFilter.Opponent => h.Controller != controller,
+                            _ => true,
+                        }
+                        && (enchant.Filter is not { } f || Matches(f with { Controller = Abilities.ControllerFilter.Any }, h, h.Controller, aura, controller))
+                        && !h.Has(Cards.Keyword.ProtectionFromEverything) && !h.ProtectedFromPlayers.Contains(controller)
+                        && (h.ProtectionFromTypes & auraDefinition.Types) == 0
+                        && !colors.Any(c => Cards.Keywords.ProtectionFrom(c) is { } protection && h.Has(protection)))
+            .Select(h => h.Id).ToList();
+    }
+
+    private async Task<CardId> ChooseAuraHostAsync(Card aura, Abilities.TargetSpec enchant, List<CardId> hosts, PlayerId controller)
+    {
+        var request = new Players.TargetRequest(aura.Id, $"Choose what {aura.Name} enchants as it enters", new[] { enchant with { Optional = false, Text = $"what {aura.Name} enchants" } },
+            new[] { (IReadOnlyList<Abilities.Target>)hosts.Select(Abilities.Target.Of).ToList() }, CanCancel: false);
+        var pick = await ControllerOf(controller).ChooseTargetsAsync(ViewFor(controller), request);
+        Require(pick is { Count: 1 } && pick[0].Card is { } c && hosts.Contains(c), "Choose one of the permanents it can enchant.");
+        return pick![0].Card!.Value;
     }
 
     /// <summary>A card that has moved, before anything is announced: the counters it enters with are still to be put on.</summary>
@@ -225,6 +338,8 @@ public sealed partial class Game
         }
 
         card.ResetStatus();
+        if (to == Zone.Battlefield && _pendingCopies.Remove((id, card.Version - 1), out var copied)) card.CopiedDefinition = copied;
+        _pendingCopies.Remove((id, card.Version - 1));
         card.ZoneChangedTurn = State.TurnNumber;
         card.EnteredFrom = from;
         card.Kicked = kicked;
@@ -368,6 +483,7 @@ public sealed partial class Game
         Rng.Shuffle(player.Library);
         // No one knows where any card of a shuffled library is (rule 701.24a).
         foreach (var id in player.Library) State.GetCard(id).KnownTo.Clear();
+        RecomputeContinuousEffects(); // "as long as the top card of your library is …"
         Emit(new LibraryShuffled(player.Id));
     }
 
@@ -401,6 +517,15 @@ public sealed partial class Game
         foreach (var player in State.Players)
             if (player.Library.Count > 0 && ViewBuilder.MayLookAtLibraryTop(State, player.Id))
                 State.GetCard(player.Library[0]).KnownTo.Add(player.Id);
+        // Cards an effect keeps revealed (an opponent's hand, the top card of a library) are known to those who see them.
+        foreach (var viewer in State.Players)
+            foreach (var player in State.Players)
+            {
+                if (player.Library.Count > 0 && ViewBuilder.RevealedByEffect(State, State.GetCard(player.Library[0]), viewer.Id))
+                    State.GetCard(player.Library[0]).KnownTo.Add(viewer.Id);
+                if (player.Id != viewer.Id && player.Hand.Count > 0 && ViewBuilder.RevealedByEffect(State, State.GetCard(player.Hand[0]), viewer.Id))
+                    foreach (var id in player.Hand) State.GetCard(id).KnownTo.Add(viewer.Id);
+            }
     }
 
     /// <summary>What players learn from an event as it happens: revealed cards, and hands looked at.</summary>

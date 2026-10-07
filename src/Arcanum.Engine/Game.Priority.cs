@@ -72,10 +72,12 @@ public sealed partial class Game
 
     private static readonly string[] ColorNames = { "White", "Blue", "Black", "Red", "Green" };
     private static readonly string[] ColorLetters = { "W", "U", "B", "R", "G" };
+    private static readonly string[] BasicLandTypes = { "Plains", "Island", "Swamp", "Mountain", "Forest" };
 
     /// <summary>"As this enters, choose a color / creature type" (rule 614.12), made before anything else happens.</summary>
     private async Task ResolveEnterChoicesAsync()
     {
+        await EnterDeferredAsync();
         await ResolvePendingCountersAsync();
         while (State.PendingEnterChoices.Count > 0)
         {
@@ -135,6 +137,16 @@ public sealed partial class Game
                 else EnterTapped(card);
                 continue;
             }
+            else if (card.Definition.ChooseOnEnter == EnterChoice.BasicLandType)
+            {
+                // "As this enters, choose a basic land type."
+                int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose a basic land type", id, BasicLandTypes, OptionKind.Other));
+                Require(i >= 0 && i < BasicLandTypes.Length, "Choose one of the basic land types.");
+                card.ChosenType = BasicLandTypes[i];
+                Emit(new ChoiceMade(id, BasicLandTypes[i]));
+                RecomputeContinuousEffects();
+                continue;
+            }
             else if (card.Definition.ChooseOnEnter == EnterChoice.OddOrEven)
             {
                 int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose odd or even", id, new[] { "Odd", "Even" }, OptionKind.Other));
@@ -143,24 +155,20 @@ public sealed partial class Game
                 Emit(new ChoiceMade(id, i == 0 ? "Odd" : "Even"));
                 continue;
             }
-            else if (card.Definition.ChooseOnEnter == EnterChoice.CardName)
+            else if (card.Definition.ChooseOnEnter is EnterChoice.CardName or EnterChoice.LookAtOpponentsHandThenCardName)
             {
-                // "Look at an opponent's hand, then choose any card name."
-                var names = new List<string>();
-                if (await ChooseOpponentAsync(who, card, "Choose the opponent whose hand you look at") is { } opponent)
+                // "Look at an opponent's hand, then choose any card name" / "choose a card name".
+                var seen = new List<string>();
+                if (card.Definition.ChooseOnEnter == EnterChoice.LookAtOpponentsHandThenCardName
+                    && await ChooseOpponentAsync(who, card, "Choose the opponent whose hand you look at") is { } opponent)
                 {
                     var hand = State.GetPlayer(opponent).Hand;
                     Emit(new HandLookedAt(who, opponent, hand.ToList()));
-                    names.AddRange(hand.Select(c => State.GetCard(c).Name));
+                    seen.AddRange(hand.Select(c => State.GetCard(c).PrintedDefinition.Name));
                 }
-                // Any card name: every name in the game is offered (seen ones first).
-                names.AddRange(State.Cards.Values.Where(c => !c.Definition.IsEmblem).Select(c => c.Definition.Name).OrderBy(n => n));
-                names = names.Distinct().ToList();
-                if (names.Count == 0) continue;
-                int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose a card name", id, names, OptionKind.Other));
-                Require(i >= 0 && i < names.Count, "Choose one of the names.");
-                card.ChosenName = names[i];
-                Emit(new ChoiceMade(id, names[i]));
+                if (await ChooseCardNameAsync(who, card.Id, $"{card.Name}: choose a card name", seen) is not { } name) continue;
+                card.ChosenName = name;
+                Emit(new ChoiceMade(id, name));
                 continue;
             }
             else
@@ -175,6 +183,30 @@ public sealed partial class Game
             Emit(new ChoiceMade(id, card.ChosenColor is { } c ? ColorNames[Array.IndexOf(ColorLetters, c)] : card.ChosenType!));
             RecomputeContinuousEffects();
         }
+    }
+
+    /// <summary>
+    /// "Choose a card name" (rule 201.3): any card's name. The names offered are those of the game's card database
+    /// (<see cref="GameConfig.CardNames"/>) or, without one, every card name the chooser knows of — their own cards and
+    /// the cards they can see or have seen — so the list never gives away a hidden card. <paramref name="first"/> come first.
+    /// </summary>
+    private async Task<string?> ChooseCardNameAsync(PlayerId who, CardId? source, string prompt, IReadOnlyList<string>? first = null)
+    {
+        var names = CardNameOptions(who, first);
+        if (names.Count == 0) return null;
+        int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest(prompt, source, names, OptionKind.CardName));
+        Require(i >= 0 && i < names.Count, "Choose one of the names.");
+        return names[i];
+    }
+
+    /// <summary>The card names offered to <paramref name="who"/> for "choose a card name".</summary>
+    private List<string> CardNameOptions(PlayerId who, IReadOnlyList<string>? first)
+    {
+        IEnumerable<string> all = Config.CardNames
+            ?? State.Cards.Values.Where(c => !c.PrintedDefinition.IsToken && !c.PrintedDefinition.IsEmblem
+                                             && (c.Owner == who || c.IsVisibleTo(who) || Views.ViewBuilder.RevealedByEffect(State, c, who)))
+                .Select(c => c.PrintedDefinition.Name);
+        return (first ?? Array.Empty<string>()).Concat(all.Distinct().OrderBy(n => n, StringComparer.OrdinalIgnoreCase)).Distinct().ToList();
     }
 
     /// <summary>Creature types worth offering: those among the player's cards first, then common ones.</summary>
@@ -213,7 +245,7 @@ public sealed partial class Game
                          && !card.OnAdventure))
                     actions.Add(new PlayLand(card.Id));
             }
-            else if (State.SpellsForbiddenTurn == State.TurnNumber || splitSecond) continue;
+            else if (SpellsForbidden(playerId) || splitSecond) continue;
             else if (card.PrintedDefinition.SplitHalves is { } halves)
             {
                 // A split card: each half on its own (an aftermath half only from a graveyard, the other half not from there).
@@ -267,6 +299,10 @@ public sealed partial class Game
         if (!timing && card.Definition.FlashExtraCost is null) return false;
         return CanBeCast(card, playerId, flashExtra: !timing);
     }
+
+    /// <summary>The player can't cast spells now ("players can't cast spells this turn", "your opponents can't cast spells this turn").</summary>
+    private bool SpellsForbidden(PlayerId player) =>
+        State.SpellsForbiddenTurn == State.TurnNumber || State.SpellsForbiddenFor.Contains((player, State.TurnNumber));
 
     /// <summary>Lands the player may play this turn.</summary>
     private int LandsAllowed(PlayerId playerId) =>
@@ -515,6 +551,8 @@ public sealed partial class Game
         bool flashExtra = withPriority && !TimingAllows(card, player.Id, sorceryTiming);
         // A spell none of whose ways to pay can be paid can't be cast (rule 601.2h), however it's being cast.
         if (!LegendarySpellAllowed(card, player.Id)) return false;
+        // "Can't cast spells" also stops casting as part of an effect (rule 101.2).
+        if (SpellsForbidden(player.Id)) return false;
         var payable = PayableCastingWays(card, player.Id, flashExtra);
         if (payable.Count == 0) return false;
         bool flashback = exileAfter || IsFlashbackCast(card);

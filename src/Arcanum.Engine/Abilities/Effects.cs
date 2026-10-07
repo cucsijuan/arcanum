@@ -138,6 +138,9 @@ public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool 
     public IReadOnlyList<CounterKind>? CounterKinds { get; init; }
     public IReadOnlyList<string>? AddSubtypes { get; init; }
     public IReadOnlyList<Cards.Keyword>? AddKeywords { get; init; }
+
+    /// <summary>"That creature is black in addition to its other colors."</summary>
+    public IReadOnlyList<string>? AddColors { get; init; }
 }
 
 /// <summary>
@@ -374,7 +377,11 @@ public sealed record MayPay(string Prompt, Mana.ManaCost? Mana, ExtraCost? Extra
 }
 
 /// <summary>"You may reveal the top card of your library. If it's a [filter] card, [effects]" (the card is "found").</summary>
-public sealed record RevealTop(ObjectFilter Filter, bool Optional, IReadOnlyList<Effect> Effects) : Effect;
+public sealed record RevealTop(ObjectFilter Filter, bool Optional, IReadOnlyList<Effect> Effects) : Effect
+{
+    /// <summary>"Otherwise, ...": done when the revealed card doesn't match (it is "found" for these effects too).</summary>
+    public IReadOnlyList<Effect>? Else { get; init; }
+}
 
 /// <summary>Several effects that are one event ("put a +1/+1 counter and a lifelink counter on it"): "one or more" triggers see it once.</summary>
 public sealed record Simultaneously(IReadOnlyList<Effect> Effects) : Effect;
@@ -497,6 +504,9 @@ public sealed record Become(Subject What, int? Power = null, int? Toughness = nu
 
     /// <summary>Replaces its creature types ("becomes a Human Faerie Detective").</summary>
     public IReadOnlyList<string>? SetSubtypes { get; init; }
+
+    /// <summary>Its colors from now on ("becomes a 4/5 green Treefolk creature").</summary>
+    public IReadOnlyList<string>? SetColors { get; init; }
 }
 
 /// <summary>Destroy the target and every other permanent with the same name.</summary>
@@ -528,6 +538,12 @@ public sealed record RevealUntil(ObjectFilter Filter, State.Zone To) : Effect
 
     /// <summary>The card found goes onto the battlefield instead when it also matches this ("if its mana value is less than or equal to …").</summary>
     public ObjectFilter? BattlefieldIf { get; init; }
+
+    /// <summary>"Then shuffles all other cards revealed this way into their library" (instead of the bottom in a random order).</summary>
+    public bool RestShuffled { get; init; }
+
+    /// <summary>"The player puts that card onto the battlefield": under the revealing player's control (not the ability's controller's).</summary>
+    public bool RevealerPuts { get; init; }
 }
 
 /// <summary>
@@ -570,6 +586,9 @@ public sealed record ExtraTurn(Subject Who) : Effect;
 /// <summary>Copy the target spell (or the spell the trigger was about); the copy's controller may choose new targets.</summary>
 public sealed record CopySpell(Subject What, Quantity Count) : Effect
 {
+    /// <summary>"Each other player copies that spell": every player but the spell's controller gets a copy, made in APNAP order.</summary>
+    public bool EachOtherPlayer { get; init; }
+
     /// <summary>"Except the copy isn't legendary".</summary>
     public bool NotLegendary { get; init; }
 }
@@ -670,6 +689,39 @@ public sealed record AdditionalLandThisTurn : Effect;
 
 /// <summary>"Players can't cast spells this turn."</summary>
 public sealed record NoSpellsThisTurn : Effect;
+
+/// <summary>
+/// "Reveal the top card of your library. You may play that card without paying its mana cost. If you don't, exile it."
+/// A land is played only on the player's turn with a land play left, and counts as their land play (rule 305.3).
+/// </summary>
+public sealed record PlayTopFreeOrExile : Effect;
+
+/// <summary>
+/// Warp World: each player shuffles all permanents they own into their library, reveals that many cards from the top, puts
+/// the artifact, creature and land cards revealed onto the battlefield, then the enchantment cards, then the rest on the bottom.
+/// </summary>
+public sealed record WarpWorld : Effect;
+
+/// <summary>"Choose up to N face-up exiled cards you own. Exile all the cards from your library, then put the chosen cards on top of your library."</summary>
+public sealed record RebuildLibraryFromExile(int Count) : Effect;
+
+/// <summary>
+/// "Exile all [filter] cards from [player]'s graveyard. For each card exiled this way, search that player's library for all cards
+/// with the same name as that card and exile them. Then that player shuffles." (The search may find fewer, rule 701.19b.)
+/// </summary>
+public sealed record ExileGraveyardAndNamesakes(Subject Who, ObjectFilter? Filter) : Effect;
+
+/// <summary>
+/// "Search [player]'s library for a card, then that player chooses a card name. If you searched for a [filter] card that doesn't
+/// have that name, you may put it onto the battlefield under your control. Then that player shuffles."
+/// </summary>
+public sealed record SearchThenNameCard(Subject Whose, ObjectFilter Filter) : Effect;
+
+/// <summary>"[Player] shuffles their library."</summary>
+public sealed record ShuffleLibrary(Subject Who) : Effect;
+
+/// <summary>"Your opponents can't cast spells this turn."</summary>
+public sealed record OpponentsCantCastSpellsThisTurn : Effect;
 
 /// <summary>Exchange control of two permanents.</summary>
 public sealed record ExchangeControl(Subject First, Subject Second) : Effect;

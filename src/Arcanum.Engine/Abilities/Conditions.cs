@@ -25,6 +25,9 @@ public sealed record LifeAtLeast(int Amount) : Condition;
 /// <summary>"If [condition] isn't true" / "unless".</summary>
 public sealed record Not(Condition Inner) : Condition;
 
+/// <summary>"As long as the top card of your library is [filter]" (false while the library is empty).</summary>
+public sealed record TopOfLibrary(ObjectFilter Filter) : Condition;
+
 /// <summary>"If it was kicked" / "if this spell was kicked".</summary>
 public sealed record WasKicked : Condition;
 

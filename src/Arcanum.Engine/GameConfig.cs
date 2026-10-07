@@ -25,6 +25,12 @@ public sealed record GameConfig
 
     /// <summary>Starting player skips their first draw (rule 103.8). Null = only in two-player games.</summary>
     public bool? StartingPlayerSkipsDraw { get; init; }
+
+    /// <summary>
+    /// Every card name players may choose when an effect says "choose a card name" (the names in the card database). Null:
+    /// the names of the cards the choosing player knows of in this game.
+    /// </summary>
+    public IReadOnlyList<string>? CardNames { get; init; }
 }
 
 /// <param name="Commanders">The player's commander(s) in a commander game; they start in the command zone.</param>

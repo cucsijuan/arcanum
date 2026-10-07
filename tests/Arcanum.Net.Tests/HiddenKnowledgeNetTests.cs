@@ -20,7 +20,7 @@ namespace Arcanum.Net.Tests;
 public class HiddenKnowledgeNetTests
 {
     /// <summary>"As this enters, look at an opponent's hand, then choose any card name."</summary>
-    private static readonly CardDefinition PeekingGlade = GenericCards.Forest with { Name = "Peeking Glade", Supertypes = 0, ChooseOnEnter = EnterChoice.CardName };
+    private static readonly CardDefinition PeekingGlade = GenericCards.Forest with { Name = "Peeking Glade", Supertypes = 0, ChooseOnEnter = EnterChoice.LookAtOpponentsHandThenCardName };
 
     /// <summary>"When this enters, reveal the top card of your library" (it stays there).</summary>
     private static readonly CardDefinition SeeingGlade = GenericCards.Forest with
