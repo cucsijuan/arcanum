@@ -223,7 +223,7 @@ from your graveyard, exiling this card). An activated ability can add `"oncePerT
 (`{ "cost": "{B}", "if": condition }`), `flashExtraCost`, `startsOnBattlefield` (from the opening hand),
 `manaRider` (`HasteForDragonCreatureSpells`, `CopyRedInstantOrSorcery`), `manaOnlyFor` (filter: spells its mana can pay
 for), `extraMana` (`[{ "types": "any", "amount": 1, "onlyFor": filter, "abilitiesToo": true }]`), `tapForMana`,
-`manaAmount`, `manaAmountFrom`, `manaFromChosenColor`, `chooseOnEnter` (`color`, `creatureType`, `cardName`),
+`manaAmount`, `manaAmountFrom`, `manaFromChosenColor`, `chooseOnEnter` (`color`, `creatureType`, `cardName`, `lookAtOpponentsHandThenCardName`, `basicLandType`),
 `countersPerChosenType`, `entersWithCounterKind`, `entersWithCountersIf`, `graveyardCastCost`, `powerFrom` /
 `toughnessFrom` (quantities), `cantBeBlockedBy` (filter), `ontoBattlefieldIfDiscarded`, and `replaces`: a list of
 `DoubleDamageToOpponents`, `DoubleCreatureDamage`, `DoubleTokens`, `DoubleCounters`, `PreventCombatDamageToAndBySelf`,
@@ -582,3 +582,40 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   checked as it resolves).
 - "Each player" and "each opponent" act in turn order starting with the active player (rule 101.4). "If this is untapped" uses the
   source as it last existed on the battlefield if it has left.
+
+## Copies, libraries, continuous effects and visibility
+
+- **Entering as a copy**: card-wide `"entersAsCopy": filter` ("You may have this creature enter as a copy of any creature on the
+  battlefield"). As it enters, its controller chooses one matching permanent (not one entering at the same time) or none; it then
+  has the copiable values of that object (rule 707.2: its printed values plus any copy effect on it, so copying a copy copies the
+  original; never counters or other effects), including its "enters with counters" and "as this enters" rules and its enters
+  triggers. It stays a card (copying a token doesn't make it a token). Choosing nothing leaves it as printed (Clone: a 0/0).
+- **Auras entering without being cast** (any effect: `reanimate`, `reanimateAll`, Warp World …): the player it enters for chooses
+  what it enchants, among what its enchant ability allows that it isn't protected from and that isn't entering at the same time;
+  with nothing legal it stays where it is (rules 303.4f–g).
+- **Names**: `"chooseOnEnter": "cardName"` chooses any card name without looking at anything;
+  `"lookAtOpponentsHandThenCardName"` first looks at an opponent's hand. Names come from the game's card database
+  (`GameConfig.CardNames`) or, without one, from the cards the chooser knows of, so a hidden card is never given away.
+- **Effects**: `{ "copySpell": "triggered", "eachOtherPlayer": true }` (each player other than the spell's controller copies it, in APNAP
+  order; a spell that already left the stack is copied as it last existed there), `{ "warpWorld": true }`,
+  `{ "rebuildLibraryFromExile": 7 }` (Mirror of Fate), `{ "exileGraveyardAndNamesakes": "target", "filter": f }` (Haunting Echoes; the
+  searcher may leave cards, rule 701.19b), `{ "searchThenNameCard": "triggeredPlayer", "filter": f }` (Sphinx Ambassador: the searcher
+  must find a card if there is one; the other player names a card without knowing it), `{ "playTopFree": true }` (reveal the top card,
+  play it free or exile it; a land only on your turn with a land play left, and it counts as your land play), `{ "shuffle": "you" }`,
+  `{ "opponentsCantCastSpells": true }` (this turn; "can't cast" also stops casting during an effect).
+- **Existing effects take more options**: `revealUntil` with `"rest": "shuffle"` and `"revealerPuts": true` (the revealing player puts
+  the card onto the battlefield under their control), `revealTop` with `"else": [ … ]` (the revealed card is `"found"` there too),
+  `reanimate` with `"addColors": ["B"]` ("is black in addition"), `become` with `"setColors"`, `reanimateAll` with `"from": "everyone"` and
+  `"ownerControl": true`. `lookAtTop` with `"take": 0` only orders the cards.
+- **Quantities**: `"halfLibrary"` (half the library of the player being affected, rounded down), `"otherCreaturesSharingType"` (in a static
+  `pump`: worked out for each affected creature, counting other creatures sharing a creature type with it; changelings share every type).
+- **Statics and conditions**: `"setChosenLandType": true` (with `"chooseOnEnter": "basicLandType"`: the land's land type becomes the chosen
+  one; it loses its old land types and the abilities of its rules text and has the new type's mana ability, rule 305.7);
+  condition `{ "topOfLibrary": filter }`.
+- **Visibility (card-wide)**: `"opponentsPlayWithHandsRevealed": true` (its controller sees its opponents' hands) and
+  `"playWithTopCardRevealed": true` (every player sees the top card of its controller's library).
+- **Triggers**: `enchantedControllersUpkeep` ("at the beginning of the upkeep of enchanted creature's controller"; that player is
+  `"triggeredPlayer"`). **Filters**: `"notColors": ["B"]` ("nonblack"); with `cantBeBlockedBy` it reads "can't be blocked except by black
+  creatures".
+- **Tokens** take `"powerFrom"` / `"toughnessFrom"` (a characteristic-defining ability, e.g. "equal to your life total"). Such abilities
+  work in every zone (rule 604.3): a card in a hand, library, graveyard or exile, or a spell, has the power and toughness they define.
