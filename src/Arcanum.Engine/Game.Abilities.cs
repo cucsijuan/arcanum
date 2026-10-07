@@ -3938,6 +3938,15 @@ public sealed partial class Game
     /// <summary>A permanent's power, or its power as it last existed on the battlefield.</summary>
     private int PowerOrLastKnown(Card card) => card.Zone == Zone.Battlefield || card.LastKnownInfo is null ? card.Power : card.LastKnownInfo.Power;
 
+    /// <summary>
+    /// The power of a resolving ability's source: the object that put it on the stack, as it last existed if it has left the
+    /// battlefield, even when the card has come back since as a new object (rules 400.7, 608.2h).
+    /// </summary>
+    private int SourcePowerOrLastKnown(Card source) =>
+        ResolvingVersionOf(source) is { } version && source.Version != version && source.LastKnownInfo is { } lki && lki.Version == version
+            ? lki.Power
+            : PowerOrLastKnown(source);
+
     /// <summary>Whether a permanent with the given subtype (an Aura, an Equipment) is attached to <paramref name="obj"/>.</summary>
     private bool HasAttached(Card obj, string subtype) =>
         State.Battlefield.Select(State.GetCard).Any(c => c.AttachedTo == obj.Id && c.HasSubtype(subtype));
@@ -4023,14 +4032,14 @@ public sealed partial class Game
         if (filter.DamagedThisTurnByYourSpider && !obj.DamagedThisTurnBy.Select(State.GetCard).Any(d =>
                 (d.Zone == Zone.Battlefield ? d.HasSubtype("Spider") : d.LastKnownInfo?.HasSubtype("Spider") == true)
                 && (d.Zone == Zone.Battlefield ? d.Controller : d.LastKnownInfo?.Controller ?? d.Owner) == sourceController)) return false;
-        if (filter.LesserPowerThanSource && (source is null || power >= PowerOrLastKnown(source))) return false;
-        if (filter.ToughnessLessThanSourcePower && (source is null || toughness >= PowerOrLastKnown(source))) return false;
+        if (filter.LesserPowerThanSource && (source is null || power >= SourcePowerOrLastKnown(source))) return false;
+        if (filter.ToughnessLessThanSourcePower && (source is null || toughness >= SourcePowerOrLastKnown(source))) return false;
         if (filter.SharesColorWithYourLegendaryCreature && !State.PermanentsControlledBy(sourceController)
                 .Where(c => c.IsCreature && (c.Supertypes & Supertype.Legendary) != 0).Any(c => c.Colors.Intersect(colors).Any())) return false;
         if (filter.NoSharedCreatureTypeWithYours && State.PermanentsControlledBy(sourceController).Where(c => c.IsCreature)
                 .Any(c => (lk?.Subtypes ?? obj.CurrentSubtypes).Any(t => c.HasSubtype(t) && IsCreatureType(t)) || (obj.Has(Keyword.Changeling) && c.CurrentSubtypes.Any(IsCreatureType))
                           || (c.Has(Keyword.Changeling) && (lk?.Subtypes ?? obj.CurrentSubtypes).Any(IsCreatureType)))) return false;
-        if (filter.GreaterPowerThanSource && (source is null || power <= PowerOrLastKnown(source))) return false;
+        if (filter.GreaterPowerThanSource && (source is null || power <= SourcePowerOrLastKnown(source))) return false;
         if (filter.BlockedOrBlockedByLegendaryThisTurn && !State.BlocksThisTurn.Any(b =>
                 (b.Blocker == obj.Id && b.BlockerVersion == obj.Version && WasLegendary(b.Attacker, b.AttackerVersion))
                 || (b.Attacker == obj.Id && b.AttackerVersion == obj.Version && WasLegendary(b.Blocker, b.BlockerVersion)))) return false;

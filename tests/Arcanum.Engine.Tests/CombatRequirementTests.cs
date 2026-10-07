@@ -489,6 +489,63 @@ public class CombatRequirementTests
         Assert.Equal(Zone.Battlefield, s.Card(ox).Zone);
     }
 
+    [Fact]
+    public async Task StoneGiantUsesItsLastKnownPowerWhenItCameBackAsANewObject()
+    {
+        // A 5/6 Giant (a 3/4 with two +1/+1 counters) targets a 2/4; blinked in response, it comes back as a new 3/4 object.
+        // "This creature" is the object that activated the ability, as it last existed (rules 400.7, 608.2h): still legal.
+        var s = new Scenario();
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        var giant = s.Add(P0, Creature("Giant", 3, 4) with
+        {
+            Abilities = new AbilityDefinition[]
+            {
+                new ActivatedAbility
+                {
+                    Cost = AbilityCost.TapOnly, Text = "{T}: Target creature you control with toughness less than this creature's power gains flying until end of turn. Destroy that creature at the beginning of the next end step.",
+                    Targets = new[] { new TargetSpec(TargetKind.Creature, ControllerFilter.You, new ObjectFilter(Controller: ControllerFilter.Any) { ToughnessLessThanSourcePower = true }) },
+                    Effects = new Effect[]
+                    {
+                        new PumpUntilEndOfTurn(0, 0, Subject.TargetAt(0), new[] { Keyword.Flying }),
+                        new AtNextEndStepAbout(Subject.TargetAt(0), new Effect[] { new Destroy(Subject.Triggered) }),
+                    },
+                },
+            },
+        });
+        s.Card(giant).Counters[CounterKind.PlusOnePlusOne] = 2;
+        var blinker = s.Add(P0, new CardDefinition
+        {
+            Name = "Blinker", Types = CardType.Artifact,
+            Abilities = new AbilityDefinition[]
+            {
+                new ActivatedAbility
+                {
+                    Cost = AbilityCost.TapOnly, Text = "{T}: Exile target creature you control, then return it to the battlefield.",
+                    Targets = new[] { new TargetSpec(TargetKind.Creature, ControllerFilter.You) },
+                    Effects = new Effect[] { new ExileIt(Subject.TargetAt(0)) { Linked = true }, new ReturnLinkedExiled() },
+                },
+            },
+        });
+        var bear = s.Add(P0, Creature("Ox", 2, 4));
+        int step = 0;
+        s.Attacker.Act = (_, legal) => step++ switch
+        {
+            0 => (PlayerAction)legal.OfType<ActivateAbility>().First(a => a.Source == giant),
+            1 => legal.OfType<ActivateAbility>().First(a => a.Source == blinker),
+            _ => PassPriority.Instance,
+        };
+        s.Attacker.Targets = (_, r) => new[] { Target.Of(step == 1 ? bear : giant) };
+        int giantVersion = s.Card(giant).Version;
+        bool flew = false;
+        s.Game.EventRaised += e => { if (e is StepBegan { Step: Step.End } && s.Card(bear).Has(Keyword.Flying)) flew = true; };
+        await s.RunUntilTurn();
+        Assert.NotEqual(giantVersion, s.Card(giant).Version);
+        Assert.Equal(Zone.Battlefield, s.Card(giant).Zone);
+        Assert.Equal(3, s.Card(giant).Power);
+        Assert.True(flew);
+        Assert.Equal(Zone.Graveyard, s.Card(bear).Zone);
+    }
+
     // ------------------------------------------------------------------ Master of the Wild Hunt
 
     [Fact]
