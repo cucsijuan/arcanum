@@ -65,13 +65,13 @@ public static class ViewBuilder
     }
 
     /// <summary>
-    /// A card an effect keeps revealed to <paramref name="viewer"/>: an opponent's hand while the viewer controls a permanent saying
-    /// "your opponents play with their hands revealed", or the top card of a library whose owner controls a permanent saying "play
-    /// with the top card of your library revealed".
+    /// A card an effect keeps revealed to <paramref name="viewer"/>: a hand while an opponent of its owner controls a permanent saying
+    /// "your opponents play with their hands revealed" (revealed means to every player, rule 701.20a), or the top card of a library
+    /// whose owner controls a permanent saying "play with the top card of your library revealed".
     /// </summary>
     public static bool RevealedByEffect(GameState state, Card card, PlayerId viewer) => card.Zone switch
     {
-        Zone.Hand => card.Owner != viewer && Revealing(state, viewer, Cards.Replacements.OpponentsPlayWithHandsRevealed),
+        Zone.Hand => state.OpponentsOf(card.Owner).Any(o => Revealing(state, o, Cards.Replacements.OpponentsPlayWithHandsRevealed)),
         Zone.Library => state.GetPlayer(card.Owner).Library is { Count: > 0 } library && library[0] == card.Id
                         && Revealing(state, card.Owner, Cards.Replacements.PlayWithTopCardRevealed),
         _ => false,

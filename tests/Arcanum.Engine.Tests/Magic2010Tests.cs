@@ -366,7 +366,7 @@ public class Magic2010Tests
     }
 
     [Fact]
-    public async Task TelepathyRevealsOpponentsHandsOnlyToItsController()
+    public async Task TelepathyRevealsOpponentsHandsButNotItsControllers()
     {
         var s = new Scenario();
         s.Add(P0, M("Telepathy"));
@@ -377,6 +377,42 @@ public class Magic2010Tests
         Assert.Contains(s.Game.ViewFor(P0).Players[1].Hand, c => c.Id == secret && c.Name == "Great Wurm");
         Assert.All(s.Game.ViewFor(P1).Players[0].Hand, c => Assert.True(c.IsHidden));
         Assert.Contains(s.Game.ViewFor(P1).Players[0].Hand, c => c.Id == mine);
+    }
+
+    [Fact]
+    public async Task TelepathyRevealsOpponentsHandsToEveryPlayer()
+    {
+        var players = new[] { new TestController(), new TestController(), new TestController() };
+        foreach (var p in players)
+        {
+            p.Act = (_, _) => PassPriority.Instance;
+            p.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        }
+        var lands = Decks.Of((GenericCards.Forest, 20));
+        var game = new Game(new GameConfig { Seed = 1, StartingPlayer = P0 }, players.Select((c, i) => new PlayerSetup($"P{i}", c, lands)).ToArray());
+        var p2 = new PlayerId(2);
+        game.SetupPermanent(P0, M("Telepathy"));
+        var wurm = game.SetupInHand(P1, GenericCards.GreatWurm);
+        var cub = game.SetupInHand(p2, GenericCards.GladeCub);
+        var mine = game.SetupInHand(P0, GenericCards.StoneElemental);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        game.EventRaised += e => { if (e is TurnBegan { TurnNumber: 1 }) cts.Cancel(); };
+        try { await game.RunAsync(cts.Token); }
+        catch (OperationCanceledException) { }
+        // Revealed means to all players (rule 701.20a): player 2 sees player 1's hand and player 1 sees player 2's.
+        foreach (var (viewer, owner, card) in new[] { (P0, P1, wurm), (p2, P1, wurm), (P0, p2, cub), (P1, p2, cub) })
+        {
+            var hand = game.ViewFor(viewer).Players[owner.Value].Hand;
+            Assert.All(hand, c => Assert.False(c.IsHidden));
+            Assert.Contains(hand, c => c.Id == card && !c.IsHidden);
+            Assert.Contains(viewer, game.State.GetCard(card).KnownTo);
+        }
+        // Telepathy's controller has no opponent controlling one: their hand stays hidden.
+        foreach (var viewer in new[] { P1, p2 })
+        {
+            Assert.All(game.ViewFor(viewer).Players[0].Hand, c => Assert.True(c.IsHidden));
+            Assert.DoesNotContain(viewer, game.State.GetCard(mine).KnownTo);
+        }
     }
 
     [Fact]
