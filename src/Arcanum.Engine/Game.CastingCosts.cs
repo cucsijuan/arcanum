@@ -81,7 +81,19 @@ public sealed partial class Game
         foreach (var taxer in State.Battlefield.Select(State.GetCard))
             foreach (var increase in taxer.Abilities.OfType<SpellCostIncrease>())
                 if (Matches(increase.Spells with { Controller = ControllerFilter.Any }, card, caster, taxer, taxer.Controller)) cost = cost.PlusGeneric(increase.Amount);
+        // "Costs {1} more for each target beyond the first": before targets are chosen, as if it had one.
+        if (card.Definition.ExtraTargetCost > 0 && targets is not null)
+            cost = cost.PlusGeneric(card.Definition.ExtraTargetCost * Math.Max(0, targets.Count(t => !t.Target.IsNone) - 1));
+        int genericBefore = cost.Generic;
         cost = cost.MinusGeneric(CostReductionFor(card, caster, targets));
+        // "Spend only black mana on X": the X part of the generic mana (what reductions left of it) is paid with that type only.
+        if (card.Definition.XManaType is { } xType && c.X > 0 && c.Way.Mana.XCount > 0)
+        {
+            int xPart = c.X * c.Way.Mana.XCount;
+            int reduced = genericBefore - cost.Generic;
+            int xLeft = Math.Max(0, xPart - Math.Max(0, reduced - (genericBefore - xPart)));
+            cost = new ManaCost(cost.Generic - xLeft, cost.Pips.Concat(Enumerable.Repeat(xType, xLeft)).ToList(), cost.Hybrid);
+        }
         // "Mana of any type can be spent" to pay it.
         bool anyType = (card.Is(CardType.Creature) && Has(caster, Replacements.CreaturesFromLibraryTop))
                        || (card.Zone == Zone.Exile && card.CounterCount(CounterKind.Stash) > 0 && Has(caster, Replacements.PlayStashedCards))

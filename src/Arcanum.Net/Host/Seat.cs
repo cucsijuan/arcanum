@@ -349,6 +349,8 @@ internal sealed class Seat : IPlayerController
             if (!declared.All(d => d.Planeswalker is not { } pw
                                    || S.Cards.TryGetValue(pw, out var w) && w.Zone == Zone.Battlefield && w.Is(Engine.Cards.CardType.Planeswalker) && w.Controller == d.Defender))
                 return "A planeswalker can only be attacked through its controller.";
+            // Restrictions and requirements, as the engine checks them (rule 508.1c-d).
+            if (view.AttackRequest is { } rules && !rules.IsLegal(declared, out var reason)) return reason ?? "Those attacks aren't allowed.";
             return null;
         }, c => c.DeclareAttackersAsync(view, possibleAttackers, defenders));
 
@@ -364,7 +366,7 @@ internal sealed class Seat : IPlayerController
             if (!a.ToBlockers.Keys.All(request.Lethal.ContainsKey)) return "Damage can only be assigned to blocking creatures.";
             if (a.ToBlockers.Values.Any(v => v < 0) || a.ToPlayer < 0) return "Damage amounts can't be negative.";
             if (a.Total != request.Power) return $"Assign exactly {request.Power} damage.";
-            if (a.ToPlayer != 0 && !request.Trample) return "Only trample can assign damage to the player.";
+            if (a.ToPlayer != 0 && !request.Trample) return request.ByBlocker ? "That damage can't go to a player." : "Only trample can assign damage to the player.";
             if (a.ToPlayer != 0 && !request.Lethal.All(kv => a.ToBlockers.GetValueOrDefault(kv.Key) >= kv.Value))
                 return "Assign lethal damage to every blocker before the player.";
             return null;

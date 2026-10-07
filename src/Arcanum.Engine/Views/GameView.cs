@@ -166,6 +166,9 @@ public sealed record GameView
     /// <summary>Players the viewer's creatures can't attack, by creature.</summary>
     public IReadOnlyList<AttackRestrictionView> AttackRestrictions { get; init; } = Array.Empty<AttackRestrictionView>();
 
+    /// <summary>While the viewer declares attackers: who may attack whom, and the restrictions and requirements to obey.</summary>
+    public Players.AttackRequest? AttackRequest { get; init; }
+
     /// <summary>The monarch (rule 724), if there is one.</summary>
     public PlayerId? Monarch { get; init; }
 

@@ -147,6 +147,15 @@ public sealed class Card
     internal HashSet<Keyword> GrantedKeywords { get; } = new();
     internal HashSet<Keyword> LostKeywords { get; } = new();
 
+    /// <summary>Damage static abilities prevent to it ("prevent all noncombat damage that would be dealt to equipped creature").</summary>
+    public StaticDamagePrevention StaticDamagePrevention { get; internal set; }
+
+    /// <summary>"Its activated abilities can't be activated" applies to it (mana abilities too).</summary>
+    public bool AbilitiesCantBeActivated { get; internal set; }
+
+    /// <summary>Times each of its activated abilities (by index) was activated this turn.</summary>
+    public Dictionary<int, int> ActivationsThisTurn { get; } = new();
+
     /// <summary>Supertypes given by effects ("your Ring-bearer is legendary").</summary>
     internal Supertype GrantedSupertypes { get; set; }
 
@@ -486,6 +495,9 @@ public sealed class Card
         ChosenColor = null;
         ChosenType = null;
         ActivatedThisTurn.Clear();
+        ActivationsThisTurn.Clear();
+        StaticDamagePrevention = StaticDamagePrevention.None;
+        AbilitiesCantBeActivated = false;
         TriggeredThisTurn.Clear();
         LoyaltyActivatedThisTurn = false;
         ChosenModes.Clear();

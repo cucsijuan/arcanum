@@ -369,6 +369,9 @@ public sealed partial class Game
 
     private bool CanActivate(Card source, ActivatedAbility ability, int index, PlayerId player, bool sorcerySpeed)
     {
+        // "Its activated abilities can't be activated" (mana abilities too).
+        if (source.Zone == Zone.Battlefield && source.AbilitiesCantBeActivated) return false;
+        if (ability.Cost.LoyaltyX && (!sorcerySpeed || source.LoyaltyActivatedThisTurn)) return false; // −X: X can be 0
         if (ability.Cost.Loyalty is { } loyalty)
         {
             // Loyalty abilities: sorcery timing, one per planeswalker per turn, and enough loyalty to pay (606.3).
@@ -632,10 +635,21 @@ public sealed partial class Game
             ? t => CanPayToCast(card, player.Id, choices, new[] { new ChosenTarget(t, VersionOf(t)) })
             : null;
         IReadOnlyList<ChosenTarget>? targets;
+        // "Costs {1} more for each target beyond the first": no more targets than can be paid for.
+        int? maxTargets = null;
+        if (card.Definition.ExtraTargetCost > 0)
+        {
+            static IReadOnlyList<ChosenTarget> Some(int n) => Enumerable.Repeat(new ChosenTarget(Abilities.Target.Of(new PlayerId(0)), 0), n).ToList();
+            int most = 1;
+            while (most < 100 && CanPayToCast(card, player.Id, choices, Some(most + 1))) most++;
+            maxTargets = most;
+        }
         _announcedX = x;
-        try { targets = await ChooseTargetsAsync(player.Id, ability, cardId, card.Name, canCancel: true, affordable); }
+        try { targets = await ChooseTargetsAsync(player.Id, ability, cardId, card.Name, canCancel: true, affordable, maxTargets); }
         finally { _announcedX = -1; }
         if (targets is null) return false;
+        // 601.2d: how damage or counters are divided among the targets.
+        var division = await ChooseDivisionAsync(player.Id, ability, cardId, targets);
 
         // 601.2f: the total cost, locked in.
         var cost = TotalCastingCost(card, player.Id, choices, targets);
@@ -723,7 +737,7 @@ public sealed partial class Game
         PushStack(new SpellOnStack(cardId, player.Id, targets)
         {
             Ability = ability != CastingTargets(card.Definition) ? ability : null,
-            X = x, Kicked = kicked, Flashback = flashback, GiftTo = giftTo, KickCount = choices.KickCount, SquadCount = choices.SquadCount, Dashed = choices.Way.Kind == CastingWayKind.Dash,
+            X = x, Kicked = kicked, Flashback = flashback, GiftTo = giftTo, Division = division, KickCount = choices.KickCount, SquadCount = choices.SquadCount, Dashed = choices.Way.Kind == CastingWayKind.Dash,
         });
         Emit(new SpellCast(player.Id, cardId));
         foreach (var castThis in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.Trigger == TriggerEvent.CastThis))
@@ -793,7 +807,15 @@ public sealed partial class Game
         var exclude = ability.Cost.Tap ? source.Id : (CardId?)null;
         // X is announced before targets are chosen (rule 601.2b): "target creature with power X" needs it.
         int? announcedX = null;
-        if (ability.Targets.Any(t => t.Filter?.PowerIsX == true || t.Filter?.ManaValueIsX == true) && ActivationCost(source, ability, player.Id, null).XCount > 0)
+        // A loyalty cost of −X: X is announced, at most the loyalty it has (rule 606.4, 107.3k: no more counters than it has can be removed).
+        if (ability.Cost.LoyaltyX)
+        {
+            int loyaltyNow = source.CounterCount(CounterKind.Loyalty);
+            announcedX = await ControllerOf(player.Id).ChooseNumberAsync(ViewFor(player.Id), new NumberRequest($"{source.Name}: choose X (remove X loyalty counters)", source.Id, 0, loyaltyNow));
+            Require(announcedX >= 0 && announcedX <= loyaltyNow, $"X must be between 0 and {loyaltyNow}.");
+            _announcedX = announcedX.Value;
+        }
+        if (announcedX is null && ability.Targets.Any(t => t.Filter?.PowerIsX == true || t.Filter?.ManaValueIsX == true) && ActivationCost(source, ability, player.Id, null).XCount > 0)
         {
             int maxX = MaxAffordableX(player.Id, ActivationCost(source, ability, player.Id, null), exclude);
             announcedX = await ControllerOf(player.Id).ChooseNumberAsync(ViewFor(player.Id), new NumberRequest($"{source.Name}: choose X", source.Id, 0, maxX));
@@ -808,6 +830,7 @@ public sealed partial class Game
         var targets = await ChooseTargetsAsync(player.Id, ability, source.Id, ability.Text, canCancel: true, affordable);
         _announcedX = -1;
         if (targets is null) return false;
+        var division = await ChooseDivisionAsync(player.Id, ability, source.Id, targets); // rule 602.2b → 601.2d
         // The free first equip is an alternative cost the player may choose (or not).
         bool free = ability.IsEquip && FreeEquipAvailable(player.Id)
                     && (!Payable(player.Id, ActivationCost(source, ability, player.Id, targets, useFreeEquip: false).WithX(0), exclude, AbilityManaUsable(source, ability, player.Id))
@@ -832,7 +855,7 @@ public sealed partial class Game
             Tap(source);
         }
         if (ability.Cost.RemoveCounters > 0)
-            source.Counters[ability.Cost.RemoveCounterKind] = source.CounterCount(ability.Cost.RemoveCounterKind) - ability.Cost.RemoveCounters;
+            RemoveCountersFrom(source, ability.Cost.RemoveCounterKind, ability.Cost.RemoveCounters);
         if (ability.Cost.ExileSelf) await MoveCardAsync(source.Id, Zone.Exile);
         if (ability.Cost.FromHand)
         {
@@ -860,8 +883,15 @@ public sealed partial class Game
         {
             source.LoyaltyActivatedThisTurn = true;
             if (loyalty > 0) PutCounters(source, CounterKind.Loyalty, loyalty, player.Id);
-            else if (loyalty < 0) source.Counters[CounterKind.Loyalty] = source.CounterCount(CounterKind.Loyalty) + loyalty;
+            else if (loyalty < 0) RemoveCountersFrom(source, CounterKind.Loyalty, -loyalty);
         }
+        else if (ability.Cost.LoyaltyX)
+        {
+            source.LoyaltyActivatedThisTurn = true;
+            RemoveCountersFrom(source, CounterKind.Loyalty, x);
+        }
+        // "If this ability has been activated four or more times this turn": every activation counts, resolved or not.
+        source.ActivationsThisTurn[action.Index] = source.ActivationsThisTurn.GetValueOrDefault(action.Index) + 1;
         if (ability.Cost.SacrificeSelf)
         {
             if (source.Zone == Zone.Graveyard) await MoveCardAsync(source.Id, Zone.Exile); // "Exile this card from your graveyard"
@@ -871,7 +901,8 @@ public sealed partial class Game
         Emit(new AbilityActivated(player.Id, source.Id, ability.Text));
         var item = new AbilityOnStack(source.Id, ability, player.Id, targets)
         {
-            X = x, SacrificedForCost = sacrificed, SourceVersion = source.Version, DiscardedForCost = _lastDiscardedForCost.ToList(),
+            X = x, SacrificedForCost = sacrificed, SourceVersion = source.Version, DiscardedForCost = _lastDiscardedForCost.ToList(), Division = division,
+            AbilityIndex = action.Index,
         };
         if (IsManaAbility(ability))
         {
@@ -1017,7 +1048,7 @@ public sealed partial class Game
                     Require(k >= 0 && k < kinds.Count, "Choose a counter kind.");
                     kind = kinds[k];
                 }
-                creature.Counters[kind]--;
+                RemoveCountersFrom(creature, kind, 1);
             }
         }
         _lastDiscardedForCost.Clear();
@@ -1156,7 +1187,7 @@ public sealed partial class Game
             Emit(new ManaAdded(player.Id, type, tap.Source));
         }
         // "This land deals 1 damage to you" / "You gain 1 life" (part of the mana ability, rule 605.3b).
-        if (option is { DamageToController: > 0 } hurts) DamagePlayer(source, player.Id, hurts.DamageToController);
+        if (option is { DamageToController: > 0 } hurts) await DealDamageAsync(source, null, player.Id, hurts.DamageToController);
         if (option is { GainLife: > 0 } heals) GainLifeFor(player.Id, heals.GainLife);
         if (source.Definition.SacrificeForMana) await SacrificePermanentAsync(source.Id);
     }

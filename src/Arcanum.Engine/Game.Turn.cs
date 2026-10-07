@@ -23,6 +23,7 @@ public sealed partial class Game
         State.PreventionShields.RemoveAll(p => p.Turn < State.TurnNumber);
         State.DamageTripled.RemoveAll(p => p.Turn < State.TurnNumber);
         State.CantAttackThisCombat.Clear();
+        State.AttackPlayerRequirements.Clear();
         State.CantSacrificeThisTurn.Clear();
         foreach (var player in State.Players)
         {
@@ -52,6 +53,7 @@ public sealed partial class Game
         foreach (var card in State.Cards.Values)
         {
             card.ActivatedThisTurn.Clear();
+            card.ActivationsThisTurn.Clear();
             card.TriggeredThisTurn.Clear();
             card.DoneThisTurn.Clear();
             card.LoyaltyActivatedThisTurn = false;
@@ -118,22 +120,29 @@ public sealed partial class Game
                     Emit(new PhasedIn(phased.Card));
                 }
                 RecomputeContinuousEffects();
-                // An exerted permanent doesn't untap during its controller's next untap step (701.39a).
+                // An exerted permanent doesn't untap during its controller's next untap step (701.39a); nor do permanents
+                // that "don't untap during [its controller's / that player's] next untap step". Those effects end with it.
                 var exerted = State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.SkipsNextUntap).ToList();
                 foreach (var permanent in exerted) permanent.SkipsNextUntap = false;
+                State.SkipNextUntap.RemoveAll(s => State.GetCard(s.Card) is not { Zone: Zone.Battlefield } c || c.Version != s.Version);
+                foreach (var skip in State.SkipNextUntap.Where(s => s.Player == State.ActivePlayer || (s.Player is null && State.GetCard(s.Card).Controller == State.ActivePlayer)).ToList())
+                {
+                    if (State.GetCard(skip.Card).Controller == State.ActivePlayer) exerted.Add(State.GetCard(skip.Card));
+                    State.SkipNextUntap.Remove(skip);
+                }
                 foreach (var permanent in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Tapped && !c.Definition.DoesntUntap && !c.Has(Cards.Keyword.DoesntUntap) && !exerted.Contains(c)).ToList())
                 {
                     // A stun counter is removed instead of untapping (rule 122.1d).
                     if (permanent.CounterCount(Abilities.CounterKind.Stun) > 0)
                     {
-                        permanent.Counters[Abilities.CounterKind.Stun]--;
+                        RemoveCountersFrom(permanent, Abilities.CounterKind.Stun, 1);
                         continue;
                     }
                     if (permanent.Has(Cards.Keyword.UntapsByRemovingCounter))
                     {
                         // "Remove a +1/+1 counter from it instead. If you do, untap it. (Otherwise, it doesn't untap.)"
                         if (permanent.CounterCount(Abilities.CounterKind.PlusOnePlusOne) == 0) continue;
-                        permanent.Counters[Abilities.CounterKind.PlusOnePlusOne]--;
+                        RemoveCountersFrom(permanent, Abilities.CounterKind.PlusOnePlusOne, 1);
                     }
                     Untap(permanent);
                 }

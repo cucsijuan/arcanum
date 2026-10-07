@@ -99,7 +99,11 @@ public sealed record Surveil(int Count) : Effect;
 public sealed record Fight(Subject First, Subject Second) : Effect;
 
 /// <summary>"[Player] discards N cards" — the discarding player chooses.</summary>
-public sealed record Discard(Quantity Count, Subject Who) : Effect;
+public sealed record Discard(Quantity Count, Subject Who) : Effect
+{
+    /// <summary>"Discards N cards at random" (rule 701.9b): the cards are chosen at random, not by the player.</summary>
+    public bool AtRandom { get; init; }
+}
 
 /// <summary>Effects that happen only if a condition holds when the effect is reached ("If you control a Wizard, ...").</summary>
 public sealed record IfThen(Condition Condition, IReadOnlyList<Effect> Then, IReadOnlyList<Effect>? Else = null) : Effect;
@@ -385,6 +389,18 @@ public sealed record RevealTop(ObjectFilter Filter, bool Optional, IReadOnlyList
 
 /// <summary>Several effects that are one event ("put a +1/+1 counter and a lifelink counter on it"): "one or more" triggers see it once.</summary>
 public sealed record Simultaneously(IReadOnlyList<Effect> Effects) : Effect;
+
+/// <summary>
+/// "The next N damage that a source of your choice would deal to you and/or permanents you control this turn is dealt to
+/// [target] instead": the source is chosen as it resolves.
+/// </summary>
+public sealed record RedirectNextDamage(Quantity Amount, Subject To) : Effect;
+
+/// <summary>"[Subject] deals X damage divided evenly, rounded down, among [the targets]": among the targets still legal as it resolves.</summary>
+public sealed record DealDamageDividedEvenly(Quantity Total) : Effect;
+
+/// <summary>"Destroy one of them at random": one of the still-legal chosen targets (from <see cref="Subject.Index"/> on), chosen at random.</summary>
+public sealed record DestroyOneAtRandom(Subject Among) : Effect;
 
 /// <summary>"Damage can't be prevented this turn."</summary>
 public sealed record DamageCantBePreventedThisTurn : Effect;
@@ -834,7 +850,11 @@ public sealed record PlayerMayPay(Subject Who, Quantity Generic, IReadOnlyList<E
 /// <summary>
 /// "Prevent all [combat] damage that would be dealt this turn [by target creature / by matching sources / to you]".
 /// </summary>
-public sealed record PreventDamageThisTurn(bool CombatOnly, Subject? DealtBy = null, ObjectFilter? Sources = null, bool ToYou = false) : Effect;
+public sealed record PreventDamageThisTurn(bool CombatOnly, Subject? DealtBy = null, ObjectFilter? Sources = null, bool ToYou = false) : Effect
+{
+    /// <summary>"… and creatures you control": also damage to creatures the controller controls when it would be dealt (later ones too).</summary>
+    public bool ToYourCreatures { get; init; }
+}
 
 /// <summary>"If a source you control would deal damage this turn to an opponent or a permanent an opponent controls, it deals triple that damage instead."</summary>
 public sealed record TripleDamageThisTurn : Effect;
@@ -925,6 +945,22 @@ public sealed record ChooseObjects(Subject Chooser, ObjectFilter Filter, bool Op
 
 /// <summary>"Return target nonland permanent and each other nonland permanent with the same mana value as that permanent to their owners' hands."</summary>
 public sealed record BounceSameManaValue(Subject What) : Effect;
+
+/// <summary>"[Creature] attacks you this turn if able": a requirement to attack the controller of this effect (rule 508.1d).</summary>
+public sealed record AttacksYouThisTurn(Subject What) : Effect;
+
+/// <summary>
+/// "[Permanents] don't untap during their controller's next untap step", or with <paramref name="Player"/> "during [that
+/// player]'s next untap step" (Sleep): the effect ends once that untap step is over.
+/// </summary>
+public sealed record SkipNextUntap(Subject What, Subject? Player = null) : Effect;
+
+/// <summary>
+/// Master of the Wild Hunt: "Tap all untapped [filter] you control. Each [one] tapped this way deals damage equal to its power
+/// to [target creature]. That creature deals damage equal to its power divided as its controller chooses among any number of
+/// those [creatures]." All of that damage is dealt at the same time.
+/// </summary>
+public sealed record TapAllToDamage(ObjectFilter Filter, Subject Target) : Effect;
 
 /// <summary>"At the beginning of the next end step, [effects]" about the object of <paramref name="About"/> ("return that card").</summary>
 public sealed record AtNextEndStepAbout(Subject About, IReadOnlyList<Effect> Effects) : Effect;

@@ -34,7 +34,7 @@ public static class ManaPayment
     /// <param name="exclude">A permanent that can't be tapped for mana here (it is tapping for an ability's cost).</param>
     public static IEnumerable<Card> AvailableSources(GameState state, PlayerId player, CardId? exclude = null, OptionUsable? usable = null) =>
         state.PermanentsControlledBy(player)
-            .Where(c => !c.Tapped && c.Id != exclude && UsableOptions(c, Affordable(state, usable)).Count > 0)
+            .Where(c => !c.Tapped && c.Id != exclude && !c.AbilitiesCantBeActivated && UsableOptions(c, Affordable(state, usable)).Count > 0)
             // Creatures can't use {T} abilities while summoning sick (rule 302.6).
             .Where(c => !c.IsSummoningSick);
 

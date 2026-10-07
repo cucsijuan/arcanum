@@ -59,7 +59,7 @@ public partial class GameBoard : Control
     private readonly Dictionary<CardId, CardId> _attackWalkers = new();   // attacker -> planeswalker it attacks
     private CardId? _attackWalker;                                        // planeswalker newly picked attackers go after
     private readonly HashSet<CardId> _attackGroup = new();                // picked since the last change of target
-    private readonly Dictionary<CardId, CardId> _blocks = new(); // blocker -> attacker
+    private readonly Dictionary<CardId, List<CardId>> _blocks = new(); // blocker -> attackers it blocks (several: "can block any number")
     private CardId? _pendingBlocker;
     private readonly List<CardId> _pendingGroup = new();  // more tokens of the pending blocker's stack that block along with it
     private StackPicker? _picker;
@@ -621,8 +621,16 @@ public partial class GameBoard : Control
             _attackWalker = null;
             _attackGroup.Clear();
             _attackDefender = decision is AttackDecision ad ? ad.Defenders[0] : null;
-            // Creatures that attack each combat if able start selected (their target can still be changed).
-            if (decision is AttackDecision forced)
+            // Creatures that must attack (each combat if able, goaded, "attacks you this turn if able") start selected, at the
+            // player they have to attack (their target can still be changed where the requirements allow it).
+            if (decision is AttackDecision { Request: { } rules })
+                foreach (var forced in rules.Complete(Array.Empty<AttackDeclaration>()))
+                {
+                    _attackTargets[forced.Attacker] = forced.Defender;
+                    if (forced.Planeswalker is { } pw) _attackWalkers[forced.Attacker] = pw;
+                    _attackGroup.Add(forced.Attacker);
+                }
+            else if (decision is AttackDecision forced)
                 foreach (var id in forced.PossibleAttackers.Where(id => _session.ViewFor(forced.Player).FindCard(id)?.AttacksEachCombat == true))
                 {
                     _attackTargets[id] = AllowedDefender(forced, id, forced.Defenders[0]);
@@ -658,7 +666,7 @@ public partial class GameBoard : Control
         foreach (var attack in view.Attacks)
             foreach (var blocker in attack.Blockers) Align(blocker, attack.Attacker);
         if (decision is BlockDecision)
-            foreach (var (blocker, attacker) in _blocks) Align(blocker, attacker);
+            foreach (var (blocker, blocked) in _blocks) Align(blocker, blocked[0]);
         foreach (var area in _areas.Where(a => a != activeArea)) area.Refresh(view, false, staged, attacking, blockerAlign);
         _turnNumber.Text = Math.Max(1, view.TurnNumber).ToString();
         _stepLabel.Text = view.TurnNumber == 0 ? "Mulligan" : EventLogFormatter.StepName(view.Step);
@@ -761,10 +769,12 @@ public partial class GameBoard : Control
                     }
                     else _attackTargets[id] = AllowedDefender(a, id, a.Defenders[0]);
                 }
-                a.Answer(_attackTargets.Select(kv => new AttackDeclaration(kv.Key, kv.Value, null)).ToList());
+                IReadOnlyList<AttackDeclaration> picked = _attackTargets.Select(kv => new AttackDeclaration(kv.Key, kv.Value, null)).ToList();
+                if (a.Request is { } rules && !rules.IsLegal(picked, out _)) picked = rules.Complete(picked);
+                a.Answer(picked);
                 return true;
             }
-            case BlockDecision b when b.Request.MinimumBlockers.Count == 0 && b.Request.MustBeBlocked.Count == 0:
+            case BlockDecision b when b.Request.MinimumBlockers.Count == 0 && !b.Request.HasRequirements:
             {
                 var target = b.Attackers[0];
                 var done = new HashSet<CardId>();
@@ -779,11 +789,11 @@ public partial class GameBoard : Control
                         GD.Print($"STACKTEST block with {(same.Count + 1) / 2} of {same.Count} {node.View?.Name}");
                     }
                     else _pendingBlocker = id;
-                    foreach (var picked in PendingBlockers().Where(p => b.Request.CanBlock[p].Contains(target))) _blocks[picked] = target;
+                    foreach (var picked in PendingBlockers().Where(p => b.Request.CanBlock[p].Contains(target))) _blocks[picked] = new List<CardId> { target };
                     ClearPendingBlockers();
                     ApplyBlockCount(same, same.Count);
                 }
-                var blocks = _blocks.Select(kv => new BlockDeclaration(kv.Key, kv.Value)).ToList();
+                var blocks = BlockPairs();
                 if (b.Request.IsLegal(blocks, out _)) { b.Answer(blocks); return true; }
                 _blocks.Clear();
                 return false;
@@ -814,19 +824,25 @@ public partial class GameBoard : Control
             case ManaPaymentDecision pay: pay.Answer(pay.Request.SuggestedTaps); break;
             case YesNoDecision yn: yn.Answer(true); break;
             case DamageAssignmentDecision dmg: dmg.Answer(dmg.Request.Suggested); break;
-            case BlockDecision b when b.Request.MinimumBlockers.Count > 0 || b.Request.MustBeBlocked.Count > 0:
-                b.Answer(b.Request.WithRequirements(Array.Empty<BlockDeclaration>())); // keep autoplay simple around menace
+            case BlockDecision b when b.Request.MinimumBlockers.Count > 0 || b.Request.HasRequirements:
+                b.Answer(b.Request.Complete(Array.Empty<BlockDeclaration>())); // keep autoplay simple around menace and lures
                 break;
             case AttackDecision a:
-                a.Answer(a.PossibleAttackers.Take(view.AttackTaxes.FirstOrDefault(t => t.Defender == a.Defenders[0])?.Affordable ?? int.MaxValue)
-                    .Select(id => new AttackDeclaration(id, view.MayAttack(id, a.Defenders[0]) ? a.Defenders[0] : a.Defenders.FirstOrDefault(d => view.MayAttack(id, d), a.Defenders[0]))).ToList());
+            {
+                IReadOnlyList<AttackDeclaration> attacks = a.PossibleAttackers.Take(view.AttackTaxes.FirstOrDefault(t => t.Defender == a.Defenders[0])?.Affordable ?? int.MaxValue)
+                    .Select(id => new AttackDeclaration(id, view.MayAttack(id, a.Defenders[0]) ? a.Defenders[0] : a.Defenders.FirstOrDefault(d => view.MayAttack(id, d), a.Defenders[0]))).ToList();
+                if (a.Request is { } rules && !rules.IsLegal(attacks, out _)) attacks = rules.Complete(attacks);
+                a.Answer(attacks);
                 break;
+            }
             // Double-block the first attacker when possible so damage assignment gets exercised too.
             case BlockDecision b:
             {
                 var target = b.Attackers[0];
-                b.Answer(b.PossibleBlockers.Where(bl => b.Request.CanBlock[bl].Contains(target)).Take(2)
-                    .Select(bl => new BlockDeclaration(bl, target)).ToList());
+                IReadOnlyList<BlockDeclaration> blocks = b.PossibleBlockers.Where(bl => b.Request.CanBlock[bl].Contains(target)).Take(2)
+                    .Select(bl => new BlockDeclaration(bl, target)).ToList();
+                if (!b.Request.IsLegal(blocks, out _)) blocks = b.Request.Complete(blocks);
+                b.Answer(blocks);
                 break;
             }
             case SelectCardsDecision s: s.Answer(view.Players[s.Player.Value].Hand.Take(s.Count).Select(c => c.Id).ToList()); break;
@@ -862,7 +878,7 @@ public partial class GameBoard : Control
                 FindCard(t.Request.Source)?.SetHighlight(CardHighlight.Selected);
                 foreach (var chosen in _chosenTargets)
                     if (chosen.Card is { } c) FindCard(c)?.SetHighlight(CardHighlight.Selected);
-                if (_chosenTargets.Count < t.Request.Legal.Count || t.Request.LastIsAnyNumber)
+                if (t.Request.CanAddMore(_chosenTargets.Count))
                 {
                     foreach (var option in t.Request.LegalAt(_chosenTargets.Count).Where(o => t.Request.IsAllowed(_chosenTargets.Count, o, _chosenTargets)))
                     {
@@ -888,10 +904,10 @@ public partial class GameBoard : Control
                 break;
             }
             case DamageAssignmentDecision dmg:
-                FindCard(dmg.Request.Attacker)?.SetHighlight(CardHighlight.Attacking);
+                FindCard(dmg.Request.Attacker)?.SetHighlight(dmg.Request.ByBlocker ? CardHighlight.Blocking : CardHighlight.Attacking);
                 foreach (var id in dmg.Request.Blockers)
                 {
-                    FindCard(id)?.SetHighlight(CardHighlight.Blocking);
+                    FindCard(id)?.SetHighlight(dmg.Request.ByBlocker ? CardHighlight.Attacking : CardHighlight.Blocking);
                     FindCard(id)?.SetAssignedDamage(_damageSplit.GetValueOrDefault(id));
                 }
                 break;
@@ -976,12 +992,13 @@ public partial class GameBoard : Control
         {
             foreach (var chosen in _chosenTargets)
                 if (TargetControl(chosen) is { } to) arrows.Add(new(sourceNode, to, BoardStyle.Selected));
-            if (_chosenTargets.Count < td.Request.Legal.Count || td.Request.LastIsAnyNumber) arrows.Add(new(sourceNode, null, BoardStyle.Playable));
+            if (td.Request.CanAddMore(_chosenTargets.Count)) arrows.Add(new(sourceNode, null, BoardStyle.Playable));
         }
 
         if (decision is BlockDecision)
         {
-            foreach (var (blocker, attacker) in _blocks) Add(blocker, attacker, BoardStyle.Blocking);
+            foreach (var (blocker, blocked) in _blocks)
+                foreach (var attacker in blocked) Add(blocker, attacker, BoardStyle.Blocking);
             if (_pendingBlocker is { } pending) Add(pending, null, BoardStyle.Selected);
         }
         _arrows.SetArrows(arrows);
@@ -1255,9 +1272,11 @@ public partial class GameBoard : Control
 
             case DamageAssignmentDecision dmg:
             {
-                var attackerName = view.FindCard(dmg.Request.Attacker)?.Name ?? "Attacker";
+                var attackerName = view.FindCard(dmg.Request.Attacker)?.Name ?? (dmg.Request.ByBlocker ? "Blocker" : "Attacker");
                 int remaining = dmg.Request.Power - _damageSplit.Values.Sum() - _damageToPlayer;
-                _prompt.Text = $"{who}: assign {dmg.Request.Power} damage from {attackerName}";
+                _prompt.Text = dmg.Request.Prompt is { } prompt ? $"{who}: {prompt}"
+                    : dmg.Request.ByBlocker ? $"{who}: divide {dmg.Request.Power} damage from {attackerName} among the attackers it blocks"
+                    : $"{who}: assign {dmg.Request.Power} damage from {attackerName}";
                 _actionExtra.Visible = true;
                 foreach (var blocker in dmg.Request.Blockers) _actionExtra.AddChild(DamageRow(view, dmg, blocker, remaining));
                 bool lethalToAll = dmg.Request.Lethal.All(kv => _damageSplit.GetValueOrDefault(kv.Key) >= kv.Value);
@@ -1301,16 +1320,22 @@ public partial class GameBoard : Control
                         foreach (var id in a.PossibleAttackers) _attackTargets.TryAdd(id, _attackDefender ?? a.Defenders[0]);
                         Refresh();
                     });
-                AddButton(_attackTargets.Count == 0 ? "No attacks" : $"Attack ({_attackTargets.Count})", () =>
-                    a.Answer(_attackTargets.Select(kv => new AttackDeclaration(kv.Key, kv.Value, _attackWalkers.TryGetValue(kv.Key, out var w) ? w : null)).ToList()),
-                    primary: true);
+                var attacks = _attackTargets.Select(kv => new AttackDeclaration(kv.Key, kv.Value, _attackWalkers.TryGetValue(kv.Key, out var w) ? w : null)).ToList();
+                // Restrictions ("can't attack alone") and requirements ("attacks each combat if able", goad, "attacks you this
+                // turn if able"): only a legal declaration can be confirmed (rule 508.1c-d).
+                string? attackProblem = null;
+                bool attackLegal = a.Request is not { } attackRules || attackRules.IsLegal(attacks, out attackProblem);
+                if (!attackLegal) _prompt.Text = $"{who}: {attackProblem}";
+                var confirmAttack = AddButton(_attackTargets.Count == 0 ? "No attacks" : $"Attack ({_attackTargets.Count})", () => a.Answer(attacks), primary: true);
+                confirmAttack.Disabled = !attackLegal;
                 break;
 
             case BlockDecision b:
             {
-                var blocks = _blocks.Select(kv => new BlockDeclaration(kv.Key, kv.Value)).ToList();
+                var blocks = BlockPairs();
                 bool legal = b.Request.IsLegal(blocks, out var reason);
-                _prompt.Text = !legal ? $"{who}: {reason}"
+                _prompt.Text = _pendingBlocker is { } choosing && b.Request.CanBlockAny.Contains(choosing) ? $"{who}: choose what it blocks (any number; click it again when done)"
+                    : !legal ? $"{who}: {reason}"
                     : _pendingBlocker is null ? $"{who}: choose a blocker" : $"{who}: choose what it blocks";
                 var confirmBlocks = AddButton(_blocks.Count == 0 ? "No blocks" : $"Confirm blocks ({_blocks.Count})", () => b.Answer(blocks), primary: true);
                 confirmBlocks.Disabled = !legal;
@@ -1561,7 +1586,7 @@ public partial class GameBoard : Control
     private bool UsableNow(Decision? decision, CardId id) => decision switch
     {
         PriorityDecision p => SourceActions(p, id).Count > 0,
-        TargetDecision t => _chosenTargets.Count < t.Request.Specs.Count || t.Request.LastIsAnyNumber
+        TargetDecision t => t.Request.CanAddMore(_chosenTargets.Count)
             ? t.Request.LegalAt(_chosenTargets.Count).Any(o => o.Card == id && t.Request.IsAllowed(_chosenTargets.Count, o, _chosenTargets))
             : false,
         ChooseCardsDecision c => c.Request.Options.Any(o => o.Id == id),
@@ -1595,7 +1620,8 @@ public partial class GameBoard : Control
     {
         foreach (var id in _attackGroup)
         {
-            if (_session.CurrentDecision is AttackDecision decision && AllowedDefender(decision, id, defender) != defender) continue; // it can't attack that player
+            if (_session.CurrentDecision is AttackDecision decision
+                && (AllowedDefender(decision, id, defender) != defender || decision.Request is { } rules && !rules.MayAttack(id, defender, walker))) continue; // it can't attack that
             _attackTargets[id] = defender;
             if (walker is { } w) _attackWalkers[id] = w;
             else _attackWalkers.Remove(id);
@@ -1619,10 +1645,10 @@ public partial class GameBoard : Control
     /// <summary>Adds a target if it is legal for the next requirement; answers once every target is chosen.</summary>
     private void PickTarget(Arcanum.Engine.Abilities.Target target)
     {
-        if (_session.CurrentDecision is not TargetDecision t || (_chosenTargets.Count >= t.Request.Legal.Count && !t.Request.LastIsAnyNumber)) return;
+        if (_session.CurrentDecision is not TargetDecision t || !t.Request.CanAddMore(_chosenTargets.Count)) return;
         if (!t.Request.IsAllowed(_chosenTargets.Count, target, _chosenTargets)) return;
         _chosenTargets.Add(target);
-        if (!t.Request.LastIsAnyNumber && _chosenTargets.Count == t.Request.Legal.Count) t.Answer(_chosenTargets.ToList());
+        if ((!t.Request.LastIsAnyNumber && _chosenTargets.Count == t.Request.Legal.Count) || (t.Request.LastIsAnyNumber && !t.Request.CanAddMore(_chosenTargets.Count) && t.Request.IsComplete(_chosenTargets.Count))) t.Answer(_chosenTargets.ToList());
         else Refresh();
     }
 
@@ -1636,6 +1662,9 @@ public partial class GameBoard : Control
         var set = eligible.ToHashSet();
         return (AreaHolding(node)?.SameKind(node.Id) ?? new[] { node.Id }).Where(set.Contains).ToList();
     }
+
+    /// <summary>The blocks picked so far, one per blocker and attacker it blocks.</summary>
+    private List<BlockDeclaration> BlockPairs() => _blocks.SelectMany(kv => kv.Value.Select(attacker => new BlockDeclaration(kv.Key, attacker))).ToList();
 
     private IEnumerable<CardId> PendingBlockers() => _pendingBlocker is { } first ? _pendingGroup.Prepend(first) : Enumerable.Empty<CardId>();
 
@@ -1656,7 +1685,7 @@ public partial class GameBoard : Control
         if (_chosenTargets.Any(t => t.Card == id)) mark.Append('t');
         if (_attackTargets.TryGetValue(id, out var defender)) mark.Append($"a{defender.Value}/{(_attackWalkers.TryGetValue(id, out var w) ? w.Value : -1)}");
         if (_attackGroup.Contains(id)) mark.Append('g');
-        if (_blocks.TryGetValue(id, out var blocked)) mark.Append($"b{blocked.Value}");
+        if (_blocks.TryGetValue(id, out var blocked)) mark.Append($"b{string.Join(",", blocked.Select(x => x.Value))}");
         if (IsPendingBlocker(id)) mark.Append('p');
         if (_damageSplit.TryGetValue(id, out var dmg)) mark.Append($"d{dmg}");
         mark.Append(decision switch
@@ -1818,7 +1847,13 @@ public partial class GameBoard : Control
                 {
                     var stack = AreaHolding(node)?.StackMembers(id) ?? new[] { id };
                     var same = SameKindAmong(node, b.PossibleBlockers);
-                    if (IsPendingBlocker(id)) ClearPendingBlockers(); // picked again: not blocking after all
+                    if (IsPendingBlocker(id)) ClearPendingBlockers(); // picked again: not blocking after all (or done picking attackers)
+                    else if (_blocks.ContainsKey(id) && b.Request.CanBlockAny.Contains(id))
+                    {
+                        // A creature that can block any number of creatures: pick it again to add or remove attackers it blocks.
+                        ClearPendingBlockers();
+                        _pendingBlocker = id;
+                    }
                     else if (_blocks.ContainsKey(id) && stack.Count > 1 && stack.All(_blocks.ContainsKey))
                     {
                         OpenBlockPicker(b, node.View?.Name, stack, blocking: true);
@@ -1838,9 +1873,20 @@ public partial class GameBoard : Control
                 }
                 else if (b.Attackers.Contains(id) && _pendingBlocker is { } blocker && b.Request.CanBlock[blocker].Contains(id))
                 {
-                    foreach (var picked in PendingBlockers().Where(p => b.Request.CanBlock[p].Contains(id)))
-                        _blocks[picked] = id;
-                    ClearPendingBlockers();
+                    bool keepPicking = false;
+                    foreach (var picked in PendingBlockers().Where(p => b.Request.CanBlock[p].Contains(id)).ToList())
+                    {
+                        if (b.Request.CanBlockAny.Contains(picked))
+                        {
+                            // Toggles this attacker among the ones it blocks; it stays picked for more.
+                            var list = _blocks.TryGetValue(picked, out var existing) ? existing : _blocks[picked] = new List<CardId>();
+                            if (!list.Remove(id)) list.Add(id);
+                            if (list.Count == 0) _blocks.Remove(picked);
+                            keepPicking = true;
+                        }
+                        else _blocks[picked] = new List<CardId> { id };
+                    }
+                    if (!keepPicking) ClearPendingBlockers();
                 }
                 break;
 

@@ -425,7 +425,9 @@ Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYo
 - **Combat**: `{ "goad": "target" }`, `{ "removeFromCombat": "self" }`, keywords `Must be blocked`, `Can't be blocked by more
   than one`, `Nonbasic landwalk`, `Assigns damage by toughness`, `Untaps by removing counter`; condition
   `{ "equippedInCombatWith": filter }`; trigger `equippedBlocksOrBlocked` with `{ "loseAllAbilities": "triggered" }`.
-- **Protection**: `{ "protectionFromChosenType": "target" }`, `{ "protectionFromColorsOf": "target", "what": subject }`.
+- **Protection**: `{ "protectionFromChosenType": "target" }`, `{ "protectionFromColorsOf": "target", "what": subject }`; card-wide
+  `"protectionFromSubtypes": ["Demon", "Dragon"]` (protection from creature types: damage, enchanting/equipping, blocking and
+  targeting by sources with any of them, as they last existed).
 - **Triggers**: `tokenCreated` (each token), `youAttackPlayer` (once per player attacked; amount: how many attackers matched
   `filter`), `becomesTargetOfSpell`, `permanentBecomesTarget` (of an opponent's spell or ability), `phasesIn`; cast triggers
   take `"spellTargets": filter`.
@@ -458,6 +460,31 @@ Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYo
   "that many plus one") each apply once per permanent that has them; when more than one kind applies, the affected
   player chooses the order (rule 616.1). Damage doublers stack the same way. Quantities about a target that changed zones
   use the object as it last existed (a spell returned to hand keeps the mana value it had with its X).
+
+## Combat requirements and restrictions
+
+- Keywords (give them with a static `"keywords"`): `Can't attack alone`, `Can't block alone` (rule 506.5: only together with
+  another attacking / blocking creature), `Can block any number of creatures` (it divides its combat damage among the attackers
+  it blocks as its controller chooses, rule 510.1d), `All creatures able to block it do so` (also `Lure`: each creature able to
+  block it has a requirement to block it). Blocks and attacks must obey as many requirements as possible without breaking a
+  restriction (rules 508.1d, 509.1c), worked out exactly together with menace, "can't be blocked by more than one", "must be
+  blocked", "attacks each combat", goad and the effects below.
+- Card-wide `"cantAttackUnlessDefenderControls": filter` ("can't attack unless defending player controls an Island"): it can't
+  attack a player who controls none, nor that player's planeswalkers.
+- `{ "attacksYouThisTurn": "target" }`: the creature attacks the controller of this effect this turn if able (only attacking
+  that player obeys it; never paid for, never against a restriction).
+- `{ "skipNextUntap": subject }`: it doesn't untap during its controller's next untap step; with `"player": "target"` during
+  that player's next untap step instead (Sleep). Either way the effect ends with that untap step.
+- Triggers `blocksOrBlockedBy` ("whenever this creature blocks or becomes blocked by a creature") and `blocksCreature`
+  ("whenever this creature blocks a creature"): once per creature on the other side, which is `"triggered"`. `blocks` triggers
+  once however many creatures it blocks.
+- `{ "tapAllToDamage": filter, "to": "target" }` (Master of the Wild Hunt): taps all your untapped permanents matching the
+  filter; each one tapped this way deals damage equal to its power to the target creature, which deals damage equal to its
+  power divided as its controller chooses among them, all at once.
+- Filter `"toughnessLessThanPower": true`: toughness less than the source's power (last known if it left the battlefield).
+- An Aura's `aura` target with a filter (`{ "kind": "creature", "filter": { "tapped": true } }`, "enchant tapped creature") is
+  checked as it is cast and all the time it is attached: once its object no longer matches, the Aura is put into its owner's
+  graveyard (rules 303.4d, 704.5m).
 
 ## Multiplayer and commander rules
 
@@ -520,3 +547,38 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 `"greatestCommanderManaValue"`, `"otherAttackersSharingType"`, `"opponentCount"`, `"affectedHandSize"`. Subjects: `playerToYourRight`,
 `yourRingBearer`, `attackers`, `lastControlled`, `opponentsDamagedBySameName`. Replacements: `OpponentsCantLoseYouCantWin`,
 `DamageCantReduceYourLifeBelowOne`, `StealsOpponentsExtraDraws`, `LookAtLibraryTop`, `PlayLandsFromLibraryTopWhileBehind`.
+
+## Damage events, prevention and redirection
+
+- **One damage event**: damage dealt at the same time (combat damage, "each creature and each player", a fight, divided damage, effects
+  inside `simultaneously`) is one event. Before it's dealt, each part meets the replacement and prevention effects that apply to it; when
+  several do, the affected player (or the affected permanent's controller) chooses their order (rule 616.1), and each applies once.
+- **Prevention**: `preventDamage` with no qualifier prevents all (combat, with `"combatOnly": true`) damage this turn (Fog); qualifiers
+  combine: `"dealtBy"`, `"sources"`, `"toYou": true`, `"toYourCreatures": true` ("to you and creatures you control": creatures that come
+  under your control later in the turn too). Static: `"preventDamage": "all" | "noncombat"` (to the affected permanents, e.g.
+  `"affects": "equipped"`). Replacements: `PreventOneDamageFromOpponentsSources` ("if a source an opponent controls would deal damage to
+  you, prevent 1 of that damage", per source and event), `PreventDamageRemoveCounters` ("prevent that damage and remove that many +1/+1
+  counters from it").
+- **Redirection**: `{ "redirectDamage": 2, "to": "target" }`: "the next 2 damage that a source of your choice would deal to you and/or
+  permanents you control this turn is dealt to [target] instead". The source is chosen as it resolves (a permanent, a spell, or an
+  object referred to by something on the stack); the shield lasts across damage events until used up; when one event has more of it,
+  its controller chooses which damage is redirected.
+- **Dividing**: `divideDamage` and `distributeCounters` are divided as the spell is cast or the ability is put on the stack (rule 601.2d,
+  at least 1 to each target, so no more targets than the amount); on resolution, what was assigned to a target that became illegal isn't
+  dealt. `{ "divideEvenly": "X" }` ("X damage divided evenly, rounded down, among any number of targets") divides as it resolves, among
+  the targets still legal. Card-wide `"extraTargetCost": 1`: "this spell costs {1} more to cast for each target beyond the first" (no
+  more targets than can be paid for).
+- **Randomness**: `discard` with `"random": true` ("discards N cards at random", all of them if fewer); `{ "destroyRandom": "eachTarget" }`
+  ("destroy one of them at random", among the targets still legal).
+- **Triggers**: `dealsDamageToOpponent` ("whenever this creature deals damage to an opponent", combat or not; `triggeredPlayer` is that
+  player), `becomesTargetOfAny` ("when this becomes the target of a spell or ability", anyone's), `attachedBecomesTarget` ("when enchanted
+  creature becomes the target of a spell or ability"), `counterRemoved` (once for each counter removed; `"counterKind"`, default +1/+1),
+  `playerTapsLandForMana` ("whenever a player taps a land for mana": not a mana ability, it goes on the stack, also when lands are tapped
+  while paying).
+- **Static abilities**: `"loseKeywords": ["Flying"]` ("loses flying", in timestamp order with grants), `"cantActivate": true` ("its
+  activated abilities can't be activated", mana abilities included).
+- **Costs**: loyalty `-X` (X chosen as it's activated, at most its loyalty; `"X"` in its effects), card-wide `"xManaType": "{B}"` ("spend
+  only black mana on X"), condition `{ "activatedThisTurn": 4 }` ("if this ability has been activated four or more times this turn",
+  checked as it resolves).
+- "Each player" and "each opponent" act in turn order starting with the active player (rule 101.4). "If this is untapped" uses the
+  source as it last existed on the battlefield if it has left.

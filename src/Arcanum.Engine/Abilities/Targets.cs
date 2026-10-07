@@ -161,6 +161,8 @@ public enum SubjectKind
     YouAndOpponentsWhoVotedWithYou,
     /// <summary>Permanents this spell or ability dealt damage to, matching <see cref="Subject.Filter"/> ("if a Dragon is dealt damage this way").</summary>
     DamagedThisWay,
+    /// <summary>The object the effect being applied picked at random.</summary>
+    ChosenAtRandom,
 }
 
 public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filter = null)
