@@ -96,8 +96,9 @@ public sealed partial class Game
         {
             AttackTaxes = AttackTaxesFor(player),
             AttackRestrictions = State.PermanentsControlledBy(player).Where(c => c.IsCreature)
-                .SelectMany(c => State.OpponentsOf(player).Where(d => AttackForbidden(c, d)).Select(d => new AttackRestrictionView(c.Id, d))).ToList(),
+                .SelectMany(c => State.OpponentsOf(player).Where(d => AttackForbidden(c, d) || AttackForbiddenWithPlaneswalkers(c, d)).Select(d => new AttackRestrictionView(c.Id, d))).ToList(),
             Monarch = State.Monarch,
+            AttackRequest = player == State.ActivePlayer ? _attackRequest : null,
         };
 
     private IPlayerController ControllerOf(PlayerId player) => _controllers[player.Value];

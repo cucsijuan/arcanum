@@ -34,6 +34,8 @@ public sealed partial class Game
             else if (player.Poison >= 10) losers.Add((player.Id, "ten poison counters"));                            // 704.5c
             else if (CommanderDamageLoss(player)) losers.Add((player.Id, "21 combat damage from a commander"));      // 704.6c
         }
+        // 704.5b looks only at draws attempted since the last check: a player who couldn't lose then doesn't lose later for it.
+        foreach (var player in State.Players) player.AttemptedDrawFromEmptyLibrary = false;
         if (losers.Count > 0) { LoseAll(losers); any = true; }
         if (State.IsGameOver) return any;
 
@@ -47,8 +49,7 @@ public sealed partial class Game
             // Auras attached to nothing legal go to the graveyard (704.5m); Equipment just becomes unattached (704.5n).
             if (card.Definition.EnchantTarget is { } enchant)
             {
-                bool legal = card.AttachedTo is { } host && State.GetCard(host) is { Zone: Zone.Battlefield } h
-                             && (enchant.Kind != Abilities.TargetKind.Creature || h.IsCreature) && !ProtectedFrom(h, card);
+                bool legal = card.AttachedTo is { } host && State.GetCard(host) is { Zone: Zone.Battlefield } h && CanEnchant(card, enchant, h);
                 if (!legal) toGraveyard.Add(card);
             }
             else if (card.AttachedTo is { } equipped && (State.GetCard(equipped) is not { Zone: Zone.Battlefield, IsCreature: true } eq || ProtectedFrom(eq, card)))

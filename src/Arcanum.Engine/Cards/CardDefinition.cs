@@ -265,6 +265,12 @@ public sealed record CardDefinition
     /// <summary>"Creatures with power greater than the number of cards in your hand can't attack."</summary>
     public bool CantAttackIfPowerAboveHandSize { get; init; }
 
+    /// <summary>"This creature can't attack unless defending player controls [a permanent matching this]" (an Island...).</summary>
+    public ObjectFilter? CantAttackUnlessDefenderControls { get; init; }
+
+    /// <summary>Protection from these creature types ("protection from Demons and from Dragons", rule 702.16): from sources with any of them.</summary>
+    public IReadOnlyList<string> ProtectionFromSubtypes { get; init; } = Array.Empty<string>();
+
     /// <summary>"As long as this card is in your graveyard, each [filter] you control enters with an additional +1/+1 counter."</summary>
     public ObjectFilter? GraveyardEnterBonus { get; init; }
 

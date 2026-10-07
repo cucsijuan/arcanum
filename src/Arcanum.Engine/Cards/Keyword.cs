@@ -72,12 +72,24 @@ public enum Keyword
     Skulk,
     /// <summary>Whenever a creature you control attacks alone, it gets +1/+1 until end of turn (rule 702.83).</summary>
     Exalted,
+    /// <summary>"All creatures able to block this creature do so" (a blocking requirement for each of them, rule 509.1c).</summary>
+    Lure,
+    /// <summary>"This creature can block any number of creatures" (rule 509.1a).</summary>
+    CanBlockAnyNumber,
+    /// <summary>"This creature can't attack alone" (rule 506.5): it attacks only if another creature also attacks.</summary>
+    CantAttackAlone,
+    /// <summary>"This creature can't block alone" (rule 506.5): it blocks only if another creature also blocks.</summary>
+    CantBlockAlone,
 }
 
 public static class Keywords
 {
     private static readonly Dictionary<string, Keyword> ByName = Enum.GetValues<Keyword>()
-        .ToDictionary(k => Normalize(k.ToString()), k => k);
+        .Select(k => (Name: Normalize(k.ToString()), Keyword: k))
+        // Printed names too ("Can block any number of creatures"), where they differ from the enum's.
+        .Concat(Enum.GetValues<Keyword>().Select(k => (Name: Normalize(DisplayName(k)), Keyword: k)))
+        .DistinctBy(x => x.Name)
+        .ToDictionary(x => x.Name, x => x.Keyword);
 
     /// <summary>Printed names of supported keywords ("First strike", ...), for card support checks.</summary>
     public static IReadOnlyCollection<string> SupportedNames { get; } = Enum.GetValues<Keyword>().Select(DisplayName).ToList();
@@ -113,6 +125,10 @@ public static class Keywords
         Keyword.AssignsDamageByToughness => "Assigns combat damage equal to its toughness",
         Keyword.AttacksEachCombat => "Attacks each combat if able",
         Keyword.SplitSecond => "Split second",
+        Keyword.Lure => "All creatures able to block it do so",
+        Keyword.CanBlockAnyNumber => "Can block any number of creatures",
+        Keyword.CantAttackAlone => "Can't attack alone",
+        Keyword.CantBlockAlone => "Can't block alone",
         _ => keyword.ToString(),
     };
 

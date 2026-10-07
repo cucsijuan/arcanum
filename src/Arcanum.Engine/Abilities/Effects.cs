@@ -894,6 +894,22 @@ public sealed record ChooseObjects(Subject Chooser, ObjectFilter Filter, bool Op
 /// <summary>"Return target nonland permanent and each other nonland permanent with the same mana value as that permanent to their owners' hands."</summary>
 public sealed record BounceSameManaValue(Subject What) : Effect;
 
+/// <summary>"[Creature] attacks you this turn if able": a requirement to attack the controller of this effect (rule 508.1d).</summary>
+public sealed record AttacksYouThisTurn(Subject What) : Effect;
+
+/// <summary>
+/// "[Permanents] don't untap during their controller's next untap step", or with <paramref name="Player"/> "during [that
+/// player]'s next untap step" (Sleep): the effect ends once that untap step is over.
+/// </summary>
+public sealed record SkipNextUntap(Subject What, Subject? Player = null) : Effect;
+
+/// <summary>
+/// Master of the Wild Hunt: "Tap all untapped [filter] you control. Each [one] tapped this way deals damage equal to its power
+/// to [target creature]. That creature deals damage equal to its power divided as its controller chooses among any number of
+/// those [creatures]." All of that damage is dealt at the same time.
+/// </summary>
+public sealed record TapAllToDamage(ObjectFilter Filter, Subject Target) : Effect;
+
 /// <summary>"At the beginning of the next end step, [effects]" about the object of <paramref name="About"/> ("return that card").</summary>
 public sealed record AtNextEndStepAbout(Subject About, IReadOnlyList<Effect> Effects) : Effect;
 

@@ -425,7 +425,9 @@ Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYo
 - **Combat**: `{ "goad": "target" }`, `{ "removeFromCombat": "self" }`, keywords `Must be blocked`, `Can't be blocked by more
   than one`, `Nonbasic landwalk`, `Assigns damage by toughness`, `Untaps by removing counter`; condition
   `{ "equippedInCombatWith": filter }`; trigger `equippedBlocksOrBlocked` with `{ "loseAllAbilities": "triggered" }`.
-- **Protection**: `{ "protectionFromChosenType": "target" }`, `{ "protectionFromColorsOf": "target", "what": subject }`.
+- **Protection**: `{ "protectionFromChosenType": "target" }`, `{ "protectionFromColorsOf": "target", "what": subject }`; card-wide
+  `"protectionFromSubtypes": ["Demon", "Dragon"]` (protection from creature types: damage, enchanting/equipping, blocking and
+  targeting by sources with any of them, as they last existed).
 - **Triggers**: `tokenCreated` (each token), `youAttackPlayer` (once per player attacked; amount: how many attackers matched
   `filter`), `becomesTargetOfSpell`, `permanentBecomesTarget` (of an opponent's spell or ability), `phasesIn`; cast triggers
   take `"spellTargets": filter`.
@@ -458,6 +460,31 @@ Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYo
   "that many plus one") each apply once per permanent that has them; when more than one kind applies, the affected
   player chooses the order (rule 616.1). Damage doublers stack the same way. Quantities about a target that changed zones
   use the object as it last existed (a spell returned to hand keeps the mana value it had with its X).
+
+## Combat requirements and restrictions
+
+- Keywords (give them with a static `"keywords"`): `Can't attack alone`, `Can't block alone` (rule 506.5: only together with
+  another attacking / blocking creature), `Can block any number of creatures` (it divides its combat damage among the attackers
+  it blocks as its controller chooses, rule 510.1d), `All creatures able to block it do so` (also `Lure`: each creature able to
+  block it has a requirement to block it). Blocks and attacks must obey as many requirements as possible without breaking a
+  restriction (rules 508.1d, 509.1c), worked out exactly together with menace, "can't be blocked by more than one", "must be
+  blocked", "attacks each combat", goad and the effects below.
+- Card-wide `"cantAttackUnlessDefenderControls": filter` ("can't attack unless defending player controls an Island"): it can't
+  attack a player who controls none, nor that player's planeswalkers.
+- `{ "attacksYouThisTurn": "target" }`: the creature attacks the controller of this effect this turn if able (only attacking
+  that player obeys it; never paid for, never against a restriction).
+- `{ "skipNextUntap": subject }`: it doesn't untap during its controller's next untap step; with `"player": "target"` during
+  that player's next untap step instead (Sleep). Either way the effect ends with that untap step.
+- Triggers `blocksOrBlockedBy` ("whenever this creature blocks or becomes blocked by a creature") and `blocksCreature`
+  ("whenever this creature blocks a creature"): once per creature on the other side, which is `"triggered"`. `blocks` triggers
+  once however many creatures it blocks.
+- `{ "tapAllToDamage": filter, "to": "target" }` (Master of the Wild Hunt): taps all your untapped permanents matching the
+  filter; each one tapped this way deals damage equal to its power to the target creature, which deals damage equal to its
+  power divided as its controller chooses among them, all at once.
+- Filter `"toughnessLessThanPower": true`: toughness less than the source's power (last known if it left the battlefield).
+- An Aura's `aura` target with a filter (`{ "kind": "creature", "filter": { "tapped": true } }`, "enchant tapped creature") is
+  checked as it is cast and all the time it is attached: once its object no longer matches, the Aura is put into its owner's
+  graveyard (rules 303.4d, 704.5m).
 
 ## Multiplayer and commander rules
 

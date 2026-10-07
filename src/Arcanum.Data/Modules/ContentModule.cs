@@ -102,7 +102,8 @@ public sealed class ContentModule
             {
                 scripts[Path.GetFileNameWithoutExtension(file)] = Scripts.CardScriptParser.Parse(File.ReadAllText(file));
             }
-            catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException)
+            // An unknown name (a replacement, a counter kind...) is a script error too, not a reason to fail loading the module.
+            catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException or ArgumentException)
             {
                 errors?.Add($"{Path.GetFileName(file)}: {e.Message}");
             }

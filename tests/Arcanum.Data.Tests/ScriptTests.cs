@@ -235,4 +235,53 @@ public class TokenImageTests
         var create = Assert.IsType<CreateTokens>(Assert.Single(definition.Abilities).Effects[0]);
         Assert.Null(create.Token.ImageKey); // the client shows a text frame rather than guessing by name
     }
+    [Fact]
+    public void ParsesTheMagic2010CombatVocabulary()
+    {
+        var keywords = CardScriptParser.Parse("""
+            { "abilities": [
+                { "static": { "affects": "self", "keywords": ["Can't attack alone", "Can't block alone", "Can block any number of creatures", "All creatures able to block it do so"] }, "text": "…" },
+            ] }
+            """);
+        Assert.Equal(new[] { Keyword.CantAttackAlone, Keyword.CantBlockAlone, Keyword.CanBlockAnyNumber, Keyword.Lure },
+            Assert.IsType<StaticAbility>(Assert.Single(keywords.Abilities)).GrantedKeywords);
+
+        var triggers = CardScriptParser.Parse("""
+            { "abilities": [
+                { "trigger": "blocksOrBlockedBy", "effects": [{ "damage": 3, "to": "triggered" }], "text": "…" },
+                { "trigger": "blocksCreature", "effects": [{ "skipNextUntap": "triggered" }], "text": "…" },
+                { "cost": "{T}", "targets": ["creature:opponent"], "effects": [{ "attacksYouThisTurn": "target" }], "text": "…" },
+                { "cost": "{T}", "targets": ["creature"], "effects": [{ "tapAllToDamage": { "types": ["creature"], "subtype": "Wolf" }, "to": "target" }], "text": "…" },
+                { "cost": "{T}", "targets": [{ "kind": "creature", "controller": "you", "filter": { "toughnessLessThanPower": true } }],
+                  "effects": [{ "atNextEndStepAbout": "target", "effects": [{ "destroy": "triggered" }] }], "text": "…" },
+            ] }
+            """);
+        Assert.Equal(TriggerEvent.BlocksOrBecomesBlockedByCreature, Assert.IsType<TriggeredAbility>(triggers.Abilities[0]).Trigger);
+        var frost = Assert.IsType<TriggeredAbility>(triggers.Abilities[1]);
+        Assert.Equal(TriggerEvent.BlocksCreature, frost.Trigger);
+        Assert.Equal(new SkipNextUntap(Subject.Triggered), frost.Effects[0]);
+        Assert.Equal(new AttacksYouThisTurn(Subject.TargetAt(0)), triggers.Abilities[2].Effects[0]);
+        var pack = Assert.IsType<TapAllToDamage>(triggers.Abilities[3].Effects[0]);
+        Assert.Equal("Wolf", pack.Filter.Subtype);
+        Assert.Equal(Subject.TargetAt(0), pack.Target);
+        Assert.True(triggers.Abilities[4].Targets[0].Filter!.ToughnessLessThanSourcePower);
+
+        var sleep = CardScriptParser.Parse("""
+            { "spell": { "targets": ["player"], "effects": [
+                { "tap": { "each": { "types": ["creature"] }, "controlledBy": "target" } },
+                { "skipNextUntap": { "each": { "types": ["creature"] }, "controlledBy": "target" }, "player": "target" } ] } }
+            """);
+        var skip = Assert.IsType<SkipNextUntap>(sleep.Spell!.Effects[1]);
+        Assert.True(skip.What.ControlledByTarget);
+        Assert.Equal(Subject.TargetAt(0), skip.Player);
+
+        var serpent = CardScriptParser.Parse("""
+            { "cantAttackUnlessDefenderControls": { "types": ["land"], "subtype": "Island" }, "protectionFromSubtypes": ["Demon", "Dragon"],
+              "aura": { "kind": "creature", "filter": { "tapped": true } } }
+            """);
+        var definition = serpent.ApplyTo(new CardDefinition { Name = "Test", Types = CardType.Creature });
+        Assert.Equal("Island", definition.CantAttackUnlessDefenderControls!.Subtype);
+        Assert.Equal(new[] { "Demon", "Dragon" }, definition.ProtectionFromSubtypes);
+        Assert.True(serpent.Aura!.Filter!.Tapped);
+    }
 }

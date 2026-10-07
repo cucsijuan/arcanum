@@ -23,6 +23,7 @@ public sealed partial class Game
         State.PreventionShields.RemoveAll(p => p.Turn < State.TurnNumber);
         State.DamageTripled.RemoveAll(p => p.Turn < State.TurnNumber);
         State.CantAttackThisCombat.Clear();
+        State.AttackPlayerRequirements.Clear();
         State.CantSacrificeThisTurn.Clear();
         foreach (var player in State.Players)
         {
@@ -119,9 +120,16 @@ public sealed partial class Game
                     Emit(new PhasedIn(phased.Card));
                 }
                 RecomputeContinuousEffects();
-                // An exerted permanent doesn't untap during its controller's next untap step (701.39a).
+                // An exerted permanent doesn't untap during its controller's next untap step (701.39a); nor do permanents
+                // that "don't untap during [its controller's / that player's] next untap step". Those effects end with it.
                 var exerted = State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.SkipsNextUntap).ToList();
                 foreach (var permanent in exerted) permanent.SkipsNextUntap = false;
+                State.SkipNextUntap.RemoveAll(s => State.GetCard(s.Card) is not { Zone: Zone.Battlefield } c || c.Version != s.Version);
+                foreach (var skip in State.SkipNextUntap.Where(s => s.Player == State.ActivePlayer || (s.Player is null && State.GetCard(s.Card).Controller == State.ActivePlayer)).ToList())
+                {
+                    if (State.GetCard(skip.Card).Controller == State.ActivePlayer) exerted.Add(State.GetCard(skip.Card));
+                    State.SkipNextUntap.Remove(skip);
+                }
                 foreach (var permanent in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Tapped && !c.Definition.DoesntUntap && !c.Has(Cards.Keyword.DoesntUntap) && !exerted.Contains(c)).ToList())
                 {
                     // A stun counter is removed instead of untapping (rule 122.1d).
