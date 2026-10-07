@@ -36,8 +36,16 @@ public partial class MainMenu : Control
             Callable.From(() => App.Instance.GoTo(App.OnlineScene)).CallDeferred();
         }
         SetAnchorsPreset(LayoutPreset.FullRect);
-        MenuKit.AddBackdrop(this);
-        AddFannedCardBacks();
+        var backdrop = MenuKit.AddArcaneBackdrop(this);
+        var fan = AddFannedCardBacks();
+        // The arcane circle stands behind the fan of cards, centered on it at any window size.
+        void CenterCircle()
+        {
+            if (Size.X > 0 && Size.Y > 0) backdrop.SetShaderParameter("circle_center", (fan.Position + FanCenter) / Size);
+        }
+        Resized += CenterCircle;
+        fan.Resized += CenterCircle;
+        Callable.From(CenterCircle).CallDeferred();
 
         var column = new VBoxContainer { AnchorTop = 0.5f, AnchorBottom = 0.5f, OffsetLeft = 140, GrowVertical = GrowDirection.Both };
         column.AddThemeConstantOverride("separation", 14);
@@ -399,8 +407,11 @@ public partial class MainMenu : Control
         return new GradientTexture2D { Gradient = gradient, Width = 256, Height = 32 };
     }
 
-    /// <summary>Decorative fan of card backs on the right side.</summary>
-    private void AddFannedCardBacks()
+    /// <summary>The middle of the fan of cards, from its anchor point (the cards are 230×320, fanned out by ±2 steps).</summary>
+    private static readonly Vector2 FanCenter = new(115, 30);
+
+    /// <summary>Decorative fan of card backs on the right side; returns its anchor point's holder.</summary>
+    private Control AddFannedCardBacks()
     {
         var holder = new Control { AnchorLeft = 0.62f, AnchorTop = 0.5f, AnchorRight = 0.62f, AnchorBottom = 0.5f, MouseFilter = MouseFilterEnum.Ignore };
         AddChild(holder);
@@ -414,5 +425,6 @@ public partial class MainMenu : Control
             card.RotationDegrees = t * 8;
             card.Modulate = new Color(1, 1, 1, 0.9f);
         }
+        return holder;
     }
 }

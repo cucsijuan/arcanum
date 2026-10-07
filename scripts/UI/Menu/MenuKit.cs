@@ -8,18 +8,27 @@ namespace Arcanum.UI.Menu;
 /// <summary>Shared building blocks for the menu screens so they look consistent.</summary>
 public static class MenuKit
 {
-    /// <summary>Full-screen nebula backdrop with a dark gradient for readability.</summary>
-    public static void AddBackdrop(Control screen)
+    /// <summary>The menus' backdrop: the animated arcane sky, darker behind screens full of panels and text.</summary>
+    public static void AddBackdrop(Control screen) => AddArcaneBackdrop(screen, shade: 0.5f);
+
+    /// <summary>
+    /// Animated backdrop: a drifting nebula, twinkling stars and a faint arcane circle of turning rune rings behind the
+    /// right half of the screen.
+    /// </summary>
+    /// <returns>The backdrop's material (for its parameters, e.g. where the circle stands).</returns>
+    public static ShaderMaterial AddArcaneBackdrop(Control screen, float shade = 0.25f)
     {
-        var nebula = new ColorRect { MouseFilter = Control.MouseFilterEnum.Ignore };
-        nebula.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        var material = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/nebula_playmat.gdshader") };
-        material.SetShaderParameter("rect_size", new Vector2(1920, 1080));
-        nebula.Material = material;
-        screen.AddChild(nebula);
-        var shade = new ColorRect { Color = new Color(0.07f, 0.07f, 0.09f, 0.72f), MouseFilter = Control.MouseFilterEnum.Ignore };
-        shade.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        screen.AddChild(shade);
+        var sky = new ColorRect { MouseFilter = Control.MouseFilterEnum.Ignore };
+        sky.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        var material = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/arcane_backdrop.gdshader") };
+        sky.Material = material;
+        sky.Resized += () => material.SetShaderParameter("rect_size", sky.Size);
+        screen.AddChild(sky);
+        if (shade <= 0) return material;
+        var dim = new ColorRect { Color = new Color(0.03f, 0.02f, 0.05f, shade), MouseFilter = Control.MouseFilterEnum.Ignore };
+        dim.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        screen.AddChild(dim);
+        return material;
     }
 
     /// <summary>Top bar with a back button and a title; returns the bar so screens can add actions to it.</summary>
@@ -73,7 +82,8 @@ public static class MenuKit
 
     public static OptionButton Options(IEnumerable<string> items, int selected = 0)
     {
-        var option = new OptionButton { FocusMode = Control.FocusModeEnum.None, CustomMinimumSize = new Vector2(0, 40) };
+        // Not as wide as the longest item (a list of every set would push the screen out of the window); long texts are cut.
+        var option = new OptionButton { FocusMode = Control.FocusModeEnum.None, CustomMinimumSize = new Vector2(190, 40), FitToLongestItem = false, ClipText = true };
         option.AddThemeFontSizeOverride("font_size", 15);
         // Room for the drop-down arrow inside the frame's right corner.
         if (UiArt.StyleButton(option, false)) option.AddThemeConstantOverride("arrow_margin", 22);
