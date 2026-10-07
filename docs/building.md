@@ -57,6 +57,7 @@ Environment variables useful while developing and testing:
 | `ARCANUM_TEST_UNDO=1` | With autoplay, undo now and then to exercise replay |
 | `ARCANUM_OPEN_DECK=<n>` | Deck builder opens the n-th deck |
 | `ARCANUM_MODULE_PATH=<dir>` | Use a content module from this folder |
+| `ARCANUM_UPDATE_FROM=<version>` | The update check runs as if the game were that version (shows the update dialog; outside an exported build it offers the download page) |
 | `ARCANUM_OPEN=online` | The main menu opens the online screen at once (exported builds can't be given a scene) |
 
 Online play can be tested with two instances on one machine (run `res://scenes/online/Online.tscn`; add

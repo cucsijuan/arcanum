@@ -22,6 +22,7 @@ public partial class MainMenu : Control
     private Tween? _move;
 
     private static bool _opened;
+    private static bool _checkedUpdates;
 
     private static readonly Color ItemColor = new(0.86f, 0.88f, 0.92f);
     private static readonly Color GlowColor = new(0.62f, 0.38f, 1f, 0.55f);
@@ -83,6 +84,7 @@ public partial class MainMenu : Control
         Item("Extras", "Sandbox, card data and about", () => App.Instance.GoTo(App.ExtrasScene));
         if (!OS.HasFeature("mobile")) Item("Quit", "Close the game", () => GetTree().Quit());
         AddChild(column);
+        CheckForUpdates();
         // Start on the first option, and keep the selector on its option whenever the list is laid out again.
         list.SortChildren += () => Select(Math.Max(0, _selected), animate: false);
 
@@ -100,6 +102,129 @@ public partial class MainMenu : Control
     }
 
     public override void _ExitTree() => App.Instance.ContentProgress -= OnProgress;
+
+    // ---------------------------------------------------------------- updates
+
+    /// <summary>
+    /// Once per run: offers a newer game release (exported desktop builds), or else a newer release of the installed content
+    /// module. Skipped versions aren't offered again.
+    /// </summary>
+    private async void CheckForUpdates()
+    {
+        if (_checkedUpdates || !Settings.Current.CheckForUpdates) return;
+        _checkedUpdates = true;
+        if (Updater.ChecksGame && await Updater.NewerGameAsync() is { } game && game.Tag != Settings.Current.SkippedGameVersion)
+        {
+            if (IsInsideTree()) ShowUpdate(game, isGame: true);
+            return;
+        }
+        await App.Instance.ContentReady;
+        // Only a module installed by the game is updated (not a copy used while developing).
+        if (App.Instance.Module is not { } module
+            || !Path.GetFullPath(module.Directory).StartsWith(Path.GetFullPath(ProjectSettings.GlobalizePath("user://modules")), StringComparison.OrdinalIgnoreCase))
+            return;
+        if (await Updater.NewerModuleAsync(module.Manifest.Version) is { } content && content.Tag != Settings.Current.SkippedModuleVersion && IsInsideTree())
+            ShowUpdate(content, isGame: false);
+    }
+
+    /// <summary>The update dialog: what's new, then Update (or the download page when it can't update itself), Later, or Skip.</summary>
+    private void ShowUpdate(ReleaseInfo release, bool isGame)
+    {
+        var overlay = new Control { ZIndex = 200 };
+        overlay.SetAnchorsPreset(LayoutPreset.FullRect);
+        var shade = new ColorRect { Color = new Color(0, 0, 0, 0.6f) };
+        shade.SetAnchorsPreset(LayoutPreset.FullRect);
+        overlay.AddChild(shade);
+        var panel = new PanelContainer();
+        panel.SetAnchorsPreset(LayoutPreset.Center);
+        panel.GrowHorizontal = GrowDirection.Both;
+        panel.GrowVertical = GrowDirection.Both;
+        panel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Modal, BoardStyle.Panel, 12, BoardStyle.PanelBorder, 1, artPadding: 24));
+        overlay.AddChild(panel);
+
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 10);
+        panel.AddChild(box);
+        string what = isGame ? $"Arcanum {release.Tag}" : $"Content module {release.Tag}";
+        var title = BoardStyle.MakeTitle($"{what} is available", 24);
+        title.HorizontalAlignment = HorizontalAlignment.Center;
+        box.AddChild(title);
+        box.AddChild(BoardStyle.MakeLabel(isGame ? $"You have {Updater.GameVersion}." : $"You have {App.Instance.Module?.Manifest.Version}.", 15, BoardStyle.TextDim));
+        var notes = new RichTextLabel { Text = PlainNotes(release.Notes), FitContent = true, ScrollActive = false, CustomMinimumSize = new Vector2(560, 0) };
+        notes.AddThemeFontSizeOverride("normal_font_size", 14);
+        notes.AddThemeColorOverride("default_color", BoardStyle.Text);
+        var notesScroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, CustomMinimumSize = new Vector2(580, 260) };
+        notesScroll.AddChild(notes);
+        box.AddChild(notesScroll);
+        var status = BoardStyle.MakeLabel("", 15, UiArt.Gold);
+        status.HorizontalAlignment = HorizontalAlignment.Center;
+        box.AddChild(status);
+
+        var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        buttons.AddThemeConstantOverride("separation", 8);
+        box.AddChild(buttons);
+        void Close() => overlay.QueueFree();
+        Button Answer(string text, bool primary, Action action)
+        {
+            if (buttons.GetChildCount() > 0) buttons.AddChild(BoardStyle.MakeModalSeparator());
+            var button = BoardStyle.MakeModalButton(text, primary, 18);
+            button.Pressed += action;
+            buttons.AddChild(button);
+            return button;
+        }
+        Answer("Skip this version", false, () =>
+        {
+            if (isGame) Settings.Current.SkippedGameVersion = release.Tag;
+            else Settings.Current.SkippedModuleVersion = release.Tag;
+            Settings.Save();
+            Close();
+        });
+        Answer("Later", false, Close);
+        bool canInstall = release.ZipUrl is not null && (!isGame || Updater.CanUpdateGame && Updater.InstallFolderWritable());
+        if (!canInstall)
+        {
+            status.Text = isGame ? "This copy of the game can't update itself here: download it from the release page." : "";
+            Answer("Open download page", true, () => { OS.ShellOpen(release.PageUrl); Close(); });
+        }
+        else
+        {
+            Answer("Update", true, async () =>
+            {
+                foreach (var b in buttons.GetChildren().OfType<Button>()) b.Disabled = true;
+                try
+                {
+                    var zip = await Updater.DownloadAsync(release, p => Callable.From(() => status.Text = $"Downloading… {p:P0}").CallDeferred());
+                    if (isGame)
+                    {
+                        status.Text = "Installing… the game restarts by itself.";
+                        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                        Updater.InstallGameAndRestart(zip);
+                        GetTree().Quit();
+                        return;
+                    }
+                    var manifest = Updater.InstallModule(zip);
+                    status.Text = $"{manifest.Name} {manifest.Version} is installed.";
+                    foreach (var child in buttons.GetChildren()) child.QueueFree();
+                    Answer("Restart now", true, () => { OS.SetRestartOnExit(true); GetTree().Quit(); });
+                    Answer("Later", false, Close);
+                }
+                catch (Exception e)
+                {
+                    GD.PushWarning($"Update failed: {e}");
+                    status.Text = $"The update failed: {e.Message}";
+                    foreach (var child in buttons.GetChildren()) child.QueueFree();
+                    Answer("Open download page", true, () => { OS.ShellOpen(release.PageUrl); Close(); });
+                    Answer("Close", false, Close);
+                }
+            });
+        }
+        AddChild(overlay);
+    }
+
+    /// <summary>Release notes without Markdown marks (headings, bold, code), up to their install steps (the update does those).</summary>
+    private static string PlainNotes(string markdown) =>
+        string.Join("\n", markdown.Replace("\r", "").Split('\n').TakeWhile(line => !line.StartsWith("## Install", StringComparison.OrdinalIgnoreCase)).Select(line => line.TrimStart('#', ' ') is var t && line.StartsWith('#') ? t.ToUpperInvariant() : line))
+            .Replace("**", "").Replace("`", "");
 
     private void OnProgress(string message) => _status.Text = message;
 

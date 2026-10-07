@@ -32,6 +32,14 @@ public sealed class SettingsData
     public string[] OpponentTurnStops { get; set; } = Array.Empty<string>();
     public bool FullControl { get; set; }
 
+    // Updates
+    /// <summary>Look for a newer game or content module release when the game starts.</summary>
+    public bool CheckForUpdates { get; set; } = true;
+    /// <summary>A game version the player chose to skip (not offered again; a later one is).</summary>
+    public string? SkippedGameVersion { get; set; }
+    /// <summary>A content module version the player chose to skip.</summary>
+    public string? SkippedModuleVersion { get; set; }
+
     // Appearance
     public string[] Playmats { get; set; } = { "grid", "grid" };
     public string CardBack { get; set; } = "arcane";

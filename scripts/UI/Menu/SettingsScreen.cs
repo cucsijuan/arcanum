@@ -157,6 +157,10 @@ public partial class SettingsScreen : Control
             box.AddChild(Row(name, pair, StopsHelp));
         }
 
+        box.AddChild(SettingsKit.Section("Updates"));
+        box.AddChild(Switch("Check for updates at start", S.CheckForUpdates, v => S.CheckForUpdates = v,
+            "When the game starts, look for a newer version of the game or of the card content and offer to install it."));
+
         box.AddChild(SettingsKit.Section("Online"));
         var limits = new[] { (0, "No limit"), (30, "30 seconds"), (60, "1 minute"), (120, "2 minutes"), (300, "5 minutes") };
         box.AddChild(Row("Time per decision", SettingsKit.Choice(limits.Select(l => l.Item2).ToList(), Math.Max(0, Array.FindIndex(limits, l => l.Item1 == S.DecisionSeconds)),
