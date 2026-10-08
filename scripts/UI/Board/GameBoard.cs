@@ -994,15 +994,15 @@ public partial class GameBoard : Control
         {
             if (_stackView.NodeAt(i) is not { } stackNode) continue;
             foreach (var target in view.Stack[i].Targets)
-                if (TargetControl(target) is { } to) arrows.Add(new(stackNode, to, BoardStyle.Selected));
+                if (TargetControl(target) is { } to) arrows.Add(new(stackNode, to, BoardStyle.Targeting));
         }
 
         // While choosing targets: arrows to the ones picked so far and one following the mouse.
         if (decision is TargetDecision td && FindCard(td.Request.Source) is { } sourceNode)
         {
             foreach (var chosen in _chosenTargets)
-                if (TargetControl(chosen) is { } to) arrows.Add(new(sourceNode, to, BoardStyle.Selected));
-            if (td.Request.CanAddMore(_chosenTargets.Count)) arrows.Add(new(sourceNode, null, BoardStyle.Playable));
+                if (TargetControl(chosen) is { } to) arrows.Add(new(sourceNode, to, BoardStyle.Targeting));
+            if (td.Request.CanAddMore(_chosenTargets.Count)) arrows.Add(new(sourceNode, null, BoardStyle.Targeting));
         }
 
         if (decision is BlockDecision)
@@ -2154,7 +2154,7 @@ public partial class GameBoard : Control
         if (abilityText is { Length: > 0 }) text += $"\n{abilityText}";
         if (targets.Count > 0) text += $"\n\u2192 {string.Join(", ", targets.Select(TargetName))}";
         _announcer.Enqueue(new(text, ViewOf(ev, source), targets.Count > 0 ? 3 : 1.5,
-            card => targets.Select(TargetControl).OfType<Control>().Select(to => new ArrowLayer.Arrow(card, to, BoardStyle.Attacking))));
+            card => targets.Select(TargetControl).OfType<Control>().Select(to => new ArrowLayer.Arrow(card, to, BoardStyle.Targeting))));
     }
 
     private void QueueCombatFlush()

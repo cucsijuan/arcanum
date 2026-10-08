@@ -69,6 +69,15 @@ public partial class ArrowLayer : Control
 
     private static Vector2 Center(Control c) => c.GetGlobalTransform() * (c.Size / 2);
 
+    // The beam's profile from its center line outward: a flat band of the color made luminous, a quick step into a
+    // deep, saturated edge, then a glow that fades out over a width that flickers along the beam.
+    private const float BandHalf = 4.5f, EdgeHalf = 6.5f, GlowHalf = 18, HazeHalf = 30;
+    private const float HeadLength = 34, HeadHalfWidth = 17, NotchDepth = 0.3f;
+
+    /// <summary>
+    /// An energy beam: thin and faint where it leaves its source and full width at the arrowhead, its glow
+    /// flickering like a current, with a brighter pulse running along it toward the target.
+    /// </summary>
     private void DrawArrow(Vector2 from, Vector2 to, Color color, float shortenEnd)
     {
         var delta = to - from;
@@ -78,11 +87,10 @@ public partial class ArrowLayer : Control
         to -= dir * shortenEnd;
         from += dir * 20;
 
-        // Quadratic bezier bowed sideways so arrows between overlapping rows stay readable.
+        // Quadratic bezier bowed sideways into a high arc, which also keeps arrows between overlapping rows readable.
         var normal = new Vector2(-dir.Y, dir.X);
-        var control = (from + to) / 2 + normal * Mathf.Min(60, length * 0.18f);
+        var control = (from + to) / 2 + normal * Mathf.Min(150, length * 0.28f);
         const int segments = 48;
-        const float headLength = 18;
         var points = new Vector2[segments + 1];
         for (int i = 0; i <= segments; i++)
         {
@@ -90,25 +98,159 @@ public partial class ArrowLayer : Control
             points[i] = (1 - t) * (1 - t) * from + 2 * (1 - t) * t * control + t * t * to;
         }
 
-        // The shaft runs along the curve until it reaches the arrowhead's base, then ends exactly there,
-        // so the head stays attached however long the arrow gets.
-        int k = 1;
-        while (k < segments && points[k].DistanceTo(to) > headLength) k++;
-        var inside = points[k];
-        var outside = points[k - 1];
-        float da = outside.DistanceTo(to), db = inside.DistanceTo(to);
-        float f = da - db > 0.001f ? (da - headLength) / (da - db) : 1;
-        var headBase = outside.Lerp(inside, Mathf.Clamp(f, 0, 1));
-        var shaft = points[..k].Append(headBase).ToArray();
+        // The shaft ends where the curve comes within a distance of the tip a little past the notch at the back of
+        // the head, inside it, so the two join seamlessly however long the arrow gets.
+        (int Index, Vector2 Point) CutAt(float distance)
+        {
+            int k = 1;
+            while (k < segments && points[k].DistanceTo(to) > distance) k++;
+            var inside = points[k];
+            var outside = points[k - 1];
+            float da = outside.DistanceTo(to), db = inside.DistanceTo(to);
+            float f = da - db > 0.001f ? (da - distance) / (da - db) : 1;
+            return (k, outside.Lerp(inside, Mathf.Clamp(f, 0, 1)));
+        }
+        var (end, shaftEnd) = CutAt(HeadLength * (1 - NotchDepth) - 4);
+        var shaft = points[..end].Append(shaftEnd).ToArray();
 
-        var tipDir = (to - headBase).Normalized();
+        // The head points from where the shaft ends to the tip, so the shaft always enters it dead center.
+        var tipDir = (to - shaftEnd).Normalized();
+        var headBase = to - tipDir * HeadLength;
         var tipNormal = new Vector2(-tipDir.Y, tipDir.X);
-        var head = new[] { to + tipDir * 4, headBase + tipNormal * 11 - tipDir * 2, headBase - tipNormal * 11 - tipDir * 2 };
+        // A barbed head: tip, two swept-back barbs and a notch the shaft runs into.
+        var head = new[]
+        {
+            to + tipDir * 4,
+            headBase + tipNormal * HeadHalfWidth - tipDir * 3,
+            headBase + tipDir * (HeadLength * NotchDepth),
+            headBase - tipNormal * HeadHalfWidth - tipDir * 3,
+        };
+        var headCenter = headBase + tipDir * (HeadLength * 0.55f);
 
-        var outline = new Color(0, 0, 0, 0.55f);
-        DrawPolyline(shaft, outline, 9, true);
-        DrawColoredPolygon(head.Select(p => p + (p - to).Normalized() * 2).ToArray(), outline);
-        DrawPolyline(shaft, color, 5, true);
-        DrawColoredPolygon(head, color);
+        float time = (float)(Time.GetTicksMsec() / 1000.0);
+        // The pulse: a bright spot sliding from source to target about once a second.
+        float phase = time * 0.9f % 1f * 1.3f - 0.15f;
+        int n = shaft.Length;
+        var ts = new float[n];
+        var arc = new float[n];
+        var normals = new Vector2[n];
+        for (int i = 0; i < n; i++)
+        {
+            ts[i] = i / (float)segments;
+            if (i > 0) arc[i] = arc[i - 1] + shaft[i].DistanceTo(shaft[i - 1]);
+            var tangent = (shaft[Math.Min(i + 1, n - 1)] - shaft[Math.Max(i - 1, 0)]).Normalized();
+            normals[i] = new Vector2(-tangent.Y, tangent.X);
+        }
+
+        var band = Color.FromHsv(TowardLuminous(color.H), color.S * 0.75f, 1, 0.9f);
+        var edge = Color.FromHsv(color.H, Mathf.Min(1, color.S * 1.05f), color.V * 0.75f, 0.75f);
+        var haze = Color.FromHsv(color.H, color.S, color.V * 0.8f, 0.22f);
+        var white = new Color(1, 1, 1);
+
+        float Taper(int i) => 0.35f + 0.65f * ts[i];
+        float Fade(int i) => Mathf.SmoothStep(0, 0.15f, ts[i]);
+        Color Alpha(Color c, int i, float scale = 1) => c with { A = c.A * Fade(i) * scale };
+        // Glows first, under everything: the head's own flickering glow and haze, then the shaft's, each side of the
+        // shaft on its own so its two edges flicker independently.
+        float headFlicker = Flicker(arc[n - 1], time, 7);
+        DrawSoftFan(headCenter, Circle(headCenter, HeadLength * (1.1f + 0.25f * headFlicker)), haze with { A = haze.A * 1.5f });
+        DrawSoftRing(head, head.Select(p => p + (p - headCenter).Normalized() * (12 + 10 * headFlicker)).ToArray(), edge with { A = 0.9f });
+        foreach (int sign in new[] { 1, -1 })
+        {
+            DrawStrip(shaft, normals, sign, i => 0, i => HazeHalf * Taper(i) * (0.8f + 0.4f * Flicker(arc[i], time, sign * 3.1f)),
+                i => Alpha(haze, i), i => haze with { A = 0 });
+            DrawStrip(shaft, normals, sign, i => EdgeHalf * Taper(i),
+                i => (EdgeHalf + (GlowHalf - EdgeHalf) * (0.45f + 0.8f * Flicker(arc[i], time, sign)) * (1 + 0.4f * Pulse(ts[i], phase))) * Taper(i),
+                i => Alpha(edge, i), i => edge with { A = 0 });
+        }
+
+        // The head's deep edge, the shaft's band running into its notch, then the head itself over the band's end,
+        // so the band disappears into it with no seam and no overlap showing.
+        DrawColoredPolygon(head.Select(p => p + (p - headCenter).Normalized() * 2.5f).ToArray(), edge with { A = 1 });
+        foreach (int sign in new[] { 1, -1 })
+        {
+            DrawStrip(shaft, normals, sign, i => BandHalf * Taper(i), i => EdgeHalf * Taper(i),
+                i => Alpha(band, i), i => Alpha(edge, i));
+            DrawStrip(shaft, normals, sign, i => 0, i => BandHalf * Taper(i),
+                i => Alpha(band.Lerp(white, 0.35f * Pulse(ts[i], phase)), i), i => Alpha(band, i));
+        }
+        DrawColoredPolygon(head, band with { A = 1 });
+
+        // A small flare where the beam leaves its source.
+        DrawSoftFan(from, Circle(from, 10), edge with { A = 0.6f });
+        DrawSoftFan(from, Circle(from, 3.5f), band);
     }
+
+    /// <summary>
+    /// The hue a little closer to the nearest of the brightest hues, yellow and cyan, the way light at the heart of
+    /// a glow looks: blue toward cyan, red toward orange.
+    /// </summary>
+    private static float TowardLuminous(float hue)
+    {
+        const float yellow = 1 / 6f, cyan = 0.5f, shift = 0.07f;
+        float Distance(float a, float b) { float d = Mathf.Abs(a - b) % 1; return Mathf.Min(d, 1 - d); }
+        float target = Distance(hue, yellow) < Distance(hue, cyan) ? yellow : cyan;
+        float delta = target - hue;
+        if (delta > 0.5f) delta -= 1;
+        else if (delta < -0.5f) delta += 1;
+        return ((hue + Mathf.Clamp(delta, -shift, shift)) % 1 + 1) % 1;
+    }
+
+    /// <summary>0..1 brightness bump around the pulse position.</summary>
+    private static float Pulse(float t, float phase)
+    {
+        float d = (t - phase) / 0.07f;
+        return Mathf.Exp(-d * d);
+    }
+
+    /// <summary>0..1 noise along the beam (by distance along it) that drifts over time, for an unsteady, electric glow.</summary>
+    private static float Flicker(float s, float time, float seed) =>
+        0.5f + 0.5f * (0.5f * Mathf.Sin(s * 0.07f + time * 6.0f + seed)
+                     + 0.3f * Mathf.Sin(s * 0.023f - time * 3.7f + seed * 2.3f)
+                     + 0.2f * Mathf.Sin(s * 0.21f + time * 13.0f + seed * 5.1f));
+
+    /// <summary>
+    /// One side (<paramref name="sign"/>) of a strip along <paramref name="points"/>, between two offsets from the
+    /// center line, with a color at each. Neighbouring quads share their edges, so nothing is drawn twice.
+    /// </summary>
+    private void DrawStrip(Vector2[] points, Vector2[] normals, int sign, Func<int, float> inner, Func<int, float> outer,
+        Func<int, Color> innerColor, Func<int, Color> outerColor)
+    {
+        int n = points.Length;
+        var a = new Vector2[n];
+        var b = new Vector2[n];
+        var ca = new Color[n];
+        var cb = new Color[n];
+        for (int i = 0; i < n; i++)
+        {
+            a[i] = points[i] + normals[i] * (sign * inner(i));
+            b[i] = points[i] + normals[i] * (sign * outer(i));
+            ca[i] = innerColor(i);
+            cb[i] = outerColor(i);
+        }
+        for (int i = 0; i < n - 1; i++)
+            DrawPolygon(new[] { a[i], a[i + 1], b[i + 1], b[i] }, new[] { ca[i], ca[i + 1], cb[i + 1], cb[i] });
+    }
+
+    /// <summary>A glow: triangles fanning out from <paramref name="center"/>, full color there and transparent at the rim.</summary>
+    private void DrawSoftFan(Vector2 center, Vector2[] rim, Color color)
+    {
+        var edge = color with { A = 0 };
+        for (int i = 0; i < rim.Length; i++)
+            DrawPolygon(new[] { center, rim[i], rim[(i + 1) % rim.Length] }, new[] { color, edge, edge });
+    }
+
+    /// <summary>A glow around a shape: full color on its outline, fading out to <paramref name="outer"/>.</summary>
+    private void DrawSoftRing(Vector2[] inner, Vector2[] outer, Color color)
+    {
+        var edge = color with { A = 0 };
+        for (int i = 0; i < inner.Length; i++)
+        {
+            int j = (i + 1) % inner.Length;
+            DrawPolygon(new[] { inner[i], inner[j], outer[j], outer[i] }, new[] { color, color, edge, edge });
+        }
+    }
+
+    private static Vector2[] Circle(Vector2 center, float radius) =>
+        Enumerable.Range(0, 16).Select(i => center + Vector2.FromAngle(i * Mathf.Tau / 16) * radius).ToArray();
 }

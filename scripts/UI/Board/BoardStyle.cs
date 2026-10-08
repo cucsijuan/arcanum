@@ -17,6 +17,7 @@ public static class BoardStyle
     public static readonly Color Attacking = new("ff5a3c");
     public static readonly Color Blocking = new("4c8dff");
     public static readonly Color Selected = new("2ec4e6");
+    public static readonly Color Targeting = new("3aa8ff"); // electric blue: arrows from spells and abilities to their targets
 
     private static readonly Color[] PlayerColors = { new("2ec4b6"), new("e0607e"), new("9b7bff"), new("f2a93b"), new("6fd08c"), new("d98ae0") };
 
