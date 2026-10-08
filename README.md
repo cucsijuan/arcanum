@@ -23,7 +23,7 @@ Early development. See [docs/roadmap.md](docs/roadmap.md) for milestones and wha
 
 ## Building
 - .NET SDK 8
-- Godot 4.6 **.NET (mono)** build
+- Godot 4.7 **.NET (mono)** build
 - `dotnet test` runs the engine tests; open the folder in Godot .NET to run the client.
 
 ## License

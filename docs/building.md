@@ -2,7 +2,7 @@
 
 ## Requirements
 - .NET SDK 8
-- Godot 4.6 **.NET** build (the standard build can't compile C#), with the matching export templates installed
+- Godot 4.7 **.NET** build (the standard build can't compile C#), with the matching export templates installed
   (Editor → Manage Export Templates).
 
 ## Running from source
