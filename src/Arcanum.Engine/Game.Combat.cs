@@ -286,7 +286,11 @@ public sealed partial class Game
                 // The Ring, level 3: the blocker's controller sacrifices it at end of combat.
                 if (IsRingBearer(State.GetCard(b.Attacker), 3)) State.SacrificeAtEndOfCombat.Add((b.Blocker, State.GetCard(b.Blocker).Version));
             }
-            foreach (var attacker in newlyBlocked) Queue(attacker, Abilities.TriggerEvent.BecomesBlocked, State.GetCard(attacker).Controller);
+            foreach (var attacker in newlyBlocked)
+            {
+                Queue(attacker, Abilities.TriggerEvent.BecomesBlocked, State.GetCard(attacker).Controller);
+                QueueCreatureBecameBlocked(State.GetCard(attacker));
+            }
             // "When enchanted creature blocks": once however many creatures it blocks.
             foreach (var blocker in declared.Select(b => b.Blocker).Distinct())
                 foreach (var aura in State.Battlefield.Select(State.GetCard).Where(e => e.AttachedTo == blocker).ToList())

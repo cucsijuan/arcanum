@@ -174,6 +174,8 @@ public enum SubjectKind
     ChosenAtRandom,
     /// <summary>The players who sacrificed a permanent as this spell or ability resolved ("each player who sacrificed a permanent this way"), in turn order.</summary>
     Sacrificers,
+    /// <summary>The players dealt damage by this spell or ability so far ("each player dealt damage this way"), in turn order.</summary>
+    PlayersDamagedThisWay,
 }
 
 public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filter = null)

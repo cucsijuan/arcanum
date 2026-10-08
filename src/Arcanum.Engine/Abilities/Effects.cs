@@ -484,6 +484,12 @@ public sealed record CreateEmblem(string Name, IReadOnlyList<AbilityDefinition> 
 {
     /// <summary>The emblem lasts only until end of turn (a delayed "whenever … this turn" ability).</summary>
     public bool UntilEndOfTurn { get; init; }
+
+    /// <summary>The players who get an emblem each (they own it: "each player dealt damage this way gets an emblem"); null: the controller.</summary>
+    public Subject? For { get; init; }
+
+    /// <summary>The object its abilities call "that creature" (remembered by object, rule 400.7).</summary>
+    public Subject? About { get; init; }
 }
 
 /// <summary>Exile the top N cards of your library; you choose one (or all with <paramref name="ChooseOne"/> false) and may play it this turn.</summary>

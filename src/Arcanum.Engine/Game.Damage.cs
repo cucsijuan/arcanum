@@ -337,6 +337,7 @@ public sealed partial class Game
         }
         if (part.ToPlayer is { } player)
         {
+            part.Report?.DamagedPlayers.Add(player);
             Emit(new DamageDealt(source.Id, null, player, amount, part.Combat));
             ChangeLife(player, -LifeLostToDamage(player, amount));
             if (part.Combat) RecordCommanderDamage(source, player, amount);

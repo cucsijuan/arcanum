@@ -705,3 +705,31 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `{ "blink": "self", "transformed": true }` exiles the subject and returns it transformed (a card that isn't double-faced stays exiled).
 - A spell's additional cost that sacrifices or discards
   remembers the cards for `sacrificedPower`, `sacrificedToughness` and discard quantities.
+
+## Triggers and turn tracking (renown, blocks, targeting, last turn, damage this turn)
+
+- **Triggers**: `becomesRenowned` ("when this creature becomes renowned") and `creatureBecomesRenowned` with a `filter` ("whenever a
+  creature you control becomes renowned"; the watcher sees itself too; `"triggered"` is that creature): they trigger when a permanent
+  goes from not renowned to renowned on the battlefield, whatever made it (`becomeRenowned`; renown itself stays a scripted
+  trigger, rule 702.112). `creatureBecomesBlocked` with a `filter` ("whenever a creature you control becomes blocked"): once for each
+  attacker as it becomes blocked, however many creatures block it (rule 509.3c); `"triggered"` is the attacker.
+  `becomesTargetOfYours` with a `filter` ("whenever a creature an opponent controls becomes the target of a spell or ability you
+  control"; subject: that permanent): spells and abilities the watcher's controller controls, as they are put on the stack and when
+  one of their targets is changed to it. `permanentBecomesTarget` ("… of a spell or ability an opponent controls") now asks whether
+  that spell or ability's controller is an opponent of the watcher's controller (multiplayer), and also sees changed targets.
+- **Batching per player**: `"batchedPerPlayer": true` instead of `"batched": true` ("whenever one or more artifact creatures you
+  control deal combat damage to a player"): once for each player the simultaneous events are about. `"batched"` alone stays once per
+  event ("… to one or more players").
+- **Conditions**: `{ "spellsCastLastTurn": 2 }` (a player cast that many spells during the previous turn, whoever's turn it was; usable
+  as an intervening `"if"`), `{ "dealtDamageThisTurn": 3 }` (the source has dealt that much damage this turn, all of it after prevention
+  and replacement, combat or not; counted for the object it is: an ability resolving after its source left counts what that object
+  dealt, rule 400.7).
+- **Players dealt damage**: subject `"playersDamagedThisWay"` (players this spell or ability dealt damage to, prevented damage left out).
+  `emblem` takes `"for": subject` (each of those players gets an emblem of their own: they own it, so its "your upkeep" is theirs, and
+  "you" is its owner) and `"about": subject` (the object its abilities call "that creature", remembered as that object). Filter
+  `"damagedThisTurnByThat": true` matches creatures dealt damage this turn by that object (as they last existed if they died), so an
+  `"untilEndOfTurn"` emblem with a `creatureDies` trigger is "whenever a creature dealt damage by that creature this turn dies" (damage
+  dealt before it was created counts; `"triggeredPlayer"` is the dying creature's last controller).
+- Effects of an ability about its source (`"blink": "self"`, `"sacrificeIt": "self"`, `gainControl` with `"whileYouControl"`) only
+  affect the object the ability came from, not a new object the card became (rule 400.7); `"sacrificeIt": "self"` sacrifices it only
+  if the ability's controller controls it (rule 701.21a).

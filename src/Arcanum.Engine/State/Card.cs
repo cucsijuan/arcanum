@@ -84,6 +84,9 @@ public sealed class Card
     /// <summary>Who controls it apart from static control-changing effects (rule 613.1b); see <see cref="Controller"/>.</summary>
     public PlayerId BaseController { get; set; }
 
+    /// <summary>For an emblem standing for a delayed ability: the object it calls "that creature" (card and version).</summary>
+    public (CardId Card, int Version)? Remembered { get; set; }
+
     /// <summary>Sources that dealt damage to it this turn.</summary>
     public HashSet<CardId> DamagedThisTurnBy { get; } = new();
 

@@ -63,6 +63,9 @@ public sealed class Player
     /// <summary>Spells this player cast this turn, in order.</summary>
     public List<CardId> SpellsCastThisTurn { get; } = new();
 
+    /// <summary>Spells this player cast during the previous turn ("if a player cast two or more spells last turn").</summary>
+    public int SpellsCastLastTurn { get; set; }
+
     /// <summary>Cards drawn this turn.</summary>
     public int CardsDrawnThisTurn { get; set; }
 

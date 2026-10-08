@@ -270,7 +270,8 @@ public static class CardScriptParser
                         FromGraveyard = Bool(a, "fromGraveyard"),
                         CounterKind = a.TryGetProperty("counterKind", out var tck) && tck.GetString() != "any" ? ParseCounterKind(tck.GetString()) : CounterKind.PlusOnePlusOne,
                         Chapters = a.TryGetProperty("chapters", out var ch) ? ch.EnumerateArray().Select(x => x.GetInt32()).ToList() : Array.Empty<int>(),
-                        Batched = Bool(a, "batched"),
+                        Batched = Bool(a, "batched") || Bool(a, "batchedPerPlayer"),
+                        BatchedPerPlayer = Bool(a, "batchedPerPlayer"),
                         AnyCounterKind = a.TryGetProperty("counterKind", out var anyKind) && anyKind.GetString() == "any",
                         ExceptFirstInDrawStep = Bool(a, "exceptFirstInDrawStep"),
                         SpellTargets = a.TryGetProperty("spellTargets", out var spt) ? ParseFilter(spt, ControllerFilter.Any) : null,
@@ -618,6 +619,7 @@ public static class CardScriptParser
         "youAndChosenPlayer" => new Subject(SubjectKind.YouAndChosenPlayer),
         "opponentsWhoVotedWithYou" => new Subject(SubjectKind.OpponentsWhoVotedWithYou),
         "youAndOpponentsWhoVotedWithYou" => new Subject(SubjectKind.YouAndOpponentsWhoVotedWithYou),
+        "playersDamagedThisWay" => new Subject(SubjectKind.PlayersDamagedThisWay),
         _ when text.StartsWith("eachTarget") && int.TryParse(text[10..], out int et) => new Subject(SubjectKind.EachTarget, et - 1),
         _ when text.StartsWith("targetController") && int.TryParse(text[16..], out int c) => new Subject(SubjectKind.TargetController, c - 1),
         _ when text.StartsWith("target") && int.TryParse(text[6..], out int n) => Subject.TargetAt(n - 1),
@@ -730,6 +732,10 @@ public static class CardScriptParser
         "attachedBlocks" => TriggerEvent.AttachedBlocks,
         "permanentDies" => TriggerEvent.PermanentDies,
         "state" => TriggerEvent.StateTrigger,
+        "becomesRenowned" => TriggerEvent.BecomesRenowned,
+        "creatureBecomesRenowned" => TriggerEvent.CreatureBecomesRenowned,
+        "creatureBecomesBlocked" => TriggerEvent.CreatureBecomesBlocked,
+        "becomesTargetOfYours" => TriggerEvent.BecomesTargetOfYours,
         _ => throw new FormatException($"Unknown trigger '{text}'."),
     };
 
@@ -825,6 +831,7 @@ public static class CardScriptParser
             ChosenName = Bool(f, "chosenName"),
             ManaValueIsTriggerAmount = Bool(f, "manaValueIsTriggerAmount"),
             IsSource = Bool(f, "self"),
+            DamagedThisTurnByRemembered = Bool(f, "damagedThisTurnByThat"),
         };
     }
 
@@ -923,6 +930,8 @@ public static class CardScriptParser
         if (c.TryGetProperty("enteredThisTurn", out var ett)) return new EnteredThisTurn(ParseFilter(ett, ControllerFilter.Any));
         if (c.TryGetProperty("moreVotes", out var mvo)) return new MoreVotes(mvo.GetInt32());
         if (c.TryGetProperty("opponents", out var opc)) return new OpponentsAtLeast(opc.GetInt32());
+        if (c.TryGetProperty("spellsCastLastTurn", out var sclt)) return new SpellsCastLastTurn(sclt.GetInt32());
+        if (c.TryGetProperty("dealtDamageThisTurn", out var ddtt)) return new SourceDealtDamageThisTurn(ddtt.GetInt32());
         throw new FormatException($"Unknown condition {c.GetRawText()}.");
     }
 
@@ -1291,7 +1300,12 @@ public static class CardScriptParser
         if (Str("returnNextEndStepOneFewer") is { } rnk) return new ReturnAtNextEndStepWithOneFewer(ParseCounterKind(rnk));
         if (Flag("destroyManaValueXDamaged")) return new DestroyManaValueXOfDamagedPlayers();
         if (Str("addManaUntilEndOfTurn") is { } amu) return new AddManaUntilEndOfTurn(ManaCost.Parse(amu).Pips);
-        if (Str("emblem") is { } emblemName) return new CreateEmblem(emblemName, Parse(e.GetRawText()).Abilities) { UntilEndOfTurn = Flag("untilEndOfTurn") };
+        if (Str("emblem") is { } emblemName) return new CreateEmblem(emblemName, Parse(e.GetRawText()).Abilities)
+        {
+            UntilEndOfTurn = Flag("untilEndOfTurn"),
+            For = e.TryGetProperty("for", out var emblemFor) ? ParseSubject(emblemFor) : null,
+            About = e.TryGetProperty("about", out var emblemAbout) ? ParseSubject(emblemAbout) : null,
+        };
         if (e.TryGetProperty("exileTopPlayable", out var etp))
             return new ExileTopPlayable(etp.ValueKind == JsonValueKind.Number ? etp.GetInt32() : 0, !e.TryGetProperty("chooseOne", out var co) || co.GetBoolean(), Flag("untilNextTurn"), Flag("free"))
             {
