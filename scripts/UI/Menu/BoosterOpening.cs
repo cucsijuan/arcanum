@@ -31,6 +31,15 @@ public partial class BoosterOpening : Control
     /// <summary>The pack has torn open: the opening's position on screen, where its cards come out.</summary>
     public event Action<Vector2>? Opened;
 
+    /// <summary>Controls of the screen underneath that stay clickable through the dimmed overlay (drawn above it).</summary>
+    public List<Control> ClickThrough { get; } = new();
+
+    public override bool _HasPoint(Vector2 point)
+    {
+        var global = GetGlobalTransform() * point;
+        return !ClickThrough.Any(c => IsInstanceValid(c) && c.IsVisibleInTree() && c.GetGlobalRect().HasPoint(global));
+    }
+
     private readonly string? _imageUrl;
     private readonly (double Top, double Bottom) _seals;
     private readonly bool _automatic;

@@ -510,6 +510,7 @@ public partial class LimitedScreen : Control
         var opening = new BoosterOpening(set?.PackImage, set?.PackImageSeals ?? (0.07, 0.06), set?.Name ?? "Booster",
             automatic: Settings.Current.BoosterOpening == "auto");
         opening.Opened += from => DealFrom(cards, from);
+        opening.ClickThrough.Add(_abandon);
         AddChild(opening);
         _opening = opening;
     }
