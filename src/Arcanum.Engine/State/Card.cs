@@ -505,6 +505,7 @@ public sealed class Card
                 AttachedTo = AttachedTo,
                 Version = Version,
                 ManaValue = ManaValue,
+                Renowned = Renowned,
             };
         }
         Tapped = false;
@@ -594,6 +595,9 @@ public sealed record LastKnown(int Power, int Toughness, Core.PlayerId Controlle
     public bool Tapped { get; init; }
     public bool Attacking { get; init; }
     public bool Blocking { get; init; }
+
+    /// <summary>It was renowned (rule 702.112b).</summary>
+    public bool Renowned { get; init; }
     public Supertype Supertypes { get; init; }
     public Core.CardId? AttachedTo { get; init; }
 

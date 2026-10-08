@@ -147,6 +147,9 @@ public sealed record DelayedTrigger(CardId Source, Abilities.TriggeredAbility Ab
 
     /// <summary>How many times its source had transformed when it was created (rule 701.27f).</summary>
     public int? SourceTransforms { get; init; }
+
+    /// <summary>The source object (version) that created it: "this" in the delayed ability means only that object (rule 400.7).</summary>
+    public int? SourceVersion { get; init; }
 }
 
 /// <summary>"Prevent all damage that would be dealt by" a permanent, while a source stays on the battlefield.</summary>

@@ -705,3 +705,21 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `{ "blink": "self", "transformed": true }` exiles the subject and returns it transformed (a card that isn't double-faced stays exiled).
 - A spell's additional cost that sacrifices or discards
   remembers the cards for `sacrificedPower`, `sacrificedToughness` and discard quantities.
+
+## "This" as one object, last known renown and "up to N" targets
+
+- **"This" is one object** (rule 400.7): every effect that refers to the source (`"self"`, `"attached"`, "this card in your
+  graveyard", `"whileSourceRemains"` and the like) only finds the object that triggered or was activated. If the source left its
+  zone and came back before the ability resolves, it is a new object and the ability does nothing to it (a renown trigger
+  puts no counters on a creature flickered in response; a second "exile this, then return it transformed" does nothing).
+  An effect of the ability that moves its own source can still find the object it became, so later effects follow it:
+  `[{ "blink": "self" }, { "counters": 1, "what": "self" }]` puts the counter on the returned permanent. Delayed abilities
+  created by a permanent's ability ("at the beginning of the next upkeep, …") remember the object that created them.
+  Scripts don't need workarounds such as `"if": { "not": "transformed" }` for this any more (they stay harmless).
+- **`"renowned"` uses last known information**: an intervening `"if": "renowned"` (or `{ "not": "renowned" }`) is checked on
+  resolution against the source as it last existed on the battlefield if it left (rules 603.4, 608.2h), e.g. Scab-Clan Berserker.
+- **"Up to N target …"**: a target with `"upTo": N` (a number or a quantity such as `"X"`) becomes N optional, different targets
+  for spells, activated and loyalty abilities as well as triggered abilities. X is announced first (601.2b), so `"upTo": "X"`
+  works with `{X}` in an activated ability's cost. A spell or ability whose only targets are "up to" ones can be cast or
+  activated, and a trigger put on the stack, with no legal target at all. Effects use `"eachTarget"` (or `"target"`,
+  `"target2"`, …). Writing the target out N times with `"optional": true` works the same way.

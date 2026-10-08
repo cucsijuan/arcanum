@@ -33,8 +33,8 @@ public sealed partial class Game
     {
         if (ability is null) return true;
         if (ability.Modes is { } modes)
-            return modes.Count(m => m.Targets.All(spec => spec.Optional || LegalTargets(spec, controller, source).Any())) >= (ability.UpToModes || ability.ModesMayRepeat ? 1 : ability.ModeCount);
-        if (!ability.Targets.All(spec => spec.Optional || LegalTargets(spec, controller, source).Any())) return false;
+            return modes.Count(m => m.Targets.All(spec => IsUpTo(spec) || LegalTargets(spec, controller, source).Any())) >= (ability.UpToModes || ability.ModesMayRepeat ? 1 : ability.ModeCount);
+        if (!ability.Targets.All(spec => IsUpTo(spec) || LegalTargets(spec, controller, source).Any())) return false;
         if (ability.TargetRule == TargetRule.None && ability.Targets.All(t => t.AttachedToTarget is null)) return true;
         // Rules between targets ("two target lands" must be different ones, "attached to that creature"...): there must be
         // a whole choice of the required targets that follows them (rule 601.2c), not just a legal choice for each alone.
@@ -42,7 +42,7 @@ public sealed partial class Game
         bool Choose(int index, List<Target> before)
         {
             if (index == legal.Count) return true;
-            if (ability.Targets[index].Optional)
+            if (IsUpTo(ability.Targets[index]))
             {
                 before.Add(Target.None); // keeps later "attached to target N" indexes in place
                 bool skipped = Choose(index + 1, before);
@@ -333,7 +333,7 @@ public sealed partial class Game
         }
         if (ability.ExtraModeIf is { } extraMode && Holds(extraMode, player, sourceCard)) ability = ability with { ModeCount = ability.ModeCount + 1, UpToModes = true, ExtraModeIf = null };
         var possible = Enumerable.Range(0, modes.Count)
-            .Where(i => modes[i].Targets.All(spec => spec.Optional || LegalTargets(spec, player, source).Any()))
+            .Where(i => modes[i].Targets.All(spec => IsUpTo(spec) || LegalTargets(spec, player, source).Any()))
             .Where(i => !(ability.ModesOncePerObject || ability.ModesOncePerTurn) || !sourceCard.ChosenModes.Contains(i))
             .ToList();
         int min = ability.UpToModes ? 1 : Math.Min(ability.ModeCount, possible.Count);
@@ -447,7 +447,10 @@ public sealed partial class Game
         foreach (var effect in effects)
         {
             if (State.IsGameOver) return;
+            bool wasSourceObject = IsSourceObject(ctx);
+            int versionBefore = ctx.Source.Version;
             await ApplyAsync(effect, ctx);
+            FollowMovedSource(ctx, wasSourceObject, versionBefore);
             await ResolvePendingCountersAsync();
             RecomputeContinuousEffects(); // later effects see earlier ones ("then it fights")
         }
@@ -528,17 +531,20 @@ public sealed partial class Game
         public List<CardId> Chosen { get; } = new();
         public PlayerId? ChosenPlayer { get; set; }
         public List<CardId> ControlGained { get; } = new();
+
+        /// <summary>The object version of the source after an effect of this ability moved it (the ability follows it, rule 400.7).</summary>
+        public int? FollowedSourceVersion { get; set; }
     }
 
     private IEnumerable<Card> CardsFor(Subject subject, EffectContext ctx) => subject.Kind switch
     {
         SubjectKind.Target when ctx.TargetAt(subject.Index)?.Card is { } id => new[] { State.GetCard(id) },
-        SubjectKind.Self when ctx.Source.Zone == Zone.Battlefield => new[] { ctx.Source },
+        SubjectKind.Self when SourceOnBattlefield(ctx) => new[] { ctx.Source },
         SubjectKind.ChosenAtRandom when ctx.RandomPick is { } picked => new[] { State.GetCard(picked) },
         SubjectKind.EachTarget => Enumerable.Range(subject.Index, Math.Max(0, ctx.Targets.Count - ctx.TargetOffset - subject.Index))
             .Select(i => ctx.TargetAt(i)?.Card).Where(c => c is not null).Select(c => State.GetCard(c!.Value)).ToList(),
         SubjectKind.GranterPermanent when ctx.GrantedBy is { } granter && State.GetCard(granter).Zone == Zone.Battlefield => new[] { State.GetCard(granter) },
-        SubjectKind.Attached when ctx.Source.Zone == Zone.Battlefield && ctx.Source.AttachedTo is { } host => new[] { State.GetCard(host) },
+        SubjectKind.Attached when SourceOnBattlefield(ctx) && ctx.Source.AttachedTo is { } host => new[] { State.GetCard(host) },
         SubjectKind.Amassed when ctx.Results.Amassed is { } army && State.GetCard(army).Zone == Zone.Battlefield => new[] { State.GetCard(army) },
         SubjectKind.DamagedThisWay => ctx.Results.Damaged.Distinct().Select(State.GetCard)
             .Where(c => c.Zone == Zone.Battlefield && (subject.Filter is null || Matches(subject.Filter with { Controller = ControllerFilter.Any }, c, c.Controller, ctx.Source, ctx.Controller))).ToList(),
@@ -712,7 +718,7 @@ public sealed partial class Game
                 break;
             case ExileUntilSourceLeaves eu:
                 // If the source already left the battlefield, nothing is exiled (it would return at once).
-                if (ctx.Source.Zone != Zone.Battlefield) break;
+                if (!SourceOnBattlefield(ctx)) break;
                 foreach (var card in CardsFor(eu.What, ctx).ToList())
                 {
                     await MoveCardAsync(card.Id, Zone.Exile);
@@ -876,7 +882,7 @@ public sealed partial class Game
                 break;
             }
             case SacrificeIt si:
-                foreach (var card in (si.What.Kind == SubjectKind.Self ? (ctx.Source.Zone == Zone.Battlefield ? new[] { ctx.Source } : Array.Empty<Card>()) : CardsFor(si.What, ctx)).ToList())
+                foreach (var card in (si.What.Kind == SubjectKind.Self ? (SourceOnBattlefield(ctx) ? new[] { ctx.Source } : Array.Empty<Card>()) : CardsFor(si.What, ctx)).ToList())
                 {
                     if (card.Zone != Zone.Battlefield) continue;
                     bool yours = card.Controller == ctx.Controller;
@@ -1444,7 +1450,7 @@ public sealed partial class Game
             case Become b:
             {
                 // "For as long as this remains on the battlefield": nothing happens if it already left (or left and came back as a new object).
-                if (b.WhileSourceRemains && (ctx.Source.Zone != Zone.Battlefield || (ctx.SourceVersion is { } bv && bv != ctx.Source.Version))) break;
+                if (b.WhileSourceRemains && !SourceOnBattlefield(ctx)) break;
                 int? power = b.Power ?? (b.PowerFrom is { } pf && !b.Continuous ? Eval(pf, ctx) : null);
                 int? toughness = b.Toughness ?? (b.ToughnessFrom is { } tf && !b.Continuous ? Eval(tf, ctx) : null);
                 foreach (var card in CardsFor(b.What, ctx).ToList())
@@ -1548,7 +1554,7 @@ public sealed partial class Game
             {
                 // "Return it": only the same object (a card that changed zones again is a new object, rule 400.7).
                 var cards = p.What.Kind == SubjectKind.Self
-                    ? (ctx.Source.Zone is Zone.Graveyard or Zone.Hand or Zone.Exile && (ctx.SourceVersion is not { } sv || sv == ctx.Source.Version)
+                    ? (ctx.Source.Zone is Zone.Graveyard or Zone.Hand or Zone.Exile && IsSourceObject(ctx)
                         ? new[] { ctx.Source } : Array.Empty<Card>())
                     : p.What.Kind == SubjectKind.Triggered && ctx.Trigger is { Subject: { } tid } ti && State.GetCard(tid) is { } tc
                       && tc.Version == ti.SubjectVersion && tc.Zone != Zone.Battlefield ? new[] { tc }
@@ -1620,7 +1626,7 @@ public sealed partial class Game
             case PutIntoLibrary pl:
             {
                 var placed = new List<(CardId Card, PlayerId Owner, bool Bottom)>();
-                foreach (var card in (pl.What.Kind == SubjectKind.Self && ctx.Source.Zone == Zone.Graveyard ? new[] { ctx.Source } : CardsFor(pl.What, ctx)).ToList())
+                foreach (var card in (pl.What.Kind == SubjectKind.Self && SourceIn(ctx, Zone.Graveyard) ? new[] { ctx.Source } : CardsFor(pl.What, ctx)).ToList())
                 {
                     if (pl.Position > 0)
                     {
@@ -1648,7 +1654,7 @@ public sealed partial class Game
                     : g.NewController is { } who ? PlayersFor(who, ctx).Cast<PlayerId?>().FirstOrDefault() : ctx.Controller;
                 // The player who would gain control is an illegal target now: nobody gains control (rule 608.2b).
                 if (chosen is not { } newController) break;
-                if (g.WhileYouControlSource && (ctx.Source.Zone != Zone.Battlefield || ctx.Source.Controller != newController)) break; // already over
+                if (g.WhileYouControlSource && (!SourceOnBattlefield(ctx) || ctx.Source.Controller != newController)) break; // already over
                 long stamp = NewTimestamp();
                 ctx.Results.ControlGained.AddRange(CardsFor(g.What, ctx).Select(c => c.Id));
                 foreach (var card in CardsFor(g.What, ctx).ToList())
@@ -1757,7 +1763,7 @@ public sealed partial class Game
             {
                 var exiling = x.What.Kind == SubjectKind.Triggered && ctx.Trigger is { Subject: { } tid } ti && State.GetCard(tid) is { } tc && tc.Version == ti.SubjectVersion
                     ? new[] { tc }
-                    : x.What.Kind == SubjectKind.Self && ctx.Source.Zone == Zone.Graveyard ? new[] { ctx.Source } // "exile this card from your graveyard"
+                    : x.What.Kind == SubjectKind.Self && SourceIn(ctx, Zone.Graveyard) ? new[] { ctx.Source } // "exile this card from your graveyard"
                     : CardsFor(x.What, ctx).ToArray();
                 foreach (var card in exiling.Where(c => !(x.ExceptCreatedThisWay && ctx.Results.Created.Contains(c.Id))))
                 {
@@ -1773,7 +1779,7 @@ public sealed partial class Game
                     if (!CantLose(loser)) Lose(loser, $"{ctx.Source.Name}");
                 break;
             case RemoveFromCombat rc:
-                foreach (var card in (rc.What.Kind == SubjectKind.Self ? new[] { ctx.Source } : CardsFor(rc.What, ctx)).ToList())
+                foreach (var card in (rc.What.Kind == SubjectKind.Self ? (IsSourceObject(ctx) ? new[] { ctx.Source } : Array.Empty<Card>()) : CardsFor(rc.What, ctx)).ToList())
                     State.Combat?.Remove(card.Id);
                 break;
             case LoseAllAbilitiesUntilEndOfTurn la:
@@ -1782,7 +1788,7 @@ public sealed partial class Game
                     State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, Array.Empty<Keyword>()) { LosesAbilities = true, Timestamp = NewTimestamp() });
                 break;
             case ReturnToHand r:
-                if (r.What.Kind == SubjectKind.Self && ctx.Source.Zone == Zone.Graveyard) await MoveCardAsync(ctx.Source.Id, Zone.Hand); // "return this card"
+                if (r.What.Kind == SubjectKind.Self && SourceIn(ctx, Zone.Graveyard)) await MoveCardAsync(ctx.Source.Id, Zone.Hand); // "return this card"
                 foreach (var card in CardsFor(r.What, ctx).ToList())
                 {
                     await MoveCardAsync(card.Id, Zone.Hand);
@@ -1897,7 +1903,7 @@ public sealed partial class Game
                 break;
             case PumpUntilEndOfTurn p:
             {
-                if (p.WhileSourceRemains && ctx.Source.Zone != Zone.Battlefield) break;
+                if (p.WhileSourceRemains && !SourceOnBattlefield(ctx)) break;
                 if (p.WhileYouControlSource && ctx.Source.Controller != ctx.Controller) break;
                 int power = Eval(p.Power, ctx), toughness = Eval(p.Toughness, ctx);
                 foreach (var card in CardsFor(p.What, ctx).Where(c => c.IsCreature || (power == 0 && toughness == 0)))
@@ -1922,7 +1928,7 @@ public sealed partial class Game
             }
                 break;
             case AttachSelf a:
-                if (ctx.Source.Zone == Zone.Battlefield)
+                if (SourceOnBattlefield(ctx))
                     foreach (var card in CardsFor(a.To, ctx).Where(c => !ctx.Source.HasSubtype("Equipment") || c.IsCreature))
                     {
                         ctx.Source.AttachedTo = card.Id;
@@ -2249,7 +2255,7 @@ public sealed partial class Game
                 break;
             }
             case ShuffleIntoLibrary sil:
-                foreach (var card in (sil.What.Kind == SubjectKind.Self && ctx.Source.Zone != Zone.Library ? new[] { ctx.Source } : CardsFor(sil.What, ctx)).ToList())
+                foreach (var card in (sil.What.Kind == SubjectKind.Self ? (ctx.Source.Zone != Zone.Library && IsSourceObject(ctx) ? new[] { ctx.Source } : Array.Empty<Card>()) : CardsFor(sil.What, ctx)).ToList())
                 {
                     await MoveCardAsync(card.Id, Zone.Library);
                     Shuffle(State.GetPlayer(card.Owner));
@@ -2435,7 +2441,7 @@ public sealed partial class Game
             case AtNextUpkeep nu:
                 State.AtNextUpkeep.Add(new DelayedTrigger(ctx.Source.Id, nu.Ability, ctx.Controller, nu.Amount is { } nuAmount ? Eval(nuAmount, ctx) : 0)
                 {
-                    OnlyAtUpkeepOf = nu.Yours ? ctx.Controller : null,
+                    OnlyAtUpkeepOf = nu.Yours ? ctx.Controller : null, SourceVersion = ExpectedSourceVersion(ctx),
                     About = nu.Player is { } delayedAbout ? PlayersFor(delayedAbout, ctx).Cast<PlayerId?>().FirstOrDefault() : null,
                     SourceTransforms = ctx.Source.TransformCount,
                 });
@@ -2559,7 +2565,7 @@ public sealed partial class Game
                 break;
             }
             case PreventDamageBy pd:
-                if (ctx.Source.Zone != Zone.Battlefield) break;
+                if (!SourceOnBattlefield(ctx)) break;
                 foreach (var card in CardsFor(pd.What, ctx))
                     State.DamagePreventions.Add(new DamagePrevention(card.Id, card.Version, ctx.Source.Id, ctx.Source.Version));
                 break;
@@ -2570,13 +2576,13 @@ public sealed partial class Game
                     : PlayersFor(an.Whose, ctx).Cast<PlayerId?>().FirstOrDefault();
                 if (whose is not { } watched) break;
                 Emit(new ChoiceMade(ctx.Source.Id, State.GetPlayer(watched).Name));
-                State.AtPlayersNextEndStep.Add((new DelayedTrigger(ctx.Source.Id, an.Ability, ctx.Controller, 0) { SourceTransforms = ctx.Source.TransformCount }, watched, State.TurnNumber, State.Step == Step.End));
+                State.AtPlayersNextEndStep.Add((new DelayedTrigger(ctx.Source.Id, an.Ability, ctx.Controller, 0) { SourceTransforms = ctx.Source.TransformCount, SourceVersion = ExpectedSourceVersion(ctx) }, watched, State.TurnNumber, State.Step == Step.End));
                 break;
             }
             case MoveCounterOfEachMissingKind mc:
             {
                 var from = CardsFor(mc.From, ctx).FirstOrDefault();
-                var to = mc.To.Kind == SubjectKind.Self ? (ctx.Source.Zone == Zone.Battlefield ? ctx.Source : null) : CardsFor(mc.To, ctx).FirstOrDefault();
+                var to = mc.To.Kind == SubjectKind.Self ? (SourceOnBattlefield(ctx) ? ctx.Source : null) : CardsFor(mc.To, ctx).FirstOrDefault();
                 if (from is null || to is null) break;
                 foreach (var kind in from.Counters.Where(kv => kv.Value > 0 && to.CounterCount(kv.Key) == 0).Select(kv => kv.Key).ToList())
                 {
@@ -2587,7 +2593,7 @@ public sealed partial class Game
             }
             case MoveChosenCounters mcc:
             {
-                var from = mcc.From.Kind == SubjectKind.Self ? (ctx.Source.Zone == Zone.Battlefield ? ctx.Source : null) : CardsFor(mcc.From, ctx).FirstOrDefault();
+                var from = mcc.From.Kind == SubjectKind.Self ? (SourceOnBattlefield(ctx) ? ctx.Source : null) : CardsFor(mcc.From, ctx).FirstOrDefault();
                 var to = CardsFor(mcc.To, ctx).FirstOrDefault();
                 if (from is null || to is null) break;
                 int moved = 0;
@@ -2820,7 +2826,7 @@ public sealed partial class Game
             }
             case TakeCountersOfTriggered:
             {
-                if (ctx.Source.Zone != Zone.Battlefield || ctx.Trigger?.Subject is not { } leftId || State.GetCard(leftId).LastKnownInfo is not { } left) break;
+                if (!SourceOnBattlefield(ctx) || ctx.Trigger?.Subject is not { } leftId || State.GetCard(leftId).LastKnownInfo is not { } left) break;
                 BeginSimultaneous();
                 foreach (var (kind, n) in left.Counters.Where(kv => kv.Value > 0)) PutCounters(ctx.Source, kind, n, ctx.Controller);
                 EndSimultaneous();
@@ -2828,7 +2834,7 @@ public sealed partial class Game
             }
             case MoveAllCounters mac:
             {
-                var from = mac.From.Kind == SubjectKind.Self ? (ctx.Source.Zone == Zone.Battlefield ? ctx.Source : null) : CardsFor(mac.From, ctx).FirstOrDefault();
+                var from = mac.From.Kind == SubjectKind.Self ? (SourceOnBattlefield(ctx) ? ctx.Source : null) : CardsFor(mac.From, ctx).FirstOrDefault();
                 var to = CardsFor(mac.To, ctx).FirstOrDefault();
                 if (from is null || to is null || from.Id == to.Id) break;
                 var moving = from.Counters.Where(kv => kv.Value > 0).ToList();
@@ -3128,7 +3134,7 @@ public sealed partial class Game
                     {
                         // An ability of this permanent: only the object it came from (rule 400.7), and only if that object hasn't
                         // transformed since the ability was put on the stack or, for a delayed ability, was created (701.27f).
-                        if (ctx.SourceVersion is { } sv && sv != card.Version) continue;
+                        if (!IsSourceObject(ctx)) continue;
                         if (ctx.SourceTransforms is { } before && before != card.TransformCount) continue;
                     }
                     TransformPermanent(card);
@@ -3977,7 +3983,7 @@ public sealed partial class Game
                 .Count(t => player.Graveyard.Any(id => State.GetCard(id).Definition.Is(t))) >= ct.AtLeast,
             OpponentHasMore om => State.OpponentsOf(controller).Any(o => OpponentMeasure(om.What, o) > OpponentMeasure(om.What, controller)),
             CastDuringYourMainPhase => source?.CastDuringMainPhase == true,
-            SourceRenowned => source is { Renowned: true },
+            SourceRenowned => source is not null && SourceRenownedNow(source),
             SourceTransformed => source is { Zone: Zone.Battlefield, Transformed: true, IsDoubleFaced: true },
             SourceHasDealtDamage => source?.HasDealtDamage == true,
             SourceFrontFaceUp => source is { Zone: Zone.Battlefield, Transformed: false, IsDoubleFaced: true },
@@ -4043,10 +4049,10 @@ public sealed partial class Game
         || effect is ChooseOneEffect choose && choose.Choices.All(c => c.Effects.Count > 0 && c.Effects.All(AddsManaOnly));
 
     /// <summary>"Up to X target …": the requirement repeated X times, all optional and different (X worked out now).</summary>
-    private T WithRepeatedTargets<T>(T ability, PlayerId controller, Card source, TriggerInfo? info) where T : AbilityDefinition
+    private T WithRepeatedTargets<T>(T ability, PlayerId controller, Card source, TriggerInfo? info, int x = 0) where T : AbilityDefinition
     {
         if (!ability.Targets.Any(t => t.RepeatFrom is not null || t.PerPlayer)) return ability;
-        var ctx = new EffectContext(controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>()) { Trigger = info };
+        var ctx = new EffectContext(controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>(), x) { Trigger = info };
         var targets = ability.Targets.SelectMany(t => t.PerPlayer
             // "For each player, choose target … that player controls": one requirement for each player who has a legal choice, in turn order.
             ? State.ApnapOrder().Select(p => t with { PerPlayer = false, OnlyControlledBy = p }).Where(spec => LegalTargets(spec, controller, source.Id).Any()).ToList()
@@ -4939,7 +4945,7 @@ public sealed partial class Game
                     State.AtNextUpkeep.Remove(delayed);
                     _pendingTriggers.Add(new PendingTrigger(delayed.Source, delayed.Ability, delayed.Controller, new TriggerInfo(Player: delayed.About, Amount: delayed.Amount))
                     {
-                        SourceTransforms = delayed.SourceTransforms,
+                        SourceTransforms = delayed.SourceTransforms, SourceVersion = delayed.SourceVersion ?? -1,
                     });
                 }
                 foreach (var card in PermanentsAndEmblemsOf(s.ActivePlayer)) Queue(card.Id, TriggerEvent.YourUpkeep, s.ActivePlayer);
@@ -4970,7 +4976,7 @@ public sealed partial class Game
                     State.AtPlayersNextEndStep.Remove(waiting);
                     _pendingTriggers.Add(new PendingTrigger(waiting.Trigger.Source, waiting.Trigger.Ability, waiting.Trigger.Controller, new TriggerInfo(Player: waiting.Whose))
                     {
-                        SourceTransforms = waiting.Trigger.SourceTransforms,
+                        SourceTransforms = waiting.Trigger.SourceTransforms, SourceVersion = waiting.Trigger.SourceVersion ?? -1,
                     });
                 }
                 foreach (var delayed in State.AtNextEndStep.ToList())
