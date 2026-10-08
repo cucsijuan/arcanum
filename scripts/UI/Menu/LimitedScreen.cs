@@ -412,12 +412,56 @@ public partial class LimitedScreen : Control
         }
         take.Pressed += () => { if (_selected >= 0) Pick(_selected); };
 
+        // The first pick of a round is from the booster this player opens: it opens on screen first.
+        var packKey = $"{Session.Current!.Seed}:{draft.Round}";
+        if (!draft.Picked && draft.PickInRound == 0 && _openedPack != packKey && Settings.Current.BoosterOpening != "skip"
+            && BoosterOpening.Available && !_autoOnline && OS.GetEnvironment("ARCANUM_LIMITED").Length == 0)
+        {
+            _openedPack = packKey;
+            OpenBooster(Session.Current!, nodes);
+        }
+
         var right = new VBoxContainer { CustomMinimumSize = new Vector2(360, 0) };
         right.AddThemeConstantOverride("separation", 6);
         var picks = draft.Picks;
         right.AddChild(MenuKit.SectionTitle($"Your picks ({picks.Count})"));
         right.AddChild(PickList(picks));
         body.AddChild(MenuKit.Card(right, 14));
+    }
+
+    /// <summary>The event and round of the last booster opened on screen, so each opens once.</summary>
+    private string? _openedPack;
+
+    /// <summary>The booster opens in 3D over the pick screen, then its cards fly out of it to their places, face down, and turn over.</summary>
+    private void OpenBooster(LimitedEvent ev, List<CardNode> cards)
+    {
+        var set = ev.Source.StartsWith("set:") ? App.Instance.Module?.LoadSets().FirstOrDefault(s => "set:" + s.Code == ev.Source) : null;
+        foreach (var card in cards) card.Modulate = Colors.Transparent;
+        var opening = new BoosterOpening(set?.PackImage, set?.PackImageSeals ?? (0.07, 0.06), set?.Name ?? "Booster",
+            automatic: Settings.Current.BoosterOpening == "auto");
+        opening.Opened += from => DealFrom(cards, from);
+        AddChild(opening);
+    }
+
+    private static void DealFrom(List<CardNode> cards, Vector2 from)
+    {
+        for (int i = 0; i < cards.Count; i++)
+        {
+            var card = cards[i];
+            if (!IsInstanceValid(card) || card.View is not { } face) continue;
+            var place = card.Position;
+            card.Position = card.GetParent<Control>().GetGlobalTransform().AffineInverse() * from - card.Size / 2;
+            card.Scale = new Vector2(0.4f, 0.4f);
+            card.Setup(face with { IsHidden = true }, showCostPips: false);
+            var deal = card.CreateTween();
+            deal.TweenInterval(i * 0.05);
+            deal.TweenCallback(Callable.From(() => card.Modulate = Colors.White));
+            deal.TweenProperty(card, "position", place, 0.45).SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+            deal.Parallel().TweenProperty(card, "scale", Vector2.One, 0.45).SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+            deal.TweenProperty(card, "scale:x", 0f, 0.09);
+            deal.TweenCallback(Callable.From(() => card.Setup(face, showCostPips: false)));
+            deal.TweenProperty(card, "scale:x", 1f, 0.09);
+        }
     }
 
     private void Pick(int index)

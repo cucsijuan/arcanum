@@ -61,6 +61,15 @@ public sealed record SetDefinition
     /// <summary>Boosters in a sealed pool.</summary>
     public int SealedBoosters { get; init; } = 6;
 
+    /// <summary>
+    /// Picture of the set's booster pack, front only (downloaded when a pack is opened, never bundled), or null. It is
+    /// pasted on the 3D pack: its top and bottom <see cref="PackImageSeals"/> are the sealed ends.
+    /// </summary>
+    public string? PackImage { get; init; }
+
+    /// <summary>The sealed ends of <see cref="PackImage"/> as fractions of its height: top, then bottom.</summary>
+    public (double Top, double Bottom) PackImageSeals { get; init; } = (0.07, 0.06);
+
     public static SetDefinition Parse(string json)
     {
         using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
@@ -75,6 +84,10 @@ public sealed record SetDefinition
             Booster = e.TryGetProperty("booster", out var b) ? ParseBooster(b) : null,
             BoostersPerPlayer = limited.ValueKind == JsonValueKind.Object && limited.TryGetProperty("boostersPerPlayer", out var bp) ? bp.GetInt32() : 3,
             SealedBoosters = limited.ValueKind == JsonValueKind.Object && limited.TryGetProperty("sealedBoosters", out var sb) ? sb.GetInt32() : 6,
+            PackImage = e.TryGetProperty("pack", out var p) ? Str(p, "image") : null,
+            PackImageSeals = e.TryGetProperty("pack", out var ps) && ps.TryGetProperty("seals", out var seals) && seals.GetArrayLength() == 2
+                ? (seals[0].GetDouble(), seals[1].GetDouble())
+                : (0.07, 0.06),
         };
     }
 

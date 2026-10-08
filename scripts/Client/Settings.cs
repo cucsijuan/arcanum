@@ -43,6 +43,8 @@ public sealed class SettingsData
     // Appearance
     public string[] Playmats { get; set; } = { "grid", "grid" };
     public string CardBack { get; set; } = "arcane";
+    /// <summary>How boosters open in draft: "tear" (swipe across the tear line yourself), "auto" or "skip" (no animation).</summary>
+    public string BoosterOpening { get; set; } = "tear";
     /// <summary>How strongly foil cards shine under the pointer (0 = not at all, 1 = full).</summary>
     public double FoilShine { get; set; } = 0.45;
 

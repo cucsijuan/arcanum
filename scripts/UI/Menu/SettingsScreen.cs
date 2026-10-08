@@ -133,6 +133,10 @@ public partial class SettingsScreen : Control
             "How fast cards move, turn and fly across the table. Above 1× is faster."));
         box.AddChild(Switch("Full control", S.FullControl, v => S.FullControl = v,
             "Stop at every priority, even with nothing to do."));
+        var openings = new[] { ("tear", "Tear them open"), ("auto", "Open automatically"), ("skip", "No animation") };
+        box.AddChild(Row("Opening boosters", SettingsKit.Choice(openings.Select(o => o.Item2).ToList(),
+                Math.Max(0, Array.FindIndex(openings, o => o.Item1 == S.BoosterOpening)), selected => { S.BoosterOpening = openings[selected].Item1; Settings.Save(); }),
+            "How your booster opens at the start of each draft round: swipe across its tear line yourself (it opens by itself if you wait), let it tear open, or skip straight to the cards."));
 
         box.AddChild(SettingsKit.Section("Default stops"));
         var captions = new HBoxContainer();
