@@ -32,6 +32,7 @@ public partial class ContentLoader : Node
         }
         Module = ContentModule.Load(moduleDir);
         CardImageCache.Configure(Module);
+        UI.Board.BoardStyle.SetModuleCardBacks(Module.Sources.CardBacks ?? Array.Empty<CardBackSource>());
 
         var dataDir = ProjectSettings.GlobalizePath($"user://card_data/{Module.Manifest.Id}");
         Directory.CreateDirectory(dataDir);

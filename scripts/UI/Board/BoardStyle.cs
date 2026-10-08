@@ -221,10 +221,29 @@ public static class BoardStyle
         return button;
     }
 
-    public static readonly (string Id, string Label)[] CardBacks =
+    private static readonly (string Id, string Label)[] BuiltInCardBacks =
     {
         ("arcane", "Arcane (violet)"), ("tide", "Tide (blue)"), ("ember", "Ember (red)"), ("grove", "Grove (green)"), ("obsidian", "Obsidian (black)"),
     };
+
+    /// <summary>Marks a card back design offered by the content module ("module:id"), drawn from its downloaded picture.</summary>
+    private const string ModuleCardBackPrefix = "module:";
+
+    private static (string Id, string Label)[] _moduleCardBacks = Array.Empty<(string, string)>();
+
+    /// <summary>Every card back design: the built-in ones, then those the content module offers.</summary>
+    public static IReadOnlyList<(string Id, string Label)> CardBacks => BuiltInCardBacks.Concat(_moduleCardBacks).ToList();
+
+    /// <summary>Adds the content module's card back designs to the choices.</summary>
+    public static void SetModuleCardBacks(IEnumerable<Arcanum.Data.Modules.CardBackSource> backs) =>
+        _moduleCardBacks = backs.Select(b => (ModuleCardBackPrefix + b.Id, b.Name)).ToArray();
+
+    /// <summary>
+    /// Image key of the picture of a card back design offered by the module, or null for a built-in design (drawn by a
+    /// shader). Until the picture arrives, or if it can't be downloaded, the card back shows the default built-in design.
+    /// </summary>
+    public static string? CardBackImageKey(string id) =>
+        id.StartsWith(ModuleCardBackPrefix) ? Arcanum.Client.CardImageCache.CardBackKey(id[ModuleCardBackPrefix.Length..]) : null;
 
     /// <summary>Background, glow and accent colors of a card back design.</summary>
     public static (Color A, Color B, Color Accent) CardBackColors(string id) => id switch

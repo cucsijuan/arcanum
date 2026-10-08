@@ -218,14 +218,15 @@ public partial class SettingsScreen : Control
         }
 
         box.AddChild(SettingsKit.Section("Card back"));
-        int backIndex = Math.Max(0, Array.FindIndex(BoardStyle.CardBacks, b => b.Id == S.CardBack));
+        var backs = BoardStyle.CardBacks;
+        int backIndex = Math.Max(0, backs.ToList().FindIndex(b => b.Id == S.CardBack));
         var holder = new Control { CustomMinimumSize = new Vector2(150, 206) };
-        box.AddChild(Row("Design", SettingsKit.Choice(BoardStyle.CardBacks.Select(b => b.Label).ToList(), backIndex, selected =>
+        box.AddChild(Row("Design", SettingsKit.Choice(backs.Select(b => b.Label).ToList(), backIndex, selected =>
         {
-            S.CardBack = BoardStyle.CardBacks[selected].Id;
+            S.CardBack = backs[selected].Id;
             Settings.Save();
             RebuildBackPreview(holder);
-        }), "The back of every hidden card: libraries, opponents' hands and face-down cards."));
+        }), "The back of every hidden card: libraries, opponents' hands and face-down cards. Designs from the card module are downloaded the first time they are shown."));
         box.AddChild(holder);
         RebuildBackPreview(holder);
 

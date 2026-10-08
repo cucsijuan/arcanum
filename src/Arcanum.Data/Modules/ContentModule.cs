@@ -22,8 +22,16 @@ public sealed record ImageSource(string UrlTemplate, int MinIntervalMs, string? 
 /// <summary>Where every printing of every card comes from (sets, collector numbers, rarities, exact images).</summary>
 public sealed record PrintingSource(string Index, string DownloadField);
 
+/// <summary>
+/// A card back design the module offers beside the built-in ones: its picture is downloaded from <paramref name="Url"/>
+/// when first shown and cached, like card images, so it is never bundled with the app or the module.
+/// </summary>
+public sealed record CardBackSource(string Id, string Name, string Url);
+
 /// <param name="Printings">Optional: without it cards have no set information and show their default picture.</param>
-public sealed record ModuleSources(string UserAgent, CardSource Cards, ImageSource Images, PrintingSource? Printings = null);
+/// <param name="CardBacks">Optional card back designs offered in the settings beside the built-in ones.</param>
+public sealed record ModuleSources(string UserAgent, CardSource Cards, ImageSource Images, PrintingSource? Printings = null,
+    IReadOnlyList<CardBackSource>? CardBacks = null);
 
 /// <summary>
 /// A content module installed on disk: where card data and images come from, card scripts, formats and decks.
@@ -67,7 +75,10 @@ public sealed class ContentModule
                 Optional(images, "byIdTemplate"), Optional(images, "backUrlTemplate"), Optional(images, "backByIdTemplate")),
             s.TryGetProperty("printings", out var printings)
                 ? new PrintingSource(Required(printings, "index"), Required(printings, "downloadField"))
-                : null);
+                : null,
+            s.TryGetProperty("cardBacks", out var backs) && backs.ValueKind == JsonValueKind.Array
+                ? backs.EnumerateArray().Select(b => new CardBackSource(Required(b, "id"), Required(b, "name"), Required(b, "url"))).ToList()
+                : Array.Empty<CardBackSource>());
 
         return new ContentModule(directory, manifest, sources);
     }
@@ -149,6 +160,9 @@ public sealed class ContentModule
     /// <summary>URL of a double-faced card's back face picture, by the back face's name or by image id; null if the module has none.</summary>
     public string? BackImageUrl(string faceName) => Sources.Images.BackUrlTemplate?.Replace("{name}", Uri.EscapeDataString(faceName));
     public string? BackImageUrlById(string id) => Sources.Images.BackByIdTemplate?.Replace("{id}", Uri.EscapeDataString(id));
+
+    /// <summary>URL of the picture of one of the module's card back designs, or null if it offers no such design.</summary>
+    public string? CardBackUrl(string id) => Sources.CardBacks?.FirstOrDefault(b => b.Id == id)?.Url;
 
     private string DecksDirectory => Path.Combine(Directory, "decks");
 

@@ -53,6 +53,12 @@ public partial class CardImageCache : Node
     /// <summary>Marks the key of a double-faced card's back face picture ("back:id:…" or "back:Name").</summary>
     private const string BackPrefix = "back:";
 
+    /// <summary>Marks the key of one of the module's card back designs ("cardback:id").</summary>
+    private const string CardBackPrefix = "cardback:";
+
+    /// <summary>Image key for the picture of the module's card back design <paramref name="id"/>.</summary>
+    public static string CardBackKey(string id) => CardBackPrefix + id;
+
     /// <summary>Calls <paramref name="onLoaded"/> (possibly immediately) once the image for <paramref name="cardName"/> is available.</summary>
     public static void Request(string cardName, Action<Texture2D> onLoaded) => _instance?.RequestInternal(cardName, onLoaded);
 
@@ -103,7 +109,8 @@ public partial class CardImageCache : Node
         if (_inFlight is not null || _cooldown > 0 || _queue.Count == 0) return;
 
         _inFlight = _queue.Dequeue();
-        var url = _inFlight.StartsWith(BackPrefix)
+        var url = _inFlight.StartsWith(CardBackPrefix) ? _module!.CardBackUrl(_inFlight[CardBackPrefix.Length..])
+            : _inFlight.StartsWith(BackPrefix)
             ? (_inFlight[BackPrefix.Length..] is var back && back.StartsWith("id:") ? _module!.BackImageUrlById(back[3..]) : _module!.BackImageUrl(back))
             : _inFlight.StartsWith("id:") ? _module!.ImageUrlById(_inFlight[3..]) : _module!.ImageUrl(_inFlight);
         if (url is null)

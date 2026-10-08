@@ -24,6 +24,8 @@ public partial class CardNode : Control
     private readonly Label _fallbackType = BoardStyle.MakeLabel("", 9, BoardStyle.TextDim);
     private readonly Label _fallbackPt = BoardStyle.MakeLabel("", 13);
     private readonly ColorRect _back = new();
+    private readonly TextureRect _backImage = new(); // a card back design from the module, over the built-in one once downloaded
+    private string? _requestedBack;
     private static Shader? _glowShader;
     private const float GlowPad = 12;
     private readonly ColorRect _glow = new();
@@ -109,6 +111,15 @@ public partial class CardNode : Control
         _back.SetAnchorsPreset(LayoutPreset.FullRect);
         _back.Material = new ShaderMaterial { Shader = _backShader };
         AddChild(_back);
+
+        _backImage.MouseFilter = MouseFilterEnum.Ignore;
+        _backImage.SetAnchorsPreset(LayoutPreset.FullRect);
+        _backImage.ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize;
+        _backImage.StretchMode = TextureRect.StretchModeEnum.Scale;
+        _backImage.TextureFilter = TextureFilterEnum.LinearWithMipmaps;
+        _backImage.Material = new ShaderMaterial { Shader = _roundedShader };
+        _backImage.Visible = false;
+        AddChild(_backImage);
 
         _selectedOverlay.MouseFilter = MouseFilterEnum.Ignore;
         _selectedOverlay.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -284,6 +295,7 @@ public partial class CardNode : Control
             back.SetShaderParameter("color_b", backB);
             back.SetShaderParameter("accent", accent);
         }
+        ShowBackImage(view.IsHidden ? BoardStyle.CardBackImageKey(BoardStyle.CardBack) : null);
         _face.Visible = false;
         _fallback.Visible = !view.IsHidden;
         _pips.Visible = showCostPips && !view.IsHidden;
@@ -459,11 +471,35 @@ public partial class CardNode : Control
         ((ShaderMaterial)_face.Material).SetShaderParameter("radius", radius);
         ((ShaderMaterial)_back.Material).SetShaderParameter("rect_size", Size);
         ((ShaderMaterial)_back.Material).SetShaderParameter("radius", radius);
+        ((ShaderMaterial)_backImage.Material).SetShaderParameter("rect_size", Size);
+        ((ShaderMaterial)_backImage.Material).SetShaderParameter("radius", radius);
         var glow = (ShaderMaterial)_glow.Material;
         glow.SetShaderParameter("rect_size", Size + new Vector2(GlowPad * 2, GlowPad * 2));
         glow.SetShaderParameter("pad", GlowPad);
         glow.SetShaderParameter("radius", radius);
         PivotOffset = Size / 2;
+    }
+
+    /// <summary>
+    /// Shows the picture of the module's card back design <paramref name="key"/> over the built-in back once it has
+    /// been downloaded; null hides it (a face-up card, or a built-in design).
+    /// </summary>
+    private void ShowBackImage(string? key)
+    {
+        _requestedBack = key;
+        if (key is null)
+        {
+            _backImage.Visible = false;
+            return;
+        }
+        _backImage.Visible = _backImage.Texture is not null && _backImage.Texture.ResourceName == key;
+        CardImageCache.Request(key, texture =>
+        {
+            if (!IsInstanceValid(this) || _requestedBack != key) return;
+            texture.ResourceName = key;
+            _backImage.Texture = texture;
+            _backImage.Visible = true;
+        });
     }
 
     private void BuildPips(string? cost)
