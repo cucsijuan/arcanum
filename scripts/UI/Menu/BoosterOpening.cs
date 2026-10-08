@@ -17,7 +17,7 @@ public partial class BoosterOpening : Control
     public const string ModelPath = "res://ui-art/kit/booster/booster.glb";
 
     // The model's measures (tools/bake_booster.py in the art repository): centered on the origin, front facing +Z.
-    private const float PackWidth = 0.9183f, PackHeight = 1.3969f, TearY = 0.5097f, FrontZ = 0.04f;
+    private const float PackWidth = 0.7823f, PackHeight = 1.3969f, TearY = 0.5097f, FrontZ = 0.04f;
     // Its sealed ends, as fractions of its height.
     private const float ModelSealTop = 0.123f, ModelSealBottom = 0.103f;
 
