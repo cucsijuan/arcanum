@@ -115,6 +115,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>"Prevent all [noncombat] damage that would be dealt to [affected permanents]".</summary>
     public StaticDamagePrevention PreventsDamage { get; init; }
 
+    /// <summary>"Enchanted creature is a copy of the chosen creature": a continuous copy effect (layer 1) of the creature chosen as the source entered.</summary>
+    public bool CopiesChosenCreature { get; init; }
+
     /// <summary>"Its activated abilities can't be activated" (mana abilities included).</summary>
     public bool CantActivateAbilities { get; init; }
 }

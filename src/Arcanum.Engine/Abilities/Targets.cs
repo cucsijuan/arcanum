@@ -54,6 +54,15 @@ public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = C
     /// <summary>The controller must be the player the creature a trigger is about is attacking ("defending player controls").</summary>
     public bool ControlledByDefendingPlayer { get; init; }
 
+    /// <summary>
+    /// "For each player, choose target [permanent] that player controls": the requirement becomes one for each player who has a legal
+    /// choice (<see cref="OnlyControlledBy"/>), worked out as the ability is put on the stack.
+    /// </summary>
+    public bool PerPlayer { get; init; }
+
+    /// <summary>The controller must be this player (set when a <see cref="PerPlayer"/> requirement is split up).</summary>
+    public PlayerId? OnlyControlledBy { get; init; }
+
     /// <summary>Text shown when choosing; set by card scripts so the player sees the printed wording.</summary>
     public string? Text { get; init; }
 
@@ -163,6 +172,8 @@ public enum SubjectKind
     DamagedThisWay,
     /// <summary>The object the effect being applied picked at random.</summary>
     ChosenAtRandom,
+    /// <summary>The players who sacrificed a permanent as this spell or ability resolved ("each player who sacrificed a permanent this way"), in turn order.</summary>
+    Sacrificers,
 }
 
 public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filter = null)

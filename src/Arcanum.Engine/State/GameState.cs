@@ -227,6 +227,15 @@ public sealed class GameState
     /// <summary>"Creatures without flying can't block this turn": filters (with the player whose effect it is) for this turn.</summary>
     public List<(Abilities.ObjectFilter Filter, PlayerId Controller, int Turn)> CantBlockThisTurn { get; } = new();
 
+    /// <summary>
+    /// "It can't have counters put on it for as long as this creature remains on the battlefield" / "that player can't get counters":
+    /// the object or player (card and version, or player) and the permanent (card and version) whose presence keeps the ban.
+    /// </summary>
+    public List<(CardId? Card, int CardVersion, PlayerId? Player, CardId Source, int SourceVersion)> CounterBans { get; } = new();
+
+    /// <summary>"Until end of turn, if a [creature] would enter the battlefield and it wasn't cast, exile it instead": the filter, the effect's controller and the turn.</summary>
+    public List<(Abilities.ObjectFilter Filter, PlayerId Controller, int Turn)> ExileUncastEntering { get; } = new();
+
     /// <summary>Phased-out permanents (rule 702.26), with the player whose untap step phases them in.</summary>
     public List<(CardId Card, PlayerId Controller)> PhasedOut { get; } = new();
 

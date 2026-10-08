@@ -328,6 +328,7 @@ public sealed partial class Game
         var source = part.Source;
         int amount = part.Amount;
         if (amount <= 0 || !StillDamageable(part)) return;
+        source.HasDealtDamage = true;
         void Lifelink()
         {
             if (!source.Has(Keyword.Lifelink)) return;

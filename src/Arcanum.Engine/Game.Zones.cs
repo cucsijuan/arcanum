@@ -26,6 +26,8 @@ public sealed partial class Game
         OntoBattlefieldInsteadOfDiscard,
         /// <summary>"If it would leave the battlefield, exile it instead of putting it anywhere else" (a permanent put there by such an effect).</summary>
         ExileIfLeaves,
+        /// <summary>"If a nontoken creature would enter the battlefield and it wasn't cast, exile it instead" (until end of turn).</summary>
+        ExileUncastEntering,
     }
 
     /// <summary>One replacement effect that would modify where a card goes (rule 614.1a).</summary>
@@ -66,6 +68,10 @@ public sealed partial class Game
                 && State.Battlefield.Any(b => (State.GetCard(b).Definition.Replaces & Cards.Replacements.ExileInstantsAndSorceries) != 0))
                 list.Add(new(ZoneReplacementKind.ExileInstantsAndSorceries));
         }
+        // A card entering the battlefield from anywhere but the stack wasn't cast (rule 601.2a puts a spell on the stack first).
+        if (to == Zone.Battlefield && from is not (Zone.Stack or Zone.Battlefield) && State.ExileUncastEntering.Any(r => r.Turn == State.TurnNumber
+                && Matches(r.Filter with { Controller = Abilities.ControllerFilter.Any }, card, card.Owner, null, r.Controller)))
+            list.Add(new(ZoneReplacementKind.ExileUncastEntering));
         // A replacement effect gets only one opportunity to affect an event (rule 614.5).
         list.RemoveAll(applied.Contains);
         return list;
@@ -88,6 +94,7 @@ public sealed partial class Game
         ZoneReplacementKind.ExileInsteadOfGraveyard => "Exile it (the effect it was cast with)",
         ZoneReplacementKind.ExileInstantsAndSorceries => "Exile it (instants and sorceries are exiled)",
         ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard => $"Put it onto the battlefield ({card.Name}: an opponent made you discard it)",
+        ZoneReplacementKind.ExileUncastEntering => "Exile it (it would enter the battlefield without being cast)",
         _ => "Put it into the command zone",
     };
 
@@ -159,7 +166,11 @@ public sealed partial class Game
     {
         var card = State.GetCard(id);
         transformed &= to == Zone.Battlefield && card.Zone != Zone.Battlefield && card.IsDoubleFaced;
-        if (to == Zone.Battlefield && card.Zone != Zone.Battlefield)
+        // If something exiles it instead of letting it enter, it makes none of the choices for entering (rule 614.1).
+        if (to == Zone.Battlefield && card.Zone != Zone.Battlefield && State.ExileUncastEntering.Count > 0)
+            _movePlans[(id, card.Version)] = (to, await PlanMoveAsync(card, to));
+        if (to == Zone.Battlefield && card.Zone != Zone.Battlefield
+            && !(_movePlans.TryGetValue((id, card.Version), out var early) && early.Requested == to && early.Plan.To != Zone.Battlefield))
         {
             var newController = controller ?? card.Owner;
             // "You may have this creature enter as a copy of …": chosen as it enters, so it enters with the copy's characteristics.

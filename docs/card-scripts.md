@@ -674,3 +674,34 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - **Keywords**: `Can attack as though it didn't have defender`; `Can block an additional creature each combat` (up to two attackers; the
   search for the most requirements to obey counts such a creature as blocking one, so a second block that would alone satisfy one more
   requirement isn't demanded, though it is always allowed).
+
+## Continuous copies, state triggers, counter bans and more
+
+- The keyword `Can attack as though it didn't have defender` (above) is granted with a static ability, e.g. with
+  `"while": { "sourceIs": { "anyOf": [{ "enchanted": true }, { "equipped": true }] } }`.
+- **Condition** `"dealtDamage"`: the source has dealt damage since it came to the battlefield ("as long as it hasn't dealt
+  damage yet" is `{ "not": "dealtDamage" }`).
+- **Quantities** `{ "greatestManaValue": filter }` (greatest mana value among matching permanents you control), `"-lifeGained"`
+  (negated life gained this turn, for "-X/-X where X is the life you gained") and `"foundThisWay"` (cards a `lookAtTop` moved,
+  usable as `{ "atLeast": "foundThisWay", "value": 1 }`; the subject `"found"` names them, so `whenYouDo` can be `"about": "found"`).
+- **Continuous copy** ("As this Aura enters, choose a creature. Enchanted creature is a copy of the chosen creature", rule 613.1a):
+  card-wide `"chooseOnEnter": "creature"` remembers a creature, and a static ability with `"copyOfChosen": true` and
+  `"affects": "enchanted"` gives the enchanted permanent its copiable values. It follows the chosen creature while it stays on the
+  battlefield and keeps the values it last had once it has left.
+- **Counter on a permanent as it enters**: `"entersCounterOn": { "filter": { "types": ["artifact"] }, "kind": "phylactery" }` (one
+  permanent you control matching the filter, chosen as this enters). Filter `"hasCounterKind": "phylactery"` matches permanents
+  with a counter of that kind.
+- **State triggers** (rule 603.8): `{ "trigger": "state", "when": condition, "effects": [...] }` triggers as soon as the condition is
+  true and not again until it has left the stack, e.g. `"when": { "not": { "control": { "hasCounterKind": "phylactery" } } }`.
+- **Counter bans**: effect `{ "cantHaveCounters": "target" }` (an object, or a player: "can't get counters") for as long as the
+  source stays on the battlefield; `removeAllCounters` also works on players (poison counters).
+- **Replacement** `{ "exileUncastEntering": filter }` until end of turn: a matching card that would enter the battlefield without
+  having been cast is exiled instead (it makes none of its entering choices).
+- **One target per player** ("for each player, choose target permanent that player controls"): a target with `"perPlayer": true`
+  becomes one requirement for each player who has a legal choice. `{ "sacrificeIt": "eachTarget" }` has each target's controller
+  sacrifice it; subject `"sacrificers"` is the players who sacrificed a permanent this way; `{ "revealTopPut": filter, "who": subject }`
+  has each of them reveal the top card of their library and put it onto the battlefield if it matches.
+- `{ "exileLibraryAllBut": 1, "who": "target" }` exiles all but the bottom N cards of a library.
+- `{ "blink": "self", "transformed": true }` exiles the subject and returns it transformed (a card that isn't double-faced stays exiled).
+- A spell's additional cost that sacrifices or discards
+  remembers the cards for `sacrificedPower`, `sacrificedToughness` and discard quantities.

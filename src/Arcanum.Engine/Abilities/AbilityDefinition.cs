@@ -350,6 +350,8 @@ public enum TriggerEvent
     AttachedBlocks,
     /// <summary>"Whenever a [filter] permanent you control dies" (any permanent put into a graveyard from the battlefield; subject: that permanent as it last existed).</summary>
     PermanentDies,
+    /// <summary>A state trigger (rule 603.8): "When you control no [permanents]…": triggers once its condition (<see cref="TriggeredAbility.TriggerCondition"/>) is true, and not again until it has left the stack.</summary>
+    StateTrigger,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -520,6 +522,9 @@ public sealed record ObjectFilter(
 
     /// <summary>"A transformed permanent" (true: back face up, rule 701.27g) or a double-faced permanent front face up (false).</summary>
     public bool? Transformed { get; init; }
+
+    /// <summary>Has at least one counter of this kind on it ("a permanent with a phylactery counter on it").</summary>
+    public CounterKind? WithCounterKind { get; init; }
 
     /// <summary>Doesn't share a creature type with a creature the ability's controller controls.</summary>
     public bool NoSharedCreatureTypeWithYours { get; init; }

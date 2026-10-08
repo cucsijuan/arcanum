@@ -14,7 +14,7 @@ public sealed class Card
     public CardDefinition PrintedDefinition { get; }
 
     /// <summary>Its characteristics now: those of its Adventure while it is cast as one (rule 715.3), otherwise the printed card's.</summary>
-    public CardDefinition Definition => CopiedDefinition ?? (Transformed && BackFaceDefinition is { } back ? back
+    public CardDefinition Definition => EffectCopy ?? CopiedDefinition ?? (Transformed && BackFaceDefinition is { } back ? back
         : AsAdventure && PrintedDefinition.Adventure is { } adventure ? adventure
         : CastHalf is { } half && PrintedDefinition.SplitHalves is { } halves ? halves[half]
         : PrintedDefinition);
@@ -42,7 +42,7 @@ public sealed class Card
     /// Its mana value (rule 202.3): with its back face up, that of its front face's mana cost (712.8e), or 0 for a copy of a
     /// back face (202.3b) — a double-faced token is one (707.8a). A spell's X is added where it is on the stack.
     /// </summary>
-    public int ManaValue => CopiedDefinition is null && Transformed && PrintedDefinition.BackFace is not null
+    public int ManaValue => !IsCopy && Transformed && PrintedDefinition.BackFace is not null
         ? (PrintedDefinition.IsToken ? 0 : PrintedDefinition.ManaCost.ManaValue)
         : Definition.ManaCost.ManaValue;
 
@@ -52,8 +52,23 @@ public sealed class Card
     /// </summary>
     internal CardDefinition? CopiedDefinition { get; set; }
 
+    /// <summary>
+    /// The copiable values a continuous copy effect gives it ("enchanted creature is a copy of the chosen creature", layer 1, rule 613.1a):
+    /// worked out again whenever continuous effects are, so it lasts as long as the effect does.
+    /// </summary>
+    internal CardDefinition? EffectCopy { get; set; }
+
+    /// <summary>It is a copy of something, by entering as one or through a copy effect.</summary>
+    public bool IsCopy => CopiedDefinition is not null || EffectCopy is not null;
+
+    /// <summary>The creature chosen as this permanent entered ("as this Aura enters, choose a creature"), card and version.</summary>
+    public (CardId Card, int Version)? ChosenCreature { get; set; }
+
+    /// <summary>The copiable values the chosen creature last had on the battlefield (kept when it leaves, rule 608.2h).</summary>
+    internal CardDefinition? ChosenCreatureValues { get; set; }
+
     /// <summary>It entered as a copy of another object: its own printed name (shown with the copy's).</summary>
-    public string? CopyOfName => CopiedDefinition is null ? null : PrintedDefinition.Name;
+    public string? CopyOfName => IsCopy ? PrintedDefinition.Name : null;
 
     /// <summary>A split card being cast as (or on the stack as) one of its halves (rule 709.3).</summary>
     public int? CastHalf { get; set; }
@@ -74,6 +89,9 @@ public sealed class Card
 
     /// <summary>Players this creature dealt combat damage to this turn.</summary>
     public HashSet<PlayerId> CombatDamagedPlayers { get; } = new();
+
+    /// <summary>It has dealt damage (any amount, to anything) since it came to the battlefield.</summary>
+    public bool HasDealtDamage { get; set; }
 
     /// <summary>Times it attacked this turn.</summary>
     public int AttacksThisTurn { get; set; }
@@ -510,6 +528,9 @@ public sealed class Card
         LosesAbilities = false;
         LosesTextAbilities = false;
         CopiedDefinition = null;
+        EffectCopy = null;
+        ChosenCreature = null;
+        ChosenCreatureValues = null;
         Transformed = false; // it leaves the battlefield and is front face up again (712.8a)
         TransformCount = 0;
         GrantedManaOptions.Clear();
@@ -537,6 +558,7 @@ public sealed class Card
         ActivatedEver.Clear();
         ChosenName = null;
         AttacksThisTurn = 0;
+        HasDealtDamage = false;
         AsAdventure = false;
         CastHalf = null;
         OnAdventure = false;

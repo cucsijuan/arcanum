@@ -5,7 +5,7 @@ using Arcanum.Engine.Mana;
 namespace Arcanum.Engine.Cards;
 
 /// <summary>A choice made as a permanent enters (rule 614.12).</summary>
-public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped, RevealOrTapped, BasicLandType, LookAtOpponentsHandThenCardName, NonbasicLandCardName }
+public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped, RevealOrTapped, BasicLandType, LookAtOpponentsHandThenCardName, NonbasicLandCardName, Creature, CounterOnPermanent }
 
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]
@@ -157,6 +157,10 @@ public sealed record CardDefinition
 
     /// <summary>"As this enters, choose a color / creature type."</summary>
     public EnterChoice ChooseOnEnter { get; init; }
+
+    /// <summary>"As this enters, put a [kind] counter on a [permanent matching the filter] you control" (see <see cref="EnterCounterKind"/>).</summary>
+    public ObjectFilter? EnterCounterOn { get; init; }
+    public Abilities.CounterKind EnterCounterKind { get; init; }
 
     /// <summary>"This enters with a [kind] counter for each creature you control of the chosen type."</summary>
     public Abilities.CounterKind? CountersPerChosenType { get; init; }
