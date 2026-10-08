@@ -100,12 +100,18 @@ public enum Replacements : long
     DamageCantReduceYourLifeBelowOne = 1L << 35,
     /// <summary>"You may play lands from your graveyard" (no limit besides the land plays allowed).</summary>
     LandsFromGraveyard = 1L << 43,
+    /// <summary>"If you would gain life, you gain twice that much life instead."</summary>
+    DoubleLifeGain = 1L << 52,
+    /// <summary>"If an opponent would gain life, that player loses that much life instead."</summary>
+    OpponentsLifeGainBecomesLoss = 1L << 53,
+    /// <summary>"If this creature would die, exile it instead."</summary>
+    ExileInsteadOfDying = 1L << 54,
 }
 
 /// <summary>
 /// Immutable characteristics of a card as printed (oracle). Shared by every instance of the card.
 /// </summary>
-public sealed record CardDefinition
+public sealed partial record CardDefinition
 {
     public required string Name { get; init; }
 

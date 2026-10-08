@@ -67,7 +67,12 @@ public sealed partial class Game
         var final = await ReplaceDamageAsync(parts.Where(p => p.Amount > 0 && StillDamageable(p)).ToList());
         bool many = final.Count > 1;
         if (many) BeginSimultaneous();
-        foreach (var part in final) ApplyDamage(part, lifelink);
+        // Life gained through lifelink is gained as the damage is dealt (rule 702.15b), after the replacement effects that
+        // modify that life gain (rule 616.1), which may need choices.
+        var gained = lifelink ?? new Dictionary<PlayerId, int>();
+        foreach (var part in final) ApplyDamage(part, gained);
+        if (lifelink is null)
+            foreach (var (player, amount) in gained) await GainLifeAsync(player, amount);
         if (many) EndSimultaneous();
     }
 
@@ -243,6 +248,8 @@ public sealed partial class Game
                 return n - moved;
             }));
         }
+        // "Prevent N of that damage" to you, and "that much damage plus N" (each instance once, rule 614.5).
+        foreach (var extra in DamageToYouReductionsFor(part, preventable, notePrevented).Concat(DamageBonusesFor(part))) Add(extra);
         // Replacement effects that double or triple it.
         foreach (var (id, label, factor) in DamageMultipliers(source, part.ToCard, part.ToPlayer))
             Add(new DamageModifier($"x{factor}", id, label, n => n * factor));
@@ -288,6 +295,7 @@ public sealed partial class Game
     private bool ShieldPrevents(PreventionShield shield, Card source, Card? targetCard, PlayerId? targetPlayer)
     {
         if (shield.DealtBy is { } by && !(by.Card == source.Id && by.Version == source.Version)) return false;
+        if (shield.ToObject is { } to && !(targetCard is not null && targetCard.Id == to.Card && targetCard.Version == to.Version)) return false;
         if (shield.SourceFilter is { } f && !Matches(f with { Controller = ControllerFilter.Any }, source, source.Controller, null, shield.FilterController)) return false;
         if (shield.ToPlayer is not null || shield.ToCreaturesOf is not null)
         {
@@ -323,7 +331,7 @@ public sealed partial class Game
     }
 
     /// <summary>Deals one part of a damage event (after replacement effects): rules 120.3 and 120.4.</summary>
-    private void ApplyDamage(DamagePart part, Dictionary<PlayerId, int>? lifelink)
+    private void ApplyDamage(DamagePart part, Dictionary<PlayerId, int> lifelink)
     {
         var source = part.Source;
         int amount = part.Amount;
@@ -332,8 +340,7 @@ public sealed partial class Game
         void Lifelink()
         {
             if (!source.Has(Keyword.Lifelink)) return;
-            if (lifelink is not null) lifelink[source.Controller] = lifelink.GetValueOrDefault(source.Controller) + amount;
-            else GainLifeFor(source.Controller, amount);
+            lifelink[source.Controller] = lifelink.GetValueOrDefault(source.Controller) + amount;
         }
         if (part.ToPlayer is { } player)
         {
@@ -344,10 +351,12 @@ public sealed partial class Game
             return;
         }
         var target = part.ToCard!;
+        // Damage to a planeswalker removes that many loyalty counters (rule 120.3c); a planeswalker that is also a creature
+        // has the damage marked on it too (rule 120.3e).
+        if (target.Is(CardType.Planeswalker))
+            target.Counters[CounterKind.Loyalty] = Math.Max(0, target.CounterCount(CounterKind.Loyalty) - amount);
         if (!target.IsCreature)
         {
-            // Damage to a planeswalker removes that many loyalty counters (rule 120.3c).
-            target.Counters[CounterKind.Loyalty] = Math.Max(0, target.CounterCount(CounterKind.Loyalty) - amount);
             part.Report?.Damaged.Add(target.Id);
             Emit(new DamageDealt(source.Id, target.Id, null, amount, part.Combat));
             Lifelink();

@@ -1730,7 +1730,7 @@ public sealed partial class Game
                 foreach (var player in PlayersFor(d.Who, ctx).ToList()) await DrawAsync(player, Eval(d.Count, ctx with { AffectedPlayer = player }));
                 break;
             case GainLife g:
-                foreach (var player in PlayersFor(g.Who, ctx)) GainLifeFor(player, Eval(g.Amount, ctx));
+                foreach (var player in PlayersFor(g.Who, ctx).ToList()) await GainLifeAsync(player, Eval(g.Amount, ctx));
                 break;
             case LoseLife l:
                 foreach (var player in PlayersFor(l.Who, ctx))
@@ -2764,6 +2764,13 @@ public sealed partial class Game
                     if (!paid) await ApplyAllAsync(pmp.IfNot, ctx with { Trigger = new TriggerInfo(Player: player) });
                 }
                 break;
+            case PreventDamageThisTurn { To: { } shielded } pdt:
+                foreach (var card in CardsFor(shielded, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
+                    State.PreventionShields.Add(new PreventionShield(State.TurnNumber, pdt.CombatOnly) { ToObject = (card.Id, card.Version) });
+                break;
+            case AttacksSourceNextTurn asn:
+                AddAttackSourceRequirements(asn, ctx);
+                break;
             case PreventDamageThisTurn pdt:
                 if (pdt.DealtBy is { } by)
                     foreach (var card in CardsFor(by, ctx).ToList())
@@ -3303,6 +3310,8 @@ public sealed partial class Game
         var token = definition with { IsToken = true };
         var id = new CardId(State.Cards.Keys.Max(k => k.Value) + 1);
         var card = new Card(id, token, controller) { Zone = Zone.Battlefield, Transformed = backFaceUp && token.BackFace is not null };
+        // "If a creature would enter and it wasn't cast, exile it instead": the token is exiled and ceases to exist (rule 111.7).
+        if (TokenExiledInsteadOfEntering(card)) return null;
         card.Tapped = tapped || card.Definition.EntersTapped || (card.Definition.IsCreature() && OpponentsCreaturesEnterTapped(controller));
         State.Cards.Add(id, card);
         State.Battlefield.Add(id);
@@ -3762,17 +3771,6 @@ public sealed partial class Game
         Emit(new SpellCountered(spellCard));
     }
 
-    /// <summary>Life gain, unless something says players can't gain life.</summary>
-    private void GainLifeFor(PlayerId player, int amount)
-    {
-        if (amount <= 0 || State.Battlefield.Select(State.GetCard).Any(c => c.Definition.PlayersCantGainLife || (c.Definition.OpponentsCantGainLife && c.Controller != player))) return;
-        amount += State.PermanentsControlledBy(player).Count(c => (c.Definition.Replaces & Replacements.ExtraLifeGain) != 0);
-        // "If you would gain life while you have 5 or less life, you gain twice that much life instead."
-        if (State.GetPlayer(player).Life <= 5)
-            foreach (var _ in State.PermanentsControlledBy(player).Where(c => (c.Definition.Replaces & Replacements.DoubleLifeGainAtFiveOrLess) != 0)) amount *= 2;
-        ChangeLife(player, amount);
-    }
-
     /// <summary>A card's colors: from its mana cost, or its definition (tokens).</summary>
     internal static IReadOnlyList<string> ColorsOf(Card card) => card.Colors;
 
@@ -3937,6 +3935,7 @@ public sealed partial class Game
             OpponentHasMostLife => State.OpponentsOf(controller).Select(o => State.GetPlayer(o).Life).DefaultIfEmpty(int.MinValue).Max() >= player.Life,
             AttackingCreaturesExactly ae => (State.Combat?.Attacks.Count(x => State.GetCard(x.Attacker).Controller == controller) ?? 0) == ae.Count,
             AttackedWithAtLeast aw => player.AttackersThisTurn >= aw.Count,
+            SourceAndOthersAttackedThisCombat sa => SourceAndOthersAttacked(source, sa.Others),
             QuantityAtLeast qa when source is not null && !DependsOnTargets(qa.Quantity) => Eval(qa.Quantity, new EffectContext(controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>())) >= qa.AtLeast,
             SourceHasCounters c => source is not null && source.CounterCount(c.Kind) >= c.AtLeast,
             SourceAttacking => source is not null && State.Combat?.FindAttack(source.Id) is not null,
@@ -4909,6 +4908,9 @@ public sealed partial class Game
                     foreach (var ability in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.FromGraveyard && a.Trigger == TriggerEvent.YourBeginCombat))
                         AddPending(card.Id, ability, s.ActivePlayer);
                 foreach (var card in State.Battlefield.Select(State.GetCard).ToList()) Queue(card.Id, TriggerEvent.EachBeginCombat, card.Controller, new TriggerInfo(Player: s.ActivePlayer));
+                break;
+            case StepBegan { Step: Step.EndCombat } endCombat:
+                foreach (var card in State.Battlefield.Select(State.GetCard).ToList()) Queue(card.Id, TriggerEvent.EndOfCombat, card.Controller, new TriggerInfo(Player: endCombat.ActivePlayer));
                 break;
             case DamageDealt { IsCombat: false, TargetPlayer: { } burned } nd when State.GetCard(nd.Source).Controller != burned:
             {

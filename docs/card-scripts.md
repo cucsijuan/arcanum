@@ -705,3 +705,34 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `{ "blink": "self", "transformed": true }` exiles the subject and returns it transformed (a card that isn't double-faced stays exiled).
 - A spell's additional cost that sacrifices or discards
   remembers the cards for `sacrificedPower`, `sacrificedToughness` and discard quantities.
+
+## Replacement effects, damage prevention and life
+
+- **Prevention shield on one object**: `{ "preventDamage": true, "to": "target" }` (any subject, e.g. `"self"`): "prevent all damage that
+  would be dealt to it this turn". The shield is on the object as it is now: if it leaves the battlefield and comes back it's a new object
+  without the shield. Add `"combatOnly": true` for combat damage only.
+- **Damage plus N** (card-wide): `"damageBonus": { "sources": filter, "amount": 1 }` ("if another red source you control would deal damage
+  to a permanent or player, it deals that much damage plus 1 instead": `"sources": { "colors": ["R"], "other": true }`). The filter's
+  controller defaults to `you` and `other` excludes the permanent itself; a source that has just left the battlefield is judged as it last
+  existed there, a spell as it is on the stack.
+- **Prevent N of the damage to you** (card-wide): `"preventDamageToYou": { "sources": filter, "amount": 1 }` ("if a creature would deal
+  damage to you, prevent 1 of that damage": `"sources": { "types": ["creature"] }`; the controller defaults to `any`). It applies once to
+  each source's damage in each damage event.
+- These, the damage doublers and the other prevention effects are ordered by the player being dealt damage (or the damaged permanent's
+  controller) when more than one applies (rule 616.1); each applies once (rule 614.5).
+- **Life gain replacements** (`replaces`): `DoubleLifeGain` ("if you would gain life, you gain twice that much life instead"),
+  `OpponentsLifeGainBecomesLoss` ("if an opponent would gain life, that player loses that much life instead", lifelink included). With
+  `ExtraLifeGain`, `DoubleLifeGainAtFiveOrLess` and these, the player who would gain life chooses the order (rule 616.1); once the gain
+  has become a loss, the effects about gaining life no longer apply. A player who can't gain life gains (and loses) nothing.
+- **Exile instead of dying** (`replaces`): `ExileInsteadOfDying` ("if this creature would die, exile it instead"), the creature's own
+  ability (not while it has lost its abilities).
+- **Tokens and "exile it instead"**: `exileUncastEntering` also exiles creature tokens that would be created (they cease to exist) unless
+  its filter says `"token": false` ("nontoken creature"), and a copy of a permanent spell resolving wasn't cast either (rule 707.12).
+- **Trigger** `endOfCombat`: "at end of combat" (the beginning of each end of combat step). **Condition**
+  `{ "attackedThisCombatWithOthers": 2 }`: "if [this] and at least two other creatures attacked this combat" (declared as attackers this
+  combat, even if they have left combat; this must be the object that attacked).
+- **Effect** `{ "attacksSourceNextTurn": "target" }`: "[it] attacks [this planeswalker] during its controller's next turn if able" — a
+  requirement for that creature during the next turn of the player controlling it as the effect happens, obeyed only by attacking this
+  planeswalker (as the same object); it is never obeyed at the cost of a restriction.
+- A planeswalker that is also a creature (an animated planeswalker) loses loyalty counters and has the damage marked on it (rules 120.3c,
+  120.3e).

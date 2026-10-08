@@ -1247,7 +1247,7 @@ public sealed partial class Game
         }
         // "This land deals 1 damage to you" / "You gain 1 life" (part of the mana ability, rule 605.3b).
         if (option is { DamageToController: > 0 } hurts) await DealDamageAsync(source, null, player.Id, hurts.DamageToController);
-        if (option is { GainLife: > 0 } heals) GainLifeFor(player.Id, heals.GainLife);
+        if (option is { GainLife: > 0 } heals) await GainLifeAsync(player.Id, heals.GainLife);
         if (source.Definition.SacrificeForMana) await SacrificePermanentAsync(source.Id);
     }
 
