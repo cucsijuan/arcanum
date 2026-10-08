@@ -6,7 +6,9 @@ namespace Arcanum.Client;
 
 /// <summary>
 /// Autoload that downloads card images on demand from the source configured by the content module and caches
-/// them under user://. Images are never bundled with the app. Requests are throttled as the module asks.
+/// them under user://. Images are never bundled with the app. Card pictures come one at a time, throttled as the module
+/// asks; pictures the module gives by address (booster packs, card backs) live on other hosts and download on their
+/// own connection, so they never wait behind a pack's worth of card pictures.
 /// </summary>
 public partial class CardImageCache : Node
 {
@@ -16,12 +18,23 @@ public partial class CardImageCache : Node
 
     private readonly Dictionary<string, Texture2D> _memory = new();
     private readonly Dictionary<string, List<Action<Texture2D>>> _waiting = new();
-    private readonly Queue<string> _queue = new();
     private readonly HashSet<string> _failed = new();
-    private HttpRequest _http = null!;
-    private string? _inFlight;
-    private double _cooldown;
     private Arcanum.Data.Modules.ContentModule? _module;
+
+    /// <summary>A download queue with its own connection, one picture at a time.</summary>
+    private sealed class Lane
+    {
+        public HttpRequest Http = null!;
+        public readonly Queue<string> Queue = new();
+        public string? InFlight;
+        public double Cooldown;
+        /// <summary>Waits the module's minimum interval between requests (its image source asks for it).</summary>
+        public bool Throttled;
+    }
+
+    private readonly Lane _cards = new() { Throttled = true };
+    private readonly Lane _addresses = new();
+    private Lane LaneFor(string key) => key.StartsWith(UrlPrefix) ? _addresses : _cards;
 
     /// <summary>Sets where images come from. Until a module is configured no images are requested.</summary>
     public static void Configure(Arcanum.Data.Modules.ContentModule module)
@@ -35,9 +48,12 @@ public partial class CardImageCache : Node
     {
         _instance = this;
         DirAccess.MakeDirRecursiveAbsolute(ProjectSettings.GlobalizePath(CacheDir));
-        _http = new HttpRequest { Timeout = 20 };
-        AddChild(_http);
-        _http.RequestCompleted += OnRequestCompleted;
+        foreach (var lane in new[] { _cards, _addresses })
+        {
+            lane.Http = new HttpRequest { Timeout = 20 };
+            AddChild(lane.Http);
+            lane.Http.RequestCompleted += (result, code, headers, body) => OnRequestCompleted(lane, result, code, body);
+        }
     }
 
     /// <summary>
@@ -101,39 +117,45 @@ public partial class CardImageCache : Node
         if (!_waiting.TryGetValue(cardName, out var callbacks))
         {
             _waiting[cardName] = callbacks = new List<Action<Texture2D>>();
-            _queue.Enqueue(cardName);
+            LaneFor(cardName).Queue.Enqueue(cardName);
         }
         callbacks.Add(onLoaded);
     }
 
     public override void _Process(double delta)
     {
-        _cooldown -= delta;
-        if (_inFlight is not null || _cooldown > 0 || _queue.Count == 0) return;
-
-        _inFlight = _queue.Dequeue();
-        var url = _inFlight.StartsWith(UrlPrefix) ? _inFlight[UrlPrefix.Length..]
-            : _inFlight.StartsWith(BackPrefix)
-            ? (_inFlight[BackPrefix.Length..] is var back && back.StartsWith("id:") ? _module!.BackImageUrlById(back[3..]) : _module!.BackImageUrl(back))
-            : _inFlight.StartsWith("id:") ? _module!.ImageUrlById(_inFlight[3..]) : _module!.ImageUrl(_inFlight);
-        if (url is null)
-        {
-            Fail(_inFlight);
-            return;
-        }
-        var err = _http.Request(url, new[] { $"User-Agent: {_module.Sources.UserAgent}", "Accept: image/*" });
-        if (err != Error.Ok) Fail(_inFlight);
+        Next(_cards, delta);
+        Next(_addresses, delta);
     }
 
-    private void OnRequestCompleted(long result, long responseCode, string[] headers, byte[] body)
+    private void Next(Lane lane, double delta)
     {
-        var name = _inFlight!;
-        _inFlight = null;
-        _cooldown = (_module?.Sources.Images.MinIntervalMs ?? 100) / 1000.0;
+        lane.Cooldown -= delta;
+        if (lane.InFlight is not null || lane.Cooldown > 0 || lane.Queue.Count == 0) return;
+
+        var key = lane.InFlight = lane.Queue.Dequeue();
+        var url = key.StartsWith(UrlPrefix) ? key[UrlPrefix.Length..]
+            : key.StartsWith(BackPrefix)
+            ? (key[BackPrefix.Length..] is var back && back.StartsWith("id:") ? _module!.BackImageUrlById(back[3..]) : _module!.BackImageUrl(back))
+            : key.StartsWith("id:") ? _module!.ImageUrlById(key[3..]) : _module!.ImageUrl(key);
+        if (url is null)
+        {
+            Fail(lane, key);
+            return;
+        }
+        var err = lane.Http.Request(url, new[] { $"User-Agent: {_module!.Sources.UserAgent}", "Accept: image/*" });
+        if (err != Error.Ok) Fail(lane, key);
+    }
+
+    private void OnRequestCompleted(Lane lane, long result, long responseCode, byte[] body)
+    {
+        var name = lane.InFlight!;
+        lane.InFlight = null;
+        if (lane.Throttled) lane.Cooldown = (_module?.Sources.Images.MinIntervalMs ?? 100) / 1000.0;
 
         if (result != (long)HttpRequest.Result.Success || responseCode != 200 || TryCreateTexture(body) is not { } texture)
         {
-            Fail(name);
+            Fail(lane, name);
             return;
         }
 
@@ -143,9 +165,9 @@ public partial class CardImageCache : Node
             foreach (var callback in callbacks) callback(texture);
     }
 
-    private void Fail(string name)
+    private void Fail(Lane lane, string name)
     {
-        _inFlight = null;
+        lane.InFlight = null;
         _failed.Add(name); // card keeps its text-only fallback face for this session
         _waiting.Remove(name);
         GD.PushWarning($"Could not load image for '{name}'.");
