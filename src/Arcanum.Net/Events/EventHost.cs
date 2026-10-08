@@ -41,6 +41,12 @@ public sealed record EventOptions
     /// <summary>Seconds to pick from a booster of this many cards.</summary>
     public Func<int, int> PickSeconds { get; init; } = cards => Math.Clamp(10 + 5 * cards, 15, 80);
 
+    /// <summary>
+    /// Extra time for the first pick of each round, while everyone opens their new booster on screen (it opens by
+    /// itself after a few seconds, so this covers players who leave it alone too).
+    /// </summary>
+    public TimeSpan OpeningTime { get; init; } = TimeSpan.FromSeconds(12);
+
     public TimeSpan BuildTime { get; init; } = TimeSpan.FromMinutes(12);
 
     /// <summary>Time between the games of a match (sideboarding).</summary>
@@ -246,7 +252,8 @@ public sealed class EventHost
 
     private void NewPick()
     {
-        _deadline = Now + TimeSpan.FromSeconds(_options.PickSeconds(_draft!.PackFor(0).Count));
+        _deadline = Now + TimeSpan.FromSeconds(_options.PickSeconds(_draft!.PackFor(0).Count))
+                    + (_draft.PickInRound == 0 ? _options.OpeningTime : TimeSpan.Zero);
     }
 
     private void PickFor(int seat, int index)

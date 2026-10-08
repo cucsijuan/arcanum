@@ -192,6 +192,23 @@ public class EventTests
     }
 
     [Fact]
+    public void TheFirstPickOfARoundHasTimeToOpenTheBooster()
+    {
+        var clock = new FakeClock();
+        var options = new EventOptions { Clock = clock.Func };
+        var ev = new EventHost(new LimitedEvent
+        {
+            Mode = LimitedMode.Draft, Source = "test", BoostersPerPlayer = 2, RoundsTotal = 1, Seed = 4,
+            Seats = Enumerable.Range(0, 3).Select(i => new EventSeat { Name = $"P{i}", IsHuman = i == 0 }).ToList(),
+        }, new[] { "tok", null, null }, Rules(8), options);
+        ev.Start();
+
+        var info = ev.InfoFor(0);
+        Assert.Equal(0, info.Draft!.Pick);
+        Assert.Equal(options.PickSeconds(8) + (int)options.OpeningTime.TotalSeconds, info.SecondsLeft);
+    }
+
+    [Fact]
     public void AnEventResumesFromItsSave()
     {
         var clock = new FakeClock();
