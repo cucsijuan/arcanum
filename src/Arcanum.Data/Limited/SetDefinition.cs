@@ -84,12 +84,20 @@ public sealed record SetDefinition
             Booster = e.TryGetProperty("booster", out var b) ? ParseBooster(b) : null,
             BoostersPerPlayer = limited.ValueKind == JsonValueKind.Object && limited.TryGetProperty("boostersPerPlayer", out var bp) ? bp.GetInt32() : 3,
             SealedBoosters = limited.ValueKind == JsonValueKind.Object && limited.TryGetProperty("sealedBoosters", out var sb) ? sb.GetInt32() : 6,
-            PackImage = e.TryGetProperty("pack", out var p) ? Str(p, "image") : null,
-            PackImageSeals = e.TryGetProperty("pack", out var ps) && ps.TryGetProperty("seals", out var seals) && seals.GetArrayLength() == 2
-                ? (seals[0].GetDouble(), seals[1].GetDouble())
-                : (0.07, 0.06),
+            PackImage = Pack(e) is { } p && p.TryGetProperty("image", out var image) && image.ValueKind == JsonValueKind.String ? image.GetString() : null,
+            PackImageSeals = Seals(Pack(e)) ?? (0.07, 0.06),
         };
     }
+
+    private static JsonElement? Pack(JsonElement set) =>
+        set.TryGetProperty("pack", out var p) && p.ValueKind == JsonValueKind.Object ? p : null;
+
+    /// <summary>The pack picture's sealed ends, if given as two numbers; each kept within 0..0.3 so the body stays.</summary>
+    private static (double, double)? Seals(JsonElement? pack) =>
+        pack is { } p && p.TryGetProperty("seals", out var seals) && seals.ValueKind == JsonValueKind.Array && seals.GetArrayLength() == 2
+        && seals[0].ValueKind == JsonValueKind.Number && seals[1].ValueKind == JsonValueKind.Number
+            ? (Math.Clamp(seals[0].GetDouble(), 0, 0.3), Math.Clamp(seals[1].GetDouble(), 0, 0.3))
+            : null;
 
     private static BoosterSpec ParseBooster(JsonElement b)
     {

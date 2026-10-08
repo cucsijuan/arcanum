@@ -206,7 +206,9 @@ public partial class BoosterOpening : Control
                 _dragging = true;
                 _hint.Visible = false;
                 along = Mathf.Clamp(along, 0, 1);
-                if (_cutFrom < 0) _cutFrom = _cutTo = along;
+                // A swipe that starts away from the cut so far starts a new cut: two short swipes far apart don't
+                // count as cutting what lies between them.
+                if (_cutFrom < 0 || along < _cutFrom - 0.06f || along > _cutTo + 0.06f) _cutFrom = _cutTo = along;
                 AcceptEvent();
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false }:
@@ -284,6 +286,7 @@ public partial class BoosterOpening : Control
     /// The pack's texture: the front, from the booster's picture, on the left half; the back, plain in the picture's
     /// colors, on the right. The picture's sealed ends are stretched over the model's (taller) ones and the white around
     /// the photographed pack is painted over. Without a picture, a gradient in the card back's colors.
+    /// Pixels are worked on as raw bytes (RGBA, one byte each), which is far quicker than one engine call per pixel.
     /// </summary>
     private static ImageTexture PackTexture(Image? photo, (double Top, double Bottom) seals, (Color A, Color B, Color Accent) plain)
     {
@@ -295,19 +298,12 @@ public partial class BoosterOpening : Control
             photo = (Image)photo.Duplicate();
             photo.ClearMipmaps();
             photo.Convert(Image.Format.Rgba8);
-            var pack = photo.GetRegion(PackBounds(photo));
+            var pack = photo.GetRegion(PackBounds(photo.GetData(), photo.GetWidth(), photo.GetHeight()));
             int h = pack.GetHeight();
             int top = (int)(h * seals.Top), bottom = (int)(h * seals.Bottom);
             Band(pack, 0, top, image, 0, sealTop);
             Band(pack, top, h - top - bottom, image, sealTop, size - sealTop - sealBottom);
             Band(pack, h - bottom, bottom, image, size - sealBottom, sealBottom);
-            PaintOverWhite(image, new Rect2I(0, 0, half, sealTop));
-            PaintOverWhite(image, new Rect2I(0, size - sealBottom, half, sealBottom));
-            for (int y = 0; y < size; y += 16)
-            {
-                PaintOverWhite(image, new Rect2I(0, y, 14, 16));
-                PaintOverWhite(image, new Rect2I(half - 14, y, 14, 16));
-            }
         }
         else
         {
@@ -315,23 +311,42 @@ public partial class BoosterOpening : Control
                 image.FillRect(new Rect2I(0, y, half, 1), plain.A.Lerp(plain.B, Mathf.Sin(y / (float)size * Mathf.Pi)));
         }
 
+        var data = image.GetData();
+        if (photo is not null)
+        {
+            PaintOverWhite(data, size, new Rect2I(0, 0, half, sealTop));
+            PaintOverWhite(data, size, new Rect2I(0, size - sealBottom, half, sealBottom));
+            for (int y = 0; y < size; y += 16)
+            {
+                PaintOverWhite(data, size, new Rect2I(0, y, 14, 16));
+                PaintOverWhite(data, size, new Rect2I(half - 14, y, 14, 16));
+            }
+        }
         // The back: each row in the front row's average color, a little darker.
         for (int y = 0; y < size; y++)
         {
-            var sum = new Color(0, 0, 0, 0);
-            for (int x = 0; x < half; x += 8) sum += image.GetPixel(x, y);
-            var average = sum / (half / 8);
-            image.FillRect(new Rect2I(half, y, half, 1), (average * 0.8f) with { A = 1 });
+            int r = 0, g = 0, b = 0, n = 0;
+            for (int x = 0; x < half; x += 8, n++)
+            {
+                int i = (y * size + x) * 4;
+                r += data[i]; g += data[i + 1]; b += data[i + 2];
+            }
+            byte br = (byte)(r * 0.8f / n), bg = (byte)(g * 0.8f / n), bb = (byte)(b * 0.8f / n);
+            for (int x = half; x < size; x++)
+            {
+                int i = (y * size + x) * 4;
+                data[i] = br; data[i + 1] = bg; data[i + 2] = bb; data[i + 3] = 255;
+            }
         }
+        image.SetData(size, size, false, Image.Format.Rgba8, data);
         image.GenerateMipmaps();
         return ImageTexture.CreateFromImage(image);
     }
 
-    /// <summary>The photographed pack inside its white background.</summary>
-    private static Rect2I PackBounds(Image photo)
+    /// <summary>The photographed pack inside its white background (an RGBA8 picture's bytes).</summary>
+    private static Rect2I PackBounds(byte[] data, int w, int h)
     {
-        int w = photo.GetWidth(), h = photo.GetHeight();
-        bool Ink(int x, int y) => photo.GetPixel(x, y) is var c && Math.Min(c.R, Math.Min(c.G, c.B)) < 0.9f;
+        bool Ink(int x, int y) { int i = (y * w + x) * 4; return Math.Min(data[i], Math.Min(data[i + 1], data[i + 2])) < 230; }
         bool Row(int y) { int n = 0; for (int x = 0; x < w; x += 2) if (Ink(x, y)) n++; return n > w / 20; }
         bool Column(int x) { int n = 0; for (int y = 0; y < h; y += 2) if (Ink(x, y)) n++; return n > h / 20; }
         int top = 0, bottom = h - 1, left = 0, right = w - 1;
@@ -350,19 +365,28 @@ public partial class BoosterOpening : Control
         target.BlitRect(band, new Rect2I(0, 0, band.GetWidth(), band.GetHeight()), new Vector2I(0, targetY));
     }
 
-    /// <summary>Near-white pixels in <paramref name="area"/> take the average color of the rest of it.</summary>
-    private static void PaintOverWhite(Image image, Rect2I area)
+    /// <summary>Near-white pixels in <paramref name="area"/> take the average color of the rest of it (RGBA8 bytes, <paramref name="width"/> wide).</summary>
+    private static void PaintOverWhite(byte[] data, int width, Rect2I area)
     {
-        static bool White(Color c) => Math.Min(c.R, Math.Min(c.G, c.B)) > 0.82f;
-        var sum = new Color(0, 0, 0, 0);
+        bool White(int i) => Math.Min(data[i], Math.Min(data[i + 1], data[i + 2])) > 209;
+        long r = 0, g = 0, b = 0;
         int count = 0;
         for (int y = area.Position.Y; y < area.End.Y; y++)
             for (int x = area.Position.X; x < area.End.X; x++)
-                if (image.GetPixel(x, y) is var c && !White(c)) { sum += c; count++; }
+            {
+                int i = (y * width + x) * 4;
+                if (White(i)) continue;
+                r += data[i]; g += data[i + 1]; b += data[i + 2];
+                count++;
+            }
         if (count == 0) return;
-        var fill = (sum / count) with { A = 1 };
+        byte fr = (byte)(r / count), fg = (byte)(g / count), fb = (byte)(b / count);
         for (int y = area.Position.Y; y < area.End.Y; y++)
             for (int x = area.Position.X; x < area.End.X; x++)
-                if (White(image.GetPixel(x, y))) image.SetPixel(x, y, fill);
+            {
+                int i = (y * width + x) * 4;
+                if (!White(i)) continue;
+                data[i] = fr; data[i + 1] = fg; data[i + 2] = fb; data[i + 3] = 255;
+            }
     }
 }

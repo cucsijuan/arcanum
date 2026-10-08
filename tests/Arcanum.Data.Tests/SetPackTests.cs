@@ -24,4 +24,25 @@ public class SetPackTests
         Assert.Equal((0.07, 0.06), plain.PackImageSeals);
         Assert.Equal((0.07, 0.06), noSeals.PackImageSeals);
     }
+
+    [Theory]
+    [InlineData("""{"code":"abc","name":"Sample","pack":"https://example.invalid/pack.jpg"}""")]
+    [InlineData("""{"code":"abc","name":"Sample","pack":{"image":42,"seals":0.1}}""")]
+    [InlineData("""{"code":"abc","name":"Sample","pack":{"image":"x","seals":["a","b"]}}""")]
+    [InlineData("""{"code":"abc","name":"Sample","pack":{"image":"x","seals":[0.1]}}""")]
+    public void AMalformedPackIsIgnoredNotFatal(string json)
+    {
+        var set = SetDefinition.Parse(json);
+
+        Assert.Equal("abc", set.Code);
+        Assert.Equal((0.07, 0.06), set.PackImageSeals);
+    }
+
+    [Fact]
+    public void SealsAreKeptInRange()
+    {
+        var set = SetDefinition.Parse("""{"code":"abc","name":"Sample","pack":{"image":"x","seals":[1.2,-0.5]}}""");
+
+        Assert.Equal((0.3, 0.0), set.PackImageSeals);
+    }
 }

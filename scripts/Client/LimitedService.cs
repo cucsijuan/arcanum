@@ -100,6 +100,14 @@ public sealed class LimitedService : ILimitedSession
         return "cube:user:" + safe;
     }
 
+    /// <summary>A source's name to show, without building its boosters as <see cref="Sources"/> does.</summary>
+    public static string SourceName(string sourceId)
+    {
+        if (sourceId.StartsWith("set:") && App.Instance.Module?.LoadSets().FirstOrDefault(s => "set:" + s.Code == sourceId) is { } set) return set.Name;
+        var parts = sourceId.Split(':', 3);
+        return parts.Length == 3 && parts[0] == "cube" ? $"Cube: {Pretty(parts[2])}" : sourceId;
+    }
+
     private static string Pretty(string name) => string.Join(' ', name.Split('-', '_').Select(w => w.Length > 0 ? char.ToUpper(w[0]) + w[1..] : w));
 
     private static List<PoolCard> CubeCards(string sourceId, List<string>? unknown = null)

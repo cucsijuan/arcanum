@@ -74,6 +74,7 @@ public partial class LimitedScreen : Control
 
     public override void _ExitTree()
     {
+        OfferToResume = false;
         if (_watched is not null) _watched.Changed -= OnSessionChanged;
     }
 
@@ -95,7 +96,7 @@ public partial class LimitedScreen : Control
     public override void _Process(double delta)
     {
         int left = Session.SecondsLeft;
-        _timer.Text = left >= 0 ? $"⏱ {left / 60}:{left % 60:00}" : "";
+        _timer.Text = left >= 0 && !PackClosed ? $"⏱ {left / 60}:{left % 60:00}" : ""; // the clock shows once the booster is open
     }
 
     private static readonly bool _autoOnline = OS.GetEnvironment("ARCANUM_AUTOPLAY") == "1";
@@ -114,7 +115,7 @@ public partial class LimitedScreen : Control
     {
         Ask(Session.IsOnline ? "Leave this event? The computer plays for you from now on." : "Abandon this event? It can't be resumed.", () =>
         {
-            if (IsInstanceValid(_opening)) _opening!.QueueFree();
+            CloseOpening();
             Session.Abandon();
             OfferToResume = false;
             Show();
@@ -127,7 +128,7 @@ public partial class LimitedScreen : Control
         _title.Text = "Event in progress";
         var box = new VBoxContainer { CustomMinimumSize = new Vector2(620, 0) };
         box.AddThemeConstantOverride("separation", 14);
-        var source = Service.Sources().FirstOrDefault(s => s.Id == ev.Source)?.Name ?? ev.Source;
+        var source = LimitedService.SourceName(ev.Source);
         box.AddChild(MenuKit.SectionTitle($"{(ev.Mode == LimitedMode.Draft ? "Draft" : "Sealed")} · {source}"));
         box.AddChild(BoardStyle.MakeLabel($"{ev.Seats.Count} players · best of {ev.BestOf}", 16, BoardStyle.TextDim));
         box.AddChild(BoardStyle.MakeLabel(Progress(ev), 18));
@@ -229,7 +230,8 @@ public partial class LimitedScreen : Control
         foreach (var child in _content.GetChildren()) child.QueueFree();
         _preview.Visible = false;
         var ev = Session.Current;
-        bool resuming = OfferToResume && ev is not null && !Session.IsOnline;
+        bool resuming = OfferToResume && ev is not null && !Session.IsOnline && ev.Stage != EventStage.Finished;
+        if (ev?.Stage != EventStage.Drafting) CloseOpening();
         _abandon.Visible = ev is not null && ev.Stage != EventStage.Finished && !resuming;
         _abandon.Text = Session.IsOnline ? "Leave event" : "Abandon event";
         if (resuming)
@@ -482,10 +484,18 @@ public partial class LimitedScreen : Control
         }
         take.Pressed += () => { if (_selected >= 0) Pick(_selected); };
 
-        // The first pick of a round is from the booster this player opens: it opens on screen first.
+        // The first pick of a round is from the booster this player opens: it opens on screen first. Redrawn while the
+        // pack is still closed (an online update), the new cards wait in it too; once the pick has moved on (time ran
+        // out), the pack goes away.
         var packKey = $"{Session.Current!.Seed}:{draft.Round}";
-        if (!draft.Picked && draft.PickInRound == 0 && _openedPack != packKey && Settings.Current.BoosterOpening != "skip"
-            && BoosterOpening.Available && !_autoOnline && OS.GetEnvironment("ARCANUM_LIMITED").Length == 0)
+        bool firstPick = !draft.Picked && draft.PickInRound == 0;
+        if (PackClosed)
+        {
+            if (firstPick && _openedPack == packKey) WaitInPack(nodes);
+            else CloseOpening();
+        }
+        else if (firstPick && _openedPack != packKey && Settings.Current.BoosterOpening != "skip"
+                 && BoosterOpening.Available && !_autoOnline && OS.GetEnvironment("ARCANUM_LIMITED").Length == 0)
         {
             _openedPack = packKey;
             OpenBooster(Session.Current!, nodes);
@@ -502,17 +512,42 @@ public partial class LimitedScreen : Control
     /// <summary>The event and round of the last booster opened on screen, so each opens once.</summary>
     private string? _openedPack;
 
+    /// <summary>The cards that come out of the booster being opened (the pick screen's latest ones).</summary>
+    private List<CardNode> _inPack = new();
+    private bool _packOpened;
+
+    /// <summary>A booster is on screen and hasn't torn open yet.</summary>
+    private bool PackClosed => IsInstanceValid(_opening) && !_packOpened;
+
     /// <summary>The booster opens in 3D over the pick screen, then its cards fly out of it to their places, face down, and turn over.</summary>
     private void OpenBooster(LimitedEvent ev, List<CardNode> cards)
     {
         var set = ev.Source.StartsWith("set:") ? App.Instance.Module?.LoadSets().FirstOrDefault(s => "set:" + s.Code == ev.Source) : null;
-        foreach (var card in cards) card.Modulate = Colors.Transparent;
         var opening = new BoosterOpening(set?.PackImage, set?.PackImageSeals ?? (0.07, 0.06), set?.Name ?? "Booster",
             automatic: Settings.Current.BoosterOpening == "auto");
-        opening.Opened += from => DealFrom(cards, from);
+        _packOpened = false;
+        WaitInPack(cards);
+        opening.Opened += from =>
+        {
+            _packOpened = true;
+            DealFrom(_inPack, from);
+        };
         opening.ClickThrough.Add(_abandon);
         AddChild(opening);
         _opening = opening;
+    }
+
+    private void WaitInPack(List<CardNode> cards)
+    {
+        _inPack = cards;
+        foreach (var card in cards) card.Modulate = Colors.Transparent;
+    }
+
+    /// <summary>Takes a booster off the screen, opened or not.</summary>
+    private void CloseOpening()
+    {
+        if (IsInstanceValid(_opening)) _opening!.QueueFree();
+        _opening = null;
     }
 
     private static void DealFrom(List<CardNode> cards, Vector2 from)
@@ -521,6 +556,7 @@ public partial class LimitedScreen : Control
         {
             var card = cards[i];
             if (!IsInstanceValid(card) || card.View is not { } face) continue;
+            card.MouseFilter = MouseFilterEnum.Ignore; // not to be picked before it is seen
             var place = card.Position;
             card.Position = card.GetParent<Control>().GetGlobalTransform().AffineInverse() * from - card.Size / 2;
             card.Scale = new Vector2(0.4f, 0.4f);
@@ -533,6 +569,7 @@ public partial class LimitedScreen : Control
             deal.TweenProperty(card, "scale:x", 0f, 0.09);
             deal.TweenCallback(Callable.From(() => card.Setup(face, showCostPips: false)));
             deal.TweenProperty(card, "scale:x", 1f, 0.09);
+            deal.TweenCallback(Callable.From(() => card.MouseFilter = MouseFilterEnum.Stop));
         }
     }
 

@@ -239,11 +239,14 @@ public static class BoardStyle
         _moduleCardBacks = backs.Select(b => (ModuleCardBackPrefix + b.Id, b.Name)).ToArray();
 
     /// <summary>
-    /// Image key of the picture of a card back design offered by the module, or null for a built-in design (drawn by a
-    /// shader). Until the picture arrives, or if it can't be downloaded, the card back shows the default built-in design.
+    /// Image key of the picture of a card back design offered by the module (by its address, so a new picture replaces
+    /// the cached one), or null for a built-in design (drawn by a shader) or one the module no longer offers. Until the
+    /// picture arrives, or if it can't be downloaded, the card back shows the default built-in design.
     /// </summary>
     public static string? CardBackImageKey(string id) =>
-        id.StartsWith(ModuleCardBackPrefix) ? Arcanum.Client.CardImageCache.CardBackKey(id[ModuleCardBackPrefix.Length..]) : null;
+        id.StartsWith(ModuleCardBackPrefix) && Arcanum.Client.App.Instance?.Module?.CardBackUrl(id[ModuleCardBackPrefix.Length..]) is { } url
+            ? Arcanum.Client.CardImageCache.UrlKey(url)
+            : null;
 
     /// <summary>Background, glow and accent colors of a card back design.</summary>
     public static (Color A, Color B, Color Accent) CardBackColors(string id) => id switch

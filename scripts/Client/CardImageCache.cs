@@ -53,13 +53,10 @@ public partial class CardImageCache : Node
     /// <summary>Marks the key of a double-faced card's back face picture ("back:id:…" or "back:Name").</summary>
     private const string BackPrefix = "back:";
 
-    /// <summary>Marks the key of one of the module's card back designs ("cardback:id").</summary>
-    private const string CardBackPrefix = "cardback:";
-
-    /// <summary>Image key for the picture of the module's card back design <paramref name="id"/>.</summary>
-    public static string CardBackKey(string id) => CardBackPrefix + id;
-
-    /// <summary>Marks the key of a picture the module gives by its address ("url:https://…"), such as a set's booster pack.</summary>
+    /// <summary>
+    /// Marks the key of a picture the module gives by its address ("url:https://…"), such as a set's booster pack or a
+    /// card back design: a new address is a new picture.
+    /// </summary>
     private const string UrlPrefix = "url:";
 
     /// <summary>Image key for a picture at an address the module gives.</summary>
@@ -116,7 +113,6 @@ public partial class CardImageCache : Node
 
         _inFlight = _queue.Dequeue();
         var url = _inFlight.StartsWith(UrlPrefix) ? _inFlight[UrlPrefix.Length..]
-            : _inFlight.StartsWith(CardBackPrefix) ? _module!.CardBackUrl(_inFlight[CardBackPrefix.Length..])
             : _inFlight.StartsWith(BackPrefix)
             ? (_inFlight[BackPrefix.Length..] is var back && back.StartsWith("id:") ? _module!.BackImageUrlById(back[3..]) : _module!.BackImageUrl(back))
             : _inFlight.StartsWith("id:") ? _module!.ImageUrlById(_inFlight[3..]) : _module!.ImageUrl(_inFlight);
@@ -166,6 +162,9 @@ public partial class CardImageCache : Node
 
     private static string CachePath(string cardName)
     {
+        // An address can be long and differ only in case or punctuation: its file is named by a hash of it.
+        if (cardName.StartsWith(UrlPrefix))
+            return $"{CacheDir}/url_{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(cardName)))[..32].ToLowerInvariant()}.img";
         var safe = string.Concat(cardName.Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '_'));
         return $"{CacheDir}/{safe}.large.img";
     }

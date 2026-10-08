@@ -127,6 +127,9 @@ public partial class ArrowLayer : Control
         };
         var headCenter = headBase + tipDir * (HeadLength * 0.55f);
 
+        _vertices.Clear();
+        _colors.Clear();
+        _indices.Clear();
         float time = (float)(Time.GetTicksMsec() / 1000.0);
         // The pulse: a bright spot sliding from source to target about once a second.
         float phase = time * 0.9f % 1f * 1.3f - 0.15f;
@@ -153,32 +156,64 @@ public partial class ArrowLayer : Control
         // Glows first, under everything: the head's own flickering glow and haze, then the shaft's, each side of the
         // shaft on its own so its two edges flicker independently.
         float headFlicker = Flicker(arc[n - 1], time, 7);
-        DrawSoftFan(headCenter, Circle(headCenter, HeadLength * (1.1f + 0.25f * headFlicker)), haze with { A = haze.A * 1.5f });
-        DrawSoftRing(head, head.Select(p => p + (p - headCenter).Normalized() * (12 + 10 * headFlicker)).ToArray(), edge with { A = 0.9f });
+        AddSoftFan(headCenter, Circle(headCenter, HeadLength * (1.1f + 0.25f * headFlicker)), haze with { A = haze.A * 1.5f });
+        AddSoftRing(head, head.Select(p => p + (p - headCenter).Normalized() * (12 + 10 * headFlicker)).ToArray(), edge with { A = 0.9f });
         foreach (int sign in new[] { 1, -1 })
         {
-            DrawStrip(shaft, normals, sign, i => 0, i => HazeHalf * Taper(i) * (0.8f + 0.4f * Flicker(arc[i], time, sign * 3.1f)),
+            AddStrip(shaft, normals, sign, i => 0, i => HazeHalf * Taper(i) * (0.8f + 0.4f * Flicker(arc[i], time, sign * 3.1f)),
                 i => Alpha(haze, i), i => haze with { A = 0 });
-            DrawStrip(shaft, normals, sign, i => EdgeHalf * Taper(i),
+            AddStrip(shaft, normals, sign, i => EdgeHalf * Taper(i),
                 i => (EdgeHalf + (GlowHalf - EdgeHalf) * (0.45f + 0.8f * Flicker(arc[i], time, sign)) * (1 + 0.4f * Pulse(ts[i], phase))) * Taper(i),
                 i => Alpha(edge, i), i => edge with { A = 0 });
         }
 
         // The head's deep edge, the shaft's band running into its notch, then the head itself over the band's end,
         // so the band disappears into it with no seam and no overlap showing.
-        DrawColoredPolygon(head.Select(p => p + (p - headCenter).Normalized() * 2.5f).ToArray(), edge with { A = 1 });
+        Head(head.Select(p => p + (p - headCenter).Normalized() * 2.5f).ToArray(), edge with { A = 1 });
         foreach (int sign in new[] { 1, -1 })
         {
-            DrawStrip(shaft, normals, sign, i => BandHalf * Taper(i), i => EdgeHalf * Taper(i),
+            AddStrip(shaft, normals, sign, i => BandHalf * Taper(i), i => EdgeHalf * Taper(i),
                 i => Alpha(band, i), i => Alpha(edge, i));
-            DrawStrip(shaft, normals, sign, i => 0, i => BandHalf * Taper(i),
+            AddStrip(shaft, normals, sign, i => 0, i => BandHalf * Taper(i),
                 i => Alpha(band.Lerp(white, 0.35f * Pulse(ts[i], phase)), i), i => Alpha(band, i));
         }
-        DrawColoredPolygon(head, band with { A = 1 });
+        Head(head, band with { A = 1 });
 
         // A small flare where the beam leaves its source.
-        DrawSoftFan(from, Circle(from, 10), edge with { A = 0.6f });
-        DrawSoftFan(from, Circle(from, 3.5f), band);
+        AddSoftFan(from, Circle(from, 10), edge with { A = 0.6f });
+        AddSoftFan(from, Circle(from, 3.5f), band);
+
+        // Everything above, in that order, as one batch of triangles.
+        RenderingServer.CanvasItemAddTriangleArray(GetCanvasItem(), _indices.ToArray(), _vertices.ToArray(), _colors.ToArray());
+    }
+
+    // The arrow being drawn, gathered as triangles (in drawing order) and sent in one call instead of hundreds.
+    private readonly List<Vector2> _vertices = new();
+    private readonly List<Color> _colors = new();
+    private readonly List<int> _indices = new();
+
+    private void Triangle(Vector2 a, Vector2 b, Vector2 c, Color ca, Color cb, Color cc)
+    {
+        int first = _vertices.Count;
+        _vertices.Add(a); _vertices.Add(b); _vertices.Add(c);
+        _colors.Add(ca); _colors.Add(cb); _colors.Add(cc);
+        _indices.Add(first); _indices.Add(first + 1); _indices.Add(first + 2);
+    }
+
+    private void Quad(Vector2 a, Vector2 b, Vector2 c, Vector2 d, Color ca, Color cb, Color cc, Color cd)
+    {
+        int first = _vertices.Count;
+        _vertices.Add(a); _vertices.Add(b); _vertices.Add(c); _vertices.Add(d);
+        _colors.Add(ca); _colors.Add(cb); _colors.Add(cc); _colors.Add(cd);
+        _indices.Add(first); _indices.Add(first + 1); _indices.Add(first + 2);
+        _indices.Add(first); _indices.Add(first + 2); _indices.Add(first + 3);
+    }
+
+    /// <summary>The barbed head (tip, barb, notch, barb) in one color: two triangles sharing the tip and the notch.</summary>
+    private void Head(Vector2[] head, Color color)
+    {
+        Triangle(head[0], head[1], head[2], color, color, color);
+        Triangle(head[0], head[2], head[3], color, color, color);
     }
 
     /// <summary>
@@ -213,7 +248,7 @@ public partial class ArrowLayer : Control
     /// One side (<paramref name="sign"/>) of a strip along <paramref name="points"/>, between two offsets from the
     /// center line, with a color at each. Neighbouring quads share their edges, so nothing is drawn twice.
     /// </summary>
-    private void DrawStrip(Vector2[] points, Vector2[] normals, int sign, Func<int, float> inner, Func<int, float> outer,
+    private void AddStrip(Vector2[] points, Vector2[] normals, int sign, Func<int, float> inner, Func<int, float> outer,
         Func<int, Color> innerColor, Func<int, Color> outerColor)
     {
         int n = points.Length;
@@ -229,25 +264,25 @@ public partial class ArrowLayer : Control
             cb[i] = outerColor(i);
         }
         for (int i = 0; i < n - 1; i++)
-            DrawPolygon(new[] { a[i], a[i + 1], b[i + 1], b[i] }, new[] { ca[i], ca[i + 1], cb[i + 1], cb[i] });
+            Quad(a[i], a[i + 1], b[i + 1], b[i], ca[i], ca[i + 1], cb[i + 1], cb[i]);
     }
 
     /// <summary>A glow: triangles fanning out from <paramref name="center"/>, full color there and transparent at the rim.</summary>
-    private void DrawSoftFan(Vector2 center, Vector2[] rim, Color color)
+    private void AddSoftFan(Vector2 center, Vector2[] rim, Color color)
     {
         var edge = color with { A = 0 };
         for (int i = 0; i < rim.Length; i++)
-            DrawPolygon(new[] { center, rim[i], rim[(i + 1) % rim.Length] }, new[] { color, edge, edge });
+            Triangle(center, rim[i], rim[(i + 1) % rim.Length], color, edge, edge);
     }
 
     /// <summary>A glow around a shape: full color on its outline, fading out to <paramref name="outer"/>.</summary>
-    private void DrawSoftRing(Vector2[] inner, Vector2[] outer, Color color)
+    private void AddSoftRing(Vector2[] inner, Vector2[] outer, Color color)
     {
         var edge = color with { A = 0 };
         for (int i = 0; i < inner.Length; i++)
         {
             int j = (i + 1) % inner.Length;
-            DrawPolygon(new[] { inner[i], inner[j], outer[j], outer[i] }, new[] { color, color, edge, edge });
+            Quad(inner[i], inner[j], outer[j], outer[i], color, color, edge, edge);
         }
     }
 
