@@ -48,6 +48,10 @@ public partial class LimitedScreen : Control
         var header = MenuKit.AddHeader(this, "Limited");
         _title = header.GetChild<Label>(1);
         header.AddChild(_timer);
+        _abandon.CustomMinimumSize = new Vector2(170, 44);
+        _abandon.ZIndex = 500; // stays usable over a booster being opened
+        _abandon.Pressed += AskAbandon;
+        header.AddChild(_abandon);
         var frame = new MarginContainer { AnchorRight = 1, AnchorBottom = 1, OffsetLeft = 24, OffsetTop = 92, OffsetRight = -24, OffsetBottom = -20 };
         frame.AddChild(_content);
         AddChild(frame);
@@ -95,6 +99,63 @@ public partial class LimitedScreen : Control
     }
 
     private static readonly bool _autoOnline = OS.GetEnvironment("ARCANUM_AUTOPLAY") == "1";
+
+    /// <summary>
+    /// Set when the player comes in from the main menu: an event left unfinished on this device is offered to be
+    /// continued or abandoned before going on with it (not when coming back from one of its games).
+    /// </summary>
+    public static bool OfferToResume { get; set; }
+
+    private readonly Button _abandon = BoardStyle.MakeButton("Abandon event", 14);
+    private BoosterOpening? _opening;
+
+    /// <summary>Abandons the event (online: leaves it) at whatever stage it is, after asking.</summary>
+    private void AskAbandon()
+    {
+        Ask(Session.IsOnline ? "Leave this event? The computer plays for you from now on." : "Abandon this event? It can't be resumed.", () =>
+        {
+            if (IsInstanceValid(_opening)) _opening!.QueueFree();
+            Session.Abandon();
+            OfferToResume = false;
+            Show();
+        });
+    }
+
+    /// <summary>An event left unfinished: what it is and how far it got, to continue it or abandon it for a new one.</summary>
+    private void ShowResume(LimitedEvent ev)
+    {
+        _title.Text = "Event in progress";
+        var box = new VBoxContainer { CustomMinimumSize = new Vector2(620, 0) };
+        box.AddThemeConstantOverride("separation", 14);
+        var source = Service.Sources().FirstOrDefault(s => s.Id == ev.Source)?.Name ?? ev.Source;
+        box.AddChild(MenuKit.SectionTitle($"{(ev.Mode == LimitedMode.Draft ? "Draft" : "Sealed")} · {source}"));
+        box.AddChild(BoardStyle.MakeLabel($"{ev.Seats.Count} players · best of {ev.BestOf}", 16, BoardStyle.TextDim));
+        box.AddChild(BoardStyle.MakeLabel(Progress(ev), 18));
+        var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        buttons.AddThemeConstantOverride("separation", 12);
+        var abandon = BoardStyle.MakeButton("Abandon and start a new one", 16);
+        abandon.CustomMinimumSize = new Vector2(280, 52);
+        abandon.Pressed += AskAbandon;
+        buttons.AddChild(abandon);
+        var resume = BoardStyle.MakePrimaryButton("Continue", 20);
+        resume.CustomMinimumSize = new Vector2(220, 52);
+        resume.Pressed += () => { OfferToResume = false; Show(); };
+        buttons.AddChild(resume);
+        box.AddChild(buttons);
+        var center = new CenterContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        center.AddChild(MenuKit.Card(box, 24));
+        _content.AddChild(center);
+        resume.CallDeferred(Control.MethodName.GrabFocus);
+    }
+
+    private string Progress(LimitedEvent ev) => ev.Stage switch
+    {
+        EventStage.Drafting when Session.DraftState is { } d => $"Drafting: pack {d.Round + 1} of {d.Rounds}, pick {d.PickInRound + 1}",
+        EventStage.Drafting => "Drafting",
+        EventStage.Building => "Building your deck",
+        EventStage.Playing => $"Playing: round {ev.Rounds.Count} of {ev.RoundsTotal}, your record {Record(ev, Session.Seat)}",
+        _ => $"Finished: your record {Record(ev, Session.Seat)}",
+    };
 
     /// <summary>Automatic play of an online event (smoke tests): first card, automatic deck, always ready.</summary>
     private void AutoOnline()
@@ -168,6 +229,15 @@ public partial class LimitedScreen : Control
         foreach (var child in _content.GetChildren()) child.QueueFree();
         _preview.Visible = false;
         var ev = Session.Current;
+        bool resuming = OfferToResume && ev is not null && !Session.IsOnline;
+        _abandon.Visible = ev is not null && ev.Stage != EventStage.Finished && !resuming;
+        _abandon.Text = Session.IsOnline ? "Leave event" : "Abandon event";
+        if (resuming)
+        {
+            ShowResume(ev!);
+            return;
+        }
+        OfferToResume = false;
         switch (ev?.Stage)
         {
             case null when Session.IsOnline:
@@ -441,6 +511,7 @@ public partial class LimitedScreen : Control
             automatic: Settings.Current.BoosterOpening == "auto");
         opening.Opened += from => DealFrom(cards, from);
         AddChild(opening);
+        _opening = opening;
     }
 
     private static void DealFrom(List<CardNode> cards, Vector2 from)
@@ -755,11 +826,12 @@ public partial class LimitedScreen : Control
             right.AddChild(row);
         }
         right.AddChild(new Control { CustomMinimumSize = new Vector2(0, 16) });
-        var abandon = BoardStyle.MakeButton(finished ? "Close event" : "Abandon event", 14);
-        abandon.Pressed += () => Ask(finished ? "Close this event?"
-            : Session.IsOnline ? "Leave this event? The computer plays your games from now on." : "Abandon this event? It can't be resumed.",
-            () => { Session.Abandon(); Show(); });
-        right.AddChild(abandon);
+        if (finished) // an unfinished event is abandoned from the header, at any stage
+        {
+            var close = BoardStyle.MakeButton("Close event", 14);
+            close.Pressed += () => Ask("Close this event?", () => { Session.Abandon(); Show(); });
+            right.AddChild(close);
+        }
         body.AddChild(MenuKit.Card(right, 14));
     }
 
