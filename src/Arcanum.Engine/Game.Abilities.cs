@@ -123,6 +123,7 @@ public sealed partial class Game
             if (card.Has(Keyword.Shroud) || (card.Has(Keyword.Hexproof) && card.Controller != controller && !ignoresHexproof)) continue; // 702.18, 702.11
             if (card.Controller != controller && !ignoresHexproof && HexproofFrom(card, sourceCard)) continue;
             if (ProtectedFrom(card, sourceCard)) continue; // 702.16b
+            if (CantBeTargetedBy(card, sourceCard)) continue; // "can't be the target of nongreen spells or abilities from nongreen sources"
             if (card.Controller != controller && !ignoresHexproof && (card.Definition.HexproofFromTypes & sourceCard.Types) != 0) continue;
             yield return Target.Of(card.Id);
         }
@@ -386,6 +387,7 @@ public sealed partial class Game
         _triggeredPlayer = (item as AbilityOnStack)?.Trigger?.Player;
         _triggeredAmount = (item as AbilityOnStack)?.Trigger?.Amount ?? 0;
         _triggeredSubject = (item as AbilityOnStack)?.Trigger?.Subject;
+        _triggeredSubjectVersion = (item as AbilityOnStack)?.Trigger?.SubjectVersion ?? 0;
         _announcedX = item.X;
         var savedSource = _resolvingSource;
         _resolvingSource = item is AbilityOnStack { SourceVersion: { } resolvingVersion } ? (source.Id, resolvingVersion) : null;
@@ -528,6 +530,8 @@ public sealed partial class Game
         public List<CardId> Chosen { get; } = new();
         public PlayerId? ChosenPlayer { get; set; }
         public List<CardId> ControlGained { get; } = new();
+        /// <summary>Spells countered by this spell or ability, as the objects they were on the stack ("the spell countered this way").</summary>
+        public List<(CardId Card, int Version)> Countered { get; } = new();
     }
 
     private IEnumerable<Card> CardsFor(Subject subject, EffectContext ctx) => subject.Kind switch
@@ -1117,6 +1121,9 @@ public sealed partial class Game
                 }
                 break;
             }
+            case ChangeTarget { ToSource: true } toSource:
+                await ChangeTargetToSourceAsync(toSource, ctx);
+                break;
             case ChangeTarget ct:
             {
                 var target = ct.What.Kind == SubjectKind.Target ? ctx.TargetAt(ct.What.Index) : null;
@@ -1370,6 +1377,14 @@ public sealed partial class Game
                 break;
             case CopySpell cs:
             {
+                if (cs.CounteredThisWay)
+                {
+                    // "You may copy the spell countered this way": as it last existed on the stack (rule 707.10).
+                    foreach (var (counteredCard, counteredVersion) in ctx.Results.Countered.ToList())
+                        if (_spellsOnStack.TryGetValue((counteredCard, counteredVersion), out var countered) && !State.GetCard(counteredCard).Definition.CantBeCopied)
+                            for (int i = Eval(cs.Count, ctx); i > 0; i--) await CopySpellAsync(countered, ctx.Controller, cs.NotLegendary);
+                    break;
+                }
                 var originals = cs.What.Kind == SubjectKind.Triggered ? (ctx.Trigger?.Subject is { } ts ? new[] { ts } : Array.Empty<CardId>())
                     : cs.What.Kind == SubjectKind.EachTarget ? CardsFor(cs.What, ctx).Select(c => c.Id).ToArray()
                     : CardsFor(cs.What, ctx).Take(1).Select(c => c.Id).ToArray();
@@ -1539,9 +1554,11 @@ public sealed partial class Game
             case BounceAll ba:
             {
                 var relative = ba.RelativeTo is { } rel ? PlayersFor(rel, ctx).FirstOrDefault() : ctx.Controller;
+                BeginSimultaneous(); // all of them return at once: leaves-the-battlefield abilities see each other leave (rule 603.10a)
                 foreach (var card in State.Battlefield.Select(State.GetCard)
                              .Where(c => Matches(ba.Filter, c, c.Controller, ctx.Source, relative)).ToList())
                     await MoveCardAsync(card.Id, Zone.Hand);
+                EndSimultaneous();
                 break;
             }
             case PutOntoBattlefield p:
@@ -1880,11 +1897,15 @@ public sealed partial class Game
                 // "Counter that spell": the spell the trigger was about, if it's still on the stack.
                 if (c.What.Kind == SubjectKind.Triggered && ctx.Trigger?.Subject is { } triggeredSpell && State.GetCard(triggeredSpell) is { Zone: Zone.Stack } onStack
                     && onStack.Version == ctx.Trigger.SubjectVersion && CanBeCountered(onStack))
+                {
+                    ctx.Results.Countered.Add((triggeredSpell, onStack.Version));
                     await CounterSpellOnStackAsync(triggeredSpell);
+                }
                 else if (c.What.Kind == SubjectKind.Target && ctx.TargetAt(c.What.Index)?.Card is { } spellCard && CanBeCountered(State.GetCard(spellCard)))
                 {
                     var countered = State.GetCard(spellCard);
                     bool permanent = countered.Types.IsPermanent() && !countered.Definition.IsToken;
+                    if (countered.Zone == Zone.Stack) ctx.Results.Countered.Add((spellCard, countered.Version));
                     await CounterSpellOnStackAsync(spellCard);
                     if (c.ExilePermanentPlayable && permanent && countered.Zone != Zone.Exile)
                     {
@@ -3686,6 +3707,7 @@ public sealed partial class Game
 
     private bool CanBeCountered(Card spell) =>
         !spell.Definition.CantBeCountered && !spell.Uncounterable
+        && !(spell.Definition.CantBeCounteredIf is { } uncounterableIf && Holds(uncounterableIf, spell.Controller, spell)) // spell mastery: "this spell can't be countered"
         && !(spell.Definition.CantBeCounteredIfXAtLeast is { } xLimit && State.Stack.OfType<SpellOnStack>().FirstOrDefault(s => s.Card == spell.Id)?.X >= xLimit) // "if X is 5 or more, this spell can't be countered"
         && !((spell.Is(CardType.Instant) || spell.Is(CardType.Sorcery)) && Has(spell.Controller, Replacements.YourInstantsAndSorceriesCantBeCountered));
 
@@ -3935,7 +3957,8 @@ public sealed partial class Game
             HasEnduringStory => player.HasEnduringStory,
             HasCitysBlessing => player.HasCitysBlessing,
             OpponentHasMostLife => State.OpponentsOf(controller).Select(o => State.GetPlayer(o).Life).DefaultIfEmpty(int.MinValue).Max() >= player.Life,
-            AttackingCreaturesExactly ae => (State.Combat?.Attacks.Count(x => State.GetCard(x.Attacker).Controller == controller) ?? 0) == ae.Count,
+            // "Attacks alone": the only creature declared as an attacker, whoever controls the ability (rule 506.5).
+            AttackingCreaturesExactly ae => (State.Combat?.Attacks.Count ?? 0) == ae.Count,
             AttackedWithAtLeast aw => player.AttackersThisTurn >= aw.Count,
             QuantityAtLeast qa when source is not null && !DependsOnTargets(qa.Quantity) => Eval(qa.Quantity, new EffectContext(controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>())) >= qa.AtLeast,
             SourceHasCounters c => source is not null && source.CounterCount(c.Kind) >= c.AtLeast,
@@ -4156,6 +4179,7 @@ public sealed partial class Game
         if (filter.ManaValueIsX && obj.ManaValue != _announcedX) return false;
         if (filter.ManaValueIsTriggerAmount && ManaValueOf(obj) != _triggeredAmount) return false;
         if (filter.IsSource && (source is null || obj.Id != source.Id)) return false;
+        if (!MatchesOriginsFilters(filter, obj, power, toughness, HasKeyword, sourceController)) return false;
         if (filter.ChosenName && (source?.ChosenName is not { } chosenName || (lk?.Name ?? obj.Name) != chosenName)) return false;
         if (filter.SharesCreatureTypeWithTriggered && !(_triggeredSubject is { } sharedWith && SharesCreatureType(obj, State.GetCard(sharedWith)))) return false;
         if (filter.Renowned && !obj.Renowned) return false;
@@ -5373,6 +5397,7 @@ public sealed partial class Game
                 _triggeredPlayer = trigger.Info?.Player;
                 _triggeredAmount = trigger.Info?.Amount ?? 0;
                 _triggeredSubject = trigger.Info?.Subject;
+                _triggeredSubjectVersion = trigger.Info?.SubjectVersion ?? 0;
                 if (!HasLegalTargets(trigger.Ability, player, trigger.Source)) continue;
                 // Miracle: revealing the card is optional; the ability triggers only if it's revealed (702.94a).
                 if (ReferenceEquals(trigger.Ability, MiracleTrigger))

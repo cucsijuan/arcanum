@@ -407,6 +407,16 @@ public sealed record CardDefinition
     public ManaCost? AttackTax { get; init; }
     public Condition? AttackTaxIf { get; init; }
 
+    /// <summary>"Creatures can't block unless their controller pays [cost] for each of those creatures" (while <see cref="BlockTaxIf"/> holds).</summary>
+    public ManaCost? BlockTax { get; init; }
+    public Condition? BlockTaxIf { get; init; }
+
+    /// <summary>"Can't be the target of [spells or abilities from sources matching this]" (e.g. nongreen sources): matched against the source.</summary>
+    public ObjectFilter? CantBeTargetedBy { get; init; }
+
+    /// <summary>"If [condition], this spell can't be countered" (spell mastery): checked whenever something tries to counter it.</summary>
+    public Condition? CantBeCounteredIf { get; init; }
+
     /// <summary>The <see cref="Replacements.AdditionalLandPlay"/> applies only while this holds ("as long as you control another Elf").</summary>
     public Condition? AdditionalLandPlayIf { get; init; }
 

@@ -133,7 +133,7 @@ public sealed record OpponentHasMostLife : Condition;
 /// <summary>"If you have the city's blessing" (ascend).</summary>
 public sealed record HasCitysBlessing : Condition;
 
-/// <summary>Exactly N creatures you control are attacking ("attacks alone": 1).</summary>
+/// <summary>Exactly N creatures are attacking ("attacks alone": 1, the only creature declared as an attacker).</summary>
 public sealed record AttackingCreaturesExactly(int Count) : Condition;
 
 /// <summary>"If you attacked with N or more creatures this turn".</summary>

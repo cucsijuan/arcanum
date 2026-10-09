@@ -541,6 +541,24 @@ public sealed record ObjectFilter(
     /// <summary>Only the source itself ("sacrifice this enchantment").</summary>
     public bool IsSource { get; init; }
 
+    /// <summary>Has none of these keywords ("except by creatures with flying or reach": blockers without both).</summary>
+    public IReadOnlyList<Cards.Keyword>? WithoutKeywords { get; init; }
+
+    /// <summary>"Whose power and toughness aren't equal".</summary>
+    public bool PowerNotEqualToughness { get; init; }
+
+    /// <summary>Owned by a player other than the ability's controller ("a permanent owned by another player").</summary>
+    public bool NotOwnedByYou { get; init; }
+
+    /// <summary>Not the object the trigger is about ("for each other creature you control" than the attacking one).</summary>
+    public bool NotTriggered { get; init; }
+
+    /// <summary>Mana value X or less, X being the resolving spell's ("with mana value X or less").</summary>
+    public bool MaxManaValueX { get; init; }
+
+    /// <summary>A spell or ability on the stack with the ability's controller among its targets ("spell that targets you").</summary>
+    public bool TargetsYou { get; init; }
+
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 
     public static readonly ObjectFilter YourCreatures = new(Cards.CardType.Creature);

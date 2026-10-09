@@ -67,9 +67,11 @@ public sealed partial class Game
             }
             _attackRetries = 0;
 
+            // Every attacker is declared before any "whenever … attacks" ability looks at the attack ("attacks alone", rule 506.5).
+            foreach (var d in declared)
+                combat.Attacks.Add(new AttackInfo { Attacker = d.Attacker, Defender = d.Defender, Planeswalker = d.Planeswalker });
             foreach (var d in declared)
             {
-                combat.Attacks.Add(new AttackInfo { Attacker = d.Attacker, Defender = d.Defender, Planeswalker = d.Planeswalker });
                 var attacker = State.GetCard(d.Attacker);
                 if (!attacker.Has(Keyword.Vigilance))
                 {
@@ -180,6 +182,7 @@ public sealed partial class Game
     private bool CanBlock(Card blocker, Card attacker) =>
         !blocker.Has(Keyword.CantBlock) && !attacker.Has(Keyword.CantBeBlocked) && !ProtectedFrom(attacker, blocker)
         && (!attacker.Has(Keyword.Flying) || blocker.Has(Keyword.Flying) || blocker.Has(Keyword.Reach))
+        && (!blocker.Has(Keyword.CanBlockOnlyFlyers) || attacker.Has(Keyword.Flying)) // "can block only creatures with flying"
         && attacker.Has(Keyword.Shadow) == blocker.Has(Keyword.Shadow) // shadow (702.28b)
         && !attacker.UnblockableBy.Contains(blocker.Controller)
         && !State.CantBlockThisTurn.Any(r => r.Turn == State.TurnNumber && Matches(r.Filter with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, null, r.Controller))
@@ -258,9 +261,9 @@ public sealed partial class Game
                 CanBlockAdditional = possible.Where(id => State.GetCard(id).Has(Keyword.CanBlockAdditional)).ToList(), // 509.1a
                 CantBlockAlone = possible.Where(id => State.GetCard(id).Has(Keyword.CantBlockAlone)).ToList(),         // 506.5
             };
+            request = WithBlockTax(request, defender);
 
-            var declared = await ControllerOf(defender).DeclareBlockersAsync(ViewFor(defender), request);
-            Require(request.IsLegal(declared, out var reason), reason ?? "Illegal blocks.");
+            var declared = await DeclarePaidBlocksAsync(defender, request);
 
             var newlyBlocked = new List<CardId>();
             foreach (var b in declared)

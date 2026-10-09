@@ -705,3 +705,38 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `{ "blink": "self", "transformed": true }` exiles the subject and returns it transformed (a card that isn't double-faced stays exiled).
 - A spell's additional cost that sacrifices or discards
   remembers the cards for `sacrificedPower`, `sacrificedToughness` and discard quantities.
+
+## Combat, costs, filters and targeting (Magic Origins)
+
+- **Block tax** (card-wide): `"blockTax": "{1}"` with `"blockTaxIf": "attacking"` ("as long as this creature is attacking,
+  creatures can't block unless their controller pays {1} for each of those creatures"). Every permanent whose condition holds adds
+  its tax; the defending player pays it for each blocking creature as blockers are declared (rules 509.1d, 509.1h-i), activating
+  mana abilities as needed; a declaration that isn't paid for is made again (after a few, no blocks). While blocking costs
+  something, no blocking requirement has to be obeyed (509.1c: a requirement is never paid for); the block request carries
+  `TaxPerBlocker`. Together with `"attackTax": "{1}", "attackTaxIf": "untapped"` this is Archangel of Tithes.
+- **Keyword** `Can block only creatures with flying` (grant it with a static `"keywords"`): a blocking restriction; requirements to
+  block an attacker it can't block don't apply to it.
+- **"Attacks alone"**: `{ "attackersExactly": 1 }` counts every attacking creature, whoever controls the ability; all attackers are
+  declared before any attack trigger looks at the attack.
+- **Costs**: `tapPermanents:2:artifact` ("tap two untapped artifacts you control"; `artifact|creature` for either kind): any
+  untapped matching permanents you control, the source included, summoning sick or not (rule 302.6 is only about {T});
+  `exileGraveyardCards:1:instant|sorcery` takes several card types. A spell's `additionalCost` takes `"exileGraveyard": 2` with
+  `"exileGraveyardFilter": filter` ("as an additional cost to cast this spell, exile two creature cards from your graveyard").
+- **Filters**: `"without": ["Flying", "Reach"]` (has none of them: `"cantBeBlockedBy": { "without": ["Flying", "Reach"] }` is "can't
+  be blocked except by creatures with flying or reach"), `"powerNotEqualToughness": true`, `"notOwnedByYou": true` ("a permanent
+  owned by another player", tokens included), `"notTriggered": true` (not the object the trigger is about: "+1/+1 for each other
+  creature you control"), `"maxManaValueX": true` (mana value X or less, X being the resolving spell's) and `"targetsYou": true` (a
+  spell with the ability's controller among its targets: "target instant or sorcery spell that targets you", checked as it is cast
+  and as it resolves).
+- `bounceAll` returns everything at once (one event).
+- **Targeting restriction** (card-wide): `"cantBeTargetedBy": filter`, matched against the spell or the ability's source (as it last
+  existed if it left the battlefield), for every player: `{ "notColors": ["G"] }` is "can't be the target of nongreen spells or
+  abilities from nongreen sources" (colorless ones included).
+- **Conditional uncounterability** (card-wide): `"uncounterableIf": condition` ("Spell mastery — If …, this spell can't be
+  countered"), checked whenever something tries to counter the spell, for its controller. Only the exact line "This spell can't be
+  countered" makes a card uncounterable from its rules text.
+- **Effects**: `{ "copySpell": "target", "counteredThisWay": true }` copies the spells an earlier `counter` of the same spell or
+  ability countered, as they last existed on the stack (the copy's controller may choose new targets); `{ "changeTarget": "target",
+  "to": "self" }` is "you may change a target of target spell or ability to this creature": its controller picks one of the
+  targets (of any number) for which the source is a legal choice (meets that target's requirement, isn't chosen twice for one
+  "target" word, keeps the rules between targets, rule 115.7), or none; nothing changes once the source has left the battlefield.
