@@ -104,6 +104,7 @@ public sealed class GameSession : IBoardSession
                 Commander = commander ? new CommanderRules() : null,
                 CardNames = App.Instance?.Cards?.Names,
                 NonbasicLandNames = App.Instance?.Cards?.NonbasicLandNames,
+                CreatureCardNames = App.Instance?.Cards?.CreatureCardNames,
             },
             seats, policy ?? new AutoPassPolicy(), replay: null, setup) { ConfirmManaPayment = confirmManaPayment };
 

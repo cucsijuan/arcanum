@@ -133,6 +133,11 @@ public enum QuantityKind
     HalfLibrary,
     /// <summary>Half of <see cref="Quantity.Parts"/>[0], rounded up (rule 107.1a: "round up each time").</summary>
     HalfRoundedUp,
+    /// <summary>The mana value of the object a static ability is being applied to ("equal to its mana value").</summary>
+    AffectedManaValue,
+    /// <summary>The power / toughness of the card a reveal found, as it was when revealed ("equal to its power").</summary>
+    FoundPower,
+    FoundToughness,
 }
 
 /// <summary>

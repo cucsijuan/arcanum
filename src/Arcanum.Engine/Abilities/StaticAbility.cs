@@ -63,6 +63,10 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     public int? SetPower { get; init; }
     public int? SetToughness { get; init; }
 
+    /// <summary>Base power/toughness worked out for each affected object on its own ("equal to its mana value", layer 7b).</summary>
+    public Quantity? SetPowerFrom { get; init; }
+    public Quantity? SetToughnessFrom { get; init; }
+
     /// <summary>Replaces card types / creature types / colors / name (layers 4, 5, 1-ish).</summary>
     public Cards.CardType? SetTypes { get; init; }
     public IReadOnlyList<string>? SetSubtypes { get; init; }

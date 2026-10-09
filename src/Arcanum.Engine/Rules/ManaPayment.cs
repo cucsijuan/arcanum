@@ -139,6 +139,9 @@ public static class ManaPayment
     {
         var mana = source.ManaOptions[option];
         if (mana.Combination) return mana.Combinations().Select(c => new ManaTap(source.Id, c[0], option, c));
+        // "Remove any number of counters: add one mana for each": each number of counters, fewest first.
+        if (mana.RemovesCounters is not null)
+            return mana.Types.Distinct().SelectMany(t => Enumerable.Range(1, mana.Amount).Select(n => new ManaTap(source.Id, t, option) { Amount = n }));
         return (mana.OneOfEach ? mana.Types.Take(1) : mana.Types.Distinct()).Select(t => new ManaTap(source.Id, t, option));
     }
 
@@ -170,13 +173,20 @@ public static class ManaPayment
             ? source.ManaOptions[tap.Option].Types
             : tap.Option < source.ManaOptions.Count && source.ManaOptions[tap.Option].Combination && tap.Combination is { } combination
                 ? combination
-                : Enumerable.Repeat(tap.Type, AmountOf(source, tap.Option));
+                : Enumerable.Repeat(tap.Type, AmountOf(source, tap));
+
+    /// <summary>The mana one activation adds: for an ability that removes any number of counters, as many as the tap removes.</summary>
+    public static int AmountOf(Card source, ManaTap tap) =>
+        tap.Option < source.ManaOptions.Count && source.ManaOptions[tap.Option].RemovesCounters is not null && tap.Amount is { } chosen
+            ? Math.Min(chosen, source.ManaOptions[tap.Option].Amount)
+            : AmountOf(source, tap.Option);
 
     /// <summary>Whether the tap's chosen mana is something the ability can add.</summary>
     public static bool IsValid(Card source, ManaTap tap)
     {
         if (tap.Option >= source.ManaOptions.Count) return false;
         var mana = source.ManaOptions[tap.Option];
+        if (tap.Amount is { } removed && (mana.RemovesCounters is null || removed < 0 || removed > mana.Amount)) return false;
         if (!mana.Combination) return tap.Combination is null && mana.Types.Contains(tap.Type);
         return tap.Combination is { } c && c.Count == mana.Amount && c.All(mana.Types.Contains);
     }

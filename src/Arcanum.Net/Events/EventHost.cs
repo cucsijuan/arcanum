@@ -350,7 +350,7 @@ public sealed class EventHost
         tokens ??= order.Select(s => IsPerson(s) ? Tokens.New() : null).ToArray();
         var seats = order.Select((s, i) => new HostSeat(_ev.Seats[s].Name, _rules.Cards(_ev.Seats[s].Deck!), null, !IsPerson(s), tokens[i])).ToList();
         seed ??= (ulong)_random.NextInt64();
-        var host = new GameHost(new GameConfig { Seed = seed.Value, CardNames = _options.Games.CardNames, NonbasicLandNames = _options.Games.NonbasicLandNames }, seats, _options.Games with { Clock = _options.Clock, Replay = replay });
+        var host = new GameHost(new GameConfig { Seed = seed.Value, CardNames = _options.Games.CardNames, NonbasicLandNames = _options.Games.NonbasicLandNames, CreatureCardNames = _options.Games.CreatureCardNames }, seats, _options.Games with { Clock = _options.Clock, Replay = replay });
         _games.Add(new ActiveGame { Match = match, Host = host, Seed = seed.Value, Tokens = tokens });
         _between.Remove(match);
         foreach (var s in order) _ready[s] = false;

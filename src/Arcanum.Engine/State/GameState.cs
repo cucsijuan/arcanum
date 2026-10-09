@@ -111,6 +111,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
 
     /// <summary>"When you play a card this way": the source and its ability that triggers then.</summary>
     public (CardId Source, Abilities.TriggeredAbility Ability)? WhenPlayed { get; init; }
+
+    /// <summary>A spell cast with this permission is exiled instead of being put into a graveyard.</summary>
+    public bool ExileInstead { get; init; }
 }
 
 /// <summary>

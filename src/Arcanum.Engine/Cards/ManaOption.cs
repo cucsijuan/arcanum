@@ -56,6 +56,12 @@ public sealed record ManaOption(IReadOnlyList<ManaType> Types, int Amount = 1, O
     /// <summary>The ability adds mana only while this holds ("if it has a luck counter on it, instead …").</summary>
     public Abilities.Condition? While { get; init; }
 
+    /// <summary>
+    /// "{T}, Remove any number of [kind] counters from this: Add [type] for each counter removed this way": removing the counters is
+    /// part of the cost (rule 605.1a still makes it a mana ability). <see cref="Amount"/> is how many it has now, the most it can add.
+    /// </summary>
+    public Abilities.CounterKind? RemovesCounters { get; init; }
+
     /// <summary>How many mana one activation adds.</summary>
     public int Produces => OneOfEach ? Types.Count : Amount;
 }

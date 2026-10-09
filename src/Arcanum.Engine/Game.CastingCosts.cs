@@ -171,7 +171,7 @@ public sealed partial class Game
 
     /// <summary>Whether the card can be cast now, timing aside: its legality, a legal target for each requirement and a way to pay.</summary>
     private bool CanBeCast(Card card, PlayerId caster, bool flashExtra) =>
-        LegendarySpellAllowed(card, caster) && HasLegalTargets(CastingTargets(card.Definition), caster, card.Id)
+        LegendarySpellAllowed(card, caster) && !CastForbiddenByName(card, caster) && HasLegalTargets(CastingTargets(card.Definition), caster, card.Id)
         && PayableCastingWays(card, caster, flashExtra).Count > 0;
 
     /// <summary>Untapped creatures the caster controls that share a color with the spell (conspire, 702.78a).</summary>

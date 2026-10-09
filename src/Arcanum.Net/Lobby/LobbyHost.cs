@@ -141,6 +141,7 @@ public sealed class LobbyHost
             Commander = _settings.Commander ? new CommanderRules() : null,
             CardNames = options.CardNames,
             NonbasicLandNames = options.NonbasicLandNames,
+            CreatureCardNames = options.CreatureCardNames,
         };
         var seats = _slots.Select(s => new HostSeat(s.Name, s.Deck!.Deck, s.Deck.Commanders, s.Kind == LobbySeatKind.Computer,
             s.Kind == LobbySeatKind.Person ? s.Token : null)).ToList();

@@ -361,6 +361,22 @@ public sealed class Card
     /// <summary>Whether a subtype is a land type.</summary>
     internal static bool IsLandType(string subtype) => LandTypes.Contains(subtype);
 
+    /// <summary>Which set of subtypes (rule 205.3) a subtype belongs to: land, artifact, enchantment, spell, battle or creature types.</summary>
+    private static int SubtypeSet(string subtype) =>
+        LandTypes.Contains(subtype) ? 1 : ArtifactTypes.Contains(subtype) ? 2 : EnchantmentTypes.Contains(subtype) ? 3 : SpellTypes.Contains(subtype) ? 4
+        : subtype.Equals("Siege", StringComparison.OrdinalIgnoreCase) ? 5 : 0;
+
+    /// <summary>
+    /// An effect that sets subtypes ("becomes a blue Frog") replaces only the existing subtypes of the same sets as the new ones
+    /// (rule 205.1a): a land creature that becomes a Frog is still a Forest.
+    /// </summary>
+    internal static List<string> ReplaceSubtypes(IEnumerable<string> current, IReadOnlyList<string> set)
+    {
+        if (set.Count == 0) return new List<string>(); // "loses all subtypes"
+        var replaced = set.Select(SubtypeSet).ToHashSet();
+        return current.Where(s => !replaced.Contains(SubtypeSet(s))).Concat(set).ToList();
+    }
+
     /// <summary>Whether a subtype is a creature type (not a land, artifact, enchantment, spell or battle type).</summary>
     internal static bool IsCreatureType(string subtype) => !NonCreatureSubtypes.Contains(subtype);
 
@@ -400,6 +416,8 @@ public sealed class Card
                         : o.ColorsOpponentsLandsCouldProduce ? o with { Types = OpponentsLandColors }
                         : o.TypesYourLandsCouldProduce ? o with { Types = YourLandTypes }
                         : o;
+                    // "Remove any number of [kind] counters: add one mana for each": at most as many as it has now.
+                    if (resolved.RemovesCounters is { } kind) resolved = resolved with { Amount = CounterCount(kind) };
                     // An ability that can't add mana now keeps its place (abilities are numbered) but adds none.
                     return resolved.Types.Count == 0 || InactiveManaOptions.Contains(i) ? resolved with { Amount = 0, OneOfEach = false } : resolved;
                 }));
@@ -505,6 +523,9 @@ public sealed class Card
                 AttachedTo = AttachedTo,
                 Version = Version,
                 ManaValue = ManaValue,
+                // Its copiable values (rule 707.2): a double-faced card's whole card, with the face that was up.
+                CopiableValues = !IsCopy && IsDoubleFaced ? PrintedDefinition : Definition,
+                CopiableBackFaceUp = !IsCopy && IsDoubleFaced && Transformed,
             };
         }
         Tapped = false;
@@ -596,6 +617,10 @@ public sealed record LastKnown(int Power, int Toughness, Core.PlayerId Controlle
     public bool Blocking { get; init; }
     public Supertype Supertypes { get; init; }
     public Core.CardId? AttachedTo { get; init; }
+
+    /// <summary>Its copiable values as it last existed on the battlefield ("create a token that's a copy of that creature", rule 707.4).</summary>
+    public CardDefinition? CopiableValues { get; init; }
+    public bool CopiableBackFaceUp { get; init; }
 
     /// <summary>Had this subtype (changelings had every creature type).</summary>
     public bool HasSubtype(string subtype) =>

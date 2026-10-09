@@ -705,3 +705,42 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `{ "blink": "self", "transformed": true }` exiles the subject and returns it transformed (a card that isn't double-faced stays exiled).
 - A spell's additional cost that sacrifices or discards
   remembers the cards for `sacrificedPower`, `sacrificedToughness` and discard quantities.
+
+## Sweeps into libraries, casting while resolving, naming and storage counters
+
+- `{ "shuffleIntoLibraries": "everyone", "hand": true, "graveyard": true }` ("each player shuffles their hand and graveyard into their
+  library"): everything moves at once (one event), then each library is shuffled. `"permanents": true` adds the permanents each player
+  owns (tokens too, which then cease to exist); `"drawThatMany": true` then has each player draw as many cards as they put into their
+  library this way, tokens counted (The Great Aurora).
+- `{ "eachPutsFromHand": filter, "who": "everyone" }`: each player, in turn order, chooses any number of matching cards from their hand;
+  then all of them enter the battlefield at the same time under the control of the player who put them there.
+- `{ "revealTopCastFree": 7, "of": "target", "filter": f, "casts": 1, "moreCastsIf": condition, "moreCasts": 2, "rest": "graveyard" }`:
+  the player reveals the top cards of their library; you may cast up to `casts` (or `moreCasts` when the condition holds as it resolves,
+  e.g. spell mastery) matching spells from among them without paying their mana costs, while this resolves (rule 608.2g: timing doesn't
+  matter, targets, additional costs and "can't cast" effects do); then the revealed cards not cast go to their owner's graveyard.
+- `{ "nameAndExile": "target", "nameFilter": { "types": ["creature"] } }`: choose a creature card name (any creature card's name, from
+  `GameConfig.CreatureCardNames`), then search that player's graveyard, hand and library for any number of cards with that name (the
+  searcher sees the hand and library and may leave some, rule 701.19b), exile them, and that player shuffles.
+- `discardChosen` takes `"optional": true` ("you may choose …") and `"else": [ … ]` ("if you don't, …", also when there was nothing to
+  choose), done for that player (`"target"` still names them).
+- `keepOneOfEachType` takes `"chooser": "you"` ("for each player, you choose …"), `"kinds": ["artifact", "creature", "enchantment",
+  "planeswalker"]` and `"nonlandOnly": true` ("sacrifices all other nonland permanents"). All choices are made first, in turn order; then
+  every player sacrifices at the same time. One permanent can be chosen for each of its types.
+- `copy` takes `"gainsHaste": true` ("that token gains haste"): an effect on the token, not one of its copiable values (rule 707.9b covers
+  only "except …"; `"haste": true` is "except it has haste"). A copy of `"triggered"` whose object already left the battlefield uses its
+  last known copiable values (rule 608.2h).
+- `become` takes `"loseAbilities": true` ("loses all abilities and becomes …", one effect). `setSubtypes` on `become` and static abilities
+  replaces only the subtypes of the same kind as the new ones (rule 205.1a): a land creature that becomes a Frog stays a Forest.
+- `castFromGraveyardThisTurn` takes `"exileInstead": true` ("if that spell would be put into your graveyard, exile it instead"); a card
+  that may also be cast from the graveyard some other way that turn is cast the way that doesn't exile it.
+- Quantities `{ "power": "found" }` / `{ "toughness": "found" }`: the revealed card's (`revealTop`), as it was when revealed; `{ "manaValue":
+  "affected" }` in a static ability: the mana value of each affected object. Static `"setPower"` / `"setToughness"` take quantities, worked
+  out for each affected object in layer 7b ("base power and base toughness each equal to its mana value").
+- Card-wide `"chooseOnEnter": "opponentsRevealHandsThenNonlandName"` (each opponent reveals their hand; you choose the name of a nonland
+  card revealed this way, none without one) and `"opponentsCantCastChosenName": true` (a static ability: while the permanent is on the
+  battlefield with its abilities, its controller's opponents can't cast spells with the chosen name; a split card can still be cast as a
+  half with another name). Both also work with the other `chooseOnEnter` name choices.
+- `extraMana` entries take `"removeCounters": "storage"`: "{T}, Remove any number of storage counters from this: Add {C} for each counter
+  removed this way" (a mana ability, rule 605.1a). Paying a cost uses as many counters as needed; activated on its own, the player chooses
+  how many. Counter kind `storage`.
+- `endTurn` exiles the spell that ends the turn too (rule 723.1b).

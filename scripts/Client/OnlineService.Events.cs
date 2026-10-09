@@ -107,7 +107,8 @@ public partial class OnlineService
     private EventOptions EventOptions() => new()
     {
         Games = new HostOptions { ComputerPace = EventPaceAsync, Version = Version, Content = ContentId, DecisionTime = DecisionTime,
-            CardNames = App.Instance?.Cards?.Names, NonbasicLandNames = App.Instance?.Cards?.NonbasicLandNames },
+            CardNames = App.Instance?.Cards?.Names, NonbasicLandNames = App.Instance?.Cards?.NonbasicLandNames,
+            CreatureCardNames = App.Instance?.Cards?.CreatureCardNames },
     };
 
     /// <summary>Several games run at once: the computer pauses briefly, without waiting for this screen's animations.</summary>

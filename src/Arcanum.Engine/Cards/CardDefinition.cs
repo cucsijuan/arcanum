@@ -5,7 +5,9 @@ using Arcanum.Engine.Mana;
 namespace Arcanum.Engine.Cards;
 
 /// <summary>A choice made as a permanent enters (rule 614.12).</summary>
-public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped, RevealOrTapped, BasicLandType, LookAtOpponentsHandThenCardName, NonbasicLandCardName, Creature, CounterOnPermanent }
+public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped, RevealOrTapped, BasicLandType, LookAtOpponentsHandThenCardName, NonbasicLandCardName, Creature, CounterOnPermanent,
+    /// <summary>"As this enters, each opponent reveals their hand. You choose the name of a nonland card revealed this way."</summary>
+    OpponentsRevealHandsThenNonlandName }
 
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]
@@ -372,6 +374,12 @@ public sealed record CardDefinition
 
     /// <summary>"You may have this creature enter as a copy of any [filter] on the battlefield" (rule 707.2, 614.1c).</summary>
     public ObjectFilter? EntersAsCopyOf { get; init; }
+
+    /// <summary>
+    /// "Your opponents can't cast spells with the chosen name (as long as this creature is on the battlefield)": a static ability
+    /// about the name chosen as it entered (it stops applying if the permanent loses its abilities).
+    /// </summary>
+    public bool OpponentsCantCastChosenName { get; init; }
 
     /// <summary>Marks a token definition (tokens cease to exist outside the battlefield, rule 111.7).</summary>
     public bool IsToken { get; init; }

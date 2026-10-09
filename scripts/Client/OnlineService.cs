@@ -154,6 +154,7 @@ public partial class OnlineService : Node
         DecisionTime = DecisionTime,
         CardNames = App.Instance?.Cards?.Names,
         NonbasicLandNames = App.Instance?.Cards?.NonbasicLandNames,
+        CreatureCardNames = App.Instance?.Cards?.CreatureCardNames,
     };
 
     /// <summary>The decision time limit chosen in the settings (null: no limit).</summary>
@@ -201,6 +202,7 @@ public partial class OnlineService : Node
         var config = new GameConfig
         {
             Seed = save.Seed, StartingLife = format.StartingLife, Commander = format.Commander ? new CommanderRules() : null, CardNames = options.CardNames, NonbasicLandNames = options.NonbasicLandNames,
+            CreatureCardNames = options.CreatureCardNames,
         };
         var game = new GameHost(config, seats, options);
         try

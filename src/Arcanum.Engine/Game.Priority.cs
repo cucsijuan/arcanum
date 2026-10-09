@@ -182,6 +182,11 @@ public sealed partial class Game
                 Emit(new ChoiceMade(id, i == 0 ? "Odd" : "Even"));
                 continue;
             }
+            else if (card.Definition.ChooseOnEnter == EnterChoice.OpponentsRevealHandsThenNonlandName)
+            {
+                await ChooseRevealedNonlandNameAsync(card, who);
+                continue;
+            }
             else if (card.Definition.ChooseOnEnter is EnterChoice.CardName or EnterChoice.LookAtOpponentsHandThenCardName or EnterChoice.NonbasicLandCardName)
             {
                 // "Look at an opponent's hand, then choose any card name" / "choose a card name".
@@ -551,6 +556,15 @@ public sealed partial class Game
                     await TapForManaAsync(player, new ManaTap(mana.Source, combinations[pick][0], mana.Option, combinations[pick]));
                     return true;
                 }
+                if (mana.Option < source.ManaOptions.Count && source.ManaOptions[mana.Option] is { RemovesCounters: not null } removing)
+                {
+                    // "Remove any number of counters": the player chooses how many as the ability is activated.
+                    int count = await ControllerOf(playerId).ChooseNumberAsync(ViewFor(playerId),
+                        new NumberRequest($"{source.Name}: remove how many counters (one mana each)?", source.Id, 0, removing.Amount));
+                    Require(count >= 0 && count <= removing.Amount, $"Remove between 0 and {removing.Amount} counters.");
+                    await TapForManaAsync(player, new ManaTap(mana.Source, mana.Type, mana.Option) { Amount = count });
+                    return true;
+                }
                 await TapForManaAsync(player, new ManaTap(mana.Source, mana.Type, mana.Option));
                 return true;
             }
@@ -602,11 +616,12 @@ public sealed partial class Game
         // A spell none of whose ways to pay can be paid can't be cast (rule 601.2h), however it's being cast.
         if (!LegendarySpellAllowed(card, player.Id)) return false;
         // "Can't cast spells" also stops casting as part of an effect (rule 101.2).
-        if (SpellsForbidden(player.Id)) return false;
+        if (SpellsForbidden(player.Id) || CastForbiddenByName(card, player.Id)) return false;
         var payable = PayableCastingWays(card, player.Id, flashExtra);
         if (payable.Count == 0) return false;
         bool flashback = exileAfter || IsFlashbackCast(card);
         bool fromGraveyard = card.Zone == Zone.Graveyard;
+        bool exiledInsteadOfGraveyard = CastWithExilingPermission(card);
         if (card.Zone == Zone.Hand) card.CastFromHand = true;
 
         // 601.2b: announcements, each one only if what's been announced so far can still be paid with it.
@@ -769,6 +784,8 @@ public sealed partial class Game
         // "When you next cast a creature spell of that type this turn": the spell will enter with an additional +1/+1 counter.
         var bonus = card.IsCreature ? State.NextCreatureSpellBonus.Where(b => b.Player == player.Id && b.Turn == State.TurnNumber && card.HasSubtype(b.Type)).ToList() : new();
         await MoveCardAsync(cardId, Zone.Stack, controller: player.Id);
+        // "If that spell would be put into your graveyard, exile it instead" (the permission it was cast with).
+        if (exiledInsteadOfGraveyard && card.Zone == Zone.Stack) State.ExileInsteadOfGraveyard.Add((card.Id, card.Version));
         foreach (var b in bonus)
         {
             State.NextCreatureSpellBonus.Remove(b);
@@ -1190,7 +1207,8 @@ public sealed partial class Game
         var (fromPool, remaining) = ManaPayment.ApplyPool(cost, player.ManaPool, unitUsable);
         // One entry per usable mana ability, bigger ones first (a click picks the first that helps).
         var sources = ManaPayment.AvailableSources(State, player.Id, exclude, usable)
-            .SelectMany(c => ManaPayment.UsableOptions(c, ManaPayment.Affordable(State, usable)).Select(i => new ManaSourceOption(c.Id, c.ManaOptions[i].Types, c.ManaOptions[i].Amount, i) { Combination = c.ManaOptions[i].Combination })
+            .SelectMany(c => ManaPayment.UsableOptions(c, ManaPayment.Affordable(State, usable)).Select(i => new ManaSourceOption(c.Id, c.ManaOptions[i].Types, c.ManaOptions[i].Amount, i)
+                { Combination = c.ManaOptions[i].Combination, AnyAmount = c.ManaOptions[i].RemovesCounters is not null })
                 .OrderByDescending(o => o.Amount))
             .ToList();
         var request = new ManaPaymentRequest(source, cost, fromPool, remaining, plan.Taps, sources);
@@ -1236,9 +1254,12 @@ public sealed partial class Game
             }
             : null;
         if (option is { LifeCost: > 0 } paysLife) ChangeLife(player.Id, -paysLife.LifeCost); // "{T}, Pay 1 life: Add …"
+        // "{T}, Remove any number of [kind] counters": removing them is part of the cost, paid with the tap (rule 605.1a).
+        var produced = ManaPayment.Produced(source, tap).ToList();
+        if (option is { RemovesCounters: { } removedKind }) RemoveCountersFrom(source, removedKind, produced.Count);
         var rider = option is { Rider: not ManaRider.None } ? option.Rider : source.Definition.ManaRider;
         bool snow = (source.Supertypes & Supertype.Snow) != 0;
-        foreach (var type in ManaPayment.Produced(source, tap).ToList())
+        foreach (var type in produced)
         {
             if (onlyFor is not null || rider != ManaRider.None || snow)
                 player.ManaPool.AddSpecial(new ManaUnit(type, source.Id, onlyFor, option?.AbilitiesToo ?? false, rider) { Snow = snow });

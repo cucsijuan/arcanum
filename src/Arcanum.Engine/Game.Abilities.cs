@@ -520,6 +520,9 @@ public sealed partial class Game
         public CardId? Amassed { get; set; }
         public List<CardId> Discarded { get; } = new();
         public List<CardId> Found { get; } = new();
+
+        /// <summary>Power and toughness of revealed cards as they were revealed ("draw cards equal to its power").</summary>
+        public Dictionary<CardId, (int Power, int Toughness)> FoundStats { get; } = new();
         public List<CardId> Returned { get; } = new();
         public int Tapped { get; set; }
         public List<CardId> Damaged { get; } = new();
@@ -693,6 +696,7 @@ public sealed partial class Game
             QuantityKind.RingBearerPower => RingBearerOf(ctx.Controller) is { } bearer ? bearer.Power : 0,
             QuantityKind.Sum => q.Parts?.Sum(part => Eval(part, ctx)) ?? 0,
             QuantityKind.HalfRoundedUp => (Math.Max(0, Eval(q.Parts![0], ctx)) + 1) / 2, // rule 107.1a
+            QuantityKind.AffectedManaValue or QuantityKind.FoundPower or QuantityKind.FoundToughness => EvalOrigins(q, ctx),
             QuantityKind.PermanentsSacrificedThisTurn => State.PermanentsSacrificedThisTurn,
             QuantityKind.SacrificedThisWay => ctx.Results.Sacrificed.Count,
             QuantityKind.AmassedPower => ctx.Results.Amassed is { } army ? PowerOrLastKnown(State.GetCard(army)) : 0,
@@ -731,6 +735,9 @@ public sealed partial class Game
             case ExtraTurn et:
                 foreach (var player in PlayersFor(et.Who, ctx)) State.ExtraTurns.Add(player);
                 break;
+            case OriginsEffect origins:
+                await ApplyOriginsAsync(origins, ctx);
+                break;
             case ReflexiveTrigger reflexive when reflexive.If is null || HoldsIn(reflexive.If, ctx):
                 // "When you do, …": a new triggered ability, put on the stack the next time a player would receive
                 // priority, with its own targets (rule 603.12).
@@ -749,11 +756,15 @@ public sealed partial class Game
                 var original = tc.Of.Kind == SubjectKind.Self ? ctx.Source
                     : tc.Of.Kind == SubjectKind.Target && ctx.ChosenAt(tc.Of.Index)?.Card is { } chosenCard ? State.GetCard(chosenCard)
                     : CardsFor(tc.Of, ctx).FirstOrDefault();
-                if (original is null) break;
+                // "A copy of that creature" after it left the battlefield: its last known copiable values (rule 608.2h, 707.4).
+                var lastKnownCopy = original is null && tc.Of.Kind == SubjectKind.Triggered && ctx.Trigger is { Subject: { } gone } goneInfo
+                                    && State.GetCard(gone).LastKnownInfo is { CopiableValues: { } values } goneLki && goneLki.Version == goneInfo.SubjectVersion
+                    ? (values, goneLki.CopiableBackFaceUp) : ((CardDefinition, bool)?)null;
+                if (original is null && lastKnownCopy is null) break;
                 // The exceptions ("except it has haste and 'At the beginning of the end step, sacrifice this token'")
                 // become part of the copy's own characteristics (rule 707.9b): copiable, and lost with its abilities. A copy of a
                 // double-faced object is a double-faced token, each face with the exceptions (707.8a).
-                var (copied, backFaceUp) = CopiableForToken(original);
+                var (copied, backFaceUp) = lastKnownCopy ?? CopiableForToken(original!);
                 CardDefinition Except(CardDefinition face)
                 {
                     var copy = face with
@@ -786,6 +797,9 @@ public sealed partial class Game
                     if (tc.Attacking && State.Combat is { } copyCombat)
                         copyCombat.Attacks.Add(new AttackInfo { Attacker = made, Defender = await AttackedPlayerFor(State.GetCard(made), ctx) });
                     if (tc.ExileAtEndOfCombat) State.ExileAtEndOfCombat.Add((made, State.GetCard(made).Version));
+                    // "That token gains haste": an effect on the token, not one of its copiable values (rule 707.9b doesn't apply).
+                    if (tc.GainsHaste && State.GetCard(made) is { Zone: Zone.Battlefield } hasty)
+                        State.LastingEffects.Add(new UntilEndOfTurnEffect(made, hasty.Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });
                     if (tc.AtNextEndStep is { } later)
                         State.AtNextEndStepEffects.Add((ctx.Source.Id, ctx.Controller, made, State.GetCard(made).Version, later, tc.AtNextEndStepUnless, ctx.Source.TransformCount));
                 }
@@ -982,10 +996,16 @@ public sealed partial class Game
                     var options = hand.Where(c => dc.Filter is null || Matches(dc.Filter with { Controller = ControllerFilter.Any }, c, player, ctx.Source, ctx.Controller))
                         .Select(c => ViewBuilder.Card(State, c.Id, ctx.Controller, reveal: true)).ToList();
                     int n = Math.Min(dc.Count, options.Count);
-                    if (n == 0) continue;
-                    var chosen = await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller),
-                        new CardChoiceRequest($"Choose {n} card(s) for {State.GetPlayer(player).Name} to discard", ctx.Source.Id, options, n, n, CardChoicePurpose.Discard));
-                    Require(chosen.Count == n && chosen.Distinct().Count() == n && chosen.All(id => options.Any(o => o.Id == id)), "Choose among the revealed cards.");
+                    int least = dc.Optional ? 0 : n;
+                    // "You may choose …. If you do, …. If you don't, …": with nothing chosen (or nothing to choose) the "else" happens.
+                    var chosen = n == 0 ? Array.Empty<CardId>() : await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller),
+                        new CardChoiceRequest($"Choose {(dc.Optional ? "up to " : "")}{n} card(s) for {State.GetPlayer(player).Name} to discard", ctx.Source.Id, options, least, n, CardChoicePurpose.Discard));
+                    Require(chosen.Count >= least && chosen.Count <= n && chosen.Distinct().Count() == chosen.Count && chosen.All(id => options.Any(o => o.Id == id)), "Choose among the revealed cards.");
+                    if (chosen.Count == 0)
+                    {
+                        if (dc.Else is { } otherwise) await ApplyAllAsync(otherwise, ctx with { Trigger = new TriggerInfo(Player: player), AffectedPlayer = player });
+                        continue;
+                    }
                     Emit(new ChosenFromHand(ctx.Controller, player, chosen.ToList()));
                     foreach (var id in chosen) await DiscardCardAsync(player, id, ctx.Controller);
                 }
@@ -1072,25 +1092,35 @@ public sealed partial class Game
                 await CreateRedirectShieldAsync(rd, ctx);
                 break;
             case KeepOneOfEachType ko:
-                foreach (var player in PlayersFor(ko.Who, ctx).ToList())
+            {
+                // Every choice is made first, in turn order (by each player, or by the one who chooses for everyone); then all the
+                // other permanents are sacrificed at the same time (rule 101.4). One permanent may be chosen for several of its types.
+                var sacrificing = new List<CardId>();
+                foreach (var player in State.ApnapOrder().Where(PlayersFor(ko.Who, ctx).ToList().Contains).ToList())
                 {
+                    var chooser = ko.Chooser is { } cs ? PlayersFor(cs, ctx).FirstOrDefault() : player;
                     var mine = State.PermanentsControlledBy(player).ToList();
                     var keep = new HashSet<CardId>();
-                    foreach (var type in new[] { CardType.Artifact, CardType.Creature, CardType.Enchantment, CardType.Land, CardType.Planeswalker })
+                    foreach (var type in ko.Kinds ?? new[] { CardType.Artifact, CardType.Creature, CardType.Enchantment, CardType.Land, CardType.Planeswalker })
                     {
                         var ofType = mine.Where(c => c.Is(type)).ToList();
                         if (ofType.Count == 0) continue;
-                        var options = ofType.Select(c => ViewBuilder.Card(State, c.Id, player)).ToList();
-                        var pick = ofType.Count == 1 ? new[] { ofType[0].Id } : await ControllerOf(player).ChooseCardsAsync(ViewFor(player),
-                            new CardChoiceRequest($"Choose a {type.ToString().ToLowerInvariant()} to keep", ctx.Source.Id, options, 1, 1, CardChoicePurpose.ToHand));
+                        var options = ofType.Select(c => ViewBuilder.Card(State, c.Id, chooser)).ToList();
+                        var pick = ofType.Count == 1 ? new[] { ofType[0].Id } : await ControllerOf(chooser).ChooseCardsAsync(ViewFor(chooser),
+                            new CardChoiceRequest(chooser == player ? $"Choose a {type.ToString().ToLowerInvariant()} to keep"
+                                : $"Choose the {type.ToString().ToLowerInvariant()} {State.GetPlayer(player).Name} keeps", ctx.Source.Id, options, 1, 1, CardChoicePurpose.Keep));
                         Require(pick.Count == 1 && ofType.Any(c => c.Id == pick[0]), "Choose one to keep.");
                         keep.Add(pick[0]);
+                        Emit(new ChoiceMade(ctx.Source.Id, $"{State.GetPlayer(player).Name} keeps {State.GetCard(pick[0]).Name}"));
                     }
-                    BeginSimultaneous();
-                    foreach (var card in mine.Where(c => !keep.Contains(c.Id))) await SacrificePermanentAsync(card.Id);
-                    EndSimultaneous();
+                    sacrificing.AddRange(mine.Where(c => !keep.Contains(c.Id) && !(ko.NonlandOnly && c.Is(CardType.Land))).Select(c => c.Id));
                 }
+                BeginSimultaneous();
+                foreach (var id in sacrificing)
+                    if (State.GetCard(id).Zone == Zone.Battlefield) await SacrificePermanentAsync(id);
+                EndSimultaneous();
                 break;
+            }
             case CounterUnlessPays cu:
             {
                 var item = State.Stack.FirstOrDefault(x => x.Id == cu.StackObject);
@@ -1357,6 +1387,8 @@ public sealed partial class Game
                     State.Stack.Remove(item);
                     if (item is SpellOnStack sp) await MoveCardAsync(sp.Card, Zone.Exile);
                 }
+                // The resolving spell is exiled too (rule 723.1b), instead of going to its owner's graveyard.
+                if (ctx.Source.Zone == Zone.Stack) _exileResolvingSpell = ctx.Source.Id;
                 State.Combat = null;
                 _endTurnRequested = true;
                 break;
@@ -1439,7 +1471,7 @@ public sealed partial class Game
                 break;
             case PlayableFromGraveyardThisTurn pg:
                 foreach (var card in CardsFor(pg.What, ctx).Where(c => c.Zone == Zone.Graveyard))
-                    State.PlayableFromGraveyard.Add(new PlayableFromExile(card.Id, card.Version, ctx.Controller, State.TurnNumber));
+                    State.PlayableFromGraveyard.Add(new PlayableFromExile(card.Id, card.Version, ctx.Controller, State.TurnNumber) { ExileInstead = pg.ExileInstead });
                 break;
             case Become b:
             {
@@ -1455,6 +1487,7 @@ public sealed partial class Game
                         SetPowerFrom = b.Continuous ? b.PowerFrom : null, SetToughnessFrom = b.Continuous ? b.ToughnessFrom : null,
                         Abilities = b.Abilities?.Select(a => BindGranter(a, ctx.Controller)).ToList(),
                         WhileSource = b.WhileSourceRemains ? (ctx.Source.Id, ctx.Source.Version) : null,
+                        LosesAbilities = b.LosesAbilities,
                         Timestamp = NewTimestamp(),
                     };
                     (b.Permanent || b.WhileSourceRemains ? State.LastingEffects : State.UntilEndOfTurn).Add(becomes);
@@ -2234,7 +2267,9 @@ public sealed partial class Game
             case Blink bl:
             {
                 var blinked = new List<Card>();
-                foreach (var card in CardsFor(bl.What, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
+                // "Exile [this]" from an ability: only the object the ability came from, not a new one that came back (rule 400.7).
+                foreach (var card in CardsFor(bl.What, ctx).Where(c => c.Zone == Zone.Battlefield
+                                                                       && !(bl.What.Kind == SubjectKind.Self && ctx.SourceVersion is { } bv && bv != c.Version)).ToList())
                 {
                     await MoveCardAsync(card.Id, Zone.Exile);
                     if (card.Zone == Zone.Exile && !card.Definition.IsToken) blinked.Add(card);
@@ -2633,6 +2668,7 @@ public sealed partial class Game
                 bool hit = Matches(rt.Filter with { Controller = ControllerFilter.Any }, top, ctx.Controller, ctx.Source, ctx.Controller);
                 if (!hit && rt.Else is null) break;
                 ctx.Results.Found.Add(top.Id);
+                ctx.Results.FoundStats[top.Id] = (top.Power, top.Toughness);
                 await ApplyAllAsync(hit ? rt.Effects : rt.Else!, ctx);
                 break;
             }
@@ -4351,7 +4387,7 @@ public sealed partial class Game
                     }
                     if (ability.SetName is { } name) t.Name = name;
                     if (ability.SetTypes is { } types) t.Types = types;
-                    if (ability.SetSubtypes is { } subtypes) t.Subtypes = subtypes.ToList();
+                    if (ability.SetSubtypes is { } subtypes) t.Subtypes = Card.ReplaceSubtypes(t.Subtypes, subtypes);
                     if (ability.SetColors is { } colors) t.Colors = colors;
                     t.Types |= ability.AddTypes;
                     if (ability.AddSubtypes is { } add) t.Subtypes.AddRange(add);
@@ -4363,7 +4399,7 @@ public sealed partial class Game
             typeChanges.Add((effect.Timestamp, State.GetCard(effect.Card), (card, t) =>
             {
                 if (effect.SetTypes is { } types) t.Types = types;
-                if (effect.SetSubtypes is { } subtypes) t.Subtypes = subtypes.ToList();
+                if (effect.SetSubtypes is { } subtypes) t.Subtypes = Card.ReplaceSubtypes(t.Subtypes, subtypes);
                 t.Types |= effect.AddTypes;
                 if (effect.AddSubtypes is { } add) t.Subtypes.AddRange(add);
                 if (effect.SetColors is { } colors) t.Colors = colors;
@@ -4408,9 +4444,14 @@ public sealed partial class Game
             card.BaseToughnessOverride = card.Definition.ToughnessFrom is { } tf ? Eval(tf, cda) : null;
         }
         var setters = new List<(long Timestamp, Card Card, int? Power, int? Toughness)>();
-        foreach (var (source, ability) in Statics(a => a.SetPower is not null || a.SetToughness is not null))
+        foreach (var (source, ability) in Statics(a => a.SetPower is not null || a.SetToughness is not null || a.SetPowerFrom is not null || a.SetToughnessFrom is not null))
             foreach (var affected in AffectedBy(source, ability).ToList())
-                setters.Add((source.Timestamp, affected, ability.SetPower, ability.SetToughness));
+            {
+                // Worked out for each affected object on its own ("base power and toughness each equal to its mana value").
+                var own = new EffectContext(source.Controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>()) { AffectedCard = affected };
+                setters.Add((source.Timestamp, affected, ability.SetPower ?? (ability.SetPowerFrom is { } spf ? Eval(spf, own) : null),
+                    ability.SetToughness ?? (ability.SetToughnessFrom is { } stf ? Eval(stf, own) : null)));
+            }
         foreach (var effect in effects.Where(e => e.SetPower is not null || e.SetToughness is not null || e.SetPowerFrom is not null || e.SetToughnessFrom is not null))
         {
             var card = State.GetCard(effect.Card);

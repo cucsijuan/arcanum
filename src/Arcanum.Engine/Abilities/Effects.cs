@@ -89,7 +89,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
-    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery }
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect
@@ -273,6 +273,12 @@ public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = fa
     /// <summary>"At the beginning of the next end step, [this effect] to that token" (unless the condition holds then).</summary>
     public IReadOnlyList<Effect>? AtNextEndStep { get; init; }
     public Condition? AtNextEndStepUnless { get; init; }
+
+    /// <summary>
+    /// "That token gains haste": an effect on the token (for as long as it stays on the battlefield), not part of the copy — so it isn't
+    /// copiable (rule 707.9b covers only "except" exceptions) and a copy of the token doesn't have it.
+    /// </summary>
+    public bool GainsHaste { get; init; }
 }
 
 /// <summary>
@@ -347,7 +353,14 @@ public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, St
 }
 
 /// <summary>"[Player] reveals their hand; you choose a [filter] card from it; they discard it."</summary>
-public sealed record DiscardChosenByYou(Subject Who, ObjectFilter? Filter, int Count = 1) : Effect;
+public sealed record DiscardChosenByYou(Subject Who, ObjectFilter? Filter, int Count = 1) : Effect
+{
+    /// <summary>"You may choose …": choosing none is allowed.</summary>
+    public bool Optional { get; init; }
+
+    /// <summary>"If you don't, …": done for that player when no card was chosen (none could be, or you chose none).</summary>
+    public IReadOnlyList<Effect>? Else { get; init; }
+}
 
 /// <summary>Exile every card in the subject players' graveyards.</summary>
 public sealed record ExileGraveyard(Subject Who) : Effect
@@ -521,7 +534,17 @@ public sealed record ExileTopPlayable(int Count, bool ChooseOne = true, bool Unt
 public sealed record DealDamageDivided(int Total) : Effect;
 
 /// <summary>"Each [player] chooses a permanent they control of each permanent type and sacrifices the rest."</summary>
-public sealed record KeepOneOfEachType(Subject Who) : Effect;
+public sealed record KeepOneOfEachType(Subject Who) : Effect
+{
+    /// <summary>Who chooses what each player keeps ("for each player, you choose …"); null: each player chooses for themselves.</summary>
+    public Subject? Chooser { get; init; }
+
+    /// <summary>The kinds kept, one of each (default: artifact, creature, enchantment, land, planeswalker).</summary>
+    public IReadOnlyList<Cards.CardType>? Kinds { get; init; }
+
+    /// <summary>"Sacrifices all other nonland permanents": lands are never sacrificed.</summary>
+    public bool NonlandOnly { get; init; }
+}
 
 /// <summary>
 /// The subject becomes a creature (and/or gains types, subtypes, keywords, abilities) until end of turn, or for as long
@@ -544,6 +567,9 @@ public sealed record Become(Subject What, int? Power = null, int? Toughness = nu
 
     /// <summary>Its colors from now on ("becomes a 4/5 green Treefolk creature").</summary>
     public IReadOnlyList<string>? SetColors { get; init; }
+
+    /// <summary>It also loses all abilities (one effect: "loses all abilities and becomes a blue Frog …").</summary>
+    public bool LosesAbilities { get; init; }
 }
 
 /// <summary>Destroy the target and every other permanent with the same name.</summary>
@@ -651,7 +677,11 @@ public sealed record SearchAndExileWithThis(ObjectFilter Filter) : Effect
 public sealed record GrantFlashback(Subject What) : Effect;
 
 /// <summary>"You may cast the target card from your graveyard this turn."</summary>
-public sealed record PlayableFromGraveyardThisTurn(Subject What) : Effect;
+public sealed record PlayableFromGraveyardThisTurn(Subject What) : Effect
+{
+    /// <summary>"If that spell would be put into your graveyard, exile it instead": a spell cast with this permission gets that replacement.</summary>
+    public bool ExileInstead { get; init; }
+}
 
 /// <summary>"You lose the game."</summary>
 public sealed record LoseGame : Effect

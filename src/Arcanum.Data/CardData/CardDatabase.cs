@@ -126,6 +126,14 @@ public sealed class CardDatabase : ICardDatabase
         .Where(f => f.Is(CardType.Land) && (f.Supertypes & Supertype.Basic) == 0)
         .Select(f => f.Name).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
 
+    private IReadOnlyList<string>? _creatureCardNames;
+
+    /// <summary>The names of creature cards (faces), for "choose a creature card name".</summary>
+    public IReadOnlyList<string> CreatureCardNames => _creatureCardNames ??= _sorted
+        .SelectMany(e => e.Definition.BackFace is { } back ? new[] { e.Definition, back } : new[] { e.Definition })
+        .Where(f => f.Is(CardType.Creature))
+        .Select(f => f.Name).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
+
     public bool TryGet(string name, out CardDefinition definition)
     {
         if (_byName.TryGetValue(name, out var entry)) { definition = entry.Definition; return true; }

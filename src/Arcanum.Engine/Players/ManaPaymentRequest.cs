@@ -6,13 +6,20 @@ namespace Arcanum.Engine.Players;
 
 /// <summary>Tap <paramref name="Source"/> for its mana, of <paramref name="Type"/> (one mana, or several for some sources).</summary>
 /// <param name="Combination">For an ability that adds mana "in any combination": the mana chosen.</param>
-public sealed record ManaTap(CardId Source, ManaType Type, int Option = 0, IReadOnlyList<ManaType>? Combination = null);
+public sealed record ManaTap(CardId Source, ManaType Type, int Option = 0, IReadOnlyList<ManaType>? Combination = null)
+{
+    /// <summary>For an ability that adds one mana per counter removed: how many counters are removed (null: all it has).</summary>
+    public int? Amount { get; init; }
+}
 
 /// <param name="Amount">Mana added per activation, all of the chosen type ("Add three mana of any one color").</param>
 public sealed record ManaSourceOption(CardId Source, IReadOnlyList<ManaType> Types, int Amount = 1, int Option = 0)
 {
     /// <summary>Its mana is chosen in any combination of <see cref="Types"/> ("two mana in any combination of …").</summary>
     public bool Combination { get; init; }
+
+    /// <summary>It adds any number of mana up to <see cref="Amount"/> (one per counter removed): <see cref="ManaTap.Amount"/> says how many.</summary>
+    public bool AnyAmount { get; init; }
 }
 
 /// <summary>
