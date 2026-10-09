@@ -24,6 +24,7 @@ public sealed partial class Game
         State.DamageTripled.RemoveAll(p => p.Turn < State.TurnNumber);
         State.CantAttackThisCombat.Clear();
         State.AttackPlayerRequirements.Clear();
+        BeginTurnForAttackRequirements(active.Id);
         State.CantSacrificeThisTurn.Clear();
         foreach (var player in State.Players)
         {
@@ -38,6 +39,7 @@ public sealed partial class Game
             player.LifeLostThisTurn = 0;
             player.CardsDrawnThisTurn = 0;
             player.LifeGainsThisTurn = 0;
+            player.SpellsCastLastTurn = player.SpellsCastThisTurn.Count;
             player.SpellsCastThisTurn.Clear();
             player.ExtraLandsThisTurn = 0;
             player.AttackersThisTurn = 0;

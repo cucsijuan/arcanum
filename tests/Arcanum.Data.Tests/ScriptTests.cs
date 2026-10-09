@@ -284,4 +284,21 @@ public class TokenImageTests
         Assert.Equal(new[] { "Demon", "Dragon" }, definition.ProtectionFromSubtypes);
         Assert.True(serpent.Aura!.Filter!.Tapped);
     }
+
+    [Fact]
+    public void RenownNeedsTheScriptThatImplementsIt()
+    {
+        var record = new CardRecord
+        {
+            OracleId = "o-r", Name = "Topan Freeblade", Layout = "normal", ManaCost = "{1}{W}", TypeLine = "Creature — Human Soldier",
+            OracleText = "Vigilance\nRenown 1 (When this creature deals combat damage to a player, if it isn't renowned, put a +1/+1 counter on it and it becomes renowned.)",
+            Power = "2", Toughness = "2", Keywords = new[] { "Vigilance", "Renown" },
+        };
+        Assert.Equal(CardSupport.Unsupported, CardFactory.Create(record).Support);
+        var script = CardScriptParser.Parse("""
+            { "abilities": [{ "trigger": "combatDamageToPlayer", "if": { "not": "renowned" },
+                              "effects": [{ "counters": 1, "what": "self" }, { "becomeRenowned": "self" }] }] }
+            """);
+        Assert.Equal(CardSupport.Full, CardFactory.Create(record, script).Support);
+    }
 }

@@ -497,6 +497,12 @@ public sealed record CreateEmblem(string Name, IReadOnlyList<AbilityDefinition> 
 {
     /// <summary>The emblem lasts only until end of turn (a delayed "whenever … this turn" ability).</summary>
     public bool UntilEndOfTurn { get; init; }
+
+    /// <summary>The players who get an emblem each (they own it: "each player dealt damage this way gets an emblem"); null: the controller.</summary>
+    public Subject? For { get; init; }
+
+    /// <summary>The object its abilities call "that creature" (remembered by object, rule 400.7).</summary>
+    public Subject? About { get; init; }
 }
 
 /// <summary>Exile the top N cards of your library; you choose one (or all with <paramref name="ChooseOne"/> false) and may play it this turn.</summary>
@@ -654,6 +660,9 @@ public sealed record CopySpell(Subject What, Quantity Count) : Effect
 
     /// <summary>"Except the copy isn't legendary".</summary>
     public bool NotLegendary { get; init; }
+
+    /// <summary>"Copy the spell countered this way": the spells an earlier counter effect of the same spell or ability countered.</summary>
+    public bool CounteredThisWay { get; init; }
 }
 
 /// <summary>Add one mana of any color (the controller chooses).</summary>
@@ -706,7 +715,14 @@ public sealed record RemoveFromCombat(Subject What) : Effect;
 public sealed record LoseAllAbilitiesUntilEndOfTurn(Subject What) : Effect;
 
 /// <summary>"Change the target of target spell or ability with a single target" (to another legal one, chosen by the controller).</summary>
-public sealed record ChangeTarget(Subject What) : Effect;
+public sealed record ChangeTarget(Subject What) : Effect
+{
+    /// <summary>
+    /// "You may change a target of target spell or ability to this creature": one target (of any number) becomes the source,
+    /// only if the source is a legal choice for it (rule 115.7); with no legal change, nothing happens.
+    /// </summary>
+    public bool ToSource { get; init; }
+}
 
 /// <summary>"Counter it unless its controller pays [cost]" for the stack object <paramref name="StackObject"/> (ward).</summary>
 public sealed record CounterUnlessPays(int StackObject, Mana.ManaCost Mana, int Life) : Effect
@@ -931,7 +947,16 @@ public sealed record PreventDamageThisTurn(bool CombatOnly, Subject? DealtBy = n
 {
     /// <summary>"… and creatures you control": also damage to creatures the controller controls when it would be dealt (later ones too).</summary>
     public bool ToYourCreatures { get; init; }
+
+    /// <summary>"Prevent all damage that would be dealt to [it] this turn": only damage to these objects (each as the object it is now).</summary>
+    public Subject? To { get; init; }
 }
+
+/// <summary>
+/// "[Creature] attacks [this planeswalker] during its controller's next turn if able": a requirement (rule 508.1d) for that
+/// creature during the next turn of the player who controls it now, obeyed only by attacking this planeswalker.
+/// </summary>
+public sealed record AttacksSourceNextTurn(Subject What) : Effect;
 
 /// <summary>"If a source you control would deal damage this turn to an opponent or a permanent an opponent controls, it deals triple that damage instead."</summary>
 public sealed record TripleDamageThisTurn : Effect;

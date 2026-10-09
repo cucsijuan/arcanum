@@ -84,6 +84,8 @@ public enum Keyword
     CanAttackWithDefender,
     /// <summary>"This creature can block an additional creature each combat" (rule 509.1a).</summary>
     CanBlockAdditional,
+    /// <summary>"This creature can block only creatures with flying" (a blocking restriction, rule 509.1b).</summary>
+    CanBlockOnlyFlyers,
 }
 
 public static class Keywords
@@ -135,6 +137,7 @@ public static class Keywords
         Keyword.CantBlockAlone => "Can't block alone",
         Keyword.CanAttackWithDefender => "Can attack as though it didn't have defender",
         Keyword.CanBlockAdditional => "Can block an additional creature each combat",
+        Keyword.CanBlockOnlyFlyers => "Can block only creatures with flying",
         _ => keyword.ToString(),
     };
 

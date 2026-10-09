@@ -36,6 +36,7 @@ public static partial class CardFactory
         "Amass", "Recruit", "Gift", "Behold", "Landwalk", "Goad",
         "Revolt", "Delirium", "Battalion", "Fateful hour", "Spell mastery", "Addendum", "Regenerate", "Triple", "Populate", "Exert",
         "Secret council", "Will of the council", "Council's dilemma", "Tempting offer", "Transform",
+        "Renown", // its trigger and the renowned designation come from the script (rule 702.112)
         // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
         "Persist", "Undying", "Dethrone", "Hideaway", "Heal", "Aftermath",
         "Devour", "Multikicker", "Replicate", "Squad", "Dash", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",

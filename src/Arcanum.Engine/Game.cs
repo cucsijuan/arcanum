@@ -122,6 +122,12 @@ public sealed partial class Game
     /// <summary>Remembers what happened this turn for conditions like raid and morbid.</summary>
     private void TrackTurnHistory(GameEvent e)
     {
+        // Every damage event, whatever it was dealt to (the switch below takes only the first matching case).
+        if (e is DamageDealt damage)
+        {
+            LogDamage(damage);
+            if (damage.IsCombat && damage.TargetPlayer is { } player) State.GetCard(damage.Source).CombatDamagedPlayers.Add(player);
+        }
         switch (e)
         {
             case CardMoved { From: Zone.Battlefield, To: Zone.Graveyard } m when WasCreature(State.GetCard(m.Card)):
@@ -163,7 +169,6 @@ public sealed partial class Game
                 break;
             case DamageDealt dd:
                 if (dd.TargetCard is { } hurt) State.GetCard(hurt).DamagedThisTurnBy.Add(dd.Source);
-                if (dd.IsCombat && dd.TargetPlayer is { } player) State.GetCard(dd.Source).CombatDamagedPlayers.Add(player);
                 break;
         }
     }

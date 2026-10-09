@@ -121,6 +121,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
 /// </summary>
 public sealed record PreventionShield(int Turn, bool CombatOnly)
 {
+    /// <summary>"Prevent all damage that would be dealt to [it] this turn": only damage to this object.</summary>
+    public (CardId Card, int Version)? ToObject { get; init; }
+
     public (CardId Card, int Version)? DealtBy { get; init; }
     public Abilities.ObjectFilter? SourceFilter { get; init; }
     public PlayerId FilterController { get; init; }
@@ -150,6 +153,9 @@ public sealed record DelayedTrigger(CardId Source, Abilities.TriggeredAbility Ab
 
     /// <summary>How many times its source had transformed when it was created (rule 701.27f).</summary>
     public int? SourceTransforms { get; init; }
+
+    /// <summary>The source object (version) that created it: "this" in the delayed ability means only that object (rule 400.7).</summary>
+    public int? SourceVersion { get; init; }
 }
 
 /// <summary>"Prevent all damage that would be dealt by" a permanent, while a source stays on the battlefield.</summary>
@@ -162,8 +168,11 @@ public sealed record DelayedAction(CardId Card, int Version, bool Return, Player
     public (Abilities.CounterKind Kind, int Count)? Counters { get; init; }
 }
 
+/// <summary>Damage dealt by a source (object as it was then) to a permanent (object) or a player during a turn.</summary>
+public sealed record DamageRecord(int Turn, CardId Source, int SourceVersion, CardId? TargetCard, int TargetVersion, PlayerId? TargetPlayer, int Amount);
+
 /// <summary>Complete, authoritative state of a game. Only the engine mutates it.</summary>
-public sealed class GameState
+public sealed partial class GameState
 {
     public IReadOnlyList<Player> Players { get; }
     public Dictionary<CardId, Card> Cards { get; } = new();
@@ -331,6 +340,9 @@ public sealed class GameState
 
     /// <summary>Cards exiled "until an opponent becomes the monarch", with the player whose ability exiled them.</summary>
     public List<(CardId Card, int Version, PlayerId Controller)> ExiledUntilOpponentIsMonarch { get; } = new();
+
+    /// <summary>Damage dealt this turn, after prevention and replacement: each source and target by object (card, version), with the turn.</summary>
+    public List<DamageRecord> DamageLog { get; } = new();
 
     /// <summary>Spells cast this turn by all players (storm).</summary>
     public int SpellsCastThisTurnCount { get; set; }

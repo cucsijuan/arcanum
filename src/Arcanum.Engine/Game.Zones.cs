@@ -28,6 +28,8 @@ public sealed partial class Game
         ExileIfLeaves,
         /// <summary>"If a nontoken creature would enter the battlefield and it wasn't cast, exile it instead" (until end of turn).</summary>
         ExileUncastEntering,
+        /// <summary>The creature's own "if this creature would die, exile it instead".</summary>
+        ExileInsteadOfDying,
     }
 
     /// <summary>One replacement effect that would modify where a card goes (rule 614.1a).</summary>
@@ -56,6 +58,8 @@ public sealed partial class Game
         if (to == Zone.Graveyard)
         {
             if (from == Zone.Battlefield && State.ExileIfDies.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileIfDies));
+            if (from == Zone.Battlefield && card.IsCreature && !card.LosesAbilities && (card.Definition.Replaces & Cards.Replacements.ExileInsteadOfDying) != 0)
+                list.Add(new(ZoneReplacementKind.ExileInsteadOfDying));
             if ((card.Definition.Replaces & Cards.Replacements.ShuffleIntoLibraryInsteadOfGraveyard) != 0) list.Add(new(ZoneReplacementKind.ShuffleIntoLibrary));
             if (discardedByOpponent && from == Zone.Hand && card.Definition.OntoBattlefieldIfOpponentMakesYouDiscard)
                 list.Add(new(ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard));
@@ -68,8 +72,9 @@ public sealed partial class Game
                 && State.Battlefield.Any(b => (State.GetCard(b).Definition.Replaces & Cards.Replacements.ExileInstantsAndSorceries) != 0))
                 list.Add(new(ZoneReplacementKind.ExileInstantsAndSorceries));
         }
-        // A card entering the battlefield from anywhere but the stack wasn't cast (rule 601.2a puts a spell on the stack first).
-        if (to == Zone.Battlefield && from is not (Zone.Stack or Zone.Battlefield) && State.ExileUncastEntering.Any(r => r.Turn == State.TurnNumber
+        // A card entering the battlefield from anywhere but the stack wasn't cast (rule 601.2a puts a spell on the stack first);
+        // nor was a copy of a permanent spell (rule 707.12) resolving from the stack.
+        if (to == Zone.Battlefield && from != Zone.Battlefield && !(from == Zone.Stack && card.WasCast) && State.ExileUncastEntering.Any(r => r.Turn == State.TurnNumber
                 && Matches(r.Filter with { Controller = Abilities.ControllerFilter.Any }, card, card.Owner, null, r.Controller)))
             list.Add(new(ZoneReplacementKind.ExileUncastEntering));
         // A replacement effect gets only one opportunity to affect an event (rule 614.5).
@@ -95,6 +100,7 @@ public sealed partial class Game
         ZoneReplacementKind.ExileInstantsAndSorceries => "Exile it (instants and sorceries are exiled)",
         ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard => $"Put it onto the battlefield ({card.Name}: an opponent made you discard it)",
         ZoneReplacementKind.ExileUncastEntering => "Exile it (it would enter the battlefield without being cast)",
+        ZoneReplacementKind.ExileInsteadOfDying => $"Exile it ({card.Name} would die)",
         _ => "Put it into the command zone",
     };
 

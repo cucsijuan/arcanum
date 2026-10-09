@@ -1358,6 +1358,11 @@ public partial class GameBoard : Control
                         ? $"{who}: choose what it blocks ({(b.Request.CanBlockAny.Contains(choosing) ? "any number" : "up to two")}; click it again when done)"
                     : !legal ? $"{who}: {reason}"
                     : _pendingBlocker is null ? $"{who}: choose a blocker" : $"{who}: choose what it blocks";
+                if (b.Request.TaxPerBlocker is { } blockTax)
+                {
+                    _actionExtra.Visible = true;
+                    _actionExtra.AddChild(BoardStyle.MakeLabel($"Blocking costs {blockTax} per creature (you can pay for {b.Request.AffordableBlockers})", 14, BoardStyle.Attacking));
+                }
                 var confirmBlocks = AddButton(_blocks.Count == 0 ? "No blocks" : $"Confirm blocks ({_blocks.Count})", () => b.Answer(blocks), primary: true);
                 confirmBlocks.Disabled = !legal;
                 break;

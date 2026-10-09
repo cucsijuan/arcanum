@@ -102,12 +102,18 @@ public enum Replacements : long
     DamageCantReduceYourLifeBelowOne = 1L << 35,
     /// <summary>"You may play lands from your graveyard" (no limit besides the land plays allowed).</summary>
     LandsFromGraveyard = 1L << 43,
+    /// <summary>"If you would gain life, you gain twice that much life instead."</summary>
+    DoubleLifeGain = 1L << 52,
+    /// <summary>"If an opponent would gain life, that player loses that much life instead."</summary>
+    OpponentsLifeGainBecomesLoss = 1L << 53,
+    /// <summary>"If this creature would die, exile it instead."</summary>
+    ExileInsteadOfDying = 1L << 54,
 }
 
 /// <summary>
 /// Immutable characteristics of a card as printed (oracle). Shared by every instance of the card.
 /// </summary>
-public sealed record CardDefinition
+public sealed partial record CardDefinition
 {
     public required string Name { get; init; }
 
@@ -414,6 +420,16 @@ public sealed record CardDefinition
     /// <summary>"Creatures can't attack you unless their controller pays [cost] for each of those creatures" (while <see cref="AttackTaxIf"/> holds).</summary>
     public ManaCost? AttackTax { get; init; }
     public Condition? AttackTaxIf { get; init; }
+
+    /// <summary>"Creatures can't block unless their controller pays [cost] for each of those creatures" (while <see cref="BlockTaxIf"/> holds).</summary>
+    public ManaCost? BlockTax { get; init; }
+    public Condition? BlockTaxIf { get; init; }
+
+    /// <summary>"Can't be the target of [spells or abilities from sources matching this]" (e.g. nongreen sources): matched against the source.</summary>
+    public ObjectFilter? CantBeTargetedBy { get; init; }
+
+    /// <summary>"If [condition], this spell can't be countered" (spell mastery): checked whenever something tries to counter it.</summary>
+    public Condition? CantBeCounteredIf { get; init; }
 
     /// <summary>The <see cref="Replacements.AdditionalLandPlay"/> applies only while this holds ("as long as you control another Elf").</summary>
     public Condition? AdditionalLandPlayIf { get; init; }

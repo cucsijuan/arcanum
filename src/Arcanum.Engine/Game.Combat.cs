@@ -67,10 +67,13 @@ public sealed partial class Game
             }
             _attackRetries = 0;
 
+            // Every attacker is declared before any "whenever … attacks" ability looks at the attack ("attacks alone", rule 506.5).
+            foreach (var d in declared)
+                combat.Attacks.Add(new AttackInfo { Attacker = d.Attacker, Defender = d.Defender, Planeswalker = d.Planeswalker });
             foreach (var d in declared)
             {
-                combat.Attacks.Add(new AttackInfo { Attacker = d.Attacker, Defender = d.Defender, Planeswalker = d.Planeswalker });
                 var attacker = State.GetCard(d.Attacker);
+                combat.Declared.Add((attacker.Id, attacker.Version));
                 if (!attacker.Has(Keyword.Vigilance))
                 {
                     Tap(attacker);
@@ -125,6 +128,7 @@ public sealed partial class Game
             // "Attacks [player] this turn if able."
             foreach (var r in State.AttackPlayerRequirements.Where(r => r.Card == id && r.Version == card.Version && r.Turn == State.TurnNumber && defenders.Contains(r.Player)))
                 requirements.Add(new AttackRequirement(id, AttackRequirementKind.AttacksPlayer, r.Player));
+            requirements.AddRange(PlaneswalkerAttackRequirements(card, defenders));
         }
         return new AttackRequest(possible, defenders)
         {
@@ -180,6 +184,7 @@ public sealed partial class Game
     private bool CanBlock(Card blocker, Card attacker) =>
         !blocker.Has(Keyword.CantBlock) && !attacker.Has(Keyword.CantBeBlocked) && !ProtectedFrom(attacker, blocker)
         && (!attacker.Has(Keyword.Flying) || blocker.Has(Keyword.Flying) || blocker.Has(Keyword.Reach))
+        && (!blocker.Has(Keyword.CanBlockOnlyFlyers) || attacker.Has(Keyword.Flying)) // "can block only creatures with flying"
         && attacker.Has(Keyword.Shadow) == blocker.Has(Keyword.Shadow) // shadow (702.28b)
         && !attacker.UnblockableBy.Contains(blocker.Controller)
         && !State.CantBlockThisTurn.Any(r => r.Turn == State.TurnNumber && Matches(r.Filter with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, null, r.Controller))
@@ -258,9 +263,9 @@ public sealed partial class Game
                 CanBlockAdditional = possible.Where(id => State.GetCard(id).Has(Keyword.CanBlockAdditional)).ToList(), // 509.1a
                 CantBlockAlone = possible.Where(id => State.GetCard(id).Has(Keyword.CantBlockAlone)).ToList(),         // 506.5
             };
+            request = WithBlockTax(request, defender);
 
-            var declared = await ControllerOf(defender).DeclareBlockersAsync(ViewFor(defender), request);
-            Require(request.IsLegal(declared, out var reason), reason ?? "Illegal blocks.");
+            var declared = await DeclarePaidBlocksAsync(defender, request);
 
             var newlyBlocked = new List<CardId>();
             foreach (var b in declared)
@@ -286,7 +291,11 @@ public sealed partial class Game
                 // The Ring, level 3: the blocker's controller sacrifices it at end of combat.
                 if (IsRingBearer(State.GetCard(b.Attacker), 3)) State.SacrificeAtEndOfCombat.Add((b.Blocker, State.GetCard(b.Blocker).Version));
             }
-            foreach (var attacker in newlyBlocked) Queue(attacker, Abilities.TriggerEvent.BecomesBlocked, State.GetCard(attacker).Controller);
+            foreach (var attacker in newlyBlocked)
+            {
+                Queue(attacker, Abilities.TriggerEvent.BecomesBlocked, State.GetCard(attacker).Controller);
+                QueueCreatureBecameBlocked(State.GetCard(attacker));
+            }
             // "When enchanted creature blocks": once however many creatures it blocks.
             foreach (var blocker in declared.Select(b => b.Blocker).Distinct())
                 foreach (var aura in State.Battlefield.Select(State.GetCard).Where(e => e.AttachedTo == blocker).ToList())
@@ -385,7 +394,7 @@ public sealed partial class Game
         var lifeGained = new Dictionary<PlayerId, int>();
         await DealDamageEventAsync(toCards.Select(d => new DamagePart(d.Source, d.Target, null, d.Amount, true))
             .Concat(toPlayers.Select(d => new DamagePart(d.Source, null, d.Target, d.Amount, true))).ToList(), lifeGained);
-        foreach (var (player, amount) in lifeGained) GainLifeFor(player, amount); // lifelink (702.15b)
+        foreach (var (player, amount) in lifeGained) await GainLifeAsync(player, amount); // lifelink (702.15b)
         EndCombatDamage();
         EndSimultaneous();
     }

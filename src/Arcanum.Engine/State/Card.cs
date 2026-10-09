@@ -84,6 +84,9 @@ public sealed class Card
     /// <summary>Who controls it apart from static control-changing effects (rule 613.1b); see <see cref="Controller"/>.</summary>
     public PlayerId BaseController { get; set; }
 
+    /// <summary>For an emblem standing for a delayed ability: the object it calls "that creature" (card and version).</summary>
+    public (CardId Card, int Version)? Remembered { get; set; }
+
     /// <summary>Sources that dealt damage to it this turn.</summary>
     public HashSet<CardId> DamagedThisTurnBy { get; } = new();
 
@@ -526,6 +529,7 @@ public sealed class Card
                 // Its copiable values (rule 707.2): a double-faced card's whole card, with the face that was up.
                 CopiableValues = !IsCopy && IsDoubleFaced ? PrintedDefinition : Definition,
                 CopiableBackFaceUp = !IsCopy && IsDoubleFaced && Transformed,
+                Renowned = Renowned,
             };
         }
         Tapped = false;
@@ -615,6 +619,9 @@ public sealed record LastKnown(int Power, int Toughness, Core.PlayerId Controlle
     public bool Tapped { get; init; }
     public bool Attacking { get; init; }
     public bool Blocking { get; init; }
+
+    /// <summary>It was renowned (rule 702.112b).</summary>
+    public bool Renowned { get; init; }
     public Supertype Supertypes { get; init; }
     public Core.CardId? AttachedTo { get; init; }
 

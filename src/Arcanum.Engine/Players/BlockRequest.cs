@@ -54,6 +54,12 @@ public sealed record BlockRequest(
     /// <summary>Blockers that "can't block alone": they block only if another creature also blocks (rule 506.5).</summary>
     public IReadOnlyList<CardId> CantBlockAlone { get; init; } = Array.Empty<CardId>();
 
+    /// <summary>What each blocking creature costs (a block tax, paid as blockers are declared), or null when blocking is free.</summary>
+    public string? TaxPerBlocker { get; init; }
+
+    /// <summary>With a block tax: how many blocking creatures the player can pay for now.</summary>
+    public int AffordableBlockers { get; init; } = int.MaxValue;
+
     private int? _maxRequirements;
 
     /// <summary>The most requirements any legal declaration obeys.</summary>

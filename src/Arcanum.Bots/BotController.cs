@@ -736,6 +736,12 @@ public sealed class BotController : IPlayerController
         var blocks = PlanBlocks(view, request);
         // Requirements (lures, "must be blocked") and restrictions: the closest legal declaration to the plan (rule 509.1c).
         if (!request.IsLegal(blocks, out _)) blocks = request.Complete(blocks).ToList();
+        // A block tax: only as many blocking creatures as can be paid for, kept in the plan's order (then made legal again).
+        if (request.TaxPerBlocker is not null && blocks.Select(b => b.Blocker).Distinct().Count() > request.AffordableBlockers)
+        {
+            var paid = blocks.Select(b => b.Blocker).Distinct().Take(request.AffordableBlockers).ToHashSet();
+            blocks = request.Complete(blocks.Where(b => paid.Contains(b.Blocker)).ToList()).ToList();
+        }
         if (blocks.Count > 0) await PaceAsync();
         return blocks;
     }
