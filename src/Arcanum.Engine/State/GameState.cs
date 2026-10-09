@@ -165,6 +165,9 @@ public sealed record DelayedAction(CardId Card, int Version, bool Return, Player
     public (Abilities.CounterKind Kind, int Count)? Counters { get; init; }
 }
 
+/// <summary>Damage dealt by a source (object as it was then) to a permanent (object) or a player during a turn.</summary>
+public sealed record DamageRecord(int Turn, CardId Source, int SourceVersion, CardId? TargetCard, int TargetVersion, PlayerId? TargetPlayer, int Amount);
+
 /// <summary>Complete, authoritative state of a game. Only the engine mutates it.</summary>
 public sealed partial class GameState
 {
@@ -334,6 +337,9 @@ public sealed partial class GameState
 
     /// <summary>Cards exiled "until an opponent becomes the monarch", with the player whose ability exiled them.</summary>
     public List<(CardId Card, int Version, PlayerId Controller)> ExiledUntilOpponentIsMonarch { get; } = new();
+
+    /// <summary>Damage dealt this turn, after prevention and replacement: each source and target by object (card, version), with the turn.</summary>
+    public List<DamageRecord> DamageLog { get; } = new();
 
     /// <summary>Spells cast this turn by all players (storm).</summary>
     public int SpellsCastThisTurnCount { get; set; }

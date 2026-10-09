@@ -354,6 +354,14 @@ public enum TriggerEvent
     StateTrigger,
     /// <summary>"At end of combat": at the beginning of each end of combat step (rule 511.2).</summary>
     EndOfCombat,
+    /// <summary>"When this creature becomes renowned" (rule 702.112b: it goes from not renowned to renowned on the battlefield, whatever made it).</summary>
+    BecomesRenowned,
+    /// <summary>"Whenever a [filter] creature becomes renowned" (subject: that creature; the observer sees itself too).</summary>
+    CreatureBecomesRenowned,
+    /// <summary>"Whenever a [filter] creature becomes blocked": once per attacker as it becomes blocked (rule 509.3c; subject: that attacker).</summary>
+    CreatureBecomesBlocked,
+    /// <summary>"Whenever a [filter] permanent becomes the target of a spell or ability you control" (subject: that permanent), also when a target is changed to it.</summary>
+    BecomesTargetOfYours,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -400,6 +408,9 @@ public sealed record TriggeredAbility : AbilityDefinition
 
     /// <summary>"Whenever one or more …": triggers once for events that happen at the same time.</summary>
     public bool Batched { get; init; }
+
+    /// <summary>With <see cref="Batched"/>: once per player the simultaneous events are about ("whenever one or more creatures you control deal combat damage to a player").</summary>
+    public bool BatchedPerPlayer { get; init; }
 
     /// <summary>For counter triggers: counters of any kind ("one or more counters").</summary>
     public bool AnyCounterKind { get; init; }
@@ -542,6 +553,9 @@ public sealed record ObjectFilter(
 
     /// <summary>Only the source itself ("sacrifice this enchantment").</summary>
     public bool IsSource { get; init; }
+
+    /// <summary>Dealt damage this turn by the object the source remembers ("a creature dealt damage by that creature this turn"), by object (rule 400.7).</summary>
+    public bool DamagedThisTurnByRemembered { get; init; }
 
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 
