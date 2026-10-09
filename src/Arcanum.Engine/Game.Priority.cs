@@ -675,6 +675,8 @@ public sealed partial class Game
             choices = choices with { X = chosenX };
         }
         int x = choices.X;
+        // "Up to N target …": N optional targets, N known now that X is announced (601.2b-c).
+        if (ability is not null) ability = WithRepeatedTargets(ability, player.Id, card, null, x);
 
         // 601.2c: targets. "Costs {N} less if it targets …": when the announcements need that reduction, only targets that
         // give it can be chosen.
@@ -869,13 +871,15 @@ public sealed partial class Game
             Require(announcedX >= 0 && announcedX <= loyaltyNow, $"X must be between 0 and {loyaltyNow}.");
             _announcedX = announcedX.Value;
         }
-        if (announcedX is null && ability.Targets.Any(t => t.Filter?.PowerIsX == true || t.Filter?.ManaValueIsX == true) && ActivationCost(source, ability, player.Id, null).XCount > 0)
+        if (announcedX is null && ability.Targets.Any(t => t.Filter?.PowerIsX == true || t.Filter?.ManaValueIsX == true || t.RepeatFrom is not null) && ActivationCost(source, ability, player.Id, null).XCount > 0)
         {
             int maxX = MaxAffordableX(player.Id, ActivationCost(source, ability, player.Id, null), exclude);
             announcedX = await ControllerOf(player.Id).ChooseNumberAsync(ViewFor(player.Id), new NumberRequest($"{source.Name}: choose X", source.Id, 0, maxX));
             Require(announcedX >= 0 && announcedX <= maxX, $"X must be between 0 and {maxX}.");
             _announcedX = announcedX.Value;
         }
+        // "Up to N target …": N optional targets, N known now that X is announced (602.2b → 601.2b-c).
+        ability = WithRepeatedTargets(ability, player.Id, source, null, announcedX ?? 0);
         // Equip discounts depend on the creature targeted: only creatures it can be paid for can be chosen.
         Func<Abilities.Target, bool>? affordable = ability is { IsEquip: true, Targets.Count: 1 }
             ? t => Payable(player.Id, ActivationCost(source, ability, player.Id, new[] { new ChosenTarget(t, VersionOf(t)) }).WithX(0), exclude,
@@ -1247,7 +1251,7 @@ public sealed partial class Game
         }
         // "This land deals 1 damage to you" / "You gain 1 life" (part of the mana ability, rule 605.3b).
         if (option is { DamageToController: > 0 } hurts) await DealDamageAsync(source, null, player.Id, hurts.DamageToController);
-        if (option is { GainLife: > 0 } heals) GainLifeFor(player.Id, heals.GainLife);
+        if (option is { GainLife: > 0 } heals) await GainLifeAsync(player.Id, heals.GainLife);
         if (source.Definition.SacrificeForMana) await SacrificePermanentAsync(source.Id);
     }
 

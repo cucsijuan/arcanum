@@ -139,6 +139,9 @@ public sealed record AttackingCreaturesExactly(int Count) : Condition;
 /// <summary>"If you attacked with N or more creatures this turn".</summary>
 public sealed record AttackedWithAtLeast(int Count) : Condition;
 
+/// <summary>"If [this] and at least N other creatures attacked this combat": declared as attackers this combat (even if they left combat since).</summary>
+public sealed record SourceAndOthersAttackedThisCombat(int Others) : Condition;
+
 /// <summary>"As long as you have an enduring story" (storied).</summary>
 public sealed record HasEnduringStory : Condition;
 

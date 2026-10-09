@@ -12,10 +12,16 @@ public enum AttackRequirementKind
     AttacksPlayer,
     /// <summary>A goaded creature "attacks a player other than [the goading player] if able" (rule 701.15b).</summary>
     AttacksPlayerOtherThan,
+    /// <summary>"Attacks [that planeswalker] if able": only attacking that planeswalker obeys it.</summary>
+    AttacksPlaneswalker,
 }
 
 /// <summary>One requirement on one creature; <paramref name="Player"/> for the kinds about a player.</summary>
-public sealed record AttackRequirement(CardId Attacker, AttackRequirementKind Kind, PlayerId? Player = null);
+public sealed record AttackRequirement(CardId Attacker, AttackRequirementKind Kind, PlayerId? Player = null)
+{
+    /// <summary>For <see cref="AttackRequirementKind.AttacksPlaneswalker"/>: the planeswalker it must attack.</summary>
+    public CardId? Planeswalker { get; init; }
+}
 
 /// <summary>A planeswalker that can be attacked, and the defending player who controls it.</summary>
 public sealed record AttackablePlaneswalker(CardId Planeswalker, PlayerId Controller);
@@ -68,6 +74,7 @@ public sealed record AttackRequest(IReadOnlyList<CardId> Attackers, IReadOnlyLis
     {
         AttackRequirementKind.Attacks => true,
         AttackRequirementKind.AttacksPlayer => d.Planeswalker is null && d.Defender == r.Player,
+        AttackRequirementKind.AttacksPlaneswalker => d.Planeswalker is { } pw && pw == r.Planeswalker,
         _ => d.Planeswalker is null && d.Defender != r.Player,
     };
 

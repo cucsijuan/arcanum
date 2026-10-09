@@ -40,7 +40,7 @@ public sealed partial class Game
     private async Task ChangeTargetToSourceAsync(ChangeTarget ct, EffectContext ctx)
     {
         var source = ctx.Source;
-        if (source.Zone != Zone.Battlefield || (ctx.SourceVersion is { } version && version != source.Version)) return;
+        if (!SourceOnBattlefield(ctx)) return;
         var target = ct.What.Kind == SubjectKind.Target ? ctx.TargetAt(ct.What.Index) : null;
         var item = target is { StackObject: { } so } ? State.Stack.FirstOrDefault(s => s.Id == so)
             : target is { Card: { } targetedSpell } ? State.Stack.OfType<SpellOnStack>().FirstOrDefault(s => s.Card == targetedSpell) : null;

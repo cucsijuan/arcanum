@@ -740,3 +740,80 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   "to": "self" }` is "you may change a target of target spell or ability to this creature": its controller picks one of the
   targets (of any number) for which the source is a legal choice (meets that target's requirement, isn't chosen twice for one
   "target" word, keeps the rules between targets, rule 115.7), or none; nothing changes once the source has left the battlefield.
+
+## "This" as one object, last known renown and "up to N" targets
+
+- **"This" is one object** (rule 400.7): every effect that refers to the source (`"self"`, `"attached"`, "this card in your
+  graveyard", `"whileSourceRemains"` and the like) only finds the object that triggered or was activated. If the source left its
+  zone and came back before the ability resolves, it is a new object and the ability does nothing to it (a renown trigger
+  puts no counters on a creature flickered in response; a second "exile this, then return it transformed" does nothing).
+  An effect of the ability that moves its own source can still find the object it became, so later effects follow it:
+  `[{ "blink": "self" }, { "counters": 1, "what": "self" }]` puts the counter on the returned permanent. Delayed abilities
+  created by a permanent's ability ("at the beginning of the next upkeep, …") remember the object that created them.
+  Scripts don't need workarounds such as `"if": { "not": "transformed" }` for this any more (they stay harmless).
+- **`"renowned"` uses last known information**: an intervening `"if": "renowned"` (or `{ "not": "renowned" }`) is checked on
+  resolution against the source as it last existed on the battlefield if it left (rules 603.4, 608.2h), e.g. Scab-Clan Berserker.
+- **"Up to N target …"**: a target with `"upTo": N` (a number or a quantity such as `"X"`) becomes N optional, different targets
+  for spells, activated and loyalty abilities as well as triggered abilities. X is announced first (601.2b), so `"upTo": "X"`
+  works with `{X}` in an activated ability's cost. A spell or ability whose only targets are "up to" ones can be cast or
+  activated, and a trigger put on the stack, with no legal target at all. Effects use `"eachTarget"` (or `"target"`,
+  `"target2"`, …). Writing the target out N times with `"optional": true` works the same way.
+
+## Replacement effects, damage prevention and life
+
+- **Prevention shield on one object**: `{ "preventDamage": true, "to": "target" }` (any subject, e.g. `"self"`): "prevent all damage that
+  would be dealt to it this turn". The shield is on the object as it is now: if it leaves the battlefield and comes back it's a new object
+  without the shield. Add `"combatOnly": true` for combat damage only.
+- **Damage plus N** (card-wide): `"damageBonus": { "sources": filter, "amount": 1 }` ("if another red source you control would deal damage
+  to a permanent or player, it deals that much damage plus 1 instead": `"sources": { "colors": ["R"], "other": true }`). The filter's
+  controller defaults to `you` and `other` excludes the permanent itself; a source that has just left the battlefield is judged as it last
+  existed there, a spell as it is on the stack.
+- **Prevent N of the damage to you** (card-wide): `"preventDamageToYou": { "sources": filter, "amount": 1 }` ("if a creature would deal
+  damage to you, prevent 1 of that damage": `"sources": { "types": ["creature"] }`; the controller defaults to `any`). It applies once to
+  each source's damage in each damage event.
+- These, the damage doublers and the other prevention effects are ordered by the player being dealt damage (or the damaged permanent's
+  controller) when more than one applies (rule 616.1); each applies once (rule 614.5).
+- **Life gain replacements** (`replaces`): `DoubleLifeGain` ("if you would gain life, you gain twice that much life instead"),
+  `OpponentsLifeGainBecomesLoss` ("if an opponent would gain life, that player loses that much life instead", lifelink included). With
+  `ExtraLifeGain`, `DoubleLifeGainAtFiveOrLess` and these, the player who would gain life chooses the order (rule 616.1); once the gain
+  has become a loss, the effects about gaining life no longer apply. A player who can't gain life gains (and loses) nothing.
+- **Exile instead of dying** (`replaces`): `ExileInsteadOfDying` ("if this creature would die, exile it instead"), the creature's own
+  ability (not while it has lost its abilities).
+- **Tokens and "exile it instead"**: `exileUncastEntering` also exiles creature tokens that would be created (they cease to exist) unless
+  its filter says `"token": false` ("nontoken creature"), and a copy of a permanent spell resolving wasn't cast either (rule 707.12).
+- **Trigger** `endOfCombat`: "at end of combat" (the beginning of each end of combat step). **Condition**
+  `{ "attackedThisCombatWithOthers": 2 }`: "if [this] and at least two other creatures attacked this combat" (declared as attackers this
+  combat, even if they have left combat; this must be the object that attacked).
+- **Effect** `{ "attacksSourceNextTurn": "target" }`: "[it] attacks [this planeswalker] during its controller's next turn if able" — a
+  requirement for that creature during the next turn of the player controlling it as the effect happens, obeyed only by attacking this
+  planeswalker (as the same object); it is never obeyed at the cost of a restriction.
+- A planeswalker that is also a creature (an animated planeswalker) loses loyalty counters and has the damage marked on it (rules 120.3c,
+  120.3e).
+
+## Triggers and turn tracking (renown, blocks, targeting, last turn, damage this turn)
+
+- **Triggers**: `becomesRenowned` ("when this creature becomes renowned") and `creatureBecomesRenowned` with a `filter` ("whenever a
+  creature you control becomes renowned"; the watcher sees itself too; `"triggered"` is that creature): they trigger when a permanent
+  goes from not renowned to renowned on the battlefield, whatever made it (`becomeRenowned`; renown itself stays a scripted
+  trigger, rule 702.112). `creatureBecomesBlocked` with a `filter` ("whenever a creature you control becomes blocked"): once for each
+  attacker as it becomes blocked, however many creatures block it (rule 509.3c); `"triggered"` is the attacker.
+  `becomesTargetOfYours` with a `filter` ("whenever a creature an opponent controls becomes the target of a spell or ability you
+  control"; subject: that permanent): spells and abilities the watcher's controller controls, as they are put on the stack and when
+  one of their targets is changed to it. `permanentBecomesTarget` ("… of a spell or ability an opponent controls") now asks whether
+  that spell or ability's controller is an opponent of the watcher's controller (multiplayer), and also sees changed targets.
+- **Batching per player**: `"batchedPerPlayer": true` instead of `"batched": true` ("whenever one or more artifact creatures you
+  control deal combat damage to a player"): once for each player the simultaneous events are about. `"batched"` alone stays once per
+  event ("… to one or more players").
+- **Conditions**: `{ "spellsCastLastTurn": 2 }` (a player cast that many spells during the previous turn, whoever's turn it was; usable
+  as an intervening `"if"`), `{ "dealtDamageThisTurn": 3 }` (the source has dealt that much damage this turn, all of it after prevention
+  and replacement, combat or not; counted for the object it is: an ability resolving after its source left counts what that object
+  dealt, rule 400.7).
+- **Players dealt damage**: subject `"playersDamagedThisWay"` (players this spell or ability dealt damage to, prevented damage left out).
+  `emblem` takes `"for": subject` (each of those players gets an emblem of their own: they own it, so its "your upkeep" is theirs, and
+  "you" is its owner) and `"about": subject` (the object its abilities call "that creature", remembered as that object). Filter
+  `"damagedThisTurnByThat": true` matches creatures dealt damage this turn by that object (as they last existed if they died), so an
+  `"untilEndOfTurn"` emblem with a `creatureDies` trigger is "whenever a creature dealt damage by that creature this turn dies" (damage
+  dealt before it was created counts; `"triggeredPlayer"` is the dying creature's last controller).
+- Effects of an ability about its source (`"blink": "self"`, `"sacrificeIt": "self"`, `gainControl` with `"whileYouControl"`) only
+  affect the object the ability came from, not a new object the card became (rule 400.7); `"sacrificeIt": "self"` sacrifices it only
+  if the ability's controller controls it (rule 701.21a).

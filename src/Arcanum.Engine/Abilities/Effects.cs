@@ -484,6 +484,12 @@ public sealed record CreateEmblem(string Name, IReadOnlyList<AbilityDefinition> 
 {
     /// <summary>The emblem lasts only until end of turn (a delayed "whenever … this turn" ability).</summary>
     public bool UntilEndOfTurn { get; init; }
+
+    /// <summary>The players who get an emblem each (they own it: "each player dealt damage this way gets an emblem"); null: the controller.</summary>
+    public Subject? For { get; init; }
+
+    /// <summary>The object its abilities call "that creature" (remembered by object, rule 400.7).</summary>
+    public Subject? About { get; init; }
 }
 
 /// <summary>Exile the top N cards of your library; you choose one (or all with <paramref name="ChooseOne"/> false) and may play it this turn.</summary>
@@ -911,7 +917,16 @@ public sealed record PreventDamageThisTurn(bool CombatOnly, Subject? DealtBy = n
 {
     /// <summary>"… and creatures you control": also damage to creatures the controller controls when it would be dealt (later ones too).</summary>
     public bool ToYourCreatures { get; init; }
+
+    /// <summary>"Prevent all damage that would be dealt to [it] this turn": only damage to these objects (each as the object it is now).</summary>
+    public Subject? To { get; init; }
 }
+
+/// <summary>
+/// "[Creature] attacks [this planeswalker] during its controller's next turn if able": a requirement (rule 508.1d) for that
+/// creature during the next turn of the player who controls it now, obeyed only by attacking this planeswalker.
+/// </summary>
+public sealed record AttacksSourceNextTurn(Subject What) : Effect;
 
 /// <summary>"If a source you control would deal damage this turn to an opponent or a permanent an opponent controls, it deals triple that damage instead."</summary>
 public sealed record TripleDamageThisTurn : Effect;
