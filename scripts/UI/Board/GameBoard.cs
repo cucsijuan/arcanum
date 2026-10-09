@@ -1462,7 +1462,7 @@ public partial class GameBoard : Control
     /// <summary>What the staged taps still leave unpaid.</summary>
     private ManaCost RemainingCost(ManaPaymentDecision pay) =>
         ManaPayment.Apply(pay.Request.RemainingAfterPool, _staged.SelectMany(t => t.Combination
-            ?? Enumerable.Repeat(t.Type, pay.Request.Sources.FirstOrDefault(s => s.Source == t.Source && s.Option == t.Option)?.Amount ?? 1))).Remaining;
+            ?? Enumerable.Repeat(t.Type, t.Amount ?? pay.Request.Sources.FirstOrDefault(s => s.Source == t.Source && s.Option == t.Option)?.Amount ?? 1))).Remaining;
 
     /// <summary>Every combination of mana a "in any combination" source can add.</summary>
     private static List<IReadOnlyList<ManaType>> Combinations(ManaSourceOption source) =>
@@ -1845,7 +1845,9 @@ public partial class GameBoard : Control
                     _comboSource = comboSource; // choose the combination in the action panel
                 else if (pay.Request.Sources.Where(s => s.Source == id).Select(s => (Source: s, Type: UsefulType(s, RemainingCost(pay))))
                              .FirstOrDefault(x => x.Type is not null) is { Type: { } type } useful)
-                    _staged.Add(new ManaTap(id, type, useful.Source.Option)); // can never tap more than what is still needed
+                    // Can never tap more than what is still needed; a source that removes counters for mana removes only as many as that.
+                    _staged.Add(new ManaTap(id, type, useful.Source.Option)
+                        { Amount = useful.Source.AnyAmount ? Math.Min(useful.Source.Amount, RemainingCost(pay).ManaValue) : null });
                 break;
             }
 
