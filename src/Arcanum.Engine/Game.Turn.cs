@@ -24,6 +24,7 @@ public sealed partial class Game
         State.DamageTripled.RemoveAll(p => p.Turn < State.TurnNumber);
         State.CantAttackThisCombat.Clear();
         State.AttackPlayerRequirements.Clear();
+        BeginTurnForAttackRequirements(active.Id);
         State.CantSacrificeThisTurn.Clear();
         foreach (var player in State.Players)
         {

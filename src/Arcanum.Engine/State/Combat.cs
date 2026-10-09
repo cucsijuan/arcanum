@@ -22,6 +22,9 @@ public sealed class CombatState
 {
     public List<AttackInfo> Attacks { get; } = new();
 
+    /// <summary>Every creature declared as an attacker this combat, as the object it was (it "attacked" even if it left combat since).</summary>
+    public List<(CardId Card, int Version)> Declared { get; } = new();
+
     public AttackInfo? FindAttack(CardId attacker) => Attacks.Find(a => a.Attacker == attacker);
 
     public bool IsBlocking(CardId blocker) => Attacks.Exists(a => a.Blockers.Contains(blocker));

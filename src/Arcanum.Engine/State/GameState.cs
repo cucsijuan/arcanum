@@ -118,6 +118,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
 /// </summary>
 public sealed record PreventionShield(int Turn, bool CombatOnly)
 {
+    /// <summary>"Prevent all damage that would be dealt to [it] this turn": only damage to this object.</summary>
+    public (CardId Card, int Version)? ToObject { get; init; }
+
     public (CardId Card, int Version)? DealtBy { get; init; }
     public Abilities.ObjectFilter? SourceFilter { get; init; }
     public PlayerId FilterController { get; init; }
@@ -163,7 +166,7 @@ public sealed record DelayedAction(CardId Card, int Version, bool Return, Player
 }
 
 /// <summary>Complete, authoritative state of a game. Only the engine mutates it.</summary>
-public sealed class GameState
+public sealed partial class GameState
 {
     public IReadOnlyList<Player> Players { get; }
     public Dictionary<CardId, Card> Cards { get; } = new();

@@ -71,6 +71,7 @@ public sealed partial class Game
             {
                 combat.Attacks.Add(new AttackInfo { Attacker = d.Attacker, Defender = d.Defender, Planeswalker = d.Planeswalker });
                 var attacker = State.GetCard(d.Attacker);
+                combat.Declared.Add((attacker.Id, attacker.Version));
                 if (!attacker.Has(Keyword.Vigilance))
                 {
                     Tap(attacker);
@@ -125,6 +126,7 @@ public sealed partial class Game
             // "Attacks [player] this turn if able."
             foreach (var r in State.AttackPlayerRequirements.Where(r => r.Card == id && r.Version == card.Version && r.Turn == State.TurnNumber && defenders.Contains(r.Player)))
                 requirements.Add(new AttackRequirement(id, AttackRequirementKind.AttacksPlayer, r.Player));
+            requirements.AddRange(PlaneswalkerAttackRequirements(card, defenders));
         }
         return new AttackRequest(possible, defenders)
         {
@@ -385,7 +387,7 @@ public sealed partial class Game
         var lifeGained = new Dictionary<PlayerId, int>();
         await DealDamageEventAsync(toCards.Select(d => new DamagePart(d.Source, d.Target, null, d.Amount, true))
             .Concat(toPlayers.Select(d => new DamagePart(d.Source, null, d.Target, d.Amount, true))).ToList(), lifeGained);
-        foreach (var (player, amount) in lifeGained) GainLifeFor(player, amount); // lifelink (702.15b)
+        foreach (var (player, amount) in lifeGained) await GainLifeAsync(player, amount); // lifelink (702.15b)
         EndCombatDamage();
         EndSimultaneous();
     }

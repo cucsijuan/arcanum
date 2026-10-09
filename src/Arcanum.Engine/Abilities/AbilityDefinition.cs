@@ -352,6 +352,8 @@ public enum TriggerEvent
     PermanentDies,
     /// <summary>A state trigger (rule 603.8): "When you control no [permanents]…": triggers once its condition (<see cref="TriggeredAbility.TriggerCondition"/>) is true, and not again until it has left the stack.</summary>
     StateTrigger,
+    /// <summary>"At end of combat": at the beginning of each end of combat step (rule 511.2).</summary>
+    EndOfCombat,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
