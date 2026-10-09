@@ -334,7 +334,8 @@ public sealed class Card
         : EnchantmentTypes.Contains(subtype) ? Is(CardType.Enchantment)
         : SpellTypes.Contains(subtype) ? Is(CardType.Instant) || Is(CardType.Sorcery)
         : subtype.Equals("Siege", StringComparison.OrdinalIgnoreCase) ? Is(CardType.Battle)
-        : Is(CardType.Creature) || Is(CardType.Planeswalker) || Is(CardType.Kindred);
+        : PlaneswalkerTypes.Contains(subtype) ? Is(CardType.Planeswalker)
+        : Is(CardType.Creature) || Is(CardType.Kindred);
 
     private static readonly HashSet<string> LandTypes = new(StringComparer.OrdinalIgnoreCase)
         { "Plains", "Island", "Swamp", "Mountain", "Forest", "Desert", "Gate", "Lair", "Locus", "Mine", "Power-Plant", "Tower", "Urza's", "Cave", "Sphere", "Town" };
@@ -350,6 +351,17 @@ public sealed class Card
 
     private static readonly HashSet<string> SpellTypes = new(StringComparer.OrdinalIgnoreCase) { "Adventure", "Arcane", "Lesson", "Trap", "Omen" };
 
+    /// <summary>Planeswalker types (rule 205.3j), kept apart from creature types: an animated Gideon that becomes a Frog is still a Gideon.</summary>
+    private static readonly HashSet<string> PlaneswalkerTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Ajani", "Aminatou", "Angrath", "Arlinn", "Ashiok", "Bahamut", "Basri", "Bolas", "Calix", "Chandra", "Comet", "Dack", "Dakkon",
+        "Daretti", "Davriel", "Dihada", "Domri", "Dovin", "Ellywick", "Elminster", "Elspeth", "Estrid", "Freyalise", "Garruk", "Gideon",
+        "Grist", "Guff", "Huatli", "Jace", "Jared", "Jaya", "Jeska", "Kaito", "Karn", "Kasmina", "Kaya", "Kiora", "Koth", "Liliana",
+        "Lolth", "Lukka", "Minsc", "Mordenkainen", "Nahiri", "Narset", "Niko", "Nissa", "Nixilis", "Oko", "Quintorius", "Ral", "Rowan",
+        "Saheeli", "Samut", "Sarkhan", "Serra", "Sivitri", "Sorin", "Szat", "Tamiyo", "Tasha", "Teferi", "Teyo", "Tezzeret", "Tibalt",
+        "Tyvar", "Ugin", "Urza", "Venser", "Vivien", "Vraska", "Vronos", "Will", "Windgrace", "Wrenn", "Xenagos", "Yanggu", "Yanling", "Zariel",
+    };
+
     /// <summary>Its subtypes now, after effects that change them (without the every-creature-type of changeling).</summary>
     public IReadOnlyList<string> CurrentSubtypes =>
         (SubtypesOverride ?? Definition.Subtypes).Concat(GrantedSubtypes).Distinct(StringComparer.OrdinalIgnoreCase)
@@ -364,10 +376,10 @@ public sealed class Card
     /// <summary>Whether a subtype is a land type.</summary>
     internal static bool IsLandType(string subtype) => LandTypes.Contains(subtype);
 
-    /// <summary>Which set of subtypes (rule 205.3) a subtype belongs to: land, artifact, enchantment, spell, battle or creature types.</summary>
+    /// <summary>Which set of subtypes (rule 205.3) a subtype belongs to: land, artifact, enchantment, spell, battle, planeswalker or creature types.</summary>
     private static int SubtypeSet(string subtype) =>
         LandTypes.Contains(subtype) ? 1 : ArtifactTypes.Contains(subtype) ? 2 : EnchantmentTypes.Contains(subtype) ? 3 : SpellTypes.Contains(subtype) ? 4
-        : subtype.Equals("Siege", StringComparison.OrdinalIgnoreCase) ? 5 : 0;
+        : subtype.Equals("Siege", StringComparison.OrdinalIgnoreCase) ? 5 : PlaneswalkerTypes.Contains(subtype) ? 6 : 0;
 
     /// <summary>
     /// An effect that sets subtypes ("becomes a blue Frog") replaces only the existing subtypes of the same sets as the new ones
@@ -380,12 +392,12 @@ public sealed class Card
         return current.Where(s => !replaced.Contains(SubtypeSet(s))).Concat(set).ToList();
     }
 
-    /// <summary>Whether a subtype is a creature type (not a land, artifact, enchantment, spell or battle type).</summary>
+    /// <summary>Whether a subtype is a creature type (not a land, artifact, enchantment, spell, battle or planeswalker type).</summary>
     internal static bool IsCreatureType(string subtype) => !NonCreatureSubtypes.Contains(subtype);
 
     /// <summary>Subtypes that aren't creature types (changeling grants only creature types, rule 702.73a).</summary>
     private static readonly HashSet<string> NonCreatureSubtypes =
-        new(LandTypes.Concat(ArtifactTypes).Concat(EnchantmentTypes).Concat(SpellTypes).Append("Siege"), StringComparer.OrdinalIgnoreCase);
+        new(LandTypes.Concat(ArtifactTypes).Concat(EnchantmentTypes).Concat(SpellTypes).Concat(PlaneswalkerTypes).Append("Siege"), StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Color chosen as it entered ("As this enters, choose a color"): W, U, B, R or G.</summary>
     public string? ChosenColor { get; set; }

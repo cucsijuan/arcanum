@@ -477,6 +477,31 @@ public class OriginsEffectsTests
         Assert.True(s.Card(dryad).Has(Keyword.Flying)); // until end of turn only
     }
 
+    [Fact]
+    public async Task AnAnimatedPlaneswalkerTurnedIntoAFrogKeepsItsPlaneswalkerType()
+    {
+        var frog = Make("Turn to Frog", "Instant", """
+            { "spell": { "targets": ["creature"], "effects": [{ "become": "target", "power": 1, "toughness": 1, "setColors": ["U"], "setSubtypes": ["Frog"], "loseAbilities": true }] } }
+            """, "{1}");
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        var gideon = s.Add(P1, Make("Animated Gideon", "Legendary Planeswalker Creature — Gideon Human Soldier", "{}", "", "4/4", loyalty: "3"));
+        s.Card(gideon).Counters[CounterKind.Loyalty] = 3; // set up on the battlefield without entering, so no loyalty yet
+        s.InHand(P0, frog);
+        bool gideonType = false, humanType = true, frogType = false;
+        s.Game.EventRaised += e =>
+        {
+            if (e is not SpellResolved) return;
+            var c = s.Card(gideon);
+            (gideonType, humanType, frogType) = (c.HasSubtype("Gideon"), c.HasSubtype("Human"), c.HasSubtype("Frog"));
+        };
+        Script(s, Cast(s, "Turn to Frog"));
+        await s.RunUntilTurn();
+        Assert.True(gideonType);
+        Assert.False(humanType);
+        Assert.True(frogType);
+    }
+
     // ------------------------------------------------------------------ Mage-Ring Network
 
     private const string MageRing = """
