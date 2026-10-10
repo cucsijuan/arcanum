@@ -2118,7 +2118,7 @@ public partial class GameBoard : Control
     /// <summary>Completes once queued announcements and short holds (e.g. after combat damage) are over.</summary>
     private async Task PresentationAsync()
     {
-        while (IsInstanceValid(this) && (_announcer.Busy || Time.GetTicksMsec() < _holdUntilMs || _combatFlushQueued))
+        while (IsInstanceValid(this) && (_announcer.Busy || Time.GetTicksMsec() < _holdUntilMs || _combatFlushQueued || _strikesQueued || _striking))
             await ToSignal(GetTree().CreateTimer(0.05), SceneTreeTimer.SignalName.Timeout);
     }
 
@@ -2165,9 +2165,6 @@ public partial class GameBoard : Control
             case BlockerDeclared b when ev.Card(b.Blocker) is { } blocker && _session.Announces(blocker.Controller):
                 _pendingBlocks.Add(ev);
                 QueueCombatFlush();
-                break;
-            case DamageDealt { IsCombat: true }:
-                Hold(1.2); // let the damage numbers be seen before the game moves on
                 break;
             case PermanentDestroyed d:
                 _announcer.Enqueue(new($"{ev.Name(d.Card)} is destroyed", ViewOf(ev, d.Card), 1.5));
@@ -2266,6 +2263,9 @@ public partial class GameBoard : Control
         Announce(ev);
         switch (ev.Event)
         {
+            case DamageDealt { IsCombat: true } combat:
+                QueueStrike(ev, combat); // shown blow by blow
+                break;
             case DamageDealt { TargetCard: { } card } d when FindCard(card) is { } node:
                 SpawnFloatingText($"-{d.Amount}", node.GetGlobalTransform() * (node.Size / 2), BoardStyle.Attacking);
                 break;
