@@ -78,6 +78,14 @@ public partial class LimitedScreen : Control
             loading.Text = "Card data isn't available: install a content module to play limited.";
             return;
         }
+        // ARCANUM_CELEBRATE=<module deck name>: the winner's celebration with that deck (screenshots).
+        if (OS.GetEnvironment("ARCANUM_CELEBRATE") is { Length: > 0 } celebrateDeck && App.Instance.Module is { } module)
+        {
+            var celebrated = DeckList.Parse(module.ReadDeck(celebrateDeck));
+            var basics = LimitedService.Basics.Values.ToHashSet();
+            AddChild(new Celebration(celebrated.Main.Where(e => !basics.Contains(e.Name) && Cards.Find(e.Name) is not null)
+                .SelectMany(e => Enumerable.Repeat(ViewOf(DefinitionOf(e)), e.Count)).ToList(), "You won the draft!"));
+        }
         if (!Session.IsOnline) Service.Load();
         _watched = Session;
         _watched.Changed += OnSessionChanged;
@@ -349,6 +357,22 @@ public partial class LimitedScreen : Control
                 ShowRounds();
                 break;
         }
+    }
+
+    /// <summary>Events whose win was celebrated already (each is, once).</summary>
+    private static readonly HashSet<int> Celebrated = new();
+
+    /// <summary>The winner's cards bounce across the screen (the basic lands stay home).</summary>
+    private void Celebrate(LimitedEvent ev, int seat)
+    {
+        if (_autoOnline || OS.GetEnvironment("ARCANUM_LIMITED").Length > 0) return;
+        var basics = LimitedService.Basics.Values.ToHashSet();
+        var cards = (ev.Seats[seat].Deck?.Main ?? new List<DeckEntry>())
+            .Where(e => !basics.Contains(e.Name) && Cards.Find(e.Name) is not null)
+            .SelectMany(e => Enumerable.Repeat(ViewOf(DefinitionOf(e)), e.Count))
+            .OrderBy(_ => Random.Shared.Next())
+            .ToList();
+        AddChild(new Celebration(cards, ev.Mode == LimitedMode.Draft ? "You won the draft!" : "You won the event!"));
     }
 
     // ---------------------------------------------------------------- helpers
@@ -911,6 +935,7 @@ public partial class LimitedScreen : Control
         {
             int place = ev.Standings().IndexOf(human) + 1;
             matchBox.AddChild(MenuKit.SectionTitle($"You finished {Ordinal(place)} of {ev.Seats.Count} with {Record(ev, human)}."));
+            if (place == 1 && Celebrated.Add(ev.Seed)) Celebrate(ev, human);
             var actions = new HBoxContainer();
             actions.AddThemeConstantOverride("separation", 12);
             var save = BoardStyle.MakeButton("Save my deck", 16);
