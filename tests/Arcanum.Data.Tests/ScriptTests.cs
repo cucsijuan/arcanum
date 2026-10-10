@@ -300,5 +300,34 @@ public class TokenImageTests
                               "effects": [{ "counters": 1, "what": "self" }, { "becomeRenowned": "self" }] }] }
             """);
         Assert.Equal(CardSupport.Full, CardFactory.Create(record, script).Support);
+        // A script that leaves out the renown trigger doesn't make it supported.
+        var noRenown = CardScriptParser.Parse("""{ "abilities": [{ "cost": "{1}", "effects": [{ "pump": [1, 1], "what": "self" }] }] }""");
+        Assert.Equal(CardSupport.Unsupported, CardFactory.Create(record, noRenown).Support);
+    }
+
+    [Fact]
+    public void ACardWhoseScriptLeavesOutItsOwnProtectionIsNotSupported()
+    {
+        CardRecord Record(string text) => new()
+        {
+            OracleId = "o-p", Name = "Goblin Driver", Layout = "normal", ManaCost = "{1}{R}", TypeLine = "Creature — Goblin Warrior",
+            OracleText = text, Power = "1", Toughness = "2", Keywords = new[] { "Protection" },
+        };
+        const string attack = """{ "abilities": [{ "trigger": "attacks", "effects": [{ "pump": [2, 0], "what": "self" }] }] }""";
+        const string withProtection = """
+            { "abilities": [{ "static": { "affects": "self", "keywords": ["Protection from blue"] } },
+                            { "trigger": "attacks", "effects": [{ "pump": [2, 0], "what": "self" }] }] }
+            """;
+        var own = Record("Protection from blue\nWhenever this creature attacks, it gets +2/+0 until end of turn.");
+        Assert.Equal(CardSupport.Unsupported, CardFactory.Create(own, CardScriptParser.Parse(attack)).Support);
+        Assert.Equal(CardSupport.Full, CardFactory.Create(own, CardScriptParser.Parse(withProtection)).Support);
+
+        // Giving protection to something else isn't the card's own protection.
+        var granting = Record("{T}: Another target creature you control gains protection from the card type of your choice until end of turn.");
+        var grant = CardScriptParser.Parse("""
+            { "abilities": [{ "cost": "{T}", "targets": [{ "kind": "creature", "controller": "you", "filter": { "other": true } }],
+                              "effects": [{ "protectionFromChosenType": "target" }] }] }
+            """);
+        Assert.Equal(CardSupport.Full, CardFactory.Create(granting, grant).Support);
     }
 }

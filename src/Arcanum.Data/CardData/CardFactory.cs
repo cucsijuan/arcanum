@@ -101,7 +101,9 @@ public static partial class CardFactory
         bool supported = costOk && powerOk && toughnessOk
                          && SingleFaceLayouts.Contains(record.Layout)
                          && record.Keywords.All(k => SupportedKeywords.Contains(k) || IsCycling(k))
-                         && (script is not null || RulesTextIsCovered(record));
+                         && (script is not null || RulesTextIsCovered(record))
+                         && !MissesItsOwnProtection(record.OracleText, definition)
+                         && !MissesItsRenown(record, definition);
         return (definition, supported ? CardSupport.Full : CardSupport.Unsupported);
     }
 
@@ -198,6 +200,32 @@ public static partial class CardFactory
     /// True when the rules text adds nothing beyond what the engine derives from card data: empty, reminder text,
     /// keyword lines, or a basic land type's mana ability.
     /// </summary>
+    /// <summary>A keyword line of the card's own ("Protection from blue", "Flying, protection from red").</summary>
+    private static readonly System.Text.RegularExpressions.Regex OwnProtectionLine =
+        new(@"^(?:[A-Za-z ]+, )*protection from ", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Multiline);
+
+    /// <summary>
+    /// The card data names only "Protection" as a keyword, not what from: a script must give it. A card whose rules text gives
+    /// itself protection but whose script doesn't isn't fully supported (it would play without protection).
+    /// </summary>
+    private static bool MissesItsOwnProtection(string? oracleText, CardDefinition definition)
+    {
+        if (oracleText is null || !OwnProtectionLine.IsMatch(oracleText)) return false;
+        bool IsProtection(Engine.Cards.Keyword k) => k.ToString().StartsWith("Protection", StringComparison.OrdinalIgnoreCase);
+        return !(definition.KeywordAbilities.Any(IsProtection)
+                 || definition.ProtectionFromSubtypes.Count > 0
+                 || definition.Abilities.OfType<Engine.Abilities.StaticAbility>().Any(a =>
+                        a.Affects.Scope == Engine.Abilities.AffectedScope.Self && (a.ProtectionFromRingBearers || (a.Keywords ?? Array.Empty<Engine.Cards.Keyword>()).Any(IsProtection))));
+    }
+
+    /// <summary>
+    /// Renown is a keyword its script implements (a trigger that makes it renowned): a card with Renown whose script has no such
+    /// trigger isn't fully supported.
+    /// </summary>
+    private static bool MissesItsRenown(CardRecord record, CardDefinition definition) =>
+        record.Keywords.Contains("Renown", StringComparer.OrdinalIgnoreCase)
+        && !definition.Abilities.OfType<Engine.Abilities.TriggeredAbility>().Any(a => a.Effects.OfType<Engine.Abilities.BecomeRenowned>().Any());
+
     private static bool RulesTextIsCovered(CardRecord record)
     {
         var text = ReminderText().Replace(record.OracleText, "");
