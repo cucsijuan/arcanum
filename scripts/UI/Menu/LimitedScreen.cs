@@ -26,6 +26,7 @@ public partial class LimitedScreen : Control
     private readonly CardNode _preview = new() { SharpImage = true, MouseFilter = MouseFilterEnum.Ignore, Visible = false, ZIndex = 300 };
     private Label _title = null!;
     private int _selected = -1;
+    private string? _selectedFor; // the pick _selected belongs to
     private bool _editingDuringEvent;
 
     // New-event choices.
@@ -37,7 +38,15 @@ public partial class LimitedScreen : Control
     /// <summary>The event shown: an online one this device takes part in, or the local one.</summary>
     private static ILimitedSession Session => (ILimitedSession?)App.Instance.Online.EventSession ?? App.Instance.Limited;
 
-    private readonly Label _timer = BoardStyle.MakeLabel("", 22, BoardStyle.Attacking, bold: true);
+    private readonly Label _timer = BoardStyle.MakeLabel("", 30, BoardStyle.Attacking, bold: true);
+
+    // The clock under the header: a bar emptying as time runs out, with soft sounds near the end.
+    private readonly ColorRect _clockTrack = new() { AnchorRight = 1, OffsetLeft = 24, OffsetTop = 80, OffsetRight = -24, OffsetBottom = 88, Color = new Color(1, 1, 1, 0.08f), Visible = false, MouseFilter = MouseFilterEnum.Ignore };
+    private readonly ColorRect _clockFill = new() { AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore };
+    private readonly ClockSound _clockSound = new();
+    private string? _clockKey;
+    private int _clockTotal = 1, _clockLeft = -1, _clockSounded = -1;
+    private double _clockSince;
     private ILimitedSession? _watched;
     private static CardDatabase Cards => App.Instance.Cards!;
 
@@ -48,6 +57,10 @@ public partial class LimitedScreen : Control
         var header = MenuKit.AddHeader(this, "Limited");
         _title = header.GetChild<Label>(1);
         header.AddChild(_timer);
+        _timer.VerticalAlignment = VerticalAlignment.Center;
+        _clockTrack.AddChild(_clockFill);
+        AddChild(_clockTrack);
+        AddChild(_clockSound);
         _abandon.CustomMinimumSize = new Vector2(170, 44);
         _abandon.ZIndex = 500; // stays usable over a booster being opened
         _abandon.Pressed += AskAbandon;
@@ -96,7 +109,38 @@ public partial class LimitedScreen : Control
     public override void _Process(double delta)
     {
         int left = Session.SecondsLeft;
-        _timer.Text = left >= 0 && !PackClosed ? $"⏱ {left / 60}:{left % 60:00}" : ""; // the clock shows once the booster is open
+        bool shown = left >= 0 && !PackClosed; // the clock shows once the booster is open
+        _timer.Text = shown ? $"⏱ {left / 60}:{left % 60:00}" : "";
+        _clockTrack.Visible = shown;
+        if (!shown) return;
+
+        // A new thing to do (the next pick, building) starts a new clock; the bar empties smoothly between the seconds.
+        var ev = Session.Current;
+        var key = $"{ev?.Stage}:{_title.Text}";
+        double now = Time.GetTicksMsec() / 1000.0;
+        if (key != _clockKey || left > _clockLeft + 1)
+        {
+            _clockKey = key;
+            _clockTotal = Math.Max(1, left);
+            _clockSounded = -1;
+        }
+        if (left != _clockLeft) _clockSince = now;
+        _clockLeft = left;
+        double precise = Math.Max(0, left - Math.Min(1, now - _clockSince));
+        float share = (float)Math.Clamp(precise / _clockTotal, 0, 1);
+        _clockFill.AnchorRight = share;
+        _clockFill.Color = share > 0.5f ? UiArt.Gold : share > 0.25f ? new Color("ff9f43") : new Color("ff5a4f");
+
+        // The last ten seconds pulse, call softly once, and tick through the last five, while this player still has to act.
+        bool waiting = ev?.Stage == EventStage.Drafting && Session.DraftState is { Picked: true };
+        float pulse = left <= 10 && !waiting ? 1 + 0.08f * (float)Math.Max(0, Math.Sin(now * Math.PI * 2)) : 1;
+        _timer.PivotOffset = _timer.Size / 2;
+        _timer.Scale = new Vector2(pulse, pulse);
+        _timer.AddThemeColorOverride("font_color", left <= 10 ? new Color("ff5a4f") : BoardStyle.Attacking);
+        if (waiting || left == _clockSounded || _clockTotal <= 10) return;
+        if (left == 10) _clockSound.Warn();
+        else if (left is > 0 and <= 5) _clockSound.Tick();
+        _clockSounded = left;
     }
 
     private static readonly bool _autoOnline = OS.GetEnvironment("ARCANUM_AUTOPLAY") == "1";
@@ -225,7 +269,49 @@ public partial class LimitedScreen : Control
     }
 
     /// <summary>Shows the part of the event that comes next.</summary>
+    /// <summary>
+    /// Redraws the screen for the event's stage. Redrawn as the same screen (an online update, a card moved into the
+    /// deck), its lists keep where they were scrolled to.
+    /// </summary>
     private new void Show()
+    {
+        var title = _title.Text;
+        var scrolls = ScrollsIn(_content).Select(s => s.ScrollVertical).ToList();
+        ShowStage();
+        if (_title.Text == title) KeepScrolls(scrolls);
+    }
+
+    private static IEnumerable<ScrollContainer> ScrollsIn(Node node)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (child.IsQueuedForDeletion()) continue;
+            if (child is ScrollContainer scroll) yield return scroll;
+            foreach (var inner in ScrollsIn(child)) yield return inner;
+        }
+    }
+
+    /// <summary>Scrolls the new lists back to <paramref name="positions"/> once their content has its size.</summary>
+    private void KeepScrolls(IReadOnlyList<int> positions)
+    {
+        var scrolls = ScrollsIn(_content).ToList();
+        for (int i = 0; i < Math.Min(scrolls.Count, positions.Count); i++)
+        {
+            var (scroll, position) = (scrolls[i], positions[i]);
+            if (position <= 0) continue;
+            var bar = scroll.GetVScrollBar();
+            void Apply()
+            {
+                if (!IsInstanceValid(scroll)) return;
+                scroll.ScrollVertical = position;
+                if (scroll.ScrollVertical >= position) bar.Changed -= Apply;
+            }
+            bar.Changed += Apply;
+            GetTree().CreateTimer(0.5).Timeout += () => { if (IsInstanceValid(bar)) bar.Changed -= Apply; };
+        }
+    }
+
+    private void ShowStage()
     {
         foreach (var child in _content.GetChildren()) child.QueueFree();
         _preview.Visible = false;
@@ -444,7 +530,10 @@ public partial class LimitedScreen : Control
     {
         var draft = Session.DraftState!;
         _title.Text = $"Draft · pack {draft.Round + 1} of {draft.Rounds} · pick {draft.PickInRound + 1} · passing {(draft.PassesLeft ? "left" : "right")}";
-        _selected = -1;
+        // An online update redraws the pick screen while this player is choosing: the card they selected stays selected.
+        var pickKey = $"{Session.Current!.Seed}:{draft.Round}:{draft.PickInRound}";
+        if (draft.Picked || _selectedFor != pickKey) _selected = -1;
+        _selectedFor = pickKey;
 
         var body = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         body.AddThemeConstantOverride("separation", 20);
@@ -483,6 +572,12 @@ public partial class LimitedScreen : Control
             };
         }
         take.Pressed += () => { if (_selected >= 0) Pick(_selected); };
+        if (_selected >= 0 && _selected < nodes.Count)
+        {
+            nodes[_selected].SetHighlight(CardHighlight.Selected);
+            take.Disabled = false;
+        }
+        else _selected = -1;
 
         // The first pick of a round is from the booster this player opens: it opens on screen first. Redrawn while the
         // pack is still closed (an online update), the new cards wait in it too; once the pick has moved on (time ran

@@ -30,12 +30,13 @@ public partial class TurnChime : AudioStreamPlayer
     }
 
     /// <summary>F4 then A4, about 0.43 s in all.</summary>
-    private static AudioStreamWav Synthesize()
+    private static AudioStreamWav Synthesize() => Render(0.43, (0.0, 349.23, 0.28, 0.8), (0.12, 440.0, 0.31, 1.0));
+
+    /// <summary>Soft bell-like notes (start, frequency, duration, gain) mixed into a mono 16-bit sound <paramref name="length"/> seconds long.</summary>
+    internal static AudioStreamWav Render(double length, params (double Start, double Frequency, double Duration, double Gain)[] notes)
     {
-        const double length = 0.43;
         var samples = new double[(int)(length * MixRate)];
-        AddNote(samples, start: 0.0, frequency: 349.23, duration: 0.28, gain: 0.8);
-        AddNote(samples, start: 0.12, frequency: 440.0, duration: 0.31, gain: 1.0);
+        foreach (var note in notes) AddNote(samples, note.Start, note.Frequency, note.Duration, note.Gain);
         var data = new byte[samples.Length * 2];
         for (int i = 0; i < samples.Length; i++)
         {
