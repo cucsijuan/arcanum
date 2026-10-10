@@ -251,7 +251,7 @@ Notes:
 
 Without the service (until it exists), options are:
 
-1. **Casual trust:** encrypted + signed save on disk and in Player Data Storage (stops casual editing), online
+1. **Casual trust:** compressed save sealed with an HMAC on disk (and later in Player Data Storage): it stops casual editing, online
    results confirmed by both players, leaderboards "best effort".
 2. **Fair formats for the big events:** international/championship events are **limited** (sealed/draft): every
    player's pool comes from the event, so the collection doesn't matter and can't be cheated in.
@@ -289,7 +289,7 @@ events need the dedicated host for the games themselves.
 
 | # | Content | Done when |
 |---|---|---|
-| C1 | **Offline core:** profile + save, starter deck choice, real-day calendar, 2 dailies vs bots, store (boosters, precons), opening into the collection, collection deck builder, sell cards, hub screen, store picture with hotspots, store table playmat | a new career can be played for a week of in-game days, entirely offline |
+| C1 | **Offline core** (done, in testing): profile + save, starter deck choice, real-day calendar, 2 dailies vs bots, store (boosters, precons), opening into the collection, collection deck builder, sell cards, hub screen, store picture with hotspots, store table playmat | a new career can be played for a week of in-game days, entirely offline |
 | C2 | **Grind and life:** practice with decaying rewards, ante matches, challenges, opponent roster with tiers and rivals, trades with opponents, opportunity offers, reputation tiers | the store feels alive from day to day |
 | C3 | **Offline calendar:** weekly events from the module's default schedule (draft night, commander night, Saturday tournament, monthly championship) against bots, prizes and qualification tokens, in-game card prices reacting to results | a full in-game month has a shape |
 | C4 | **Accounts and remote config:** Discord sign-in (replacing Device ID) and account linking screen; Title Storage season file, server time, cached config, cloud save; developer tool to validate a season file before publishing | changing the season file changes next week's events without a release |

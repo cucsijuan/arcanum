@@ -656,6 +656,11 @@ public partial class GameBoard : Control
         {
             var player = new PlayerId(i);
             var mine = player == Bottom;
+            if (_match?.Table is { } table && _areas.Count == 2)
+            {
+                _areas[i].SetPlaymatStyle($"table:{(mine ? "bottom" : "top")}:{table}");
+                continue;
+            }
             var chosen = mine ? null : _session.PlaymatOf(player) is { } id && BoardStyle.Playmats.Any(p => p.Id == id) ? id : null;
             _areas[i].SetPlaymatStyle(chosen ?? Settings.Current.Playmats.ElementAtOrDefault(mine ? 0 : 1) ?? "grid");
         }
@@ -2319,6 +2324,10 @@ public partial class GameBoard : Control
         _actionPanel.Visible = false;
         bool inEvent = _match?.Event is not null || (_online is not null && App.Instance.Online.EventSession is not null);
         if (_newGameButton is not null) _newGameButton.Visible = !inEvent && _online is null;
-        if (_backToEventButton is not null) _backToEventButton.Visible = inEvent;
+        if (_backToEventButton is not null)
+        {
+            _backToEventButton.Visible = inEvent;
+            if (_match?.Event is { } hook) _backToEventButton.Text = hook.ReturnText;
+        }
     }
 }

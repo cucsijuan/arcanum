@@ -11,9 +11,9 @@ public sealed record DeckInfo(string Name, string FormatId, string Path, bool Is
 /// User decks as plain-text deck lists under user://decks, with "# name:" and "# format:" header comments.
 /// Starter decks from the content module are listed too, read-only.
 /// </summary>
-public sealed class DeckStore
+public sealed class DeckStore(string folder = "user://decks", bool starters = true)
 {
-    private static string Directory => ProjectSettings.GlobalizePath("user://decks");
+    private string Directory => ProjectSettings.GlobalizePath(folder);
 
     public List<DeckInfo> List(Arcanum.Data.Modules.ContentModule? module)
     {
@@ -22,7 +22,7 @@ public sealed class DeckStore
             .Select(path => ReadInfo(path, isStarter: false))
             .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
-        if (module is not null)
+        if (module is not null && starters)
         {
             foreach (var name in module.DeckNames())
             {

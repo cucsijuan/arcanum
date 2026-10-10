@@ -5,7 +5,8 @@ namespace Arcanum.UI.Board;
 
 /// <summary>
 /// Draws a playmat setting onto a shader surface plus an optional picture: built-in styles are procedural
-/// (grid colors or nebula); "custom:&lt;path&gt;" shows a user image from this device.
+/// (grid colors or nebula); "custom:&lt;path&gt;" shows a user image from this device; "table:top|bottom:&lt;resource&gt;"
+/// shows one half of a picture of a table both players share.
 /// </summary>
 public static class Playmat
 {
@@ -17,7 +18,21 @@ public static class Playmat
         _nebula ??= GD.Load<Shader>("res://shaders/nebula_playmat.gdshader");
         picture.Texture = null;
         picture.Visible = false;
-        if (id.StartsWith("custom:"))
+        picture.Modulate = new Color(1, 1, 1, 0.55f); // keep cards readable over busy art
+        if (id.StartsWith("table:") && id.Split(':', 3) is [_, var half, var path] && ResourceLoader.Exists(path))
+        {
+            var table = GD.Load<Texture2D>(path);
+            var size = table.GetSize();
+            picture.Texture = new AtlasTexture
+            {
+                Atlas = table,
+                Region = new Rect2(0, half == "top" ? 0 : size.Y / 2, size.X, size.Y / 2),
+            };
+            picture.Modulate = Colors.White; // the table is the surface, not a picture over it
+            picture.Visible = true;
+            id = "grid";
+        }
+        else if (id.StartsWith("custom:"))
         {
             var image = Image.LoadFromFile(id[7..]);
             if (image is not null && !image.IsEmpty())

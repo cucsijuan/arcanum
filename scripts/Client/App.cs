@@ -12,11 +12,18 @@ public sealed record MatchSetup(IReadOnlyList<GameSession.Seat> Seats, int Start
 {
     /// <summary>A game that is part of an event: who won is reported back, and the game ends with a way back to it.</summary>
     public EventHook? Event { get; init; }
+
+    /// <summary>A picture of a table both players share (its top half behind the opponent, its bottom half behind this player), instead of the playmats.</summary>
+    public string? Table { get; init; }
 }
 
 /// <param name="RecordWinner">Called once when the game ends, with the winning seat index (null for a draw).</param>
 /// <param name="ReturnScene">Where "Back to event" goes.</param>
-public sealed record EventHook(Action<int?> RecordWinner, string ReturnScene, string Title);
+public sealed record EventHook(Action<int?> RecordWinner, string ReturnScene, string Title)
+{
+    /// <summary>The game over screen's button back to <see cref="ReturnScene"/>.</summary>
+    public string ReturnText { get; init; } = "Back to event";
+}
 
 /// <summary>
 /// Autoload that owns app-wide services: content (module, cards, formats), settings, saved decks and navigation
@@ -32,6 +39,7 @@ public partial class App : Node
     public const string GameBoardScene = "res://scenes/game_board/GameBoard.tscn";
     public const string LimitedScene = "res://scenes/limited/Limited.tscn";
     public const string OnlineScene = "res://scenes/online/Online.tscn";
+    public const string CareerScene = "res://scenes/career/Career.tscn";
 
     public const string SourceUrl = "https://github.com/cucsijuan/arcanum";
 
@@ -43,6 +51,7 @@ public partial class App : Node
     public DeckStore Decks { get; } = new();
     public LimitedService Limited { get; } = new();
     public OnlineService Online { get; } = new();
+    public CareerService Career { get; } = new();
     public List<FormatRules> Formats { get; } = new();
 
     /// <summary>Latest content loading message, for screens that open while loading is still going on.</summary>
@@ -68,6 +77,16 @@ public partial class App : Node
         if (Arcanum.UI.UiArt.Theme() is { } theme) GetTree().Root.Theme = theme;
         AddChild(Content);
         AddChild(Online);
+        // ARCANUM_SHOT=<file.png>[,seconds]: saves a picture of the screen after a while (default 8 s) and quits (screenshots).
+        if (OS.GetEnvironment("ARCANUM_SHOT") is { Length: > 0 } shot)
+        {
+            var parts = shot.Split(',');
+            GetTree().CreateTimer(parts.Length > 1 && double.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 8).Timeout += () =>
+            {
+                GetViewport().GetTexture().GetImage().SavePng(parts[0]);
+                GetTree().Quit();
+            };
+        }
         Content.Progress += message =>
         {
             ContentStatus = message;
@@ -83,6 +102,7 @@ public partial class App : Node
                 foreach (var error in errors) GD.PushWarning($"Format: {error}");
             }
             if (Formats.Count == 0) Formats.Add(FormatRules.Casual);
+            if (loaded) Career.Init(Module!, Cards!);
             ContentStatus = loaded ? $"{Cards!.Count:N0} cards ready" : "No content module: generic demo only";
             ContentProgress?.Invoke(ContentStatus);
             _contentReady.TrySetResult(loaded);

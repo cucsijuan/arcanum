@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+using System.Text.Json.Serialization;
+using Arcanum.Data.Decks;
+using Arcanum.Data.Limited;
+
+namespace Arcanum.Data.Career;
+
+/// <summary>A card of a collection: the card and the printing it is (set code in capitals, as in deck lists).</summary>
+public readonly record struct CardKey(string Name, string Set, string Number)
+{
+    public static CardKey Of(PoolCard card) => new(card.Name, card.Set.ToUpperInvariant(), card.Number);
+
+    public static CardKey Of(DeckEntry entry) => new(entry.Name, entry.Set?.ToUpperInvariant() ?? "", entry.Number ?? "");
+
+    /// <summary>"Name|SET|number": the collection's dictionary key in saves.</summary>
+    public override string ToString() => $"{Name}|{Set}|{Number}";
+
+    public static CardKey Parse(string text)
+    {
+        var parts = text.Split('|');
+        return parts.Length == 3 ? new(parts[0], parts[1], parts[2]) : new(text, "", "");
+    }
+}
+
+/// <summary>A daily match that has started and has no result yet.</summary>
+/// <param name="Reward">"cash" or "booster": the prize chosen for a win.</param>
+public sealed record PendingDaily(string OpponentId, string Deck, string Reward)
+{
+    /// <summary>The featured set when the match started: a booster prize is of this set.</summary>
+    public string Set { get; init; } = "";
+}
+
+/// <summary>Something that happened in the career, newest last (shown on the hub).</summary>
+public sealed record CareerNote(DateTime Utc, string Text);
+
+/// <summary>Everything a career has: money, cards, unopened boosters, the day and its daily matches.</summary>
+public sealed class CareerState
+{
+    public ulong Seed { get; set; }
+    public DateTime StartedUtc { get; set; }
+
+    /// <summary>The latest time seen: a career's clock never goes back.</summary>
+    public DateTime LastUtc { get; set; }
+
+    /// <summary>The current day (UTC) and how many daily matches have been played on it.</summary>
+    public DateOnly Day { get; set; }
+    public int DailiesPlayed { get; set; }
+    public PendingDaily? Pending { get; set; }
+
+    /// <summary>Cash in cents.</summary>
+    public int Cash { get; set; }
+
+    /// <summary>Owned cards by <see cref="CardKey"/> text.</summary>
+    public SortedDictionary<string, int> Collection
+    {
+        get => _collection;
+        set => _collection = new(value, StringComparer.Ordinal); // loaded saves keep the same order
+    }
+
+    private SortedDictionary<string, int> _collection = new(StringComparer.Ordinal);
+
+    /// <summary>Unopened boosters by set code (lower case).</summary>
+    public SortedDictionary<string, int> Sealed
+    {
+        get => _sealed;
+        set => _sealed = new(value, StringComparer.Ordinal);
+    }
+
+    private SortedDictionary<string, int> _sealed = new(StringComparer.Ordinal);
+
+    /// <summary>Boosters opened so far: each one's contents come from the career seed and its number.</summary>
+    public int BoostersOpened { get; set; }
+
+    public int Wins { get; set; }
+    public int Losses { get; set; }
+    public int Reputation { get; set; }
+
+    public List<CareerNote> Notes { get; set; } = new();
+
+    [JsonIgnore]
+    public int CollectionSize => Collection.Values.Sum();
+
+    public int Owned(CardKey card) => Collection.GetValueOrDefault(card.ToString());
+
+    /// <summary>Copies owned of a card in any printing.</summary>
+    public int OwnedByName(string name) =>
+        Collection.Where(kv => CardKey.Parse(kv.Key).Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Sum(kv => kv.Value);
+
+    public IEnumerable<(CardKey Card, int Count)> Cards => Collection.Select(kv => (CardKey.Parse(kv.Key), kv.Value));
+
+    internal void AddCard(CardKey card, int count)
+    {
+        var key = card.ToString();
+        int now = Collection.GetValueOrDefault(key) + count;
+        if (now > 0) Collection[key] = now;
+        else Collection.Remove(key);
+    }
+
+    internal void AddSealed(string set, int count)
+    {
+        int now = Sealed.GetValueOrDefault(set) + count;
+        if (now > 0) Sealed[set] = now;
+        else Sealed.Remove(set);
+    }
+
+    internal void Note(DateTime utc, string text)
+    {
+        Notes.Add(new CareerNote(utc, text));
+        if (Notes.Count > 50) Notes.RemoveAt(0);
+    }
+}

@@ -15,7 +15,8 @@ namespace Arcanum.UI.Menu;
 /// <summary>
 /// Deck builder: search the card pool with filters (including by set, which shows that set's printings and art),
 /// click to add (right-click to remove), see the deck grouped by type with a mana curve and live format validation,
-/// choose each card's printing; save, import and export deck lists.
+/// choose each card's printing; save, import and export deck lists. In career mode it builds the career's decks: only
+/// owned cards are shown, no more copies than owned can be added (basic lands are free), and decks are saved with the career.
 /// </summary>
 public partial class DeckBuilder : Control
 {
@@ -32,6 +33,13 @@ public partial class DeckBuilder : Control
     private static readonly string[] ManaValueFilters = { "Any mana value", "0", "1", "2", "3", "4", "5", "6", "7+" };
 
     // State
+    /// <summary>Set before opening the screen to build career decks from the collection.</summary>
+    public static bool CareerMode { get; set; }
+
+    private bool _career;
+    private DeckStore Store => _career ? App.Instance.Career.Decks : App.Instance.Decks;
+    private string Title => _career ? "Career decks" : "Decks";
+
     private DeckList _deck = new();
     private DeckInfo? _info;
     private bool _dirty;
@@ -77,7 +85,9 @@ public partial class DeckBuilder : Control
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
         MenuKit.AddBackdrop(this);
-        var header = MenuKit.AddHeader(this, "Decks", () => ConfirmDiscard(() => App.Instance.GoTo(App.MainMenuScene)));
+        _career = CareerMode && App.Instance.Career.HasCareer;
+        CareerMode = false;
+        var header = MenuKit.AddHeader(this, Title, () => ConfirmDiscard(() => App.Instance.GoTo(_career ? App.CareerScene : App.MainMenuScene)));
         _headerTitle = header.GetChild<Label>(1);
         BuildHeaderActions(header);
         BuildBody();
@@ -288,6 +298,19 @@ public partial class DeckBuilder : Control
             Set = SelectedSet?.Code,
         };
         var found = Cards.Search(query);
+        if (_career)
+        {
+            // Only owned cards, in the printings owned (basic lands are free, in any printing).
+            var career = App.Instance.Career;
+            var owned = career.State.Cards.ToLookup(c => c.Card.Name, StringComparer.OrdinalIgnoreCase);
+            _results = found.SelectMany(e => career.World!.IsBasicLand(e.Name)
+                    ? new[] { (e, (Printing?)null) }
+                    : owned[e.Name].Where(c => SelectedSet is not { } only || c.Card.Set.Equals(only.Code, StringComparison.OrdinalIgnoreCase))
+                        .Select(c => (e, e.Record.Printings.FirstOrDefault(p => p.Set.Equals(c.Card.Set, StringComparison.OrdinalIgnoreCase) && p.CollectorNumber == c.Card.Number))))
+                .GroupBy(x => (x.e.Name, x.Item2?.Set, x.Item2?.CollectorNumber)).Select(g => g.First()).ToList();
+            ShowPage(0);
+            return;
+        }
         _results = SelectedSet is { } set
             ? found.SelectMany(e => e.Record.Printings.Where(p => p.Set == set.Code).Select(p => (e, (Printing?)p)))
                 .OrderBy(x => x.Item2!.CollectorNumber, Comparer<string>.Create(OracleJsonl.CompareNumbers)).ToList()
@@ -338,9 +361,9 @@ public partial class DeckBuilder : Control
             card.TooltipText = (card.TooltipText.Length > 0 ? card.TooltipText + "\n" : "") + "Not fully supported yet: some of its rules won't work in games.";
         }
         int copies = Section.Where(e => e.Name.Equals(entry.Name, StringComparison.OrdinalIgnoreCase)).Sum(e => e.Count);
-        if (copies > 0)
+        if (copies > 0 || _career && Owned(entry.Name) is not null)
         {
-            var badge = BoardStyle.MakeLabel($"×{copies}", 18, new Color("16171a"), bold: true);
+            var badge = BoardStyle.MakeLabel(_career && Owned(entry.Name) is int have ? $"{copies}/{have}" : $"×{copies}", 18, new Color("16171a"), bold: true);
             var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(TileSize.X - 52, 8) };
             panel.AddThemeStyleboxOverride("panel", BoardStyle.Box(BoardStyle.Playable, 10));
             panel.AddChild(badge);
@@ -373,6 +396,11 @@ public partial class DeckBuilder : Control
 
     private void Add(string name, int delta, string? set = null, string? number = null, bool foil = false)
     {
+        if (_career && delta > 0 && Owned(name) is int owned && InDeck(name) + delta > owned)
+        {
+            MenuKit.Toast(this, $"You have {owned} {name}.");
+            return;
+        }
         // Removing from the results grid takes a copy of any printing when that exact printing isn't in the deck.
         if (delta < 0 && !Section.Any(e => e.SameCard(name, set, number, foil)) && Section.LastOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } other)
             (set, number, foil) = (other.Set, other.Number, other.Foil);
@@ -381,6 +409,13 @@ public partial class DeckBuilder : Control
         RefreshDeck();
         ShowPage(_page); // update copy badges
     }
+
+    /// <summary>Copies of a card the career owns (any printing); null for basic lands, which are free.</summary>
+    private int? Owned(string name) =>
+        App.Instance.Career.World!.IsBasicLand(name) ? null : App.Instance.Career.State.OwnedByName(name);
+
+    private int InDeck(string name) =>
+        _deck.Main.Concat(_deck.Sideboard).Concat(_deck.Commander).Where(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Sum(e => e.Count);
 
     private void MarkDirty()
     {
@@ -393,7 +428,7 @@ public partial class DeckBuilder : Control
     private void UpdateTitle()
     {
         if (_headerTitle is not null)
-            _headerTitle.Text = "Decks" + (_name.Text.Length > 0 ? $" · {_name.Text}" : "") + (_dirty ? " *" : "");
+            _headerTitle.Text = Title + (_name.Text.Length > 0 ? $" · {_name.Text}" : "") + (_dirty ? " *" : "");
     }
 
     private void RefreshDeck()
@@ -709,6 +744,8 @@ public partial class DeckBuilder : Control
     private void RefreshValidation()
     {
         var issues = DeckValidator.Validate(_deck, Format, Cards);
+        if (_career)
+            issues.AddRange(App.Instance.Career.Missing(_deck).Select(m => new DeckIssue(IssueSeverity.Error, $"You have {m.Owned} of the {m.Needed} {m.Name} in this deck.")));
         var errors = issues.Where(i => i.Severity == IssueSeverity.Error).ToList();
         var warnings = issues.Where(i => i.Severity == IssueSeverity.Warning).ToList();
         var text = errors.Count == 0
@@ -725,7 +762,7 @@ public partial class DeckBuilder : Control
     private void RefreshSavedDecks()
     {
         _saved.Clear();
-        _saved.AddRange(App.Instance.Decks.List(App.Instance.Module));
+        _saved.AddRange(Store.List(App.Instance.Module));
         _deckPicker.Clear();
         _deckPicker.AddItem(_saved.Count == 0 ? "No saved decks" : "Choose a deck…");
         foreach (var d in _saved) _deckPicker.AddItem(d.Name);
@@ -754,7 +791,7 @@ public partial class DeckBuilder : Control
 
     private void LoadDeck(DeckInfo info)
     {
-        var (deck, _) = App.Instance.Decks.Load(info);
+        var (deck, _) = Store.Load(info);
         _deck = deck;
         _info = info;
         _name.Text = info.IsStarter ? info.Name.Replace(" (starter)", "") : info.Name;
@@ -778,7 +815,7 @@ public partial class DeckBuilder : Control
             return;
         }
         // Starter decks are read-only: saving one makes a personal copy.
-        _info = App.Instance.Decks.Save(name, Format.Id, _deck, _info is { IsStarter: true } ? null : _info);
+        _info = Store.Save(name, Format.Id, _deck, _info is { IsStarter: true } ? null : _info);
         _dirty = false;
         RefreshSavedDecks();
         UpdateTitle();
@@ -794,7 +831,7 @@ public partial class DeckBuilder : Control
         }
         Ask($"Delete “{_info.Name}”? This can't be undone.", () =>
         {
-            App.Instance.Decks.Delete(_info);
+            Store.Delete(_info);
             RefreshSavedDecks();
             NewDeck();
             MenuKit.Toast(this, "Deck deleted");

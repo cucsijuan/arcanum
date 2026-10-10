@@ -152,6 +152,15 @@ public sealed class ContentModule
         return sets;
     }
 
+    /// <summary>The career settings in career/career.json, or null when the module has no career.</summary>
+    public Career.CareerContent? LoadCareer(List<string>? errors = null)
+    {
+        var file = Path.Combine(Directory, "career", "career.json");
+        if (!File.Exists(file)) return null;
+        try { return Career.CareerContent.Parse(File.ReadAllText(file)); }
+        catch (Exception e) when (e is FormatException or JsonException) { errors?.Add($"career.json: {e.Message}"); return null; }
+    }
+
     public string ImageUrl(string cardName) => Sources.Images.UrlTemplate.Replace("{name}", Uri.EscapeDataString(cardName));
 
     /// <summary>URL for an exact image id, or null if the module's image source doesn't support it.</summary>

@@ -41,6 +41,11 @@ public partial class MainMenu : Control
             OnlineScreen.Page = OnlineScreen.OnlinePage.Both;
             Callable.From(() => App.Instance.GoTo(App.OnlineScene)).CallDeferred();
         }
+        else if (OS.GetEnvironment("ARCANUM_OPEN") == "career" && !_opened)
+        {
+            _opened = true;
+            Callable.From(() => App.Instance.GoTo(App.CareerScene)).CallDeferred();
+        }
         SetAnchorsPreset(LayoutPreset.FullRect);
         var backdrop = MenuKit.AddArcaneBackdrop(this);
         var fan = AddFannedCardBacks();
@@ -162,6 +167,7 @@ public partial class MainMenu : Control
         var items = new List<(string, string, Action)>
         {
             ("Play", "Start a game: constructed formats, commander, draft or sealed", () => App.Instance.GoTo(App.PlaySetupScene)),
+            ("Career", "Life as a card player: daily matches, boosters, a collection and the store's regulars", () => App.Instance.GoTo(App.CareerScene)),
             ("Online", "Host a game or join one", () => ShowItems("Online", OnlineItems())),
             ("Decks", "Build, import and export decks", () => App.Instance.GoTo(App.DeckBuilderScene)),
             ("Settings", "Gameplay, appearance, audio and video", () => App.Instance.GoTo(App.SettingsScene)),
