@@ -97,15 +97,17 @@ public partial class DeckDesk : Control
         _desk = new ArtScene(picture, Array.Empty<Hotspot>());
         _desk.BackRequested += Leave;
         AddChild(_desk);
-        _matArea = Hotspot.LoadArea(Kit + "desk.json", "mat", new Rect2(0.148f, 0.177f, 0.706f, 0.643f));
-        if (picture is null)
-        {
-            var felt = CareerStyle.Box(new Color("1f3b3a"), new Color("c9a45c"), 3, 18);
-            felt.ShadowColor = new Color(0, 0, 0, 0.5f);
-            felt.ShadowSize = 14;
-            _felt.AddThemeStyleboxOverride("panel", felt);
-            AddChild(_felt);
-        }
+        _matArea = Hotspot.LoadArea(Kit + "desk.json", "mat", new Rect2(0.05f, 0.165f, 0.9f, 0.7f));
+        // The playmat is drawn over the desk at the size the file gives (larger than the one in the picture): a dark cloth on
+        // the desk picture, a felt one without it.
+        var cloth = picture is null
+            ? CareerStyle.Box(new Color("1f3b3a"), new Color("c9a45c"), 3, 18)
+            : CareerStyle.Box(new Color("262429"), new Color("34313a"), 3, 16);
+        cloth.ShadowColor = new Color(0, 0, 0, 0.55f);
+        cloth.ShadowSize = 16;
+        cloth.ShadowOffset = new Vector2(0, 6);
+        _felt.AddThemeStyleboxOverride("panel", cloth);
+        AddChild(_felt);
         if (ResourceLoader.Exists(Kit + "mats/default.jpg"))
         {
             _matPicture.Texture = GD.Load<Texture2D>(Kit + "mats/default.jpg");
@@ -345,7 +347,7 @@ public partial class DeckDesk : Control
             box.AddThemeConstantOverride("separation", 2);
             box.AddChild(CareerStyle.Text($"{ColumnNames[column]}  ({inColumn.Count})", 16, new Color(1f, 0.95f, 0.85f, 0.85f)));
             // Cards overlap, each showing its title bar; the last one shows whole.
-            float step = 26, small = 0.78f;
+            float step = 26, small = DeckScale();
             var stack = new Control { CustomMinimumSize = new Vector2(_tile.X * small, inColumn.Count == 0 ? 0 : step * (inColumn.Count - 1) + _tile.Y * small) };
             for (int i = 0; i < inColumn.Count; i++)
             {
@@ -388,6 +390,13 @@ public partial class DeckDesk : Control
             .Concat(DeckValidator.Validate(_deck, FormatRules.Casual, Cards).Where(i => i.Severity == IssueSeverity.Error).Select(i => i.Message)).ToList();
         _problems.Text = problems.Count == 0 ? "Ready to play." : string.Join("\n", problems.Take(3));
         _problems.AddThemeColorOverride("font_color", problems.Count == 0 ? CareerStyle.Good : CareerStyle.Bad);
+    }
+
+    /// <summary>The deck's cards are drawn smaller so that its seven columns fit the rest of the mat.</summary>
+    private float DeckScale()
+    {
+        float room = _matBox.Size.X - _left.CustomMinimumSize.X - 28 - 20; // the gap, the scroll bar
+        return Math.Clamp((room - (ColumnNames.Length - 1) * 6) / ColumnNames.Length / _tile.X, 0.4f, 0.85f);
     }
 
     private static int ColumnOf(CardDefinition d) => d.Is(CardType.Land) ? 6 : Math.Clamp(d.ManaCost.ManaValue - 1, 0, 5);
