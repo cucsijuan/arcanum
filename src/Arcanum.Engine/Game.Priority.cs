@@ -539,7 +539,8 @@ public sealed partial class Game
                 player.LandsPlayedThisTurn++;
                 // A land played from the graveyard uses up that type's permission, unless a permission without that limit covers it.
                 if (State.GetCard(play.Card).Zone == Zone.Graveyard && !Has(playerId, Replacements.LandsFromGraveyard)) player.GraveyardTypesUsedThisTurn |= CardType.Land;
-                await MoveCardAsync(play.Card, Zone.Battlefield);
+                // It enters under the control of the player who played it, whoever owns it (rule 110.2).
+                await MoveCardAsync(play.Card, Zone.Battlefield, controller: playerId);
                 Emit(new LandPlayed(playerId, play.Card));
                 return true;
 

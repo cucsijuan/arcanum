@@ -546,6 +546,33 @@ public class KeywordActionTests
         Assert.Equal(P0, s.Card(bomb).Controller);
         Assert.Equal(life - 5, s.Game.State.GetPlayer(P0).Life);
     }
+
+    [Fact]
+    public async Task AnOpponentsLandPlayedFromExileEntersUnderThePlayersControl()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        var land = s.Game.SetupInLibrary(P1, Arcanum.Cards.GenericCards.Mountain);
+        s.InHand(P0, new CardDefinition
+        {
+            Name = "Pilfer", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Sorcery,
+            Spell = new SpellAbility
+            {
+                Targets = new[] { new TargetSpec(TargetKind.Player, ControllerFilter.Opponent) },
+                Effects = new Effect[] { new ExileTopPlayable(0, ChooseOne: false) { CountFrom = 1, From = Subject.TargetAt(0), PayLife = true } },
+            },
+        });
+        bool stacked = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!stacked) { stacked = true; s.Restack(P1, land); }
+            return legal.OfType<PlayLand>().FirstOrDefault(p => p.Card == land) ?? legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(land).Zone);
+        Assert.Equal(P0, s.Card(land).Controller); // the player who played it controls it (rule 110.2)
+        Assert.Equal(P1, s.Card(land).Owner);
+    }
 }
 
 /// <summary>The Ring, phasing, cascade, evasion and other mechanics of the eternal-format cards.</summary>
