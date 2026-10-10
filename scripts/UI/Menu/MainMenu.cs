@@ -84,13 +84,8 @@ public partial class MainMenu : Control
             _items.Add(button);
             list.AddChild(button);
         }
-        Item("Play", "Start a game", () => App.Instance.GoTo(App.PlaySetupScene));
+        Item("Play", "Start a game: constructed formats, commander, draft or sealed", () => App.Instance.GoTo(App.PlaySetupScene));
         Item("Online", "Host a game, browse open lobbies or join with an invite code", () => App.Instance.GoTo(App.OnlineScene));
-        Item("Limited", "Draft and sealed: open boosters, build a deck, play rounds", () =>
-        {
-            LimitedScreen.OfferToResume = true;
-            App.Instance.GoTo(App.LimitedScene);
-        });
         Item("Decks", "Build, import and export decks", () => App.Instance.GoTo(App.DeckBuilderScene));
         Item("Settings", "Gameplay, appearance, audio and video", () => App.Instance.GoTo(App.SettingsScene));
         Item("Extras", "Sandbox, card data and about", () => App.Instance.GoTo(App.ExtrasScene));

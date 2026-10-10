@@ -54,7 +54,10 @@ public partial class LimitedScreen : Control
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
         MenuKit.AddBackdrop(this);
-        var header = MenuKit.AddHeader(this, "Limited");
+        // Back goes to the Play screen a local event is chosen on (from an online event, to the main menu as before).
+        var header = MenuKit.AddHeader(this, "Limited", () => App.Instance.GoTo(Session.IsOnline ? App.MainMenuScene : App.PlaySetupScene));
+        if (StartMode is { } chosen) _mode = chosen;
+        StartMode = null;
         _title = header.GetChild<Label>(1);
         header.AddChild(_timer);
         _timer.VerticalAlignment = VerticalAlignment.Center;
@@ -158,6 +161,9 @@ public partial class LimitedScreen : Control
     /// continued or abandoned before going on with it (not when coming back from one of its games).
     /// </summary>
     public static bool OfferToResume { get; set; }
+
+    /// <summary>The kind of event chosen on the Play screen, preselected for a new event.</summary>
+    public static LimitedMode? StartMode { get; set; }
 
     private readonly Button _abandon = BoardStyle.MakeButton("Abandon event", 14);
     private BoosterOpening? _opening;
@@ -452,9 +458,10 @@ public partial class LimitedScreen : Control
 
     // ---------------------------------------------------------------- setup
 
+    /// <summary>A new event of the kind chosen on the Play screen: where its boosters come from, the table and the matches.</summary>
     private void ShowSetup()
     {
-        _title.Text = "Limited";
+        _title.Text = _mode == LimitedMode.Draft ? "Draft" : "Sealed";
         var sources = Service.Sources();
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 18);
@@ -464,22 +471,6 @@ public partial class LimitedScreen : Control
         box.AddThemeConstantOverride("separation", 14);
         box.AddChild(MenuKit.SectionTitle("New event"));
 
-        var modes = new HBoxContainer();
-        modes.AddThemeConstantOverride("separation", 12);
-        foreach (var (mode, label, tip) in new[]
-                 {
-                     (LimitedMode.Draft, "Draft", "Open boosters with computer players and pass them around, taking one card at a time"),
-                     (LimitedMode.Sealed, "Sealed", "Open six boosters and build a deck from what you get"),
-                 })
-        {
-            var button = BoardStyle.MakeButton(label, 18);
-            button.CustomMinimumSize = new Vector2(180, 48);
-            button.TooltipText = tip;
-            BoardStyle.StyleChoice(button, mode == _mode);
-            button.Pressed += () => { _mode = mode; Show(); };
-            modes.AddChild(button);
-        }
-        box.AddChild(modes);
 
         if (sources.Count == 0)
         {
