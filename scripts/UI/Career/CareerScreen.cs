@@ -50,15 +50,14 @@ public partial class CareerScreen : Control
     private static bool _tested;
 
     private ArtScene _room = null!, _store = null!;
-    private Rect2 _screenArea;
     private Place _place = Place.Room;
     private readonly Control _hud = new() { MouseFilter = MouseFilterEnum.Ignore, ZIndex = 50 };
     private readonly Label _back = CareerStyle.Text("", 20, new Color(1f, 0.95f, 0.85f));
     private readonly Label _money = CareerStyle.Text("", 20, new Color(1f, 0.95f, 0.85f));
     private readonly CardNode _preview = new() { SharpImage = true, MouseFilter = MouseFilterEnum.Ignore, Visible = false, ZIndex = 300 };
 
-    // The website on the computer (when zoomed in) and a note over the store (when one is open).
-    private Control? _web;
+    // The computer drawn over the dimmed room, the website on its screen, and a note over the store (when one is open).
+    private Control? _monitor, _casing, _web;
     private Control? _note;
     private WebPage _webPage = WebPage.Matches;
     private string _reward = CareerRules.CashReward;
@@ -91,10 +90,8 @@ public partial class CareerScreen : Control
         loading.QueueFree();
 
         _room = new ArtScene(Picture("room.jpg"), Hotspot.Load(Kit + "room.json", RoomSpots));
-        _screenArea = Hotspot.LoadArea(Kit + "room.json", "screen", new Rect2(0.4f, 0.307f, 0.199f, 0.275f));
         _room.Activated += OnRoom;
         _room.BackRequested += () => { if (_web is not null) CloseWeb(); else App.Instance.GoTo(App.MainMenuScene); };
-        _room.ViewChanged += PlaceWeb;
         AddChild(_room);
 
         _store = new ArtScene(Picture("store.jpg"), Hotspot.Load(Kit + "store.json", StoreSpots)) { Visible = false };
@@ -237,11 +234,7 @@ public partial class CareerScreen : Control
         }
     }
 
-    private static void OpenDeckBuilder()
-    {
-        DeckBuilder.CareerMode = true;
-        App.Instance.GoTo(App.DeckBuilderScene);
-    }
+    private static void OpenDeckBuilder() => App.Instance.GoTo(App.DeckDeskScene);
 
     // ---------------------------------------------------------------- the website
 
@@ -249,45 +242,107 @@ public partial class CareerScreen : Control
     {
         _webPage = page;
         _room.Interactive = false;
-        if (_web is not null)
+        if (_monitor is not null)
         {
             ShowWebPage();
             return;
         }
-        _web = new Control { ZIndex = 5 };
-        _web.Theme = CareerStyle.Web;
-        AddChild(_web);
-        MoveChild(_web, _room.GetIndex() + 1);
-        _web.Visible = false;
-        void Shown()
-        {
-            if (_web is null) return;
-            _web.Visible = true;
-            PlaceWeb();
-            ShowWebPage();
-        }
-        // The view zooms into the screen, with a little margin of the monitor around it.
-        var area = _screenArea.Grow(0.012f);
-        _room.Zoom(area, instant ? 0.01 : 0.6, Shown);
+        // The computer is drawn (not the picture zoomed in, which would blur): it grows from where it stands in the room.
+        _monitor = new Control { ZIndex = 5, MouseFilter = MouseFilterEnum.Stop, Theme = CareerStyle.Web };
+        _monitor.SetAnchorsPreset(LayoutPreset.FullRect);
+        var dim = new ColorRect { Color = new Color(0, 0, 0, 0), AnchorRight = 1, AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore };
+        _monitor.AddChild(dim);
+        _casing = Casing(out _web);
+        _monitor.AddChild(_casing);
+        AddChild(_monitor);
+        MoveChild(_monitor, _room.GetIndex() + 1);
+        _monitor.Resized += PlaceCasing;
+        PlaceCasing();
+        ShowWebPage();
+
+        var final = new Rect2(_casing.Position, _casing.Size);
+        var from = _room.Spot("computer") is { } spot ? _room.ScreenRect(spot) : new Rect2(final.GetCenter(), Vector2.One);
+        float seconds = instant ? 0.01f : 0.45f;
+        _casing.Position = from.Position;
+        _casing.Scale = Vector2.One * Math.Max(0.05f, from.Size.X / final.Size.X);
+        var tween = CreateTween().SetParallel().SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+        tween.TweenProperty(_casing, "position", final.Position, seconds);
+        tween.TweenProperty(_casing, "scale", Vector2.One, seconds);
+        tween.TweenProperty(dim, "color:a", 0.7f, seconds);
         UpdateHud();
     }
 
     private void CloseWeb(bool instant = false)
     {
-        _web?.QueueFree();
-        _web = null;
-        _room.Zoom(null, instant ? 0.01 : 0.5, () => _room.Interactive = _note is null);
+        var monitor = _monitor;
+        var casing = _casing;
+        _monitor = _casing = _web = null;
         UpdateHud();
+        if (monitor is null || casing is null) return;
+        var to = _room.Spot("computer") is { } spot ? _room.ScreenRect(spot) : new Rect2(casing.Position + casing.Size / 2, Vector2.One);
+        var tween = CreateTween().SetParallel().SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.In);
+        float seconds = instant ? 0.01f : 0.3f;
+        tween.TweenProperty(casing, "position", to.Position, seconds);
+        tween.TweenProperty(casing, "scale", Vector2.One * Math.Max(0.05f, to.Size.X / casing.Size.X), seconds);
+        tween.TweenProperty(monitor, "modulate:a", 0f, seconds);
+        tween.Chain().TweenCallback(Callable.From(() =>
+        {
+            monitor.QueueFree();
+            _room.Interactive = _note is null && _monitor is null;
+        }));
     }
 
-    /// <summary>The website covers the computer's screen wherever the view puts it.</summary>
-    private void PlaceWeb()
+    /// <summary>The computer as large as the window allows (an old monitor: a 4:3 screen in a beige casing with a chin).</summary>
+    private void PlaceCasing()
     {
-        if (_web is null) return;
-        var from = _room.ToScreen(_screenArea.Position);
-        var to = _room.ToScreen(_screenArea.End);
-        _web.Position = from;
-        _web.Size = to - from;
+        if (_monitor is null || _casing is null) return;
+        var room = _monitor.Size;
+        const float aspect = 1.3f;
+        var size = new Vector2(Math.Min(room.X * 0.92f, room.Y * 0.95f * aspect), 0);
+        size.Y = size.X / aspect;
+        _casing.Size = size;
+        _casing.Position = (room - size) / 2;
+    }
+
+    private static Control Casing(out Control screen)
+    {
+        var casing = new Control { MouseFilter = MouseFilterEnum.Ignore };
+        var shell = new Panel { AnchorRight = 1, AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore };
+        var plastic = CareerStyle.Box(new Color("d9d1bd"), new Color("a99f87"), 4, 34);
+        plastic.ShadowColor = new Color(0, 0, 0, 0.55f);
+        plastic.ShadowSize = 30;
+        plastic.ShadowOffset = new Vector2(0, 12);
+        shell.AddThemeStyleboxOverride("panel", plastic);
+        casing.AddChild(shell);
+
+        // The screen sits in a dark recessed bezel; the chin below has the brand, a vent and the power light.
+        var bezel = new PanelContainer { AnchorRight = 1, AnchorBottom = 1, OffsetLeft = 42, OffsetTop = 40, OffsetRight = -42, OffsetBottom = -86 };
+        var recess = CareerStyle.Box(new Color("1b1d22"), new Color("8e856f"), 6, 20, 14);
+        bezel.AddThemeStyleboxOverride("panel", recess);
+        casing.AddChild(bezel);
+        screen = new Control { ClipContents = true };
+        bezel.AddChild(screen);
+
+        var brand = CareerStyle.Text("ARCANUM 486", 22, new Color("7d735e"));
+        brand.SetAnchorsPreset(LayoutPreset.BottomLeft);
+        brand.OffsetLeft = 52; brand.OffsetTop = -66; brand.OffsetBottom = -30;
+        casing.AddChild(brand);
+        for (int i = 0; i < 6; i++)
+        {
+            var slot = new ColorRect { Color = new Color("b7ad95"), MouseFilter = MouseFilterEnum.Ignore };
+            slot.SetAnchorsPreset(LayoutPreset.CenterBottom);
+            slot.OffsetLeft = -90 + i * 32; slot.OffsetRight = slot.OffsetLeft + 22; slot.OffsetTop = -54; slot.OffsetBottom = -48;
+            casing.AddChild(slot);
+        }
+        var led = new Panel { MouseFilter = MouseFilterEnum.Ignore };
+        var light = CareerStyle.Box(new Color("6dff8a"), null, 0, 7);
+        light.ShadowColor = new Color(0.4f, 1f, 0.5f, 0.6f);
+        light.ShadowSize = 8;
+        led.AddThemeStyleboxOverride("panel", light);
+        led.SetAnchorsPreset(LayoutPreset.BottomRight);
+        led.OffsetLeft = -74; led.OffsetRight = -60; led.OffsetTop = -56; led.OffsetBottom = -42;
+        casing.AddChild(led);
+        return casing;
     }
 
     private void ShowWebPage()

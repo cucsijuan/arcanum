@@ -108,21 +108,21 @@ hook: new content → new event.
 
 ## Look
 
-Pixel-art, warm and cozy store style, set by `ui-art/LGS-1.jpg` (the store counter) and `ui-art/LGS-1-table.jpg` (the
-play table). Everything else reuses the existing screens (board, deck builder, booster opening, limited screen).
+Pixel-art, warm and cozy, on pictures that fill the window (not the menus of the other modes), with a pixel font.
+The art is in the private art pack under `kit/career/`, each picture with a `.json` of its hotspots (F3 in the game
+shows them and the pointer's position; Ctrl+click copies a point).
 
-- **Store screen = the store picture with hotspots**, not a menu over a background: the booster rack opens boosters,
-  the box of deck boxes opens preconstructed decks, the glass case opens singles (buy/sell), the computer opens the
-  calendar/online events, the counter opens trades and today's offers. Hover highlights the object and shows a label;
-  a plain list of the same actions stays available (keyboard, small screens, accessibility).
-- **Store table playmat:** the table picture spans both seats as one photo: the board shows the top half behind the
-  opponent's area and the bottom half behind the player's (a new built-in playmat kind that takes a region of one
-  image, next to the grid/nebula/custom styles in `Playmat.cs`), so the table reads as one surface across the screen.
-  Used for dailies, practice and ante at the store; events can name other tables later (another store, the
-  championship hall).
-- Different stores/venues per tier later (bigger store, convention hall) = new picture pairs, same hotspots data.
-- The art must stay generic: no recognizable toy, game or brand look-alikes on the shelves (the first picture's
-  "space ranger" figure resembles a well-known toy and should be redrawn before shipping).
+- **The room (home):** `room.jpg`. The computer opens the store's website, drawn crisp over the dimmed room (an old
+  monitor growing from where it stands): daily matches, events, selling cards, unopened boosters and news, and signing
+  up for a new career. The boxes of cards on the shelf open the decks; the stack on the desk opens "my cards".
+- **The store:** `store.jpg`. The booster rack, the preconstructed decks and the counter (selling cards) open paper
+  notes over the dimmed picture. Esc goes back home.
+- **Hotspots** glow along their outline under the pointer, show their name, and follow the arrow keys and Enter.
+- **The table:** `table.jpg` spans both seats in daily matches (top half behind the opponent, bottom half behind the player).
+- **Deck building:** the desk from above on a playmat (`deckmat.jpg` when installed, a felt mat otherwise): the cards
+  owned on the left, the deck on the right in columns by mana value, basic lands free.
+- The art must stay generic: no recognizable toy, game or brand look-alikes (the store's "space ranger" figure resembles
+  a well-known toy and should be redrawn before shipping).
 
 ## Online
 
