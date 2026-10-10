@@ -276,4 +276,83 @@ public class OriginsReviewFixesTests
         Assert.Contains(s.Game.Log, e => e is DamageDealt d && d.Source == attacker);
         Assert.Equal(life - 2, s.Game.State.GetPlayer(P1).Life);
     }
+
+    // ------------------------------------------------------------------ Erebos's Titan (108.4)
+
+    [Fact]
+    public async Task ACardThatDiedUnderAnOpponentsControlHasItsGraveyardAbilitiesControlledByItsOwner()
+    {
+        // "Whenever a creature card leaves an opponent's graveyard, you gain 3 life" from this card's owner's graveyard.
+        var watcher = Make("Grave Watcher", "Creature — Spirit", """
+            { "abilities": [{ "trigger": "leavesGraveyard", "fromGraveyard": true, "filter": { "types": ["creature"], "controller": "opponent" },
+                              "effects": [{ "gainLife": 3 }] }] }
+            """, "{1}", "2/2");
+        var s = new Scenario();
+        Mountains(s, P0, 3);
+        var titan = s.Add(P0, watcher);
+        s.Card(titan).Controller = P1; // stolen by the other player
+        s.Card(titan).BaseController = P1;
+        var theirs = s.Add(P1, Make("Their Bear", "Creature — Bear", "{}", "{1}", "2/2"));
+        s.InHand(P0, Doom());
+        s.InHand(P0, Doom());
+        s.InHand(P0, Raise());
+        Step Empty(Step then) => legal => s.Game.State.Stack.Count == 0 ? then(legal) : null;
+        Script(s.Attacker, Cast(s, "Doom"), Empty(Cast(s, "Doom")), Empty(Cast(s, "Raise")));
+        int doom = 0;
+        s.Attacker.Targets = (_, r) => new[] { Target.Of(r.LegalAt(0).Contains(Target.Of(theirs)) && doom++ == 0 ? titan : theirs) };
+        int life0 = s.Game.State.GetPlayer(P0).Life, life1 = s.Game.State.GetPlayer(P1).Life;
+        await s.RunUntilTurn();
+        Assert.Equal(P0, s.Card(titan).Controller);
+        Assert.Equal(Zone.Battlefield, s.Card(theirs).Zone); // left its owner's graveyard: P1 is P0's opponent
+        Assert.Equal(life0 + 3, s.Game.State.GetPlayer(P0).Life);
+        Assert.Equal(life1, s.Game.State.GetPlayer(P1).Life);
+    }
+
+    // ------------------------------------------------------------------ Hallowed Moonlight (614.12)
+
+    private const string Moonlight = """
+        { "spell": { "effects": [{ "exileUncastEntering": { "types": ["creature"] } }, { "draw": 1 }] } }
+        """;
+
+    [Fact]
+    public async Task HallowedMoonlightLetsACreatureReturnTransformedIntoAPlaneswalker()
+    {
+        var front = Make("Young Hero", "Legendary Creature — Human Soldier", """{ "abilities": [{ "cost": "{1}", "effects": [{ "blink": "self", "transformed": true }] }] }""", "{1}{W}", "2/2");
+        var back = Make("Hero Ascended", "Legendary Planeswalker — Gideon", "{}", "", null);
+        front = front with { BackFace = back with { Loyalty = 3 } };
+        var s = new Scenario();
+        Mountains(s, P0, 2);
+        var hero = s.Add(P0, front);
+        s.InHand(P0, Make("Hallowed Moonlight", "Instant", Moonlight, "{1}"));
+        Step Empty(Step then) => legal => s.Game.State.Stack.Count == 0 ? then(legal) : null;
+        Script(s.Attacker, Cast(s, "Hallowed Moonlight"), Empty(legal => legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == hero)));
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(hero).Zone); // it enters as a planeswalker, not a creature
+        Assert.True(s.Card(hero).Transformed);
+    }
+
+    [Fact]
+    public async Task HallowedMoonlightExilesAnEnchantmentThatWouldEnterAsACreature()
+    {
+        // "As long as you control two or more enchantments, each other non-Aura enchantment you control is a creature with base power and toughness equal to its mana value."
+        var starfield = Make("Small Starfield", "Enchantment", """
+            { "abilities": [{ "static": { "affects": "permanents:you", "other": true, "filter": { "types": ["enchantment"], "notSubtype": "Aura" },
+                                          "while": { "control": { "types": ["enchantment"] }, "count": 2 }, "addTypes": ["creature"],
+                                          "setPower": { "manaValue": "affected" }, "setToughness": { "manaValue": "affected" } } }] }
+            """, "{2}");
+        var s = new Scenario();
+        Mountains(s, P0, 2);
+        s.Add(P0, starfield);
+        s.Add(P0, Make("Plain Charm", "Enchantment", "{}", "{1}"));
+        var relic = s.Add(P0, Make("Old Relic", "Enchantment", "{}", "{1}"));
+        var owner = s.Game.State.GetPlayer(P0);
+        s.Game.State.Battlefield.Remove(relic);
+        s.Card(relic).Zone = Zone.Graveyard; owner.Graveyard.Add(relic);
+        s.InHand(P0, Make("Hallowed Moonlight", "Instant", Moonlight, "{1}"));
+        s.InHand(P0, Make("Raise Relic", "Instant", """{ "spell": { "targets": [{ "kind": "graveyardCard", "filter": { "types": ["enchantment"] } }], "effects": [{ "reanimate": "target" }] } }""", "{1}"));
+        Step Empty(Step then) => legal => s.Game.State.Stack.Count == 0 ? then(legal) : null;
+        Script(s.Attacker, Cast(s, "Hallowed Moonlight"), Empty(Cast(s, "Raise Relic")));
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Exile, s.Card(relic).Zone);
+    }
 }

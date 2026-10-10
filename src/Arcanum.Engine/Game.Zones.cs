@@ -49,7 +49,8 @@ public sealed partial class Game
     /// The replacement effects that would apply to the card going from one zone to another, except those already applied (rule 614.5).
     /// <paramref name="discardedByOpponent"/>: the move is a discard that a spell or ability an opponent of the card's owner controls caused.
     /// </summary>
-    private List<ZoneReplacement> ZoneReplacements(Card card, Zone from, Zone to, IReadOnlyList<ZoneReplacement> applied, bool discardedByOpponent = false)
+    private List<ZoneReplacement> ZoneReplacements(Card card, Zone from, Zone to, IReadOnlyList<ZoneReplacement> applied, bool discardedByOpponent = false,
+        bool transformed = false, PlayerId? enteringController = null)
     {
         var list = new List<ZoneReplacement>();
         if (from == Zone.Battlefield && to != Zone.Exile && State.ExileIfLeaves.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileIfLeaves));
@@ -74,8 +75,10 @@ public sealed partial class Game
         }
         // A card entering the battlefield from anywhere but the stack wasn't cast (rule 601.2a puts a spell on the stack first);
         // nor was a copy of a permanent spell (rule 707.12) resolving from the stack.
+        // Whether it is "a creature" is decided as it would exist on the battlefield (rule 614.12): its back face if it enters
+        // transformed, with the type-changing effects that would apply to it there.
         if (to == Zone.Battlefield && from != Zone.Battlefield && !(from == Zone.Stack && card.WasCast) && State.ExileUncastEntering.Any(r => r.Turn == State.TurnNumber
-                && Matches(r.Filter with { Controller = Abilities.ControllerFilter.Any }, card, card.Owner, null, r.Controller)))
+                && WouldEnterMatching(card, transformed, enteringController ?? card.Owner, r.Filter with { Controller = Abilities.ControllerFilter.Any }, r.Controller)))
             list.Add(new(ZoneReplacementKind.ExileUncastEntering));
         // A replacement effect gets only one opportunity to affect an event (rule 614.5).
         list.RemoveAll(applied.Contains);
@@ -110,14 +113,15 @@ public sealed partial class Game
     /// event, so one about the new destination may then apply (616.1e). An optional one ("may … instead") can be declined.
     /// Without <paramref name="canAsk"/> the move must need no choice; it then completes synchronously.
     /// </summary>
-    private async Task<MovePlan> PlanMoveAsync(Card card, Zone to, bool canAsk = true, bool discardedByOpponent = false)
+    private async Task<MovePlan> PlanMoveAsync(Card card, Zone to, bool canAsk = true, bool discardedByOpponent = false, bool transformed = false,
+        PlayerId? enteringController = null)
     {
         var from = card.Zone;
         var chooser = from is Zone.Battlefield or Zone.Stack ? card.Controller : card.Owner;
         var applied = new List<ZoneReplacement>();
         var declined = new List<ZoneReplacement>();
         bool shuffle = false;
-        while (ZoneReplacements(card, from, to, applied.Concat(declined).ToList(), discardedByOpponent) is { Count: > 0 } options)
+        while (ZoneReplacements(card, from, to, applied.Concat(declined).ToList(), discardedByOpponent, transformed, enteringController) is { Count: > 0 } options)
         {
             ZoneReplacement? pick = options[0];
             if (options.Count > 1 || options[0].Optional)
@@ -176,7 +180,7 @@ public sealed partial class Game
         transformed &= to == Zone.Battlefield && card.Zone != Zone.Battlefield && card.IsDoubleFaced;
         // If something exiles it instead of letting it enter, it makes none of the choices for entering (rule 614.1).
         if (to == Zone.Battlefield && card.Zone != Zone.Battlefield && State.ExileUncastEntering.Count > 0)
-            _movePlans[(id, card.Version)] = (to, await PlanMoveAsync(card, to));
+            _movePlans[(id, card.Version)] = (to, await PlanMoveAsync(card, to, transformed: transformed, enteringController: controller));
         if (to == Zone.Battlefield && card.Zone != Zone.Battlefield
             && !(_movePlans.TryGetValue((id, card.Version), out var early) && early.Requested == to && early.Plan.To != Zone.Battlefield))
         {
@@ -242,6 +246,40 @@ public sealed partial class Game
         }
         var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped, faceDown, transformed);
         foreach (var returning in FinishMove(move, null)) MoveCard(returning, Zone.Battlefield, controller: State.GetCard(returning).Owner);
+    }
+
+    /// <summary>
+    /// Whether a card about to enter the battlefield would match <paramref name="filter"/> as it would exist there (rule 614.12):
+    /// with the face it enters with up, under the player it enters under, and the type-changing static abilities that would
+    /// apply to it ("each other non-Aura enchantment you control is a creature").
+    /// </summary>
+    private bool WouldEnterMatching(Card card, bool transformed, PlayerId controller, Abilities.ObjectFilter filter, PlayerId sourceController)
+    {
+        var (zone, wasTransformed, wasController, wasTypes) = (card.Zone, card.Transformed, card.Controller, card.TypesOverride);
+        try
+        {
+            card.Zone = Zone.Battlefield;
+            card.Transformed = transformed && card.PrintedDefinition.BackFace is not null;
+            card.Controller = controller;
+            card.TypesOverride = null;
+            var types = card.Definition.Types;
+            var alone = new List<Card> { card };
+            foreach (var source in State.Battlefield.Select(State.GetCard).Where(c => c.Id != card.Id).OrderBy(c => c.Timestamp))
+                foreach (var ability in source.Abilities.OfType<Abilities.StaticAbility>().Where(a => !a.FromGraveyard && (a.AddTypes != 0 || a.SetTypes is not null)))
+                {
+                    if (ability.While is { } condition && !Holds(condition, source.Controller, source)) continue;
+                    if (!Affected(source, ability.Affects, alone).Contains(card)) continue;
+                    if (ability.Filter is { } f && !Matches(f with { Controller = Abilities.ControllerFilter.Any }, card, controller, source, source.Controller)) continue;
+                    if (ability.SetTypes is { } set) types = set;
+                    types |= ability.AddTypes;
+                }
+            card.TypesOverride = types;
+            return Matches(filter, card, controller, null, sourceController);
+        }
+        finally
+        {
+            (card.Zone, card.Transformed, card.Controller, card.TypesOverride) = (zone, wasTransformed, wasController, wasTypes);
+        }
     }
 
     /// <summary>The face a card about to enter the battlefield will have up: its back face if it enters transformed (rule 712.14a).</summary>
