@@ -156,7 +156,7 @@ public sealed partial class Game
 
     /// <summary>The chosen source object: the same object, or the permanent it was if it has just left the battlefield (last known information).</summary>
     private static bool IsSameSource(Card source, CardId id, int version) =>
-        source.Id == id && (source.Version == version || (source.Zone != Zone.Battlefield && source.LastKnownInfo?.Version == version));
+        source.Id == id && (source.Version == version || (source.Zone != Zone.Battlefield && source.LastKnownOf(version) is not null));
 
     /// <summary>Damage can be redirected only to a player still in the game or a creature or planeswalker still on the battlefield.</summary>
     private bool RedirectTargetValid(RedirectShield shield) => shield.To.Target switch
@@ -220,10 +220,10 @@ public sealed partial class Game
                 Add(new DamageModifier("preventAll", $"preventAll:{RecipientKey(part)}", $"Prevent all of it ({reason})", n => { notePrevented(n); return 0; }) { PlainPrevention = true });
             // "If a source an opponent controls would deal damage to you, prevent 1 of that damage."
             if (part.ToPlayer is { } player && State.OpponentsOf(player).Contains(SourceController(source)))
-                foreach (var seraph in State.PermanentsControlledBy(player).Where(c => (c.Definition.Replaces & Replacements.PreventOneDamageFromOpponentsSources) != 0))
+                foreach (var seraph in State.PermanentsControlledBy(player).Where(c => (c.Replaces & Replacements.PreventOneDamageFromOpponentsSources) != 0))
                     Add(new DamageModifier("prevent1", $"prevent1:{seraph.Id}", $"Prevent 1 of it ({seraph.Name})", n => { notePrevented(Math.Min(1, n)); return n - 1; }) { PlainPrevention = true });
             // "If damage would be dealt to this creature, prevent that damage and remove that many +1/+1 counters from it."
-            if (part.ToCard is { } hydra && (hydra.Definition.Replaces & Replacements.PreventDamageRemoveCounters) != 0)
+            if (part.ToCard is { } hydra && (hydra.Replaces & Replacements.PreventDamageRemoveCounters) != 0)
                 Add(new DamageModifier("removeCounters", $"removeCounters:{hydra.Id}", $"Prevent it and remove that many +1/+1 counters ({hydra.Name})", n =>
                 {
                     notePrevented(n);
@@ -275,15 +275,15 @@ public sealed partial class Game
             return "a static ability";
         if (combat)
         {
-            if ((source.Definition.Replaces & Replacements.PreventCombatDamageToAndBySelf) != 0) return source.Name;
-            if (targetCard is not null && ((targetCard.Definition.Replaces & Replacements.PreventCombatDamageToAndBySelf) != 0
+            if ((source.Replaces & Replacements.PreventCombatDamageToAndBySelf) != 0) return source.Name;
+            if (targetCard is not null && ((targetCard.Replaces & Replacements.PreventCombatDamageToAndBySelf) != 0
                                            || State.CombatDamagePrevented.Contains((targetCard.Id, targetCard.Version)))) return targetCard.Name;
         }
         else if (targetCard is not null && targetCard.IsCreature
-                 && State.PermanentsControlledBy(targetCard.Controller).FirstOrDefault(c => c.Id != targetCard.Id && (c.Definition.Replaces & Replacements.PreventNoncombatDamageToYourOtherCreatures) != 0) is { } guard)
+                 && State.PermanentsControlledBy(targetCard.Controller).FirstOrDefault(c => c.Id != targetCard.Id && (c.Replaces & Replacements.PreventNoncombatDamageToYourOtherCreatures) != 0) is { } guard)
             return guard.Name;
         // "During your turn, prevent all damage that would be dealt to [this]."
-        if (targetCard is not null && (targetCard.Definition.Replaces & Replacements.PreventDamageToSelfDuringYourTurn) != 0 && State.ActivePlayer == targetCard.Controller)
+        if (targetCard is not null && (targetCard.Replaces & Replacements.PreventDamageToSelfDuringYourTurn) != 0 && State.ActivePlayer == targetCard.Controller)
             return targetCard.Name;
         return null;
     }
@@ -316,10 +316,10 @@ public sealed partial class Game
         var controller = lki?.Controller ?? source.Controller;
         bool creature = lki is not null ? (lki.Types & CardType.Creature) != 0 : source.IsCreature && source.Zone == Zone.Battlefield;
         if (victim != controller)
-            foreach (var c in State.PermanentsControlledBy(controller).Where(c => (c.Definition.Replaces & Replacements.DoubleDamageToOpponents) != 0))
+            foreach (var c in State.PermanentsControlledBy(controller).Where(c => (c.Replaces & Replacements.DoubleDamageToOpponents) != 0))
                 result.Add(($"double:{c.Id}", $"Double it ({c.Name})", 2));
         if (creature)
-            foreach (var c in State.PermanentsControlledBy(controller).Where(c => (c.Definition.Replaces & Replacements.DoubleCreatureDamage) != 0))
+            foreach (var c in State.PermanentsControlledBy(controller).Where(c => (c.Replaces & Replacements.DoubleCreatureDamage) != 0))
                 result.Add(($"double:{c.Id}", $"Double it ({c.Name})", 2));
         if (victim != controller)
         {

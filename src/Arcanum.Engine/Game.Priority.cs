@@ -349,7 +349,7 @@ public sealed partial class Game
     /// <summary>Lands the player may play this turn.</summary>
     private int LandsAllowed(PlayerId playerId) =>
         Config.LandsPerTurn + State.GetPlayer(playerId).ExtraLandsThisTurn
-        + State.PermanentsControlledBy(playerId).Count(c => (c.Definition.Replaces & Replacements.AdditionalLandPlay) != 0
+        + State.PermanentsControlledBy(playerId).Count(c => (c.Replaces & Replacements.AdditionalLandPlay) != 0
                                                             && (c.Definition.AdditionalLandPlayIf is not { } cond || Holds(cond, playerId, c)));
 
     /// <summary>"Can be cast as though it had flash" from a permanent the caster controls ("the first creature spell you cast each turn").</summary>
@@ -434,12 +434,12 @@ public sealed partial class Game
         if (ability.SorcerySpeed && !sorcerySpeed && !instantEquip) return false;
         if (ability.OncePerTurn && source.ActivatedThisTurn.Contains(index)) return false;
         // "Activated abilities of lands your opponents control can't be activated unless they're mana abilities."
-        if (source.Is(CardType.Land) && !IsManaAbility(ability) && State.OpponentsOf(source.Controller).Any(o => State.PermanentsControlledBy(o).Any(c => (c.Definition.Replaces & Replacements.AnyManaForItsAbilities) != 0)))
+        if (source.Is(CardType.Land) && !IsManaAbility(ability) && State.OpponentsOf(source.Controller).Any(o => State.PermanentsControlledBy(o).Any(c => (c.Replaces & Replacements.AnyManaForItsAbilities) != 0)))
             return false;
         if (ability.OnlyOnce && source.ActivatedEver.Contains(index)) return false;
         // "Activated abilities of sources with the chosen name can't be activated" (mana abilities aside).
         if (!IsManaAbility(ability) && State.Battlefield.Select(State.GetCard)
-                .Any(c => (c.Definition.Replaces & Replacements.StopsChosenNameAbilities) != 0 && c.ChosenName == source.Name)) return false;
+                .Any(c => (c.Replaces & Replacements.StopsChosenNameAbilities) != 0 && c.ChosenName == source.Name)) return false;
         if (ability.Cost.ReturnSelfToHand && source.Zone != Zone.Battlefield) return false;
         if (ability.Cost.SacrificeSelf && source.Zone == Zone.Battlefield && !CanBeSacrificedBy(source, player)) return false;
         if (ability.Cost.TapGranter && (ability.GrantedBy is not { } granter || State.GetCard(granter) is not { Zone: Zone.Battlefield, Tapped: false })) return false;
@@ -456,7 +456,7 @@ public sealed partial class Game
     /// <summary>"You may pay {0} rather than pay the equip cost of the first equip ability you activate each turn."</summary>
     private bool FreeEquipAvailable(PlayerId player) =>
         State.GetPlayer(player).EquipsThisTurn == 0
-        && State.PermanentsControlledBy(player).Any(c => c.Definition.FreeFirstEquipIf is { } free && Holds(free, player, c));
+        && State.PermanentsControlledBy(player).Any(c => c.Definition.FreeFirstEquipIf is { } free && c.HasTextAbilities && Holds(free, player, c));
 
     /// <summary>
     /// Mana sources usable for an ability, keeping back creatures that tap for mana when they're needed for a "tap an untapped
@@ -492,7 +492,7 @@ public sealed partial class Game
     {
         var cost = ability.Cost.Mana;
         // "Mana of any type can be spent to activate [this]'s abilities": colored symbols can be paid with any mana.
-        if ((source.Definition.Replaces & Replacements.AnyManaForItsAbilities) != 0 && cost.Pips.Count > 0)
+        if ((source.Replaces & Replacements.AnyManaForItsAbilities) != 0 && cost.Pips.Count > 0)
             cost = new ManaCost(cost.Generic + cost.Pips.Count + cost.Hybrid.Count, Array.Empty<ManaType>(), null, cost.XCount);
         // "Activated abilities of Foods you control cost {1} less", "Equip abilities you activate cost {1} less".
         foreach (var reducer in State.PermanentsControlledBy(player))
@@ -507,7 +507,7 @@ public sealed partial class Game
         var hosts = targets is not null
             ? targets.Select(t => t.Target.Card).OfType<CardId>()
             : ability.Targets.SelectMany(spec => LegalTargets(spec, player, source.Id)).Select(t => t.Card).OfType<CardId>();
-        return cost.MinusGeneric(hosts.Select(id => State.GetCard(id).Definition.EquipDiscount).DefaultIfEmpty(0).Max());
+        return cost.MinusGeneric(hosts.Select(State.GetCard).Select(h => h.HasTextAbilities ? h.Definition.EquipDiscount : 0).DefaultIfEmpty(0).Max());
     }
 
     /// <summary>Times a player backed out of something they were doing (a target, mode or mana payment request answered with nothing).</summary>

@@ -167,9 +167,6 @@ public sealed partial class Game
                 if (State.Combat?.FindAttack(ad.Attacker) is { Planeswalker: null } attacked)
                     State.GetPlayer(State.GetCard(ad.Attacker).Controller).PlayersAttackedThisTurn.Add(attacked.Defender);
                 break;
-            case DamageDealt dd:
-                if (dd.TargetCard is { } hurt) State.GetCard(hurt).DamagedThisTurnBy.Add(dd.Source);
-                break;
         }
     }
 

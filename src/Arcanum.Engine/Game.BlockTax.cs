@@ -14,7 +14,7 @@ public sealed partial class Game
     {
         var total = Mana.ManaCost.Zero;
         foreach (var c in State.Battlefield.Select(State.GetCard))
-            if (c.Definition.BlockTax is { } tax && !c.LosesAbilities && (c.Definition.BlockTaxIf is not { } cond || Holds(cond, c.Controller, c)))
+            if (c.Definition.BlockTax is { } tax && c.HasTextAbilities && (c.Definition.BlockTaxIf is not { } cond || Holds(cond, c.Controller, c)))
                 total = total.Plus(tax);
         return total.ManaValue > 0 ? total : null;
     }

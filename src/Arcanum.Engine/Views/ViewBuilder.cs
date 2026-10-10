@@ -78,11 +78,11 @@ public static class ViewBuilder
     };
 
     private static bool Revealing(GameState state, PlayerId player, Cards.Replacements rule) =>
-        !state.GetPlayer(player).HasLost && state.PermanentsControlledBy(player).Any(c => (c.Definition.Replaces & rule) != 0 && !c.LosesAbilities && !c.LosesTextAbilities);
+        !state.GetPlayer(player).HasLost && state.PermanentsControlledBy(player).Any(c => (c.Replaces & rule) != 0);
 
     /// <summary>"You may look at the top card of your library any time" (a permanent the player controls says so).</summary>
     public static bool MayLookAtLibraryTop(GameState state, PlayerId player) =>
-        state.PermanentsControlledBy(player).Any(c => (c.Definition.Replaces & (Cards.Replacements.CreaturesFromLibraryTop
+        state.PermanentsControlledBy(player).Any(c => (c.Replaces & (Cards.Replacements.CreaturesFromLibraryTop
             | Cards.Replacements.CastCreaturesFromLibraryTop | Cards.Replacements.LookAtLibraryTop)) != 0);
 
     /// <summary>One card as <paramref name="viewer"/> may see it; <paramref name="reveal"/> shows it even if hidden.</summary>
@@ -118,7 +118,7 @@ public static class ViewBuilder
             Loyalty = card.CounterCount(Abilities.CounterKind.Loyalty),
             LoreCounters = card.CounterCount(Abilities.CounterKind.Lore),
             FinalChapter = card.Definition.FinalChapter,
-            AttacksEachCombat = card.Definition.AttacksEachCombat,
+            AttacksEachCombat = card.Definition.AttacksEachCombat && card.HasTextAbilities,
             IsToken = card.Definition.IsToken,
             OracleText = card.Definition.OracleText,
             Colors = card.Colors,

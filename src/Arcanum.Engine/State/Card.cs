@@ -87,8 +87,11 @@ public sealed class Card
     /// <summary>For an emblem standing for a delayed ability: the object it calls "that creature" (card and version).</summary>
     public (CardId Card, int Version)? Remembered { get; set; }
 
-    /// <summary>Sources that dealt damage to it this turn.</summary>
-    public HashSet<CardId> DamagedThisTurnBy { get; } = new();
+    /// <summary>
+    /// A token that left the battlefield, or a copy of a card or spell that left the stack or was never cast: it has ceased to
+    /// exist (rules 111.7, 704.5d-e) and can't move to another zone or come back to the battlefield (rule 111.8).
+    /// </summary>
+    public bool CeasedToExist { get; internal set; }
 
     /// <summary>Players this creature dealt combat damage to this turn.</summary>
     public HashSet<PlayerId> CombatDamagedPlayers { get; } = new();
@@ -250,6 +253,15 @@ public sealed class Card
     /// abilities) and has the mana ability of each basic land type it has now. Abilities granted by effects stay.
     /// </summary>
     internal bool LosesTextAbilities { get; set; }
+
+    /// <summary>
+    /// It has the abilities of its rules text: no effect made it lose all its abilities, nor the abilities from its rules text
+    /// (a land whose subtype an effect set, rule 305.7). Static rules of the card itself apply only then.
+    /// </summary>
+    public bool HasTextAbilities => !LosesAbilities && !LosesTextAbilities;
+
+    /// <summary>The replacement and prevention effects of its rules text it has now: none once it lost those abilities.</summary>
+    public Replacements Replaces => HasTextAbilities ? Definition.Replaces : Replacements.None;
     internal List<AbilityDefinition> GrantedAbilities { get; } = new();
     internal List<ManaOption> GrantedManaOptions { get; } = new();
 
@@ -261,6 +273,15 @@ public sealed class Card
 
     /// <summary>What the card was like the last time it was on the battlefield (rule 608.2h, last known information).</summary>
     public LastKnown? LastKnownInfo { get; internal set; }
+
+    /// <summary>Last known information of each object (version) this card was on the battlefield, by version.</summary>
+    private readonly Dictionary<int, LastKnown> _lastKnownByVersion = new();
+
+    /// <summary>
+    /// How the object <paramref name="version"/> of this card last existed on the battlefield, if it was a permanent that left it
+    /// (rule 608.2h): kept for each object, so a card that came back and left again still has the earlier object's.
+    /// </summary>
+    public LastKnown? LastKnownOf(int version) => _lastKnownByVersion.GetValueOrDefault(version);
 
     /// <summary>The permanent (id, version) that exiled this card "with it" (for "the exiled card").</summary>
     public (CardId Source, int Version)? ExiledWith { get; set; }
@@ -542,7 +563,9 @@ public sealed class Card
                 CopiableValues = !IsCopy && IsDoubleFaced ? PrintedDefinition : Definition,
                 CopiableBackFaceUp = !IsCopy && IsDoubleFaced && Transformed,
                 Renowned = Renowned,
+                HasTextAbilities = HasTextAbilities,
             };
+            _lastKnownByVersion[Version] = LastKnownInfo;
         }
         Tapped = false;
         Damage = 0;
@@ -634,6 +657,9 @@ public sealed record LastKnown(int Power, int Toughness, Core.PlayerId Controlle
 
     /// <summary>It was renowned (rule 702.112b).</summary>
     public bool Renowned { get; init; }
+
+    /// <summary>It had the abilities of its rules text (it hadn't lost them, <see cref="Card.HasTextAbilities"/>).</summary>
+    public bool HasTextAbilities { get; init; } = true;
     public Supertype Supertypes { get; init; }
     public Core.CardId? AttachedTo { get; init; }
 

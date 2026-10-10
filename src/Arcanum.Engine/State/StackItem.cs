@@ -89,6 +89,12 @@ public sealed record TriggerInfo(CardId? Subject = null, int SubjectVersion = 0,
     /// <summary>For counters put on a permanent: each kind put on it in the event ("those kinds of counters").</summary>
     public List<Abilities.CounterKind>? CounterKinds { get; init; }
 
+    /// <summary>
+    /// For an attack trigger: the player the creature attacked when it was declared (the controller of the planeswalker it
+    /// attacked), the "defending player" once the creature is no longer attacking (rule 508.5).
+    /// </summary>
+    public PlayerId? Defender { get; init; }
+
     /// <summary>For "whenever players finish voting": every vote cast, in order (voter, choice).</summary>
     public IReadOnlyList<(PlayerId Voter, string Choice)>? Votes { get; init; }
 }

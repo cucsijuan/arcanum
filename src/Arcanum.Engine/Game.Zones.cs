@@ -58,18 +58,18 @@ public sealed partial class Game
         if (to == Zone.Graveyard)
         {
             if (from == Zone.Battlefield && State.ExileIfDies.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileIfDies));
-            if (from == Zone.Battlefield && card.IsCreature && !card.LosesAbilities && (card.Definition.Replaces & Cards.Replacements.ExileInsteadOfDying) != 0)
+            if (from == Zone.Battlefield && card.IsCreature && (card.Replaces & Cards.Replacements.ExileInsteadOfDying) != 0)
                 list.Add(new(ZoneReplacementKind.ExileInsteadOfDying));
-            if ((card.Definition.Replaces & Cards.Replacements.ShuffleIntoLibraryInsteadOfGraveyard) != 0) list.Add(new(ZoneReplacementKind.ShuffleIntoLibrary));
+            if ((card.Replaces & Cards.Replacements.ShuffleIntoLibraryInsteadOfGraveyard) != 0) list.Add(new(ZoneReplacementKind.ShuffleIntoLibrary));
             if (discardedByOpponent && from == Zone.Hand && card.Definition.OntoBattlefieldIfOpponentMakesYouDiscard)
                 list.Add(new(ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard));
             if (from == Zone.Battlefield && card.IsCreature)
                 list.AddRange(State.Battlefield.Select(State.GetCard)
-                    .Where(c => c.Controller != card.Controller && (c.Definition.Replaces & Cards.Replacements.OpponentsCreaturesExiledInsteadOfDying) != 0)
+                    .Where(c => c.Controller != card.Controller && (c.Replaces & Cards.Replacements.OpponentsCreaturesExiledInsteadOfDying) != 0)
                     .Select(c => new ZoneReplacement(ZoneReplacementKind.ExiledByOpponentsPermanent, c)));
             if (State.ExileInsteadOfGraveyard.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileInsteadOfGraveyard));
             if ((card.Is(Cards.CardType.Instant) || card.Is(Cards.CardType.Sorcery))
-                && State.Battlefield.Any(b => (State.GetCard(b).Definition.Replaces & Cards.Replacements.ExileInstantsAndSorceries) != 0))
+                && State.Battlefield.Any(b => (State.GetCard(b).Replaces & Cards.Replacements.ExileInstantsAndSorceries) != 0))
                 list.Add(new(ZoneReplacementKind.ExileInstantsAndSorceries));
         }
         // A card entering the battlefield from anywhere but the stack wasn't cast (rule 601.2a puts a spell on the stack first);
@@ -168,9 +168,11 @@ public sealed partial class Game
     /// <summary>Moves a card, asking for the choices its zone-change replacement effects need (rule 616.1).</summary>
     /// <param name="transformed">"Put onto the battlefield transformed": a double-faced card enters with its back face up (rule 712.14a).</param>
     private async Task MoveCardAsync(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
-        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false, bool faceDown = false, bool transformed = false)
+        bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false, bool faceDown = false, bool transformed = false,
+        IReadOnlyList<(Abilities.CounterKind Kind, int Count)>? withCounters = null)
     {
         var card = State.GetCard(id);
+        if (card.CeasedToExist) return; // a token that left the battlefield stays where it is (rule 111.8)
         transformed &= to == Zone.Battlefield && card.Zone != Zone.Battlefield && card.IsDoubleFaced;
         // If something exiles it instead of letting it enter, it makes none of the choices for entering (rule 614.1).
         if (to == Zone.Battlefield && card.Zone != Zone.Battlefield && State.ExileUncastEntering.Count > 0)
@@ -197,7 +199,7 @@ public sealed partial class Game
         }
         if (!(_movePlans.TryGetValue((id, card.Version), out var planned) && planned.Requested == to))
             _movePlans[(id, card.Version)] = (to, await PlanMoveAsync(card, to));
-        var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped, faceDown, transformed);
+        var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped, faceDown, transformed, withCounters);
         // A permanent that enters with counters its controller must order replacement effects for (rule 616.1): asked as it
         // enters, so the counters are on it before it is announced, as in every other case.
         var ordered = await OrderEnterCountersAsync(move.Card, move.EnterCounters);
@@ -216,6 +218,7 @@ public sealed partial class Game
         bool castFromHand = false, bool wasCast = false, int timesKicked = 0, int squadPaid = 0, bool tapped = false, bool faceDown = false, bool transformed = false)
     {
         var card = State.GetCard(id);
+        if (card.CeasedToExist) return; // a token that left the battlefield stays where it is (rule 111.8)
         transformed &= to == Zone.Battlefield && card.Zone != Zone.Battlefield && card.IsDoubleFaced;
         if (to == Zone.Battlefield && card.Zone != Zone.Battlefield && attachTo is null)
         {
@@ -323,8 +326,10 @@ public sealed partial class Game
     private sealed record MoveInProgress(Card Card, Zone From, Zone To, PlayerId LastController, MovePlan Plan, List<(Abilities.CounterKind Kind, int Count)> EnterCounters);
 
     /// <summary>The move itself, with its replacement effects applied: the card is in its new zone but nothing has been announced yet.</summary>
+    /// <param name="withCounters">Counters the effect putting it onto the battlefield has it enter with ("with two +1/+1 counters on it", rule 614.1c).</param>
     private MoveInProgress BeginMove(CardId id, Zone to, bool toBottom, PlayerId? controller, CardId? attachTo, bool kicked,
-        bool castFromHand, bool wasCast, int timesKicked, int squadPaid, bool tapped, bool faceDown, bool transformed = false)
+        bool castFromHand, bool wasCast, int timesKicked, int squadPaid, bool tapped, bool faceDown, bool transformed = false,
+        IReadOnlyList<(Abilities.CounterKind Kind, int Count)>? withCounters = null)
     {
         var enterCounters = new List<(Abilities.CounterKind Kind, int Count)>();
         var card = State.GetCard(id);
@@ -400,13 +405,14 @@ public sealed partial class Game
                     enterCounters.Add((card.Definition.EntersWithCounterKind,
                         Eval(countFrom, new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
                 if (card.Definition.Loyalty is { } loyalty) enterCounters.Add((Abilities.CounterKind.Loyalty, loyalty)); // 306.5b
+                if (withCounters is not null) enterCounters.AddRange(withCounters.Where(c => c.Count > 0));
                 if (card.Definition.FinalChapter > 0) enterCounters.Add((Abilities.CounterKind.Lore, 1)); // a Saga enters with a lore counter (714.3a)
                 // "Each other Angel you control enters with an additional +1/+1 counter for each Angel you already control."
                 if (card.HasSubtype("Angel"))
                 {
                     int angels = State.Battlefield.Select(State.GetCard).Count(c => c.Controller == card.Controller && c.HasSubtype("Angel"));
                     int extraCounterSources = State.Battlefield.Select(State.GetCard)
-                        .Count(c => c.Controller == card.Controller && (c.Definition.Replaces & Cards.Replacements.AngelsEnterWithCounters) != 0);
+                        .Count(c => c.Controller == card.Controller && (c.Replaces & Cards.Replacements.AngelsEnterWithCounters) != 0);
                     enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, angels * extraCounterSources));
                 }
                 State.Battlefield.Add(id);
@@ -457,8 +463,12 @@ public sealed partial class Game
                 if (exiled.Zone == Zone.Exile && exiled.Version == link.ExiledVersion) returning.Add(link.Exiled);
             }
 
-        // A token that leaves the battlefield ceases to exist (rule 111.7, 704.5d).
-        if (card.Definition.IsToken && to != Zone.Battlefield && to != Zone.Stack) owner.GetZone(to).Remove(id);
+        // A token that leaves the battlefield ceases to exist (rule 111.7, 704.5d), as does a copy of a spell that leaves the stack (704.5e).
+        if (card.Definition.IsToken && to != Zone.Battlefield && to != Zone.Stack)
+        {
+            owner.GetZone(to).Remove(id);
+            card.CeasedToExist = true;
+        }
         return returning;
     }
 
@@ -480,7 +490,7 @@ public sealed partial class Game
         bool doubles = (!firstInDrawStep && Has(playerId, Cards.Replacements.DrawTwoExceptFirstInDrawStep))
                        || (player.Hand.Count == 0 && Has(playerId, Cards.Replacements.DrawTwoWithEmptyHand));
         var thief = firstInDrawStep || depth > 8 ? null
-            : State.Battlefield.Select(State.GetCard).FirstOrDefault(c => c.Controller != playerId && (c.Definition.Replaces & Cards.Replacements.StealsOpponentsExtraDraws) != 0 && !c.LosesAbilities && !c.LosesTextAbilities);
+            : State.Battlefield.Select(State.GetCard).FirstOrDefault(c => c.Controller != playerId && (c.Replaces & Cards.Replacements.StealsOpponentsExtraDraws) != 0);
         if (thief is not null && (!doubles || await ControllerOf(playerId).ChooseOptionAsync(ViewFor(playerId), new Players.OptionRequest(
                 "Two replacement effects apply to this draw: choose the one that applies", thief.Id,
                 new[] { $"{thief.Name}: skip this draw ({State.GetPlayer(thief.Controller).Name} draws instead)", "Draw two cards instead" }, Players.OptionKind.Other)) == 0))

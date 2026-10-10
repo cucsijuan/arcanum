@@ -60,7 +60,6 @@ public sealed partial class Game
             card.DoneThisTurn.Clear();
             card.LoyaltyActivatedThisTurn = false;
             card.ResolvedThisTurn.Clear();
-            card.DamagedThisTurnBy.Clear();
             card.CombatDamagedPlayers.Clear();
             card.AttacksThisTurn = 0;
         }
@@ -132,7 +131,7 @@ public sealed partial class Game
                     if (State.GetCard(skip.Card).Controller == State.ActivePlayer) exerted.Add(State.GetCard(skip.Card));
                     State.SkipNextUntap.Remove(skip);
                 }
-                foreach (var permanent in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Tapped && !c.Definition.DoesntUntap && !c.Has(Cards.Keyword.DoesntUntap) && !exerted.Contains(c)).ToList())
+                foreach (var permanent in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Tapped && !(c.Definition.DoesntUntap && c.HasTextAbilities) && !c.Has(Cards.Keyword.DoesntUntap) && !exerted.Contains(c)).ToList())
                 {
                     // A stun counter is removed instead of untapping (rule 122.1d).
                     if (permanent.CounterCount(Abilities.CounterKind.Stun) > 0)

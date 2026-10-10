@@ -65,6 +65,21 @@ public sealed partial class Game
     /// <summary>The player a pending trigger is about, while its targets are chosen and checked ("that player controls").</summary>
     private PlayerId? _triggeredPlayer;
 
+    /// <summary>The player the triggering attacker attacked when it was declared (<see cref="TriggerInfo.Defender"/>).</summary>
+    private PlayerId? _triggeredDefender;
+
+    /// <summary>
+    /// "Defending player" for an ability about an attacking creature (rule 508.5): the player that creature is attacking, or,
+    /// once it is no longer attacking (removed from combat, or gone from the battlefield), the player it was attacking.
+    /// </summary>
+    private PlayerId? DefendingPlayerOfTriggered()
+    {
+        if (_triggeredSubject is not { } attacker) return null;
+        if (State.GetCard(attacker) is { Zone: Zone.Battlefield } card && card.Version == _triggeredSubjectVersion
+            && State.Combat?.FindAttack(attacker) is { } attack) return attack.Defender;
+        return _triggeredDefender;
+    }
+
     private IEnumerable<Target> LegalTargets(TargetSpec spec, PlayerId controller, CardId source)
     {
         bool ControllerOk(PlayerId owner) => spec.Controller switch
@@ -74,7 +89,7 @@ public sealed partial class Game
             _ => true,
         } && (spec.OnlyControlledBy is null || owner == spec.OnlyControlledBy)
           && (!spec.ControlledByTriggeredPlayer || owner == _triggeredPlayer)
-          && (!spec.ControlledByDefendingPlayer || (_triggeredSubject is { } attacker && State.Combat?.FindAttack(attacker)?.Defender == owner));
+          && (!spec.ControlledByDefendingPlayer || DefendingPlayerOfTriggered() == owner);
         var sourceCard = State.GetCard(source);
         bool FilterOk(Card card) => spec.Filter is not { } f || Matches(f with { Controller = ControllerFilter.Any }, card, card.Controller, sourceCard, controller);
 
@@ -124,7 +139,7 @@ public sealed partial class Game
             if (card.Controller != controller && !ignoresHexproof && HexproofFrom(card, sourceCard)) continue;
             if (ProtectedFrom(card, sourceCard)) continue; // 702.16b
             if (CantBeTargetedBy(card, sourceCard)) continue; // "can't be the target of nongreen spells or abilities from nongreen sources"
-            if (card.Controller != controller && !ignoresHexproof && (card.Definition.HexproofFromTypes & sourceCard.Types) != 0) continue;
+            if (card.Controller != controller && !ignoresHexproof && card.HasTextAbilities && (card.Definition.HexproofFromTypes & sourceCard.Types) != 0) continue;
             yield return Target.Of(card.Id);
         }
     }
@@ -142,7 +157,7 @@ public sealed partial class Game
         if (card.ProtectedFromRingBearers && source.IsRingBearerNow && source.Zone == Zone.Battlefield) return true;
         if ((card.ProtectionFromTypes & (source.Zone is not (Zone.Battlefield or Zone.Stack) && source.LastKnownInfo is { } lkt ? lkt.Types : source.Types)) != 0) return true;
         // Protection from a creature type ("from Demons and from Dragons"): sources with that subtype, as they last existed.
-        if (!card.LosesAbilities && card.Definition.ProtectionFromSubtypes.Any(t =>
+        if (card.HasTextAbilities && card.Definition.ProtectionFromSubtypes.Any(t =>
                 source.Zone is not (Zone.Battlefield or Zone.Stack) && source.LastKnownInfo is { } lks ? lks.HasSubtype(t) : source.HasSubtype(t))) return true;
         var colors = source.Zone is not (Zone.Battlefield or Zone.Stack) && source.LastKnownInfo is { } lki ? lki.Colors : source.Colors;
         return colors.Any(c => Keywords.ProtectionFrom(c) is { } protection && card.Has(protection));
@@ -152,11 +167,11 @@ public sealed partial class Game
     private bool PlayerHasHexproof(PlayerId player, PlayerId targetingPlayer) =>
         State.GetPlayer(player).Protected // protection from everything: nothing can target them
         || (player != targetingPlayer && State.GetPlayer(targetingPlayer).IgnoresHexproofTurn != State.TurnNumber
-            && State.PermanentsControlledBy(player).Any(c => c.Definition.GivesControllerHexproof));
+            && State.PermanentsControlledBy(player).Any(c => c.Definition.GivesControllerHexproof && c.HasTextAbilities));
 
     /// <summary>"Hexproof from [color]": opponents' sources of that color can't target it.</summary>
     private static bool HexproofFrom(Card card, Card source) =>
-        card.Definition.HexproofFromColors.Count > 0 && ColorsOf(source).Any(card.Definition.HexproofFromColors.Contains);
+        card.Definition.HexproofFromColors.Count > 0 && card.HasTextAbilities && ColorsOf(source).Any(card.Definition.HexproofFromColors.Contains);
 
     /// <summary>
     /// Whether an Aura can be attached to that permanent: everything its enchant ability says ("enchant tapped creature",
@@ -272,10 +287,10 @@ public sealed partial class Game
             Queue(warded.Id, TriggerEvent.BecomesTargetOfOpponent, warded.Controller, new TriggerInfo(Player: item.Controller));
             // Each instance of ward triggers separately (rule 702.21b): printed, then granted by other permanents.
             var wards = new List<(ManaCost Mana, int Life)>();
-            if (warded.Definition.WardMana is not null || warded.Definition.WardLife > 0) wards.Add((warded.Definition.WardMana ?? ManaCost.Zero, warded.Definition.WardLife));
+            if (warded.HasTextAbilities && (warded.Definition.WardMana is not null || warded.Definition.WardLife > 0)) wards.Add((warded.Definition.WardMana ?? ManaCost.Zero, warded.Definition.WardLife));
             wards.AddRange(warded.GrantedWards.Select(w => (w, 0)));
             var wardCosts = wards.Select(w => (w.Mana, w.Life, Extra: (ExtraCost?)null)).ToList();
-            if (warded.Definition.WardCost is { } wardCost) wardCosts.Add((ManaCost.Zero, 0, wardCost));
+            if (warded.HasTextAbilities && warded.Definition.WardCost is { } wardCost) wardCosts.Add((ManaCost.Zero, 0, wardCost));
             foreach (var (mana, life, extra) in wardCosts)
             {
                 var ward = new TriggeredAbility
@@ -388,9 +403,11 @@ public sealed partial class Game
         _triggeredAmount = (item as AbilityOnStack)?.Trigger?.Amount ?? 0;
         _triggeredSubject = (item as AbilityOnStack)?.Trigger?.Subject;
         _triggeredSubjectVersion = (item as AbilityOnStack)?.Trigger?.SubjectVersion ?? 0;
+        _triggeredDefender = (item as AbilityOnStack)?.Trigger?.Defender;
         _announcedX = item.X;
         var savedSource = _resolvingSource;
-        _resolvingSource = item is AbilityOnStack { SourceVersion: { } resolvingVersion } ? (source.Id, resolvingVersion) : null;
+        _resolvingSource = item is AbilityOnStack { SourceVersion: { } resolvingVersion }
+            ? (source.Id, resolvingVersion, LeftBattlefieldVersion(ability, source, resolvingVersion)) : null;
         try { return await ApplyResolutionCoreAsync(item, ability, source); }
         finally { _resolvingSource = savedSource; }
     }
@@ -411,6 +428,7 @@ public sealed partial class Game
         var context = new EffectContext(item.Controller, source, item.Targets, legal, x, item.Kicked)
         {
             Trigger = (item as AbilityOnStack)?.Trigger, GrantedBy = ability.GrantedBy, SourceVersion = (item as AbilityOnStack)?.SourceVersion,
+            SourceLeftVersion = (item as AbilityOnStack)?.SourceVersion is { } sv ? LeftBattlefieldVersion(ability, source, sv) : null,
             SourceTransforms = (item as AbilityOnStack)?.SourceTransforms,
             Division = item.Division, ActivatedIndex = (item as AbilityOnStack)?.AbilityIndex,
         };
@@ -431,15 +449,18 @@ public sealed partial class Game
         return true;
     }
 
-    /// <summary>The source object (card and version) of the ability resolving now: conditions about "this" use it as it last existed.</summary>
-    private (CardId Card, int Version)? _resolvingSource;
+    /// <summary>
+    /// The source object (card and version) of the ability resolving now: conditions about "this" use it as it last existed.
+    /// <c>LeftVersion</c>: the object that left the battlefield as the ability triggered or was activated (<see cref="LeftBattlefieldVersion"/>).
+    /// </summary>
+    private (CardId Card, int Version, int? LeftVersion)? _resolvingSource;
 
     /// <summary>"If this is untapped": as the resolving ability's source last existed on the battlefield if it left (rules 603.4, 608.2h).</summary>
     private bool SourceUntappedNow(Card source)
     {
         if (ResolvingVersionOf(source) is not { } version) return source.Zone == Zone.Battlefield && !source.Tapped;
         if (source.Zone == Zone.Battlefield && source.Version == version) return !source.Tapped;
-        return source.LastKnownInfo is { } lki && lki.Version == version && !lki.Tapped;
+        return ResolvingSourceLastKnown(source, version) is { } lki && !lki.Tapped;
     }
 
     private int? ResolvingVersionOf(Card card) => _resolvingSource is { } r && r.Card == card.Id ? r.Version : null;
@@ -480,6 +501,12 @@ public sealed partial class Game
 
         /// <summary>For an ability: its source's object version when it triggered or was activated.</summary>
         public int? SourceVersion { get; init; }
+
+        /// <summary>
+        /// For an ability its source's leaving the battlefield triggered, or that sacrificed its source as a cost: the object
+        /// (version) that left, which "this" means for what it was like (rule 608.2h).
+        /// </summary>
+        public int? SourceLeftVersion { get; init; }
 
         /// <summary>For an ability: how many times its source had transformed when it was put on the stack (rule 701.27f).</summary>
         public int? SourceTransforms { get; init; }
@@ -609,7 +636,7 @@ public sealed partial class Game
         // A target that left the battlefield during resolution ("its toughness" after it was moved) is used as it
         // last existed there (rule 608.2h).
         LastKnown? TargetLastKnown() => TargetCard() is { } t && ctx.ChosenVersionAt(q.Index) is { } v && v != t.Version
-                                        && t.Zone != Zone.Battlefield && t.LastKnownInfo is { } lk && lk.Version == v ? lk : null;
+                                        && t.Zone != Zone.Battlefield ? t.LastKnownOf(v) : null;
         int value = q.Kind switch
         {
             QuantityKind.Fixed => q.Value,
@@ -699,12 +726,11 @@ public sealed partial class Game
             QuantityKind.SpellsCastBeforeTriggered => SpellsCastBefore(ctx)
                 .Count(c => q.Filter is null || Matches(q.Filter with { Controller = ControllerFilter.Any }, c, ctx.Controller, ctx.Source, ctx.Controller)),
             QuantityKind.TriggeredColors => ctx.Trigger?.Subject is { } colored ? ColorsOf(State.GetCard(colored)).Count : 0,
-            QuantityKind.SourceCounters => ctx.Source.Zone == Zone.Battlefield || ctx.Source.LastKnownInfo is null
-                ? ctx.Source.CounterCount(q.Counter) : ctx.Source.LastKnownInfo.Counters.GetValueOrDefault(q.Counter),
+            QuantityKind.SourceCounters => SourceCounterCount(ctx, q.Counter),
             QuantityKind.OpponentsGraveyardCount => State.OpponentsOf(ctx.Controller).Sum(o => State.GetPlayer(o).Graveyard.Count),
             QuantityKind.GreatestOtherPower => State.PermanentsControlledBy(ctx.Controller).Where(c => c.IsCreature && c.Id != ctx.Source.Id)
                 .Select(c => c.Power).DefaultIfEmpty(0).Max(),
-            QuantityKind.TriggeredPower => ctx.Trigger?.Subject is { } t ? PowerOrLastKnown(State.GetCard(t)) : 0,
+            QuantityKind.TriggeredPower => ctx.Trigger is { Subject: { } t } about ? TriggeredPowerOf(State.GetCard(t), about.SubjectVersion) : 0,
             QuantityKind.RingBearerPower => RingBearerOf(ctx.Controller) is { } bearer ? bearer.Power : 0,
             QuantityKind.Sum => q.Parts?.Sum(part => Eval(part, ctx)) ?? 0,
             QuantityKind.HalfRoundedUp => (Math.Max(0, Eval(q.Parts![0], ctx)) + 1) / 2, // rule 107.1a
@@ -770,7 +796,7 @@ public sealed partial class Game
                     : CardsFor(tc.Of, ctx).FirstOrDefault();
                 // "A copy of that creature" after it left the battlefield: its last known copiable values (rule 608.2h, 707.4).
                 var lastKnownCopy = original is null && tc.Of.Kind == SubjectKind.Triggered && ctx.Trigger is { Subject: { } gone } goneInfo
-                                    && State.GetCard(gone).LastKnownInfo is { CopiableValues: { } values } goneLki && goneLki.Version == goneInfo.SubjectVersion
+                                    && State.GetCard(gone).LastKnownOf(goneInfo.SubjectVersion) is { CopiableValues: { } values } goneLki
                     ? (values, goneLki.CopiableBackFaceUp) : ((CardDefinition, bool)?)null;
                 if (original is null && lastKnownCopy is null) break;
                 // The exceptions ("except it has haste and 'At the beginning of the end step, sacrifice this token'")
@@ -1623,8 +1649,13 @@ public sealed partial class Game
                 foreach (var card in cards)
                 {
                     if (p.Transformed && !card.IsDoubleFaced) continue; // a card that isn't double-faced stays where it is (rule 712.14a)
+                    // "With two +1/+1 counters on it", "with a vigilance counter and a lifelink counter on it": counters it enters with
+                    // (rule 614.1c), on it before anything sees it enter.
+                    var withCounters = new List<(CounterKind Kind, int Count)>();
+                    if (p.Counters > 0) withCounters.Add((p.CounterKind, p.Counters));
+                    if (p.CounterKinds is { } kinds) withCounters.AddRange(kinds.Select(k => (k, 1)));
                     await MoveCardAsync(card.Id, Zone.Battlefield, controller: p.UnderOwnersControl ? card.Owner : ctx.Controller, attachTo: attachTo, tapped: p.Tapped,
-                        transformed: p.Transformed);
+                        transformed: p.Transformed, withCounters: withCounters);
                     if (p.Attacking && State.Combat is { } combat && card.IsCreature)
                     {
                         // Put onto the battlefield attacking: its controller chooses which player it attacks (rule 508.4).
@@ -1636,13 +1667,6 @@ public sealed partial class Game
                     }
                     BecomeAsItEnters(card, p, ctx);
                     if (p.ExileIfLeaves && card.Zone == Zone.Battlefield) State.ExileIfLeaves.Add((card.Id, card.Version));
-                    if (p.Counters > 0) PutCounters(card, p.CounterKind, p.Counters, ctx.Controller);
-                    if (p.CounterKinds is { } kinds && card.Zone == Zone.Battlefield)
-                    {
-                        BeginSimultaneous();
-                        foreach (var kind in kinds) PutCounters(card, kind, 1, ctx.Controller);
-                        EndSimultaneous();
-                    }
                     if ((p.AddSubtypes is not null || p.AddKeywords is not null || p.AddColors is not null) && card.Zone == Zone.Battlefield)
                         State.LastingEffects.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, p.AddKeywords ?? (IReadOnlyList<Keyword>)Array.Empty<Keyword>())
                         {
@@ -2195,7 +2219,11 @@ public sealed partial class Game
                 {
                     await CastNowWithoutPayingAsync(State.GetPlayer(ctx.Controller), id);
                 }
-                if (copy.Zone == Zone.Exile) State.GetPlayer(ctx.Controller).Exile.Remove(id); // an uncast copy ceases to exist
+                if (copy.Zone == Zone.Exile)
+                {
+                    State.GetPlayer(ctx.Controller).Exile.Remove(id); // an uncast copy ceases to exist (rule 704.5e)
+                    copy.CeasedToExist = true;
+                }
                 break;
             }
             case Recruit rc:
@@ -3401,7 +3429,7 @@ public sealed partial class Game
 
     /// <summary>"Each other creature you control enters with additional +1/+1 counters equal to …" of the entering creature's controller's permanents.</summary>
     private int ExtraEnterCounters(Card entering) =>
-        State.PermanentsControlledBy(entering.Controller).Where(c => c.Id != entering.Id && c.Definition.OthersEnterWithCounters is not null)
+        State.PermanentsControlledBy(entering.Controller).Where(c => c.Id != entering.Id && c.Definition.OthersEnterWithCounters is not null && c.HasTextAbilities)
             .Sum(c => Math.Max(0, Eval(c.Definition.OthersEnterWithCounters!, new EffectContext(c.Controller, c, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))))
         + State.GetPlayer(entering.Controller).Graveyard.Select(State.GetCard)
             .Count(g => g.Definition.GraveyardEnterBonus is { } bonus && Matches(bonus with { Controller = ControllerFilter.Any }, entering, entering.Controller, g, entering.Controller));
@@ -3521,7 +3549,11 @@ public sealed partial class Game
     /// <summary>Announces counters placed by <see cref="PlaceEnterCounters"/>.</summary>
     private void AnnounceEnterCounters(Card card, List<(CounterKind Kind, int Count)> placed)
     {
+        if (placed.Count == 0) return;
+        // Every counter it enters with is put on at once ("one or more counters" triggers once, learning each kind).
+        BeginSimultaneous();
         foreach (var (kind, amount) in placed) Emit(new CountersPlaced(card.Id, kind, amount, card.Controller));
+        EndSimultaneous();
     }
 
     private void PlaceCounters(Card card, CounterKind kind, int count, PlayerId? placedBy)
@@ -3553,11 +3585,11 @@ public sealed partial class Game
 
     /// <summary>How many permanents with this replacement effect a player controls (each one applies, rule 616).</summary>
     private int Instances(PlayerId player, Replacements replacement) =>
-        State.PermanentsControlledBy(player).Count(c => (c.Definition.Replaces & replacement) != 0);
+        State.PermanentsControlledBy(player).Count(c => (c.Replaces & replacement) != 0);
 
     /// <summary>Whether a player controls a permanent with this replacement effect.</summary>
     private bool Has(PlayerId player, Replacements replacement) =>
-        State.PermanentsControlledBy(player).Any(c => (c.Definition.Replaces & replacement) != 0);
+        State.PermanentsControlledBy(player).Any(c => (c.Replaces & replacement) != 0);
 
     private bool OpponentsCreaturesEnterTapped(PlayerId controller) =>
         State.OpponentsOf(controller).Any(o => Has(o, Replacements.OpponentsCreaturesEnterTapped));
@@ -3713,7 +3745,7 @@ public sealed partial class Game
 
     /// <summary>Whether a player can sacrifice the permanent ("this artifact can't be sacrificed", "you can't sacrifice those creatures this turn").</summary>
     private bool CanBeSacrificedBy(Card card, PlayerId player) =>
-        !card.Definition.CantBeSacrificed
+        !(card.Definition.CantBeSacrificed && card.HasTextAbilities)
         && !State.CantSacrificeThisTurn.Any(r => r.Card == card.Id && r.Version == card.Version && r.Player == player && r.Turn == State.TurnNumber);
 
     private async Task SacrificePermanentAsync(CardId id)
@@ -4171,7 +4203,7 @@ public sealed partial class Game
     /// battlefield, even when the card has come back since as a new object (rules 400.7, 608.2h).
     /// </summary>
     private int SourcePowerOrLastKnown(Card source) =>
-        ResolvingVersionOf(source) is { } version && source.Version != version && source.LastKnownInfo is { } lki && lki.Version == version
+        ResolvingVersionOf(source) is { } version && (source.Version != version || source.Zone != Zone.Battlefield) && ResolvingSourceLastKnown(source, version) is { } lki
             ? lki.Power
             : PowerOrLastKnown(source);
 
@@ -4241,7 +4273,7 @@ public sealed partial class Game
         if (filter.DamagedThisTurnByRemembered && !DamagedByRemembered(obj, source, lastKnown)) return false;
         if (filter.Transformed is { } transformed && !(obj.Zone == Zone.Battlefield && obj.IsDoubleFaced && obj.Transformed == transformed)) return false;
         if (filter.AttachedToSource && (source is null || source.AttachedTo != obj.Id)) return false;
-        if (filter.DamagedBySource && (source is null || !obj.DamagedThisTurnBy.Contains(source.Id))) return false;
+        if (filter.DamagedBySource && (source is null || !DamagedThisTurnBy(obj, lastKnown, (r, _) => r.Source == source.Id && r.SourceVersion == DamageSourceVersion(source)))) return false;
         if (filter.Attached is { } attached && (attachedTo is not null) != attached) return false;
         if (filter.MaxManaValueSourcePower && source is not null
             && obj.ManaValue > (source.Zone == Zone.Battlefield || source.LastKnownInfo is null ? source.Power : source.LastKnownInfo.Power)) return false;
@@ -4258,15 +4290,15 @@ public sealed partial class Game
         if (filter.NotChosenType && source?.ChosenType is { } notType && HasSubtype(notType)) return false;
         if (filter.LeastPower && obj.IsCreature
             && State.PermanentsControlledBy(objController).Where(c => c.IsCreature).Any(c => c.Power < power)) return false;
-        if (filter.DamagedThisTurn && obj.DamagedThisTurnBy.Count == 0) return false;
+        if (filter.DamagedThisTurn && !DamagedThisTurnBy(obj, lastKnown, (_, _) => true)) return false;
         if (filter.BlockingSource && (source is null || State.Combat?.FindAttack(source.Id) is not { } blocked || !blocked.Blockers.Contains(obj.Id))) return false;
         if (filter.DealtCombatDamageToYou && (source is null || !obj.CombatDamagedPlayers.Contains(source.Controller))) return false;
         if (filter.MaxManaValueTriggerAmount && ManaValueOf(obj) > _triggeredAmount) return false;
-        if (filter.MaxPowerTriggered && (_triggeredSubject is not { } about || power > PowerOrLastKnown(State.GetCard(about)))) return false;
+        if (filter.MaxPowerTriggered && (_triggeredSubject is not { } about || power > TriggeredPowerOf(State.GetCard(about), _triggeredSubjectVersion))) return false;
         if (filter.PowerIsX && _announcedX >= 0 && power != _announcedX) return false; // before X is announced, any power can still be X
-        if (filter.DamagedThisTurnByYourSpider && !obj.DamagedThisTurnBy.Select(State.GetCard).Any(d =>
-                (d.Zone == Zone.Battlefield ? d.HasSubtype("Spider") : d.LastKnownInfo?.HasSubtype("Spider") == true)
-                && (d.Zone == Zone.Battlefield ? d.Controller : d.LastKnownInfo?.Controller ?? d.Owner) == sourceController)) return false;
+        if (filter.DamagedThisTurnByYourSpider && !DamagedThisTurnBy(obj, lastKnown, (r, d) =>
+                d.Version == r.SourceVersion && d.Zone == Zone.Battlefield ? d.HasSubtype("Spider") && d.Controller == sourceController
+                : d.LastKnownOf(r.SourceVersion) is { } was && was.HasSubtype("Spider") && was.Controller == sourceController)) return false;
         if (filter.LesserPowerThanSource && (source is null || power >= SourcePowerOrLastKnown(source))) return false;
         if (filter.ToughnessLessThanSourcePower && (source is null || toughness >= SourcePowerOrLastKnown(source))) return false;
         if (filter.SharesColorWithYourLegendaryCreature && !State.PermanentsControlledBy(sourceController)
@@ -4388,7 +4420,7 @@ public sealed partial class Game
         // "This creature has all activated abilities of lands your opponents control except mana abilities" (layer 6, worked out here
         // with control known).
         _borrowedLandAbilities.Clear();
-        foreach (var thief in battlefield.Where(c => (c.Definition.Replaces & Replacements.AnyManaForItsAbilities) != 0))
+        foreach (var thief in battlefield.Where(c => (c.Replaces & Replacements.AnyManaForItsAbilities) != 0))
             _borrowedLandAbilities[thief.Id] = State.OpponentsOf(thief.Controller).SelectMany(o => State.PermanentsControlledBy(o)).Where(c => c.Is(CardType.Land))
                 .SelectMany(c => c.Abilities.OfType<ActivatedAbility>().Where(a => !IsManaAbilityOf(a))).ToList();
 
@@ -4812,9 +4844,10 @@ public sealed partial class Game
             case AttackerDeclared a:
             {
                 var attacker = State.GetCard(a.Attacker);
-                Queue(a.Attacker, TriggerEvent.Attacks, attacker.Controller, About(attacker, a.Defender));
+                Queue(a.Attacker, TriggerEvent.Attacks, attacker.Controller, About(attacker, a.Defender) with { Defender = a.Defender });
                 Queue(a.Attacker, TriggerEvent.AttacksOrBlocks, attacker.Controller);
-                QueueObservers(TriggerEvent.CreatureAttacks, attacker, attacker.Controller);
+                QueueObservers(TriggerEvent.CreatureAttacks, attacker, attacker.Controller,
+                    new TriggerInfo(attacker.Id, attacker.Version, attacker.Controller) { Defender = a.Defender });
                 break;
             }
             case AttacksDeclared a:
@@ -5238,8 +5271,9 @@ public sealed partial class Game
         if ((supertypes & Supertype.Legendary) == 0 && (types & CardType.Artifact) == 0) return 0;
         // "A permanent you control": the source (as it last existed, if this made it leave).
         var owner = source.Zone == Zone.Battlefield ? source.Controller : source.LastKnownInfo?.Controller ?? controller;
-        return State.PermanentsControlledBy(owner).Count(c => (c.Definition.Replaces & Replacements.ExtraTriggersFromLegendariesAndArtifactsMoving) != 0)
-               + (source.Zone != Zone.Battlefield && (source.Definition.Replaces & Replacements.ExtraTriggersFromLegendariesAndArtifactsMoving) != 0 && source.LastKnownInfo?.Controller == owner ? 1 : 0);
+        return State.PermanentsControlledBy(owner).Count(c => (c.Replaces & Replacements.ExtraTriggersFromLegendariesAndArtifactsMoving) != 0)
+               + (source.Zone != Zone.Battlefield && (source.Definition.Replaces & Replacements.ExtraTriggersFromLegendariesAndArtifactsMoving) != 0
+                  && source.LastKnownInfo is { HasTextAbilities: true } gone && gone.Controller == owner ? 1 : 0);
     }
 
     private int ExtraTriggersFor(Card source)
@@ -5462,6 +5496,7 @@ public sealed partial class Game
                 _triggeredAmount = trigger.Info?.Amount ?? 0;
                 _triggeredSubject = trigger.Info?.Subject;
                 _triggeredSubjectVersion = trigger.Info?.SubjectVersion ?? 0;
+                _triggeredDefender = trigger.Info?.Defender;
                 if (!HasLegalTargets(trigger.Ability, player, trigger.Source)) continue;
                 // Miracle: revealing the card is optional; the ability triggers only if it's revealed (702.94a).
                 if (ReferenceEquals(trigger.Ability, MiracleTrigger))

@@ -86,7 +86,7 @@ public sealed partial class Game
             foreach (var d in declared)
             {
                 var attacker = State.GetCard(d.Attacker);
-                if (!attacker.Definition.Exert || attacker.LosesAbilities || (attacker.Definition.ExertIf is { } exertIf && !Holds(exertIf, active, attacker))) continue;
+                if (!attacker.Definition.Exert || !attacker.HasTextAbilities || (attacker.Definition.ExertIf is { } exertIf && !Holds(exertIf, active, attacker))) continue;
                 if (!await ControllerOf(active).ChooseYesNoAsync(ViewFor(active), new YesNoRequest($"Exert {attacker.Name}? (It won't untap during your next untap step.)", attacker.Id))) continue;
                 attacker.ExertedTurn = State.TurnNumber;
                 attacker.SkipsNextUntap = true;
@@ -118,7 +118,7 @@ public sealed partial class Game
         foreach (var id in possible)
         {
             var card = State.GetCard(id);
-            if (card.Definition.AttacksEachCombat || card.Has(Keyword.AttacksEachCombat)) requirements.Add(new AttackRequirement(id, AttackRequirementKind.Attacks));
+            if ((card.Definition.AttacksEachCombat && card.HasTextAbilities) || card.Has(Keyword.AttacksEachCombat)) requirements.Add(new AttackRequirement(id, AttackRequirementKind.Attacks));
             // Each goad: "attacks each combat if able and attacks a player other than [the goader] if able" (701.15b-c).
             foreach (var goader in State.Goads.Where(g => g.Card == id && g.Version == card.Version).Select(g => g.Goader).Concat(card.StaticGoaders).Distinct())
             {
@@ -148,7 +148,7 @@ public sealed partial class Game
     /// player: "can't attack unless defending player controls an Island".
     /// </summary>
     private bool AttackForbiddenWithPlaneswalkers(Card attacker, PlayerId defender) =>
-        attacker.Definition.CantAttackUnlessDefenderControls is { } needed && !attacker.LosesAbilities
+        attacker.Definition.CantAttackUnlessDefenderControls is { } needed && attacker.HasTextAbilities
         && !State.PermanentsControlledBy(defender).Any(p => Matches(needed with { Controller = Abilities.ControllerFilter.Any }, p, defender, attacker, attacker.Controller));
 
     /// <summary>The total cost to attack <paramref name="defender"/> with one creature, or null when attacking them is free.</summary>
@@ -156,7 +156,7 @@ public sealed partial class Game
     {
         var total = Mana.ManaCost.Zero;
         foreach (var c in State.PermanentsControlledBy(defender))
-            if (c.Definition.AttackTax is { } tax && (c.Definition.AttackTaxIf is not { } cond || Holds(cond, defender, c))) total = total.Plus(tax);
+            if (c.Definition.AttackTax is { } tax && c.HasTextAbilities && (c.Definition.AttackTaxIf is not { } cond || Holds(cond, defender, c))) total = total.Plus(tax);
         return total.ManaValue > 0 ? total : null;
     }
 
@@ -178,7 +178,7 @@ public sealed partial class Game
     private bool CanAttack(Card c) =>
         c.IsCreature && !c.Tapped && !c.IsSummoningSick && (!c.Has(Keyword.Defender) || c.Has(Keyword.CanAttackWithDefender)) && !c.Has(Keyword.CantAttack)
         // "Creatures with power greater than the number of cards in your hand can't attack" (the permanent's controller's hand).
-        && !State.Battlefield.Select(State.GetCard).Any(b => b.Definition.CantAttackIfPowerAboveHandSize && !b.LosesAbilities && c.Power > State.GetPlayer(b.Controller).Hand.Count);
+        && !State.Battlefield.Select(State.GetCard).Any(b => b.Definition.CantAttackIfPowerAboveHandSize && b.HasTextAbilities && c.Power > State.GetPlayer(b.Controller).Hand.Count);
 
     /// <summary>Evasion: flying can only be blocked by flying or reach (702.9b); "can't be blocked by ..." restrictions.</summary>
     private bool CanBlock(Card blocker, Card attacker) =>
@@ -192,7 +192,7 @@ public sealed partial class Game
         && !(attacker.Has(Keyword.NonbasicLandwalk) && State.PermanentsControlledBy(blocker.Controller).Any(c => c.Is(CardType.Land) && (c.Supertypes & Supertype.Basic) == 0))
         && !(IsRingBearer(attacker, 1) && blocker.Power > attacker.Power) // the Ring, level 1
         && !(attacker.Has(Keyword.Skulk) && blocker.Power > attacker.Power) // skulk (702.118)
-        && !(attacker.Definition.CantBeBlockedBy is { } restriction
+        && !(attacker.Definition.CantBeBlockedBy is { } restriction && attacker.HasTextAbilities
              && Matches(restriction with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, attacker, attacker.Controller))
         // "Can't be blocked by creatures with power 2 or less" / "can't be blocked except by Spirits" from an effect.
         && !attacker.BlockRestrictions.Any(r => Matches(r with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, attacker, attacker.Controller));
@@ -234,7 +234,7 @@ public sealed partial class Game
     private static int CombatDamageOf(Card creature) => creature.Has(Keyword.AssignsDamageByToughness) ? creature.Toughness : creature.Power;
 
     /// <summary>Fewest creatures that can block it: two with menace, or more ("except by three or more creatures").</summary>
-    private static int MinimumBlockersOf(Card attacker) => Math.Max(attacker.Has(Keyword.Menace) ? 2 : 1, attacker.Definition.MinimumBlockers);
+    private static int MinimumBlockersOf(Card attacker) => Math.Max(attacker.Has(Keyword.Menace) ? 2 : 1, attacker.HasTextAbilities ? attacker.Definition.MinimumBlockers : 0);
 
     private async Task DeclareBlockersAsync()
     {

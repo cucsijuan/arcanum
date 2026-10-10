@@ -27,7 +27,7 @@ public sealed partial class Game
     private async Task GainLifeAsync(PlayerId player, int amount)
     {
         if (amount <= 0 || State.GetPlayer(player).HasLost) return;
-        if (State.Battlefield.Select(State.GetCard).Any(c => c.Definition.PlayersCantGainLife || (c.Definition.OpponentsCantGainLife && c.Controller != player))) return;
+        if (State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && (c.Definition.PlayersCantGainLife || (c.Definition.OpponentsCantGainLife && c.Controller != player)))) return;
         var applied = new HashSet<string>();
         bool loss = false;
         while (!loss)
@@ -56,7 +56,7 @@ public sealed partial class Game
     private List<LifeGainModifier> LifeGainModifiers(PlayerId player)
     {
         var list = new List<LifeGainModifier>();
-        bool Has(Card c, Replacements r) => !c.LosesAbilities && (c.Definition.Replaces & r) != 0;
+        bool Has(Card c, Replacements r) => (c.Replaces & r) != 0;
         foreach (var c in State.PermanentsControlledBy(player))
         {
             if (Has(c, Replacements.ExtraLifeGain)) list.Add(new("plus1", $"plus1:{c.Id.Value}", $"Gain that much plus 1 ({c.Name})", n => n + 1));
@@ -82,7 +82,7 @@ public sealed partial class Game
     {
         if (!preventable || part.ToPlayer is not { } player) yield break;
         var source = part.Source;
-        foreach (var c in State.PermanentsControlledBy(player).Where(c => !c.LosesAbilities && c.Definition.DamageToYouReductions is not null).ToList())
+        foreach (var c in State.PermanentsControlledBy(player).Where(c => c.HasTextAbilities && c.Definition.DamageToYouReductions is not null).ToList())
             for (int i = 0; i < c.Definition.DamageToYouReductions!.Count; i++)
             {
                 var r = c.Definition.DamageToYouReductions[i];
@@ -101,7 +101,7 @@ public sealed partial class Game
     {
         var source = part.Source;
         var controller = SourceController(source);
-        foreach (var c in State.PermanentsControlledBy(controller).Where(c => !c.LosesAbilities && c.Definition.DamageBonuses is not null).ToList())
+        foreach (var c in State.PermanentsControlledBy(controller).Where(c => c.HasTextAbilities && c.Definition.DamageBonuses is not null).ToList())
             for (int i = 0; i < c.Definition.DamageBonuses!.Count; i++)
             {
                 var b = c.Definition.DamageBonuses[i];

@@ -83,6 +83,17 @@ public sealed partial class Game
                                         && r.TargetCard == obj.Id && r.TargetVersion == version);
     }
 
+    /// <summary>
+    /// <paramref name="obj"/> (as it last existed on the battlefield if it left, when <paramref name="lastKnown"/>) was dealt damage
+    /// this turn by a source the damage record and that source's card satisfy. Only damage dealt to this object counts: a card
+    /// that changed zones since is a new object that wasn't dealt that damage (rule 400.7).
+    /// </summary>
+    private bool DamagedThisTurnBy(Card obj, bool lastKnown, Func<DamageRecord, Card, bool> by)
+    {
+        int version = lastKnown && obj.Zone != Zone.Battlefield && obj.LastKnownInfo is { } lki ? lki.Version : obj.Version;
+        return State.DamageLog.Any(r => r.Turn == State.TurnNumber && r.TargetCard == obj.Id && r.TargetVersion == version && by(r, State.GetCard(r.Source)));
+    }
+
     /// <summary>"If a player cast two or more spells last turn".</summary>
     private bool AnyPlayerCastLastTurn(int atLeast) => State.Players.Any(p => p.SpellsCastLastTurn >= atLeast);
 }

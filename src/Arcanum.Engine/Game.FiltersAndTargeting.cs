@@ -95,7 +95,7 @@ public sealed partial class Game
     /// It applies to every player's spells and abilities.
     /// </summary>
     private bool CantBeTargetedBy(Card card, Card source) =>
-        card.Definition.CantBeTargetedBy is { } restriction && !card.LosesAbilities
+        card.Definition.CantBeTargetedBy is { } restriction && card.HasTextAbilities
         && Matches(restriction with { Controller = ControllerFilter.Any }, source, source.Controller, card, card.Controller,
             lastKnown: source.Zone is not (Zone.Battlefield or Zone.Stack));
 }
