@@ -167,7 +167,9 @@ public sealed class GameHost
 
         foreach (var peer in _greeting.ToList())
         {
-            var messages = peer.Receive();
+            // A player coming from the lobby may have changed their deck just as the game started: that lobby message
+            // arrives before their greeting and is dropped. Anything else before a greeting closes the connection.
+            var messages = peer.Receive().SkipWhile(m => m is SubmitDeck).ToList();
             if (messages.Count > 0)
             {
                 peer.Hold(messages.Skip(1));

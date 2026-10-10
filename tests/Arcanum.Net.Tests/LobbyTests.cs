@@ -33,6 +33,41 @@ public class LobbyTests
     private static ClientIdentity Identity(string name, string token = "") => new(name, token, "1", "c");
 
     [Fact]
+    public void ADeckChangedJustAsTheGameStartsDoesntCostThePlayerTheirSeat()
+    {
+        var clock = new FakeClock();
+        var lobby = new LobbyHost(new LobbySettings("Casual", false, 20, 2, "1", "c"), Check, clock.Func);
+        var listener = new InMemoryListener();
+        lobby.AddListener(listener);
+        var host = new LobbyClient(listener.Connect(), Identity("Host", lobby.HostToken), clock.Func);
+        var guest = new LobbyClient(listener.Connect(), Identity("Guest"), clock.Func);
+        host.SubmitDeck("Red-green", List(NetTable.RedGreen()));
+        guest.SubmitDeck("Red-green", List(NetTable.RedGreen()));
+        void Step()
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(50));
+            lobby.Poll();
+            host.Poll();
+            guest.Poll();
+        }
+        for (int i = 0; i < 5; i++) Step();
+        Assert.Null(lobby.StartProblem);
+
+        var game = lobby.Start(5, new HostOptions { Clock = clock.Func });
+        guest.SubmitDeck("Red-green", List(NetTable.RedGreen())); // sent before the guest learns the game started
+        for (int i = 0; i < 3; i++) Step();
+        var client = guest.JoinGame();
+        for (int i = 0; i < 10; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(50));
+            game.Poll();
+            client.Poll();
+        }
+        Assert.True(client.IsWelcomed);
+        Assert.True(client.IsConnected);
+    }
+
+    [Fact]
     public void PlayersJoinChooseDecksAndPlayWithTheComputer()
     {
         var clock = new FakeClock();
