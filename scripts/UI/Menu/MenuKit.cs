@@ -176,4 +176,53 @@ public static class MenuKit
         tween.TweenCallback(Callable.From(panel.QueueFree));
     }
 
+    /// <summary>
+    /// A modal dialog over <paramref name="screen"/>: a title, a text, optional content and its answers in a row (the
+    /// last one primary); choosing an answer runs it and closes the dialog.
+    /// </summary>
+    public static Control Modal(Control screen, string title, string text, Control? content, params (string Text, Action Action)[] answers)
+    {
+        var overlay = new Control { ZIndex = 200, MouseFilter = Control.MouseFilterEnum.Stop };
+        overlay.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        var shade = new ColorRect { Color = new Color(0, 0, 0, 0.6f), MouseFilter = Control.MouseFilterEnum.Ignore };
+        shade.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        overlay.AddChild(shade);
+        var panel = new PanelContainer();
+        panel.SetAnchorsPreset(Control.LayoutPreset.Center);
+        panel.GrowHorizontal = Control.GrowDirection.Both;
+        panel.GrowVertical = Control.GrowDirection.Both;
+        panel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Modal, BoardStyle.Panel, 12, BoardStyle.PanelBorder, 1, artPadding: 24));
+        overlay.AddChild(panel);
+        var box = new VBoxContainer { CustomMinimumSize = new Vector2(520, 0) };
+        box.AddThemeConstantOverride("separation", 14);
+        panel.AddChild(box);
+        var heading = BoardStyle.MakeTitle(title, 26);
+        heading.HorizontalAlignment = HorizontalAlignment.Center;
+        box.AddChild(heading);
+        if (text.Length > 0)
+        {
+            var body = BoardStyle.MakeLabel(text, 16);
+            body.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            body.HorizontalAlignment = HorizontalAlignment.Center;
+            box.AddChild(body);
+        }
+        if (content is not null) box.AddChild(content);
+        var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        buttons.AddThemeConstantOverride("separation", 8);
+        box.AddChild(buttons);
+        for (int i = 0; i < answers.Length; i++)
+        {
+            if (i > 0) buttons.AddChild(BoardStyle.MakeModalSeparator());
+            var (label, action) = answers[i];
+            var button = BoardStyle.MakeModalButton(label, i == answers.Length - 1, 18);
+            button.Pressed += () =>
+            {
+                overlay.QueueFree();
+                action();
+            };
+            buttons.AddChild(button);
+        }
+        screen.AddChild(overlay);
+        return overlay;
+    }
 }

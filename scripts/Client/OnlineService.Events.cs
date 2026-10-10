@@ -286,10 +286,16 @@ public partial class OnlineService
         }
     }
 
-    /// <summary>Gets back into the event this device had joined.</summary>
-    private async Task RejoinEvent(string name)
+    /// <summary>Gets back into the event this device had joined; refused (the event is over), the seat is forgotten and <paramref name="otherwise"/> runs.</summary>
+    private async Task RejoinEvent(string name, Action? otherwise = null)
     {
         if (await ReconnectAsync(name) is not { } connection) return;
-        StartEventSession(new EventClient(connection, new ClientIdentity(name, Settings.Current.LastSeatToken, Version, ContentId, OwnPlaymat), greet: true));
+        var client = new EventClient(connection, new ClientIdentity(name, Settings.Current.LastSeatToken, Version, ContentId, OwnPlaymat), greet: true);
+        client.Rejected += _ =>
+        {
+            if (otherwise is not null) JoinAsNew(otherwise);
+            else ForgetSeat();
+        };
+        StartEventSession(client);
     }
 }

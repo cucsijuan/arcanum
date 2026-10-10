@@ -9,24 +9,33 @@ namespace Arcanum.UI.Menu;
 
 /// <summary>
 /// Online play by direct connection: host a game (others join with this device's address) or join one, then wait in
-/// the lobby until the host starts. The host fills free seats with the computer.
+/// the lobby until the host starts. The host fills free seats with the computer. Opened from the main menu's Online
+/// submenu it shows one side, hosting or joining (with the open lobbies); otherwise both.
 /// </summary>
 public partial class OnlineScreen : Control
 {
+    public enum OnlinePage { Both, Host, Join }
+
+    /// <summary>Which side the screen shows, chosen in the main menu's Online submenu.</summary>
+    public static OnlinePage Page { get; set; } = OnlinePage.Both;
+
+    /// <summary>Set when the player chose, at the start of the game, to get back into their unfinished game.</summary>
+    public static bool RejoinOnOpen { get; set; }
+
     private readonly List<DeckInfo> _decks = new();
     private readonly VBoxContainer _root = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
     private readonly Label _status = MenuKit.Hint("");
-    private LineEdit _name = null!;
-    private OptionButton _deck = null!;
+    private OptionButton? _deck;
     private static OnlineService Online => App.Instance.Online;
 
     public override async void _Ready()
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
         MenuKit.AddBackdrop(this);
-        MenuKit.AddHeader(this, "Online", () =>
+        MenuKit.AddHeader(this, Page switch { OnlinePage.Host => "Host a game", OnlinePage.Join => "Join a game", _ => "Online" }, () =>
         {
             Online.Leave();
+            MainMenu.OpenOnline = Page != OnlinePage.Both; // back to the submenu it was opened from
             App.Instance.GoTo(App.MainMenuScene);
         });
 
@@ -51,6 +60,7 @@ public partial class OnlineScreen : Control
         Online.Status += ShowStatus;
         Rebuild();
         AutoStart();
+        OfferRejoin();
     }
 
     /// <summary>
@@ -162,37 +172,51 @@ public partial class OnlineScreen : Control
         else BuildStart();
     }
 
-    private string PlayerName => _name?.Text is { Length: > 0 } n ? n : Settings.Current.PlayerNames.ElementAtOrDefault(0) ?? "Player";
+    private static string PlayerName => Settings.PlayerName;
 
-    private DeckInfo? SelectedDeck => _deck is not null && _deck.Selected >= 0 && _deck.Selected < _decks.Count ? _decks[_deck.Selected] : null;
-
-    private OptionButton DeckPicker(int selected)
+    /// <summary>
+    /// After a disconnection, or a restart of the game: the unfinished game this device was playing is offered to be got back
+    /// into. Declined, it isn't offered again (joining its lobby again still gets the seat back).
+    /// </summary>
+    private void OfferRejoin()
     {
-        var picker = MenuKit.Options(_decks.Select(d => d.Name), Math.Clamp(selected, 0, Math.Max(0, _decks.Count - 1)));
-        picker.CustomMinimumSize = new Vector2(360, 0);
-        return picker;
+        if (RejoinOnOpen)
+        {
+            RejoinOnOpen = false;
+            Online.Rejoin(PlayerName);
+            return;
+        }
+        if (!OnlineService.OffersRejoin || Online.IsActive || OS.GetEnvironment("ARCANUM_ONLINE_REJOIN") == "1") return;
+        MenuKit.Modal(this, "Game in progress", $"You were playing a game at {OnlineService.RejoinPlace} that hasn't finished. Get back into it?", null,
+            ("Not now", OnlineService.DeclineRejoin),
+            ("Get back in", () => Online.Rejoin(PlayerName)));
     }
+
+    // ------------------------------------------------------------------ the deck, chosen in the lobby
+
+    /// <summary>The decks offered in a lobby: those legal in its format (by name), all of them when the format isn't known here.</summary>
+    private List<DeckInfo> LobbyDecks(string formatName)
+    {
+        if (_lobbyDecksFor == formatName) return _lobbyDecks;
+        _lobbyDecksFor = formatName;
+        _lobbyDecks.Clear();
+        var format = App.Instance.Formats.FirstOrDefault(f => f.Name == formatName);
+        _lobbyDecks.AddRange(format is null || App.Instance.Cards is not { } cards ? _decks
+            : _decks.Where(d => Arcanum.Data.Formats.DeckValidator.Validate(App.Instance.Decks.Load(d).Deck, format, cards)
+                .All(i => i.Severity != Arcanum.Data.Formats.IssueSeverity.Error)));
+        return _lobbyDecks;
+    }
+
+    private readonly List<DeckInfo> _lobbyDecks = new();
+    private string? _lobbyDecksFor;
+
+    /// <summary>The deck last chosen for online games, by name.</summary>
+    private static string? _lastDeckName;
 
     // ------------------------------------------------------------------ host or join
 
     private void BuildStart()
     {
-        if (_decks.Count == 0)
-        {
-            _root.AddChild(MenuKit.Hint("You need a deck to play online: build one in Decks, or install the card content."));
-            return;
-        }
-
-        var you = new VBoxContainer();
-        you.AddThemeConstantOverride("separation", 10);
-        you.AddChild(MenuKit.SectionTitle("You"));
-        _name = MenuKit.TextField(Settings.Current.PlayerNames.ElementAtOrDefault(0) ?? "Player 1", "Name");
-        you.AddChild(MenuKit.Row("Name", _name, 90));
-        _deck = DeckPicker(_lastDeck);
-        _deck.ItemSelected += i => _lastDeck = (int)i;
-        you.AddChild(MenuKit.Row("Deck", _deck, 90));
-        _root.AddChild(MenuKit.Card(you));
-
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 20);
 
@@ -204,7 +228,7 @@ public partial class OnlineScreen : Control
         host.AddChild(MenuKit.Row("Play", kind, 90));
         bool limited = _kind > 0;
         var formats = App.Instance.Formats;
-        var format = MenuKit.Options(formats.Select(f => f.Name), Math.Max(0, formats.FindIndex(f => f.Id == SelectedDeck?.FormatId)));
+        var format = MenuKit.Options(formats.Select(f => f.Name), Math.Max(0, formats.FindIndex(f => f.Id == Settings.Current.PlayMode)));
         var sources = App.Instance.Limited.Sources();
         var source = MenuKit.Options(sources.Select(x => x.Name), Math.Min(_sourceIndex, Math.Max(0, sources.Count - 1)));
         source.ItemSelected += i => _sourceIndex = (int)i;
@@ -232,14 +256,12 @@ public partial class OnlineScreen : Control
         hostButton.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
         hostButton.Pressed += () =>
         {
-            if (SelectedDeck is not { } deck) return;
             if (!int.TryParse(port.Text, out int p) || p is < 1 or > 65535)
             {
                 ShowStatus("The port must be a number from 1 to 65535.");
                 return;
             }
-            SaveName();
-            if (!limited) Online.Host(PlayerName, formats[format.Selected], players.Selected + 2, p, deck);
+            if (!limited) Online.Host(PlayerName, formats[format.Selected], players.Selected + 2, p);
             else if (sources.Count == 0) ShowStatus("No set with boosters or cube is available.");
             else Online.HostEvent(PlayerName, _kind == 1 ? Arcanum.Data.Limited.LimitedMode.Draft : Arcanum.Data.Limited.LimitedMode.Sealed,
                 sources[source.Selected], bestOf.Selected == 0 ? 1 : 3, players.Selected + 2, p);
@@ -263,7 +285,7 @@ public partial class OnlineScreen : Control
         }
         var hostCard = MenuKit.Card(host);
         hostCard.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        row.AddChild(hostCard);
+        if (Page != OnlinePage.Join) row.AddChild(hostCard);
 
         var join = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         join.AddThemeConstantOverride("separation", 10);
@@ -273,40 +295,21 @@ public partial class OnlineScreen : Control
         join.AddChild(MenuKit.Row("Invite code", code, 90));
         var codeButton = BoardStyle.MakeButton("Join with code", 16);
         codeButton.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
-        codeButton.Pressed += () =>
-        {
-            if (SelectedDeck is not { } deck) return;
-            SaveName();
-            Online.JoinByCode(PlayerName, code.Text, deck);
-        };
+        codeButton.Pressed += () => Online.JoinByCode(PlayerName, code.Text);
         join.AddChild(codeButton);
         var address = MenuKit.TextField(Settings.Current.LastHostAddress, $"192.168.1.20:{OnlineService.DefaultPort}");
         join.AddChild(MenuKit.Row("Address", address, 90));
         var joinButton = BoardStyle.MakePrimaryButton("Join", 20);
         joinButton.CustomMinimumSize = new Vector2(200, 50);
         joinButton.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
-        joinButton.Pressed += () =>
-        {
-            if (SelectedDeck is not { } deck) return;
-            SaveName();
-            Settings.Current.LastHostAddress = address.Text.Trim();
-            Settings.Save();
-            Online.Join(PlayerName, address.Text, deck);
-        };
+        joinButton.Pressed += () => Online.Join(PlayerName, address.Text);
         join.AddChild(joinButton);
-        if (OnlineService.CanRejoin)
-        {
-            var rejoin = BoardStyle.MakeButton($"Get back into the game at {OnlineService.RejoinPlace}", 16);
-            rejoin.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
-            rejoin.Pressed += () => Online.Rejoin(PlayerName);
-            join.AddChild(rejoin);
-        }
         var joinCard = MenuKit.Card(join);
         joinCard.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        row.AddChild(joinCard);
+        if (Page != OnlinePage.Host) row.AddChild(joinCard);
 
         _root.AddChild(row);
-        _root.AddChild(BuildBrowser());
+        if (Page != OnlinePage.Host) _root.AddChild(BuildBrowser());
     }
 
     // ------------------------------------------------------------------ lobby browser
@@ -345,12 +348,7 @@ public partial class OnlineScreen : Control
         label.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         line.AddChild(label);
         var join = BoardStyle.MakePrimaryButton("Join", 16);
-        join.Pressed += () =>
-        {
-            if (SelectedDeck is not { } deck) return;
-            SaveName();
-            Online.JoinListing(PlayerName, listing, deck);
-        };
+        join.Pressed += () => Online.JoinListing(PlayerName, listing);
         line.AddChild(join);
         return line;
     }
@@ -358,7 +356,6 @@ public partial class OnlineScreen : Control
     private async void SearchLobbies()
     {
         if (_searching) return;
-        if (_name is not null) SaveName();
         _searching = true;
         Rebuild();
         try { _found = await Online.SearchLobbiesAsync(); }
@@ -371,15 +368,12 @@ public partial class OnlineScreen : Control
         if (IsInsideTree()) Rebuild();
     }
 
-    private static int _lastDeck, _kind, _sourceIndex, _bestOfIndex, _playersIndex;
-
-    private void SaveName()
-    {
-        Settings.Current.PlayerNames[0] = PlayerName;
-        Settings.Save();
-    }
+    private static int _kind, _sourceIndex, _bestOfIndex, _playersIndex;
 
     // ------------------------------------------------------------------ lobby
+
+    /// <summary>The lobby the default deck was sent to (once each).</summary>
+    private Arcanum.Net.Lobby.LobbyClient? _sentDefaultTo;
 
     private void BuildLobby(Arcanum.Net.Lobby.LobbyClient lobby)
     {
@@ -421,13 +415,31 @@ public partial class OnlineScreen : Control
 
             if (state.Event is null)
             {
-                _deck = DeckPicker(_lastDeck);
-                _deck.ItemSelected += i =>
+                // The deck is chosen here, among those legal in the lobby's format; until one is sent, the last one used goes.
+                var decks = LobbyDecks(state.Format);
+                if (decks.Count == 0) box.AddChild(MenuKit.Hint($"No deck of yours is legal in {state.Format}: build one under Decks."));
+                else
                 {
-                    _lastDeck = (int)i;
-                    if (SelectedDeck is { } deck) Online.SubmitDeck(deck);
-                };
-                box.AddChild(MenuKit.Row("Your deck", _deck, 120));
+                    int chosen = Math.Max(0, decks.FindIndex(d => d.Name == _lastDeckName));
+                    _deck = MenuKit.Options(decks.Select(d => d.Name), chosen);
+                    _deck.CustomMinimumSize = new Vector2(360, 0);
+                    _deck.ItemSelected += i =>
+                    {
+                        _lastDeckName = decks[(int)i].Name;
+                        Online.SubmitDeck(decks[(int)i]);
+                    };
+                    box.AddChild(MenuKit.Row("Your deck", _deck, 120));
+                    if (lobby.Seat is int seat && seat >= 0 && seat < state.Seats.Count && state.Seats[seat].Deck is null && _sentDefaultTo != lobby && !lobby.Started)
+                    {
+                        // Sent after this redraw (it runs inside the service's change notice), while the lobby still waits.
+                        _sentDefaultTo = lobby;
+                        var deck = decks[chosen];
+                        Callable.From(() =>
+                        {
+                            if (Online.Lobby == lobby && !lobby.Started && Online.Session is null) Online.SubmitDeck(deck);
+                        }).CallDeferred();
+                    }
+                }
             }
             else box.AddChild(MenuKit.Hint("Decks come from the boosters opened in the event."));
         }
@@ -489,7 +501,8 @@ public partial class OnlineScreen : Control
 
         if (Online.HostedLobby is { } hosted && index > 0)
         {
-            var computerDeck = DeckPicker(index % Math.Max(1, _decks.Count));
+            var computerDecks = LobbyDecks(hosted.State.Format); // the computer's decks are legal in the lobby's format too
+            var computerDeck = MenuKit.Options(computerDecks.Select(d => d.Name), computerDecks.Count == 0 ? 0 : index % computerDecks.Count);
             computerDeck.CustomMinimumSize = new Vector2(240, 0);
             computerDeck.TooltipText = "Deck for the computer";
             bool isEvent = hosted.Settings.Event is not null; // the computer drafts or opens its own cards
@@ -503,7 +516,8 @@ public partial class OnlineScreen : Control
                     hosted.SetComputer(index, name, "", "");
                     return;
                 }
-                var info = _decks[computerDeck.Selected];
+                if (computerDeck.Selected < 0 || computerDeck.Selected >= computerDecks.Count) return;
+                var info = computerDecks[computerDeck.Selected];
                 var (list, _) = App.Instance.Decks.Load(info);
                 hosted.SetComputer(index, name, info.Name, list.Export());
             };

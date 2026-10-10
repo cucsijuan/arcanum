@@ -9,8 +9,9 @@ using Godot;
 namespace Arcanum.UI.Menu;
 
 /// <summary>
-/// Title screen: play, decks, settings, extras. The options are large text; a selector (an arrow with a glow under the
-/// text, trailing sparks) glides to the option under the pointer or chosen with the arrow keys.
+/// Title screen: play, online, decks, settings, extras. The options are large text; a selector (an arrow with a glow under
+/// the text, trailing sparks) glides to the option under the pointer or chosen with the arrow keys. Online opens a
+/// submenu in its place (host or join), which Back or Escape closes.
 /// </summary>
 public partial class MainMenu : Control
 {
@@ -18,6 +19,10 @@ public partial class MainMenu : Control
     private readonly List<Button> _items = new();
     private readonly Control _selector = new() { MouseFilter = MouseFilterEnum.Ignore };
     private Control _list = null!;
+    private readonly Label _heading = BoardStyle.MakeLabel("", 22, UiArt.Gold, bold: true);
+    private bool _inSubmenu;
+    private Control _holder = null!;
+    private const float ItemHeight = 54, ItemGap = 4;
     private int _selected = -1;
     private Tween? _move;
 
@@ -33,6 +38,7 @@ public partial class MainMenu : Control
         if (OS.GetEnvironment("ARCANUM_OPEN") == "online" && !_opened)
         {
             _opened = true;
+            OnlineScreen.Page = OnlineScreen.OnlinePage.Both;
             Callable.From(() => App.Instance.GoTo(App.OnlineScene)).CallDeferred();
         }
         SetAnchorsPreset(LayoutPreset.FullRect);
@@ -63,35 +69,20 @@ public partial class MainMenu : Control
         list.AddThemeConstantOverride("separation", 4);
         holder.AddChild(list);
         _list = list;
-        list.Resized += () => holder.CustomMinimumSize = new Vector2(420, list.Size.Y);
+        // The options keep the height of the longest list (the main menu's), so the title above them doesn't move when a
+        // shorter submenu opens; a submenu's heading is drawn just above its options, outside the column's layout.
+        _holder = holder;
+        _heading.Visible = false;
+        _heading.Position = new Vector2(0, -34);
+        holder.AddChild(_heading);
         column.AddChild(holder);
 
-        void Item(string text, string hint, Action action)
-        {
-            int index = _items.Count;
-            var button = new Button { Text = text, TooltipText = hint, FocusMode = FocusModeEnum.None, Alignment = HorizontalAlignment.Left, CustomMinimumSize = new Vector2(420, 54) };
-            button.AddThemeFontSizeOverride("font_size", 30);
-            var empty = new StyleBoxEmpty { ContentMarginLeft = 0 };
-            foreach (var state in new[] { "normal", "hover", "pressed", "hover_pressed", "focus" }) button.AddThemeStyleboxOverride(state, empty);
-            button.AddThemeColorOverride("font_color", ItemColor);
-            button.AddThemeColorOverride("font_hover_color", Colors.White);
-            button.AddThemeColorOverride("font_pressed_color", UiArt.Gold);
-            button.AddThemeColorOverride("font_hover_pressed_color", UiArt.Gold);
-            button.AddThemeColorOverride("font_shadow_color", new Color(0, 0, 0, 0.6f));
-            button.AddThemeConstantOverride("shadow_offset_y", 2);
-            button.MouseEntered += () => Select(index);
-            button.Pressed += action;
-            _items.Add(button);
-            list.AddChild(button);
-        }
-        Item("Play", "Start a game: constructed formats, commander, draft or sealed", () => App.Instance.GoTo(App.PlaySetupScene));
-        Item("Online", "Host a game, browse open lobbies or join with an invite code", () => App.Instance.GoTo(App.OnlineScene));
-        Item("Decks", "Build, import and export decks", () => App.Instance.GoTo(App.DeckBuilderScene));
-        Item("Settings", "Gameplay, appearance, audio and video", () => App.Instance.GoTo(App.SettingsScene));
-        Item("Extras", "Sandbox, card data and about", () => App.Instance.GoTo(App.ExtrasScene));
-        if (!OS.HasFeature("mobile")) Item("Quit", "Close the game", () => GetTree().Quit());
+        if (OpenOnline) ShowItems("Online", OnlineItems());
+        else ShowItems(null, MainItems());
+        OpenOnline = false;
         AddChild(column);
         CheckForUpdates();
+        Callable.From(Welcome).CallDeferred();
         // Start on the first option, and keep the selector on its option whenever the list is laid out again.
         list.SortChildren += () => Select(Math.Max(0, _selected), animate: false);
 
@@ -109,6 +100,133 @@ public partial class MainMenu : Control
     }
 
     public override void _ExitTree() => App.Instance.ContentProgress -= OnProgress;
+
+    private static bool _welcomed;
+
+    /// <summary>
+    /// Once per run, at the title screen: a player without a name is asked for one (kept, and changed in the settings);
+    /// then an unfinished online game this device was playing (it dropped, or the game closed) is offered to be got back
+    /// into; declined, it isn't offered again.
+    /// </summary>
+    private void Welcome()
+    {
+        if (_welcomed || !IsInsideTree()) return;
+        _welcomed = true;
+        var settings = Settings.Current;
+        if (!settings.NameChosen && settings.PlayerNames[0] is { Length: > 0 } saved && saved != "Player 1")
+        {
+            settings.NameChosen = true; // named before this was asked
+            Settings.Save();
+        }
+        if (!settings.NameChosen)
+        {
+            var name = MenuKit.TextField("", "Your name");
+            name.CustomMinimumSize = new Vector2(360, 44);
+            name.MaxLength = 32;
+            void Keep()
+            {
+                settings.PlayerNames[0] = name.Text.Trim() is { Length: > 0 } chosen ? chosen : "Player 1";
+                settings.NameChosen = true;
+                Settings.Save();
+                OfferRejoin();
+            }
+            var dialog = MenuKit.Modal(this, "Welcome to Arcanum", "What should other players call you? You can change it later in Settings.", name, ("Continue", Keep));
+            name.TextSubmitted += _ =>
+            {
+                dialog.QueueFree();
+                Keep();
+            };
+            name.CallDeferred(Control.MethodName.GrabFocus);
+            return;
+        }
+        OfferRejoin();
+    }
+
+    private void OfferRejoin()
+    {
+        if (!OnlineService.OffersRejoin || App.Instance.Online.IsActive) return;
+        MenuKit.Modal(this, "Game in progress", $"You were playing a game at {OnlineService.RejoinPlace} that hasn't finished. Get back into it?", null,
+            ("Not now", OnlineService.DeclineRejoin),
+            ("Get back in", () =>
+            {
+                OnlineScreen.Page = OnlineScreen.OnlinePage.Join;
+                OnlineScreen.RejoinOnOpen = true;
+                App.Instance.GoTo(App.OnlineScene);
+            }));
+    }
+
+    // ---------------------------------------------------------------- options and submenus
+
+    private List<(string Text, string Hint, Action Action)> MainItems()
+    {
+        var items = new List<(string, string, Action)>
+        {
+            ("Play", "Start a game: constructed formats, commander, draft or sealed", () => App.Instance.GoTo(App.PlaySetupScene)),
+            ("Online", "Host a game or join one", () => ShowItems("Online", OnlineItems())),
+            ("Decks", "Build, import and export decks", () => App.Instance.GoTo(App.DeckBuilderScene)),
+            ("Settings", "Gameplay, appearance, audio and video", () => App.Instance.GoTo(App.SettingsScene)),
+            ("Extras", "Sandbox, card data and about", () => App.Instance.GoTo(App.ExtrasScene)),
+        };
+        if (!OS.HasFeature("mobile")) items.Add(("Quit", "Close the game", () => GetTree().Quit()));
+        return items;
+    }
+
+    private List<(string Text, string Hint, Action Action)> OnlineItems() => new()
+    {
+        ("Host a game", "Open a lobby for a game or an event that others join over the internet or your network", () => OpenOnlinePage(OnlineScreen.OnlinePage.Host)),
+        ("Join a game", "Join with an invite code or an address, or choose an open lobby", () => OpenOnlinePage(OnlineScreen.OnlinePage.Join)),
+        ("Back", "Back to the main menu", () => ShowItems(null, MainItems())),
+    };
+
+    private static void OpenOnlinePage(OnlineScreen.OnlinePage page)
+    {
+        OnlineScreen.Page = page;
+        App.Instance.GoTo(App.OnlineScene);
+    }
+
+    /// <summary>Set when coming back from the online screen: the menu opens on its Online submenu.</summary>
+    public static bool OpenOnline { get; set; }
+
+    /// <summary>Shows a list of options (a submenu under <paramref name="heading"/>, or the main menu), easing in from the left.</summary>
+    private void ShowItems(string? heading, IReadOnlyList<(string Text, string Hint, Action Action)> items)
+    {
+        _inSubmenu = heading is not null;
+        _heading.Text = heading ?? "";
+        _heading.Visible = heading is not null;
+        foreach (var old in _items)
+        {
+            _list.RemoveChild(old);
+            old.QueueFree();
+        }
+        _items.Clear();
+        _selected = -1;
+        int longest = Math.Max(MainItems().Count, items.Count);
+        _holder.CustomMinimumSize = new Vector2(420, longest * ItemHeight + (longest - 1) * ItemGap);
+        foreach (var (text, hint, action) in items)
+        {
+            int index = _items.Count;
+            var button = new Button { Text = text, TooltipText = hint, FocusMode = FocusModeEnum.None, Alignment = HorizontalAlignment.Left, CustomMinimumSize = new Vector2(420, ItemHeight) };
+            button.AddThemeFontSizeOverride("font_size", 30);
+            var empty = new StyleBoxEmpty { ContentMarginLeft = 0 };
+            foreach (var state in new[] { "normal", "hover", "pressed", "hover_pressed", "focus" }) button.AddThemeStyleboxOverride(state, empty);
+            button.AddThemeColorOverride("font_color", ItemColor);
+            button.AddThemeColorOverride("font_hover_color", Colors.White);
+            button.AddThemeColorOverride("font_pressed_color", UiArt.Gold);
+            button.AddThemeColorOverride("font_hover_pressed_color", UiArt.Gold);
+            button.AddThemeColorOverride("font_shadow_color", new Color(0, 0, 0, 0.6f));
+            button.AddThemeConstantOverride("shadow_offset_y", 2);
+            button.MouseEntered += () => Select(index);
+            button.Pressed += action;
+            _items.Add(button);
+            _list.AddChild(button);
+        }
+        if (!IsInsideTree()) return;
+        foreach (var part in new CanvasItem[] { _list, _selector, _heading }) part.Modulate = Colors.Transparent;
+        var ease = CreateTween().SetParallel().SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+        foreach (var part in new CanvasItem[] { _list, _selector, _heading }) ease.TweenProperty(part, "modulate", Colors.White, 0.22);
+        _list.Position = _list.Position with { X = -24 };
+        ease.TweenProperty(_list, "position:x", 0f, 0.22);
+    }
 
     // ---------------------------------------------------------------- updates
 
@@ -239,7 +357,8 @@ public partial class MainMenu : Control
     public override void _UnhandledInput(InputEvent @event)
     {
         if (_items.Count == 0) return;
-        if (@event.IsActionPressed("ui_down")) Select((_selected + 1) % _items.Count);
+        if (_inSubmenu && @event.IsActionPressed("ui_cancel")) ShowItems(null, MainItems());
+        else if (@event.IsActionPressed("ui_down")) Select((_selected + 1) % _items.Count);
         else if (@event.IsActionPressed("ui_up")) Select((_selected - 1 + _items.Count) % _items.Count);
         else if (@event.IsActionPressed("ui_accept") && _selected >= 0) _items[_selected].EmitSignal(BaseButton.SignalName.Pressed);
         else return;

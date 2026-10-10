@@ -125,6 +125,15 @@ public partial class SettingsScreen : Control
     {
         var box = Column();
         box.AddChild(SettingsKit.Section("Play"));
+        var playerName = MenuKit.TextField(Settings.PlayerName, "Your name");
+        playerName.MaxLength = 32;
+        playerName.TextChanged += text =>
+        {
+            S.PlayerNames[0] = text.Trim() is { Length: > 0 } chosen ? chosen : "Player 1";
+            S.NameChosen = true;
+            Settings.Save();
+        };
+        box.AddChild(Row("Your name", playerName, "What other players see in online games, and the name of the first seat on this device."));
         box.AddChild(Switch("Confirm mana payment", S.ConfirmManaPayment, v => S.ConfirmManaPayment = v,
             "Before a spell is cast, choose which lands to tap instead of letting the game pay for you."));
         box.AddChild(Switch("Show both hands in hotseat", S.RevealHandsInHotseat, v => S.RevealHandsInHotseat = v,

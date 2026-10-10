@@ -157,11 +157,17 @@ public partial class OnlineService
     }
 
     /// <summary>Joins a lobby found by its invite code.</summary>
-    public async void JoinByCode(string name, string code, DeckInfo deck)
+    public async void JoinByCode(string name, string code, DeckInfo? deck = null, bool seatFirst = true)
     {
         if (!InviteCode.TryParse(code, out var parsed))
         {
             Status?.Invoke($"An invite code has {InviteCode.Length} letters and digits, like {InviteCode.Display("ABCDEF")}.");
+            return;
+        }
+        // The lobby of the game this device was in (no longer listed once it started): back into the seat.
+        if (seatFirst && SavedRoute is { } saved && InviteCode.TryParse(saved.InviteCode, out var savedCode) && savedCode == parsed)
+        {
+            Rejoin(name, () => JoinByCode(name, code, deck, seatFirst: false));
             return;
         }
         Status?.Invoke($"Looking for {InviteCode.Display(parsed)}…");
@@ -176,9 +182,14 @@ public partial class OnlineService
     }
 
     /// <summary>Joins a lobby from the browser (or found by its code), reaching the host through the service's network.</summary>
-    public async void JoinListing(string name, LobbyListing listing, DeckInfo deck)
+    public async void JoinListing(string name, LobbyListing listing, DeckInfo? deck = null, bool seatFirst = true)
     {
         Leave();
+        if (seatFirst && SavedRoute is { } saved && saved.LobbyId == listing.LobbyId)
+        {
+            Rejoin(name, () => JoinListing(name, listing, deck, seatFirst: false));
+            return;
+        }
         if (listing.Version != Version || listing.Content != ContentId)
         {
             Status?.Invoke("That lobby uses another version of the game or other card content.");
@@ -192,7 +203,7 @@ public partial class OnlineService
         {
             var connection = await Services.Network.ConnectAsync(listing);
             JoinLobby(connection, new ClientIdentity(name, "", Version, ContentId, OwnPlaymat));
-            SubmitDeck(deck);
+            if (deck is not null) SubmitDeck(deck);
         }
         catch (Exception e)
         {

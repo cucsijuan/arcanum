@@ -13,6 +13,12 @@ public sealed class SettingsData
     // General
     public string[] PlayerNames { get; set; } = { "Player 1", "Player 2" };
 
+    /// <summary>The player chose their name (asked once, at the first start; changed in the settings).</summary>
+    public bool NameChosen { get; set; }
+
+    /// <summary>The seat (token) of an unfinished online game the player chose not to get back into: not offered again.</summary>
+    public string RejoinDeclined { get; set; } = "";
+
     /// <summary>The mode last chosen on the Play screen: a format id, "draft" or "sealed".</summary>
     public string PlayMode { get; set; } = "casual";
     /// <summary>Address of the last online game joined.</summary>
@@ -71,6 +77,9 @@ public static class Settings
     private const string Path = "user://settings.json";
 
     public static SettingsData Current { get; private set; } = new();
+
+    /// <summary>This player's name: in online games, and for the first seat on this device.</summary>
+    public static string PlayerName => Current.PlayerNames.ElementAtOrDefault(0) is { Length: > 0 } name ? name : "Player 1";
 
     public static event Action? Changed;
 

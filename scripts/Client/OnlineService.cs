@@ -70,8 +70,8 @@ public partial class OnlineService : Node
 
     // ------------------------------------------------------------------ hosting
 
-    /// <summary>Opens a lobby on <paramref name="port"/>; this device's player takes seat 0.</summary>
-    public void Host(string name, FormatRules format, int players, int port, DeckInfo deck)
+    /// <summary>Opens a lobby on <paramref name="port"/>; this device's player takes seat 0 (their deck is chosen in the lobby, or given here).</summary>
+    public void Host(string name, FormatRules format, int players, int port, DeckInfo? deck = null)
     {
         Leave();
         var settings = new LobbySettings(format.Name, format.Commander, format.StartingLife, players, Version, ContentId);
@@ -96,7 +96,7 @@ public partial class OnlineService : Node
         ListAddresses();
         OpenRouterPort();
         JoinLobby(_loopback.Connect(), new ClientIdentity(name, _lobby.HostToken, Version, ContentId, OwnPlaymat));
-        SubmitDeck(deck);
+        if (deck is not null) SubmitDeck(deck);
         PublishHostedLobby();
     }
 
@@ -295,13 +295,22 @@ public partial class OnlineService : Node
 
     // ------------------------------------------------------------------ joining
 
-    /// <summary>Joins the game hosted at <paramref name="address"/> ("host" or "host:port").</summary>
-    public async void Join(string name, string address, DeckInfo deck)
+    /// <summary>
+    /// Joins the game hosted at <paramref name="address"/> ("host" or "host:port"); the deck is chosen in the lobby (or
+    /// given here). The place of an unfinished game this device was playing gets it back into its seat instead.
+    /// </summary>
+    public async void Join(string name, string address, DeckInfo? deck = null, bool seatFirst = true)
     {
         Leave();
         if (!TryParseAddress(address, out var host, out int port))
         {
             Status?.Invoke("Enter the host's address, like 192.168.1.20:47013.");
+            return;
+        }
+        if (seatFirst && CanRejoin && TryParseAddress(Settings.Current.LastHostAddress, out var savedHost, out int savedPort)
+            && savedHost.Equals(host, StringComparison.OrdinalIgnoreCase) && savedPort == port)
+        {
+            Rejoin(name, () => Join(name, address, deck, seatFirst: false));
             return;
         }
         _address = host;
@@ -312,13 +321,26 @@ public partial class OnlineService : Node
         {
             var connection = await TcpConnection.ConnectAsync(host, port, TimeSpan.FromSeconds(8));
             JoinLobby(connection, new ClientIdentity(name, "", Version, ContentId, OwnPlaymat));
-            SubmitDeck(deck);
+            if (deck is not null) SubmitDeck(deck);
         }
         catch (Exception e)
         {
             Status?.Invoke($"Couldn't connect: {e.Message}");
         }
     }
+
+    /// <summary>The unfinished game this device was in is offered to be got back into (unless the player said no to it).</summary>
+    public static bool OffersRejoin => CanRejoin && Settings.Current.RejoinDeclined != Settings.Current.LastSeatToken;
+
+    /// <summary>The player doesn't want to get back into that game: it isn't offered again (joining its lobby again still gets the seat back).</summary>
+    public static void DeclineRejoin()
+    {
+        Settings.Current.RejoinDeclined = Settings.Current.LastSeatToken;
+        Settings.Save();
+    }
+
+    /// <summary>The lobby of the unfinished game this device was in, when it was reached through the services.</summary>
+    private static LobbyListing? SavedRoute => CanRejoin && LobbyRoute.TryLoad(Settings.Current.LastLobbyRoute, out var route) ? route : null;
 
     /// <summary>A game this device joined is still in progress (as far as it knows): it can get back in.</summary>
     public static bool CanRejoin => Settings.Current.LastSeatToken.Length > 0
@@ -355,24 +377,37 @@ public partial class OnlineService : Node
         return await TcpConnection.ConnectAsync(host, port, TimeSpan.FromSeconds(8));
     }
 
-    /// <summary>Gets back into the game in progress this device had joined, with its seat's token.</summary>
-    public async void Rejoin(string name)
+    /// <summary>
+    /// Gets back into the game in progress this device had joined, with its seat's token. When the host doesn't know
+    /// the seat any more (that game is over, another one is set up there), the seat is forgotten and
+    /// <paramref name="otherwise"/> runs: joining that place as a new player.
+    /// </summary>
+    public async void Rejoin(string name, Action? otherwise = null)
     {
         Leave();
         if (!CanRejoin) return;
         Status?.Invoke($"Reconnecting to {RejoinPlace}…");
         try
         {
-            if (Settings.Current.LastSeatIsEvent) { await RejoinEvent(name); return; }
+            if (Settings.Current.LastSeatIsEvent) { await RejoinEvent(name, otherwise); return; }
             var connection = await ReconnectAsync(name);
             if (connection is null) return;
             StartGameClient(connection, new ClientIdentity(name, Settings.Current.LastSeatToken, Version, ContentId, OwnPlaymat));
+            if (otherwise is not null) _gameClient!.Rejected += _ => JoinAsNew(otherwise);
         }
         catch (Exception e)
         {
             _route = null;
             Status?.Invoke($"Couldn't connect: {e.Message}");
         }
+    }
+
+    /// <summary>The seat wasn't there any more: join the same place as a new player (once this connection is done with).</summary>
+    private void JoinAsNew(Action join)
+    {
+        ForgetSeat();
+        Status?.Invoke("That game is over: joining as a new player…");
+        Callable.From(join).CallDeferred();
     }
 
     /// <summary>The game this device joined is over: nothing to get back into.</summary>
