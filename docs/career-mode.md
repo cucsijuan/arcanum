@@ -119,8 +119,10 @@ shows them and the pointer's position; Ctrl+click copies a point).
   notes over the dimmed picture. Esc goes back home.
 - **Hotspots** glow along their outline under the pointer, show their name, and follow the arrow keys and Enter.
 - **The table:** `table.jpg` spans both seats in daily matches (top half behind the opponent, bottom half behind the player).
-- **Deck building:** the desk from above on a playmat (`deckmat.jpg` when installed, a felt mat otherwise): the cards
-  owned on the left, the deck on the right in columns by mana value, basic lands free.
+- **Deck building:** the desk with the computer seen from above (`desk.jpg`, its playmat's area in `desk.json`): the
+  deck's controls on the wood above the mat, the cards owned on the left of the mat, the deck on the right in columns
+  by mana value, basic lands (free) and the deck's state on the wood below. Playmats will be changeable: a picture
+  in `mats/` is drawn over the mat's area (`mats/default.jpg` for now).
 - The art must stay generic: no recognizable toy, game or brand look-alikes (the store's "space ranger" figure resembles
   a well-known toy and should be redrawn before shipping).
 

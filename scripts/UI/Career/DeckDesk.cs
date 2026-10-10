@@ -22,8 +22,6 @@ namespace Arcanum.UI.Career;
 /// </summary>
 public partial class DeckDesk : Control
 {
-    private const string MatImage = "res://ui-art/kit/career/deckmat.jpg";
-    private static readonly Vector2 TileSize = new(132, 184);
     private const int Columns = 6, Rows = 3;
     private static readonly string[] ColumnNames = { "1", "2", "3", "4", "5", "6+", "Lands" };
     private static readonly (string Label, CardType Type)[] TypeFilters =
@@ -72,76 +70,107 @@ public partial class DeckDesk : Control
         else NewDeck();
     }
 
-    public override void _UnhandledInput(InputEvent e)
+    // ---------------------------------------------------------------- the desk
+
+    private const string Kit = "res://ui-art/kit/career/";
+    private ArtScene _desk = null!;
+    private Rect2 _matArea;
+    private readonly Panel _felt = new() { MouseFilter = MouseFilterEnum.Ignore };
+    private readonly TextureRect _matPicture = new()
     {
-        if (e.IsActionPressed("ui_cancel"))
-        {
-            GetViewport().SetInputAsHandled();
-            Leave();
-        }
-    }
+        MouseFilter = MouseFilterEnum.Ignore, ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
+    };
+    private readonly VBoxContainer _top = new(), _left = new();
+    private readonly HBoxContainer _matBox = new(), _bottom = new();
+    private readonly ScrollContainer _deckScroll = new() { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+    private Vector2 _tile = new(120, 167);
 
-    // ---------------------------------------------------------------- the table
-
-    /// <summary>The desk and its playmat: the picture when installed, otherwise a felt mat on wood.</summary>
+    /// <summary>
+    /// The desk from above (desk.jpg, its playmat's area in desk.json): the deck's controls on the wood above the mat,
+    /// the cards on the mat, the basic lands and the deck's state on the wood below. A playmat picture (mats/default.jpg)
+    /// is drawn over the mat when there is one; without the desk, a felt mat on wood.
+    /// </summary>
     private void BuildTable()
     {
-        if (ResourceLoader.Exists(MatImage))
-        {
-            AddChild(new TextureRect
-            {
-                Texture = GD.Load<Texture2D>(MatImage), AnchorRight = 1, AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore,
-                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
-            });
-            return;
-        }
         AddChild(new ColorRect { Color = new Color("3b2618"), AnchorRight = 1, AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore });
-        var mat = new Panel { AnchorRight = 1, AnchorBottom = 1, OffsetLeft = 18, OffsetTop = 18, OffsetRight = -18, OffsetBottom = -18, MouseFilter = MouseFilterEnum.Ignore };
-        var felt = CareerStyle.Box(new Color("1f3b3a"), new Color("c9a45c"), 3, 26);
-        felt.ShadowColor = new Color(0, 0, 0, 0.5f);
-        felt.ShadowSize = 18;
-        mat.AddThemeStyleboxOverride("panel", felt);
-        AddChild(mat);
+        var picture = ResourceLoader.Exists(Kit + "desk.jpg") ? GD.Load<Texture2D>(Kit + "desk.jpg") : null;
+        _desk = new ArtScene(picture, Array.Empty<Hotspot>());
+        _desk.BackRequested += Leave;
+        AddChild(_desk);
+        _matArea = Hotspot.LoadArea(Kit + "desk.json", "mat", new Rect2(0.148f, 0.177f, 0.706f, 0.643f));
+        if (picture is null)
+        {
+            var felt = CareerStyle.Box(new Color("1f3b3a"), new Color("c9a45c"), 3, 18);
+            felt.ShadowColor = new Color(0, 0, 0, 0.5f);
+            felt.ShadowSize = 14;
+            _felt.AddThemeStyleboxOverride("panel", felt);
+            AddChild(_felt);
+        }
+        if (ResourceLoader.Exists(Kit + "mats/default.jpg"))
+        {
+            _matPicture.Texture = GD.Load<Texture2D>(Kit + "mats/default.jpg");
+            AddChild(_matPicture);
+        }
+        Resized += Layout;
+    }
+
+    private Rect2 MatOnScreen()
+    {
+        var from = _desk.ToScreen(_matArea.Position);
+        return new Rect2(from, _desk.ToScreen(_matArea.End) - from);
+    }
+
+    private void Layout()
+    {
+        var mat = MatOnScreen();
+        _felt.Position = _matPicture.Position = mat.Position;
+        _felt.Size = _matPicture.Size = mat.Size;
+        _top.Position = new Vector2(mat.Position.X, 14);
+        _top.Size = new Vector2(mat.Size.X, Math.Max(0, mat.Position.Y - 28));
+        var inner = mat.Grow(-22);
+        _matBox.Position = inner.Position;
+        _matBox.Size = inner.Size;
+        _bottom.Position = new Vector2(mat.Position.X, mat.End.Y + 14);
+        _bottom.Size = new Vector2(mat.Size.X, Math.Max(0, Size.Y - mat.End.Y - 28));
+        // Cards of the collection: six across half the mat, three rows under the pager.
+        float width = (inner.Size.X * 0.54f - (Columns - 1) * 8) / Columns;
+        float height = (inner.Size.Y - 52 - (Rows - 1) * 8) / Rows;
+        width = Math.Max(60, Math.Min(width, height / 1.39f));
+        _tile = new Vector2(width, width * 1.39f);
+        _left.CustomMinimumSize = new Vector2(Columns * width + (Columns - 1) * 8, 0);
+        if (IsNodeReady()) Refresh();
     }
 
     private void BuildLayout()
     {
-        var root = new VBoxContainer { AnchorRight = 1, AnchorBottom = 1, OffsetLeft = 48, OffsetTop = 36, OffsetRight = -48, OffsetBottom = -36 };
-        root.AddThemeConstantOverride("separation", 14);
-        AddChild(root);
+        var light = new Color(1f, 0.95f, 0.85f);
+        _top.AddThemeConstantOverride("separation", 10);
+        _top.Alignment = BoxContainer.AlignmentMode.Center;
+        AddChild(_top);
 
-        // Top: leave, the deck chosen, its name, saving.
-        var top = new HBoxContainer();
-        top.AddThemeConstantOverride("separation", 12);
+        // Above the mat: leave, the deck chosen, its name, saving; then the filters.
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
         var back = CareerStyle.Button("< Room", Leave, 20);
         back.TooltipText = "Back to your room (Esc)";
-        top.AddChild(back);
+        row.AddChild(back);
         _decks.ItemSelected += i =>
         {
             int index = (int)i;
             if (index < _saved.Count) Confirm(() => Load(_saved[index]), SelectCurrent);
         };
-        top.AddChild(_decks);
+        row.AddChild(_decks);
         _name.TextChanged += _ => Dirty();
-        top.AddChild(_name);
-        top.AddChild(CareerStyle.Button("New", () => Confirm(NewDeck), 20));
-        top.AddChild(CareerStyle.Button("Delete", AskDelete, 20));
-        top.AddChild(CareerStyle.Button("Save", Save, 20, primary: true));
-        top.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-        top.AddChild(_count);
-        root.AddChild(top);
+        _name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        row.AddChild(_name);
+        row.AddChild(CareerStyle.Button("New", () => Confirm(NewDeck), 20));
+        row.AddChild(CareerStyle.Button("Delete", AskDelete, 20));
+        row.AddChild(CareerStyle.Button("Save", Save, 20, primary: true));
+        _top.AddChild(row);
 
-        var body = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
-        body.AddThemeConstantOverride("separation", 28);
-        root.AddChild(body);
-
-        // Left: the cards owned.
-        var left = new VBoxContainer();
-        left.AddThemeConstantOverride("separation", 10);
-        body.AddChild(left);
         var filters = new HBoxContainer();
         filters.AddThemeConstantOverride("separation", 8);
-        var search = new LineEdit { PlaceholderText = "Search your cards…", CustomMinimumSize = new Vector2(260, 0) };
+        var search = new LineEdit { PlaceholderText = "Search your cards…", CustomMinimumSize = new Vector2(280, 0) };
         search.TextChanged += text => { _search = text; ShowPage(0); };
         filters.AddChild(search);
         foreach (char color in "WUBRGC")
@@ -161,33 +190,42 @@ public partial class DeckDesk : Control
         foreach (var (label, _) in TypeFilters) type.AddItem(label);
         type.ItemSelected += i => { _type = (int)i; ShowPage(0); };
         filters.AddChild(type);
-        left.AddChild(filters);
-        _grid.AddThemeConstantOverride("h_separation", 10);
-        _grid.AddThemeConstantOverride("v_separation", 10);
-        left.AddChild(_grid);
+        filters.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        filters.AddChild(_count);
+        _top.AddChild(filters);
+
+        // On the mat: the cards owned on the left, the deck on the right.
+        _matBox.AddThemeConstantOverride("separation", 28);
+        AddChild(_matBox);
+        _left.AddThemeConstantOverride("separation", 8);
+        _matBox.AddChild(_left);
+        _grid.AddThemeConstantOverride("h_separation", 8);
+        _grid.AddThemeConstantOverride("v_separation", 8);
+        _left.AddChild(_grid);
         var pager = new HBoxContainer();
         pager.AddThemeConstantOverride("separation", 12);
         pager.AddChild(CareerStyle.Button("<", () => ShowPage(_page - 1), 20));
         pager.AddChild(_pageInfo);
         pager.AddChild(CareerStyle.Button(">", () => ShowPage(_page + 1), 20));
-        left.AddChild(pager);
-        left.AddChild(CareerStyle.Text("Click a card to put it in the deck · click a card of the deck to take it out", 16, new Color(1f, 0.95f, 0.85f, 0.7f)));
-
-        // Right: the deck in columns, the basic lands and what's wrong with it.
-        var right = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        right.AddThemeConstantOverride("separation", 10);
-        body.AddChild(right);
+        _left.AddChild(pager);
         _columns.AddThemeConstantOverride("separation", 6);
-        _columns.SizeFlagsVertical = SizeFlags.ExpandFill;
-        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
-        scroll.AddChild(_columns);
-        right.AddChild(scroll);
+        _deckScroll.AddChild(_columns);
+        _matBox.AddChild(_deckScroll);
+
+        // Below the mat: basic lands and what's wrong with the deck.
+        _bottom.AddThemeConstantOverride("separation", 16);
+        _bottom.Alignment = BoxContainer.AlignmentMode.Center;
+        AddChild(_bottom);
         _basics.AddThemeConstantOverride("separation", 10);
-        right.AddChild(_basics);
-        var note = new PanelContainer();
-        note.AddThemeStyleboxOverride("panel", CareerStyle.Box(new Color("f7e9a8"), new Color("c9b25a"), 1, 2, 12));
+        _basics.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        _bottom.AddChild(_basics);
+        // A width of its own: a wrapping label measured at no width would make the bar tall.
+        var note = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ShrinkCenter, CustomMinimumSize = new Vector2(380, 0) };
+        note.AddThemeStyleboxOverride("panel", CareerStyle.Box(new Color("f7e9a8"), new Color("c9b25a"), 1, 2, 10));
         note.AddChild(_problems);
-        right.AddChild(note);
+        _bottom.AddChild(note);
+        _pageInfo.AddThemeColorOverride("font_color", light);
+        Callable.From(Layout).CallDeferred();
     }
 
     // ---------------------------------------------------------------- the collection
@@ -244,8 +282,8 @@ public partial class DeckDesk : Control
 
     private Control Tile(CardDefinition definition, bool used)
     {
-        var holder = new Control { CustomMinimumSize = TileSize };
-        var card = new CardNode { Size = TileSize };
+        var holder = new Control { CustomMinimumSize = _tile };
+        var card = new CardNode { Size = _tile };
         holder.AddChild(card);
         card.Setup(ViewOf(definition), showCostPips: false);
         if (used) card.Modulate = new Color(1, 1, 1, 0.45f);
@@ -254,9 +292,9 @@ public partial class DeckDesk : Control
         return holder;
     }
 
-    private static void Badge(Control tile, string text, bool lit)
+    private void Badge(Control tile, string text, bool lit)
     {
-        var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(TileSize.X - 58, 6) };
+        var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(_tile.X - 54, 4) };
         panel.AddThemeStyleboxOverride("panel", CareerStyle.Box(lit ? BoardStyle.Playable : new Color(0, 0, 0, 0.7f), null, 0, 8, 3));
         panel.AddChild(CareerStyle.Text(text, 17, lit ? new Color("16171a") : Colors.White));
         tile.AddChild(panel);
@@ -307,12 +345,12 @@ public partial class DeckDesk : Control
             box.AddThemeConstantOverride("separation", 2);
             box.AddChild(CareerStyle.Text($"{ColumnNames[column]}  ({inColumn.Count})", 16, new Color(1f, 0.95f, 0.85f, 0.85f)));
             // Cards overlap, each showing its title bar; the last one shows whole.
-            float step = 32, small = 0.92f;
-            var stack = new Control { CustomMinimumSize = new Vector2(TileSize.X * small, inColumn.Count == 0 ? 0 : step * (inColumn.Count - 1) + TileSize.Y * small) };
+            float step = 26, small = 0.78f;
+            var stack = new Control { CustomMinimumSize = new Vector2(_tile.X * small, inColumn.Count == 0 ? 0 : step * (inColumn.Count - 1) + _tile.Y * small) };
             for (int i = 0; i < inColumn.Count; i++)
             {
                 var (entry, def) = inColumn[i];
-                var card = new CardNode { Size = TileSize * small, Position = new Vector2(0, i * step) };
+                var card = new CardNode { Size = _tile * small, Position = new Vector2(0, i * step) };
                 card.Setup(ViewOf(def), showCostPips: false);
                 card.HoverStarted += c => ShowPreview(c, c);
                 card.HoverEnded += _ => HidePreview();
