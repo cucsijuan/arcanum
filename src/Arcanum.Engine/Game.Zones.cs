@@ -517,27 +517,42 @@ public sealed partial class Game
 
     /// <summary>
     /// One draw, after replacement effects (rule 614.11): "draw two instead" and "instead that player skips that draw and you draw
-    /// a card"; when both apply the drawing player chooses which applies (rule 616.1).
+    /// a card". When several apply the drawing player chooses one (rule 616.1); each applies once to an event (614.5), and the
+    /// draws it makes are new events the others can still replace: with two Alhammarret's Archives a draw becomes four.
     /// </summary>
-    private async Task DrawOneAsync(PlayerId playerId, int depth)
+    private async Task DrawOneAsync(PlayerId playerId, int depth, IReadOnlySet<CardId>? applied = null)
     {
+        applied ??= new HashSet<CardId>();
         var player = State.GetPlayer(playerId);
         // "If you would draw a card except the first one you draw in each of your draw steps …"
         bool firstInDrawStep = State.Step == Step.Draw && State.ActivePlayer == playerId && !player.DrewInDrawStep;
         if (State.Step == Step.Draw && State.ActivePlayer == playerId) player.DrewInDrawStep = true;
-        bool doubles = (!firstInDrawStep && Has(playerId, Cards.Replacements.DrawTwoExceptFirstInDrawStep))
-                       || (player.Hand.Count == 0 && Has(playerId, Cards.Replacements.DrawTwoWithEmptyHand));
+        var doublers = depth > 8 ? new List<Card>() : State.PermanentsControlledBy(playerId).Where(c => !applied.Contains(c.Id)
+            && ((!firstInDrawStep && (c.Replaces & Cards.Replacements.DrawTwoExceptFirstInDrawStep) != 0)
+                || (player.Hand.Count == 0 && (c.Replaces & Cards.Replacements.DrawTwoWithEmptyHand) != 0))).ToList();
         var thief = firstInDrawStep || depth > 8 ? null
-            : State.Battlefield.Select(State.GetCard).FirstOrDefault(c => c.Controller != playerId && (c.Replaces & Cards.Replacements.StealsOpponentsExtraDraws) != 0);
-        if (thief is not null && (!doubles || await ControllerOf(playerId).ChooseOptionAsync(ViewFor(playerId), new Players.OptionRequest(
-                "Two replacement effects apply to this draw: choose the one that applies", thief.Id,
-                new[] { $"{thief.Name}: skip this draw ({State.GetPlayer(thief.Controller).Name} draws instead)", "Draw two cards instead" }, Players.OptionKind.Other)) == 0))
+            : State.Battlefield.Select(State.GetCard).FirstOrDefault(c => c.Controller != playerId && !applied.Contains(c.Id)
+                && (c.Replaces & Cards.Replacements.StealsOpponentsExtraDraws) != 0);
+        var options = new List<(Card Card, string Label)>();
+        if (thief is not null) options.Add((thief, $"{thief.Name}: skip this draw ({State.GetPlayer(thief.Controller).Name} draws instead)"));
+        options.AddRange(doublers.Select(d => (d, $"{d.Name}: draw two cards instead")));
+        if (options.Count > 0)
         {
-            Emit(new Events.ChoiceMade(thief.Id, $"{player.Name} skips a draw"));
-            await DrawOneAsync(thief.Controller, depth + 1);
+            int pick = options.Count == 1 ? 0 : await ControllerOf(playerId).ChooseOptionAsync(ViewFor(playerId), new Players.OptionRequest(
+                "Several replacement effects apply to this draw: choose the one that applies", options[0].Card.Id,
+                options.Select(o => o.Label).ToList(), Players.OptionKind.Other));
+            Require(pick >= 0 && pick < options.Count, "Choose one of the replacement effects.");
+            var chosen = options[pick].Card;
+            var nowApplied = new HashSet<CardId>(applied) { chosen.Id };
+            if (chosen == thief)
+            {
+                Emit(new Events.ChoiceMade(thief.Id, $"{player.Name} skips a draw"));
+                await DrawOneAsync(thief.Controller, depth + 1, nowApplied);
+            }
+            else
+                for (int n = 0; n < 2; n++) await DrawOneAsync(playerId, depth + 1, nowApplied);
             return;
         }
-        for (int n = 0; n < (doubles ? 2 : 1); n++)
         {
             if (player.Library.Count == 0)
             {

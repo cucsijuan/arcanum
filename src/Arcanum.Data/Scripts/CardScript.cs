@@ -917,6 +917,7 @@ public static partial class CardScriptParser
                 "attackedOrBlockedThisTurn" => new SourceAttackedOrBlockedThisTurn(),
                 "greatestPower" => new YouControlGreatestPower(),
                 "triggeredPlayerAttackedYou" => new TriggeredPlayerAttackedYou(),
+                "triggeredPlayerIsYou" => new TriggeredPlayerIsYou(),
                 "monarch" => new IsMonarch(),
                 "noMonarch" => new NoMonarch(),
                 "noVotes" => new ReceivedNoVotes(),

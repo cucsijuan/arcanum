@@ -355,4 +355,101 @@ public class OriginsReviewFixesTests
         await s.RunUntilTurn();
         Assert.Equal(Zone.Exile, s.Card(relic).Zone);
     }
+
+    // ------------------------------------------------------------------ Hixus, Prison Warden ("deals combat damage to you")
+
+    [Fact]
+    public async Task ATriggerOnCombatDamageToYouWatchesTheDamagedPlayerNotTheAttack()
+    {
+        // "Whenever a creature deals combat damage to you, you gain 4 life": only the damaged player's copy triggers.
+        CardDefinition Watcher() => Make("Damage Watcher", "Enchantment", """
+            { "abilities": [{ "trigger": "creatureCombatDamageToPlayer", "filter": { "types": ["creature"], "controller": "any" },
+                              "when": "triggeredPlayerIsYou", "effects": [{ "gainLife": 4 }] }] }
+            """, "{1}");
+        var s = new Scenario();
+        var raider = s.Add(P0, Creature("Raider", 3, 3));
+        s.Add(P0, Watcher());
+        s.Add(P1, Watcher());
+        Script(s.Attacker);
+        s.Attacker.Attack = (_, _, defenders) => new[] { new AttackDeclaration(raider, defenders[0]) };
+        s.Defender.Block = (_, _, _) => Array.Empty<BlockDeclaration>();
+        int life0 = s.Game.State.GetPlayer(P0).Life, life1 = s.Game.State.GetPlayer(P1).Life;
+        await s.RunUntilTurn();
+        Assert.Equal(life0, s.Game.State.GetPlayer(P0).Life);
+        Assert.Equal(life1 - 3 + 4, s.Game.State.GetPlayer(P1).Life);
+    }
+
+    [Fact]
+    public async Task MurderInvestigationTriggersWhenItDiesTogetherWithTheCreature()
+    {
+        var aura = Make("Murder Investigation", "Enchantment — Aura", """
+            { "abilities": [{ "trigger": "creatureDies", "filter": { "types": ["creature"], "controller": "any", "attachedToSource": true },
+                              "effects": [{ "tokens": "triggeredPower", "token": { "name": "Soldier", "types": "Creature — Soldier", "power": 1, "toughness": 1, "colors": ["W"] } }] }] }
+            """, "{1}{W}");
+        var s = new Scenario();
+        Mountains(s, P0, 1);
+        var attached = s.Add(P0, aura); // earlier on the battlefield, so it leaves first in the same event
+        var cub = s.Add(P0, Make("Phoenix Cub", "Creature — Bird", "{}", "{1}", "2/2"));
+        s.Card(attached).AttachedTo = cub;
+        s.InHand(P0, Make("Cleansing", "Sorcery", """{ "spell": { "effects": [{ "destroyAllBut": { "types": ["creature", "enchantment"] }, "keep": 0 }] } }""", "{1}"));
+        Script(s.Attacker, Cast(s, "Cleansing"));
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(attached).Zone);
+        Assert.Equal(2, s.Game.State.Battlefield.Select(s.Card).Count(c => c.Name == "Soldier")); // it saw the creature die (603.10a)
+    }
+
+    // ------------------------------------------------------------------ Alhammarret's Archive (614.5, 616.1)
+
+    [Fact]
+    public async Task TwoArchivesMakeADrawOutsideTheDrawStepFourDraws()
+    {
+        // "If you would draw a card except the first one you draw in each of your draw steps, draw two cards instead."
+        CardDefinition Archive(string name) => Make(name, "Artifact", """{ "replaces": ["DrawTwoExceptFirstInDrawStep"] }""", "{0}");
+        var s = new Scenario();
+        Mountains(s, P0, 1);
+        s.InHand(P0, Make("Ponder Once", "Sorcery", """{ "spell": { "effects": [{ "draw": 1 }] } }""", "{1}"));
+        s.InHand(P0, Archive("Archive A"));
+        s.InHand(P0, Archive("Archive B"));
+        // Cast once the game is under way (on the battlefield while opening hands are drawn, they would double those draws too).
+        Step Empty(Step then) => legal => s.Game.State.Stack.Count == 0 ? then(legal) : null;
+        Script(s.Attacker, Cast(s, "Archive A"), Empty(Cast(s, "Archive B")), Empty(Cast(s, "Ponder Once")));
+        await s.RunUntilTurn();
+        var log = s.Game.Log.ToList();
+        var ponder = s.Game.State.GetPlayer(P0).Graveyard.Single(id => s.Card(id).Name == "Ponder Once");
+        int cast = log.FindIndex(e => e is SpellCast c && c.Card == ponder);
+        int resolved = log.FindIndex(e => e is SpellResolved r && r.Card == ponder);
+        var drawsAfterCast = log.Skip(cast).Take(resolved - cast).OfType<CardDrawn>().Count(d => d.Player == P0);
+        Assert.Equal(4, drawsAfterCast);
+    }
+
+    // ------------------------------------------------------------------ "a creature card leaves a graveyard" (603.10a)
+
+    [Fact]
+    public async Task ACardLeavingAGraveyardIsJudgedAsItWasThereNotAsItBecame()
+    {
+        // An enchantment card leaves the opponent's graveyard and becomes a creature on the battlefield: it wasn't a creature card.
+        var watcher = Make("Grave Watcher", "Enchantment", """
+            { "abilities": [{ "trigger": "leavesGraveyard", "filter": { "types": ["creature"], "controller": "opponent" }, "effects": [{ "gainLife": 3 }] }] }
+            """, "{1}");
+        var starfield = Make("Small Starfield", "Enchantment", """
+            { "abilities": [{ "static": { "affects": "permanents:you", "other": true, "filter": { "types": ["enchantment"], "notSubtype": "Aura" },
+                                          "while": { "control": { "types": ["enchantment"] }, "count": 2 }, "addTypes": ["creature"],
+                                          "setPower": { "manaValue": "affected" }, "setToughness": { "manaValue": "affected" } } }] }
+            """, "{2}");
+        var s = new Scenario();
+        Mountains(s, P0, 1);
+        s.Add(P0, watcher);
+        s.Add(P0, starfield);
+        var relic = s.Add(P1, Make("Old Relic", "Enchantment", "{}", "{1}"));
+        var owner = s.Game.State.GetPlayer(P1);
+        s.Game.State.Battlefield.Remove(relic);
+        s.Card(relic).Zone = Zone.Graveyard; owner.Graveyard.Add(relic);
+        s.InHand(P0, Make("Raise Relic", "Instant", """{ "spell": { "targets": [{ "kind": "graveyardCard", "filter": { "types": ["enchantment"] } }], "effects": [{ "reanimate": "target" }] } }""", "{1}"));
+        Script(s.Attacker, Cast(s, "Raise Relic"));
+        int life = s.Game.State.GetPlayer(P0).Life;
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(relic).Zone);
+        Assert.True(s.Card(relic).IsCreature); // a creature now, under P0's two enchantments
+        Assert.Equal(life, s.Game.State.GetPlayer(P0).Life);
+    }
 }

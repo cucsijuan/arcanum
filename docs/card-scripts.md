@@ -459,7 +459,9 @@ Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYo
   `maxPowerTriggered`, `blockedOrBlockedByLegendary`, `sharesColorWithYourLegendary`, `noSharedCreatureType`,
   `damagedThisTurnByYourSpider`; subject `{ "each": f, "attachedTo": "target" }`.
 - **Conditions**: `{ "yourCreaturesDied": 1 }`, `{ "sacrificedThisTurn": filter }`, `{ "sacrificed": filter }` (the
-  sacrificed creature), `"yourPermanentLeft"`, `"attackedThisTurn"`, `"greatestPower"`, `"triggeredPlayerAttackedYou"`.
+  sacrificed creature), `"yourPermanentLeft"`, `"attackedThisTurn"`, `"greatestPower"`, `"triggeredPlayerAttackedYou"`,
+  `"triggeredPlayerIsYou"` (the player the event happened to is you: `"when": "triggeredPlayerIsYou"` on
+  `creatureCombatDamageToPlayer` is "whenever a creature deals combat damage to you").
 - **Quantities**: `{ "sum": [ … ] }`, `"permanentsSacrificedThisTurn"`, `"sacrificedThisWay"`, `"amassedPower"`,
   `{ "graveyard": f, "of": "target" }` / `"of": "affected"` (the player being affected).
 - **Delayed and remembered**: `{ "atNextEndStepOf": "opponents", "effects": [ … ] }` (chooses an opponent; triggers at their

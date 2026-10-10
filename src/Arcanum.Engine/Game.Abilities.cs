@@ -3984,6 +3984,7 @@ public sealed partial class Game
         MoreVotes mv => VotesFor(ctx, mv.Option) is var mine && VotesIn(ctx).Select(v => v.Choice).Distinct().Where(c => c != mv.Option.ToString())
             .All(c => VotesIn(ctx).Count(v => v.Choice == c) < mine) && mine > 0,
         TriggeredPlayerHasMostLife => ctx.Trigger?.Player is { } attacked && State.GetPlayer(attacked).Life >= State.LivingPlayers.Max(p => p.Life),
+        TriggeredPlayerIsYou => ctx.Trigger?.Player == ctx.Controller,
         Not { Inner: TriggeredPlayerHasMostLife } nm => !HoldsIn(nm.Inner, ctx),
         TriggeredHadCounters => ctx.Trigger?.Subject is { } had && State.GetCard(had).LastKnownInfo is { } hadLki && hadLki.Counters.Values.Any(v => v > 0),
         ReceivedNoVotes => !VotesIn(ctx).Any(v => v.Choice == $"p{(ctx.AffectedPlayer ?? ctx.Controller).Value}"),
@@ -4004,7 +4005,7 @@ public sealed partial class Game
         static bool AboutTrigger(Quantity q) => q.Kind is QuantityKind.ManaSpent or QuantityKind.TriggerAmount or QuantityKind.TriggeredPower or QuantityKind.TriggeredColors;
         return condition switch
         {
-            TriggeredMatches or TriggeredPlayerHasMostLife or TriggeredHadCounters => HoldsIn(condition, ctx),
+            TriggeredMatches or TriggeredPlayerHasMostLife or TriggeredHadCounters or TriggeredPlayerIsYou => HoldsIn(condition, ctx),
             QuantityAtLeast qa when AboutTrigger(qa.Quantity) => HoldsIn(condition, ctx),
             Not n => !HoldsAtTrigger(n.Inner, controller, source, info),
             All a => a.Conditions.All(c => HoldsAtTrigger(c, controller, source, info)),
@@ -4092,7 +4093,7 @@ public sealed partial class Game
             SourceHasDealtDamage => source?.HasDealtDamage == true,
             SourceFrontFaceUp => source is { Zone: Zone.Battlefield, Transformed: false, IsDoubleFaced: true },
             ExertedThisTurn => source is not null && source.ExertedTurn == State.TurnNumber,
-            TriggeredPlayerHasMostLife => true, // checked where known
+            TriggeredPlayerHasMostLife or TriggeredPlayerIsYou => true, // checked where known
             EnteredThisTurn et => player.EnteredThisTurn.Any(e => State.GetCard(e.Card) is var c
                 && (c.Version == e.Version && c.Zone == Zone.Battlefield
                     ? Matches(et.Filter with { Controller = ControllerFilter.Any }, c, c.Controller, source, controller)
@@ -4272,7 +4273,9 @@ public sealed partial class Game
         if (filter.Renowned && !obj.Renowned) return false;
         if (filter.DamagedThisTurnByRemembered && !DamagedByRemembered(obj, source, lastKnown)) return false;
         if (filter.Transformed is { } transformed && !(obj.Zone == Zone.Battlefield && obj.IsDoubleFaced && obj.Transformed == transformed)) return false;
-        if (filter.AttachedToSource && (source is null || source.AttachedTo != obj.Id)) return false;
+        // An Aura that left the battlefield in the same event as its creature still sees it die, attached as it last was (603.10a).
+        if (filter.AttachedToSource && (source is null
+                || (source.Zone == Zone.Battlefield || source.LastKnownInfo is null ? source.AttachedTo : source.LastKnownInfo.AttachedTo) != obj.Id)) return false;
         if (filter.DamagedBySource && (source is null || !DamagedThisTurnBy(obj, lastKnown, (r, _) => r.Source == source.Id && r.SourceVersion == DamageSourceVersion(source)))) return false;
         if (filter.Attached is { } attached && (attachedTo is not null) != attached) return false;
         if (filter.MaxManaValueSourcePower && source is not null
@@ -4793,7 +4796,7 @@ public sealed partial class Game
     {
         TriggerInfo About(Card card, PlayerId? player = null, int amount = 0) => new(card.Id, card.Version, player, amount);
         // "Whenever a creature card leaves your graveyard" (wherever it goes).
-        if (e is CardMoved { From: Zone.Graveyard } left) QueueObservers(TriggerEvent.LeavesGraveyard, State.GetCard(left.Card), left.Owner);
+        if (e is CardMoved { From: Zone.Graveyard } left) AsInGraveyard(State.GetCard(left.Card), card => QueueObservers(TriggerEvent.LeavesGraveyard, card, left.Owner));
         if (e is CardMoved { From: Zone.Battlefield, To: not Zone.Graveyard } leaving) Queue(leaving.Card, TriggerEvent.LeavesBattlefield, leaving.LastController);
         // "Whenever a creature you control leaves the battlefield" (judged as it last existed there).
         if (e is CardMoved { From: Zone.Battlefield } departed && WasCreature(State.GetCard(departed.Card)))
@@ -5153,6 +5156,25 @@ public sealed partial class Game
         _simultaneousDepth = 0;
         _lookBack = null;
         _batchTriggered.Clear();
+    }
+
+    /// <summary>
+    /// "Whenever a creature card leaves a graveyard" looks back at the card as it was there (rule 603.10a): a card in a
+    /// graveyard is its owner's, face up, with its printed front face, whatever it became where it went.
+    /// </summary>
+    private static void AsInGraveyard(Card card, Action<Card> look)
+    {
+        var saved = (card.Zone, card.FaceDown, card.Transformed, card.TypesOverride, card.GrantedTypes, card.CopiedDefinition, card.EffectCopy, card.Controller);
+        try
+        {
+            (card.Zone, card.FaceDown, card.Transformed, card.TypesOverride, card.GrantedTypes, card.CopiedDefinition, card.EffectCopy, card.Controller) =
+                (Zone.Graveyard, false, false, null, 0, null, null, card.Owner);
+            look(card);
+        }
+        finally
+        {
+            (card.Zone, card.FaceDown, card.Transformed, card.TypesOverride, card.GrantedTypes, card.CopiedDefinition, card.EffectCopy, card.Controller) = saved;
+        }
     }
 
     /// <summary>Triggers of permanents watching for an event that happened to <paramref name="subject"/> ("whenever another creature you control enters").</summary>

@@ -172,6 +172,9 @@ public sealed record SacrificedMatches(ObjectFilter Filter) : Condition;
 /// <summary>"If they attacked you that turn": the player the trigger is about attacked the controller this turn.</summary>
 public sealed record TriggeredPlayerAttackedYou : Condition;
 
+/// <summary>The player the event happened to is you ("deals combat damage to you").</summary>
+public sealed record TriggeredPlayerIsYou : Condition;
+
 /// <summary>"As long as [equipped creature] is blocking or blocked by a [filter]".</summary>
 public sealed record EquippedInCombatWith(ObjectFilter Filter) : Condition;
 
