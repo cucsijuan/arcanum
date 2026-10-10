@@ -755,9 +755,16 @@ public class ExactnessTests
         s.Attacker.Act = (view, legal) => view.Stack.Count > 0 ? PassPriority.Instance
             : legal.OfType<CastSpell>().FirstOrDefault(c => s.Card(c.Card).Name == "Warden") ?? legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
         bool exiledWhileWardenThere = false;
-        s.Game.EventRaised += e => { if (e is CardMoved { To: Zone.Exile } m && m.Card == victim) exiledWhileWardenThere = s.Card(warden).Zone == Zone.Battlefield; };
+        CardId? heldUnder = null;
+        s.Game.EventRaised += e =>
+        {
+            if (e is CardMoved { To: Zone.Exile } m && m.Card == victim) exiledWhileWardenThere = s.Card(warden).Zone == Zone.Battlefield;
+            if (e is SpellCast c && s.Card(c.Card).Name == "Sudden End") heldUnder = Views.ViewBuilder.Card(s.Game.State, victim, P1).HeldUnder;
+        };
         await s.RunUntilTurn();
         Assert.True(exiledWhileWardenThere);
+        Assert.Equal(warden, heldUnder); // shown under the permanent that will return it
+        Assert.Null(Views.ViewBuilder.Card(s.Game.State, victim, P1).HeldUnder);
         Assert.Equal(Zone.Graveyard, s.Card(warden).Zone);
         Assert.Equal(Zone.Battlefield, s.Card(victim).Zone);
     }

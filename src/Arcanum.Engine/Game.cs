@@ -79,6 +79,17 @@ public sealed partial class Game
     /// <summary>Puts a card at the bottom of a player's library before the game starts (rules scenarios).</summary>
     public CardId SetupInLibrary(PlayerId owner, CardDefinition definition) => Setup(owner, definition, Zone.Library);
 
+    /// <summary>
+    /// Puts a card into exile before the game starts, held there until <paramref name="source"/> leaves the battlefield
+    /// (deck-test sandbox).
+    /// </summary>
+    public CardId SetupExiledUntilLeaves(PlayerId owner, CardDefinition definition, CardId source)
+    {
+        var id = Setup(owner, definition, Zone.Exile);
+        State.LinkedExiles.Add(new LinkedExile(source, State.GetCard(source).Version, id, State.GetCard(id).Version));
+        return id;
+    }
+
     private CardId Setup(PlayerId owner, CardDefinition definition, Zone zone)
     {
         if (State.TurnNumber > 0) throw new InvalidOperationException("Cards can only be set up before the game starts.");
@@ -87,6 +98,7 @@ public sealed partial class Game
         State.Cards.Add(card.Id, card);
         if (zone == Zone.Battlefield) State.Battlefield.Add(card.Id);
         else if (zone == Zone.Library) State.GetPlayer(owner).Library.Add(card.Id);
+        else if (zone == Zone.Exile) State.GetPlayer(owner).Exile.Add(card.Id);
         else State.GetPlayer(owner).Hand.Add(card.Id);
         return card.Id;
     }

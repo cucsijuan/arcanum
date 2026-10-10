@@ -85,7 +85,11 @@ public static class ViewBuilder
         state.PermanentsControlledBy(player).Any(c => (c.Replaces & (Cards.Replacements.CreaturesFromLibraryTop
             | Cards.Replacements.CastCreaturesFromLibraryTop | Cards.Replacements.LookAtLibraryTop)) != 0);
 
-    /// <summary>The permanent a card in exile is held under: the one it was exiled by "until this leaves the battlefield", while that still applies.</summary>
+    /// <summary>
+    /// The permanent a card in exile is held under: the one it was exiled by "until this leaves the battlefield", while
+    /// that still applies, or the one that exiled it and returns it when it leaves the battlefield ("when this leaves the
+    /// battlefield, return the exiled card"), while it is still there with that ability.
+    /// </summary>
     private static CardId? HeldUnder(GameState state, Card card)
     {
         if (card.Zone != Zone.Exile) return null;
@@ -93,6 +97,10 @@ public static class ViewBuilder
             if (link.Exiled == card.Id && link.ExiledVersion == card.Version
                 && state.GetCard(link.Source) is { Zone: Zone.Battlefield } source && source.Version == link.SourceVersion)
                 return link.Source;
+        if (card.ExiledWith is { } with && state.GetCard(with.Source) is { Zone: Zone.Battlefield } exiler && exiler.Version == with.Version
+            && exiler.Definition.Abilities.Any(a => a is Abilities.TriggeredAbility { Trigger: Abilities.TriggerEvent.LeavesBattlefield } leaves
+                                                    && Abilities.EffectTree.All(leaves).Any(e => e is Abilities.ReturnLinkedExiled)))
+            return with.Source;
         return null;
     }
 

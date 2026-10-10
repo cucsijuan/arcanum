@@ -217,7 +217,8 @@ public partial class GameBoard : Control
     /// ARCANUM_SANDBOX=1: start from a prepared board of the generic cards for manual testing of attachments, static
     /// abilities, targeted spells and activated abilities: player one has a creature carrying an aura and an equipment,
     /// a spare equipment, a creature with a tap ability and burn, pump and destroy in hand; player two has creatures, a
-    /// creature-boosting enchantment and burn and bounce in hand; both have stacks of identical tokens. It needs no card module.
+    /// creature-boosting enchantment and burn and bounce in hand; both have stacks of identical tokens; each holds the
+    /// other's creatures in exile under an enchantment until it leaves the battlefield. It needs no card module.
     /// </summary>
     private static Action<Arcanum.Engine.Game> SandboxSetup()
     {
@@ -256,6 +257,26 @@ public partial class GameBoard : Control
             Put(p2, Arcanum.Cards.GenericCards.RallyBanner);
             game.SetupInHand(p2, Arcanum.Cards.GenericCards.EmberBolt);
             game.SetupInHand(p2, Arcanum.Cards.GenericCards.GustAway);
+
+            // Creatures exiled until an enchantment leaves lie under it, on the enchantment's side.
+            var glow = new Arcanum.Engine.Cards.CardDefinition
+            {
+                Name = "Warding Glow", Types = Arcanum.Engine.Cards.CardType.Enchantment, ManaCost = Arcanum.Engine.Mana.ManaCost.Parse("{2}{W}"), Colors = new[] { "W" },
+                Abilities = new Arcanum.Engine.Abilities.AbilityDefinition[]
+                {
+                    new Arcanum.Engine.Abilities.TriggeredAbility
+                    {
+                        Trigger = Arcanum.Engine.Abilities.TriggerEvent.EntersBattlefield,
+                        Targets = new[] { new Arcanum.Engine.Abilities.TargetSpec(Arcanum.Engine.Abilities.TargetKind.Creature, Arcanum.Engine.Abilities.ControllerFilter.Opponent) },
+                        Effects = new Arcanum.Engine.Abilities.Effect[] { new Arcanum.Engine.Abilities.ExileUntilSourceLeaves(Arcanum.Engine.Abilities.Subject.TargetAt(0)) },
+                        Text = "When this enchantment enters, exile target creature an opponent controls until this enchantment leaves the battlefield.",
+                    },
+                },
+            };
+            var mine = game.SetupPermanent(p1, glow);
+            game.SetupExiledUntilLeaves(p2, Arcanum.Cards.GenericCards.OgreBrute, mine);
+            game.SetupExiledUntilLeaves(p2, Arcanum.Cards.GenericCards.StoneElemental, mine);
+            game.SetupExiledUntilLeaves(p1, Arcanum.Cards.GenericCards.GladeCub, game.SetupPermanent(p2, glow));
         };
     }
 

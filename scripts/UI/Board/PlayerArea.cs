@@ -631,8 +631,9 @@ public partial class PlayerArea : Control
     }
 
     /// <summary>
-    /// Cards exiled until their permanent leaves lie under it, fanned out towards the middle of the table on the side opposite
-    /// the attachments, so each strip stays visible and hoverable.
+    /// Cards exiled until their permanent leaves lie under it, each peeking out a little further to its left: rows keep
+    /// room beside every card for it to turn when tapped, so the strips don't cover the rows above and below, where
+    /// attachments peek out.
     /// </summary>
     private void LayoutHeld(IReadOnlyList<CardView> held)
     {
@@ -643,12 +644,15 @@ public partial class PlayerArea : Control
             foreach (var card in group)
             {
                 var node = _cards[card.Id];
-                node.ZIndex = host.ZIndex - 2;
-                MoveTo(node, host.TargetPosition + new Vector2(-10 * i, (FacesDown ? 22 : -22) * i), FieldSize, 0);
+                node.ZIndex = host.ZIndex - 1 - i;
+                MoveTo(node, host.TargetPosition + new Vector2(-HeldPeek * Scale * i, 0), FieldSize, 0);
                 i++;
             }
         }
     }
+
+    /// <summary>How much of a card held under a permanent shows beside it.</summary>
+    private const float HeldPeek = 20;
 
     private void LayoutBlockers(IReadOnlyList<CardStack> blockers, float y)
     {
