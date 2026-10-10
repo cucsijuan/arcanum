@@ -191,7 +191,7 @@ public partial class OnlineService
         try
         {
             var connection = await Services.Network.ConnectAsync(listing);
-            JoinLobby(connection, new ClientIdentity(name, "", Version, ContentId));
+            JoinLobby(connection, new ClientIdentity(name, "", Version, ContentId, OwnPlaymat));
             SubmitDeck(deck);
         }
         catch (Exception e)

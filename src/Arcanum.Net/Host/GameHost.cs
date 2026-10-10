@@ -197,12 +197,17 @@ public sealed class GameHost
             peer.Close();
             return;
         }
-        seat!.Connect(peer.Connection, peer.TakeHeld());
+        seat!.Playmat = hello.Playmat is { Length: > 0 and <= 32 } playmat && playmat.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_') ? playmat : null;
+        seat.Connect(peer.Connection, peer.TakeHeld());
+        Broadcast(Looks()); // the others learn this seat's playmat
     }
+
+    private SeatLooks Looks() => new(_seats.Select(s => s.Playmat).ToList());
 
     internal void SendWelcome(Seat seat)
     {
         seat.Peer!.Send(new Welcome(seat.Id, _names, _commander));
+        seat.Peer.Send(Looks());
         foreach (var other in _seats) seat.Peer.Send(other.Status());
     }
 

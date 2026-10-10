@@ -263,6 +263,7 @@ public static partial class CardFactory
         {
             Engine.Abilities.CreateTokens create => create with { Token = Pictured(create.Token) },
             Engine.Abilities.Amass amass => amass with { Token = Pictured(amass.Token) },
+            Engine.Abilities.Recruit recruit => recruit with { Token = Pictured(recruit.Token) },
             _ => effect,
         });
     }

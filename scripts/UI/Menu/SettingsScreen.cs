@@ -211,8 +211,9 @@ public partial class SettingsScreen : Control
                 Settings.Save();
                 preview.SetStyle(S.Playmats[seat]);
             });
-            box.AddChild(Row($"Player {seat + 1}", picker,
-                "The table under each player's cards. Custom images are used only on this device and stretched to fill that player's half of the table."));
+            box.AddChild(Row(seat == 0 ? "Your playmat" : "Opponents' playmat", picker, seat == 0
+                ? "The table under your cards. Online, your opponents see it too, unless it is a custom image: those are used only on this device."
+                : "The table under the computer's cards, and under an online opponent's when they use a custom image (which stays on their device)."));
             var previewMargin = new MarginContainer();
             previewMargin.AddThemeConstantOverride("margin_left", 34);
             previewMargin.AddThemeConstantOverride("margin_bottom", 8);

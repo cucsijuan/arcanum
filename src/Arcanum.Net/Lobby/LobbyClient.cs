@@ -22,7 +22,7 @@ public sealed class LobbyClient
         _clock = clock ?? (() => DateTime.UtcNow);
         _peer = new Peer(connection, new WireFormat(), _clock);
         Identity = identity;
-        _peer.Send(new Hello(WireFormat.ProtocolVersion, identity.Version, identity.Content, identity.Name, identity.Token));
+        _peer.Send(new Hello(WireFormat.ProtocolVersion, identity.Version, identity.Content, identity.Name, identity.Token, identity.Playmat));
     }
 
     /// <summary>Who this player is; the token is the seat's once joined.</summary>

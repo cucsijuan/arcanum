@@ -77,7 +77,7 @@ public sealed class NetTable
     public List<GameClient?> Clients { get; } = new();
     public List<RecordingConnection?> Wires { get; } = new();
 
-    public NetTable(int players = 2, ulong seed = 7, HostOptions? options = null, IReadOnlyList<HostSeat>? seats = null)
+    public NetTable(int players = 2, ulong seed = 7, HostOptions? options = null, IReadOnlyList<HostSeat>? seats = null, IReadOnlyList<string?>? playmats = null)
     {
         seats ??= Enumerable.Range(0, players).Select(i => new HostSeat($"Player {i + 1}", RedGreen())).ToList();
         _byName = seats.SelectMany(s => s.Deck).DistinctBy(d => d.Name).ToDictionary(d => d.Name);
@@ -87,15 +87,15 @@ public sealed class NetTable
         {
             Clients.Add(null);
             Wires.Add(null);
-            if (!seats[i].IsComputer) Connect(new PlayerId(i));
+            if (!seats[i].IsComputer) Connect(new PlayerId(i), playmat: playmats?.ElementAtOrDefault(i));
         }
     }
 
     /// <summary>Connects (or reconnects) a player to their seat, played by a computer player on their side.</summary>
-    public GameClient Connect(PlayerId seat, Func<GameClient, IPlayerController>? controller = null)
+    public GameClient Connect(PlayerId seat, Func<GameClient, IPlayerController>? controller = null, string? playmat = null)
     {
         var wire = new RecordingConnection(Listener.Connect());
-        var client = new GameClient(wire, new ClientIdentity($"Player {seat.Value + 1}", Host.TokenOf(seat), "", ""), Clock.Func);
+        var client = new GameClient(wire, new ClientIdentity($"Player {seat.Value + 1}", Host.TokenOf(seat), "", "", playmat), Clock.Func);
         client.Controller = controller?.Invoke(client) ?? ClientBot(client, seat);
         client.Policy = new AutoPassPolicy();
         Clients[seat.Value] = client;

@@ -52,7 +52,7 @@ public partial class OnlineService
         _eventSetup = new EventSetup(mode, source, bestOf);
         ListAddresses();
         OpenRouterPort();
-        JoinLobby(_loopback!.Connect(), new ClientIdentity(name, _lobby.HostToken, Version, ContentId));
+        JoinLobby(_loopback!.Connect(), new ClientIdentity(name, _lobby.HostToken, Version, ContentId, OwnPlaymat));
         PublishHostedLobby();
     }
 
@@ -164,7 +164,7 @@ public partial class OnlineService
         _resumedEvent = host;
         ListAddresses();
         OpenRouterPort();
-        StartEventSession(new EventClient(_loopback!.Connect(), new ClientIdentity(name, token, Version, ContentId), greet: true));
+        StartEventSession(new EventClient(_loopback!.Connect(), new ClientIdentity(name, token, Version, ContentId, OwnPlaymat), greet: true));
         return true;
     }
 
@@ -208,7 +208,7 @@ public partial class OnlineService
 
     private async void OpenEventGame(string token)
     {
-        var identity = new ClientIdentity(_eventIdentity!.Name, token, Version, ContentId);
+        var identity = new ClientIdentity(_eventIdentity!.Name, token, Version, ContentId, OwnPlaymat);
         try
         {
             var connection = _loopback is not null && IsHosting
@@ -290,6 +290,6 @@ public partial class OnlineService
     private async Task RejoinEvent(string name)
     {
         if (await ReconnectAsync(name) is not { } connection) return;
-        StartEventSession(new EventClient(connection, new ClientIdentity(name, Settings.Current.LastSeatToken, Version, ContentId), greet: true));
+        StartEventSession(new EventClient(connection, new ClientIdentity(name, Settings.Current.LastSeatToken, Version, ContentId, OwnPlaymat), greet: true));
     }
 }

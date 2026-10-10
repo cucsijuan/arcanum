@@ -31,6 +31,7 @@ namespace Arcanum.Net.Protocol;
 [JsonDerivedType(typeof(EventUpdate), "event-state")]
 [JsonDerivedType(typeof(DraftPick), "pick")]
 [JsonDerivedType(typeof(EventReady), "ready")]
+[JsonDerivedType(typeof(SeatLooks), "looks")]
 public abstract record NetMessage;
 
 // ------------------------------------------------------------------ connection
@@ -40,12 +41,16 @@ public abstract record NetMessage;
 /// seat in a lobby.
 /// </summary>
 /// <param name="Content">Identifies the card content (module and card data); both sides must use the same.</param>
-public sealed record Hello(int Protocol, string Version, string Content, string Name, string Token) : NetMessage;
+/// <param name="Playmat">The built-in playmat the player chose for their side of the table, shown to everyone; null for none.</param>
+public sealed record Hello(int Protocol, string Version, string Content, string Name, string Token, string? Playmat = null) : NetMessage;
 
 /// <summary>The player sits at <paramref name="Seat"/>; <paramref name="Players"/> are the names of every seat.</summary>
 public sealed record Welcome(PlayerId Seat, IReadOnlyList<string> Players, bool Commander) : NetMessage;
 
 public sealed record Rejected(string Reason) : NetMessage;
+
+/// <summary>The playmat each seat chose (null: none known, the viewer's own setting for opponents applies).</summary>
+public sealed record SeatLooks(IReadOnlyList<string?> Playmats) : NetMessage;
 
 /// <summary>Sent regularly both ways so a silent connection is noticed as lost.</summary>
 public sealed record Heartbeat : NetMessage;

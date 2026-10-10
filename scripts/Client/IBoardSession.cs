@@ -22,6 +22,9 @@ public interface IBoardSession
     /// </summary>
     GameView ViewFor(PlayerId viewer);
 
+    /// <summary>The built-in playmat <paramref name="player"/> chose for their side of the table, when this screen knows it.</summary>
+    string? PlaymatOf(PlayerId player) => null;
+
     /// <summary>Show every hidden card (deck-test / hotseat mode).</summary>
     bool RevealAll { get; }
 

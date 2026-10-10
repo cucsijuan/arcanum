@@ -167,6 +167,7 @@ public partial class PlayerArea : Control
         foreach (var pile in new[] { _library, _graveyard, _exile, _command, _command2 })
         {
             pile.LabelBelow = FacesDown;
+            pile.TopCard.BackUpsideDown = FacesDown;
             pile.SetCardSize(PileSize);
         }
         if (!Compact) return;
@@ -185,9 +186,13 @@ public partial class PlayerArea : Control
     }
 
 
+    private string? _playmatStyle;
+
     /// <summary>Applies a playmat setting: a built-in style id, or "custom:&lt;image path&gt;".</summary>
     public void SetPlaymatStyle(string id)
     {
+        if (id == _playmatStyle) return;
+        _playmatStyle = id;
         Playmat.Apply(_grid, _playmat, id, Player.Value);
     }
 
@@ -446,7 +451,7 @@ public partial class PlayerArea : Control
 
     private CardNode CreateCardNode(CardView view)
     {
-        var node = new CardNode();
+        var node = new CardNode { BackUpsideDown = FacesDown };
         // New cards slide in from the library pile.
         node.Size = view.Zone == Zone.Hand ? HandSize : FieldSize;
         node.Position = _library.Position;

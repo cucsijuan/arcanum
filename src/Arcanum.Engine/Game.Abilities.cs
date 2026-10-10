@@ -3603,8 +3603,8 @@ public sealed partial class Game
         bool scry = purpose == CardChoicePurpose.ScryToBottom;
         Look(who, top);
         var prompt = scry
-            ? $"Scry {count}: choose cards to put on the bottom of your library"
-            : $"Surveil {count}: choose cards to put into your graveyard";
+            ? $"Scry {count}: click the cards to put on the bottom of your library, any number; the rest stay on top"
+            : $"Surveil {count}: click the cards to put into your graveyard, any number; the rest stay on top";
         var options = top.Select(id => ViewBuilder.Card(State, id, who, reveal: true)).ToList();
         var chosen = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest(prompt, source.Id, options, 0, top.Count, purpose));
         Require(chosen.Distinct().Count() == chosen.Count && chosen.All(top.Contains), "Choose among the cards looked at.");

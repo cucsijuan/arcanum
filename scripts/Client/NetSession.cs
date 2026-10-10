@@ -111,6 +111,7 @@ public sealed class NetSession : IBoardSession
     public PlayerId LocalSeat => _client.Seat;
     public GameView ViewFor(PlayerId viewer) => _client.View!;
     public bool RevealAll => false;
+    public string? PlaymatOf(PlayerId player) => _client.Playmats.ElementAtOrDefault(player.Value);
     public Decision? CurrentDecision => Hub.Current is { IsAnswered: false } d ? d : null;
     public bool Announces(PlayerId player) => player != LocalSeat;
     public bool FollowsOthers => true;

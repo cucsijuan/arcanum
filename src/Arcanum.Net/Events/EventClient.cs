@@ -21,7 +21,7 @@ public sealed class EventClient
         _peer = new Peer(connection, new WireFormat(), clock ?? (() => DateTime.UtcNow));
         if (received is not null) _peer.Hold(received);
         Identity = identity;
-        if (greet) _peer.Send(new Hello(WireFormat.ProtocolVersion, identity.Version, identity.Content, identity.Name, identity.Token));
+        if (greet) _peer.Send(new Hello(WireFormat.ProtocolVersion, identity.Version, identity.Content, identity.Name, identity.Token, identity.Playmat));
     }
 
     public ClientIdentity Identity { get; }

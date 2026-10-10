@@ -620,13 +620,29 @@ public partial class GameBoard : Control
             area.CardHoverEnded += HidePreview;
             AddChild(area);
             MoveChild(area, 1 + i); // above the background, below arrows and overlays
-            area.SetPlaymatStyle(Settings.Current.Playmats.ElementAtOrDefault(place == 0 ? 0 : 1) ?? "grid");
             _areas.Add(area);
+        }
+        ApplyPlaymats();
+    }
+
+    /// <summary>
+    /// Each side of the table gets its playmat: this screen's own setting for its seat, and for an opponent the
+    /// built-in playmat they chose when it is known (online), otherwise this screen's setting for opponents.
+    /// </summary>
+    private void ApplyPlaymats()
+    {
+        for (int i = 0; i < _areas.Count; i++)
+        {
+            var player = new PlayerId(i);
+            var mine = player == Bottom;
+            var chosen = mine ? null : _session.PlaymatOf(player) is { } id && BoardStyle.Playmats.Any(p => p.Id == id) ? id : null;
+            _areas[i].SetPlaymatStyle(chosen ?? Settings.Current.Playmats.ElementAtOrDefault(mine ? 0 : 1) ?? "grid");
         }
     }
 
     private void Refresh()
     {
+        ApplyPlaymats(); // an opponent's playmat can become known after the table was laid out
         var decision = _session.CurrentDecision;
         if (decision is not null && !ReferenceEquals(decision, _lastDecision))
         {
@@ -1378,12 +1394,36 @@ public partial class GameBoard : Control
             case ChooseCardsDecision c:
             {
                 _prompt.Text = $"{who}: {c.Request.Prompt}";
-                var range = c.Request.Min == c.Request.Max ? $"{c.Request.Max}" : $"{c.Request.Min}–{c.Request.Max}";
-                var done = AddButton($"Confirm ({_selected.Count} of {range})", () => c.Answer(_selected.ToList()), primary: true);
+                var done = AddButton(ChoiceConfirmText(_selected.Count, c.Request), () => c.Answer(_selected.ToList()), primary: true);
                 done.Disabled = _selected.Count < c.Request.Min || _selected.Count > c.Request.Max;
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// The confirm button of a card choice, saying what confirming does now: for scry and surveil where the cards go
+    /// ("Keep all on top", "1 card to the bottom, 1 on top"); otherwise "Confirm (1/2)" for an exact count, "Choose none"
+    /// or "Confirm 1 (up to 2)" when fewer are fine, "Confirm 1 (at least 2)" below a minimum.
+    /// </summary>
+    private static string ChoiceConfirmText(int selected, CardChoiceRequest request)
+    {
+        int total = request.Options.Count, kept = total - selected;
+        string Cards(int n) => n == 1 ? "1 card" : $"{n} cards";
+        switch (request.Purpose)
+        {
+            case CardChoicePurpose.ScryToBottom:
+                return selected == 0 ? (total == 1 ? "Keep it on top" : "Keep all on top")
+                    : kept == 0 ? $"Put {(total == 1 ? "it" : "all")} on the bottom" : $"{Cards(selected)} to the bottom, {kept} on top";
+            case CardChoicePurpose.SurveilToGraveyard:
+                return selected == 0 ? (total == 1 ? "Keep it on top" : "Keep all on top")
+                    : kept == 0 ? $"Put {(total == 1 ? "it" : "all")} into the graveyard" : $"{Cards(selected)} to the graveyard, {kept} on top";
+        }
+        int min = request.Min, max = request.Max;
+        if (min == max) return $"Confirm ({selected}/{max})";
+        if (selected == 0 && min == 0) return "Choose none";
+        if (selected < min) return $"Confirm {selected} (at least {min})";
+        return $"Confirm {selected} (up to {max})";
     }
 
     /// <summary>One blocker in the damage assignment panel: name, lethal hint and −/+ controls.</summary>

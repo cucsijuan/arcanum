@@ -8,7 +8,8 @@ using Arcanum.Net.Transport;
 namespace Arcanum.Net.Client;
 
 /// <param name="Token">The seat's secret, given by the host (the same one is used to reconnect).</param>
-public sealed record ClientIdentity(string Name, string Token, string Version, string Content);
+/// <param name="Playmat">The built-in playmat this player shows the others (see <see cref="Hello.Playmat"/>).</param>
+public sealed record ClientIdentity(string Name, string Token, string Version, string Content, string? Playmat = null);
 
 /// <summary>
 /// A player's end of a hosted game: keeps the latest view, reports events, and passes the host's questions to a local
@@ -32,12 +33,15 @@ public sealed class GameClient
         _clock = clock ?? (() => DateTime.UtcNow);
         _peer = new Peer(connection, new WireFormat(), _clock);
         if (received is not null) _peer.Hold(received);
-        _peer.Send(new Hello(WireFormat.ProtocolVersion, identity.Version, identity.Content, identity.Name, identity.Token));
+        _peer.Send(new Hello(WireFormat.ProtocolVersion, identity.Version, identity.Content, identity.Name, identity.Token, identity.Playmat));
     }
 
     public PlayerId Seat { get; private set; }
     public bool IsWelcomed { get; private set; }
     public IReadOnlyList<string> Players { get; private set; } = Array.Empty<string>();
+
+    /// <summary>The playmat each seat chose, as far as the host knows (see <see cref="SeatLooks"/>).</summary>
+    public IReadOnlyList<string?> Playmats { get; private set; } = Array.Empty<string?>();
     public bool Commander { get; private set; }
     public GameView? View { get; private set; }
     public string? RejectedReason { get; private set; }
@@ -103,6 +107,9 @@ public sealed class GameClient
                     IsWelcomed = true;
                     SendStops();
                     Welcomed?.Invoke();
+                    break;
+                case SeatLooks looks:
+                    Playmats = looks.Playmats;
                     break;
                 case Protocol.Rejected r:
                     RejectedReason = r.Reason;

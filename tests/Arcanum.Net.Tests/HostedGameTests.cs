@@ -223,6 +223,15 @@ public class HostedGameTests
     }
 
     [Fact]
+    public void PlayersSeeTheirOpponentsPlaymats()
+    {
+        var table = new NetTable(playmats: new[] { "nebula", "../not a playmat" });
+        table.Host.Start();
+        Assert.True(table.RunUntil(() => table.Clients.All(c => c!.Playmats.Count == 2 && c.Playmats[0] == "nebula"), 200));
+        Assert.Null(table.Clients[0]!.Playmats[1]); // only plain playmat ids are passed on
+    }
+
+    [Fact]
     public void ComputerSeatsPlayOnTheHost()
     {
         var seats = new[] { new HostSeat("Person", NetTable.RedGreen()), new HostSeat("Computer", NetTable.RedGreen(), IsComputer: true) };

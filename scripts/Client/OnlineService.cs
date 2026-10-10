@@ -63,6 +63,9 @@ public partial class OnlineService : Node
 
     public static string Version => (string)ProjectSettings.GetSetting("application/config/version");
 
+    /// <summary>The playmat this player shows the others: their own built-in one (a custom image stays on this device).</summary>
+    private static string? OwnPlaymat => Settings.Current.Playmats.ElementAtOrDefault(0) is { } id && !id.StartsWith("custom:") ? id : null;
+
     public static string ContentId => App.Instance.Module?.Manifest.Id ?? "generic";
 
     // ------------------------------------------------------------------ hosting
@@ -92,7 +95,7 @@ public partial class OnlineService : Node
         _save = new HostedSave { Format = format.Id, Port = _port };
         ListAddresses();
         OpenRouterPort();
-        JoinLobby(_loopback.Connect(), new ClientIdentity(name, _lobby.HostToken, Version, ContentId));
+        JoinLobby(_loopback.Connect(), new ClientIdentity(name, _lobby.HostToken, Version, ContentId, OwnPlaymat));
         SubmitDeck(deck);
         PublishHostedLobby();
     }
@@ -224,7 +227,7 @@ public partial class OnlineService : Node
         ListAddresses();
         OpenRouterPort();
         game.Start();
-        StartGameClient(_loopback.Connect(), new ClientIdentity(save.Seats[0].Name, save.Seats[0].Token, Version, ContentId));
+        StartGameClient(_loopback.Connect(), new ClientIdentity(save.Seats[0].Name, save.Seats[0].Token, Version, ContentId, OwnPlaymat));
         return true;
     }
 
@@ -308,7 +311,7 @@ public partial class OnlineService : Node
         try
         {
             var connection = await TcpConnection.ConnectAsync(host, port, TimeSpan.FromSeconds(8));
-            JoinLobby(connection, new ClientIdentity(name, "", Version, ContentId));
+            JoinLobby(connection, new ClientIdentity(name, "", Version, ContentId, OwnPlaymat));
             SubmitDeck(deck);
         }
         catch (Exception e)
@@ -363,7 +366,7 @@ public partial class OnlineService : Node
             if (Settings.Current.LastSeatIsEvent) { await RejoinEvent(name); return; }
             var connection = await ReconnectAsync(name);
             if (connection is null) return;
-            StartGameClient(connection, new ClientIdentity(name, Settings.Current.LastSeatToken, Version, ContentId));
+            StartGameClient(connection, new ClientIdentity(name, Settings.Current.LastSeatToken, Version, ContentId, OwnPlaymat));
         }
         catch (Exception e)
         {

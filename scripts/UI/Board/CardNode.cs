@@ -484,6 +484,16 @@ public partial class CardNode : Control
     /// Shows the picture of the module's card back design <paramref name="key"/> over the built-in back once it has
     /// been downloaded; null hides it (a face-up card, or a built-in design).
     /// </summary>
+    /// <summary>
+    /// The card faces the player across the table: its back is seen upside down (the built-in back is the same both
+    /// ways up; a module's back picture is turned).
+    /// </summary>
+    public bool BackUpsideDown
+    {
+        get => _backImage.FlipV;
+        set => _backImage.FlipH = _backImage.FlipV = value;
+    }
+
     private void ShowBackImage(string? key)
     {
         _requestedBack = key;

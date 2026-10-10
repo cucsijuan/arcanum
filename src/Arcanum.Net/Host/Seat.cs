@@ -87,6 +87,9 @@ internal sealed class Seat : IPlayerController
 
     // ------------------------------------------------------------------ connection
 
+    /// <summary>The playmat the player chose (from their greeting), shown to the others.</summary>
+    public string? Playmat { get; set; }
+
     public void Connect(IConnection connection, IEnumerable<NetMessage>? early = null)
     {
         Peer?.Close();

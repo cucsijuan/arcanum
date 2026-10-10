@@ -13,6 +13,7 @@ public class PrintingTests
     private const string Cards = """
         {"oracle_id":"o-1","id":"p-default","name":"Glade Cub","layout":"normal","mana_cost":"{1}{G}","type_line":"Creature — Bear","oracle_text":"","power":"2","toughness":"2","colors":["G"]}
         {"oracle_id":"o-2","name":"Hive Keeper","layout":"normal","mana_cost":"{2}{G}","type_line":"Creature — Insect","oracle_text":"When this creature enters, create a 1/1 green Insect creature token.","power":"1","toughness":"1","colors":["G"],"all_parts":[{"component":"token","id":"t-old","name":"Insect","type_line":"Token Creature — Insect"}]}
+        {"oracle_id":"o-3","id":"p-boat","name":"Drafted Skiff","layout":"normal","mana_cost":"{2}{U}","type_line":"Artifact","oracle_text":"Whenever you attack, recruit.","colors":["U"],"all_parts":[{"component":"token","id":"t-soldier","name":"Human Soldier","type_line":"Token Creature — Human Soldier"}]}
         """;
 
     private const string Printings = """
@@ -37,7 +38,11 @@ public class PrintingTests
         var ms = new MemoryStream();
         OracleJsonl.WriteCompact(records, ms);
         ms.Position = 0;
-        return new CardDatabase(OracleJsonl.ReadCompact(ms), new Dictionary<string, CardScript> { ["o-2"] = CardScriptParser.Parse(HiveScript) });
+        return new CardDatabase(OracleJsonl.ReadCompact(ms), new Dictionary<string, CardScript>
+        {
+            ["o-2"] = CardScriptParser.Parse(HiveScript),
+            ["o-3"] = CardScriptParser.Parse("""{ "abilities": [ { "trigger": "youAttack", "effects": [ { "recruit": true } ] } ] }"""),
+        });
     }
 
     [Fact]
@@ -76,6 +81,9 @@ public class PrintingTests
         Assert.Equal("t-old", TokenImage(hive));
         Assert.Equal("t-new", TokenImage(hiveNew));
         Assert.Equal(hive.Abilities.Count, hiveNew.Abilities.Count); // same rules
+
+        Assert.True(db.TryGet("Drafted Skiff", null, null, out var skiff)); // the token recruit makes has its picture too
+        Assert.Equal("t-soldier", skiff.Abilities.SelectMany(a => a.Effects).OfType<Arcanum.Engine.Abilities.Recruit>().Single().Token.ImageKey);
     }
 
     [Fact]

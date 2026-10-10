@@ -28,4 +28,6 @@
   headless server (M14+) removes that.
 - Online: spectators.
 - Online: chat between players.
+- Online: an opponent's custom playmat image is sent to the other players and shown on their side of the table; it is
+  only cached for that game (never added to this player's own playmat choices). Today only built-in playmats are shared.
 - Online events: show opponents' deck colors in the standings once their decks have been seen.
