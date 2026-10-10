@@ -1,0 +1,309 @@
+# Career mode — plan
+
+A menu-driven "life of a card player" mode: the player starts with a starter deck and a little cash, plays free daily
+matches to earn money, buys boosters and preconstructed decks, builds decks **only from the cards they own**, and climbs
+from casual store nights to the big tournaments. Offline it is a single-player loop against computer opponents; online,
+scheduled weekly/monthly events are configured remotely and played against other players (or against bots for smaller
+rewards, when the event allows it).
+
+This plan takes the original design notes as direction, not as a spec.
+
+## Pillars
+
+1. **Only the card game.** Progress comes from playing, opening, trading and competing. No jobs, no map, no survival.
+2. **No dead ends.** Two free daily matches every day; a player with nothing can always rebuild.
+3. **A collection that matters.** Decks are built from owned cards; every booster opened is a decision (keep, sell, trade).
+4. **A calendar with appointments.** Fixed events during the week give each day a reason to come back.
+5. **Remote control of the season.** Events, prizes, featured sets and PvP/PvE rules come from a config file the
+   developer publishes, without a new release.
+
+## The loop
+
+```
+day starts (real day, UTC reset)
+  ├─ 2 daily matches (free)        → cash or a booster each (win pays more than loss, but a loss still pays something)
+  ├─ practice matches (unlimited)  → no cash; small reputation, deck testing; first few per day give a little cash
+  ├─ ante matches                  → each player puts a card in the pot, winner takes both
+  ├─ store                         → boosters, preconstructed decks, singles; sell cards
+  ├─ today's event (if any)        → entry fee → prizes, reputation, rank points
+  └─ collection / decks            → deck builder limited to owned cards
+```
+
+### Daily matches
+
+- 2 per real day, reset at 00:00 UTC (one reset time for everyone, so online events and dailies line up).
+- Opponent from the store's roster (see *Opponents*), deck strength scaled to the player's reputation tier.
+- Reward chosen before the match ("cash" or "booster of the featured set"), so the choice is visible.
+- Missed days are not banked (keeps it a daily habit, not a backlog).
+
+### Grinding (the "a little" part)
+
+- **Practice:** unlimited, rewards decay: first 3 per day pay a small amount, then only reputation/experience. Useful
+  to test decks without risk.
+- **Ante:** the old ante rule, done properly: before the game each player reveals a random card from their deck (or the
+  player picks one from a short offer when the opponent proposes a "stake"); winner keeps both. The opponent's stake is
+  shown before accepting. Valuable stakes only from opponents of the same tier, so it can't be farmed against weak bots.
+- **Challenges** (instead of more currencies): rotating small goals ("win a daily with a deck worth less than $20",
+  "win with a mono-colored deck", "draft a 3-0"), each paying a booster. Gives the grind a direction.
+
+### Store and economy
+
+- **Cash ($)** is the only currency. No real money anywhere, nothing purchasable outside the game.
+- **Boosters** from the content module's sets that have a booster definition; sets without one (companion/commander sets)
+  are sold as their preconstructed decks. The store has a *featured set* each week (from the config).
+- **Singles:** buy specific cards at their price (with a markup), sell at a lower price (buy/sell spread so flipping
+  doesn't print money).
+- **Card prices:** derived in-game from rarity, set and in-game demand (how often the card shows up in winning decks of
+  computer opponents and events), with slow drift. Not real-world prices.
+- **Trades with opponents:** an opponent offers specific cards for specific cards (they want what fits their deck),
+  priced so the trade is fair ±10%.
+- **Opportunity offers** (the "random dilemmas"): rare one-off offers when entering the store (a card below price, a
+  stake match, a sealed booster box at a discount). One choice, then gone.
+
+### Reputation and tiers
+
+Reputation from playing (dailies, events, challenges) unlocks tiers; tiers unlock events and stronger opponents.
+Example: *Newcomer → Regular → Local champion → Circuit player → Pro*. Tiers never go down (reputation is cumulative);
+**rank** (Elo-like, per format) is the competitive number that goes up and down.
+
+## Calendar and events
+
+Every event is defined by data (built-in default schedule in the content module, overridden by the remote config):
+
+| Field | Example |
+|---|---|
+| `id`, `name` | `draft-night`, "Draft night" |
+| `when` | weekly on Wednesday 18:00–24:00 UTC; monthly last Sunday; or a date range |
+| `kind` | constructed (format id), commander pod, draft, sealed, prerelease |
+| `set` | set code for limited events / featured set |
+| `entry` | cash, boosters, or a qualification token |
+| `prizes` | by place or by record (3-0, 2-1…): cash, boosters, promo, qualification token, rank points, reputation |
+| `minTier` | reputation tier required |
+| `modes` | `pve`, `pvp`, or both; `pveRewardScale` (e.g. 0.5) |
+| `rounds`, `bestOf`, `podSize` | Swiss rounds, Bo1/Bo3, Commander pod of 4 |
+
+Default week (illustrative):
+
+| Day | Event | Entry | Notes |
+|---|---|---|---|
+| Every day | 2 daily matches | free | |
+| Wednesday | Draft night | $15 or 3 boosters | featured set |
+| Friday | Commander night | $5 | 4-player pods, social reputation |
+| Saturday | Weekly tournament | $20 | constructed, Swiss, rank points |
+| Last Sunday | Monthly championship | $50 or qualification | top players get a qualification token |
+| Seasonal | International tournament | qualification token | PvP only (config) |
+
+Offline, events are always PvE. Online, `modes` decides; the big ones are `pvp` only.
+
+**Prerelease:** when the content module gains a new set, a sealed prerelease event for it runs for a week. A natural
+hook: new content → new event.
+
+## Opponents
+
+- A roster of named store regulars (invented names and portraits), each with a style (aggro, control, commander
+  enthusiast, collector) and a deck per tier, built from the same card pool.
+- **Rivals:** a few regulars keep their own small collection and improve their decks over the season (they "buy" cards
+  too), so the local meta changes and beating a rival feels earned.
+- Strength comes from deck quality first (the bot is the same), plus bot settings as they become available.
+
+## Look
+
+Pixel-art, warm and cozy store style, set by `ui-art/LGS-1.jpg` (the store counter) and `ui-art/LGS-1-table.jpg` (the
+play table). Everything else reuses the existing screens (board, deck builder, booster opening, limited screen).
+
+- **Store screen = the store picture with hotspots**, not a menu over a background: the booster rack opens boosters,
+  the box of deck boxes opens preconstructed decks, the glass case opens singles (buy/sell), the computer opens the
+  calendar/online events, the counter opens trades and today's offers. Hover highlights the object and shows a label;
+  a plain list of the same actions stays available (keyboard, small screens, accessibility).
+- **Store table playmat:** the table picture spans both seats as one photo: the board shows the top half behind the
+  opponent's area and the bottom half behind the player's (a new built-in playmat kind that takes a region of one
+  image, next to the grid/nebula/custom styles in `Playmat.cs`), so the table reads as one surface across the screen.
+  Used for dailies, practice and ante at the store; events can name other tables later (another store, the
+  championship hall).
+- Different stores/venues per tier later (bigger store, convention hall) = new picture pairs, same hotspots data.
+- The art must stay generic: no recognizable toy, game or brand look-alikes on the shelves (the first picture's
+  "space ranger" figure resembles a well-known toy and should be redrawn before shipping).
+
+## Online
+
+### Remote config (EOS)
+
+- **Title Storage** (read-only files published from the developer portal): `career/season.json` with the event schedule,
+  prizes, featured set, PvP/PvE rules, price adjustments and challenge pool. Clients download it at start and cache it;
+  offline uses the cached copy, or the module's default if there was never one. Versioned (`schemaVersion`) so old
+  clients ignore what they don't understand.
+- **Player Data Storage** (per-user files): cloud copy of the career save, so it survives reinstalls and moves between
+  devices with the player's account (see *Accounts*).
+- **Leaderboards / Stats:** rank per format, event wins, season standings.
+- **Server time:** dailies and event windows use the service's time when online; offline uses the local clock but never
+  goes backwards from the last time seen.
+
+### Accounts
+
+Players sign in to EOS with an external account instead of a Device ID, so their identity (and career) follows them
+across devices and reinstalls.
+
+- **Identity = the EOS product user id.** EOS Connect gives one product user id per player; every external account
+  linked to it signs in to the same id. The career service and Player Data Storage key everything by that id, so
+  linking or unlinking accounts never moves a profile.
+- **First provider: Discord** (`ExternalCredentialType.DiscordAccessToken`).
+  - Discord application (developer portal) with the `identify` scope only (no email, no guilds).
+  - The game opens the browser for Discord's OAuth2 authorization (PKCE, redirect to a loopback address
+    `http://127.0.0.1:<port>/callback` the game listens on for that moment). The career service exchanges the code for
+    tokens, so the Discord client secret stays on the server; the game gets the access token and a refresh token.
+  - EOS Developer Portal: Discord added as an identity provider for the product (Discord application id) and allowed
+    in the client policy.
+  - The refresh token is stored encrypted on disk; when EOS warns that the login is about to expire, the game gets a
+    new Discord access token and logs in again without asking the player.
+  - Spike first: confirm EOS accepts a token from the plain OAuth2 flow (the SDK documents the token as the one the
+    Discord SDK returns; both are OAuth2 access tokens of the same Discord application).
+- **More providers later: Epic, Google** (`Epic` / `EpicIdToken` through Epic Account Services, which needs Epic's
+  approval of the product; `GoogleIdToken`). Apple (`AppleIdToken`) becomes mandatory when the game ships on iOS with
+  other sign-in options.
+- **Linking, any combination:** Settings → Account lists every provider with Link/Unlink. A player may link one or all.
+  - Linking: sign in with the new provider while signed in; if that external account has no EOS user yet,
+    `LinkAccount` attaches it to the current one.
+  - Already in use: if the external account already belongs to another EOS user (another profile), it can't be
+    linked; the player is told and may switch to that profile instead (EOS has no account merge).
+  - Unlinking is refused for the last linked account, so a player can't lock themselves out.
+  - Signing in on a new device with a provider that has no EOS user yet asks: *new profile* or *link to an existing
+    one* (sign in with a provider already linked there first).
+- **Display name:** offered from the Discord name the first time; the existing player name setting keeps working and
+  can be changed.
+- **Device ID:** no longer used for players. Kept only behind a developer switch (`ARCANUM_EOS_NEW_DEVICE` and similar)
+  so two instances can be tested on one computer without two Discord accounts. Online play through the internet
+  requires a signed-in account; local-network play and everything offline do not.
+- **Career service auth** doesn't change: it verifies the EOS Connect ID token, which is the same whatever provider
+  was used to sign in.
+
+### Scheduled online events
+
+- During the event window players **check in**; at fixed start times (e.g. every 30 minutes) the checked-in players are
+  paired into pods/Swiss events. Missing seats are filled with bots; matches against bots pay the PvE scale.
+- PvE choice: the player can enter the same event against bots only, any time in the window, for the reduced prizes.
+- PvP-only events (configured) don't offer that.
+
+### Trust — the main open decision
+
+The game is open source and written in C#, so the client can be read and modified. Two consequences:
+
+- **Player Data Storage alone doesn't stop cheating.** The client writes its own files there with its own sign-in; a
+  modified client writes whatever it wants. It is a good *place* for the save (cloud copy, survives reinstalls), not an
+  authority.
+- **Encrypting or signing the save on the client doesn't either.** Whatever key the client uses ships inside the build
+  and can be extracted from the assemblies. It stops casual save editing (worth having), nothing more.
+
+Anything that must be trusted needs a signer the player doesn't control: a key that never leaves a machine the
+developer runs.
+
+#### Design: a small career service that signs the profile
+
+- **What it is:** a small .NET web service with a private signing key, on the developer's server (see *Career service
+  hosting*).
+  The client proves who it is with its EOS Connect ID token (the service verifies it against EOS's public keys).
+- **Profile = signed snapshot + journal.** The profile stored in Player Data Storage (and encrypted on disk for offline
+  play) is the last snapshot signed by the service plus a journal of what happened since: day started, daily played
+  (opponent, result), booster bought, booster opened, card sold, ante won/lost, event entered/finished. The public key
+  ships in the game, so the client itself can tell a signed snapshot from a tampered one.
+- **Everything random is derived, not stored.** Booster contents, store stock, opponents and offers come from
+  `hash(profile seed, day, counter)`. The service recomputes them, so a journal can't claim a different booster.
+- **Sync when back online:** the client uploads snapshot + journal; the service replays the journal on the snapshot
+  with the same rules code (a shared .NET library) and checks the limits against *its* clock: no more than 2 dailies
+  per real day elapsed, prices and rewards as the rules say, fees paid, opened boosters match their seed. Accepted →
+  it returns a new signed snapshot (journal folds into it). Rejected → the profile goes back to the last signed
+  snapshot; the bad journal is kept for review.
+- **Rollback/duplication:** the service keeps, per player, the hash and counter of the last snapshot it signed; an
+  older snapshot (restored backup, a second device) is refused or merged, never accepted twice.
+- **What can't be verified:** the result of an offline match against a bot (the game ran only on the player's device).
+  The answer is bounds instead of proofs: offline rewards are capped by the rules (2 dailies, decaying practice, ante
+  only against stakes of the same tier), so the most a cheater gets offline is what a player who wins every game would
+  get. Cheating offline = playing perfectly, which is acceptable.
+- **Online prizes** (PvP and PvE online events) are granted by the service directly from the event's result: confirmed
+  by both players now, by the dedicated host later. They never go through the client's journal.
+- **Offline-only players** never need the service; their profile is simply "unverified" and can't enter online events
+  until a sync accepts it.
+
+#### Career service hosting
+
+Decided: a small **.NET service on an Oracle Cloud Always Free VM** (not serverless: the service must run the same C#
+career rules library as the game, without a second copy in another language).
+
+| Piece | Choice |
+|---|---|
+| Machine | Always Free compute VM (Ampere/ARM, Linux); .NET runtime installed, service built for `linux-arm64` |
+| Service | ASP.NET minimal API in its own project (e.g. `server/Arcanum.CareerService`), referencing `Arcanum.Data` for the career rules |
+| Endpoints | `POST /career/sync` (snapshot + journal → new signed snapshot or rejection), `GET /career/profile` (last signed snapshot, for a new install), `POST /career/prize` (online event results), `POST /auth/discord` (OAuth code → Discord tokens, keeps the client secret), `GET /health` |
+| Auth | EOS Connect ID token in each request, verified against EOS's public keys; the player id comes from the token, never from the body |
+| Data | SQLite: per player the last snapshot hash, counter and signed snapshot; rejected journals for review |
+| Keys | Ed25519 signing key in a file readable only by the service user, outside the repo; public key compiled into the game; a key id in each signature so the key can be rotated |
+| HTTPS | Reverse proxy with automatic certificates (Caddy) on a domain or free subdomain; only ports 80/443 open in the VM's security list and firewall |
+| Running | systemd unit with restart; deploys by a GitHub Actions workflow (build, copy over SSH, restart), secrets in repository secrets |
+| Backups | daily copy of the SQLite file off the VM (losing it means players fall back to their last signed snapshot, not to nothing) |
+| Limits | rate limit per player and per address; journal size cap |
+
+Notes:
+- Always Free instances that sit idle can be reclaimed by Oracle; check the current idle rules when setting it up
+  (upgrading the account to pay-as-you-go keeps it free within the limits and avoids reclaiming).
+- The client must keep working when the service is down: it plays offline and syncs later.
+- The same machine can later run the dedicated headless host (M14+) for official PvP events.
+- Card content: the service needs the content module (set boosters, card list) to re-derive boosters; it downloads the
+  same module version the client reports and refuses unknown versions.
+
+Without the service (until it exists), options are:
+
+1. **Casual trust:** encrypted + signed save on disk and in Player Data Storage (stops casual editing), online
+   results confirmed by both players, leaderboards "best effort".
+2. **Fair formats for the big events:** international/championship events are **limited** (sealed/draft): every
+   player's pool comes from the event, so the collection doesn't matter and can't be cheated in.
+
+Recommendation: ship C1–C3 with option 1 but already journal-based (so the service can be added without changing the
+save format), big events limited (option 2), and the career service in C5 before online prizes exist. Constructed big
+events need the dedicated host for the games themselves.
+
+## Building blocks already there
+
+- Engine, bots, formats and deck legality; Commander pods of 4.
+- Booster generation per set, draft/sealed with bots, Swiss rounds (`Arcanum.Data/Limited`, `LimitedService`).
+- Online events host/client, lobbies, invite codes, EOS sign-in, P2P relay.
+- 3D booster opening.
+- Deck store (plain-text lists in `user://decks`).
+
+## New pieces
+
+| Piece | Where | Notes |
+|---|---|---|
+| `CareerProfile` (cash, collection, sealed product, reputation, rank, day, used dailies, history) | `Arcanum.Data/Career` (pure .NET) | JSON save in `user://career/`, with a checksum to catch damaged files (not a security measure) |
+| Collection (card + printing + count) | same | the deck builder gains a *collection* mode: only owned cards, counts limited |
+| Economy (prices, store stock, sell/buy, trades) | same | deterministic from a seed + day, testable |
+| Calendar / season config | same | parses the module default and the remote file; given a time, lists the open events |
+| Opponent roster and rivals | content module (data) + `Arcanum.Bots` (deck building per tier) | names/portraits generic |
+| Career hub screen | `scenes/career` | the dashboard: day, cash, dailies, today's event, store, collection, decks, news |
+| Store screen with hotspots, table playmat (one image split across both seats) | `scenes/career`, `scripts/UI/Board/Playmat.cs` | art in `ui-art/LGS-1*.jpg` |
+| Remote config + cloud save | `scripts/Client/Eos` | Title Storage, Player Data Storage, server time |
+| Accounts: Discord sign-in, linking/unlinking, Settings → Account | `scripts/Client/Eos`, career service (`/auth/discord` code exchange) | replaces Device ID login |
+| Career rules library (journal replay, derived randomness, limits) | `Arcanum.Data/Career` | the same code runs in the client and in the career service |
+| Career service (sign/verify profiles, online prizes) | `server/Arcanum.CareerService` | ASP.NET on the Oracle Cloud VM; private key only there; EOS ID token check; per-player last-snapshot hash |
+| Scheduled online events | `Arcanum.Net` + client | check-in, pairing into existing event/lobby hosts, bot fill, result confirmation |
+
+## Milestones
+
+| # | Content | Done when |
+|---|---|---|
+| C1 | **Offline core:** profile + save, starter deck choice, real-day calendar, 2 dailies vs bots, store (boosters, precons), opening into the collection, collection deck builder, sell cards, hub screen, store picture with hotspots, store table playmat | a new career can be played for a week of in-game days, entirely offline |
+| C2 | **Grind and life:** practice with decaying rewards, ante matches, challenges, opponent roster with tiers and rivals, trades with opponents, opportunity offers, reputation tiers | the store feels alive from day to day |
+| C3 | **Offline calendar:** weekly events from the module's default schedule (draft night, commander night, Saturday tournament, monthly championship) against bots, prizes and qualification tokens, in-game card prices reacting to results | a full in-game month has a shape |
+| C4 | **Accounts and remote config:** Discord sign-in (replacing Device ID) and account linking screen; Title Storage season file, server time, cached config, cloud save; developer tool to validate a season file before publishing | changing the season file changes next week's events without a release |
+| C5 | **Online events:** career service (profile sync and signing, online prizes), check-in windows, pairing, bot fill, PvE option at reduced prizes, result confirmation, leaderboards and rank | two players meet in a scheduled draft night online |
+| C6 | **The circuit:** qualification chain (monthly → international), PvP-only events, season standings and end-of-season rewards; constructed big events once the dedicated server exists | a season can be won |
+
+C1–C3 are fully useful without any online part, so the mode can ship early as an offline career.
+
+## Decisions to take
+
+1. ~~Trust model~~ decided: signed profile + journal, verified by the career service on an Oracle Cloud Always Free VM.
+2. Who hosts scheduled PvP events before a dedicated server exists: the first checked-in player, or the developer runs a
+   headless host for them.
+3. ~~Starting kit~~ decided: one preconstructed deck of the player's choice + 3 boosters of the featured set.
+4. ~~Banking dailies~~ decided: not banked; 2 per real day, unplayed ones are lost.
+5. ~~Flavor location~~ decided: store, regulars, opponent decks per tier, news and the default calendar live in the
+   content module; the main repo has only the generic system.
