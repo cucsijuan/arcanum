@@ -465,11 +465,13 @@ public partial class PlayerArea : Control
         {
             CardHoverStarted?.Invoke(c);
             if (_handOrder.Contains(c)) { LayoutHand(); SortByDrawOrder(); }
+            LiftGroup(c);
         };
         node.HoverEnded += c =>
         {
             CardHoverEnded?.Invoke(c);
             if (_handOrder.Contains(c)) { LayoutHand(); SortByDrawOrder(); }
+            if (_hoveredInGroup == c) DropGroup();
         };
         _cardLayer.AddChild(node);
         return node;
@@ -557,21 +559,33 @@ public partial class PlayerArea : Control
         var blockerStacks = Stacks(blockers);
 
         float creatureY = Compact ? 56 : 62;
-        int otherSlot = others.Count > 0 ? 1 : 0;
-        int landSlot = lands.Count > 0 ? otherSlot + 1 : 0;
-        // Rows are a card and a gap apart, closer together when a short window leaves less room above the hand.
-        float pitch = FieldSize.Y + (Compact ? 14 : 22);
-        int deepest = Math.Max(otherSlot, landSlot);
-        if (deepest > 0 && Size.Y > 100)
-            pitch = Mathf.Min(pitch, Mathf.Max(36, (Size.Y - Peek - HandPipsRoom - creatureY - FieldSize.Y) / deepest));
-        // Slot 0 (creatures) is nearest the middle, further slots lead to this player's edge.
-        float RowY(int slot) => FlipY(creatureY + slot * pitch, FieldSize.Y);
-        LayoutRow(creatures, RowY(0), CreaturesZ);
-        if (others.Count > 0) LayoutRow(others, RowY(otherSlot), OtherZ);
-        if (lands.Count > 0) LayoutRow(lands, RowY(landSlot), LandsZ);
+        var rows = new List<IReadOnlyList<CardStack>> { creatures };
+        if (others.Count > 0) rows.Add(others);
+        if (lands.Count > 0) rows.Add(lands);
+
+        // Cards lying under a permanent peek out above it, title by title. Their titles go into the gap above their row:
+        // on this side the gap towards the middle (before the row, slot 0's being the margin by the middle), across the
+        // table the gap towards that player's edge (after the row). With room to spare a gap grows to hold the titles
+        // peeking into it; without, they show whole over the edge of the next row, and the rows close up as before.
+        var underCount = attached.Select(c => c.AttachedTo!.Value).Concat(held.Select(c => c.HeldUnder!.Value))
+            .GroupBy(id => id).ToDictionary(g => g.Key, g => g.Count());
+        int Under(IReadOnlyList<CardStack> row) => row.Count == 0 ? 0 : row.Max(st => underCount.GetValueOrDefault(st.Top.Id));
+        float baseGap = Compact ? 14 : 22;
+        int TitlesInGap(int g) => FacesDown ? Under(rows[g]) : Under(rows[g + 1]); // the gap between rows g and g + 1
+        var gaps = Enumerable.Range(0, rows.Count - 1).Select(g => Math.Max(baseGap, TitlesInGap(g) * TitleStrip * Scale + 3)).ToList();
+        float room = Size.Y - Peek - HandPipsRoom - creatureY - FieldSize.Y * rows.Count;
+        if (gaps.Count > 0 && Size.Y > 100 && gaps.Sum() > room)
+        {
+            float plain = Mathf.Max(36 - FieldSize.Y, Mathf.Min(baseGap, room / gaps.Count));
+            gaps = gaps.Select(_ => plain).ToList();
+        }
+        var offsets = new List<float> { creatureY };
+        foreach (var gap in gaps) offsets.Add(offsets[^1] + FieldSize.Y + gap);
+        float RowY(int index) => FlipY(offsets[index], FieldSize.Y);
+        for (int r = 0; r < rows.Count; r++)
+            LayoutRow(rows[r], RowY(r), rows[r] == creatures ? CreaturesZ : rows[r] == others ? OtherZ : LandsZ);
         LayoutBlockers(blockerStacks, RowY(0));
-        LayoutAttachments(attached);
-        LayoutHeld(held);
+        LayoutUnder(attached, held);
     }
 
     private void LayoutRow(IReadOnlyList<CardStack> row, float y, int zBase)
@@ -613,46 +627,76 @@ public partial class PlayerArea : Control
         }
     }
 
-    private void LayoutAttachments(IReadOnlyList<CardView> attached)
-    {
-        foreach (var group in attached.GroupBy(c => c.AttachedTo!.Value))
-        {
-            var host = _cards[group.Key];
-            int i = 1;
-            foreach (var card in group)
-            {
-                var node = _cards[card.Id];
-                node.ZIndex = host.ZIndex - 1;
-                // Peek out towards the middle of the table so the attachment stays visible and hoverable.
-                MoveTo(node, host.TargetPosition + new Vector2(10 * i, (FacesDown ? 22 : -22) * i), FieldSize, 0);
-                i++;
-            }
-        }
-    }
-
     /// <summary>
-    /// Cards exiled until their permanent leaves lie under it, each peeking out a little further to its left: rows keep
-    /// room beside every card for it to turn when tapped, so the strips don't cover the rows above and below, where
-    /// attachments peek out.
+    /// Auras and Equipment attached to a permanent, then the cards held in exile under it, lie behind it one under the
+    /// other, each peeking out just above the card in front of it so every title shows.
     /// </summary>
-    private void LayoutHeld(IReadOnlyList<CardView> held)
+    private void LayoutUnder(IReadOnlyList<CardView> attached, IReadOnlyList<CardView> held)
     {
-        foreach (var group in held.GroupBy(c => c.HeldUnder!.Value))
+        _groups.Clear();
+        _liftedGroup = null; // the layout just set every depth again
+        var under = attached.Select(c => (Card: c, Host: c.AttachedTo!.Value)).Concat(held.Select(c => (Card: c, Host: c.HeldUnder!.Value)));
+        foreach (var group in under.GroupBy(x => x.Host))
         {
             var host = _cards[group.Key];
+            var members = new List<CardNode> { host };
+            _groups[host] = members;
             int i = 1;
-            foreach (var card in group)
+            foreach (var (card, _) in group)
             {
                 var node = _cards[card.Id];
-                node.ZIndex = host.ZIndex - 1 - i;
-                MoveTo(node, host.TargetPosition + new Vector2(-HeldPeek * Scale * i, 0), FieldSize, 0);
+                members.Add(node);
+                _groups[node] = members;
+                node.ZIndex = host.ZIndex - i;
+                MoveTo(node, host.TargetPosition + new Vector2(0, -TitleStrip * Scale * i), FieldSize, 0);
                 i++;
             }
         }
+        // Still pointed at after the board changed: the group stays lifted.
+        if (_hoveredInGroup is { } hovered && _groups.ContainsKey(hovered)) Lift(_groups[hovered]);
+        else _hoveredInGroup = null;
     }
 
-    /// <summary>How much of a card held under a permanent shows beside it.</summary>
-    private const float HeldPeek = 20;
+    /// <summary>A permanent and the cards under it, by each of them.</summary>
+    private readonly Dictionary<CardNode, List<CardNode>> _groups = new();
+    private List<CardNode>? _liftedGroup;
+    private readonly List<int> _liftedDepths = new();
+    private CardNode? _hoveredInGroup;
+
+    /// <summary>The depth of a lifted permanent: above every row and blocker, below the board's overlays (stack, preview...).</summary>
+    private const int LiftedZ = 360;
+
+    /// <summary>Pointing at a permanent or a card under it brings the whole group above the rows around it while pointed at.</summary>
+    private void LiftGroup(CardNode hovered)
+    {
+        DropGroup();
+        if (!_groups.TryGetValue(hovered, out var group)) return;
+        _hoveredInGroup = hovered;
+        Lift(group);
+        SortByDrawOrder();
+    }
+
+    /// <summary>Raises a group to <see cref="LiftedZ"/>, the cards under the permanent still one behind the other.</summary>
+    private void Lift(List<CardNode> group)
+    {
+        _liftedGroup = group;
+        _liftedDepths.Clear();
+        _liftedDepths.AddRange(group.Select(n => n.ZIndex));
+        for (int i = 0; i < group.Count; i++) group[i].ZIndex = LiftedZ - i;
+    }
+
+    private void DropGroup()
+    {
+        if (_liftedGroup is { } group)
+            for (int i = 0; i < group.Count; i++)
+                if (IsInstanceValid(group[i])) group[i].ZIndex = _liftedDepths[i];
+        _liftedGroup = null;
+        _hoveredInGroup = null;
+        SortByDrawOrder();
+    }
+
+    /// <summary>How much of a card behind another shows above it: its title.</summary>
+    private const float TitleStrip = 19;
 
     private void LayoutBlockers(IReadOnlyList<CardStack> blockers, float y)
     {

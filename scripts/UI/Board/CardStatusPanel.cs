@@ -84,6 +84,9 @@ public partial class CardStatusPanel : VBoxContainer
             if (attachments.Count > 0) yield return ($"Attached: {string.Join(", ", attachments)}", State);
             if (c.AttacksEachCombat) yield return ("Attacks each combat if able", Neutral);
         }
+        if (c.HeldUnder is { } holder) yield return ($"Exiled by {NameOf(holder)} until it leaves the battlefield", State);
+        var heldCards = view.Players.SelectMany(p => p.Exile).Where(e => e.HeldUnder == c.Id).Select(e => e.IsHidden ? "a face-down card" : e.Name ?? "?").ToList();
+        if (heldCards.Count > 0) yield return ($"Exiled under it: {string.Join(", ", heldCards)}", State);
         if (c.ChosenColor is { } color) yield return ($"Chosen color: {ColorWords(new[] { color })}", Neutral);
         if (c.ChosenType is { } type) yield return ($"Chosen type: {type}", Neutral);
         if (c.IsCommander) yield return ("Commander", Neutral);
