@@ -120,10 +120,14 @@ public static class OracleJsonl
     /// <summary>Set types whose printings are not playing cards (collector replicas, token sets) and are skipped.</summary>
     private static readonly HashSet<string> SkippedSetTypes = new() { "memorabilia", "token", "minigame" };
 
+    /// <summary>Set types whose token printings are skipped (tokens themselves come in token sets).</summary>
+    private static readonly HashSet<string> SkippedTokenSetTypes = new() { "memorabilia", "minigame" };
+
     /// <summary>
     /// Reads the printings source (one line per printing) and returns the paper printings of each card by oracle id,
     /// oldest first. Digital-only printings, oversized cards and other languages are skipped, and so are printings made
     /// only in foil: their pictures show the foil, which the game draws itself on foil copies of the other printings.
+    /// Tokens keep their printings in token sets: each is one more picture a deck can show its tokens with.
     /// </summary>
     public static Dictionary<string, List<Printing>> ImportPrintings(Stream source)
     {
@@ -139,7 +143,8 @@ public static class OracleJsonl
             if (c.TryGetProperty("digital", out var digital) && digital.ValueKind == JsonValueKind.True) continue;
             if (c.TryGetProperty("oversized", out var oversized) && oversized.ValueKind == JsonValueKind.True) continue;
             if (Str(c, "lang") is { } lang && lang != "en") continue;
-            if (SkippedSetTypes.Contains(Str(c, "set_type") ?? "") || Str(c, "layout") == "token") continue;
+            bool token = Str(c, "layout") == "token";
+            if ((token ? SkippedTokenSetTypes : SkippedSetTypes).Contains(Str(c, "set_type") ?? "")) continue;
             if (Finishes(c) is { Count: > 0 } finishes && !finishes.Contains("nonfoil")) continue;
             if (PrintingFrom(c) is not { } printing) continue;
             if (!byCard.TryGetValue(oracleId, out var list)) byCard[oracleId] = list = new List<Printing>();

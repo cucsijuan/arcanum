@@ -41,13 +41,20 @@ public sealed class CardDatabase : ICardDatabase
 {
     private readonly Dictionary<string, CardEntry> _byName;
     private readonly List<CardEntry> _sorted;
+    private readonly Dictionary<string, List<CardRecord>> _tokensByName = new(StringComparer.OrdinalIgnoreCase);
 
     /// <param name="scripts">Card scripts by oracle id (from the content module).</param>
     public CardDatabase(IEnumerable<CardRecord> records, IReadOnlyDictionary<string, Scripts.CardScript>? scripts = null)
     {
         _byName = new Dictionary<string, CardEntry>(StringComparer.OrdinalIgnoreCase);
-        foreach (var record in records.Where(r => !r.IsToken))
+        foreach (var record in records)
         {
+            if (record.IsToken)
+            {
+                if (!_tokensByName.TryGetValue(record.Name, out var tokens)) _tokensByName[record.Name] = tokens = new List<CardRecord>();
+                tokens.Add(record);
+                continue;
+            }
             if (_byName.ContainsKey(record.Name)) continue;
             var (definition, support) = CardFactory.Create(record, scripts?.GetValueOrDefault(record.OracleId));
             _byName[record.Name] = new CardEntry(definition, support, record);
@@ -171,4 +178,79 @@ public sealed class CardDatabase : ICardDatabase
     }
 
     private static bool Contains(string haystack, string needle) => haystack.Contains(needle, StringComparison.OrdinalIgnoreCase);
+
+    // ---------------------------------------------------------------- token pictures
+
+    /// <summary>
+    /// Every picture a token can be shown with: the printings of the tokens of its name with its power, toughness and
+    /// colors (or, when none matches, of the token printing it already shows), oldest first.
+    /// </summary>
+    public IReadOnlyList<TokenArt> TokenArts(CardDefinition token)
+    {
+        if (!_tokensByName.TryGetValue(token.Name, out var named)) return Array.Empty<TokenArt>();
+        var colors = token.ColorList.OrderBy(c => c).ToList();
+        bool Same(CardRecord r) => r.Power == token.Power?.ToString() && r.Toughness == token.Toughness?.ToString()
+                                   && r.Colors.OrderBy(c => c).SequenceEqual(colors);
+        var matching = named.Where(Same).ToList();
+        if (matching.Count == 0) matching = named.Where(r => r.DefaultPrintingId == token.ImageKey || r.Printings.Any(p => p.Id == token.ImageKey)).ToList();
+        return matching
+            .SelectMany(r => r.Printings.Count > 0
+                ? r.Printings.Select(p => new TokenArt(p.Id, p.SetName, p.Released))
+                : r.DefaultPrintingId is { } id ? new[] { new TokenArt(id, "", "") } : Array.Empty<TokenArt>())
+            .DistinctBy(a => a.Id)
+            .OrderBy(a => a.Released, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>The tokens <paramref name="card"/> creates (any face, any ability), one per kind.</summary>
+    public static IReadOnlyList<CardDefinition> TokensMadeBy(CardDefinition card)
+    {
+        var abilities = new List<Engine.Abilities.AbilityDefinition>();
+        foreach (var face in new[] { card, card.Adventure, card.BackFace })
+        {
+            if (face is null) continue;
+            if (face.Spell is { } spell) abilities.Add(spell);
+            abilities.AddRange(face.Abilities);
+        }
+        return abilities.SelectMany(Engine.Abilities.EffectTree.All)
+            .Select(e => e switch
+            {
+                Engine.Abilities.CreateTokens create => create.Token,
+                Engine.Abilities.Amass amass => amass.Token,
+                Engine.Abilities.Recruit recruit => recruit.Token,
+                _ => null,
+            })
+            .OfType<CardDefinition>()
+            .DistinctBy(TokenKind)
+            .ToList();
+    }
+
+    /// <summary>What tells tokens apart for their pictures: "Name|power/toughness|colors" ("Human Soldier|1/1|W").</summary>
+    public static string TokenKind(CardDefinition token) =>
+        $"{token.Name}|{(token.Power is { } p ? $"{p}/{token.Toughness}" : "")}|{string.Concat(token.ColorList.OrderBy(c => c))}";
+
+    /// <summary>The card with each token it creates shown by the picture <paramref name="pick"/> gives for its kind (null keeps the picture).</summary>
+    public static CardDefinition WithTokenArt(CardDefinition card, Func<CardDefinition, string?> pick)
+    {
+        CardDefinition Pictured(CardDefinition token) => pick(token) is { } id ? token with { ImageKey = id } : token;
+        Engine.Abilities.Effect Map(Engine.Abilities.Effect effect) => effect switch
+        {
+            Engine.Abilities.CreateTokens create => create with { Token = Pictured(create.Token) },
+            Engine.Abilities.Amass amass => amass with { Token = Pictured(amass.Token) },
+            Engine.Abilities.Recruit recruit => recruit with { Token = Pictured(recruit.Token) },
+            _ => effect,
+        };
+        T? Ability<T>(T? ability) where T : Engine.Abilities.AbilityDefinition =>
+            ability is null ? null : (T)Engine.Abilities.EffectTree.Map(ability, Map);
+        return card with
+        {
+            Spell = Ability(card.Spell),
+            Abilities = card.Abilities.Select(a => Ability(a)!).ToList(),
+            Adventure = card.Adventure is { } adventure ? WithTokenArt(adventure, pick) : null,
+            BackFace = card.BackFace is { } back ? WithTokenArt(back, pick) : null,
+        };
+    }
 }
+
+/// <summary>One picture of a token: the printing's id (its image key), its set and when it came out.</summary>
+public sealed record TokenArt(string Id, string SetName, string Released);

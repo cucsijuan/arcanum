@@ -178,9 +178,9 @@ public partial class PlaySetup : Control
             var (definitions, unknown) = deck.Resolve(cards);
             if (unknown.Count > 0) GD.PushWarning($"Deck '{info.Name}': unknown cards {string.Join(", ", unknown)}");
             var commanders = format.Commander
-                ? DeckList.Definitions(cards, deck.Commander)
+                ? deck.ResolveCommanders(cards)
                 : null;
-            if (!format.Commander) definitions.AddRange(DeckList.Definitions(cards, deck.Commander));
+            if (!format.Commander) definitions.AddRange(deck.ResolveCommanders(cards));
             bool bot = _vsBot && i > 0;
             seats.Add(new GameSession.Seat(_seats[i].Name.Text is { Length: > 0 } n ? n : $"Player {i + 1}", definitions, bot, commanders));
         }

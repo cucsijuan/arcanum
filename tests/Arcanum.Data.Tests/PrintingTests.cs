@@ -13,6 +13,8 @@ public class PrintingTests
     private const string Cards = """
         {"oracle_id":"o-1","id":"p-default","name":"Glade Cub","layout":"normal","mana_cost":"{1}{G}","type_line":"Creature — Bear","oracle_text":"","power":"2","toughness":"2","colors":["G"]}
         {"oracle_id":"o-2","name":"Hive Keeper","layout":"normal","mana_cost":"{2}{G}","type_line":"Creature — Insect","oracle_text":"When this creature enters, create a 1/1 green Insect creature token.","power":"1","toughness":"1","colors":["G"],"all_parts":[{"component":"token","id":"t-old","name":"Insect","type_line":"Token Creature — Insect"}]}
+        {"oracle_id":"o-tok","id":"t-old","name":"Insect","layout":"token","type_line":"Token Creature — Insect","oracle_text":"","power":"1","toughness":"1","colors":["G"]}
+        {"oracle_id":"o-tok2","id":"t-big","name":"Insect","layout":"token","type_line":"Token Creature — Insect","oracle_text":"","power":"3","toughness":"3","colors":["G"]}
         {"oracle_id":"o-3","id":"p-boat","name":"Drafted Skiff","layout":"normal","mana_cost":"{2}{U}","type_line":"Artifact","oracle_text":"Whenever you attack, recruit.","colors":["U"],"all_parts":[{"component":"token","id":"t-soldier","name":"Human Soldier","type_line":"Token Creature — Human Soldier"}]}
         """;
 
@@ -23,6 +25,9 @@ public class PrintingTests
         {"oracle_id":"o-1","id":"p-alt","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"300","rarity":"common","released_at":"2024-01-01","set_type":"expansion","booster":false,"lang":"en"}
         {"oracle_id":"o-1","id":"p-online","name":"Glade Cub","set":"web","set_name":"Online","collector_number":"1","rarity":"common","released_at":"2025-01-01","set_type":"expansion","digital":true,"lang":"en"}
         {"oracle_id":"o-1","id":"p-replica","name":"Glade Cub","set":"rep","set_name":"Replicas","collector_number":"1","rarity":"common","released_at":"2025-01-01","set_type":"memorabilia","lang":"en"}
+        {"oracle_id":"o-tok","id":"t-old","name":"Insect","layout":"token","set":"told","set_name":"Old Tokens","collector_number":"1","rarity":"common","released_at":"1999-01-01","set_type":"token","lang":"en"}
+        {"oracle_id":"o-tok","id":"t-new","name":"Insect","layout":"token","set":"tnew","set_name":"New Tokens","collector_number":"4","rarity":"common","released_at":"2024-01-01","set_type":"token","lang":"en"}
+        {"oracle_id":"o-tok","id":"t-replica","name":"Insect","layout":"token","set":"rep","set_name":"Replicas","collector_number":"9","rarity":"common","released_at":"2025-01-01","set_type":"memorabilia","lang":"en"}
         {"oracle_id":"o-2","id":"p-hive","name":"Hive Keeper","set":"new","set_name":"New Set","collector_number":"11","rarity":"rare","released_at":"2024-01-01","set_type":"expansion","booster":true,"lang":"en","all_parts":[{"component":"token","id":"t-new","name":"Insect","type_line":"Token Creature — Insect"}]}
         """;
 
@@ -84,6 +89,35 @@ public class PrintingTests
 
         Assert.True(db.TryGet("Drafted Skiff", null, null, out var skiff)); // the token recruit makes has its picture too
         Assert.Equal("t-soldier", skiff.Abilities.SelectMany(a => a.Effects).OfType<Arcanum.Engine.Abilities.Recruit>().Single().Token.ImageKey);
+    }
+
+    [Fact]
+    public void TokensOfAKindHaveEveryPictureOfTheirPrintings()
+    {
+        var db = Database();
+        var insect = CardDatabase.TokensMadeBy(db.Find("Hive Keeper")!.Definition).Single();
+        Assert.Equal("Insect|1/1|G", CardDatabase.TokenKind(insect));
+        // The 3/3 Insect is another kind; replicas aren't pictures of the token.
+        Assert.Equal(new[] { "t-old", "t-new" }, db.TokenArts(insect).Select(a => a.Id));
+        Assert.Empty(db.Search(new CardQuery { Text = "Insect" }).Where(e => e.Record.IsToken));
+    }
+
+    [Fact]
+    public void ADeckShowsItsTokensWithThePicturesItChose()
+    {
+        var db = Database();
+        var deck = DeckList.Parse("4 Hive Keeper\n# token: Insect|1/1|G = t-new\n");
+        Assert.Equal(new[] { "t-new" }, deck.TokenArt["Insect|1/1|G"]);
+        Assert.Contains("# token: Insect|1/1|G = t-new", deck.Export());
+        Assert.Equal(new[] { "t-new" }, DeckList.Parse(deck.Export()).TokenArt["Insect|1/1|G"]);
+
+        static string? TokenImage(Arcanum.Engine.Cards.CardDefinition d) =>
+            d.Abilities.SelectMany(a => a.Effects).OfType<Arcanum.Engine.Abilities.CreateTokens>().Single().Token.ImageKey;
+        Assert.All(deck.Resolve(db).Cards, c => Assert.Equal("t-new", TokenImage(c)));
+        // With none chosen, every copy shows the same one of the token's pictures.
+        var plain = DeckList.Parse("4 Hive Keeper").Resolve(db).Cards.Select(TokenImage).Distinct().ToList();
+        Assert.Single(plain);
+        Assert.Contains(plain[0], new[] { "t-old", "t-new" });
     }
 
     [Fact]

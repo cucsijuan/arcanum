@@ -63,6 +63,8 @@ public partial class DeckBuilder : Control
     private readonly Button _mainTab = BoardStyle.MakeButton("Main", 15);
     private readonly Button _sideTab = BoardStyle.MakeButton("Sideboard", 15);
     private readonly Button _commanderTab = BoardStyle.MakeButton("Commander", 15);
+    private readonly Button _tokensTab = BoardStyle.MakeButton("Tokens", 15);
+    private bool _editingTokens;
     private readonly VBoxContainer _list = new();
     private readonly HBoxContainer _curve = new();
     private readonly RichTextLabel _validation = new() { BbcodeEnabled = true, FitContent = true, ScrollActive = false };
@@ -218,16 +220,18 @@ public partial class DeckBuilder : Control
 
         var tabs = new HBoxContainer();
         tabs.AddThemeConstantOverride("separation", 8);
-        foreach (var tab in new[] { _commanderTab, _mainTab, _sideTab })
+        foreach (var tab in new[] { _commanderTab, _mainTab, _sideTab, _tokensTab })
         {
             tab.ToggleMode = true;
-            tab.CustomMinimumSize = new Vector2(140, 38);
+            tab.CustomMinimumSize = new Vector2(_tokensTab == tab ? 110 : 140, 38);
             tabs.AddChild(tab);
         }
+        _tokensTab.TooltipText = "The tokens this deck's cards make: choose the pictures they are shown with";
+        _tokensTab.Pressed += () => { _editingTokens = true; RefreshDeck(); };
         _commanderTab.TooltipText = "Commander-style formats: add your commander here";
-        _commanderTab.Pressed += () => { _editingCommander = true; _editingSideboard = false; RefreshDeck(); };
-        _mainTab.Pressed += () => { _editingCommander = false; _editingSideboard = false; RefreshDeck(); };
-        _sideTab.Pressed += () => { _editingCommander = false; _editingSideboard = true; RefreshDeck(); };
+        _commanderTab.Pressed += () => { _editingTokens = false; _editingCommander = true; _editingSideboard = false; RefreshDeck(); };
+        _mainTab.Pressed += () => { _editingTokens = false; _editingCommander = false; _editingSideboard = false; RefreshDeck(); };
+        _sideTab.Pressed += () => { _editingTokens = false; _editingCommander = false; _editingSideboard = true; RefreshDeck(); };
         right.AddChild(tabs);
 
         var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
@@ -365,7 +369,7 @@ public partial class DeckBuilder : Control
 
     // ---------------------------------------------------------------- deck editing
 
-    private List<DeckEntry> Section => _editingCommander ? _deck.Commander : _editingSideboard ? _deck.Sideboard : _deck.Main;
+    private List<DeckEntry> Section => _editingTokens ? _deck.Main : _editingCommander ? _deck.Commander : _editingSideboard ? _deck.Sideboard : _deck.Main;
 
     private void Add(string name, int delta, string? set = null, string? number = null, bool foil = false)
     {
@@ -400,11 +404,23 @@ public partial class DeckBuilder : Control
         _commanderTab.Text = $"Commander ({_deck.Commander.Sum(e => e.Count)})";
         _mainTab.Text = $"Main ({_deck.Main.Sum(e => e.Count)})";
         _sideTab.Text = $"Sideboard ({_deck.Sideboard.Sum(e => e.Count)})";
-        _commanderTab.SetPressedNoSignal(_editingCommander);
-        _mainTab.SetPressedNoSignal(!_editingSideboard && !_editingCommander);
-        _sideTab.SetPressedNoSignal(_editingSideboard && !_editingCommander);
+        var tokens = DeckTokens();
+        _tokensTab.Text = $"Tokens ({tokens.Count})";
+        _tokensTab.Visible = tokens.Count > 0;
+        if (tokens.Count == 0) _editingTokens = false;
+        _commanderTab.SetPressedNoSignal(_editingCommander && !_editingTokens);
+        _mainTab.SetPressedNoSignal(!_editingSideboard && !_editingCommander && !_editingTokens);
+        _sideTab.SetPressedNoSignal(_editingSideboard && !_editingCommander && !_editingTokens);
+        _tokensTab.SetPressedNoSignal(_editingTokens);
 
         foreach (var child in _list.GetChildren()) child.QueueFree();
+        if (_editingTokens)
+        {
+            ShowTokens(tokens);
+            RefreshCurve();
+            RefreshValidation();
+            return;
+        }
         var groups = Section
             .Select(e => (Entry: e, Card: Cards.Find(e.Name)))
             .GroupBy(x => GroupName(x.Card?.Definition))
@@ -421,6 +437,133 @@ public partial class DeckBuilder : Control
 
         RefreshCurve();
         RefreshValidation();
+    }
+
+    // ---------------------------------------------------------------- token pictures
+
+    /// <summary>The tokens the deck's cards make (commander, main deck and sideboard), one per kind, by name.</summary>
+    private List<CardDefinition> DeckTokens() =>
+        _deck.Commander.Concat(_deck.Main).Concat(_deck.Sideboard)
+            .Select(e => Cards.Find(e.Name)?.Definition).OfType<CardDefinition>()
+            .SelectMany(CardDatabase.TokensMadeBy)
+            .DistinctBy(CardDatabase.TokenKind)
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ThenBy(CardDatabase.TokenKind)
+            .ToList();
+
+    private List<string> ChosenArts(CardDefinition token) =>
+        _deck.TokenArt.TryGetValue(CardDatabase.TokenKind(token), out var chosen) ? chosen : new List<string>();
+
+    private void ShowTokens(IReadOnlyList<CardDefinition> tokens)
+    {
+        _list.AddChild(MenuKit.Hint("Each game shows a token with one of the pictures chosen for it, at random; with none chosen, any of its pictures."));
+        foreach (var token in tokens)
+        {
+            var arts = Cards.TokenArts(token);
+            var chosen = ChosenArts(token).Where(id => arts.Any(a => a.Id == id)).ToList();
+            var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Stop };
+            row.AddThemeConstantOverride("separation", 8);
+            var stats = token.Power is { } p ? $" {p}/{token.Toughness}" : "";
+            var colors = token.ColorList.Count > 0 ? " · " + string.Join("", token.ColorList) : " · colorless";
+            var name = BoardStyle.MakeLabel($"{token.Name}{stats}{colors}", 15);
+            name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            name.ClipText = true;
+            row.AddChild(name);
+            row.AddChild(BoardStyle.MakeLabel(arts.Count == 0 ? "no pictures" : chosen.Count == 0 ? $"any of {arts.Count}" : $"{chosen.Count} of {arts.Count}", 13, BoardStyle.TextDim));
+            var choose = BoardStyle.MakeModalButton("Choose…", chosen.Count > 0, 13);
+            choose.Disabled = arts.Count == 0;
+            choose.Pressed += () => OpenTokenPicker(token, arts);
+            row.AddChild(choose);
+            var shown = chosen.FirstOrDefault() ?? arts.FirstOrDefault()?.Id;
+            row.MouseEntered += () =>
+            {
+                _preview.MirrorFoil(null);
+                _preview.Setup(ViewOf(token with { ImageKey = shown ?? token.ImageKey }, -2), false);
+                var rect = row.GetGlobalRect();
+                _preview.Position = new Vector2(rect.Position.X - _preview.Size.X - 16, Math.Clamp(rect.Position.Y - 120, 90, GetViewportRect().Size.Y - _preview.Size.Y - 20));
+                _preview.Visible = true;
+            };
+            row.MouseExited += HidePreview;
+            _list.AddChild(row);
+        }
+    }
+
+    /// <summary>
+    /// Every picture of a token, to pick the ones this deck shows it with: click to choose or drop one; "Any picture"
+    /// clears the choice.
+    /// </summary>
+    private void OpenTokenPicker(CardDefinition token, IReadOnlyList<TokenArt> arts)
+    {
+        var kind = CardDatabase.TokenKind(token);
+        var chosen = new HashSet<string>(ChosenArts(token));
+        var overlay = new Control { MouseFilter = MouseFilterEnum.Stop, ZIndex = 200 };
+        overlay.SetAnchorsPreset(LayoutPreset.FullRect);
+        var dim = new ColorRect { Color = new Color(0, 0, 0, 0.7f), MouseFilter = MouseFilterEnum.Ignore };
+        dim.SetAnchorsPreset(LayoutPreset.FullRect);
+        overlay.AddChild(dim);
+
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 10);
+        var panel = MenuKit.Card(box, 18);
+        panel.AnchorLeft = 0.08f; panel.AnchorTop = 0.08f; panel.AnchorRight = 0.92f; panel.AnchorBottom = 0.92f;
+        overlay.AddChild(panel);
+        var stats = token.Power is { } p ? $" {p}/{token.Toughness}" : "";
+        box.AddChild(MenuKit.SectionTitle($"{token.Name}{stats} token"));
+        var status = MenuKit.Hint("");
+        box.AddChild(status);
+
+        var flow = new HFlowContainer();
+        flow.AddThemeConstantOverride("h_separation", 10);
+        flow.AddThemeConstantOverride("v_separation", 10);
+        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        flow.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        scroll.AddChild(flow);
+        box.AddChild(scroll);
+
+        var tiles = new List<(CardNode Node, string Id)>();
+        void Update()
+        {
+            foreach (var (node, id) in tiles) node.SetHighlight(chosen.Contains(id) ? CardHighlight.Selected : CardHighlight.None);
+            status.Text = chosen.Count == 0
+                ? "Click the pictures this deck shows its tokens with. None chosen: each game picks any of them."
+                : $"{chosen.Count} chosen: each game picks one of them at random.";
+        }
+        var size = new Vector2(150, 210);
+        foreach (var art in arts)
+        {
+            var node = new CardNode { Size = size, CustomMinimumSize = size, TooltipText = art.SetName };
+            node.Setup(ViewOf(token with { ImageKey = art.Id }, -4), showCostPips: false);
+            var id = art.Id;
+            node.Clicked += _ =>
+            {
+                if (!chosen.Remove(id)) chosen.Add(id);
+                Update();
+            };
+            node.HoverStarted += c => ShowPreview(c, node);
+            node.HoverEnded += _ => HidePreview();
+            tiles.Add((node, id));
+            flow.AddChild(node);
+        }
+
+        var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        buttons.AddThemeConstantOverride("separation", 12);
+        var any = BoardStyle.MakeModalButton("Any picture", false, 16);
+        any.Pressed += () => { chosen.Clear(); Update(); };
+        var done = BoardStyle.MakeModalButton("Done", true, 16);
+        done.Pressed += () =>
+        {
+            if (chosen.Count > 0) _deck.TokenArt[kind] = arts.Select(a => a.Id).Where(chosen.Contains).ToList();
+            else _deck.TokenArt.Remove(kind);
+            HidePreview();
+            overlay.QueueFree();
+            MarkDirty();
+            RefreshDeck();
+        };
+        buttons.AddChild(any);
+        buttons.AddChild(done);
+        box.AddChild(buttons);
+        Update();
+        AddChild(overlay);
+        MoveChild(_preview, -1); // the large preview shows over the picker
     }
 
     private static readonly string[] GroupOrder = { "Creatures", "Planeswalkers", "Instants", "Sorceries", "Artifacts", "Enchantments", "Lands", "Other", "Unknown" };

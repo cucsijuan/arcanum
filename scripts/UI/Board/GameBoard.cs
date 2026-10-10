@@ -205,7 +205,7 @@ public partial class GameBoard : Control
         {
             var list = Arcanum.Data.Decks.DeckList.Parse(module.ReadDeck(names[i % names.Count]));
             var (deck, _) = list.Resolve(cards);
-            var commanders = Arcanum.Data.Decks.DeckList.Definitions(cards, list.Commander);
+            var commanders = list.ResolveCommanders(cards);
             bool bot = vsBot && i > 0;
             seats.Add(new GameSession.Seat(bot ? $"Computer {i}" : $"Player {i + 1}", deck, bot, commanders));
         }

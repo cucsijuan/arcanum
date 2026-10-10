@@ -251,8 +251,8 @@ public partial class OnlineService : Node
             return new DeckCheck(Array.Empty<Arcanum.Engine.Cards.CardDefinition>(), null, $"Unreadable deck list: {e.Message}");
         }
         var (definitions, unknown) = deck.Resolve(cards);
-        var commanders = format.Commander ? DeckList.Definitions(cards, deck.Commander) : null;
-        if (!format.Commander) definitions.AddRange(DeckList.Definitions(cards, deck.Commander));
+        var commanders = format.Commander ? deck.ResolveCommanders(cards) : null;
+        if (!format.Commander) definitions.AddRange(deck.ResolveCommanders(cards));
         string? problem = unknown.Count > 0 ? $"Cards the host doesn't know: {string.Join(", ", unknown.Take(3))}" : null;
         problem ??= DeckValidator.Validate(deck, format, cards).FirstOrDefault(i => i.Severity == IssueSeverity.Error)?.Message;
         return new DeckCheck(definitions, commanders, problem);
