@@ -85,6 +85,17 @@ public static class ViewBuilder
         state.PermanentsControlledBy(player).Any(c => (c.Replaces & (Cards.Replacements.CreaturesFromLibraryTop
             | Cards.Replacements.CastCreaturesFromLibraryTop | Cards.Replacements.LookAtLibraryTop)) != 0);
 
+    /// <summary>The permanent a card in exile is held under: the one it was exiled by "until this leaves the battlefield", while that still applies.</summary>
+    private static CardId? HeldUnder(GameState state, Card card)
+    {
+        if (card.Zone != Zone.Exile) return null;
+        foreach (var link in state.LinkedExiles)
+            if (link.Exiled == card.Id && link.ExiledVersion == card.Version
+                && state.GetCard(link.Source) is { Zone: Zone.Battlefield } source && source.Version == link.SourceVersion)
+                return link.Source;
+        return null;
+    }
+
     /// <summary>One card as <paramref name="viewer"/> may see it; <paramref name="reveal"/> shows it even if hidden.</summary>
     public static CardView Card(GameState state, CardId id, PlayerId viewer, bool reveal = false, int commanderTaxPerCast = 0)
     {
@@ -94,7 +105,7 @@ public static class ViewBuilder
         {
             return new CardView
             {
-                Id = card.Id, Owner = card.Owner, Controller = card.Controller, Zone = card.Zone, IsHidden = true,
+                Id = card.Id, Owner = card.Owner, Controller = card.Controller, Zone = card.Zone, IsHidden = true, HeldUnder = HeldUnder(state, card),
             };
         }
         var face = new CardView
@@ -125,6 +136,7 @@ public static class ViewBuilder
             ImageKey = card.Definition.ImageKey,
             Foil = card.Definition.Foil,
             AttachedTo = card.AttachedTo,
+            HeldUnder = HeldUnder(state, card),
             IsCommander = card.IsCommander,
             CommanderTax = card.IsCommander ? commanderTaxPerCast * state.GetPlayer(card.Owner).CommanderCasts.GetValueOrDefault(card.Id) : 0,
             BasePower = card.Definition.Power,

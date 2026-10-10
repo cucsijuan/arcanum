@@ -97,6 +97,58 @@ public class ContinuousAndReplacementTests
     }
 
     [Fact]
+    public async Task CardExiledUntilTheSourceLeavesIsHeldUnderItInTheView()
+    {
+        var s = Casting();
+        s.Lands(P0, 2);
+        var bear = s.Add(P1, Creature("Bear", 2, 2));
+        var light = s.InHand(P0, Enchantment("Banishing Glow", new TriggeredAbility
+        {
+            Trigger = TriggerEvent.EntersBattlefield,
+            Targets = new[] { new TargetSpec(TargetKind.Creature, ControllerFilter.Opponent) },
+            Effects = new Effect[] { new ExileUntilSourceLeaves(Subject.TargetAt(0)) },
+        }));
+        s.InHand(P0, Spell("Shatter", "{1}", new SpellAbility
+        {
+            Targets = new[] { new TargetSpec(TargetKind.Enchantment) },
+            Effects = new Effect[] { new Destroy(Subject.TargetAt(0)) },
+        }));
+        Views.CardView? whileExiled = null, hiddenFromOwner = null, afterReturn = null;
+        s.Game.EventRaised += e =>
+        {
+            if (e is SpellCast c && s.Card(c.Card).Name == "Shatter")
+            {
+                whileExiled = Views.ViewBuilder.Card(s.Game.State, bear, P0);
+                hiddenFromOwner = Views.ViewBuilder.Card(s.Game.State, bear, P1);
+            }
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Exile, whileExiled!.Zone);
+        Assert.Equal(light, whileExiled.HeldUnder);
+        Assert.Equal(light, hiddenFromOwner!.HeldUnder);
+        afterReturn = Views.ViewBuilder.Card(s.Game.State, bear, P0);
+        Assert.Equal(Zone.Battlefield, afterReturn.Zone);
+        Assert.Null(afterReturn.HeldUnder);
+    }
+
+    [Fact]
+    public async Task CardExiledOtherwiseIsNotHeldUnderAnything()
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        var bear = s.Add(P1, Creature("Bear", 2, 2));
+        s.InHand(P0, Spell("Banish", "{1}", new SpellAbility
+        {
+            Targets = new[] { new TargetSpec(TargetKind.Creature, ControllerFilter.Opponent) },
+            Effects = new Effect[] { new ExileIt(Subject.TargetAt(0)) },
+        }));
+        await s.RunUntilTurn();
+        var view = Views.ViewBuilder.Card(s.Game.State, bear, P0);
+        Assert.Equal(Zone.Exile, view.Zone);
+        Assert.Null(view.HeldUnder);
+    }
+
+    [Fact]
     public async Task FlickeredCreatureReturnsAtTheNextEndStep()
     {
         var s = Casting();

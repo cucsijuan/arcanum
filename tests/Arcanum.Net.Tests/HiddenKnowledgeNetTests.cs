@@ -67,6 +67,7 @@ public class HiddenKnowledgeNetTests
                 cards.Add(card);
                 ids.Add(card.Id);
                 if (card.AttachedTo is { } host) ids.Add(host);
+                if (card.HeldUnder is { } holder) ids.Add(holder);
                 return;
             case IDictionary dictionary:
                 foreach (DictionaryEntry entry in dictionary) { Walk(entry.Key, ids, cards); Walk(entry.Value, ids, cards); }

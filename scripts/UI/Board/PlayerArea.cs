@@ -278,7 +278,9 @@ public partial class PlayerArea : Control
             : null);
         _library.Refresh(me.LibraryCount, libraryTop);
         _graveyard.Refresh(me.Graveyard.Count, me.Graveyard.LastOrDefault());
-        _exile.Refresh(me.Exile.Count, me.Exile.LastOrDefault());
+        // Cards exiled only while a permanent stays on the battlefield sit under that permanent, not in the pile.
+        var pileExile = me.Exile.Where(c => c.HeldUnder is null).ToList();
+        _exile.Refresh(pileExile.Count, pileExile.LastOrDefault());
         // Each commander has its own pile, so either can be cast; the tax is per commander (rule 903.8).
         string Tax(CardView? c) => c is { CommanderTax: > 0 } ? $" +{{{c.CommanderTax}}}" : "";
         var commanderCard = me.Command.FirstOrDefault();
@@ -297,7 +299,10 @@ public partial class PlayerArea : Control
         // An Aura or Equipment is shown on the permanent it's attached to, even on another player's side.
         PlayerId SideOf(CardView c) => c.AttachedTo is { } host && view.FindCard(host) is { Zone: Zone.Battlefield } h ? h.Controller : c.Controller;
         var battlefield = view.Battlefield.Where(c => SideOf(c) == Player).ToList();
-        var wanted = me.Hand.Concat(battlefield).ToList();
+        // Exiled cards (any owner's) held under a permanent shown on this side are drawn tucked under it.
+        var held = view.Players.SelectMany(p => p.Exile)
+            .Where(c => c.HeldUnder is { } host && view.Battlefield.FirstOrDefault(b => b.Id == host) is { } h && SideOf(h) == Player).ToList();
+        var wanted = me.Hand.Concat(battlefield).Concat(held).ToList();
         var wantedIds = wanted.Select(c => c.Id).ToHashSet();
 
         foreach (var stale in _cards.Keys.Where(id => !wantedIds.Contains(id)).ToList())
@@ -305,7 +310,7 @@ public partial class PlayerArea : Control
             var node = _cards[stale];
             _cards.Remove(stale);
             // Cards that went to one of our piles fly there; anything else just fades out.
-            Control? pile = me.Graveyard.Any(c => c.Id == stale) ? _graveyard : me.Exile.Any(c => c.Id == stale) ? _exile : null;
+            Control? pile = me.Graveyard.Any(c => c.Id == stale) ? _graveyard : pileExile.Any(c => c.Id == stale) ? _exile : null;
             AnimateAway(node, pile);
         }
 
@@ -326,7 +331,7 @@ public partial class PlayerArea : Control
         _handOrder.Clear();
         _handOrder.AddRange(me.Hand.Select(c => _cards[c.Id]));
         LayoutHand();
-        LayoutBattlefield(battlefield, view);
+        LayoutBattlefield(battlefield, held, view);
         SortByDrawOrder();
     }
 
@@ -505,9 +510,9 @@ public partial class PlayerArea : Control
     /// <summary>
     /// Rows from the top of this half: creatures, then the other permanents (artifacts, enchantments, planeswalkers,
     /// unattached Equipment), then lands. Identical tokens stand as one stack; an Aura or Equipment attached to one of our
-    /// permanents tucks behind it instead of taking a slot.
+    /// permanents tucks behind it instead of taking a slot, and so do the cards held under one.
     /// </summary>
-    private void LayoutBattlefield(IReadOnlyList<CardView> battlefield, GameView view)
+    private void LayoutBattlefield(IReadOnlyList<CardView> battlefield, IReadOnlyList<CardView> held, GameView view)
     {
         _shownBy.Clear();
         _stackOf.Clear();
@@ -516,7 +521,7 @@ public partial class PlayerArea : Control
 
         var hosts = battlefield.Select(c => c.Id).ToHashSet();
         var attached = battlefield.Where(c => c.AttachedTo is { } host && hosts.Contains(host)).ToList();
-        var carrying = attached.Select(c => c.AttachedTo!.Value).ToHashSet();
+        var carrying = attached.Select(c => c.AttachedTo!.Value).Concat(held.Select(c => c.HeldUnder!.Value)).ToHashSet();
         var free = battlefield.Except(attached).ToList();
 
         // Blockers leave their row and stand in front of the attacker they block.
@@ -566,6 +571,7 @@ public partial class PlayerArea : Control
         if (lands.Count > 0) LayoutRow(lands, RowY(landSlot), LandsZ);
         LayoutBlockers(blockerStacks, RowY(0));
         LayoutAttachments(attached);
+        LayoutHeld(held);
     }
 
     private void LayoutRow(IReadOnlyList<CardStack> row, float y, int zBase)
@@ -619,6 +625,26 @@ public partial class PlayerArea : Control
                 node.ZIndex = host.ZIndex - 1;
                 // Peek out towards the middle of the table so the attachment stays visible and hoverable.
                 MoveTo(node, host.TargetPosition + new Vector2(10 * i, (FacesDown ? 22 : -22) * i), FieldSize, 0);
+                i++;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Cards exiled until their permanent leaves lie under it, fanned out towards the middle of the table on the side opposite
+    /// the attachments, so each strip stays visible and hoverable.
+    /// </summary>
+    private void LayoutHeld(IReadOnlyList<CardView> held)
+    {
+        foreach (var group in held.GroupBy(c => c.HeldUnder!.Value))
+        {
+            var host = _cards[group.Key];
+            int i = 1;
+            foreach (var card in group)
+            {
+                var node = _cards[card.Id];
+                node.ZIndex = host.ZIndex - 2;
+                MoveTo(node, host.TargetPosition + new Vector2(-10 * i, (FacesDown ? 22 : -22) * i), FieldSize, 0);
                 i++;
             }
         }
