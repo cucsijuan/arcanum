@@ -9,8 +9,9 @@ namespace Arcanum.UI.Menu;
 
 /// <summary>
 /// Choose the mode, then players and decks, and start the match. The modes are the content's formats (each offering only
-/// the decks legal in it, its rules governing the game) and the limited events, draft and sealed, which go on to the
-/// limited screen.
+/// the decks legal in it, its rules governing the game) and the limited events, draft and sealed, set up here too (where
+/// the boosters come from, the table, the matches) and played on the limited screen; an unfinished event is offered to be
+/// continued or abandoned.
 /// </summary>
 public partial class PlaySetup : Control
 {
@@ -29,6 +30,9 @@ public partial class PlaySetup : Control
     private readonly Label _modeInfo = MenuKit.Hint("");
     private readonly Label _noDecks = MenuKit.Hint("");
     private Button _start = null!;
+    private readonly VBoxContainer _constructed = new(), _limited = new();
+    private Arcanum.Data.Limited.LimitedMode? _limitedMode;
+    private static int _sourceIndex, _seatsIndex = 6, _bestOfIndex;
     private FormatRules _format = FormatRules.Casual;
     private readonly List<SeatControls> _seats = new();
     private readonly HFlowContainer _seatBox = new();
@@ -60,6 +64,10 @@ public partial class PlaySetup : Control
         _modes.AddThemeConstantOverride("v_separation", 10);
         root.AddChild(_modes);
         root.AddChild(_modeInfo);
+        _constructed.AddThemeConstantOverride("separation", 20);
+        _limited.AddThemeConstantOverride("separation", 20);
+        root.AddChild(_constructed);
+        root.AddChild(_limited);
 
         var modes = new HBoxContainer();
         modes.AddThemeConstantOverride("separation", 12);
@@ -75,20 +83,21 @@ public partial class PlaySetup : Control
         _playerCount.CustomMinimumSize = new Vector2(160, 48);
         _playerCount.ItemSelected += _ => BuildSeats();
         modes.AddChild(_playerCount);
-        root.AddChild(modes);
+        _constructed.AddChild(modes);
 
         var loading = MenuKit.Hint(App.Instance.ContentStatus);
         root.AddChild(loading);
         await App.Instance.ContentReady;
         loading.QueueFree();
         _allDecks.AddRange(App.Instance.Decks.List(App.Instance.Module));
+        if (App.Instance.Cards is not null) App.Instance.Limited.Load(); // an event left unfinished
 
-        root.AddChild(_noDecks);
+        _constructed.AddChild(_noDecks);
         _seatBox.AddThemeConstantOverride("h_separation", 20);
         _seatBox.AddThemeConstantOverride("v_separation", 20);
-        root.AddChild(_seatBox);
-        root.AddChild(_rules);
-        root.AddChild(_sandbox);
+        _constructed.AddChild(_seatBox);
+        _constructed.AddChild(_rules);
+        _constructed.AddChild(_sandbox);
         _sandbox.Disabled = App.Instance.Cards is null;
 
         var start = _start = BoardStyle.MakePrimaryButton("Start game", 22);
@@ -101,7 +110,7 @@ public partial class PlaySetup : Control
         AddChild(start);
 
         BuildModes();
-        ChooseMode(Settings.Current.PlayMode is "draft" or "sealed" ? FormatRules.Casual.Id : Settings.Current.PlayMode); // only formats open here
+        ChooseMode(Settings.Current.PlayMode);
     }
 
     /// <summary>One button per format of the content (limited aside), then draft and sealed when there are cards to open.</summary>
@@ -124,25 +133,28 @@ public partial class PlaySetup : Control
         }
     }
 
-    /// <summary>A format offers its legal decks and sets the game's rules; draft and sealed go on to the limited screen.</summary>
+    /// <summary>A format offers its legal decks and sets the game's rules; draft and sealed show how to set up their event.</summary>
     private void ChooseMode(string id)
     {
+        if (id is "draft" or "sealed" && App.Instance.Cards is null) id = FormatRules.Casual.Id;
+        Settings.Current.PlayMode = id;
+        Settings.Save();
+        foreach (var button in _modes.GetChildren().OfType<Button>()) BoardStyle.StyleChoice(button, (string)button.GetMeta("mode") == id);
         if (id is "draft" or "sealed")
         {
-            if (App.Instance.Cards is null) id = FormatRules.Casual.Id;
-            else
-            {
-                // Not remembered as the mode: coming back to this screen must not open the event screen again.
-                LimitedScreen.StartMode = id == "draft" ? Arcanum.Data.Limited.LimitedMode.Draft : Arcanum.Data.Limited.LimitedMode.Sealed;
-                LimitedScreen.OfferToResume = true;
-                App.Instance.GoTo(App.LimitedScene);
-                return;
-            }
+            _limitedMode = id == "draft" ? Arcanum.Data.Limited.LimitedMode.Draft : Arcanum.Data.Limited.LimitedMode.Sealed;
+            _modeInfo.Text = _modes.GetChildren().OfType<Button>().First(b => (string)b.GetMeta("mode") == id).TooltipText;
+            _constructed.Visible = false;
+            _limited.Visible = true;
+            _start.Text = id == "draft" ? "Start draft" : "Start sealed";
+            BuildLimited();
+            return;
         }
+        _limitedMode = null;
+        _constructed.Visible = true;
+        _limited.Visible = false;
+        _start.Text = "Start game";
         _format = App.Instance.Formats.FirstOrDefault(f => f.Id == id && !f.Limited) ?? App.Instance.Formats.FirstOrDefault(f => !f.Limited) ?? FormatRules.Casual;
-        Settings.Current.PlayMode = _format.Id;
-        Settings.Save();
-        foreach (var button in _modes.GetChildren().OfType<Button>()) BoardStyle.StyleChoice(button, (string)button.GetMeta("mode") == _format.Id);
         _modeInfo.Text = _format.Description;
 
         var keep = _seats.Select(seat => Selected(_seats.IndexOf(seat))?.Name).ToList();
@@ -242,8 +254,110 @@ public partial class PlaySetup : Control
                                     + (warnings > 0 ? $" · {warnings} card(s) not fully supported" : "");
     }
 
+    // ---------------------------------------------------------------- limited events
+
+    private static LimitedService Service => App.Instance.Limited;
+
+    /// <summary>An unfinished event to continue or abandon, or how a new one is set up.</summary>
+    private void BuildLimited()
+    {
+        foreach (var child in _limited.GetChildren()) child.QueueFree();
+        var mode = _limitedMode!.Value;
+        if (Service.Current is { Stage: not Arcanum.Data.Limited.EventStage.Finished } ev)
+        {
+            var box = new VBoxContainer();
+            box.AddThemeConstantOverride("separation", 12);
+            box.AddChild(MenuKit.SectionTitle($"{(ev.Mode == Arcanum.Data.Limited.LimitedMode.Draft ? "Draft" : "Sealed")} in progress · {LimitedService.SourceName(ev.Source)}"));
+            box.AddChild(BoardStyle.MakeLabel($"{ev.Seats.Count} players · best of {ev.BestOf} · {Progress(ev)}", 16));
+            box.AddChild(MenuKit.Hint("Continue it, or abandon it to start a new event."));
+            var actions = new HBoxContainer();
+            actions.AddThemeConstantOverride("separation", 12);
+            var resume = BoardStyle.MakePrimaryButton("Continue", 20);
+            resume.CustomMinimumSize = new Vector2(200, 52);
+            resume.Pressed += () =>
+            {
+                LimitedScreen.OfferToResume = false;
+                App.Instance.GoTo(App.LimitedScene);
+            };
+            actions.AddChild(resume);
+            var abandon = BoardStyle.MakeButton("Abandon", 16);
+            abandon.CustomMinimumSize = new Vector2(160, 52);
+            abandon.Pressed += () =>
+            {
+                var confirm = new ConfirmationDialog { DialogText = "Abandon this event? Its picks, deck and results are lost.", OkButtonText = "Abandon" };
+                confirm.Confirmed += () => { Service.Abandon(); BuildLimited(); };
+                confirm.Canceled += confirm.QueueFree;
+                AddChild(confirm);
+                confirm.PopupCentered();
+            };
+            actions.AddChild(abandon);
+            box.AddChild(actions);
+            _limited.AddChild(MenuKit.Card(box));
+            _start.Disabled = true;
+            return;
+        }
+
+        var sources = Service.Sources();
+        var options = new VBoxContainer();
+        options.AddThemeConstantOverride("separation", 14);
+        if (sources.Count == 0)
+        {
+            options.AddChild(MenuKit.Hint("No set with boosters or cube is available. Card data with printings is needed (it downloads on first start)."));
+        }
+        else
+        {
+            var sourcePick = MenuKit.Options(sources.Select(s => s.Name), Math.Min(_sourceIndex, sources.Count - 1));
+            sourcePick.ItemSelected += i => _sourceIndex = (int)i;
+            options.AddChild(MenuKit.Row("Boosters", sourcePick, 180));
+            var seats = MenuKit.Options(Enumerable.Range(2, 7).Select(n => $"{n} players"), _seatsIndex);
+            seats.ItemSelected += i => _seatsIndex = (int)i;
+            options.AddChild(MenuKit.Row(mode == Arcanum.Data.Limited.LimitedMode.Draft ? "Draft table" : "Players", seats, 180));
+            var bestOf = MenuKit.Options(new[] { "Best of one", "Best of three" }, _bestOfIndex);
+            bestOf.ItemSelected += i => _bestOfIndex = (int)i;
+            options.AddChild(MenuKit.Row("Matches", bestOf, 180));
+            options.AddChild(MenuKit.Hint(mode == Arcanum.Data.Limited.LimitedMode.Draft
+                ? "Everyone opens a booster, takes a card and passes the rest: left, then right, then left. Then build a deck of 40 or more cards and play three Swiss rounds against the computer players at your table."
+                : "Open your boosters, build a deck of 40 or more cards from them plus any basic lands, and play three Swiss rounds."));
+        }
+        var cube = BoardStyle.MakeButton("Add a cube…", 16);
+        cube.CustomMinimumSize = new Vector2(160, 46);
+        cube.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+        cube.Pressed += () => LimitedScreen.AskCube(this, BuildLimited);
+        options.AddChild(cube);
+        _limited.AddChild(MenuKit.Card(options));
+        _start.Disabled = sources.Count == 0;
+    }
+
+    private static string Progress(Arcanum.Data.Limited.LimitedEvent ev) => ev.Stage switch
+    {
+        Arcanum.Data.Limited.EventStage.Drafting => "drafting",
+        Arcanum.Data.Limited.EventStage.Building => "building the deck",
+        _ => $"round {ev.Rounds.Count} of {ev.RoundsTotal}",
+    };
+
+    /// <summary>A new event with the options chosen, then on to the limited screen to play it.</summary>
+    private void StartEvent(Arcanum.Data.Limited.LimitedMode mode)
+    {
+        var sources = Service.Sources();
+        if (sources.Count == 0) return;
+        var error = Service.Start(mode, sources[Math.Min(_sourceIndex, sources.Count - 1)], _seatsIndex + 2, _bestOfIndex == 0 ? 1 : 3,
+            Settings.Current.PlayerNames.ElementAtOrDefault(0) ?? "Player 1");
+        if (error is not null)
+        {
+            MenuKit.Toast(this, error);
+            return;
+        }
+        LimitedScreen.OfferToResume = false;
+        App.Instance.GoTo(App.LimitedScene);
+    }
+
     private void Start()
     {
+        if (_limitedMode is { } limited)
+        {
+            StartEvent(limited);
+            return;
+        }
         Settings.Current.PlayerNames[0] = _seats.ElementAtOrDefault(0)?.Name.Text is { Length: > 0 } n0 ? n0 : "Player 1";
         if (!_vsBot && _seats.Count > 1) Settings.Current.PlayerNames[1] = _seats[1].Name.Text is { Length: > 0 } n1 ? n1 : "Player 2";
         Settings.Save();

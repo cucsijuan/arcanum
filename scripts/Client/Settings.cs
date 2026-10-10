@@ -13,7 +13,7 @@ public sealed class SettingsData
     // General
     public string[] PlayerNames { get; set; } = { "Player 1", "Player 2" };
 
-    /// <summary>The format last chosen on the Play screen (draft and sealed open their own screen and aren't remembered).</summary>
+    /// <summary>The mode last chosen on the Play screen: a format id, "draft" or "sealed".</summary>
     public string PlayMode { get; set; } = "casual";
     /// <summary>Address of the last online game joined.</summary>
     public string LastHostAddress { get; set; } = "";

@@ -56,8 +56,6 @@ public partial class LimitedScreen : Control
         MenuKit.AddBackdrop(this);
         // Back goes to the Play screen a local event is chosen on (from an online event, to the main menu as before).
         var header = MenuKit.AddHeader(this, "Limited", () => App.Instance.GoTo(Session.IsOnline ? App.MainMenuScene : App.PlaySetupScene));
-        if (StartMode is { } chosen) _mode = chosen;
-        StartMode = null;
         _title = header.GetChild<Label>(1);
         header.AddChild(_timer);
         _timer.VerticalAlignment = VerticalAlignment.Center;
@@ -161,9 +159,6 @@ public partial class LimitedScreen : Control
     /// continued or abandoned before going on with it (not when coming back from one of its games).
     /// </summary>
     public static bool OfferToResume { get; set; }
-
-    /// <summary>The kind of event chosen on the Play screen, preselected for a new event.</summary>
-    public static LimitedMode? StartMode { get; set; }
 
     private readonly Button _abandon = BoardStyle.MakeButton("Abandon event", 14);
     private BoosterOpening? _opening;
@@ -505,14 +500,15 @@ public partial class LimitedScreen : Control
             actions.AddChild(start);
             var cube = BoardStyle.MakeButton("Add a cube…", 16);
             cube.CustomMinimumSize = new Vector2(160, 52);
-            cube.Pressed += AskCube;
+            cube.Pressed += () => AskCube(this, Show);
             actions.AddChild(cube);
             box.AddChild(actions);
         }
         column.AddChild(MenuKit.Card(box));
     }
 
-    private void AskCube()
+    /// <summary>Asks for a cube's card list and saves it as a booster source; <paramref name="saved"/> runs once it is.</summary>
+    internal static void AskCube(Control parent, Action saved)
     {
         var dialog = new AcceptDialog { Title = "Add a cube", OkButtonText = "Save cube", Size = new Vector2I(720, 600) };
         var box = new VBoxContainer();
@@ -528,14 +524,14 @@ public partial class LimitedScreen : Control
             {
                 DeckList.Parse(text.Text);
                 Service.SaveUserCube(name.Text.Trim().Length > 0 ? name.Text.Trim() : "My cube", text.Text);
-                MenuKit.Toast(this, "Cube saved");
-                Show();
+                MenuKit.Toast(parent, "Cube saved");
+                saved();
             }
-            catch (FormatException e) { MenuKit.Toast(this, e.Message); }
+            catch (FormatException e) { MenuKit.Toast(parent, e.Message); }
             dialog.QueueFree();
         };
         dialog.Canceled += dialog.QueueFree;
-        AddChild(dialog);
+        parent.AddChild(dialog);
         dialog.PopupCentered();
     }
 
