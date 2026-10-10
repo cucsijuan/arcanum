@@ -14,7 +14,10 @@ namespace Arcanum.Client;
 /// </summary>
 public sealed class CareerService
 {
-    private static string SavePath => ProjectSettings.GlobalizePath("user://career/career.sav");
+    /// <summary>Where the career lives: user://career, or ARCANUM_CAREER_DIR (test runs that must not touch the player's career).</summary>
+    private static string Folder => OS.GetEnvironment("ARCANUM_CAREER_DIR") is { Length: > 0 } dir ? dir : "user://career";
+
+    private static string SavePath => ProjectSettings.GlobalizePath(Folder + "/career.sav");
 
     public const string TableImage = "res://ui-art/kit/career/table.jpg";
     public const string StoreImage = "res://ui-art/kit/career/store.jpg";
@@ -25,7 +28,7 @@ public sealed class CareerService
     public CareerWorld? World { get; private set; }
 
     /// <summary>The career's decks: only cards of the collection, no starter decks.</summary>
-    public DeckStore Decks { get; } = new("user://career/decks", starters: false);
+    public DeckStore Decks { get; } = new(Folder + "/decks", starters: false);
 
     /// <summary>Why the content has no career, or why the saved career couldn't be read.</summary>
     public string? Problem { get; private set; }
@@ -118,7 +121,7 @@ public sealed class CareerService
         var (theirs, _) = world.Deck(pending.Deck).Resolve(cards);
         return new MatchSetup(new[] { new GameSession.Seat(playerName, mine), new GameSession.Seat(opponent.Name, theirs, IsBot: true) }, 20)
         {
-            Event = new EventHook(winner => Do(new FinishDaily(Now, winner == 0)), App.CareerScene, "Daily match") { ReturnText = "Back to the store" },
+            Event = new EventHook(winner => Do(new FinishDaily(Now, winner == 0)), App.CareerScene, "Daily match") { ReturnText = "Back home" },
             Table = ResourceLoader.Exists(TableImage) ? TableImage : null,
         };
     }

@@ -37,7 +37,8 @@ repository and keeps its own license.
 
 ## Fonts
 Interface fonts in `fonts/` are licensed under the SIL Open Font License 1.1 (each folder carries its `OFL.txt`):
-LT Museum (LyonsType), Alegreya Sans (The Alegreya Sans Project Authors) and Ortica (Google Inc., Florian Karsten).
+LT Museum (LyonsType), Alegreya Sans (The Alegreya Sans Project Authors), Ortica (Google Inc., Florian Karsten) and
+Pixelify Sans (The Pixelify Sans Project Authors).
 
 ## Disclaimer
 Arcanum is unofficial, non-commercial fan software. It is not affiliated with, endorsed or sponsored by any game
