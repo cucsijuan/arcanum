@@ -40,7 +40,7 @@ public sealed record ModuleSources(string UserAgent, CardSource Cards, ImageSour
 public sealed class ContentModule
 {
     /// <summary>Engine API version this build understands; modules declaring a newer one are rejected.</summary>
-    public const int SupportedApiVersion = 5;
+    public const int SupportedApiVersion = 6;
 
     public string Directory { get; }
     public ModuleManifest Manifest { get; }
