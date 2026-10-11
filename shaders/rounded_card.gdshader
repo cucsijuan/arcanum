@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Masks a card image with rounded corners, and draws the shine of a foil card: a rainbow (color dodge) and a soft
 // glare (overlay) centered on the pointer, the rainbow's hue turning as the pointer moves across the card. A surge foil
-// also moves on its own: rainbow bands waving across the card and twinkling points, brighter under the pointer.
+// has the pattern of its foil paper: long diagonal streaks rising to the right, with wavy, jagged edges and thin bright lines,
+// breaking off and merging, a rainbow running down the card and a fine diffraction grain; the pattern stays put on the card
+// while its colors and shine turn with the pointer (as tilting the card would), and drift slowly on their own.
 shader_type canvas_item;
 
 uniform vec2 rect_size = vec2(90.0, 126.0);
@@ -27,6 +29,43 @@ vec3 overlay(vec3 base, vec3 blend) {
 	return mix(2.0 * base * blend, 1.0 - 2.0 * (1.0 - base) * (1.0 - blend), step(0.5, base));
 }
 
+float hash2(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float vnoise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = p - i;
+	f = f * f * (3.0 - 2.0 * f);
+	float a = hash2(i), b = hash2(i + vec2(1.0, 0.0)), c = hash2(i + vec2(0.0, 1.0)), d = hash2(i + vec2(1.0, 1.0));
+	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p, int octaves) {
+	float sum = 0.0, amp = 0.5;
+	for (int i = 0; i < octaves; i++) {
+		sum += amp * vnoise(p);
+		p = p * 2.03 + vec2(17.1, 5.3);
+		amp *= 0.5;
+	}
+	return sum;
+}
+
+// One family of streaks across the foil: bands of a warped wave, their width and presence varying along them.
+// Returns the band (x) and its thin bright edge lines (y).
+vec2 streaks(vec2 along_across, float warp, float freq, float turn, float seed) {
+	float c = cos(turn), s = sin(turn);
+	vec2 q = vec2(along_across.x * c - along_across.y * s, along_across.x * s + along_across.y * c);
+	float jag = fbm(q * vec2(60.0, 70.0) + seed, 2);
+	float f = sin(q.y * freq + warp + jag * 1.4) * 0.5 + 0.5;
+	float th = 0.25 + 0.65 * fbm(q * vec2(5.0, 4.0) + vec2(4.0 + seed, 8.0), 2);
+	float fill = clamp((f - th) / 0.25, 0.0, 1.0);
+	float d1 = (f - th - 0.03) / 0.045, d2 = (f - 0.95) / 0.03;
+	float edge = exp(-d1 * d1) + 0.5 * exp(-d2 * d2);
+	float on = clamp((fbm(q * vec2(4.5, 7.0) + vec2(9.0 + seed, 2.0), 3) - 0.38) / 0.18, 0.0, 1.0);
+	return vec2(fill, edge) * on;
+}
+
 void fragment() {
 	vec4 tex = texture(TEXTURE, UV);
 	if (foil > 0.0) {
@@ -37,26 +76,37 @@ void fragment() {
 			? mix(hsl(hue, 0.68, 0.62), hsl(hue + 80.0, 0.62, 0.56), t / 0.35)
 			: mix(hsl(hue + 80.0, 0.62, 0.56), hsl(hue + 160.0, 0.55, 0.48), clamp((t - 0.35) / 0.27, 0.0, 1.0));
 		float reach = clamp((0.82 - t) / 0.2, 0.0, 1.0);
-		tex.rgb = mix(tex.rgb, color_dodge(tex.rgb, rainbow), reach * 0.72 * foil);
+		// On a surge foil the paper's streaks carry the color: the even wash is faint.
+		tex.rgb = mix(tex.rgb, color_dodge(tex.rgb, rainbow), reach * 0.72 * foil * (1.0 - 0.75 * surge));
 		// Glare: white, faint, reaching the farthest corner.
 		float g = length((UV - foil_at) / (max(foil_at, 1.0 - foil_at) * 1.41421));
 		float glare = g < 0.4 ? mix(0.18, 0.05, g / 0.4) : mix(0.05, 0.0, clamp((g - 0.4) / 0.28, 0.0, 1.0));
 		tex.rgb = mix(tex.rgb, overlay(tex.rgb, vec3(1.0)), glare * foil);
 	}
 	if (surge > 0.0) {
-		float t = TIME * 0.35;
-		// Rainbow bands running diagonally, their edges waving, drifting across the card.
-		float wave = sin((UV.x * 1.3 + UV.y) * 18.0 + sin(UV.y * 9.0 + t * 2.0) * 1.6 - t * 4.0);
-		float bands = smoothstep(0.45, 1.0, wave);
-		float hue = fract((UV.x + UV.y) * 0.9 + t * 0.2 + foil_at.x * 0.5) * 360.0;
-		vec3 rainbow = hsl(hue, 0.85, 0.6);
-		float strength = surge * (0.22 + 0.45 * foil);
-		tex.rgb = mix(tex.rgb, color_dodge(tex.rgb, rainbow * 0.9), (0.35 + 0.65 * bands) * strength);
-		// Twinkling points.
-		vec2 cell = floor(UV * vec2(28.0, 40.0));
-		float n = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
-		float twinkle = smoothstep(0.985, 1.0, n) * (0.5 + 0.5 * sin(t * 6.0 + n * 40.0));
-		tex.rgb = min(tex.rgb + twinkle * strength * 0.8, vec3(1.0));
+		// The pattern in card heights, so it keeps its proportions; streaks rise at 58° to the right.
+		vec2 pos = UV * vec2(rect_size.x / rect_size.y, 1.0);
+		const float ANGLE = 1.0123;
+		vec2 aa = vec2(pos.x * cos(ANGLE) - pos.y * sin(ANGLE), pos.x * sin(ANGLE) + pos.y * cos(ANGLE));
+		float w = fbm(aa * 1.3, 4);
+		float w2 = fbm(aa * vec2(3.5, 4.0) + vec2(3.0, 1.0), 3);
+		float warp = w * 22.0 + w2 * 8.0;
+		vec2 s1 = streaks(aa, warp, 80.0, 0.0, 0.0);
+		vec2 s2 = streaks(aa, warp, 53.0, 0.12, 13.0) * 0.8;
+		float lum = clamp(0.45 + fbm(aa * 2.5 + vec2(1.0, 4.0), 3) * 1.1, 0.0, 1.3);
+		float band = max(s1.x, s2.x) * lum, edge = max(s1.y, s2.y) * lum;
+		float grain = fbm(pos * 260.0, 2);
+		// The rainbow runs down the card, bent by the streaks' flow; tilting (the pointer) and time turn it.
+		float t = TIME * 0.03;
+		float hue = fract(-pos.y * 0.9 + pos.x * 0.3 + w * 0.55 + w2 * 0.45 + 0.55 + (foil_at.x - foil_at.y) * 0.6 + t) * 360.0;
+		vec3 rainbow = hsl(hue, 0.9, 0.55);
+		float light = 0.35 + 0.65 * foil * clamp(1.2 - length(UV - foil_at) * 1.1, 0.25, 1.0);
+		float m = clamp((band * 0.6 + edge * 0.9) * (0.6 + 0.8 * grain), 0.0, 1.0) * light * surge;
+		// The foil's color shows through the ink: light areas take the streak's color, dark ones get a colored sheen.
+		vec3 tinted = clamp(tex.rgb * (0.35 + 1.0 * rainbow) + rainbow * 0.18, 0.0, 1.0);
+		tex.rgb = mix(tex.rgb, tinted, m);
+		// The bright lines shine through dark ink too.
+		tex.rgb = min(tex.rgb + rainbow * edge * lum * light * surge * 0.2, vec3(1.0));
 	}
 	vec2 p = UV * rect_size;
 	vec2 q = abs(p - rect_size * 0.5) - (rect_size * 0.5 - vec2(radius));
