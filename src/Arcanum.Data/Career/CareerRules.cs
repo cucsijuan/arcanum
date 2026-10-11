@@ -38,7 +38,9 @@ public static class CareerRules
         if (state.StartedUtc == default) throw new CareerRuleException("The career hasn't started.");
         if (action.Utc < state.LastUtc) throw new CareerRuleException("The career's clock can't go back.");
         var (lastUtc, day, dailies, practices, antes) = (state.LastUtc, state.Day, state.DailiesPlayed, state.PracticePlayed, state.AntesPlayed);
+        var (offers, offersDay) = (state.Offers, state.OffersDay);
         Advance(state, action.Utc);
+        if (state.OffersDay != state.Day) (state.Offers, state.OffersDay) = (MakeOffers(state, world, state.Day), state.Day);
         try
         {
             return action switch
@@ -51,12 +53,14 @@ public static class CareerRules
                 BuyPrecon buy => Buy(state, buy, world),
                 OpenBooster open => Open(state, open, world),
                 SellCard sell => Sell(state, sell, world),
+                TakeOffer offer => Take(state, offer, world),
                 _ => throw new CareerRuleException($"Unknown career action {action.GetType().Name}."),
             };
         }
         catch (CareerRuleException)
         {
             (state.LastUtc, state.Day, state.DailiesPlayed, state.PracticePlayed, state.AntesPlayed) = (lastUtc, day, dailies, practices, antes);
+            (state.Offers, state.OffersDay) = (offers, offersDay);
             throw;
         }
     }
@@ -238,7 +242,7 @@ public static class CareerRules
         var random = CareerRandom.For(state.Seed, Ante, state.Day.DayNumber, state.AntesPlayed);
         var theirDeck = opponent.Decks[random.Next(opponent.Decks.Count)];
         var mine = Pick(deck, random);
-        var theirs = Pick(world.Deck(theirDeck), random);
+        var theirs = Pick(OpponentDeck(state, world, opponent.Id, theirDeck), random);
         // The card leaves the collection in a printing owned: the deck's own when it is, otherwise another one.
         var key = CardKey.Of(mine);
         if (state.Owned(key) == 0 && !world.IsBasicLand(mine.Name))
@@ -345,6 +349,125 @@ public static class CareerRules
         }
         state.Cash += cash;
         return new CareerResult(Array.Empty<PoolCard>(), cash);
+    }
+
+    // ---------------------------------------------------------------- rivals
+
+    /// <summary>
+    /// A regular's deck as they play it now: the module's deck, and for a rival, improved every week of the career
+    /// (up to the content's limit): each week their least valuable spells give way to better cards of their colors
+    /// and about the same mana value from the sets the store sells.
+    /// </summary>
+    public static DeckList OpponentDeck(CareerState state, CareerWorld world, string opponentId, string deckName)
+    {
+        var deck = world.Deck(deckName);
+        var opponent = world.Content.Opponents.FirstOrDefault(o => o.Id == opponentId);
+        int weeks = Math.Min(world.Content.Offers.RivalWeeks, WeekOf(state.Day) - WeekOf(DayOf(state.StartedUtc)));
+        if (opponent is not { Rival: true } || weeks <= 0) return deck;
+
+        var improved = DeckList.Parse(deck.Export());
+        var colors = DeckColors(deck, world);
+        var pool = world.Content.Sets.SelectMany(world.Playable)
+            .Where(c => world.Cards.Find(c.Card.Name) is { } e && !e.Definition.Is(CardType.Land)
+                && e.Definition.ManaCost.ToString().Where(ch => "WUBRG".Contains(ch)).All(colors.Contains))
+            .GroupBy(c => c.Card.Name).Select(g => g.First()).ToList();
+        for (int week = 1; week <= weeks; week++)
+        {
+            var random = CareerRandom.For(state.Seed, "rival:" + opponent.Id, week);
+            for (int n = 0; n < world.Content.Offers.RivalUpgrades; n++)
+            {
+                // The least valuable spell goes; a better card of about its mana value, not yet four times in the deck, comes in.
+                var weakest = improved.Main
+                    .Where(e => world.Cards.Find(e.Name) is { } c && !c.Definition.Is(CardType.Land))
+                    .OrderBy(e => world.Value(CardKey.Of(e))).ThenBy(e => e.Name, StringComparer.Ordinal).FirstOrDefault();
+                if (weakest is null) break;
+                int value = world.Value(CardKey.Of(weakest));
+                int manaValue = world.Cards.Find(weakest.Name)!.Definition.ManaCost.ManaValue;
+                var better = pool.Where(c => c.Value > value && Math.Abs(world.Cards.Find(c.Card.Name)!.Definition.ManaCost.ManaValue - manaValue) <= 1
+                        && improved.Main.Where(e => e.Name == c.Card.Name).Sum(e => e.Count) < 4).ToList();
+                if (better.Count == 0) break;
+                var chosen = better[random.Next(better.Count)].Card;
+                DeckList.Adjust(improved.Main, weakest.Name, -1, weakest.Set, weakest.Number);
+                DeckList.Adjust(improved.Main, chosen.Name, 1, chosen.Set.ToUpperInvariant(), chosen.Number);
+            }
+        }
+        return improved;
+    }
+
+    // ---------------------------------------------------------------- the store's offers
+
+    public const string Bargain = "bargain", Trade = "trade";
+
+    /// <summary>
+    /// The store's offers on a day: made when the day begins (the first action that day) and the same all day. Before
+    /// that, what they will be: a regular selling a rare below its value, and a regular offering a card from their deck
+    /// for one of the player's cards of about the same value.
+    /// </summary>
+    public static IReadOnlyList<CareerOffer> Offers(CareerState state, CareerWorld world, DateOnly day) =>
+        state.OffersDay == day ? state.Offers : MakeOffers(state, world, day);
+
+    private static List<CareerOffer> MakeOffers(CareerState state, CareerWorld world, DateOnly day)
+    {
+        var offers = new List<CareerOffer>();
+        var random = CareerRandom.For(state.Seed, "offers", day.DayNumber);
+        var opponents = world.Content.Opponents;
+        var sets = world.Content.Sets.Where(world.SellsBoosters).ToList();
+        if (sets.Count == 0 || opponents.Count == 0) return offers;
+
+        var seller = opponents[random.Next(opponents.Count)];
+        var rares = world.Playable(sets[random.Next(sets.Count)]).Where(c => c.Card.Rarity is "rare" or "mythic").ToList();
+        if (rares.Count > 0)
+        {
+            var (card, value) = rares[random.Next(rares.Count)];
+            offers.Add(new CareerOffer(offers.Count, Bargain, seller.Id, CardKey.Of(card).ToString(), "", Math.Max(1, (int)(value * world.Content.Offers.BargainRate))));
+        }
+
+        var trader = opponents[random.Next(opponents.Count)];
+        var theirDeck = OpponentDeck(state, world, trader.Id, trader.Decks[random.Next(trader.Decks.Count)]);
+        var tradeable = theirDeck.Main.Where(e => !world.IsBasicLand(e.Name) && world.Value(CardKey.Of(e)) > world.Content.Values.GetValueOrDefault("common")).ToList();
+        if (tradeable.Count > 0)
+        {
+            var get = CardKey.Of(tradeable[random.Next(tradeable.Count)]);
+            int value = world.Value(get);
+            double spread = world.Content.Offers.TradeSpread;
+            var wanted = state.Cards.Select(c => c.Card)
+                .Where(c => !world.IsBasicLand(c.Name) && c.Name != get.Name && world.Value(c) >= value * (1 - spread) && world.Value(c) <= value * (1 + spread))
+                .ToList();
+            if (wanted.Count > 0)
+                offers.Add(new CareerOffer(offers.Count, Trade, trader.Id, get.ToString(), wanted[random.Next(wanted.Count)].ToString(), 0));
+        }
+        return offers;
+    }
+
+    public static bool OfferTaken(CareerState state, DateOnly day, int index) => state.OffersTaken.Contains($"{day.DayNumber}:{index}");
+
+    private static CareerResult Take(CareerState state, TakeOffer take, CareerWorld world)
+    {
+        var offers = Offers(state, world, state.Day);
+        if (take.Offer < 0 || take.Offer >= offers.Count) throw new CareerRuleException("That offer isn't there today.");
+        if (OfferTaken(state, state.Day, take.Offer)) throw new CareerRuleException("You already took that offer.");
+        var offer = offers[take.Offer];
+        var get = CardKey.Parse(offer.Get);
+        var name = world.Content.Opponents.FirstOrDefault(o => o.Id == offer.OpponentId)?.Name ?? offer.OpponentId;
+        if (offer.Kind == Bargain)
+        {
+            Pay(state, offer.Price);
+            state.Note(take.Utc, $"Bought {get.Name} from {name} for {Money(offer.Price)}.");
+        }
+        else
+        {
+            var give = CardKey.Parse(offer.Give);
+            // Any printing of the asked card will do.
+            var owned = state.Owned(give) > 0 ? give
+                : state.Cards.Where(c => c.Card.Name.Equals(give.Name, StringComparison.OrdinalIgnoreCase)).Select(c => (CardKey?)c.Card).FirstOrDefault()
+                  ?? throw new CareerRuleException($"You have no {give.Name} to trade.");
+            state.AddCard(owned, -1);
+            state.Note(take.Utc, $"Traded your {give.Name} to {name} for {get.Name}.");
+        }
+        state.AddCard(get, 1);
+        state.OffersTaken.Add($"{state.Day.DayNumber}:{take.Offer}");
+        if (state.OffersTaken.Count > 60) state.OffersTaken.RemoveAt(0);
+        return new CareerResult(new[] { new PoolCard(get.Name, get.Set.ToLowerInvariant(), get.Number, "") }, offer.Kind == Bargain ? -offer.Price : 0);
     }
 
     // ---------------------------------------------------------------- challenges

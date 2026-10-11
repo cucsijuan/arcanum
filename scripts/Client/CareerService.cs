@@ -121,7 +121,7 @@ public sealed class CareerService
         var opponent = world.Content.Opponents.First(o => o.Id == pending.OpponentId);
         var cards = App.Instance.Cards!;
         var (mine, _) = deck.Resolve(cards);
-        var (theirs, _) = world.Deck(pending.Deck).Resolve(cards);
+        var (theirs, _) = CareerRules.OpponentDeck(State, world, pending.OpponentId, pending.Deck).Resolve(cards);
         if (pending.Kind == CareerRules.Ante)
         {
             RemoveOne(mine, CardKey.Parse(pending.PlayerAnte).Name);

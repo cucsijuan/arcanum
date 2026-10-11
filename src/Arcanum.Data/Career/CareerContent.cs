@@ -42,6 +42,8 @@ public sealed record CareerContent
 
     public int ChallengesPerWeek { get; init; } = 3;
 
+    public OfferSpec Offers { get; init; } = new();
+
     /// <summary>Sets whose boosters the store sells (each needs a booster definition).</summary>
     public IReadOnlyList<string> Sets { get; init; } = Array.Empty<string>();
 
@@ -94,6 +96,12 @@ public sealed record PracticeSpec(int PaidPerDay = 3, int Win = 50, int Loss = 2
 /// <param name="PerDay">Ante matches a day.</param>
 public sealed record AnteSpec(int PerDay = 3);
 
+/// <param name="BargainRate">A bargain's price as a fraction of the card's value.</param>
+/// <param name="TradeSpread">How far apart in value a trade's two cards may be (0.1: within 10%).</param>
+/// <param name="RivalUpgrades">Cards a rival changes in their decks each week.</param>
+/// <param name="RivalWeeks">Weeks rivals keep improving.</param>
+public sealed record OfferSpec(double BargainRate = 0.6, double TradeSpread = 0.1, int RivalUpgrades = 2, int RivalWeeks = 12);
+
 /// <param name="Name">Shown name ("Regular").</param>
 /// <param name="Reputation">Reputation it takes.</param>
 public sealed record TierSpec(string Name, int Reputation);
@@ -117,7 +125,8 @@ public sealed record PreconSpec(string Deck, int Price = 0);
 /// <param name="Style">One line about how they play.</param>
 /// <param name="Decks">Module deck names they play.</param>
 /// <param name="Tier">The reputation tier the player needs to meet them (index in <see cref="CareerContent.Tiers"/>).</param>
-public sealed record OpponentSpec(string Id, string Name, string Style = "", IReadOnlyList<string>? Decks = null, int Tier = 0)
+/// <param name="Rival">A rival improves their decks every week of the career.</param>
+public sealed record OpponentSpec(string Id, string Name, string Style = "", IReadOnlyList<string>? Decks = null, int Tier = 0, bool Rival = false)
 {
     public IReadOnlyList<string> Decks { get; init; } = Decks ?? Array.Empty<string>();
 }

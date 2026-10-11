@@ -66,6 +66,21 @@ public sealed class CareerWorld
         return rarities.Length == 0 ? Content.Values.GetValueOrDefault("common") : rarities.Max(r => Content.Values.GetValueOrDefault(r.ToLowerInvariant()));
     }
 
+    private readonly Dictionary<string, List<(PoolCard Card, int Value)>> _printings = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A set's booster cards that work fully in games (one printing each, basic lands left out), with their values.</summary>
+    public IReadOnlyList<(PoolCard Card, int Value)> Playable(string set)
+    {
+        if (_printings.TryGetValue(set, out var list)) return list;
+        list = Cards.PrintingsIn(set)
+            .Where(x => x.Printing.Booster && x.Card.Support == CardSupport.Full && !IsBasicLand(x.Card.Name))
+            .GroupBy(x => x.Card.Name)
+            .Select(g => PoolCard.Of(g.First().Card, g.First().Printing))
+            .Select(c => (c, Value(CardKey.Of(c))))
+            .ToList();
+        return _printings[set] = list;
+    }
+
     /// <summary>What the store pays for one copy.</summary>
     public int SellPrice(CardKey card) => (int)Math.Floor(Value(card) * Content.SellRate);
 }

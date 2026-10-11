@@ -70,7 +70,8 @@ public class CareerTests
           "opponents": [
             { "id": "ana", "name": "Ana", "decks": ["other"] },
             { "id": "bo", "name": "Bo", "decks": ["starter"] },
-            { "id": "cy", "name": "Cy", "decks": ["other"], "tier": 1 }
+            { "id": "cy", "name": "Cy", "decks": ["other"], "tier": 1 },
+            { "id": "dee", "name": "Dee", "decks": ["sixty"], "tier": 5, "rival": true }
           ]
         }
         """;
@@ -348,5 +349,63 @@ public class CareerTests
         Do(state, journal, world, new OpenBooster(T0.AddHours(1), "abc"));
         Assert.Equal(sealedBefore, state.Sealed["abc"]); // opened one, got one
         Assert.Contains(state.Notes, n => n.Text.StartsWith("Challenge done: Open a booster"));
+    }
+
+    [Fact]
+    public void TheStoresOffersStayAllDayAndCanBeTakenOnce()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        var offers = CareerRules.Offers(state, world, state.Day);
+        Assert.Equal(offers, CareerRules.Offers(state, world, state.Day));
+        var bargain = offers.First(o => o.Kind == CareerRules.Bargain);
+        var bought = CardKey.Parse(bargain.Get);
+        Assert.Contains(bought.Name, new[] { "Card 16", "Card 17", "Card 18" });
+        Assert.Equal((int)(world.Value(bought) * 0.6), bargain.Price);
+        int cash = state.Cash;
+        Do(state, journal, world, new TakeOffer(T0.AddMinutes(1), bargain.Index));
+        Assert.Equal(cash - bargain.Price, state.Cash);
+        Assert.True(state.Owned(bought) >= 1);
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new TakeOffer(T0.AddMinutes(2), bargain.Index), world));
+        Assert.True(CareerRules.OfferTaken(state, state.Day, bargain.Index));
+    }
+
+    [Fact]
+    public void TradesAskForACardOfTheCollectionOfAboutTheSameValue()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        // The player owns only Card 1 (a common): trades for commons never come (only better cards are offered), so a day
+        // with a trade needs a card worth more. Give them rares by opening boosters, then look for a trade.
+        for (int i = 0; i < 3; i++) Do(state, journal, world, new OpenBooster(T0.AddMinutes(1 + i), "abc"));
+        for (int d = 1; d < 120; d++)
+        {
+            var utc = T0.AddDays(d).AddMinutes(1);
+            Do(state, journal, world, new BuyBooster(utc, "abc")); // the day begins; its offers are made
+            var trade = state.Offers.FirstOrDefault(o => o.Kind == CareerRules.Trade);
+            if (trade is null) { state.Cash += 400; continue; }
+            var give = CardKey.Parse(trade.Give);
+            Assert.True(state.OwnedByName(give.Name) >= 1);
+            Assert.InRange(world.Value(give), world.Value(CardKey.Parse(trade.Get)) * 0.9, world.Value(CardKey.Parse(trade.Get)) * 1.1);
+            int before = state.OwnedByName(give.Name);
+            Do(state, journal, world, new TakeOffer(utc.AddMinutes(1), trade.Index));
+            Assert.Equal(before - 1, state.OwnedByName(give.Name));
+            return;
+        }
+        Assert.Fail("No trade in 120 days.");
+    }
+
+    [Fact]
+    public void RivalsImproveTheirDecksEveryWeek()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        var first = CareerRules.OpponentDeck(state, world, "dee", "sixty");
+        Assert.Equal(4, first.Main.Where(e => e.Name == "Card 1").Sum(e => e.Count));
+        Do(state, journal, world, new BuyBooster(T0.AddDays(21), "abc"));
+        var later = CareerRules.OpponentDeck(state, world, "dee", "sixty");
+        Assert.Equal(60, later.Main.Sum(e => e.Count));
+        Assert.True(later.Main.Where(e => e.Name == "Card 1").Sum(e => e.Count) < 4);
+        Assert.True(CareerRules.DeckValue(later, world) > CareerRules.DeckValue(first, world));
+        Assert.Equal(later.Export(), CareerRules.OpponentDeck(state, world, "dee", "sixty").Export());
+        // A regular who isn't a rival keeps their deck.
+        Assert.Equal(world.Deck("other").Export(), CareerRules.OpponentDeck(state, world, "ana", "other").Export());
     }
 }

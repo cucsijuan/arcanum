@@ -42,6 +42,7 @@ public partial class CareerScreen : Control
         Hotspot.Rect("boosters", "Boosters", 0.47f, 0.16f, 0.25f, 0.63f),
         Hotspot.Rect("precons", "Preconstructed decks", 0.29f, 0.56f, 0.17f, 0.31f),
         Hotspot.Rect("counter", "Sell cards", 0.25f, 0.87f, 0.6f, 0.13f),
+        Hotspot.Rect("offers", "Today's offers", 0.83f, 0.45f, 0.14f, 0.21f),
     };
 
     /// <summary>Set before coming back to this screen: what to show first ("store", or a website page).</summary>
@@ -146,7 +147,7 @@ public partial class CareerScreen : Control
                 Play(list, WebPage.Practice);
                 return true;
             case "store": GoTo(Place.Store); return true;
-            case "boosters" or "precons" or "counter": GoTo(Place.Store); OnStore(test.ToLowerInvariant()); return true;
+            case "boosters" or "precons" or "counter" or "offers": GoTo(Place.Store); OnStore(test.ToLowerInvariant()); return true;
             case "opening" when State.Sealed.Count > 0: OpenBooster(State.Sealed.Keys.First()); return true;
         }
         if (Enum.TryParse<WebPage>(test, true, out var page)) OpenWeb(page, instant: true);
@@ -462,7 +463,7 @@ public partial class CareerScreen : Control
         }
         var (opponent, deck) = CareerRules.NextDailyOpponent(State, World, now);
         page.AddChild(CareerStyle.Text($"Today you play {opponent.Name}", 30, CareerStyle.Ink));
-        page.AddChild(CareerStyle.Text($"{opponent.Style}  Plays {DeckColors(World.Deck(deck))}.", 20, CareerStyle.InkDim, wrap: true));
+        page.AddChild(CareerStyle.Text($"{opponent.Style}  Plays {DeckColors(CareerRules.OpponentDeck(State, World, opponent.Id, deck))}.{(opponent.Rival ? " A rival: their decks get better every week." : "")}", 20, CareerStyle.InkDim, wrap: true));
 
         if (DeckPicker(page) is not var (chosen, problems)) return;
 
@@ -706,6 +707,7 @@ public partial class CareerScreen : Control
             case "boosters": OpenNote("Boosters", BoostersNote); break;
             case "precons": OpenNote("Preconstructed decks", PreconsNote); break;
             case "counter": OpenNote("The counter buys cards", box => CollectionList(box, CareerStyle.Ink)); break;
+            case "offers": OpenNote("Today's offers", OffersNote); break;
         }
     }
 
@@ -787,6 +789,58 @@ public partial class CareerScreen : Control
             list.AddChild(row);
         }
         box.AddChild(Scrolled(list));
+    }
+
+    /// <summary>The regulars' offers of the day: a bargain and a trade, each with its cards.</summary>
+    private void OffersNote(VBoxContainer box)
+    {
+        var day = State.Day < CareerRules.DayOf(Career.Now) ? CareerRules.DayOf(Career.Now) : State.Day;
+        var offers = CareerRules.Offers(State, World, day);
+        box.AddChild(CareerStyle.Text("The regulars' offers change every day. Hover a card to see it.", 20, CareerStyle.InkDim, wrap: true));
+        if (offers.Count == 0) box.AddChild(CareerStyle.Text("Nothing today.", 22));
+        foreach (var offer in offers)
+        {
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 16);
+            var who = OpponentName(offer.OpponentId);
+            var get = CardKey.Parse(offer.Get);
+            CardKey? give = offer.Give.Length > 0 ? CardKey.Parse(offer.Give) : null;
+            row.AddChild(SmallCard(get));
+            var text = offer.Kind == CareerRules.Bargain
+                ? $"{who} needs cash and sells {get.Name} for {CareerRules.Money(offer.Price)} (it's worth {CareerRules.Money(World.Value(get))})."
+                : $"{who} offers {get.Name} for your {give!.Value.Name}. You have {State.OwnedByName(give.Value.Name)}.";
+            var label = CareerStyle.Text(text, 20, CareerStyle.Ink, wrap: true);
+            label.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            row.AddChild(label);
+            if (give is { } asked) row.AddChild(SmallCard(asked));
+            bool taken = CareerRules.OfferTaken(State, day, offer.Index);
+            var take = CareerStyle.Button(taken ? "Taken" : offer.Kind == CareerRules.Bargain ? "Buy" : "Trade", () =>
+            {
+                Try(() =>
+                {
+                    Career.Do(new TakeOffer(Career.Now, offer.Index));
+                    MenuKit.Toast(this, $"{get.Name} is yours.");
+                });
+                RefreshNote();
+            }, 20, primary: true);
+            take.Disabled = taken || (offer.Kind == CareerRules.Bargain ? State.Cash < offer.Price : State.OwnedByName(give!.Value.Name) == 0);
+            take.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+            row.AddChild(take);
+            box.AddChild(row);
+        }
+    }
+
+    /// <summary>A card small enough for a row, its preview on hover.</summary>
+    private Control SmallCard(CardKey key)
+    {
+        var size = new Vector2(110, 153);
+        var holder = new Control { CustomMinimumSize = size };
+        var node = new CardNode { Size = size };
+        node.Setup(ViewOf(DefinitionOf(key)), showCostPips: false);
+        node.HoverStarted += _ => ShowPreview(DefinitionOf(key), holder);
+        node.HoverEnded += _ => _preview.Visible = false;
+        holder.AddChild(node);
+        return holder;
     }
 
     private void PreconsNote(VBoxContainer box)

@@ -42,6 +42,9 @@ public sealed record PendingMatch(string OpponentId, string Deck, string Reward 
     public string OpponentAnte { get; init; } = "";
 }
 
+/// <summary>One of a day's offers: a regular sells <see cref="Get"/> for <see cref="Price"/>, or trades it for <see cref="Give"/> (CardKey texts).</summary>
+public sealed record CareerOffer(int Index, string Kind, string OpponentId, string Get, string Give, int Price);
+
 /// <summary>Something that happened in the career, newest last (shown on the hub).</summary>
 public sealed record CareerNote(DateTime Utc, string Text);
 
@@ -93,6 +96,13 @@ public sealed class CareerState
 
     /// <summary>Boosters opened so far: each one's contents come from the career seed and its number.</summary>
     public int BoostersOpened { get; set; }
+
+    /// <summary>The store's offers of <see cref="OffersDay"/>, made when the day began (from the collection as it was then).</summary>
+    public List<CareerOffer> Offers { get; set; } = new();
+    public DateOnly OffersDay { get; set; }
+
+    /// <summary>The store's offers taken, as "day number:offer index".</summary>
+    public List<string> OffersTaken { get; set; } = new();
 
     public int Wins { get; set; }
     public int Losses { get; set; }

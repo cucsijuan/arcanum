@@ -18,6 +18,7 @@ namespace Arcanum.Data.Career;
 [JsonDerivedType(typeof(BuyPrecon), "buyPrecon")]
 [JsonDerivedType(typeof(OpenBooster), "open")]
 [JsonDerivedType(typeof(SellCard), "sell")]
+[JsonDerivedType(typeof(TakeOffer), "offer")]
 public abstract record CareerAction(DateTime Utc);
 
 /// <summary>A new career: its seed and the preconstructed deck chosen to start with.</summary>
@@ -41,6 +42,9 @@ public sealed record BuyPrecon(DateTime Utc, string Deck) : CareerAction(Utc);
 
 /// <summary>Opens an unopened booster of a set; its cards come from the career seed and the number of boosters opened.</summary>
 public sealed record OpenBooster(DateTime Utc, string Set) : CareerAction(Utc);
+
+/// <summary>Takes one of today's offers at the store (its index among them).</summary>
+public sealed record TakeOffer(DateTime Utc, int Offer) : CareerAction(Utc);
 
 /// <summary>Sells copies of a card to the store.</summary>
 public sealed record SellCard(DateTime Utc, string Card, int Count) : CareerAction(Utc);
