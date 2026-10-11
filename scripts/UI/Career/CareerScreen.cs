@@ -1007,6 +1007,7 @@ public partial class CareerScreen : Control
 
     private void CollectionList(VBoxContainer box, Color ink)
     {
+        box.AddChild(MarketNews());
         var top = new HBoxContainer();
         top.AddThemeConstantOverride("separation", 10);
         var search = new LineEdit { Text = _filter, PlaceholderText = "Filter by name…", CustomMinimumSize = new Vector2(300, 0) };
@@ -1015,8 +1016,8 @@ public partial class CareerScreen : Control
         top.AddChild(CareerStyle.Button("Filter", () => { _filter = search.Text; Redraw(); }, 18));
         top.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
         var extras = Extras();
-        var sellExtras = CareerStyle.Button($"Sell extras ({extras.Sum(e => e.Count)}) · {CareerRules.Money(extras.Sum(e => World.SellPrice(e.Card) * e.Count))}", () =>
-            MenuKit.Modal(this, "Sell extras?", $"Sell every copy beyond the fourth of each card: {extras.Sum(e => e.Count)} cards for {CareerRules.Money(extras.Sum(e => World.SellPrice(e.Card) * e.Count))}?", null,
+        var sellExtras = CareerStyle.Button($"Sell extras ({extras.Sum(e => e.Count)}) · {CareerRules.Money(extras.Sum(e => SellPrice(e.Card) * e.Count))}", () =>
+            MenuKit.Modal(this, "Sell extras?", $"Sell every copy beyond the fourth of each card: {extras.Sum(e => e.Count)} cards for {CareerRules.Money(extras.Sum(e => SellPrice(e.Card) * e.Count))}?", null,
                 ("Cancel", () => { }), ("Sell", () => { Try(() => { foreach (var (card, count) in Extras()) Career.Do(new SellCard(Career.Now, card.ToString(), count)); }); Redraw(); })), 18);
         sellExtras.Disabled = extras.Count == 0;
         top.AddChild(sellExtras);
@@ -1026,7 +1027,7 @@ public partial class CareerScreen : Control
         list.AddThemeConstantOverride("separation", 2);
         var cards = State.Cards
             .Where(c => _filter.Length == 0 || c.Card.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(c => World.Value(c.Card)).ThenBy(c => c.Card.Name).ToList();
+            .OrderByDescending(c => SellPrice(c.Card)).ThenBy(c => c.Card.Name).ToList();
         foreach (var (card, count) in cards.Take(300))
         {
             var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Stop };
@@ -1036,7 +1037,10 @@ public partial class CareerScreen : Control
             name.ClipText = true;
             row.AddChild(name);
             row.AddChild(CareerStyle.Text(card.Set.Length > 0 ? $"{card.Set} #{card.Number}" : "", 16, CareerStyle.InkDim));
-            int price = World.SellPrice(card);
+            int price = SellPrice(card);
+            double factor = CareerMarket.Factor(State, World, card.Name, Today);
+            if (price > 0 && Math.Abs(factor - 1) >= 0.05)
+                row.AddChild(CareerStyle.Text($"{(factor > 1 ? "+" : "")}{(factor - 1) * 100:0}%", 16, factor > 1 ? CareerStyle.Good : CareerStyle.Bad));
             var sell = CareerStyle.Button(price > 0 ? $"Sell · {CareerRules.Money(price)}" : "Not bought", () => { Try(() => Career.Do(new SellCard(Career.Now, card.ToString(), 1))); Redraw(); }, 16);
             sell.CustomMinimumSize = new Vector2(150, 0);
             sell.Disabled = price == 0;
@@ -1048,6 +1052,20 @@ public partial class CareerScreen : Control
         }
         if (cards.Count > 300) list.AddChild(CareerStyle.Text($"…and {cards.Count - 300} more: filter by name to find them.", 18, CareerStyle.InkDim));
         box.AddChild(Scrolled(list));
+    }
+
+    /// <summary>The career's day now (the day the website shows).</summary>
+    private static DateOnly Today => CareerRules.DayOf(Career.Now) is var now && now > State.Day ? now : State.Day;
+
+    private static int SellPrice(CardKey card) => CareerMarket.SellPrice(State, World, card, Today);
+
+    /// <summary>The week's market: who won the store's tournaments, and what that does to their cards.</summary>
+    private static Control MarketNews()
+    {
+        var wins = CareerMarket.Meta(State, World, CareerRules.WeekOf(Today));
+        var text = $"{string.Join(" and ", wins.Select(w => $"{w.Opponent.Name} ({DeckColors(w.Deck)})"))} won this week's tournaments."
+            + $" Their cards are in demand; {World.SetName(World.FeaturedSet(Today))}, this week's featured set, sells a little lower.";
+        return CareerStyle.Text("This week at the store: " + text, 18, CareerStyle.InkDim, wrap: true);
     }
 
     /// <summary>Redraws whichever panel lists the collection (the website or a note).</summary>
@@ -1064,7 +1082,7 @@ public partial class CareerScreen : Control
         var extras = new List<(CardKey, int)>();
         foreach (var group in State.Cards.GroupBy(c => c.Card.Name, StringComparer.OrdinalIgnoreCase))
         {
-            if (World.IsBasicLand(group.Key) || group.All(c => World.SellPrice(c.Card) == 0)) continue;
+            if (World.IsBasicLand(group.Key) || group.All(c => SellPrice(c.Card) == 0)) continue;
             int keep = 4;
             foreach (var (card, count) in group.OrderByDescending(c => World.Value(c.Card)))
             {
@@ -1110,7 +1128,7 @@ public partial class CareerScreen : Control
             node.Setup(ViewOf(DefinitionOf(key)), showCostPips: false);
             node.HoverStarted += _ => ShowPreview(DefinitionOf(key), holder);
             node.HoverEnded += _ => _preview.Visible = false;
-            node.TooltipText = $"{card.Rarity} · sells for {CareerRules.Money(World.SellPrice(key))}";
+            node.TooltipText = $"{card.Rarity} · sells for {CareerRules.Money(SellPrice(key))}";
             flow.AddChild(holder);
             nodes.Add(node);
         }

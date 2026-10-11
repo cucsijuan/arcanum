@@ -203,8 +203,10 @@ public class CareerTests
     {
         var (state, journal, world) = Started();
         var rare = new CardKey("Card 16", "ABC", "16").ToString();
+        int each = CareerMarket.SellPrice(state, world, CardKey.Parse(rare), state.Day);
+        Assert.Equal((int)Math.Floor(CareerMarket.Price(state, world, CardKey.Parse(rare), state.Day) * 0.5), each);
         Do(state, journal, world, new SellCard(T0.AddMinutes(1), rare, 2));
-        Assert.Equal(1000 + 2 * 75, state.Cash);
+        Assert.Equal(1000 + 2 * each, state.Cash);
         Assert.Equal(0, state.Owned(CardKey.Parse(rare)));
         Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new SellCard(T0.AddMinutes(2), rare, 1), world));
         Assert.Equal(0, world.Value(new CardKey("Card 19", "ABC", "19")));
@@ -369,7 +371,7 @@ public class CareerTests
         var bargain = offers.First(o => o.Kind == CareerRules.Bargain);
         var bought = CardKey.Parse(bargain.Get);
         Assert.Contains(bought.Name, new[] { "Card 16", "Card 17", "Card 18" });
-        Assert.Equal((int)(world.Value(bought) * 0.6), bargain.Price);
+        Assert.Equal((int)(CareerMarket.Price(state, world, bought, state.Day) * 0.6), bargain.Price);
         int cash = state.Cash;
         Do(state, journal, world, new TakeOffer(T0.AddMinutes(1), bargain.Index));
         Assert.Equal(cash - bargain.Price, state.Cash);
@@ -393,7 +395,9 @@ public class CareerTests
             if (trade is null) { state.Cash += 400; continue; }
             var give = CardKey.Parse(trade.Give);
             Assert.True(state.OwnedByName(give.Name) >= 1);
-            Assert.InRange(world.Value(give), world.Value(CardKey.Parse(trade.Get)) * 0.9, world.Value(CardKey.Parse(trade.Get)) * 1.1);
+            var day = CareerRules.DayOf(utc);
+            Assert.InRange(CareerMarket.Price(state, world, give, day), CareerMarket.Price(state, world, CardKey.Parse(trade.Get), day) * 0.9,
+                CareerMarket.Price(state, world, CardKey.Parse(trade.Get), day) * 1.1);
             int before = state.OwnedByName(give.Name);
             Do(state, journal, world, new TakeOffer(utc.AddMinutes(1), trade.Index));
             Assert.Equal(before - 1, state.OwnedByName(give.Name));
@@ -490,5 +494,21 @@ public class CareerTests
         var refused = Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(friday, "cmd", CareerRules.PayCash, Sixty), world));
         Assert.Contains("Commander", refused.Message + string.Join(" ", CareerRules.DeckProblems(DeckList.Parse(Sixty), state, world, commander: true)));
         Assert.Empty(CareerRules.DeckProblems(DeckList.Parse(Sixty), state, world));
+    }
+
+    [Fact]
+    public void PricesFollowTheWeeksMetaAndDriftDeterministically()
+    {
+        var (state, _, world) = StartedWithSixty();
+        var day = state.Day;
+        var meta = CareerMarket.Meta(state, world, CareerRules.WeekOf(day));
+        Assert.Equal(2, meta.Count);
+        Assert.Equal(meta.Select(m => m.Opponent.Id), CareerMarket.Meta(state, world, CareerRules.WeekOf(day)).Select(m => m.Opponent.Id));
+        // A card of a winning deck sells higher than its drift alone would put it.
+        var hot = meta[0].Deck.Main.First(e => !world.IsBasicLand(e.Name)).Name;
+        Assert.True(CareerMarket.Factor(state, world, hot, day) > 0.85 * 1.6 * 0.9 - 0.001);
+        for (int d = 0; d < 60; d++)
+            Assert.InRange(CareerMarket.Factor(state, world, "Card 5", day.AddDays(d)), 0.5, 3);
+        Assert.Equal(0, CareerMarket.Price(state, world, new CardKey("Card 19", "ABC", "19"), day));
     }
 }

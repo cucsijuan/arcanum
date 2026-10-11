@@ -421,8 +421,9 @@ public static class CareerRules
         var rares = world.Playable(sets[random.Next(sets.Count)]).Where(c => c.Card.Rarity is "rare" or "mythic").ToList();
         if (rares.Count > 0)
         {
-            var (card, value) = rares[random.Next(rares.Count)];
-            offers.Add(new CareerOffer(offers.Count, Bargain, seller.Id, CardKey.Of(card).ToString(), "", Math.Max(1, (int)(value * world.Content.Offers.BargainRate))));
+            var (card, _) = rares[random.Next(rares.Count)];
+            int price = CareerMarket.Price(state, world, CardKey.Of(card), day);
+            offers.Add(new CareerOffer(offers.Count, Bargain, seller.Id, CardKey.Of(card).ToString(), "", Math.Max(1, (int)(price * world.Content.Offers.BargainRate))));
         }
 
         var trader = opponents[random.Next(opponents.Count)];
@@ -431,10 +432,11 @@ public static class CareerRules
         if (tradeable.Count > 0)
         {
             var get = CardKey.Of(tradeable[random.Next(tradeable.Count)]);
-            int value = world.Value(get);
+            int value = CareerMarket.Price(state, world, get, day);
             double spread = world.Content.Offers.TradeSpread;
             var wanted = state.Cards.Select(c => c.Card)
-                .Where(c => !world.IsBasicLand(c.Name) && c.Name != get.Name && world.Value(c) >= value * (1 - spread) && world.Value(c) <= value * (1 + spread))
+                .Where(c => !world.IsBasicLand(c.Name) && c.Name != get.Name)
+                .Where(c => CareerMarket.Price(state, world, c, day) is var p && p >= value * (1 - spread) && p <= value * (1 + spread))
                 .ToList();
             if (wanted.Count > 0)
                 offers.Add(new CareerOffer(offers.Count, Trade, trader.Id, get.ToString(), wanted[random.Next(wanted.Count)].ToString(), 0));
@@ -666,7 +668,7 @@ public static class CareerRules
     {
         var card = CardKey.Parse(sell.Card);
         if (sell.Count < 1 || state.Owned(card) < sell.Count) throw new CareerRuleException($"You don't have {sell.Count} {card.Name}.");
-        int cash = world.SellPrice(card) * sell.Count;
+        int cash = CareerMarket.SellPrice(state, world, card, state.Day) * sell.Count;
         state.AddCard(card, -sell.Count);
         state.Cash += cash;
         state.Note(sell.Utc, $"Sold {sell.Count} {card.Name} for {Money(cash)}.");

@@ -91,8 +91,8 @@ public sealed class CareerWorld
         return _printings[set] = list;
     }
 
-    /// <summary>What the store pays for one copy.</summary>
-    public int SellPrice(CardKey card) => (int)Math.Floor(Value(card) * Content.SellRate);
+    /// <summary>The weeks' tournament winners worked out so far (see <see cref="CareerMarket.Meta"/>).</summary>
+    internal Dictionary<(ulong Seed, int Week), IReadOnlyList<MetaWin>> MetaCache { get; } = new();
 }
 
 /// <summary>An action the career's rules don't allow (not enough cash, no such booster...); the message is for the player.</summary>
