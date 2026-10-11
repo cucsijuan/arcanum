@@ -246,3 +246,12 @@ public sealed record AttachedControllerIsMonarch : Condition;
 
 /// <summary>"If an opponent controls [N] or more [filter]" (any one opponent).</summary>
 public sealed record OpponentControls(ObjectFilter Filter, int AtLeast) : Condition;
+
+/// <summary>"[Option] — …": the source chose that option as it entered.</summary>
+public sealed record ChoseOption(string Option) : Condition;
+
+/// <summary>"As long as a card exiled with this is a creature card".</summary>
+public sealed record CreatureCardExiledWithSource : Condition;
+
+/// <summary>"During the declare attackers step" (or another step).</summary>
+public sealed record DuringStep(State.Step Step) : Condition;

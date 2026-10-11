@@ -19,4 +19,10 @@ public sealed partial class Game
             return cost.Pips.Count(types.Contains) + cost.Hybrid.Count(h => types.Contains(h.First) || types.Contains(h.Second));
         });
     }
+
+    /// <summary>The last creature card exiled with this permanent (as the object it is now) that is still in exile ("imprint").</summary>
+    private State.Card? LastCreatureExiledWith(State.Card source) =>
+        State.Cards.Values.Where(c => c.Zone == Arcanum.Engine.State.Zone.Exile && c.ExiledWith is { } with && with.Source == source.Id && with.Version == source.Version
+                                      && c.Definition.IsCreature())
+            .OrderByDescending(c => c.ExiledWithOrder).FirstOrDefault();
 }

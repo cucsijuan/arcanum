@@ -127,6 +127,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>The affected creatures can't be blocked by creatures matching this ("Juggernauts you control can't be blocked by Walls").</summary>
     public ObjectFilter? GrantsCantBeBlockedBy { get; init; }
 
+    /// <summary>The affected permanent has the creature types of the last creature card exiled with the source, and is still a Shapeshifter.</summary>
+    public bool CreatureTypesOfLastExiled { get; init; }
+
     /// <summary>"Its activated abilities can't be activated" (mana abilities included).</summary>
     public bool CantActivateAbilities { get; init; }
 }

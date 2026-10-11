@@ -7,7 +7,9 @@ namespace Arcanum.Engine.Cards;
 /// <summary>A choice made as a permanent enters (rule 614.12).</summary>
 public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped, RevealOrTapped, BasicLandType, LookAtOpponentsHandThenCardName, NonbasicLandCardName, Creature, CounterOnPermanent,
     /// <summary>"As this enters, each opponent reveals their hand. You choose the name of a nonland card revealed this way."</summary>
-    OpponentsRevealHandsThenNonlandName }
+    OpponentsRevealHandsThenNonlandName,
+    /// <summary>"As this enters, choose Khans or Dragons": one of <see cref="CardDefinition.EnterOptions"/>.</summary>
+    Option }
 
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]
@@ -112,6 +114,8 @@ public enum Replacements : long
     OpponentsNontokenCreaturesExiledInsteadOfDying = 1L << 55,
     /// <summary>"You don't lose unspent red mana as steps and phases end."</summary>
     KeepRedMana = 1L << 56,
+    /// <summary>"Whenever you tap a permanent for {C}, add an additional {C}."</summary>
+    ExtraColorlessWhenTappedForColorless = 1L << 57,
 }
 
 /// <summary>
@@ -307,6 +311,18 @@ public sealed partial record CardDefinition
 
     /// <summary>Its <see cref="EntersAsCopyOf"/> copy has haste ("except it has haste").</summary>
     public bool EntersAsCopyWithHaste { get; init; }
+
+    /// <summary>"You may cast creature spells [matching this] from the top of your library."</summary>
+    public ObjectFilter? LibraryTopCastFilter { get; init; }
+
+    /// <summary>"If you cast a creature spell this way, it gains haste until end of turn."</summary>
+    public bool LibraryTopCastHaste { get; init; }
+
+    /// <summary>The named options of <see cref="EnterChoice.Option"/> ("Khans", "Dragons").</summary>
+    public IReadOnlyList<string>? EnterOptions { get; init; }
+
+    /// <summary>Read ahead (rule 702.155): a Saga that enters with as many lore counters as the chapter its controller chooses.</summary>
+    public bool ReadAhead { get; init; }
 
     /// <summary>"Creatures with power greater than the number of cards in your hand can't attack."</summary>
     public bool CantAttackIfPowerAboveHandSize { get; init; }

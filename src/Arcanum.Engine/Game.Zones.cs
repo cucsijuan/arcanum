@@ -188,6 +188,14 @@ public sealed partial class Game
             var newController = controller ?? card.Owner;
             // "You may have this creature enter as a copy of …": chosen as it enters, so it enters with the copy's characteristics.
             if (await ChooseCopyAsync(card, newController, transformed) is { } copied) _pendingCopies[(id, card.Version)] = copied;
+            // Read ahead (702.155): as the Saga enters, its controller chooses the chapter it starts on.
+            if (EnteringFace(card, transformed) is { ReadAhead: true, FinalChapter: > 1 and var lastChapter })
+            {
+                int chapter = await ControllerOf(newController).ChooseNumberAsync(ViewFor(newController),
+                    new Players.NumberRequest($"{card.Name}: read ahead — choose the chapter to start on", id, 1, lastChapter));
+                Require(chapter >= 1 && chapter <= lastChapter, $"Choose a chapter from 1 to {lastChapter}.");
+                _pendingReadAhead[(id, card.Version)] = chapter;
+            }
             // An Aura put onto the battlefield without being cast: the player putting it there chooses what it enchants; with
             // nothing legal to enchant it stays where it is (rules 303.4f, 303.4g).
             if (attachTo is null && card.Zone != Zone.Stack && (_pendingCopies.GetValueOrDefault((id, card.Version)) ?? EnteringFace(card, transformed)) is { EnchantTarget: { } enchant } aura
@@ -286,6 +294,9 @@ public sealed partial class Game
     /// <summary>The face a card about to enter the battlefield will have up: its back face if it enters transformed (rule 712.14a).</summary>
     private static Cards.CardDefinition EnteringFace(Card card, bool transformed) =>
         transformed && card.PrintedDefinition.BackFace is { } back ? back : card.Definition;
+
+    /// <summary>Chapters chosen for read ahead Sagas about to enter (by card and version before the move).</summary>
+    private readonly Dictionary<(CardId Card, int Version), int> _pendingReadAhead = new();
 
     /// <summary>Copies chosen for cards about to enter (by card and version before the move).</summary>
     private readonly Dictionary<(CardId Card, int Version), Cards.CardDefinition> _pendingCopies = new();
@@ -456,7 +467,14 @@ public sealed partial class Game
                         Eval(countFrom, new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
                 if (card.Definition.Loyalty is { } loyalty) enterCounters.Add((Abilities.CounterKind.Loyalty, loyalty)); // 306.5b
                 if (withCounters is not null) enterCounters.AddRange(withCounters.Where(c => c.Count > 0));
-                if (card.Definition.FinalChapter > 0) enterCounters.Add((Abilities.CounterKind.Lore, 1)); // a Saga enters with a lore counter (714.3a)
+                // A Saga enters with a lore counter (714.3a); read ahead, with as many as the chosen chapter, and the chapters it skips don't
+                // trigger (702.155c).
+                if (card.Definition.FinalChapter > 0)
+                {
+                    int lore = _pendingReadAhead.Remove((id, card.Version - 1), out var startChapter) ? startChapter : 1;
+                    card.ReadAheadChapter = lore;
+                    enterCounters.Add((Abilities.CounterKind.Lore, lore));
+                }
                 // "Each other Angel you control enters with an additional +1/+1 counter for each Angel you already control."
                 if (card.HasSubtype("Angel"))
                 {

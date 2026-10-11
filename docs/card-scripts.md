@@ -909,3 +909,20 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   `othersEnterWithCounters` ("each Dragon you control", `{ "chosenType": true }`); `{ "enteredThisTurn": filter, "count": 2 }`
   (celebration); static `"cantBeBlockedBy": filter`; quantity `"triggeredPlayerAttackers"` (creatures the player the trigger is about attacks
   with this combat).
+- **Costs**: `returnPermanent:artifact` ("return an artifact you control to its owner's hand", the source too).
+- **Subjects**: `"otherOpponents"` (each opponent other than the player the trigger is about), `"attackedBySelf"` (the player or planeswalker
+  the source is attacking).
+- **Mana**: `replaces` `ExtraColorlessWhenTappedForColorless` ("whenever you tap a permanent for {C}, add an additional {C}": abilities that
+  add only {C} produce one more, which mana payment knows about); `addManaCombination` takes `"abilitiesToo": true`.
+- **Imprint**: static `"creatureTypesOfLastExiled": true` with `"setPower": "lastExiledCreaturePower"`, `"setToughness":
+  "lastExiledCreatureToughness"` and `"while": "creatureCardExiledWithThis"` (cards exiled with `{ "exile": …, "linked": true }`).
+- **Effects**: `{ "tokensFightOpponentsCreatures": token }` (a token for each creature your opponents control, each fighting a different one,
+  all damage at once); `{ "reselectAttack": subject }` (choose again what an attacking creature attacks, never its controller or their
+  permanents) with condition `{ "step": "DeclareAttackers" }`; `{ "discover": 10 }` (rule 701.57; `"anyNonland": true` stops at any nonland
+  card, castable free only within the mana value, and `"restStaysExiled": true` leaves the others in exile; quantity `"discoverShortfall"`);
+  `{ "discardAnyNumber": true }` (then `{ "discarded": {} }` counts them); `exileTopPlayable` takes `"untilYourNextEndStep": true` and
+  `"damagePerStillExiled": 2` (at your next end step, that much damage to each opponent for each of the cards still exiled).
+- **Card-wide**: `"readAhead": true` (a Saga's controller chooses its starting chapter as it enters; earlier chapters don't trigger),
+  `"chooseOnEnter": "option"` with `"enterOptions": ["Khans", "Dragons"]` and condition `{ "chosenOption": "Khans" }`,
+  `"castFromLibraryTop": filter` with `"castFromLibraryTopHaste": true` ("you may cast creature spells with power 4 or greater from the top of
+  your library; if you do, it gains haste").

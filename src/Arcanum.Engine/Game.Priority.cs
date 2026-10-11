@@ -182,6 +182,14 @@ public sealed partial class Game
                 Emit(new ChoiceMade(id, i == 0 ? "Odd" : "Even"));
                 continue;
             }
+            else if (card.Definition.ChooseOnEnter == EnterChoice.Option && card.Definition.EnterOptions is { Count: > 0 } named)
+            {
+                int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose {string.Join(" or ", named)}", id, named.ToList(), OptionKind.Other));
+                Require(i >= 0 && i < named.Count, "Choose one of the options.");
+                card.ChosenOption = named[i];
+                Emit(new ChoiceMade(id, named[i]));
+                continue;
+            }
             else if (card.Definition.ChooseOnEnter == EnterChoice.OpponentsRevealHandsThenNonlandName)
             {
                 await ChooseRevealedNonlandNameAsync(card, who);
@@ -367,11 +375,25 @@ public sealed partial class Game
     private bool PaysLife(Card card) =>
         card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.PayLife);
 
+    /// <summary>
+    /// Permanents of the player letting them cast creature spells matching a filter from the top of their library ("creature spells with
+    /// power 4 or greater"), that match the card on top now.
+    /// </summary>
+    private IEnumerable<Card> LibraryTopPermissions(PlayerId playerId)
+    {
+        var library = State.GetPlayer(playerId).Library;
+        if (library.Count == 0) return Array.Empty<Card>();
+        var top = State.GetCard(library[0]);
+        return State.PermanentsControlledBy(playerId).Where(p => p.HasTextAbilities && p.Definition.LibraryTopCastFilter is { } only
+            && top.Is(CardType.Creature) && Matches(only with { Controller = ControllerFilter.Any }, top, playerId, p, playerId));
+    }
+
     /// <summary>Cards castable through permissions: the top of the library, stashed cards, permanents from the graveyard.</summary>
     private IEnumerable<CardId> OtherCastableCards(PlayerId playerId)
     {
         var player = State.GetPlayer(playerId);
-        if ((Has(playerId, Replacements.CreaturesFromLibraryTop) || Has(playerId, Replacements.CastCreaturesFromLibraryTop))
+        if ((Has(playerId, Replacements.CreaturesFromLibraryTop) || Has(playerId, Replacements.CastCreaturesFromLibraryTop)
+             || LibraryTopPermissions(playerId).Any())
             && player.Library.Count > 0 && State.GetCard(player.Library[0]).Is(CardType.Creature))
             yield return player.Library[0];
         // "As long as an opponent controls more lands than you, you may play lands from the top of your library."
@@ -759,12 +781,19 @@ public sealed partial class Game
             while (least < most && !CanPayCastingMana(card, player.Id, choices with { Improvised = artifacts.Take(least).Select(a => a.Id).ToList() }, cost.MinusGeneric(least))) least++;
             if (most > 0)
             {
-                var picked = await ControllerOf(player.Id).ChooseCardsAsync(ViewFor(player.Id), new CardChoiceRequest($"Improvise: tap up to {most} artifacts (each pays for {{1}})", cardId,
-                    artifacts.Select(a => ViewBuilder.Card(State, a.Id, player.Id)).ToList(), least, most, CardChoicePurpose.Sacrifice));
-                Require(picked.Count >= least && picked.Count <= most && picked.Distinct().Count() == picked.Count && picked.All(id => artifacts.Any(a => a.Id == id)),
-                    "Choose untapped artifacts you control.");
-                Require(CanPayCastingMana(card, player.Id, choices with { Improvised = picked.ToList() }, cost.MinusGeneric(picked.Count)),
-                    "The rest of the cost can't be paid without those artifacts.");
+                // Artifacts the rest of the cost still needs for mana can't all be tapped: the player chooses again (after a few tries, the
+                // artifacts that don't make mana are tapped).
+                IReadOnlyList<CardId> picked = Array.Empty<CardId>();
+                for (int attempt = 0; ; attempt++)
+                {
+                    picked = await ControllerOf(player.Id).ChooseCardsAsync(ViewFor(player.Id), new CardChoiceRequest(
+                        attempt == 0 ? $"Improvise: tap up to {most} artifacts (each pays for {{1}})" : $"Improvise: those artifacts are needed for mana; choose again (up to {most})", cardId,
+                        artifacts.Select(a => ViewBuilder.Card(State, a.Id, player.Id)).ToList(), least, most, CardChoicePurpose.Sacrifice));
+                    Require(picked.Count >= least && picked.Count <= most && picked.Distinct().Count() == picked.Count && picked.All(id => artifacts.Any(a => a.Id == id)),
+                        "Choose untapped artifacts you control.");
+                    if (CanPayCastingMana(card, player.Id, choices with { Improvised = picked.ToList() }, cost.MinusGeneric(picked.Count))) break;
+                    if (attempt >= 2) { picked = artifacts.Take(least).Select(a => a.Id).ToList(); break; }
+                }
                 choices = choices with { Improvised = picked.ToList() };
                 foreach (var id in picked) Tap(State.GetCard(id));
                 cost = cost.MinusGeneric(picked.Count);
@@ -800,6 +829,8 @@ public sealed partial class Game
         // Mana riders: haste for Dragon creature spells, copies of red instants and sorceries.
         var riders = paidMana.SpecialSpent.Select(u => u.Rider).ToList();
         if (riders.Contains(ManaRider.HasteForDragonCreatureSpells) && card.Is(CardType.Creature) && card.HasSubtype("Dragon")) card.HasteOnEnter = true;
+        // "If you cast a creature spell this way, it gains haste until end of turn."
+        if (card.Zone == Zone.Library && LibraryTopPermissions(player.Id).Any(p => p.Definition.LibraryTopCastHaste)) card.HasteOnEnter = true;
         bool uncounterable = (riders.Contains(ManaRider.LegendaryUncounterable) && (card.Supertypes & Supertype.Legendary) != 0)
                              || riders.Contains(ManaRider.Uncounterable)
                              || (riders.Contains(ManaRider.InstantOrSorceryUncounterable) && (card.Is(CardType.Instant) || card.Is(CardType.Sorcery)));
@@ -1017,7 +1048,9 @@ public sealed partial class Game
         if (IsManaAbility(ability))
         {
             if (ability.Cost.Tap) Emit(new TappedForMana(player.Id, source.Id));
+            int logBefore = _log.Count;
             await ApplyResolutionAsync(item, ability, source); // mana abilities don't use the stack (rule 605.3b)
+            if (ability.Cost.Tap && _log.Skip(logBefore).OfType<ManaAdded>().Any(m => m.Source == source.Id && m.Type == ManaType.Colorless)) AddExtraColorless(player, source);
             return true;
         }
         PushStack(item);
@@ -1086,6 +1119,7 @@ public sealed partial class Game
         if (ExilableFromGraveyard(player, extra, source).Count < extra.ExileFromGraveyard) return false;
         if (extra.ReturnExiledWithSource is { } exiledFilter && !ExiledWith(State.GetCard(source), exiledFilter).Any()) return false;
         if (extra.Sacrifice is { } filter && SacrificeCandidates(playerId, filter, source).Count < extra.SacrificeCount) return false;
+        if (extra.ReturnToHand is { } returnFilter && ReturnCandidates(playerId, returnFilter, source).Count == 0) return false;
         if (extra.TapCreatures is { } tapFilter && TapCandidates(playerId, tapFilter, source).Count < extra.TapCount) return false;
         if (extra.CrewPower > 0 && TapCandidates(playerId, new ObjectFilter(CardType.Creature, Other: true), source).Sum(c => c.Power) < extra.CrewPower) return false;
         if (extra.RemoveCountersFromYourCreatures > 0
@@ -1108,6 +1142,9 @@ public sealed partial class Game
         return State.PermanentsControlledBy(player)
             .Where(c => !c.Tapped && Matches(filter with { Controller = ControllerFilter.Any }, c, player, sourceCard, player)).ToList();
     }
+
+    private List<Card> ReturnCandidates(PlayerId player, ObjectFilter filter, CardId source) =>
+        State.PermanentsControlledBy(player).Where(c => Matches(filter with { Controller = ControllerFilter.Any }, c, player, State.GetCard(source), player)).ToList();
 
     private List<Card> SacrificeCandidates(PlayerId player, ObjectFilter filter, CardId source)
     {
@@ -1185,6 +1222,15 @@ public sealed partial class Game
             Require(chosen.Count == extra.Discard && chosen.Distinct().Count() == chosen.Count && chosen.All(hand.Contains), "Discard from your hand.");
             foreach (var id in chosen) await DiscardCardAsync(playerId, id, causedBy);
             _lastDiscardedForCost.AddRange(chosen);
+        }
+        if (extra.ReturnToHand is { } toReturn)
+        {
+            var returnable = ReturnCandidates(playerId, toReturn, source);
+            var pick = returnable.Count == 1 ? new List<CardId> { returnable[0].Id } : (await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId),
+                new CardChoiceRequest("Return a permanent to its owner's hand to pay the cost", source, returnable.Select(c => ViewBuilder.Card(State, c.Id, playerId)).ToList(),
+                    1, 1, CardChoicePurpose.ToHand))).ToList();
+            Require(pick.Count == 1 && returnable.Any(c => c.Id == pick[0]), "Return one of the listed permanents.");
+            await MoveCardAsync(pick[0], Zone.Hand);
         }
         if (extra.Sacrifice is { } filter)
         {
@@ -1317,7 +1363,23 @@ public sealed partial class Game
         // "This land deals 1 damage to you" / "You gain 1 life" (part of the mana ability, rule 605.3b).
         if (option is { DamageToController: > 0 } hurts) await DealDamageAsync(source, null, player.Id, hurts.DamageToController);
         if (option is { GainLife: > 0 } heals) await GainLifeAsync(player.Id, heals.GainLife);
+        // An ability that adds only {C} already includes the additional {C} (Card.ManaOptions); one that could add something else gets it now.
+        if (produced.Contains(ManaType.Colorless) && option is not { Types: [ManaType.Colorless], Combination: false }) AddExtraColorless(player, source);
         if (source.Definition.SacrificeForMana) await SacrificePermanentAsync(source.Id);
+    }
+
+    /// <summary>
+    /// "Whenever you tap a permanent for {C}, add an additional {C}": a triggered mana ability (rule 605.1b), resolved at once, for each
+    /// permanent of the player that has it.
+    /// </summary>
+    private void AddExtraColorless(Player player, Card tapped)
+    {
+        int extra = State.PermanentsControlledBy(player.Id).Count(c => (c.Replaces & Replacements.ExtraColorlessWhenTappedForColorless) != 0);
+        for (int i = 0; i < extra; i++)
+        {
+            player.ManaPool.Add(ManaType.Colorless);
+            Emit(new ManaAdded(player.Id, ManaType.Colorless, tapped.Id));
+        }
     }
 
     /// <summary>Cards being cast for their miracle cost right now.</summary>

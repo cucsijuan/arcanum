@@ -536,6 +536,12 @@ public sealed record ExileTopPlayable(int Count, bool ChooseOne = true, bool Unt
     /// <summary>"For as long as they remain exiled" instead of this turn.</summary>
     public bool Forever { get; init; }
 
+    /// <summary>"You may play those cards until your next end step."</summary>
+    public bool UntilYourNextEndStep { get; init; }
+
+    /// <summary>"At the beginning of your next end step, [this] deals N damage to each opponent for each of those cards that are still exiled."</summary>
+    public int DamagePerStillExiled { get; init; }
+
     /// <summary>Exiled face down: only the controller may look at them.</summary>
     public bool FaceDown { get; init; }
 
@@ -869,7 +875,11 @@ public sealed record RevealTopPutRandom(int Count, ObjectFilter Filter, State.Zo
 public sealed record SearchHandOrLibrary(ObjectFilter Filter, State.Zone To) : Effect;
 
 /// <summary>Add mana in any combination of colors, spendable only on spells matching <paramref name="OnlyFor"/>.</summary>
-public sealed record AddManaInAnyCombination(Quantity Count, ObjectFilter? OnlyFor) : Effect;
+public sealed record AddManaInAnyCombination(Quantity Count, ObjectFilter? OnlyFor) : Effect
+{
+    /// <summary>The restricted mana can also pay for activated abilities of matching sources ("or activate abilities of Dragons").</summary>
+    public bool AbilitiesToo { get; init; }
+}
 
 /// <summary>"You may behold a [filter]" (choose one you control or reveal one from your hand); if you do, <paramref name="Effects"/>.</summary>
 public sealed record Behold(ObjectFilter Filter, IReadOnlyList<Effect> Effects) : Effect;
@@ -1147,3 +1157,28 @@ public sealed record DoublePowerAndToughness(Subject What) : Effect;
 
 /// <summary>Proliferate (rule 701.34): any number of permanents and/or players get another counter of each kind already there.</summary>
 public sealed record Proliferate : Effect;
+
+/// <summary>
+/// Discover N (rule 701.57): exile cards from the top of your library until a nonland card with mana value N or less; cast it without paying
+/// its mana cost or put it into your hand; the rest go to the bottom in a random order.
+/// </summary>
+public sealed record DiscoverCards(Quantity ManaValue) : Effect
+{
+    /// <summary>Stop at any nonland card; it's castable free only with mana value N or less ("until you exile a nonland card").</summary>
+    public bool AnyNonland { get; init; }
+
+    /// <summary>The other exiled cards stay in exile.</summary>
+    public bool RestStaysExiled { get; init; }
+}
+
+/// <summary>"Discard any number of cards" (the cards discarded this way are counted by <see cref="QuantityKind.DiscardedThisWay"/>).</summary>
+public sealed record DiscardAnyNumber : Effect;
+
+/// <summary>"For each creature your opponents control, create a [token]. Each of those tokens fights a different one of those creatures" (the fights deal their damage at once).</summary>
+public sealed record TokensFightOpponentsCreatures(CardDefinition Token) : Effect;
+
+/// <summary>"You may reselect which player or permanent [target attacking creature] is attacking."</summary>
+public sealed record ReselectAttack(Subject What) : Effect;
+
+/// <summary>Damage to each opponent, so much for each of the given cards that is still in exile (as the same object).</summary>
+public sealed record DamageForEachStillExiled(int PerCard, IReadOnlyList<(Core.CardId Card, int Version)> Cards) : Effect;

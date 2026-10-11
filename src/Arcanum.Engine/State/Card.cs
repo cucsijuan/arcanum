@@ -138,6 +138,15 @@ public sealed class Card
     /// <summary>The opponent a gift was promised to as this was cast (kept as a permanent spell enters the battlefield).</summary>
     public Core.PlayerId? GiftTo { get; set; }
 
+    /// <summary>The named option chosen as it entered ("Khans or Dragons").</summary>
+    public string? ChosenOption { get; set; }
+
+    /// <summary>The chapter a read ahead Saga started on: chapters before it don't trigger (rule 702.155c).</summary>
+    public int ReadAheadChapter { get; set; }
+
+    /// <summary>Additional {C} its controller gets whenever this is tapped for {C} (set as continuous effects are worked out).</summary>
+    internal int ExtraColorless { get; set; }
+
     /// <summary>Exiled face down: only the players in <see cref="KnownTo"/> may look at it (rule 406.3).</summary>
     public bool FaceDown { get; set; }
 
@@ -290,7 +299,17 @@ public sealed class Card
     public LastKnown? LastKnownOf(int version) => _lastKnownByVersion.GetValueOrDefault(version);
 
     /// <summary>The permanent (id, version) that exiled this card "with it" (for "the exiled card").</summary>
-    public (CardId Source, int Version)? ExiledWith { get; set; }
+    public (CardId Source, int Version)? ExiledWith
+    {
+        get => _exiledWith;
+        set { _exiledWith = value; ExiledWithOrder = value is null ? 0 : ++s_exiledWithOrder; }
+    }
+
+    private (CardId Source, int Version)? _exiledWith;
+    private static long s_exiledWithOrder;
+
+    /// <summary>When it was exiled with its <see cref="ExiledWith"/> permanent, for "the last card exiled with it" (larger is later).</summary>
+    public long ExiledWithOrder { get; private set; }
 
     /// <summary>The zone it came from the last time it changed zones ("a permanent that entered from a graveyard").</summary>
     public Zone EnteredFrom { get; set; }
@@ -470,6 +489,11 @@ public sealed class Card
                             options.Add(new ManaOption(new[] { mana }));
             }
             options.AddRange(GrantedManaOptions);
+            // A triggered mana ability adding an additional {C} whenever it's tapped for {C} (rule 605.1b), part of the same activation here.
+            if (ExtraColorless > 0)
+                for (int i = 0; i < options.Count; i++)
+                    if (options[i].Produces > 0 && options[i].Types.Count == 1 && options[i].Types[0] == Mana.ManaType.Colorless && !options[i].Combination)
+                        options[i] = options[i] with { Amount = options[i].Amount + ExtraColorless };
             return options;
         }
     }
@@ -635,6 +659,8 @@ public sealed class Card
         PaidWithTreasure = false;
         GiftPromised = false;
         GiftTo = null;
+        ChosenOption = null;
+        ReadAheadChapter = 0;
         FaceDown = false;
         KnownTo.Clear();
         Uncounterable = false;

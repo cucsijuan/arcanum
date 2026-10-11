@@ -16,6 +16,9 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
     /// <summary>"Pay life equal to the number of colors in your commanders' color identity" (on top of <see cref="ExtraCost.PayLife"/>).</summary>
     public bool LifeFromCommanderColors { get; init; }
 
+    /// <summary>"Return an artifact you control to its owner's hand": one permanent matching this (the source too).</summary>
+    public ObjectFilter? ReturnToHand { get; init; }
+
     /// <summary>Crew N: tap untapped creatures you control with total power N or greater (rule 702.122).</summary>
     public int CrewPower { get; init; }
 

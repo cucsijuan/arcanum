@@ -103,6 +103,10 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
     public PlayerId? UntilEndOfNextTurnOf { get; init; }
     public int MadeOnTurn { get; init; }
 
+    /// <summary>"Until your next end step": the permission ends as that player's next end step begins (a later one if made during an end step of theirs).</summary>
+    public PlayerId? UntilNextEndStepOf { get; init; }
+    public bool MadeDuringEndStep { get; init; }
+
     /// <summary>"You may cast" (not play): a land can't be played this way.</summary>
     public bool CastOnly { get; init; }
 

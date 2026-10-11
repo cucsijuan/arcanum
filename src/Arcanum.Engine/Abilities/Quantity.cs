@@ -152,6 +152,11 @@ public enum QuantityKind
     GreatestCommanderManaValueAnywhere,
     /// <summary>The creatures attacking this combat that the player the trigger is about controls ("attacks with two or more creatures").</summary>
     TriggeredPlayerAttackers,
+    /// <summary>How far the discovered card's mana value is below the N it was discovered for (none without a discovered card).</summary>
+    DiscoverShortfall,
+    /// <summary>The power / toughness of the last creature card exiled with the source ("imprint").</summary>
+    LastExiledCreaturePower,
+    LastExiledCreatureToughness,
 }
 
 /// <summary>

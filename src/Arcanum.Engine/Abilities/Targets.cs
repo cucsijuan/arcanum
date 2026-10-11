@@ -179,6 +179,10 @@ public enum SubjectKind
     Sacrificers,
     /// <summary>The players dealt damage by this spell or ability so far ("each player dealt damage this way"), in turn order.</summary>
     PlayersDamagedThisWay,
+    /// <summary>Each opponent other than the player the trigger is about ("each other opponent").</summary>
+    OtherOpponents,
+    /// <summary>The player or planeswalker the source is attacking ("the player or planeswalker it's attacking").</summary>
+    AttackedBySource,
 }
 
 public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filter = null)
