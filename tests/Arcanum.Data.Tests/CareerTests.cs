@@ -518,20 +518,20 @@ public class CareerTests
         var (state, journal, world) = StartedWithSixty();
         // A regular never puts up a basic land, and the offer stays the same while the player looks.
         for (int d = 0; d < 30; d++)
-            Assert.False(world.IsBasicLand(CareerRules.AnteOfferOf(state, world, "bo", state.Day.AddDays(d)).Card.Name));
+            Assert.All(CareerRules.AnteOfferOf(state, world, "bo", state.Day.AddDays(d)).Cards, c => Assert.False(world.IsBasicLand(c.Card.Name)));
         var offer = CareerRules.AnteOfferOf(state, world, "ana", state.Day);
-        Assert.Equal(offer, CareerRules.AnteOfferOf(state, world, "ana", state.Day));
+        Assert.Equal(offer.Cards, CareerRules.AnteOfferOf(state, world, "ana", state.Day).Cards);
+        Assert.Equal(2, offer.Cards.Count); // ana's deck has two different cards besides lands
         var stake = new CardKey("Card 1", "ABC", "1");
-        bool fair = CareerRules.AnteAccepted(state, world, offer, stake, state.Day);
-        Assert.Equal(fair, CareerMarket.Price(state, world, stake, state.Day) >= offer.Value * 0.8);
-        if (!fair)
-        {
-            Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new StartAnte(T0.AddMinutes(1), "ana", Sixty, stake.ToString()), world));
-            return;
-        }
-        Do(state, journal, world, new StartAnte(T0.AddMinutes(1), "ana", Sixty, stake.ToString()));
+        var cheap = offer.Cards[0];
+        var dear = offer.Cards[^1];
+        Assert.False(CareerRules.AnteAccepted(state, world, dear, stake, state.Day)); // a common for a mythic: no
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new StartAnte(T0.AddMinutes(1), "ana", Sixty, stake.ToString(), dear.Card.ToString()), world));
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new StartAnte(T0.AddMinutes(1), "ana", Sixty, stake.ToString(), "Card 7|ABC|7"), world));
+        if (!CareerRules.AnteAccepted(state, world, cheap, stake, state.Day)) return;
+        Do(state, journal, world, new StartAnte(T0.AddMinutes(1), "ana", Sixty, stake.ToString(), cheap.Card.ToString()));
         Assert.Equal(stake.ToString(), state.Pending!.PlayerAnte);
-        Assert.Equal(offer.Card.ToString(), state.Pending.OpponentAnte);
+        Assert.Equal(cheap.Card.ToString(), state.Pending.OpponentAnte);
         Assert.Equal(3, state.Owned(stake));
     }
 

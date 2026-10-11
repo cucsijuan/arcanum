@@ -237,8 +237,11 @@ public static class CareerRules
         return new CareerResult(Array.Empty<PoolCard>(), 0);
     }
 
-    /// <summary>What a regular puts up for an ante match: a card of the deck they'd play, never a basic land.</summary>
-    public sealed record AnteOffer(OpponentSpec Opponent, string Deck, CardKey Card, int Value);
+    /// <summary>A card a regular puts up for an ante match (a card of the deck they'd play, never a basic land) and its price.</summary>
+    public sealed record AnteCard(CardKey Card, int Value);
+
+    /// <summary>What a regular offers for the player's next ante match: the deck they'd play and the cards to choose from.</summary>
+    public sealed record AnteOffer(OpponentSpec Opponent, string Deck, IReadOnlyList<AnteCard> Cards);
 
     /// <summary>
     /// The regular's offer for the player's next ante match on a day: fixed for that regular and that match, so
@@ -252,15 +255,21 @@ public static class CareerRules
         var random = CareerRandom.For(state.Seed, Ante, day.DayNumber, played, id);
         var deckName = opponent.Decks[random.Next(opponent.Decks.Count)];
         var deck = OpponentDeck(state, world, opponent.Id, deckName);
-        var cards = deck.Main.Where(e => !world.IsBasicLand(e.Name)).SelectMany(e => Enumerable.Repeat(e, e.Count)).ToList();
-        if (cards.Count == 0) throw new CareerRuleException($"{opponent.Name} has nothing to stake.");
-        var card = CardKey.Of(cards[random.Next(cards.Count)]);
-        return new AnteOffer(opponent, deckName, card, CareerMarket.Price(state, world, card, day));
+        var pool = deck.Main.Where(e => !world.IsBasicLand(e.Name)).Select(CardKey.Of).Distinct().ToList();
+        if (pool.Count == 0) throw new CareerRuleException($"{opponent.Name} has nothing to stake.");
+        var cards = new List<AnteCard>();
+        while (cards.Count < world.Content.Ante.Offers && pool.Count > 0)
+        {
+            int i = random.Next(pool.Count);
+            cards.Add(new AnteCard(pool[i], CareerMarket.Price(state, world, pool[i], day)));
+            pool.RemoveAt(i);
+        }
+        return new AnteOffer(opponent, deckName, cards.OrderBy(c => c.Value).ToList());
     }
 
-    /// <summary>Whether the regular plays for this stake: worth at least the content's share of their own card.</summary>
-    public static bool AnteAccepted(CareerState state, CareerWorld world, AnteOffer offer, CardKey stake, DateOnly day) =>
-        CareerMarket.Price(state, world, stake, day) >= offer.Value * world.Content.Ante.MinRatio;
+    /// <summary>Whether the regular plays for this stake against their card: worth at least the content's share of it.</summary>
+    public static bool AnteAccepted(CareerState state, CareerWorld world, AnteCard theirs, CardKey stake, DateOnly day) =>
+        CareerMarket.Price(state, world, stake, day) >= theirs.Value * world.Content.Ante.MinRatio;
 
     /// <summary>
     /// An ante match: the player's stake (or, in older journals, a card at random from their deck) and the regular's
@@ -280,8 +289,11 @@ public static class CareerRules
             if (!deck.Main.Any(e => e.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase))) throw new CareerRuleException($"{key.Name} isn't in your deck.");
             if (state.Owned(key) == 0) throw new CareerRuleException($"You have no {key.Name} in that printing.");
             var offer = AnteOfferOf(state, world, opponent.Id, state.Day);
-            if (!AnteAccepted(state, world, offer, key, state.Day)) throw new CareerRuleException($"{opponent.Name} won't play for {key.Name}.");
-            (theirs, theirDeck) = (offer.Card, offer.Deck);
+            var chosen = ante.Theirs is { } wanted
+                ? offer.Cards.FirstOrDefault(c => c.Card.ToString() == wanted) ?? throw new CareerRuleException($"{opponent.Name} isn't offering that card.")
+                : offer.Cards[0];
+            if (!AnteAccepted(state, world, chosen, key, state.Day)) throw new CareerRuleException($"{opponent.Name} won't play for {key.Name}.");
+            (theirs, theirDeck) = (chosen.Card, offer.Deck);
         }
         else
         {

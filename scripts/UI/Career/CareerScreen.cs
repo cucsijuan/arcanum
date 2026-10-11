@@ -25,7 +25,7 @@ public partial class CareerScreen : Control
 {
     private enum Place { Room, Store }
 
-    public enum WebPage { Matches, Practice, Challenges, Events, Market, Cards }
+    public enum WebPage { Matches, Practice, Challenges, Events, Market, Cards, Chat }
 
     private const string Kit = "res://ui-art/kit/career/";
     private static readonly Vector2 TileSize = new(150, 210);
@@ -125,7 +125,7 @@ public partial class CareerScreen : Control
     /// <summary>
     /// Testing: ARCANUM_CAREER_START=&lt;starting deck&gt; starts a career when there is none; ARCANUM_CAREER_PAGE=&lt;page&gt; opens
     /// store, boosters, precons, counter, a website page (Matches, Practice, Challenges, Events, Market, Cards), opening
-    /// (the first unopened booster), decks (the deck builder), daily or ante (plays one), enter (today's first event), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck), surge:&lt;set&gt; (opens collector boosters until a surge foil comes).
+    /// (the first unopened booster), decks (the deck builder), daily or ante (plays one), enter (today's first event), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck), surge:&lt;set&gt; (opens collector boosters until a surge foil comes), chat or chat2 (the ante chat).
     /// </summary>
     private bool RunTestHooks()
     {
@@ -171,6 +171,21 @@ public partial class CareerScreen : Control
                     var peek = CareerRandom.For(State.Seed, "booster", State.BoostersOpened);
                     if (World.Generator(test[6..], "collector").Open(peek).Any(c => c.Surge)) { OpenBooster(key); return true; }
                     Career.Do(new OpenBooster(Career.Now, test[6..], "collector"));
+                }
+                return true;
+            case "chat" or "chat2" when Career.Decks.List(null).FirstOrDefault(d => d.FormatId != CareerRules.Commander) is { } chatDeck:
+                OpenWeb(WebPage.Practice, instant: true);
+                OpenChat(CareerRules.Opponents(State, World)[0].Id, Career.Decks.Load(chatDeck).Deck);
+                if (test == "chat2")
+                {
+                    // Asks for the dearest card, offers the default stake (often turned down), then the dearest stake.
+                    var offer = CareerRules.AnteOfferOf(State, World, _chatWith, Today);
+                    _chatWant = offer.Cards[^1];
+                    _chat.Add(new ChatLine(true, $"I'll play for your {_chatWant.Card.Name}.", new[] { _chatWant.Card }));
+                    _chat.Add(new ChatLine(false, Say(World.Content.Ante.AskStake)));
+                    _chatStep = ChatStep.Stake;
+                    var cheapest = State.Cards.Select(c => c.Card).Where(c => !World.IsBasicLand(c.Name)).OrderBy(c => CareerMarket.Price(State, World, c, Today)).First();
+                    OfferStake(offer, _chatWant, cheapest);
                 }
                 return true;
             case "store": GoTo(Place.Store); return true;
@@ -440,6 +455,7 @@ public partial class CareerScreen : Control
         switch (_webPage)
         {
             case WebPage.Practice: PracticePage(content); break;
+            case WebPage.Chat: ChatPage(content); break;
             case WebPage.Challenges: ChallengesPage(content); break;
             case WebPage.Events: EventsPage(content); break;
             case WebPage.Market: CollectionList(content, CareerStyle.Ink); break;
@@ -605,93 +621,212 @@ public partial class CareerScreen : Control
         int antes = CareerRules.AntesLeft(State, World, now);
         page.AddChild(new Control { CustomMinimumSize = new Vector2(0, 8) });
         page.AddChild(CareerStyle.Text("Ante match", 28, CareerStyle.TitleBar));
-        page.AddChild(CareerStyle.Text("Playing for keeps: the regular puts up a card, you put up one of your deck, and the winner keeps both. "
-            + $"The anted cards stay out of the game. {antes} ante match{(antes == 1 ? "" : "es")} left today.", 19, CareerStyle.InkDim, wrap: true));
-        if (problems.Count == 0 && antes > 0) AnteTable(page, opponents, chosen);
+        page.AddChild(CareerStyle.Text("Playing for keeps: message a regular, choose one of the cards they put up and offer one of your deck; "
+            + $"the winner keeps both, and the anted cards stay out of the game. {antes} ante match{(antes == 1 ? "" : "es")} left today.", 19, CareerStyle.InkDim, wrap: true));
+        if (problems.Count == 0 && antes > 0)
+        {
+            var regulars = new HFlowContainer();
+            regulars.AddThemeConstantOverride("h_separation", 10);
+            regulars.AddThemeConstantOverride("v_separation", 8);
+            foreach (var o in opponents) regulars.AddChild(CareerStyle.Button($"Message {o.Name}", () => OpenChat(o.Id, chosen), 18));
+            page.AddChild(regulars);
+        }
         Record(page);
     }
 
+    // ---------------------------------------------------------------- the ante chat
+
+    private enum ChatStep { Choose, Stake, Agreed }
+
+    /// <summary>A message of the chat: the player's or the regular's, with cards shown under it.</summary>
+    private sealed record ChatLine(bool Mine, string Text, IReadOnlyList<CardKey>? Cards = null);
+
+    private readonly List<ChatLine> _chat = new();
+    private string _chatWith = "";
+    private DeckList? _chatDeck;
+    private CareerRules.AnteCard? _chatWant;
+    private CardKey? _chatStake;
+    private ChatStep _chatStep;
     private int _stakeIndex;
     private bool _stakePicked;
-    private string _anteReply = "";
 
-    /// <summary>
-    /// The ante's negotiation: the regular chosen shows the card they put up, the player picks a card of their deck to
-    /// stake and offers it; the regular plays only for a fair stake (otherwise they say so), and the player can still
-    /// walk away before the game starts.
-    /// </summary>
-    private void AnteTable(VBoxContainer page, IReadOnlyList<OpponentSpec> opponents, DeckList deck)
+    private static string Say(IReadOnlyList<string> lines) => lines.Count == 0 ? "" : lines[Random.Shared.Next(lines.Count)];
+
+    /// <summary>Starts a chat with a regular about an ante match: they greet and show what they'd put up.</summary>
+    private void OpenChat(string opponentId, DeckList deck)
     {
-        var picker = new OptionButton { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(300, 0) };
-        int selected = Math.Max(0, opponents.ToList().FindIndex(o => o.Id == _anteOpponent));
-        foreach (var o in opponents) picker.AddItem(o.Name);
-        picker.Selected = selected;
-        picker.ItemSelected += i => { _anteOpponent = opponents[(int)i].Id; _anteReply = ""; _stakePicked = false; ShowWebPage(); };
-        var offer = CareerRules.AnteOfferOf(State, World, opponents[selected].Id, Today);
+        var offer = CareerRules.AnteOfferOf(State, World, opponentId, Today);
+        _chat.Clear();
+        _chatWith = opponentId;
+        _chatDeck = deck;
+        _chatWant = null;
+        _chatStep = ChatStep.Choose;
+        _stakePicked = false;
+        _chat.Add(new ChatLine(false, Say(World.Content.Ante.Greetings), offer.Cards.Select(c => c.Card).ToList()));
+        _webPage = WebPage.Chat;
+        ShowWebPage();
+    }
 
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 18);
-        var theirs = new VBoxContainer();
-        theirs.AddChild(picker);
-        theirs.AddChild(CareerStyle.Text($"puts up {offer.Card.Name}, worth {CareerRules.Money(offer.Value)}", 18, CareerStyle.InkDim, wrap: true));
-        theirs.AddChild(SmallCard(offer.Card));
-        row.AddChild(theirs);
-
-        // The player's stake: a card of the deck, in a printing owned (the least valuable first).
-        var stakes = deck.Main.Where(e => !World.IsBasicLand(e.Name)).Select(e => e.Name).Distinct(StringComparer.OrdinalIgnoreCase)
-            .SelectMany(name => State.Cards.Where(c => c.Card.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Select(c => c.Card))
-            .OrderBy(c => CareerMarket.Price(State, World, c, Today)).ToList();
-        var mine = new VBoxContainer();
-        var stakePicker = new OptionButton { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(380, 0) };
-        foreach (var c in stakes) stakePicker.AddItem($"{c.Name}{(c.Surge ? " (surge foil)" : c.Foil ? " (foil)" : "")} · {CareerRules.Money(CareerMarket.Price(State, World, c, Today))}");
-        // Until the player picks one, the cheapest stake the regular would take (the dearest when none would do).
-        if (!_stakePicked)
-            _stakeIndex = stakes.FindIndex(c => CareerRules.AnteAccepted(State, World, offer, c, Today)) is var fair and >= 0 ? fair : stakes.Count - 1;
-        _stakeIndex = Math.Clamp(_stakeIndex, 0, Math.Max(0, stakes.Count - 1));
-        if (stakes.Count > 0) stakePicker.Selected = _stakeIndex;
-        stakePicker.ItemSelected += i => { _stakeIndex = (int)i; _stakePicked = true; _anteReply = ""; ShowWebPage(); };
-        mine.AddChild(CareerStyle.Text("Your stake:", 20));
-        mine.AddChild(stakePicker);
-        if (stakes.Count > 0) mine.AddChild(SmallCard(stakes[_stakeIndex]));
-        row.AddChild(mine);
-        page.AddChild(row);
-
-        if (_anteReply.Length > 0) page.AddChild(CareerStyle.Text($"{offer.Opponent.Name}: “{_anteReply}”", 20, CareerStyle.Bad, wrap: true));
-        var propose = CareerStyle.Button("Offer this stake", () =>
+    private void ChatPage(VBoxContainer page)
+    {
+        if (_chatDeck is not { } deck || _chatWith.Length == 0)
         {
-            var stake = stakes[_stakeIndex];
-            if (!CareerRules.AnteAccepted(State, World, offer, stake, Today))
-            {
-                var lines = World.Content.Ante.Declines;
-                _anteReply = lines[Random.Shared.Next(lines.Count)];
-                ShowWebPage();
-                return;
-            }
-            var cards = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-            cards.AddThemeConstantOverride("separation", 30);
-            foreach (var (who, card) in new[] { ("You put up", stake), ($"{offer.Opponent.Name} puts up", offer.Card) })
-            {
-                var column = new VBoxContainer();
-                column.AddChild(CareerStyle.Text(who, 20, CareerStyle.Gold));
-                var node = new CardNode { Size = new Vector2(200, 279), CustomMinimumSize = new Vector2(200, 279) };
-                node.Setup(ViewOf(DefinitionOf(card)), showCostPips: false);
-                column.AddChild(node);
-                cards.AddChild(column);
-            }
-            MenuKit.Modal(this, $"{offer.Opponent.Name} accepts", "The winner keeps both cards. Leaving the game before it ends loses yours.", cards,
-                ("Walk away", () => { }), ("Play for keeps", () =>
+            _webPage = WebPage.Practice;
+            PracticePage(page);
+            return;
+        }
+        var offer = CareerRules.AnteOfferOf(State, World, _chatWith, Today);
+        var head = new HBoxContainer();
+        var back = CareerStyle.LinkButton("<< Back");
+        back.Pressed += () => { _webPage = WebPage.Practice; ShowWebPage(); };
+        head.AddChild(back);
+        head.AddChild(CareerStyle.Text($"  Chat with {offer.Opponent.Name}", 26, CareerStyle.TitleBar));
+        page.AddChild(head);
+
+        // The conversation.
+        var lines = new VBoxContainer();
+        lines.AddThemeConstantOverride("separation", 10);
+        foreach (var line in _chat) lines.AddChild(Bubble(line, offer));
+        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        lines.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        scroll.AddChild(lines);
+        page.AddChild(scroll);
+        Callable.From(() => { if (IsInstanceValid(scroll)) scroll.ScrollVertical = int.MaxValue; }).CallDeferred();
+
+        // What the player can say now.
+        var reply = new HBoxContainer();
+        reply.AddThemeConstantOverride("separation", 10);
+        switch (_chatStep)
+        {
+            case ChatStep.Choose:
+                reply.AddChild(CareerStyle.Text("Click the card you want.", 20, CareerStyle.InkDim));
+                break;
+            case ChatStep.Stake:
+                var want = _chatWant!;
+                var stakes = deck.Main.Where(e => !World.IsBasicLand(e.Name)).Select(e => e.Name).Distinct(StringComparer.OrdinalIgnoreCase)
+                    .SelectMany(name => State.Cards.Where(c => c.Card.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Select(c => c.Card))
+                    .OrderBy(c => CareerMarket.Price(State, World, c, Today)).ToList();
+                if (stakes.Count == 0)
+                {
+                    reply.AddChild(CareerStyle.Text("Your deck has nothing to stake.", 20, CareerStyle.Bad));
+                    break;
+                }
+                // Until the player picks one, the cheapest stake the regular would take (the dearest when none would do).
+                if (!_stakePicked)
+                    _stakeIndex = stakes.FindIndex(c => CareerRules.AnteAccepted(State, World, want, c, Today)) is var fair and >= 0 ? fair : stakes.Count - 1;
+                _stakeIndex = Math.Clamp(_stakeIndex, 0, stakes.Count - 1);
+                var picker = new OptionButton { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(380, 0) };
+                foreach (var c in stakes) picker.AddItem($"{c.Name}{(c.Surge ? " (surge foil)" : c.Foil ? " (foil)" : "")} · {CareerRules.Money(CareerMarket.Price(State, World, c, Today))}");
+                picker.Selected = _stakeIndex;
+                picker.ItemSelected += i => { _stakeIndex = (int)i; _stakePicked = true; ShowWebPage(); };
+                reply.AddChild(SmallCard(stakes[_stakeIndex]));
+                var choose = new VBoxContainer();
+                choose.AddThemeConstantOverride("separation", 8);
+                choose.AddChild(CareerStyle.Text("Your stake:", 20));
+                choose.AddChild(picker);
+                var buttons = new HBoxContainer();
+                buttons.AddThemeConstantOverride("separation", 10);
+                buttons.AddChild(CareerStyle.Button("Offer it", () => OfferStake(offer, want, stakes[_stakeIndex]), 20, primary: true));
+                buttons.AddChild(CareerStyle.Button("Ask for another card", () =>
+                {
+                    _chat.Add(new ChatLine(true, "Actually, let me pick another one."));
+                    _chat.Add(new ChatLine(false, "Sure, take your time.", offer.Cards.Select(c => c.Card).ToList()));
+                    _chatStep = ChatStep.Choose;
+                    ShowWebPage();
+                }, 18));
+                choose.AddChild(buttons);
+                reply.AddChild(choose);
+                break;
+            case ChatStep.Agreed:
+                reply.AddChild(CareerStyle.Button("Head to the LGS", () =>
                 {
                     try
                     {
-                        Career.Do(new StartAnte(Career.Now, offer.Opponent.Id, deck.Export(), stake.ToString()));
+                        Career.Do(new StartAnte(Career.Now, offer.Opponent.Id, deck.Export(), _chatStake!.Value.ToString(), _chatWant!.Card.ToString()));
                         Play(deck, WebPage.Practice);
                     }
                     catch (CareerRuleException e) { MenuKit.Toast(this, e.Message); Refresh(); }
-                }));
-        }, 22, primary: true);
-        propose.Disabled = stakes.Count == 0;
-        propose.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
-        page.AddChild(propose);
+                }, 22, primary: true));
+                break;
+        }
+        if (_chatStep != ChatStep.Agreed)
+        {
+            var leave = CareerStyle.Button("Never mind", () =>
+            {
+                _webPage = WebPage.Practice;
+                ShowWebPage();
+            }, 18);
+            leave.SizeFlagsVertical = SizeFlags.ShrinkEnd;
+            reply.AddChild(leave);
+        }
+        page.AddChild(reply);
+    }
+
+    /// <summary>The player offers a stake for the card they chose: the regular takes it or turns it down.</summary>
+    private void OfferStake(CareerRules.AnteOffer offer, CareerRules.AnteCard want, CardKey stake)
+    {
+        _chat.Add(new ChatLine(true, $"How about my {stake.Name}?", new[] { stake }));
+        if (!CareerRules.AnteAccepted(State, World, want, stake, Today))
+        {
+            _chat.Add(new ChatLine(false, Say(World.Content.Ante.Declines)));
+            _stakePicked = false;
+        }
+        else
+        {
+            _chatStake = stake;
+            _chat.Add(new ChatLine(false, Say(World.Content.Ante.Accepts)));
+            _chat.Add(new ChatLine(false, Say(World.Content.Ante.Farewells)));
+            _chatStep = ChatStep.Agreed;
+        }
+        ShowWebPage();
+    }
+
+    /// <summary>One message: the regular's on the left, the player's on the right; the regular's offered cards can be chosen.</summary>
+    private Control Bubble(ChatLine line, CareerRules.AnteOffer offer)
+    {
+        // A bubble takes up to three quarters of the width, its text wrapping inside.
+        var row = new HBoxContainer();
+        if (line.Mine) row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsStretchRatio = 1 });
+        var bubble = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsStretchRatio = 3 };
+        bubble.AddThemeStyleboxOverride("panel", CareerStyle.Box(line.Mine ? new Color("cfe0ff") : new Color("e6e1d6"), null, 0, 12, 12));
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 8);
+        box.AddChild(CareerStyle.Text((line.Mine ? "" : offer.Opponent.Name + ": ") + line.Text, 20, CareerStyle.Ink, wrap: true));
+        if (line.Cards is { Count: > 0 } cards)
+        {
+            var row2 = new HBoxContainer();
+            row2.AddThemeConstantOverride("separation", 10);
+            bool choosing = !line.Mine && _chatStep == ChatStep.Choose && ReferenceEquals(line, _chat.Last(l => !l.Mine && l.Cards is not null));
+            foreach (var card in cards)
+            {
+                var cell = new VBoxContainer();
+                var small = SmallCard(card);
+                cell.AddChild(small);
+                var price = offer.Cards.FirstOrDefault(c => c.Card == card)?.Value ?? CareerMarket.Price(State, World, card, Today);
+                cell.AddChild(CareerStyle.Text(CareerRules.Money(price), 16, CareerStyle.InkDim));
+                if (choosing && offer.Cards.FirstOrDefault(c => c.Card == card) is { } wanted)
+                {
+                    var node = small.GetChild<CardNode>(0);
+                    node.MouseDefaultCursorShape = CursorShape.PointingHand;
+                    node.TooltipText = "Ask for this card";
+                    node.Clicked += _ =>
+                    {
+                        _chatWant = wanted;
+                        _chat.Add(new ChatLine(true, $"I'll play for your {card.Name}.", new[] { card }));
+                        _chat.Add(new ChatLine(false, Say(World.Content.Ante.AskStake)));
+                        _chatStep = ChatStep.Stake;
+                        _stakePicked = false;
+                        ShowWebPage();
+                    };
+                }
+                row2.AddChild(cell);
+            }
+            box.AddChild(row2);
+        }
+        bubble.AddChild(box);
+        row.AddChild(bubble);
+        if (!line.Mine) row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsStretchRatio = 1 });
+        return row;
     }
 
     /// <summary>A regular to play (a chooser) and the button that starts the match.</summary>

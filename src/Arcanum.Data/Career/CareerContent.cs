@@ -110,10 +110,23 @@ public sealed record PracticeSpec(int PaidPerDay = 3, int Win = 50, int Loss = 2
 
 /// <param name="PerDay">Ante matches a day.</param>
 /// <param name="MinRatio">A regular plays only for a stake worth at least this share of what they put up.</param>
+/// <param name="Offers">How many cards a regular offers to choose from.</param>
 /// <param name="Declines">What a regular says turning a stake down (one at random).</param>
-public sealed record AnteSpec(int PerDay = 3, double MinRatio = 0.8, IReadOnlyList<string>? Declines = null)
+public sealed record AnteSpec(int PerDay = 3, double MinRatio = 0.8, IReadOnlyList<string>? Declines = null, int Offers = 4)
 {
     public IReadOnlyList<string> Declines { get; init; } = Declines ?? new[] { "Nah, that's not worth it." };
+
+    /// <summary>How a regular opens the chat, showing what they'd put up.</summary>
+    public IReadOnlyList<string> Greetings { get; init; } = new[] { "Hey! Wanna play for keeps? Here's what I've got:" };
+
+    /// <summary>How a regular asks for the player's stake once a card is chosen.</summary>
+    public IReadOnlyList<string> AskStake { get; init; } = new[] { "Good pick. What are you putting up?" };
+
+    /// <summary>How a regular takes a stake.</summary>
+    public IReadOnlyList<string> Accepts { get; init; } = new[] { "Deal!" };
+
+    /// <summary>How a regular ends the chat before the game.</summary>
+    public IReadOnlyList<string> Farewells { get; init; } = new[] { "See you at the LGS, mate!" };
 }
 
 /// <param name="BargainRate">A bargain's price as a fraction of the card's value.</param>
