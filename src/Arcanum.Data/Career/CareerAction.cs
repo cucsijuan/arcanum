@@ -32,8 +32,12 @@ public sealed record StartDaily(DateTime Utc, string Reward, string? Deck = null
 /// <summary>A practice match against a regular the player chose.</summary>
 public sealed record StartPractice(DateTime Utc, string Opponent, string Deck) : CareerAction(Utc);
 
-/// <summary>An ante match against a regular: each player antes a card at random from their deck; the winner keeps both.</summary>
-public sealed record StartAnte(DateTime Utc, string Opponent, string Deck) : CareerAction(Utc);
+/// <summary>
+/// An ante match against a regular: the player stakes a card of their deck (<see cref="Card"/>, a <see cref="CardKey"/>
+/// text) against the card the regular offers; the winner keeps both. Without a card (older journals) each player
+/// antes a card at random from their deck.
+/// </summary>
+public sealed record StartAnte(DateTime Utc, string Opponent, string Deck, string? Card = null) : CareerAction(Utc);
 
 /// <summary>The match in progress (daily, practice or ante) ended.</summary>
 public sealed record FinishMatch(DateTime Utc, bool Won) : CareerAction(Utc);

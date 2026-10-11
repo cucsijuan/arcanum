@@ -511,4 +511,34 @@ public class CareerTests
             Assert.InRange(CareerMarket.Factor(state, world, "Card 5", day.AddDays(d)), 0.5, 3);
         Assert.Equal(0, CareerMarket.Price(state, world, new CardKey("Card 19", "ABC", "19"), day));
     }
+
+    [Fact]
+    public void AnAnteStakeIsChosenAndTheRegularPlaysOnlyForAFairOne()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        // A regular never puts up a basic land, and the offer stays the same while the player looks.
+        for (int d = 0; d < 30; d++)
+            Assert.False(world.IsBasicLand(CareerRules.AnteOfferOf(state, world, "bo", state.Day.AddDays(d)).Card.Name));
+        var offer = CareerRules.AnteOfferOf(state, world, "ana", state.Day);
+        Assert.Equal(offer, CareerRules.AnteOfferOf(state, world, "ana", state.Day));
+        var stake = new CardKey("Card 1", "ABC", "1");
+        bool fair = CareerRules.AnteAccepted(state, world, offer, stake, state.Day);
+        Assert.Equal(fair, CareerMarket.Price(state, world, stake, state.Day) >= offer.Value * 0.8);
+        if (!fair)
+        {
+            Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new StartAnte(T0.AddMinutes(1), "ana", Sixty, stake.ToString()), world));
+            return;
+        }
+        Do(state, journal, world, new StartAnte(T0.AddMinutes(1), "ana", Sixty, stake.ToString()));
+        Assert.Equal(stake.ToString(), state.Pending!.PlayerAnte);
+        Assert.Equal(offer.Card.ToString(), state.Pending.OpponentAnte);
+        Assert.Equal(3, state.Owned(stake));
+    }
+
+    [Fact]
+    public void AStakeMustBeAnOwnedCardOfTheDeck()
+    {
+        var (state, _, world) = StartedWithSixty();
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new StartAnte(T0.AddMinutes(1), "bo", Sixty, new CardKey("Card 16", "ABC", "16").ToString()), world));
+    }
 }

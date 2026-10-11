@@ -144,6 +144,7 @@ public partial class CareerScreen : Control
             case "ante" when Career.Decks.List(null) is [var anteDeck, ..]:
                 var list = Career.Decks.Load(anteDeck).Deck;
                 Career.Do(new StartAnte(Career.Now, CareerRules.Opponents(State, World)[0].Id, list.Export()));
+                // (the older random ante: the negotiation is on the website)
                 Play(list, WebPage.Practice);
                 return true;
             case "event" when Career.CurrentEvent() is not null:
@@ -604,17 +605,71 @@ public partial class CareerScreen : Control
         int antes = CareerRules.AntesLeft(State, World, now);
         page.AddChild(new Control { CustomMinimumSize = new Vector2(0, 8) });
         page.AddChild(CareerStyle.Text("Ante match", 28, CareerStyle.TitleBar));
-        page.AddChild(CareerStyle.Text("Playing for keeps: each of you antes a card at random from your deck, and the winner keeps both. "
+        page.AddChild(CareerStyle.Text("Playing for keeps: the regular puts up a card, you put up one of your deck, and the winner keeps both. "
             + $"The anted cards stay out of the game. {antes} ante match{(antes == 1 ? "" : "es")} left today.", 19, CareerStyle.InkDim, wrap: true));
-        page.AddChild(OpponentRow(opponents, _anteOpponent, id => _anteOpponent = id, "Play for keeps", problems.Count > 0 || antes == 0, id =>
+        if (problems.Count == 0 && antes > 0) AnteTable(page, opponents, chosen);
+        Record(page);
+    }
+
+    private int _stakeIndex;
+    private bool _stakePicked;
+    private string _anteReply = "";
+
+    /// <summary>
+    /// The ante's negotiation: the regular chosen shows the card they put up, the player picks a card of their deck to
+    /// stake and offers it; the regular plays only for a fair stake (otherwise they say so), and the player can still
+    /// walk away before the game starts.
+    /// </summary>
+    private void AnteTable(VBoxContainer page, IReadOnlyList<OpponentSpec> opponents, DeckList deck)
+    {
+        var picker = new OptionButton { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(300, 0) };
+        int selected = Math.Max(0, opponents.ToList().FindIndex(o => o.Id == _anteOpponent));
+        foreach (var o in opponents) picker.AddItem(o.Name);
+        picker.Selected = selected;
+        picker.ItemSelected += i => { _anteOpponent = opponents[(int)i].Id; _anteReply = ""; _stakePicked = false; ShowWebPage(); };
+        var offer = CareerRules.AnteOfferOf(State, World, opponents[selected].Id, Today);
+
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 18);
+        var theirs = new VBoxContainer();
+        theirs.AddChild(picker);
+        theirs.AddChild(CareerStyle.Text($"puts up {offer.Card.Name}, worth {CareerRules.Money(offer.Value)}", 18, CareerStyle.InkDim, wrap: true));
+        theirs.AddChild(SmallCard(offer.Card));
+        row.AddChild(theirs);
+
+        // The player's stake: a card of the deck, in a printing owned (the least valuable first).
+        var stakes = deck.Main.Where(e => !World.IsBasicLand(e.Name)).Select(e => e.Name).Distinct(StringComparer.OrdinalIgnoreCase)
+            .SelectMany(name => State.Cards.Where(c => c.Card.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Select(c => c.Card))
+            .OrderBy(c => CareerMarket.Price(State, World, c, Today)).ToList();
+        var mine = new VBoxContainer();
+        var stakePicker = new OptionButton { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(380, 0) };
+        foreach (var c in stakes) stakePicker.AddItem($"{c.Name}{(c.Surge ? " (surge foil)" : c.Foil ? " (foil)" : "")} · {CareerRules.Money(CareerMarket.Price(State, World, c, Today))}");
+        // Until the player picks one, the cheapest stake the regular would take (the dearest when none would do).
+        if (!_stakePicked)
+            _stakeIndex = stakes.FindIndex(c => CareerRules.AnteAccepted(State, World, offer, c, Today)) is var fair and >= 0 ? fair : stakes.Count - 1;
+        _stakeIndex = Math.Clamp(_stakeIndex, 0, Math.Max(0, stakes.Count - 1));
+        if (stakes.Count > 0) stakePicker.Selected = _stakeIndex;
+        stakePicker.ItemSelected += i => { _stakeIndex = (int)i; _stakePicked = true; _anteReply = ""; ShowWebPage(); };
+        mine.AddChild(CareerStyle.Text("Your stake:", 20));
+        mine.AddChild(stakePicker);
+        if (stakes.Count > 0) mine.AddChild(SmallCard(stakes[_stakeIndex]));
+        row.AddChild(mine);
+        page.AddChild(row);
+
+        if (_anteReply.Length > 0) page.AddChild(CareerStyle.Text($"{offer.Opponent.Name}: “{_anteReply}”", 20, CareerStyle.Bad, wrap: true));
+        var propose = CareerStyle.Button("Offer this stake", () =>
         {
-            Career.Do(new StartAnte(Career.Now, id, chosen.Export()));
-            var match = State.Pending!;
-            var mine = CardKey.Parse(match.PlayerAnte);
-            var theirs = CardKey.Parse(match.OpponentAnte);
+            var stake = stakes[_stakeIndex];
+            if (!CareerRules.AnteAccepted(State, World, offer, stake, Today))
+            {
+                var lines = World.Content.Ante.Declines;
+                _anteReply = lines[Random.Shared.Next(lines.Count)];
+                ShowWebPage();
+                return;
+            }
             var cards = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
             cards.AddThemeConstantOverride("separation", 30);
-            foreach (var (who, card) in new[] { ("You ante", mine), ($"{OpponentName(match.OpponentId)} antes", theirs) })
+            foreach (var (who, card) in new[] { ("You put up", stake), ($"{offer.Opponent.Name} puts up", offer.Card) })
             {
                 var column = new VBoxContainer();
                 column.AddChild(CareerStyle.Text(who, 20, CareerStyle.Gold));
@@ -623,9 +678,20 @@ public partial class CareerScreen : Control
                 column.AddChild(node);
                 cards.AddChild(column);
             }
-            MenuKit.Modal(this, "The antes", "The winner keeps both cards.", cards, ("Play", () => Play(chosen, WebPage.Practice)));
-        }));
-        Record(page);
+            MenuKit.Modal(this, $"{offer.Opponent.Name} accepts", "The winner keeps both cards. Leaving the game before it ends loses yours.", cards,
+                ("Walk away", () => { }), ("Play for keeps", () =>
+                {
+                    try
+                    {
+                        Career.Do(new StartAnte(Career.Now, offer.Opponent.Id, deck.Export(), stake.ToString()));
+                        Play(deck, WebPage.Practice);
+                    }
+                    catch (CareerRuleException e) { MenuKit.Toast(this, e.Message); Refresh(); }
+                }));
+        }, 22, primary: true);
+        propose.Disabled = stakes.Count == 0;
+        propose.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+        page.AddChild(propose);
     }
 
     /// <summary>A regular to play (a chooser) and the button that starts the match.</summary>

@@ -237,9 +237,34 @@ public static class CareerRules
         return new CareerResult(Array.Empty<PoolCard>(), 0);
     }
 
+    /// <summary>What a regular puts up for an ante match: a card of the deck they'd play, never a basic land.</summary>
+    public sealed record AnteOffer(OpponentSpec Opponent, string Deck, CardKey Card, int Value);
+
     /// <summary>
-    /// Each player antes a card at random from their deck (rule of ante): the player's leaves the collection until the
-    /// match ends; both are out of the decks for the game.
+    /// The regular's offer for the player's next ante match on a day: fixed for that regular and that match, so
+    /// looking and backing out doesn't change it.
+    /// </summary>
+    public static AnteOffer AnteOfferOf(CareerState state, CareerWorld world, string opponentId, DateOnly day)
+    {
+        var opponent = Opponents(state, world).FirstOrDefault(o => o.Id == opponentId) ?? throw new CareerRuleException("You can't play that regular yet.");
+        int played = day > state.Day ? 0 : state.AntesPlayed;
+        long id = opponent.Id.Aggregate(17L, (h, c) => h * 31 + c);
+        var random = CareerRandom.For(state.Seed, Ante, day.DayNumber, played, id);
+        var deckName = opponent.Decks[random.Next(opponent.Decks.Count)];
+        var deck = OpponentDeck(state, world, opponent.Id, deckName);
+        var cards = deck.Main.Where(e => !world.IsBasicLand(e.Name)).SelectMany(e => Enumerable.Repeat(e, e.Count)).ToList();
+        if (cards.Count == 0) throw new CareerRuleException($"{opponent.Name} has nothing to stake.");
+        var card = CardKey.Of(cards[random.Next(cards.Count)]);
+        return new AnteOffer(opponent, deckName, card, CareerMarket.Price(state, world, card, day));
+    }
+
+    /// <summary>Whether the regular plays for this stake: worth at least the content's share of their own card.</summary>
+    public static bool AnteAccepted(CareerState state, CareerWorld world, AnteOffer offer, CardKey stake, DateOnly day) =>
+        CareerMarket.Price(state, world, stake, day) >= offer.Value * world.Content.Ante.MinRatio;
+
+    /// <summary>
+    /// An ante match: the player's stake (or, in older journals, a card at random from their deck) and the regular's
+    /// offer leave both decks for the game; the player's leaves the collection until the match ends.
     /// </summary>
     private static CareerResult BeginAnte(CareerState state, StartAnte ante, CareerWorld world)
     {
@@ -247,19 +272,33 @@ public static class CareerRules
         if (AntesLeft(state, world, ante.Utc) == 0) throw new CareerRuleException("No ante matches left today.");
         var opponent = Opponent(state, world, ante.Opponent);
         var deck = PlayableDeck(ante.Deck, state, world);
-        var random = CareerRandom.For(state.Seed, Ante, state.Day.DayNumber, state.AntesPlayed);
-        var theirDeck = opponent.Decks[random.Next(opponent.Decks.Count)];
-        var mine = Pick(deck, random);
-        var theirs = Pick(OpponentDeck(state, world, opponent.Id, theirDeck), random);
-        // The card leaves the collection in a printing owned: the deck's own when it is, otherwise another one.
-        var key = CardKey.Of(mine);
-        if (state.Owned(key) == 0 && !world.IsBasicLand(mine.Name))
-            key = state.Cards.First(c => c.Card.Name.Equals(mine.Name, StringComparison.OrdinalIgnoreCase)).Card;
+        CardKey key, theirs;
+        string theirDeck;
+        if (ante.Card is { } staked)
+        {
+            key = CardKey.Parse(staked);
+            if (!deck.Main.Any(e => e.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase))) throw new CareerRuleException($"{key.Name} isn't in your deck.");
+            if (state.Owned(key) == 0) throw new CareerRuleException($"You have no {key.Name} in that printing.");
+            var offer = AnteOfferOf(state, world, opponent.Id, state.Day);
+            if (!AnteAccepted(state, world, offer, key, state.Day)) throw new CareerRuleException($"{opponent.Name} won't play for {key.Name}.");
+            (theirs, theirDeck) = (offer.Card, offer.Deck);
+        }
+        else
+        {
+            var random = CareerRandom.For(state.Seed, Ante, state.Day.DayNumber, state.AntesPlayed);
+            theirDeck = opponent.Decks[random.Next(opponent.Decks.Count)];
+            var mine = Pick(deck, random);
+            theirs = CardKey.Of(Pick(OpponentDeck(state, world, opponent.Id, theirDeck), random));
+            // The card leaves the collection in a printing owned: the deck's own when it is, otherwise another one.
+            key = CardKey.Of(mine);
+            if (state.Owned(key) == 0 && !world.IsBasicLand(mine.Name))
+                key = state.Cards.First(c => c.Card.Name.Equals(mine.Name, StringComparison.OrdinalIgnoreCase)).Card;
+        }
         state.AddCard(key, -1);
         state.AntesPlayed++;
         state.Pending = new PendingMatch(opponent.Id, theirDeck)
         {
-            Kind = Ante, PlayerDeck = ante.Deck, PlayerAnte = key.ToString(), OpponentAnte = CardKey.Of(theirs).ToString(),
+            Kind = Ante, PlayerDeck = ante.Deck, PlayerAnte = key.ToString(), OpponentAnte = theirs.ToString(),
         };
         return new CareerResult(Array.Empty<PoolCard>(), 0);
     }

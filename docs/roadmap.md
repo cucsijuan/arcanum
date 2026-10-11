@@ -23,6 +23,12 @@
 
 ## Backlog
 
+- Career, online (with the remote season config): **superdrops**, the way the real limited-run drops work. A drop
+  is announced and sold for a limited time, very expensive: singles, card packs, decks and Commander decks (anything
+  those drops ever sold). The developer controls each drop's title and which cards are in it from the remote config.
+  The week after a drop, some of its cards show up on the store's secondary market as singles, at a higher price per
+  card than in the drop.
+
 - **Urgent:** the third set's set booster is sold without its The List slot (a card from The List in a quarter of the
   boosters). Its 250 cards need scripts first, and some need new mechanics: banding, infect, cumulative upkeep,
   buyback, rebound, convoke, domain, assist and others. Then add the slot back to the module's set booster (the

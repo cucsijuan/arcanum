@@ -109,7 +109,12 @@ public sealed record DailySpec(int PerDay = 2, int Win = 450, int Loss = 100, in
 public sealed record PracticeSpec(int PaidPerDay = 3, int Win = 50, int Loss = 20);
 
 /// <param name="PerDay">Ante matches a day.</param>
-public sealed record AnteSpec(int PerDay = 3);
+/// <param name="MinRatio">A regular plays only for a stake worth at least this share of what they put up.</param>
+/// <param name="Declines">What a regular says turning a stake down (one at random).</param>
+public sealed record AnteSpec(int PerDay = 3, double MinRatio = 0.8, IReadOnlyList<string>? Declines = null)
+{
+    public IReadOnlyList<string> Declines { get; init; } = Declines ?? new[] { "Nah, that's not worth it." };
+}
 
 /// <param name="BargainRate">A bargain's price as a fraction of the card's value.</param>
 /// <param name="TradeSpread">How far apart in value a trade's two cards may be (0.1: within 10%).</param>

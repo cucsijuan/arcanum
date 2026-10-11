@@ -178,6 +178,13 @@ across devices and reinstalls.
 - **Career service auth** doesn't change: it verifies the EOS Connect ID token, which is the same whatever provider
   was used to sign in.
 
+### Superdrops
+
+Limited-time drops controlled from the remote config (the developer sets each drop's title and contents), laid out
+like the real limited-run drops: singles, card packs, decks and Commander decks, very expensive, sold only while the
+drop lasts. The week after, some of the drop's cards appear on the store's secondary market as singles, dearer per card
+than in the drop. Their art and finishes are the real ones (printings with their own art, foils where they were foil).
+
 ### Scheduled online events
 
 - During the event window players **check in**; at fixed start times (e.g. every 30 minutes) the checked-in players are
