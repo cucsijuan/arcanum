@@ -864,8 +864,8 @@ public partial class CareerScreen : Control
     }
 
     /// <summary>
-    /// After an ante match, over the dimmed room: the card won (in a gold glow) or lost (in a red glow), until the
-    /// player moves on.
+    /// After an ante match, over the dimmed room: the card won (gold light coming out of it) or lost (red light), until
+    /// the player moves on.
     /// </summary>
     private void ShowAnteResult(CardKey card, bool won, string opponent)
     {
@@ -882,14 +882,20 @@ public partial class CareerScreen : Control
         title.HorizontalAlignment = HorizontalAlignment.Center;
         column.AddChild(title);
 
-        // The card in its glow, a little larger than the board's preview.
+        // The card with light coming out of it, a little larger than the board's preview.
         var size = new Vector2(330, 460);
-        var frame = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ShrinkCenter, PivotOffset = size / 2 };
-        var halo = CareerStyle.Box(Colors.Transparent, glow, 4, 18);
-        halo.ShadowColor = glow with { A = 0.85f };
-        halo.ShadowSize = 46;
-        frame.AddThemeStyleboxOverride("panel", halo);
-        var node = new CardNode { Size = size, CustomMinimumSize = size, SharpImage = true };
+        var frame = new Control { CustomMinimumSize = size, SizeFlagsHorizontal = SizeFlags.ShrinkCenter, PivotOffset = size / 2 };
+        var reach = new Vector2(2.6f, 2.0f);
+        var rays = new ColorRect
+        {
+            Size = size * reach, Position = -size * (reach - Vector2.One) / 2, MouseFilter = MouseFilterEnum.Ignore, ShowBehindParent = true,
+            Material = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/card_rays.gdshader") },
+        };
+        var light = (ShaderMaterial)rays.Material;
+        light.SetShaderParameter("color", glow);
+        light.SetShaderParameter("card", Vector2.One / reach);
+        frame.AddChild(rays);
+        var node = new CardNode { Size = size, SharpImage = true };
         node.Setup(ViewOf(DefinitionOf(card)), showCostPips: false);
         frame.AddChild(node);
         column.AddChild(frame);
@@ -914,9 +920,8 @@ public partial class CareerScreen : Control
         tween.TweenProperty(shade, "color:a", 0.78f, 0.35);
         frame.Scale = new Vector2(0.6f, 0.6f);
         tween.Parallel().TweenProperty(frame, "scale", Vector2.One, 0.45).SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
-        var breathe = frame.CreateTween().SetLoops();
-        breathe.TweenMethod(Callable.From<float>(a => halo.ShadowColor = glow with { A = a }), 0.85f, 0.45f, 1.1);
-        breathe.TweenMethod(Callable.From<float>(a => halo.ShadowColor = glow with { A = a }), 0.45f, 0.85f, 1.1);
+        light.SetShaderParameter("strength", 0f);
+        tween.Parallel().TweenMethod(Callable.From<float>(v => light.SetShaderParameter("strength", v)), 0f, 1f, 0.6);
     }
 
     /// <summary>A regular to play (a chooser) and the button that starts the match.</summary>
