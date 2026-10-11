@@ -130,15 +130,19 @@ shows them and the pointer's position; Ctrl+click copies a point).
 
 ### Remote config (EOS)
 
-- **Title Storage** (read-only files published from the developer portal): `career/season.json` with the event schedule,
-  prizes, featured set, PvP/PvE rules, price adjustments and challenge pool. Clients download it at start and cache it;
-  offline uses the cached copy, or the module's default if there was never one. Versioned (`schemaVersion`) so old
-  clients ignore what they don't understand.
+- **Season file** (served by the career service, not EOS Title Storage: the service needs the same file to verify
+  careers, so it lives in one place): the module's `career/season.json` lists changes, each from a day on (to a last
+  day, optionally): events added, replaced (same id) or cancelled; the featured set; booster prices; a line of news.
+  `server/Arcanum.CareerService/deploy/publish-season.sh <module dir>` checks it (`tools/SeasonCheck`: everything it
+  names exists, and no day already played changes, since careers are replayed with it) and puts it on the service,
+  which serves `/career/season/<module id>.json` as a static file. The game downloads it when it changed (at start;
+  the screens refresh when it arrives) and keeps it; offline it uses the last one, or the module's own.
+  `schemaVersion`: a file newer than the game understands is ignored (the last one stays).
 - **Player Data Storage** (per-user files): cloud copy of the career save, so it survives reinstalls and moves between
   devices with the player's account (see *Accounts*).
 - **Leaderboards / Stats:** rank per format, event wins, season standings.
-- **Server time:** dailies and event windows use the service's time when online; offline uses the local clock but never
-  goes backwards from the last time seen.
+- **Server time:** dailies and event windows use the service's time when online (learned from the season download's
+  answer); offline uses the local clock but never goes backwards from the last time seen.
 
 ### Accounts
 
@@ -288,7 +292,7 @@ events need the dedicated host for the games themselves.
 | Opponent roster and rivals | content module (data) + `Arcanum.Bots` (deck building per tier) | names/portraits generic |
 | Career hub screen | `scenes/career` | the dashboard: day, cash, dailies, today's event, store, collection, decks, news |
 | Store screen with hotspots, table playmat (one image split across both seats) | `scenes/career`, `scripts/UI/Board/Playmat.cs` | art in `ui-art/LGS-1*.jpg` |
-| Remote config + cloud save | `scripts/Client/Eos` | Title Storage, Player Data Storage, server time |
+| Remote config + cloud save | `scripts/Client/CareerService.cs`, `scripts/Client/Eos` | season download and server time from the career service; Player Data Storage |
 | Accounts: Discord sign-in, linking/unlinking, Settings → Account | `scripts/Client/Eos`, career service (`/auth/discord` code exchange) | replaces Device ID login |
 | Career rules library (journal replay, derived randomness, limits) | `Arcanum.Data/Career` | the same code runs in the client and in the career service |
 | Career service (sign/verify profiles, online prizes) | `server/Arcanum.CareerService` | ASP.NET on the Oracle Cloud VM; private key only there; EOS ID token check; per-player last-snapshot hash |

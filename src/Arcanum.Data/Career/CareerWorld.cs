@@ -14,6 +14,9 @@ public sealed class CareerWorld
     private readonly Dictionary<string, DeckList> _decks = new(StringComparer.OrdinalIgnoreCase);
 
     public CareerContent Content { get; }
+
+    /// <summary>The season's changes to the calendar and prices (see <see cref="CareerSeason"/>).</summary>
+    public CareerSeason Season { get; }
     public CardDatabase Cards { get; }
     public IReadOnlyDictionary<string, SetDefinition> Sets { get; }
 
@@ -22,9 +25,11 @@ public sealed class CareerWorld
 
     /// <param name="readDeck">A module deck's text by name, or null when there is no such deck.</param>
     /// <param name="formats">The module's formats (for the Commander format's rules).</param>
+    /// <param name="season">The season's changes (none: the content's calendar and prices as they are).</param>
     public CareerWorld(CareerContent content, CardDatabase cards, IEnumerable<SetDefinition> sets, Func<string, string?> readDeck,
-        IEnumerable<Formats.FormatRules>? formats = null)
+        IEnumerable<Formats.FormatRules>? formats = null, CareerSeason? season = null)
     {
+        Season = season ?? CareerSeason.None;
         CommanderFormat = formats?.FirstOrDefault(f => f.Commander) ?? new Formats.FormatRules
         {
             Id = "commander", Name = "Commander", MinDeckSize = 100, MaxDeckSize = 100, MaxCopies = 1, Commander = true, StartingLife = 40,
@@ -50,7 +55,39 @@ public sealed class CareerWorld
         !SellsBoosters(set) ? Array.Empty<string?>()
             : new string?[] { null }.Concat(Sets[set].Boosters.Keys.Where(Content.BoosterPrices.ContainsKey)).ToList();
 
-    public int BoosterPrice(string? kind) => string.IsNullOrEmpty(kind) ? Content.BoosterPrice : Content.BoosterPrices.GetValueOrDefault(kind);
+    /// <summary>A booster kind's price on a day (the season may change it).</summary>
+    public int BoosterPrice(string? kind, DateOnly day)
+    {
+        int price = string.IsNullOrEmpty(kind) ? Content.BoosterPrice : Content.BoosterPrices.GetValueOrDefault(kind);
+        foreach (var change in Season.On(day))
+        {
+            if (string.IsNullOrEmpty(kind)) price = change.BoosterPrice ?? price;
+            else if (change.BoosterPrices.TryGetValue(kind, out var changed)) price = changed;
+        }
+        return price;
+    }
+
+    /// <summary>The store's calendar on a day: the content's events with the season's changes in force.</summary>
+    public IReadOnlyList<EventSpec> Events(DateOnly day)
+    {
+        var events = Content.Events.ToList();
+        foreach (var change in Season.On(day))
+        {
+            events.RemoveAll(e => change.Cancel.Contains(e.Id, StringComparer.Ordinal));
+            foreach (var added in change.Events)
+            {
+                int at = events.FindIndex(e => e.Id == added.Id);
+                if (at >= 0) events[at] = added; else events.Add(added);
+            }
+        }
+        return events;
+    }
+
+    /// <summary>An event of the calendar on a day, by id.</summary>
+    public EventSpec? Event(string id, DateOnly day) => Events(day).FirstOrDefault(e => e.Id == id);
+
+    /// <summary>The season's news on a day.</summary>
+    public IEnumerable<string> News(DateOnly day) => Season.On(day).Select(c => c.News).OfType<string>();
 
     /// <summary>"Foundations Play Booster" or "Foundations Collector Booster" for an unopened boosters key.</summary>
     public string BoosterName(string key) =>
@@ -66,8 +103,9 @@ public sealed class CareerWorld
         return _decks[name] = DeckList.Parse(text);
     }
 
-    /// <summary>The set featured in the week of <paramref name="day"/> (weeks start on Monday).</summary>
-    public string FeaturedSet(DateOnly day) => Content.Featured[day.DayNumber / 7 % Content.Featured.Count];
+    /// <summary>The set featured in the week of <paramref name="day"/> (weeks start on Monday), unless the season features another.</summary>
+    public string FeaturedSet(DateOnly day) =>
+        Season.On(day).LastOrDefault(c => c.Featured is { Length: > 0 })?.Featured ?? Content.Featured[day.DayNumber / 7 % Content.Featured.Count];
 
     /// <summary>The store sells boosters of this set.</summary>
     public bool SellsBoosters(string set) =>

@@ -539,17 +539,24 @@ public static class CareerRules
 
     /// <summary>The store's events on a day (UTC).</summary>
     public static IReadOnlyList<EventSpec> EventsOn(CareerWorld world, DateOnly day) =>
-        world.Content.Events.Where(e => Happens(e, day)).ToList();
+        world.Events(day).Where(e => Happens(e, day)).ToList();
 
-    public static bool Happens(EventSpec e, DateOnly day) => e.When.Equals("lastSunday", StringComparison.OrdinalIgnoreCase)
-        ? day.DayOfWeek == DayOfWeek.Sunday && day.AddDays(7).Month != day.Month
+    /// <summary>Whether an event happens on a day: its "when" is a day of the week, "lastSunday" or a date (2026-10-24).</summary>
+    public static bool Happens(EventSpec e, DateOnly day) =>
+        e.When.Equals("lastSunday", StringComparison.OrdinalIgnoreCase) ? day.DayOfWeek == DayOfWeek.Sunday && day.AddDays(7).Month != day.Month
+        : DateOnly.TryParseExact(e.When, "yyyy-MM-dd", out var date) ? day == date
         : Enum.TryParse<DayOfWeek>(e.When, true, out var weekday) && day.DayOfWeek == weekday;
 
-    /// <summary>The next day (from <paramref name="from"/>, included) the event happens.</summary>
-    public static DateOnly NextDay(EventSpec e, DateOnly from)
+    /// <summary>The events coming up after <paramref name="from"/> (within 40 days), each with the next day it happens, soonest first.</summary>
+    public static IReadOnlyList<(EventSpec Event, DateOnly Day)> Upcoming(CareerWorld world, DateOnly from)
     {
-        for (int i = 0; i < 40; i++) if (Happens(e, from.AddDays(i))) return from.AddDays(i);
-        return from;
+        var next = new Dictionary<string, (EventSpec, DateOnly)>();
+        for (int i = 0; i < 40; i++)
+        {
+            var day = from.AddDays(i);
+            foreach (var e in EventsOn(world, day)) next.TryAdd(e.Id, (e, day));
+        }
+        return next.Values.OrderBy(x => x.Item2).ToList();
     }
 
     /// <summary>The set a draft event opens on a day.</summary>
@@ -566,7 +573,7 @@ public static class CareerRules
     {
         if (state.Event is not null) throw new CareerRuleException("You are already in an event.");
         if (state.Pending is not null) throw new CareerRuleException("Finish your match first.");
-        var e = world.Content.Events.FirstOrDefault(x => x.Id == enter.Event) ?? throw new CareerRuleException("There is no such event.");
+        var e = world.Event(enter.Event, state.Day) ?? throw new CareerRuleException("There is no such event.");
         if (!Happens(e, state.Day)) throw new CareerRuleException($"{e.Name} isn't today.");
         if (Played(state, e, state.Day)) throw new CareerRuleException($"You already played {e.Name} today.");
         if (Tier(state, world) < e.MinTier) throw new CareerRuleException($"{e.Name} needs a {world.Content.Tiers[Math.Min(e.MinTier, world.Content.Tiers.Count - 1)].Name}'s reputation.");
@@ -602,7 +609,7 @@ public static class CareerRules
     private static CareerResult Finish(CareerState state, FinishEvent finish, CareerWorld world)
     {
         var entry = state.Event ?? throw new CareerRuleException("You aren't in an event.");
-        var e = world.Content.Events.FirstOrDefault(x => x.Id == entry.Id) ?? throw new CareerRuleException("There is no such event.");
+        var e = world.Event(entry.Id, entry.Day) ?? throw new CareerRuleException("There is no such event.");
         if (finish.Wins + finish.Losses + finish.Draws > e.Rounds || finish.Place < 1 || finish.Place > e.Players)
             throw new CareerRuleException("That result can't be.");
         var pool = new List<PoolCard>();
@@ -693,7 +700,7 @@ public static class CareerRules
         var key = SealedKey(buy.Set, buy.Kind);
         if (!world.BoosterKinds(buy.Set.ToLowerInvariant()).Contains(string.IsNullOrEmpty(buy.Kind) ? null : buy.Kind))
             throw new CareerRuleException($"The store doesn't sell {world.BoosterName(key)}s.");
-        int price = world.BoosterPrice(buy.Kind);
+        int price = world.BoosterPrice(buy.Kind, state.Day);
         Pay(state, price);
         state.AddSealed(key, 1);
         state.Note(buy.Utc, $"Bought a {world.BoosterName(key)}.");

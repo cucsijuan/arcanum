@@ -102,6 +102,8 @@ public partial class CareerScreen : Control
 
         BuildHud();
         AddChild(_preview);
+        Career.SeasonChanged += Refresh;
+        TreeExiting += () => Career.SeasonChanged -= Refresh;
 
         // A daily match left before it ended counts as lost.
         if (Career.HasCareer && State.Pending is { } pending)
@@ -479,7 +481,7 @@ public partial class CareerScreen : Control
         if (Career.Problem is { } problem) body.AddChild(CareerStyle.Text(problem + " You can start a new career.", 20, CareerStyle.Bad, wrap: true));
         body.AddChild(CareerStyle.Text($"Members play {World.Content.Dailies.PerDay} free daily matches every day against the store's regulars, for cash or boosters. "
             + $"New members get {CareerRules.Money(World.Content.Starter.Cash)} and {World.Content.Starter.Boosters} boosters of this week's featured set "
-            + $"({World.SetName(World.FeaturedSet(CareerRules.DayOf(DateTime.UtcNow)))}). Choose the deck you start with:", 20, CareerStyle.InkDim, wrap: true));
+            + $"({World.SetName(World.FeaturedSet(CareerRules.DayOf(Career.Now)))}). Choose the deck you start with:", 20, CareerStyle.InkDim, wrap: true));
         var flow = new HFlowContainer();
         flow.AddThemeConstantOverride("h_separation", 10);
         flow.AddThemeConstantOverride("v_separation", 10);
@@ -1009,6 +1011,8 @@ public partial class CareerScreen : Control
 
         var list = new VBoxContainer();
         list.AddThemeConstantOverride("separation", 10);
+        foreach (var news in World.News(today))
+            list.AddChild(CareerStyle.Text(news, 22, CareerStyle.Ink, wrap: true));
         var todays = CareerRules.EventsOn(World, today);
         list.AddChild(CareerStyle.Text(todays.Count == 0 ? $"No event today ({today:dddd})." : $"Today, {today:dddd}", 28, CareerStyle.TitleBar));
         (DeckList Deck, List<string> Problems)? deck = null, commanderDeck = null;
@@ -1022,9 +1026,8 @@ public partial class CareerScreen : Control
 
         list.AddChild(new Control { CustomMinimumSize = new Vector2(0, 10) });
         list.AddChild(CareerStyle.Text("Coming up", 26, CareerStyle.TitleBar));
-        foreach (var e in World.Content.Events.OrderBy(e => CareerRules.NextDay(e, today.AddDays(1))))
+        foreach (var (e, day) in CareerRules.Upcoming(World, today.AddDays(1)))
         {
-            var day = CareerRules.NextDay(e, today.AddDays(1));
             list.AddChild(CareerStyle.Text($"{day:dddd, MMMM d}: {e.Name}. {Describe(e, day)}", 18, CareerStyle.InkDim, wrap: true));
         }
         list.AddChild(CareerStyle.Text($"Qualification tokens: {State.Tokens}", 18, CareerStyle.InkDim));
@@ -1203,7 +1206,7 @@ public partial class CareerScreen : Control
             foreach (var kind in World.BoosterKinds(set))
             {
                 var key = CareerRules.SealedKey(set, kind);
-                int price = World.BoosterPrice(kind);
+                int price = World.BoosterPrice(kind, CareerRules.DayOf(Career.Now));
                 var row = new HBoxContainer();
                 row.AddThemeConstantOverride("separation", 12);
                 var name = CareerStyle.Text(World.BoosterName(key) + (first && set.Equals(featured, StringComparison.OrdinalIgnoreCase) ? "  (featured)" : ""), first ? 22 : 20,

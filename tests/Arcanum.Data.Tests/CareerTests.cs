@@ -93,8 +93,22 @@ public class CareerTests
     };
 
     /// <summary>The test world; the week's challenges only when asked (they pay, which other tests don't count on).</summary>
-    private static CareerWorld World(bool challenges = false) =>
-        new(CareerContent.Parse(challenges ? ContentJson : ContentJson.Replace("\"challengesPerWeek\": 2", "\"challengesPerWeek\": 0")), Database(), new[] { SetDefinition.Parse(SetJson) }, name => Decks.GetValueOrDefault(name));
+    private static CareerWorld World(bool challenges = false, string? season = null) =>
+        new(CareerContent.Parse(challenges ? ContentJson : ContentJson.Replace("\"challengesPerWeek\": 2", "\"challengesPerWeek\": 0")), Database(), new[] { SetDefinition.Parse(SetJson) },
+            name => Decks.GetValueOrDefault(name), season: season is null ? null : CareerSeason.Parse(season));
+
+    private const string SeasonJson = """
+        {
+          "schemaVersion": 1,
+          "changes": [
+            { "from": "2026-10-19", "until": "2026-10-25", "cancel": ["draft"], "featured": "xyz", "boosterPrice": 300, "boosterPrices": { "collector": 2000 },
+              "news": "Sale week!" },
+            { "from": "2026-10-24", "until": "2026-10-24", "events": [
+                { "id": "special", "name": "Special sealed", "when": "2026-10-24", "kind": "draft", "set": "abc", "entry": 500 },
+                { "id": "sat", "name": "Saturday tournament", "when": "Saturday", "kind": "constructed", "entry": 100 } ] }
+          ]
+        }
+        """;
 
     private static readonly DateTime T0 = new(2026, 10, 12, 10, 0, 0, DateTimeKind.Utc);
 
@@ -431,7 +445,7 @@ public class CareerTests
         Assert.Empty(CareerRules.EventsOn(world, wednesday.AddDays(1)));
         Assert.Equal(new[] { "champ" }, CareerRules.EventsOn(world, new DateOnly(2026, 10, 25)).Select(e => e.Id)); // the last Sunday of October
         Assert.Empty(CareerRules.EventsOn(world, new DateOnly(2026, 10, 18)));
-        Assert.Equal(wednesday, CareerRules.NextDay(world.Content.Events[0], new DateOnly(2026, 10, 12)));
+        Assert.Equal(("draft", wednesday), CareerRules.Upcoming(world, new DateOnly(2026, 10, 12)).Select(x => (x.Event.Id, x.Day)).First());
     }
 
     [Fact]
@@ -554,5 +568,45 @@ public class CareerTests
         Assert.True(CareerRules.AnteAccepted(state, world, theirs, stake, state.Day));
         Do(state, journal, world, new StartAnte(T0.AddMinutes(2), "ana", Sixty, stake.ToString(), theirs.Card.ToString()));
         Assert.Equal(stake.ToString(), state.Pending!.PlayerAnte);
+    }
+
+    [Fact]
+    public void TheSeasonChangesTheCalendarAndPricesOnlyOnItsDays()
+    {
+        var world = World(season: SeasonJson);
+        var before = new DateOnly(2026, 10, 14);
+        Assert.Equal(new[] { "draft" }, CareerRules.EventsOn(world, before).Select(e => e.Id));
+        Assert.Equal("abc", world.FeaturedSet(before));
+        Assert.Equal(400, world.BoosterPrice(null, before));
+        Assert.Empty(world.News(before));
+
+        // The sale week: no draft night, another featured set, cheaper boosters, a line of news.
+        Assert.Empty(CareerRules.EventsOn(world, new DateOnly(2026, 10, 21)));
+        Assert.Equal("xyz", world.FeaturedSet(new DateOnly(2026, 10, 21)));
+        Assert.Equal(300, world.BoosterPrice(null, new DateOnly(2026, 10, 21)));
+        Assert.Equal(2000, world.BoosterPrice("collector", new DateOnly(2026, 10, 21)));
+        Assert.Equal(new[] { "Sale week!" }, world.News(new DateOnly(2026, 10, 21)));
+
+        // One Saturday: a one-off event, and the Saturday tournament costs less.
+        var saturday = CareerRules.EventsOn(world, new DateOnly(2026, 10, 24));
+        Assert.Equal(new[] { "sat", "special" }, saturday.Select(e => e.Id));
+        Assert.Equal(100, saturday[0].Entry);
+        Assert.Equal(2000, world.Event("sat", new DateOnly(2026, 10, 31))!.Entry);
+        Assert.Equal(new[] { "draft" }, CareerRules.EventsOn(world, new DateOnly(2026, 10, 28)).Select(e => e.Id));
+    }
+
+    [Fact]
+    public void ASeasonFileMayOnlyChangeTheFuture()
+    {
+        var published = CareerSeason.Parse(SeasonJson);
+        var today = new DateOnly(2026, 10, 20);
+        // Adding a change from tomorrow on is fine.
+        var added = published with { Changes = published.Changes.Append(new SeasonChange(today.AddDays(1)) { Featured = "abc" }).ToList() };
+        Assert.Null(published.ChangedPast(added, today));
+        // Changing a week that has started isn't: those days have been played.
+        var edited = published with { Changes = new[] { published.Changes[0] with { BoosterPrice = 250 }, published.Changes[1] } };
+        Assert.NotNull(published.ChangedPast(edited, today));
+        Assert.Null(published.ChangedPast(edited, new DateOnly(2026, 10, 18)));
+        Assert.Throws<FormatException>(() => CareerSeason.Parse("{ \"schemaVersion\": 99 }"));
     }
 }

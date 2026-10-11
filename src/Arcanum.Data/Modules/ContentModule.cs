@@ -161,6 +161,15 @@ public sealed class ContentModule
         catch (Exception e) when (e is FormatException or JsonException) { errors?.Add($"career.json: {e.Message}"); return null; }
     }
 
+    /// <summary>The season the module shipped with (career/season.json), or null when it has none.</summary>
+    public Career.CareerSeason? LoadSeason(List<string>? errors = null)
+    {
+        var file = Path.Combine(Directory, "career", "season.json");
+        if (!File.Exists(file)) return null;
+        try { return Career.CareerSeason.Parse(File.ReadAllText(file)); }
+        catch (Exception e) when (e is FormatException or JsonException) { errors?.Add($"season.json: {e.Message}"); return null; }
+    }
+
     public string ImageUrl(string cardName) => Sources.Images.UrlTemplate.Replace("{name}", Uri.EscapeDataString(cardName));
 
     /// <summary>URL for an exact image id, or null if the module's image source doesn't support it.</summary>

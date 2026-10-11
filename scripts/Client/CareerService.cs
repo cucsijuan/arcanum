@@ -25,8 +25,14 @@ public sealed class CareerService
 
     private CareerSave? _save;
     private string _contentId = "";
+    private ContentModule? _module;
+    private CardDatabase? _cards;
+    private TimeSpan _clockOffset;
 
     public CareerWorld? World { get; private set; }
+
+    /// <summary>A new season arrived: the calendar and prices may have changed.</summary>
+    public event Action? SeasonChanged;
 
     /// <summary>The career's decks: only cards of the collection, no starter decks.</summary>
     public DeckStore Decks { get; } = new(Folder + "/decks", starters: false);
@@ -48,10 +54,60 @@ public sealed class CareerService
             Problem = errors.Count > 0 ? "The content's career settings couldn't be read." : "The installed content has no career.";
             return;
         }
-        var deckNames = module.DeckNames().ToHashSet(StringComparer.OrdinalIgnoreCase);
-        World = new CareerWorld(content, cards, module.LoadSets(), name => deckNames.Contains(name) ? module.ReadDeck(name) : null, module.LoadFormats());
+        _module = module;
+        _cards = cards;
+        var seasonErrors = new List<string>();
+        MakeWorld(content, ReadSeason() ?? module.LoadSeason(seasonErrors));
+        foreach (var error in seasonErrors) GD.PushWarning($"Career: {error}");
         _contentId = $"{module.Manifest.Id} {module.Manifest.Version}";
         Load();
+        UpdateSeason();
+    }
+
+    private void MakeWorld(CareerContent content, CareerSeason? season)
+    {
+        var module = _module!;
+        var deckNames = module.DeckNames().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        World = new CareerWorld(content, _cards!, module.LoadSets(), name => deckNames.Contains(name) ? module.ReadDeck(name) : null, module.LoadFormats(), season);
+    }
+
+    // ---------------------------------------------------------------- the season and the clock
+
+    /// <summary>The season last downloaded for this content (the module's own is used until there is one).</summary>
+    private string SeasonPath => ProjectSettings.GlobalizePath($"{Folder}/season.{_module!.Manifest.Id}.json");
+
+    private CareerSeason? ReadSeason()
+    {
+        try { return File.Exists(SeasonPath) ? CareerSeason.Parse(File.ReadAllText(SeasonPath)) : null; }
+        catch (Exception e) when (e is FormatException or System.Text.Json.JsonException or IOException) { return null; }
+    }
+
+    /// <summary>
+    /// Downloads the current season from the career service when it changed (and learns the service's clock from the
+    /// answer); offline, the last one downloaded stays. ARCANUM_CAREER_OFFLINE=1 skips it (test runs).
+    /// </summary>
+    private async void UpdateSeason()
+    {
+        if (OS.GetEnvironment("ARCANUM_CAREER_OFFLINE") == "1") return;
+        try
+        {
+            using var http = new System.Net.Http.HttpClient { BaseAddress = Account.ServiceUrl, Timeout = TimeSpan.FromSeconds(15) };
+            using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, $"career/season/{_module!.Manifest.Id}.json");
+            if (File.Exists(SeasonPath)) request.Headers.IfModifiedSince = File.GetLastWriteTimeUtc(SeasonPath);
+            using var response = await http.SendAsync(request);
+            if (response.Headers.Date is { } serverNow) _clockOffset = serverNow.UtcDateTime - DateTime.UtcNow;
+            if (response.StatusCode != System.Net.HttpStatusCode.OK) return; // not changed, or no season for this content
+            var text = await response.Content.ReadAsStringAsync();
+            var season = CareerSeason.Parse(text); // a newer layout than this game understands throws: keep the old one
+            File.WriteAllText(SeasonPath, text);
+            if (response.Content.Headers.LastModified is { } modified) File.SetLastWriteTimeUtc(SeasonPath, modified.UtcDateTime);
+            if (_module!.LoadCareer() is { } content)
+            {
+                MakeWorld(content, season);
+                SeasonChanged?.Invoke();
+            }
+        }
+        catch (Exception e) { GD.Print($"Career: the season couldn't be updated ({e.GetBaseException().Message})."); }
     }
 
     private void Load()
@@ -68,8 +124,18 @@ public sealed class CareerService
         }
     }
 
-    /// <summary>Now, for the career: the device's clock, but never before the latest time the career has seen.</summary>
-    public DateTime Now => _save is { } save && save.State.LastUtc > DateTime.UtcNow ? save.State.LastUtc : DateTime.UtcNow;
+    /// <summary>
+    /// Now, for the career: the career service's clock when it was reached (the device's otherwise), but never before
+    /// the latest time the career has seen.
+    /// </summary>
+    public DateTime Now
+    {
+        get
+        {
+            var now = DateTime.UtcNow + _clockOffset;
+            return _save is { } save && save.State.LastUtc > now ? save.State.LastUtc : now;
+        }
+    }
 
     /// <summary>Checks and applies an action, adds it to the journal and saves; throws <see cref="CareerRuleException"/> when it isn't allowed.</summary>
     public CareerResult Do(CareerAction action)
@@ -87,7 +153,7 @@ public sealed class CareerService
     /// <summary>Starts a new career with a starting deck, which also becomes the career's first deck.</summary>
     public void Start(string deck, string deckTitle)
     {
-        Do(new StartCareer(DateTime.UtcNow, (ulong)Random.Shared.NextInt64(1, long.MaxValue), deck));
+        Do(new StartCareer(Now, (ulong)Random.Shared.NextInt64(1, long.MaxValue), deck));
         Decks.Save(deckTitle, "casual", World!.Deck(deck));
     }
 
@@ -150,7 +216,7 @@ public sealed class CareerService
     /// <summary>The calendar event entered, if any: a draft or constructed one with its running event (rebuilt from its seed when its file is gone), a Commander one without (see <see cref="Pod"/>).</summary>
     public (EventSpec Spec, EventEntry Entry, LimitedEvent? Running)? CurrentEvent()
     {
-        if (!HasCareer || State.Event is not { } entry || World!.Content.Events.FirstOrDefault(e => e.Id == entry.Id) is not { } spec) return null;
+        if (!HasCareer || State.Event is not { } entry || World!.Event(entry.Id, entry.Day) is not { } spec) return null;
         if (spec.Kind == CareerRules.Commander) return (spec, entry, null);
         Events.Load();
         if (Events.Current is null) Begin(spec, entry);

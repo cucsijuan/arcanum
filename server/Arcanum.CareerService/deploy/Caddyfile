@@ -4,5 +4,13 @@ arcanum-career.duckdns.org {
 	request_body {
 		max_size 4MB
 	}
-	reverse_proxy 127.0.0.1:5080
+	# The season files (publish-season.sh puts them there), served as they are; clients ask only for changes.
+	handle /career/season/* {
+		root * /srv/arcanum-career
+		header Cache-Control "no-cache"
+		file_server
+	}
+	handle {
+		reverse_proxy 127.0.0.1:5080
+	}
 }
