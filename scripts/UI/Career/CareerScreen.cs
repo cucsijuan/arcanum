@@ -622,7 +622,7 @@ public partial class CareerScreen : Control
         int antes = CareerRules.AntesLeft(State, World, now);
         page.AddChild(new Control { CustomMinimumSize = new Vector2(0, 8) });
         page.AddChild(CareerStyle.Text("Ante match", 28, CareerStyle.TitleBar));
-        page.AddChild(CareerStyle.Text("Playing for keeps: message a regular, choose one of the cards they put up and offer one of your deck; "
+        page.AddChild(CareerStyle.Text("Playing for keeps: message a regular, choose one of the cards they put up and offer one of yours; "
             + $"the winner keeps both, and the anted cards stay out of the game. {antes} ante match{(antes == 1 ? "" : "es")} left today.", 19, CareerStyle.InkDim, wrap: true));
         if (problems.Count == 0 && antes > 0)
         {
@@ -711,10 +711,10 @@ public partial class CareerScreen : Control
                 break;
             case ChatStep.Stake:
                 var want = _chatWant!;
-                var stakes = Stakes(deck);
+                var stakes = Stakes();
                 if (stakes.Count == 0)
                 {
-                    reply.AddChild(CareerStyle.Text("Your deck has nothing to stake.", 20, CareerStyle.Bad));
+                    reply.AddChild(CareerStyle.Text("You have nothing to stake.", 20, CareerStyle.Bad));
                     break;
                 }
                 // The cheapest stake the regular would take is offered first (the dearest when none would do).
@@ -765,16 +765,14 @@ public partial class CareerScreen : Control
         page.AddChild(reply);
     }
 
-    /// <summary>The cards of a deck the player can stake: every printing of them owned (basic lands aren't worth it), cheapest first.</summary>
-    private static List<CardKey> Stakes(DeckList deck) =>
-        deck.Main.Where(e => !World.IsBasicLand(e.Name)).Select(e => e.Name).Distinct(StringComparer.OrdinalIgnoreCase)
-            .SelectMany(name => State.Cards.Where(c => c.Card.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Select(c => c.Card))
-            .OrderBy(c => CareerMarket.Price(State, World, c, Today)).ToList();
+    /// <summary>The cards the player can stake: every card of the collection but basic lands (not worth it), cheapest first.</summary>
+    private static List<CardKey> Stakes() =>
+        State.Cards.Select(c => c.Card).Where(c => !World.IsBasicLand(c.Name)).OrderBy(c => CareerMarket.Price(State, World, c, Today)).ToList();
 
     /// <summary>Choosing the stake on the desk, the deck's cards on the mat with their prices; the chat comes back with it offered.</summary>
     private static void PickStake(DeckList deck, string opponent)
     {
-        DeckDesk.Picking = new DeckDesk.CardPick($"Choose the card you put up against {opponent}", Stakes(deck),
+        DeckDesk.Picking = new DeckDesk.CardPick($"Choose the card you put up against {opponent}", Stakes(),
             card => CareerRules.Money(CareerMarket.Price(State, World, card, Today)),
             card =>
             {
@@ -786,7 +784,8 @@ public partial class CareerScreen : Control
             {
                 OpenOn = nameof(WebPage.Chat);
                 App.Instance.GoTo(App.CareerScene);
-            });
+            },
+            deck.Main.Select(e => e.Name).ToHashSet(StringComparer.OrdinalIgnoreCase));
         App.Instance.GoTo(App.DeckDeskScene);
     }
 

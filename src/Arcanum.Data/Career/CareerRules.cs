@@ -272,8 +272,9 @@ public static class CareerRules
         CareerMarket.Price(state, world, stake, day) >= theirs.Value * world.Content.Ante.MinRatio;
 
     /// <summary>
-    /// An ante match: the player's stake (or, in older journals, a card at random from their deck) and the regular's
-    /// offer leave both decks for the game; the player's leaves the collection until the match ends.
+    /// An ante match: the player's stake (any card of the collection; in older journals a card at random from their
+    /// deck) leaves the collection until the match ends, and the deck for the game when the deck needed that copy; the
+    /// regular's card leaves their deck for the game.
     /// </summary>
     private static CareerResult BeginAnte(CareerState state, StartAnte ante, CareerWorld world)
     {
@@ -285,8 +286,8 @@ public static class CareerRules
         string theirDeck;
         if (ante.Card is { } staked)
         {
+            // Any card of the collection can be the stake.
             key = CardKey.Parse(staked);
-            if (!deck.Main.Any(e => e.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase))) throw new CareerRuleException($"{key.Name} isn't in your deck.");
             if (state.Owned(key) == 0) throw new CareerRuleException($"You have no {key.Name} in that printing.");
             var offer = AnteOfferOf(state, world, opponent.Id, state.Day);
             var chosen = ante.Theirs is { } wanted

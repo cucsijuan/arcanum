@@ -125,7 +125,10 @@ public sealed class CareerService
         var (theirs, _) = CareerRules.OpponentDeck(State, world, pending.OpponentId, pending.Deck).Resolve(cards);
         if (pending.Kind == CareerRules.Ante)
         {
-            RemoveOne(mine, CardKey.Parse(pending.PlayerAnte).Name);
+            // The player's stake is out of the collection now: out of the deck too when the deck needed that copy.
+            var staked = CardKey.Parse(pending.PlayerAnte).Name;
+            if (State.OwnedByName(staked) < deck.Main.Where(e => e.Name.Equals(staked, StringComparison.OrdinalIgnoreCase)).Sum(e => e.Count))
+                RemoveOne(mine, staked);
             RemoveOne(theirs, CardKey.Parse(pending.OpponentAnte).Name);
         }
         var title = pending.Kind switch { CareerRules.Practice => "Practice match", CareerRules.Ante => "Ante match", _ => "Daily match" };

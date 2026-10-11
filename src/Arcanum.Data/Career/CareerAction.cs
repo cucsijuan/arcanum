@@ -33,7 +33,7 @@ public sealed record StartDaily(DateTime Utc, string Reward, string? Deck = null
 public sealed record StartPractice(DateTime Utc, string Opponent, string Deck) : CareerAction(Utc);
 
 /// <summary>
-/// An ante match against a regular: the player stakes a card of their deck (<see cref="Card"/>, a <see cref="CardKey"/>
+/// An ante match against a regular: the player stakes a card of their collection (<see cref="Card"/>, a <see cref="CardKey"/>
 /// text) against the one of the regular's offered cards they chose (<see cref="Theirs"/>); the winner keeps both.
 /// Without a card (older journals) each player antes a card at random from their deck.
 /// </summary>

@@ -536,9 +536,23 @@ public class CareerTests
     }
 
     [Fact]
-    public void AStakeMustBeAnOwnedCardOfTheDeck()
+    public void AStakeMustBeAnOwnedCard()
     {
         var (state, _, world) = StartedWithSixty();
         Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new StartAnte(T0.AddMinutes(1), "bo", Sixty, new CardKey("Card 16", "ABC", "16").ToString()), world));
+    }
+
+    [Fact]
+    public void AnyCardOfTheCollectionCanBeTheStake()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        Do(state, journal, world, new OpenBooster(T0.AddMinutes(1), "abc"));
+        // The dearest card opened, not in the deck, against the regular's cheapest card.
+        var stake = state.Cards.Select(c => c.Card).Where(c => c.Name != "Card 1" && !world.IsBasicLand(c.Name))
+            .OrderByDescending(c => CareerMarket.Price(state, world, c, state.Day)).First();
+        var theirs = CareerRules.AnteOfferOf(state, world, "ana", state.Day).Cards[0];
+        Assert.True(CareerRules.AnteAccepted(state, world, theirs, stake, state.Day));
+        Do(state, journal, world, new StartAnte(T0.AddMinutes(2), "ana", Sixty, stake.ToString(), theirs.Card.ToString()));
+        Assert.Equal(stake.ToString(), state.Pending!.PlayerAnte);
     }
 }
