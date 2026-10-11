@@ -130,13 +130,16 @@ public static class OracleJsonl
 
     /// <summary>
     /// Reads the printings source (one line per printing) and returns the paper printings of each card by oracle id,
-    /// oldest first. Digital-only printings, oversized cards and other languages are skipped. Printings made only in foil
-    /// (collector booster treatments, surge foils) are kept and marked so: their copies are always foils.
+    /// oldest first. Digital-only printings and oversized cards are skipped, and so are printings in other languages,
+    /// except the ones never printed in English (a set's cards printed only in a language of its world). Printings made
+    /// only in foil (collector booster treatments, surge foils) are kept and marked so: their copies are always foils.
     /// Tokens keep their printings in token sets: each is one more picture a deck can show its tokens with.
     /// </summary>
     public static Dictionary<string, List<Printing>> ImportPrintings(Stream source)
     {
         var byCard = new Dictionary<string, List<Printing>>();
+        var english = new HashSet<(string, string)>();
+        var otherLanguages = new List<(string OracleId, Printing Printing)>();
         using var reader = new StreamReader(OpenMaybeGzip(source), Encoding.UTF8);
         string? line;
         while ((line = reader.ReadLine()) is not null)
@@ -147,12 +150,23 @@ public static class OracleJsonl
             if (Str(c, "oracle_id") is not { } oracleId) continue;
             if (c.TryGetProperty("digital", out var digital) && digital.ValueKind == JsonValueKind.True) continue;
             if (c.TryGetProperty("oversized", out var oversized) && oversized.ValueKind == JsonValueKind.True) continue;
-            if (Str(c, "lang") is { } lang && lang != "en") continue;
             bool token = Str(c, "layout") == "token";
             if ((token ? SkippedTokenSetTypes : SkippedSetTypes).Contains(Str(c, "set_type") ?? "")) continue;
             if (PrintingFrom(c) is not { } printing) continue;
+            if (Str(c, "lang") is { } lang && lang != "en")
+            {
+                otherLanguages.Add((oracleId, printing));
+                continue;
+            }
+            english.Add((printing.Set, printing.CollectorNumber));
             if (!byCard.TryGetValue(oracleId, out var list)) byCard[oracleId] = list = new List<Printing>();
             list.Add(printing);
+        }
+        foreach (var (oracleId, printing) in otherLanguages)
+        {
+            if (english.Contains((printing.Set, printing.CollectorNumber))) continue;
+            if (!byCard.TryGetValue(oracleId, out var list)) byCard[oracleId] = list = new List<Printing>();
+            if (!list.Any(p => p.Set == printing.Set && p.CollectorNumber == printing.CollectorNumber)) list.Add(printing);
         }
         foreach (var list in byCard.Values)
             list.Sort((a, b) => string.CompareOrdinal(a.Released, b.Released) is var d && d != 0 ? d : CompareNumbers(a.CollectorNumber, b.CollectorNumber));

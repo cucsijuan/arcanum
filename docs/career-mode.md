@@ -300,6 +300,13 @@ events need the dedicated host for the games themselves.
 
 C1–C3 are fully useful without any online part, so the mode can ship early as an offline career.
 
+## Boosters
+
+The store sells every kind of booster each set was sold in (play or draft, set, collector), each sheet with its exact
+printings (their own art), traditional and surge foils at their real rates; limited events open only the play or
+draft booster. A card is a foil, or a surge foil, only where that printing was made so. Pending (urgent): the third
+set's set booster's The List slot (see the roadmap's backlog).
+
 ## Decisions to take
 
 1. ~~Trust model~~ decided: signed profile + journal, verified by the career service on an Oracle Cloud Always Free VM.

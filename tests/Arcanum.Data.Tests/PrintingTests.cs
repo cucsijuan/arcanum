@@ -171,4 +171,18 @@ public class PrintingTests
         Assert.Equal(3, deck.Main.Single(e => e.Set == "NEW" && e.Foil).Count);
         Assert.Equal(1, deck.Main.Single(e => e.Set == "NEW" && !e.Foil).Count);
     }
+
+    [Fact]
+    public void APrintingOnlyInAnotherLanguageIsKeptButTranslationsAreNot()
+    {
+        const string prints = """
+            {"oracle_id":"o-1","id":"p-en","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"10","rarity":"common","released_at":"2024-01-01","set_type":"expansion","lang":"en","finishes":["nonfoil"]}
+            {"oracle_id":"o-1","id":"p-de","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"10","rarity":"common","released_at":"2024-01-01","set_type":"expansion","lang":"de","finishes":["nonfoil"]}
+            {"oracle_id":"o-1","id":"p-elvish","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"408","rarity":"uncommon","released_at":"2024-01-01","set_type":"expansion","lang":"qya","finishes":["nonfoil"]}
+            {"oracle_id":"o-1","id":"p-elvish-z","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"408z","rarity":"uncommon","released_at":"2024-01-01","set_type":"expansion","lang":"qya","finishes":["foil"]}
+            """;
+        var printings = OracleJsonl.ImportPrintings(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(prints)));
+        Assert.Equal(new[] { "p-en", "p-elvish", "p-elvish-z" }, printings["o-1"].Select(p => p.Id));
+        Assert.True(printings["o-1"].Single(p => p.Id == "p-elvish-z").FoilOnly);
+    }
 }

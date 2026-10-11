@@ -23,6 +23,11 @@
 
 ## Backlog
 
+- **Urgent:** the third set's set booster is sold without its The List slot (a card from The List in a quarter of the
+  boosters). Its 250 cards need scripts first, and some need new mechanics: banding, infect, cumulative upkeep,
+  buyback, rebound, convoke, domain, assist and others. Then add the slot back to the module's set booster (the
+  booster's definition from mtg.wtf has it).
+
 - Code review after M11: rules fixes, duplicated paths and hygiene, prioritized in [review-backlog.md](review-backlog.md).
 
 - Online: the host's device has all the game's information (a modified host could see hidden cards); a dedicated
