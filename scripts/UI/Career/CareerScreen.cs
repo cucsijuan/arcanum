@@ -106,8 +106,8 @@ public partial class CareerScreen : Control
         // A daily match left before it ended counts as lost.
         if (Career.HasCareer && State.Pending is { } pending)
         {
-            Career.Do(new FinishMatch(Career.Now, Won: false));
-            MenuKit.Toast(this, $"The daily match against {OpponentName(pending.OpponentId)} wasn't finished: it counts as a loss.");
+            Career.Finish(won: false);
+            MenuKit.Toast(this, $"The {(pending.Kind == CareerRules.Ante ? "ante" : pending.Kind)} match against {OpponentName(pending.OpponentId)} wasn't finished: it counts as a loss.");
         }
 
         if (RunTestHooks()) return;
@@ -118,6 +118,11 @@ public partial class CareerScreen : Control
         else if (Enum.TryParse<WebPage>(open, out var page)) OpenWeb(page, instant: true);
         UpdateHud();
         _room.GrabFocus();
+        if (Career.AnteResult is { } ante)
+        {
+            Career.AnteResult = null;
+            ShowAnteResult(ante.Card, ante.Won, ante.Opponent);
+        }
     }
 
     private static Texture2D? Picture(string file) => ResourceLoader.Exists(Kit + file) ? GD.Load<Texture2D>(Kit + file) : null;
@@ -188,6 +193,9 @@ public partial class CareerScreen : Control
                     OfferStake(offer, _chatWant, cheapest);
                     if (OS.GetEnvironment("ARCANUM_CAREER_PICK") == "1") PickStake(offer.Opponent.Name);
                 }
+                return true;
+            case "antewon" or "antelost" when State.Cards.FirstOrDefault(c => !World.IsBasicLand(c.Card.Name)).Card is { Name: not null } shown:
+                ShowAnteResult(shown, test == "antewon", World.Content.Opponents[0].Id);
                 return true;
             case "store": GoTo(Place.Store); return true;
             case "boosters" or "precons" or "counter" or "offers": GoTo(Place.Store); OnStore(test.ToLowerInvariant()); return true;
@@ -853,6 +861,62 @@ public partial class CareerScreen : Control
         row.AddChild(bubble);
         if (!line.Mine) row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsStretchRatio = 1 });
         return row;
+    }
+
+    /// <summary>
+    /// After an ante match, over the dimmed room: the card won (in a gold glow) or lost (in a red glow), until the
+    /// player moves on.
+    /// </summary>
+    private void ShowAnteResult(CardKey card, bool won, string opponent)
+    {
+        var glow = won ? CareerStyle.Gold : new Color(0.95f, 0.22f, 0.18f);
+        var overlay = new Control { ZIndex = 80, MouseFilter = MouseFilterEnum.Stop };
+        overlay.SetAnchorsPreset(LayoutPreset.FullRect);
+        var shade = new ColorRect { Color = new Color(0, 0, 0, 0), AnchorRight = 1, AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore };
+        overlay.AddChild(shade);
+
+        var column = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center, AnchorRight = 1, AnchorBottom = 1 };
+        column.AddThemeConstantOverride("separation", 26);
+        overlay.AddChild(column);
+        var title = CareerStyle.Text(won ? "You won this card!" : "You lost this card...", 44, glow);
+        title.HorizontalAlignment = HorizontalAlignment.Center;
+        column.AddChild(title);
+
+        // The card in its glow, a little larger than the board's preview.
+        var size = new Vector2(330, 460);
+        var frame = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ShrinkCenter, PivotOffset = size / 2 };
+        var halo = CareerStyle.Box(Colors.Transparent, glow, 4, 18);
+        halo.ShadowColor = glow with { A = 0.85f };
+        halo.ShadowSize = 46;
+        frame.AddThemeStyleboxOverride("panel", halo);
+        var node = new CardNode { Size = size, CustomMinimumSize = size, SharpImage = true };
+        node.Setup(ViewOf(DefinitionOf(card)), showCostPips: false);
+        frame.AddChild(node);
+        column.AddChild(frame);
+
+        var line = CareerStyle.Text(won ? $"{card.Name} is in your collection now, and you keep your own card."
+            : $"{card.Name} goes home with {OpponentName(opponent)}.", 22, new Color(1f, 0.95f, 0.85f));
+        line.HorizontalAlignment = HorizontalAlignment.Center;
+        column.AddChild(line);
+        var go = CareerStyle.Button(won ? "Nice!" : "Next time", () =>
+        {
+            var fade = overlay.CreateTween();
+            fade.TweenProperty(overlay, "modulate:a", 0f, 0.25);
+            fade.TweenCallback(Callable.From(overlay.QueueFree));
+        }, 24, primary: won);
+        go.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
+        go.Theme = CareerStyle.Notes;
+        column.AddChild(go);
+        AddChild(overlay);
+
+        // The room darkens, the card grows in and its glow breathes.
+        var tween = overlay.CreateTween();
+        tween.TweenProperty(shade, "color:a", 0.78f, 0.35);
+        frame.Scale = new Vector2(0.6f, 0.6f);
+        tween.Parallel().TweenProperty(frame, "scale", Vector2.One, 0.45).SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
+        var breathe = frame.CreateTween().SetLoops();
+        breathe.TweenMethod(Callable.From<float>(a => halo.ShadowColor = glow with { A = a }), 0.85f, 0.45f, 1.1);
+        breathe.TweenMethod(Callable.From<float>(a => halo.ShadowColor = glow with { A = a }), 0.45f, 0.85f, 1.1);
     }
 
     /// <summary>A regular to play (a chooser) and the button that starts the match.</summary>

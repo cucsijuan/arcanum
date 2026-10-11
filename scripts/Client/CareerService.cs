@@ -134,7 +134,7 @@ public sealed class CareerService
         var title = pending.Kind switch { CareerRules.Practice => "Practice match", CareerRules.Ante => "Ante match", _ => "Daily match" };
         return new MatchSetup(new[] { new GameSession.Seat(playerName, mine), new GameSession.Seat(opponent.Name, theirs, IsBot: true) }, 20)
         {
-            Event = new EventHook(winner => Do(new FinishMatch(Now, winner == 0)), App.CareerScene, title) { ReturnText = "Back home" },
+            Event = new EventHook(winner => Finish(winner == 0), App.CareerScene, title) { ReturnText = "Back home" },
             Table = ResourceLoader.Exists(TableImage) ? TableImage : null,
         };
     }
@@ -311,6 +311,19 @@ public sealed class CareerService
                 SavePod();
             }, App.EventScene, $"{spec.Name} · game {pod.Winners.Count + 1}") { ReturnText = "Back to the event" },
         };
+    }
+
+    /// <summary>The card an ante match was just won or lost for, shown when the player is back home (then cleared).</summary>
+    public (CardKey Card, bool Won, string Opponent)? AnteResult { get; set; }
+
+    /// <summary>Ends the match in progress; an ante match leaves its result to show at home.</summary>
+    public CareerResult Finish(bool won)
+    {
+        var pending = State.Pending;
+        var result = Do(new FinishMatch(Now, won));
+        if (pending is { Kind: CareerRules.Ante })
+            AnteResult = (CardKey.Parse(won ? pending.OpponentAnte : pending.PlayerAnte), won, pending.OpponentId);
+        return result;
     }
 
     private static void RemoveOne(List<Arcanum.Engine.Cards.CardDefinition> deck, string name)
