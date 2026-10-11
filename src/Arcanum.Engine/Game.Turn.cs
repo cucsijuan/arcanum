@@ -199,7 +199,12 @@ public sealed partial class Game
 
         if (step == Step.EndCombat) State.Combat = null;
         foreach (var player in State.Players) // rule 500.4
-            player.ManaPool.Clear(endOfTurn: step == Step.Cleanup, keep: Has(player.Id, Cards.Replacements.KeepGreenMana) ? Mana.ManaType.Green : null);
+        {
+            var kept = new List<Mana.ManaType>();
+            if (Has(player.Id, Cards.Replacements.KeepGreenMana)) kept.Add(Mana.ManaType.Green);
+            if (Has(player.Id, Cards.Replacements.KeepRedMana)) kept.Add(Mana.ManaType.Red);
+            player.ManaPool.Clear(endOfTurn: step == Step.Cleanup, keep: kept.Count > 0 ? kept : null);
+        }
     }
 
     private async Task CleanupAsync()
@@ -220,6 +225,12 @@ public sealed partial class Game
             permanent.RegenerationShields = 0; // "the next time it would be destroyed this turn"
         }
         State.UntilEndOfTurn.Clear();
+        // "Become a copy of … until end of turn" as it entered.
+        foreach (var permanent in State.Battlefield.Select(State.GetCard).Where(c => c.CopyEndsAtCleanup))
+        {
+            permanent.CopiedDefinition = null;
+            permanent.CopyEndsAtCleanup = false;
+        }
         // "Until end of turn" and "until the end of your next turn" control effects end now.
         State.ControlEffects.RemoveAll(c => c.UntilEndOfTurn
                                             || (c.UntilEndOfNextTurnOf is { } who && who == State.ActivePlayer && State.TurnNumber > c.MadeOnTurn));

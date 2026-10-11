@@ -327,7 +327,9 @@ public sealed partial class Game
         Emit(new ChoiceMade(card.Id, $"a copy of {original.Name}"));
         // The copiable values are the original's own (with any copy effect on it), not counters or other effects (rule 707.2);
         // being a card (or a token) stays the copy's own.
-        return original.Definition with { IsToken = card.PrintedDefinition.IsToken, Foil = card.PrintedDefinition.Foil };
+        var values = original.Definition with { IsToken = card.PrintedDefinition.IsToken, Foil = card.PrintedDefinition.Foil };
+        // "Except it has haste": part of the copy effect, so of its copiable values (rule 707.9b).
+        return EnteringFace(card, transformed).EntersAsCopyWithHaste ? values with { Keywords = values.Keywords.Append("Haste").Distinct().ToList() } : values;
     }
 
     /// <summary>
@@ -417,7 +419,12 @@ public sealed partial class Game
         card.GiftTo = giftTo;
         // A double-faced card enters front face up unless it's put onto the battlefield transformed (rule 712.14).
         card.Transformed = transformed && to == Zone.Battlefield && card.IsDoubleFaced;
-        if (to == Zone.Battlefield && _pendingCopies.Remove((id, card.Version - 1), out var copied)) card.CopiedDefinition = copied;
+        if (to == Zone.Battlefield && _pendingCopies.Remove((id, card.Version - 1), out var copied))
+        {
+            // Whether the copy lasts until end of turn is the entering card's own rule, read before the copy took over.
+            card.CopyEndsAtCleanup = EnteringFace(card, card.Transformed).EntersAsCopyUntilEndOfTurn;
+            card.CopiedDefinition = copied;
+        }
         _pendingCopies.Remove((id, card.Version - 1));
         card.ZoneChangedTurn = State.TurnNumber;
         card.EnteredFrom = from;

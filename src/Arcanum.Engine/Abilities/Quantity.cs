@@ -150,6 +150,8 @@ public enum QuantityKind
     OpponentsWithMore,
     /// <summary>The greatest mana value among the commanders the controller owns, wherever they are ("among your commanders").</summary>
     GreatestCommanderManaValueAnywhere,
+    /// <summary>The creatures attacking this combat that the player the trigger is about controls ("attacks with two or more creatures").</summary>
+    TriggeredPlayerAttackers,
 }
 
 /// <summary>

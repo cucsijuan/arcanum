@@ -392,7 +392,11 @@ public sealed record AddMana(IReadOnlyList<Mana.ManaType> Types) : Effect
 }
 
 /// <summary>The subject (a creature) deals damage equal to its power to the other subject ("bite").</summary>
-public sealed record DealsDamageEqualToPower(Subject Source, Subject To) : Effect;
+public sealed record DealsDamageEqualToPower(Subject Source, Subject To) : Effect
+{
+    /// <summary>"If [it] has trample, excess damage is dealt to that creature's controller instead."</summary>
+    public bool ExcessToControllerIfTrample { get; init; }
+}
 
 /// <summary>Put cards from the subject players' graveyards matching the filter onto the battlefield under your control.</summary>
 public sealed record ReanimateAll(Subject Who, ObjectFilter Filter) : Effect
@@ -456,6 +460,9 @@ public sealed record MayPayX(string Prompt, IReadOnlyList<Effect> Effects) : Eff
 {
     /// <summary>"Where X is less than or equal to …".</summary>
     public Quantity? Max { get; init; }
+
+    /// <summary>"Pay any amount of {R}": X is paid with mana of this type only.</summary>
+    public Mana.ManaType? ManaType { get; init; }
 }
 
 /// <summary>"You have no maximum hand size for the rest of the game."</summary>
@@ -540,7 +547,11 @@ public sealed record ExileTopPlayable(int Count, bool ChooseOne = true, bool Unt
 }
 
 /// <summary>Divide damage as you choose among the chosen targets (at least 1 to each, rule 601.2d).</summary>
-public sealed record DealDamageDivided(int Total) : Effect;
+public sealed record DealDamageDivided(int Total) : Effect
+{
+    /// <summary>A total worked out as the division is announced ("where X is the greatest power among creatures you control as you cast this spell").</summary>
+    public Quantity? TotalFrom { get; init; }
+}
 
 /// <summary>"Each [player] chooses a permanent they control of each permanent type and sacrifices the rest."</summary>
 public sealed record KeepOneOfEachType(Subject Who) : Effect
@@ -1133,3 +1144,6 @@ public sealed record GivePromisedGift : Effect;
 
 /// <summary>"Double the power and toughness of [each creature] until end of turn" (rule 701.10d-e).</summary>
 public sealed record DoublePowerAndToughness(Subject What) : Effect;
+
+/// <summary>Proliferate (rule 701.34): any number of permanents and/or players get another counter of each kind already there.</summary>
+public sealed record Proliferate : Effect;

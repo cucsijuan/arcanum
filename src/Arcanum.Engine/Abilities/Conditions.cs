@@ -191,7 +191,7 @@ public sealed record MoreVotes(int Option) : Condition;
 public sealed record ReceivedNoVotes : Condition;
 
 /// <summary>"If [another] [filter] entered the battlefield under your control this turn".</summary>
-public sealed record EnteredThisTurn(ObjectFilter Filter) : Condition;
+public sealed record EnteredThisTurn(ObjectFilter Filter, int AtLeast = 1) : Condition;
 
 /// <summary>"If it isn't renowned" / "a renowned creature": the source is renowned.</summary>
 public sealed record SourceRenowned : Condition;

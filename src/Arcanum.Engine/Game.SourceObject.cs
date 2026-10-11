@@ -44,7 +44,7 @@ public sealed partial class Game
     /// </summary>
     private static int? LeftBattlefieldVersion(Abilities.AbilityDefinition ability, Card source, int sourceVersion)
     {
-        bool left = ability is Abilities.TriggeredAbility { Trigger: Abilities.TriggerEvent.Dies or Abilities.TriggerEvent.LeavesBattlefield or Abilities.TriggerEvent.PutIntoGraveyard }
+        bool left = ability is Abilities.TriggeredAbility { Trigger: Abilities.TriggerEvent.Dies or Abilities.TriggerEvent.LeavesBattlefield or Abilities.TriggerEvent.PutIntoGraveyard or Abilities.TriggerEvent.DiesOrExiled }
                     || ability is Abilities.ActivatedAbility { Cost.SacrificeSelf: true };
         return left && source.LastKnownOf(sourceVersion - 1) is not null ? sourceVersion - 1 : null;
     }

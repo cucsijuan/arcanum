@@ -110,6 +110,9 @@ public sealed record CardScript(
     public bool Improvise { get; init; }
     public bool GiftCard { get; init; }
     public bool AttackTaxPlayerOnly { get; init; }
+    public bool EntersAsCopyUntilEndOfTurn { get; init; }
+    public bool EntersAsCopyWithHaste { get; init; }
+    public ObjectFilter? OthersEnterWithCountersFilter { get; init; }
     public bool CantAttackIfPowerAboveHandSize { get; init; }
     public ObjectFilter? CantAttackUnless { get; init; }
     public IReadOnlyList<string>? ProtectionFromSubtypes { get; init; }
@@ -213,6 +216,9 @@ public sealed record CardScript(
         Improvise = Improvise || d.Improvise,
         GiftCard = GiftCard || d.GiftCard,
         AttackTaxPlayerOnly = AttackTaxPlayerOnly || d.AttackTaxPlayerOnly,
+        EntersAsCopyUntilEndOfTurn = EntersAsCopyUntilEndOfTurn || d.EntersAsCopyUntilEndOfTurn,
+        EntersAsCopyWithHaste = EntersAsCopyWithHaste || d.EntersAsCopyWithHaste,
+        OthersEnterWithCountersFilter = OthersEnterWithCountersFilter ?? d.OthersEnterWithCountersFilter,
         CantAttackIfPowerAboveHandSize = CantAttackIfPowerAboveHandSize || d.CantAttackIfPowerAboveHandSize,
         CantAttackUnlessDefenderControls = CantAttackUnless ?? d.CantAttackUnlessDefenderControls,
         ProtectionFromSubtypes = ProtectionFromSubtypes ?? d.ProtectionFromSubtypes,
@@ -443,6 +449,9 @@ public static partial class CardScriptParser
             Escalate = root.TryGetProperty("escalate", out var esc) ? ManaCost.Parse(esc.GetString()!) : null,
             Improvise = Bool(root, "improvise"),
             AttackTaxPlayerOnly = Bool(root, "attackTaxPlayerOnly"),
+            EntersAsCopyUntilEndOfTurn = Bool(root, "entersAsCopyUntilEndOfTurn"),
+            EntersAsCopyWithHaste = Bool(root, "entersAsCopyWithHaste"),
+            OthersEnterWithCountersFilter = root.TryGetProperty("othersEnterFilter", out var oef) ? ParseFilter(oef, ControllerFilter.Any) : null,
             CantAttackIfPowerAboveHandSize = Bool(root, "cantAttackIfPowerAboveHandSize"),
             CantAttackUnless = root.TryGetProperty("cantAttackUnlessDefenderControls", out var cau) ? ParseFilter(cau, ControllerFilter.Any) : null,
             ProtectionFromSubtypes = root.TryGetProperty("protectionFromSubtypes", out var pfs) ? pfs.EnumerateArray().Select(t => t.GetString()!).ToList() : null,
@@ -589,6 +598,7 @@ public static partial class CardScriptParser
             PreventsDamage = s.TryGetProperty("preventDamage", out var pd) ? Enum.Parse<StaticDamagePrevention>(pd.GetString()!, ignoreCase: true) : StaticDamagePrevention.None,
             CantActivateAbilities = Bool(s, "cantActivate"),
             CopiesChosenCreature = Bool(s, "copyOfChosen"),
+            GrantsCantBeBlockedBy = s.TryGetProperty("cantBeBlockedBy", out var gcbb) ? ParseFilter(gcbb, ControllerFilter.Any) : null,
         };
     }
 
@@ -711,6 +721,7 @@ public static partial class CardScriptParser
         "combatDamageToPlayer" => TriggerEvent.DealsCombatDamageToPlayer,
         "combatDamageToPlayerOrPlaneswalker" => TriggerEvent.DealsCombatDamageToPlayerOrPlaneswalker,
         "permanentLeaves" => TriggerEvent.PermanentLeaves,
+        "diesOrExiled" => TriggerEvent.DiesOrExiled,
         "blocks" => TriggerEvent.Blocks,
         "attacksOrBlocks" => TriggerEvent.AttacksOrBlocks,
         "creatureEnters" => TriggerEvent.CreatureEnters,
@@ -1006,7 +1017,7 @@ public static partial class CardScriptParser
         if (c.TryGetProperty("totalPower", out var tp)) return new TotalPowerAtLeast(tp.GetInt32());
         if (c.TryGetProperty("cardTypesInGraveyard", out var ctg)) return new CardTypesInGraveyard(ctg.GetInt32());
         if (c.TryGetProperty("opponentHasMore", out var ohm)) return new OpponentHasMore(ohm.GetString()!);
-        if (c.TryGetProperty("enteredThisTurn", out var ett)) return new EnteredThisTurn(ParseFilter(ett, ControllerFilter.Any));
+        if (c.TryGetProperty("enteredThisTurn", out var ett)) return new EnteredThisTurn(ParseFilter(ett, ControllerFilter.Any), c.TryGetProperty("count", out var etc2) ? etc2.GetInt32() : 1);
         if (c.TryGetProperty("moreVotes", out var mvo)) return new MoreVotes(mvo.GetInt32());
         if (c.TryGetProperty("opponents", out var opc)) return new OpponentsAtLeast(opc.GetInt32());
         if (c.TryGetProperty("spellsCastLastTurn", out var sclt)) return new SpellsCastLastTurn(sclt.GetInt32());
@@ -1049,6 +1060,7 @@ public static partial class CardScriptParser
                     "triggeredPower" => new Quantity(0, QuantityKind.TriggeredPower),
                     "triggeredToughness" => new Quantity(0, QuantityKind.TriggeredToughness),
                     "playersWhoDrewThisWay" => new Quantity(0, QuantityKind.PlayersWhoDrewThisWay),
+                    "triggeredPlayerAttackers" => new Quantity(0, QuantityKind.TriggeredPlayerAttackers),
                     "opponentsGraveyards" => new Quantity(0, QuantityKind.OpponentsGraveyardCount),
                     "greatestOtherPower" => new Quantity(0, QuantityKind.GreatestOtherPower),
                     "sacrificedToughness" => new Quantity(0, QuantityKind.SacrificedToughness),
@@ -1406,7 +1418,7 @@ public static partial class CardScriptParser
                 WhileSourceRemains = Flag("whileSource"),
                 LosesAbilities = Flag("loseAbilities"),
             };
-        if (Str("mayPayX") is { } payX) return new MayPayX(payX, Effects(e)) { Max = e.TryGetProperty("max", out var mpxm) ? ParseQuantity(mpxm) : null };
+        if (Str("mayPayX") is { } payX) return new MayPayX(payX, Effects(e)) { Max = e.TryGetProperty("max", out var mpxm) ? ParseQuantity(mpxm) : null, ManaType = e.TryGetProperty("manaType", out var mpxt) ? ParseManaTypes(mpxt.GetString()!).Single() : null };
         if (Flag("noMaxHandSize")) return new NoMaximumHandSizeForever();
         if (Flag("ignoreHexproof")) return new IgnoreHexproofThisTurn();
         if (e.TryGetProperty("mayCastFromGraveyard", out var mcg)) return new MayCastFromGraveyardThisTurn(ParseFilter(mcg, ControllerFilter.Any));
@@ -1437,7 +1449,8 @@ public static partial class CardScriptParser
                     ? new TriggeredAbility { Trigger = TriggerEvent.Reflexive, Targets = Targets(whp), Effects = Effects(whp), Text = Text(whp) }
                     : null,
             };
-        if (e.TryGetProperty("divideDamage", out _)) return new DealDamageDivided(Int("divideDamage"));
+        if (e.TryGetProperty("divideDamage", out var ddv))
+            return ddv.ValueKind == JsonValueKind.Number ? new DealDamageDivided(ddv.GetInt32()) : new DealDamageDivided(0) { TotalFrom = ParseQuantity(ddv) };
         if (Value("keepOneOfEachType") is { } keep)
             return new KeepOneOfEachType(keep)
             {
@@ -1510,7 +1523,7 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("removeCounters", out _)) return new RemoveCounters(Qty("removeCounters"), Subj("what", "self"), ParseCounterKind(Str("kind")));
         if (Value("shuffleGraveyard") is { } sg) return new ShuffleGraveyardIntoLibrary(sg);
         if (Str("addMana") is { } addMana) return new AddMana(ManaCost.Parse(addMana).Pips) { Times = e.TryGetProperty("times", out var amt) ? ParseQuantity(amt) : null };
-        if (Value("bite") is { } biter) return new DealsDamageEqualToPower(biter, Subj("to", "target2"));
+        if (Value("bite") is { } biter) return new DealsDamageEqualToPower(biter, Subj("to", "target2")) { ExcessToControllerIfTrample = Flag("excessIfTrample") };
         if (e.TryGetProperty("reanimateAll", out var raf))
             return new ReanimateAll(Subj("from", "you"), ParseFilter(raf, ControllerFilter.Any)) { As = ParseEntering(e, Subject.You) };
         if (e.TryGetProperty("bounceAll", out var baf)) return new BounceAll(ParseFilter(baf, ControllerFilter.Any), e.TryGetProperty("relativeTo", out var rt) ? ParseSubject(rt) : null);
@@ -1668,6 +1681,7 @@ public static partial class CardScriptParser
         if (Value("regenerate") is { } regen) return new Regenerate(regen);
         if (Flag("populate")) return new Populate();
         if (Flag("myriad")) return new Myriad();
+        if (Flag("proliferate")) return new Proliferate();
         if (Value("doublePowerAndToughness") is { } dpt) return new DoublePowerAndToughness(dpt);
         if (e.TryGetProperty("repeat", out _)) return new Repeat(Qty("repeat"), Effects(e));
         if (Flag("exileThisSpell")) return new ExileThisSpell();

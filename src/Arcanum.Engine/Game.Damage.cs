@@ -427,12 +427,14 @@ public sealed partial class Game
     /// What the ability divides among its targets ("5 damage divided as you choose", "distribute three +1/+1 counters"): the
     /// amount and the range of target indices it's divided among; null if it divides nothing.
     /// </summary>
-    private static (int Total, int From, int To)? DividedAmong(AbilityDefinition? ability, int targetCount)
+    private (int Total, int From, int To)? DividedAmong(AbilityDefinition? ability, int targetCount, PlayerId player, CardId source)
     {
         if (ability is null) return null;
-        static int? TotalOf(IEnumerable<Effect> effects) => effects.Select(e => e switch
+        // "X damage divided …, where X is … as you cast this spell": worked out as the division is announced.
+        var ctx = new EffectContext(player, State.GetCard(source), Array.Empty<ChosenTarget>(), Array.Empty<bool>());
+        int? TotalOf(IEnumerable<Effect> effects) => effects.Select(e => e switch
         {
-            DealDamageDivided dd => dd.Total,
+            DealDamageDivided dd => dd.TotalFrom is { } from ? Math.Max(0, Eval(from, ctx)) : dd.Total,
             DistributeCounters dc => dc.Total,
             _ => (int?)null,
         }).FirstOrDefault(t => t is not null);
@@ -445,8 +447,8 @@ public sealed partial class Game
     }
 
     /// <summary>The most targets a dividing ability can have: each target gets at least 1 (rule 601.2d).</summary>
-    private static int? MaxTargetsForDivision(AbilityDefinition? ability) =>
-        DividedAmong(ability, 1000) is { } d ? d.Total + d.From : null;
+    private int? MaxTargetsForDivision(AbilityDefinition? ability, PlayerId player, CardId source) =>
+        DividedAmong(ability, 1000, player, source) is { } d ? d.Total + d.From : null;
 
     /// <summary>
     /// The division of damage or counters among the chosen targets, announced as the spell is cast or the ability is put on the
@@ -454,7 +456,7 @@ public sealed partial class Game
     /// </summary>
     private async Task<IReadOnlyList<int>?> ChooseDivisionAsync(PlayerId player, AbilityDefinition? ability, CardId source, IReadOnlyList<ChosenTarget> targets)
     {
-        if (DividedAmong(ability, targets.Count) is not var (total, from, to)) return null;
+        if (DividedAmong(ability, targets.Count, player, source) is not var (total, from, to)) return null;
         var division = new int[targets.Count];
         var chosen = Enumerable.Range(from, Math.Max(0, Math.Min(to, targets.Count) - from)).Where(i => !targets[i].Target.IsNone).ToList();
         int remaining = total;

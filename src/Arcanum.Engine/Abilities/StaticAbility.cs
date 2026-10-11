@@ -124,6 +124,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>"Enchanted creature is a copy of the chosen creature": a continuous copy effect (layer 1) of the creature chosen as the source entered.</summary>
     public bool CopiesChosenCreature { get; init; }
 
+    /// <summary>The affected creatures can't be blocked by creatures matching this ("Juggernauts you control can't be blocked by Walls").</summary>
+    public ObjectFilter? GrantsCantBeBlockedBy { get; init; }
+
     /// <summary>"Its activated abilities can't be activated" (mana abilities included).</summary>
     public bool CantActivateAbilities { get; init; }
 }

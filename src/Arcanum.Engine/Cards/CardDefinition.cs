@@ -110,6 +110,8 @@ public enum Replacements : long
     ExileInsteadOfDying = 1L << 54,
     /// <summary>"If a nontoken creature an opponent controls would die, instead exile that card" (and the "creatureExiledInstead" trigger).</summary>
     OpponentsNontokenCreaturesExiledInsteadOfDying = 1L << 55,
+    /// <summary>"You don't lose unspent red mana as steps and phases end."</summary>
+    KeepRedMana = 1L << 56,
 }
 
 /// <summary>
@@ -300,6 +302,12 @@ public sealed partial record CardDefinition
     /// <summary>Its <see cref="AttackTax"/> is only on attacking its controller, not their planeswalkers ("creatures can't attack you unless …").</summary>
     public bool AttackTaxPlayerOnly { get; init; }
 
+    /// <summary>Its <see cref="EntersAsCopyOf"/> lasts until end of turn.</summary>
+    public bool EntersAsCopyUntilEndOfTurn { get; init; }
+
+    /// <summary>Its <see cref="EntersAsCopyOf"/> copy has haste ("except it has haste").</summary>
+    public bool EntersAsCopyWithHaste { get; init; }
+
     /// <summary>"Creatures with power greater than the number of cards in your hand can't attack."</summary>
     public bool CantAttackIfPowerAboveHandSize { get; init; }
 
@@ -418,6 +426,9 @@ public sealed partial record CardDefinition
 
     /// <summary>"Each other creature you control enters with additional +1/+1 counters equal to …".</summary>
     public Quantity? OthersEnterWithCounters { get; init; }
+
+    /// <summary>Only creatures matching this get <see cref="OthersEnterWithCounters"/> ("each Dragon you control", "of the chosen type").</summary>
+    public ObjectFilter? OthersEnterWithCountersFilter { get; init; }
 
     /// <summary>Cascade instances (rule 702.85).</summary>
     public int Cascade { get; init; }

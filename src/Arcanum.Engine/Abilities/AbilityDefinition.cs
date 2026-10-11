@@ -366,6 +366,8 @@ public enum TriggerEvent
     DealsCombatDamageToPlayerOrPlaneswalker,
     /// <summary>"Whenever another permanent you control leaves the battlefield" — matched against <see cref="TriggeredAbility.Filter"/> as it last existed.</summary>
     PermanentLeaves,
+    /// <summary>"When this dies or is put into exile from the battlefield."</summary>
+    DiesOrExiled,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>

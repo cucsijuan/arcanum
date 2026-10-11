@@ -901,3 +901,11 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   of turn). Card-wide `"attackTaxPlayerOnly": true` limits an `attackTax` to attacks on the player ("creatures can't attack you unless …").
 - Quantity `"greatestCommanderManaValueAnywhere"` (among your commanders wherever they are); ability word `Living weapon` labels the
   scripted enters trigger (a 0/0 black Phyrexian Germ token, then `{ "attach": "created" }`).
+- **More**: `replaces` `KeepRedMana` ("you don't lose unspent red mana as steps and phases end"); `mayPayX` takes `"manaType": "{R}"` ("pay
+  any amount of {R}"); `{ "proliferate": true }` (rule 701.34: the controller picks permanents with counters and players with poison
+  counters); `divideDamage` takes a quantity (`"greatestPower"`), worked out as the division is announced; `bite` takes `"excessIfTrample":
+  true`; trigger `diesOrExiled` ("when this dies or is put into exile from the battlefield"; `"self"` then finds the card in the graveyard or
+  exile); card-wide `"entersAsCopyUntilEndOfTurn"` and `"entersAsCopyWithHaste"` with `entersAsCopy`; `"othersEnterFilter": filter` limits
+  `othersEnterWithCounters` ("each Dragon you control", `{ "chosenType": true }`); `{ "enteredThisTurn": filter, "count": 2 }`
+  (celebration); static `"cantBeBlockedBy": filter`; quantity `"triggeredPlayerAttackers"` (creatures the player the trigger is about attacks
+  with this combat).
