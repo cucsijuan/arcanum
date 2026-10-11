@@ -23,6 +23,12 @@ public static class CareerRules
 
     public static DateOnly DayOf(DateTime utc) => DateOnly.FromDateTime(utc);
 
+    /// <summary>The unopened boosters' key: the set code, ":collector" after it for its collector boosters.</summary>
+    public static string SealedKey(string set, bool collector) => collector ? set.ToLowerInvariant() + ":collector" : set.ToLowerInvariant();
+
+    public static (string Set, bool Collector) ParseSealed(string key) =>
+        key.EndsWith(":collector", StringComparison.Ordinal) ? (key[..^10], true) : (key, false);
+
     /// <summary>A career's state after its whole journal.</summary>
     public static CareerState Replay(IEnumerable<CareerAction> journal, CareerWorld world)
     {
@@ -633,11 +639,13 @@ public static class CareerRules
 
     private static CareerResult Buy(CareerState state, BuyBooster buy, CareerWorld world)
     {
-        if (!world.SellsBoosters(buy.Set)) throw new CareerRuleException($"The store doesn't sell {world.SetName(buy.Set)} boosters.");
-        Pay(state, world.Content.BoosterPrice);
-        state.AddSealed(buy.Set.ToLowerInvariant(), 1);
-        state.Note(buy.Utc, $"Bought a {world.SetName(buy.Set)} booster.");
-        return new CareerResult(Array.Empty<PoolCard>(), -world.Content.BoosterPrice);
+        if (!(buy.Collector ? world.SellsCollector(buy.Set) : world.SellsBoosters(buy.Set)))
+            throw new CareerRuleException($"The store doesn't sell {world.SetName(buy.Set)} {(buy.Collector ? "collector " : "")}boosters.");
+        int price = buy.Collector ? world.Content.CollectorPrice : world.Content.BoosterPrice;
+        Pay(state, price);
+        state.AddSealed(SealedKey(buy.Set, buy.Collector), 1);
+        state.Note(buy.Utc, $"Bought a {world.SetName(buy.Set)} {(buy.Collector ? "collector " : "")}booster.");
+        return new CareerResult(Array.Empty<PoolCard>(), -price);
     }
 
     private static CareerResult Buy(CareerState state, BuyPrecon buy, CareerWorld world)
@@ -653,11 +661,11 @@ public static class CareerRules
 
     private static CareerResult Open(CareerState state, OpenBooster open, CareerWorld world)
     {
-        var set = open.Set.ToLowerInvariant();
-        if (state.Sealed.GetValueOrDefault(set) == 0) throw new CareerRuleException($"No unopened {world.SetName(set)} booster.");
-        var cards = world.Generator(set).Open(CareerRandom.For(state.Seed, "booster", state.BoostersOpened));
+        var key = SealedKey(open.Set, open.Collector);
+        if (state.Sealed.GetValueOrDefault(key) == 0) throw new CareerRuleException($"No unopened {world.BoosterName(key)} booster.");
+        var cards = world.Generator(open.Set.ToLowerInvariant(), open.Collector).Open(CareerRandom.For(state.Seed, "booster", state.BoostersOpened));
         state.BoostersOpened++;
-        state.AddSealed(set, -1);
+        state.AddSealed(key, -1);
         foreach (var card in cards) state.AddCard(CardKey.Of(card), 1);
         foreach (var challenge in WeekChallenges(state, world, state.Day).Where(c => c.Kind == "openBoosters"))
             AdvanceChallenge(state, world, open.Utc, challenge);

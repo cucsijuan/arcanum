@@ -227,6 +227,9 @@ public sealed partial record CardDefinition
     /// <summary>A foil copy (how it looks only: a deck can ask for foil copies of printings that exist in foil).</summary>
     public bool Foil { get; init; }
 
+    /// <summary>A surge foil copy (how it looks only).</summary>
+    public bool Surge { get; init; }
+
     /// <summary>"This spell can't be countered."</summary>
     public bool CantBeCountered { get; init; }
 

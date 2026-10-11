@@ -14,11 +14,17 @@ public sealed record CareerContent
 
     public int BoosterPrice { get; init; } = 450;
 
+    /// <summary>The price of a collector booster (of the sets that have one).</summary>
+    public int CollectorPrice { get; init; } = 2500;
+
     /// <summary>Default price of a preconstructed deck (a <see cref="PreconSpec"/> can set its own).</summary>
     public int PreconPrice { get; init; } = 2000;
 
     /// <summary>A traditional foil's value as a multiple of the card's.</summary>
     public double FoilMultiplier { get; init; } = 2;
+
+    /// <summary>A surge foil's value as a multiple of the card's.</summary>
+    public double SurgeMultiplier { get; init; } = 4;
 
     /// <summary>What the store pays for a card, as a fraction of its value.</summary>
     public double SellRate { get; init; } = 0.5;

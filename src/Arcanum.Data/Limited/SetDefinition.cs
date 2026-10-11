@@ -29,6 +29,9 @@ public sealed record SheetSpec
 
     /// <summary>The sheet's cards are traditional foils (only printings made in foil).</summary>
     public bool Foil { get; init; }
+
+    /// <summary>The sheet's cards are surge foils (a foil treatment with its own pattern; implies <see cref="Foil"/>).</summary>
+    public bool Surge { get; init; }
 }
 
 /// <summary>
@@ -41,9 +44,19 @@ public sealed record SlotSpec(int Count, IReadOnlyDictionary<string, int> Sheets
     public IReadOnlyList<string> RepeatSheets { get; init; } = Array.Empty<string>();
 }
 
+/// <summary>One way a booster can be made up, and how often (relative weight).</summary>
+public sealed record BoosterVariant(int Weight, IReadOnlyList<SlotSpec> Slots);
+
+/// <param name="Slots">The booster's slots (its first variant's, when it has several).</param>
 public sealed record BoosterSpec(string Name, string Description, IReadOnlyDictionary<string, SheetSpec> Sheets, IReadOnlyList<SlotSpec> Slots)
 {
     public int CardCount => Slots.Sum(s => s.Count);
+
+    /// <summary>The booster's variants (a single one of <see cref="Slots"/> when it has none).</summary>
+    public IReadOnlyList<BoosterVariant> Variants { get; init; } = Array.Empty<BoosterVariant>();
+
+    /// <summary>A picture of this kind of booster, when it differs from the set's pack picture.</summary>
+    public string? PackImage { get; init; }
 }
 
 /// <summary>
@@ -57,6 +70,9 @@ public sealed record SetDefinition
     public string Released { get; init; } = "";
     public IReadOnlyList<string> Cards { get; init; } = Array.Empty<string>();
     public BoosterSpec? Booster { get; init; }
+
+    /// <summary>The set's collector booster, if it has one.</summary>
+    public BoosterSpec? Collector { get; init; }
 
     /// <summary>Boosters each player opens in a draft.</summary>
     public int BoostersPerPlayer { get; init; } = 3;
@@ -85,6 +101,7 @@ public sealed record SetDefinition
             Released = Str(e, "released") ?? "",
             Cards = Strings(e, "cards") ?? new List<string>(),
             Booster = e.TryGetProperty("booster", out var b) ? ParseBooster(b) : null,
+            Collector = e.TryGetProperty("collector", out var cb) ? ParseBooster(cb) : null,
             BoostersPerPlayer = limited.ValueKind == JsonValueKind.Object && limited.TryGetProperty("boostersPerPlayer", out var bp) ? bp.GetInt32() : 3,
             SealedBoosters = limited.ValueKind == JsonValueKind.Object && limited.TryGetProperty("sealedBoosters", out var sb) ? sb.GetInt32() : 6,
             PackImage = Pack(e) is { } p && p.TryGetProperty("image", out var image) && image.ValueKind == JsonValueKind.String ? image.GetString() : null,
@@ -117,11 +134,26 @@ public sealed record SetDefinition
                 Names = Strings(s, "names"),
                 Numbers = Strings(s, "numbers")?.SelectMany(ExpandRange).ToList(),
                 Exclude = Strings(s, "exclude") ?? new List<string>(),
-                Foil = s.TryGetProperty("foil", out var fo) && fo.GetBoolean(),
+                Foil = s.TryGetProperty("foil", out var fo) && fo.GetBoolean() || s.TryGetProperty("surge", out var su) && su.GetBoolean(),
+                Surge = s.TryGetProperty("surge", out var surge) && surge.GetBoolean(),
             };
         }
+        // Several variants, each with a weight and its slots, or one list of slots.
+        var variants = b.TryGetProperty("variants", out var vs)
+            ? vs.EnumerateArray().Select(v => new BoosterVariant(v.TryGetProperty("weight", out var w) ? w.GetInt32() : 1, ParseSlots(v.GetProperty("slots"), sheets))).ToList()
+            : new List<BoosterVariant> { new(1, ParseSlots(b.GetProperty("slots"), sheets)) };
+        if (variants.Count == 0) throw new FormatException("A booster needs \"slots\" or \"variants\".");
+        return new BoosterSpec(Str(b, "name") ?? "Booster", Str(b, "description") ?? "", sheets, variants[0].Slots)
+        {
+            Variants = variants,
+            PackImage = b.TryGetProperty("pack", out var pk) && pk.ValueKind == JsonValueKind.Object ? Str(pk, "image") : null,
+        };
+    }
+
+    private static List<SlotSpec> ParseSlots(JsonElement list, Dictionary<string, SheetSpec> sheets)
+    {
         var slots = new List<SlotSpec>();
-        foreach (var slot in b.GetProperty("slots").EnumerateArray())
+        foreach (var slot in list.EnumerateArray())
         {
             int count = slot.TryGetProperty("count", out var c) ? c.GetInt32() : 1;
             var weights = new Dictionary<string, int>();
@@ -136,7 +168,7 @@ public sealed record SetDefinition
                 RepeatSheets = slot.TryGetProperty("repeatSheets", out var rs) ? rs.EnumerateArray().Select(x => x.GetString()!).ToList() : Array.Empty<string>(),
             });
         }
-        return new BoosterSpec(Str(b, "name") ?? "Booster", Str(b, "description") ?? "", sheets, slots);
+        return slots;
     }
 
     /// <summary>A collector number, or a range of plain numbers ("1-181").</summary>

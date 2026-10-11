@@ -10,12 +10,15 @@ namespace Arcanum.Data.Decks;
 /// </summary>
 public sealed record DeckEntry(int Count, string Name, string? Set = null, string? Number = null, bool Foil = false)
 {
+    /// <summary>A surge foil (a foil with the surge treatment; <see cref="Foil"/> is set too).</summary>
+    public bool Surge { get; init; }
+
     /// <summary>Whether two entries name the same card in the same printing and finish.</summary>
-    public bool SameCard(string name, string? set, string? number, bool foil = false) =>
+    public bool SameCard(string name, string? set, string? number, bool foil = false, bool surge = false) =>
         Name.Equals(name, StringComparison.OrdinalIgnoreCase)
         && string.Equals(Set, set, StringComparison.OrdinalIgnoreCase)
         && string.Equals(Number, number, StringComparison.OrdinalIgnoreCase)
-        && Foil == foil;
+        && Foil == foil && Surge == surge;
 }
 
 /// <summary>
@@ -76,13 +79,15 @@ public sealed partial class DeckList
                 continue;
             }
 
-            bool foil = line.EndsWith(FoilMark, StringComparison.OrdinalIgnoreCase);
-            if (foil) line = line[..^FoilMark.Length].TrimEnd();
+            bool surge = line.EndsWith(SurgeMark, StringComparison.OrdinalIgnoreCase);
+            if (surge) line = line[..^SurgeMark.Length].TrimEnd();
+            bool foil = surge || line.EndsWith(FoilMark, StringComparison.OrdinalIgnoreCase);
+            if (foil && !surge) line = line[..^FoilMark.Length].TrimEnd();
             var match = EntryLine().Match(line);
             if (!match.Success) throw new FormatException($"Can't read deck line '{line}'.");
             section.Add(new DeckEntry(int.Parse(match.Groups["count"].Value), match.Groups["name"].Value.Trim(),
                 match.Groups["set"].Success && match.Groups["set"].Value.Trim() is { Length: > 0 } set ? set.ToUpperInvariant() : null,
-                match.Groups["number"].Success ? match.Groups["number"].Value : null, foil));
+                match.Groups["number"].Success ? match.Groups["number"].Value : null, foil) { Surge = surge });
         }
         return deck;
     }
@@ -101,7 +106,8 @@ public sealed partial class DeckList
                 sb.Append(e.Count).Append(' ').Append(e.Name);
                 if (e.Set is not null) sb.Append(" (").Append(e.Set).Append(')');
                 if (e.Set is not null && e.Number is not null) sb.Append(' ').Append(e.Number);
-                if (e.Foil) sb.Append(' ').Append(FoilMark);
+                if (e.Surge) sb.Append(' ').Append(SurgeMark);
+                else if (e.Foil) sb.Append(' ').Append(FoilMark);
                 sb.Append('\n');
             }
         }
@@ -117,10 +123,14 @@ public sealed partial class DeckList
     /// <summary>The end of a line of foil copies.</summary>
     private const string FoilMark = "*F*";
 
+    /// <summary>The end of a line of surge foil copies.</summary>
+    private const string SurgeMark = "*S*";
+
     /// <summary>Adds (or with a negative <paramref name="delta"/> removes) copies of a card (in a given printing and finish) in a section.</summary>
-    public static void Adjust(List<DeckEntry> section, string name, int delta, string? set = null, string? number = null, bool foil = false)
+    public static void Adjust(List<DeckEntry> section, string name, int delta, string? set = null, string? number = null, bool foil = false, bool surge = false)
     {
-        int index = section.FindIndex(e => e.SameCard(name, set, number, foil));
+        foil |= surge;
+        int index = section.FindIndex(e => e.SameCard(name, set, number, foil, surge));
         int count = (index >= 0 ? section[index].Count : 0) + delta;
         if (index >= 0)
         {
@@ -129,15 +139,18 @@ public sealed partial class DeckList
         }
         else if (count > 0)
         {
-            section.Add(new DeckEntry(count, name, set, number, foil));
+            section.Add(new DeckEntry(count, name, set, number, foil) { Surge = surge });
         }
     }
 
     /// <summary>The definition for a deck line: in its printing (and foil when asked) when the database knows printings.</summary>
-    public static bool TryResolve(ICardDatabase database, DeckEntry entry, out CardDefinition definition) =>
-        database is CardData.CardDatabase cards
-            ? cards.TryGet(entry.Name, entry.Set, entry.Number, entry.Foil, out definition)
-            : database.TryGet(entry.Name, out definition);
+    public static bool TryResolve(ICardDatabase database, DeckEntry entry, out CardDefinition definition)
+    {
+        if (database is not CardData.CardDatabase cards) return database.TryGet(entry.Name, out definition);
+        if (!cards.TryGet(entry.Name, entry.Set, entry.Number, entry.Foil, out definition)) return false;
+        if (entry.Surge && definition.Foil) definition = definition with { Surge = true };
+        return true;
+    }
 
     /// <summary>One definition per copy for the lines the database knows.</summary>
     public static List<CardDefinition> Definitions(ICardDatabase database, IEnumerable<DeckEntry> entries) =>

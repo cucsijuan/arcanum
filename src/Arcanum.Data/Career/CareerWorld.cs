@@ -35,12 +35,21 @@ public sealed class CareerWorld
         _readDeck = readDeck;
     }
 
-    public BoosterGenerator Generator(string set)
+    /// <summary>Opens a set's play or draft boosters, or its collector boosters.</summary>
+    public BoosterGenerator Generator(string set, bool collector = false)
     {
-        if (_generators.TryGetValue(set, out var generator)) return generator;
-        if (!Sets.TryGetValue(set, out var definition) || definition.Booster is null) throw new CareerRuleException($"There are no boosters of '{set}'.");
-        return _generators[set] = new BoosterGenerator(definition, Cards);
+        var key = CareerRules.SealedKey(set, collector);
+        if (_generators.TryGetValue(key, out var generator)) return generator;
+        if (!Sets.TryGetValue(set, out var definition) || (collector ? definition.Collector : definition.Booster) is not { } spec)
+            throw new CareerRuleException($"There are no {(collector ? "collector " : "")}boosters of '{set}'.");
+        return _generators[key] = new BoosterGenerator(definition, Cards, spec);
     }
+
+    /// <summary>The store sells collector boosters of this set.</summary>
+    public bool SellsCollector(string set) => SellsBoosters(set) && Sets[set].Collector is not null;
+
+    /// <summary>"Foundations" or "Foundations collector" for an unopened boosters key.</summary>
+    public string BoosterName(string key) => CareerRules.ParseSealed(key) is var (set, collector) ? SetName(set) + (collector ? " collector" : "") : key;
 
     public string SetName(string set) => Sets.TryGetValue(set, out var s) ? s.Name : set.ToUpperInvariant();
 
@@ -68,6 +77,7 @@ public sealed class CareerWorld
     /// <summary>A card's value in cents, from its printing's rarity (a card without a known printing counts as its rarest one); a foil is worth more.</summary>
     public int Value(CardKey card)
     {
+        if (card.Surge) return (int)(Value(card with { Foil = false, Surge = false }) * Content.SurgeMultiplier);
         if (card.Foil) return (int)(Value(card with { Foil = false }) * Content.FoilMultiplier);
         if (IsBasicLand(card.Name)) return 0;
         var printings = Cards.Find(card.Name)?.Record.Printings ?? (IReadOnlyList<Printing>)Array.Empty<Printing>();

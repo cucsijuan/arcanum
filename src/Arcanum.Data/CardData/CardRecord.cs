@@ -15,7 +15,11 @@ public sealed record RelatedToken(string Name, string Id, string TypeLine = "");
 /// <param name="Foil">Whether this printing was also made in foil (a deck may then ask for foil copies of it).</param>
 public sealed record Printing(
     string Set, string SetName, string CollectorNumber, string Rarity, string Id, string Released, string SetType, bool Booster,
-    IReadOnlyList<RelatedToken> Tokens, bool Foil = false);
+    IReadOnlyList<RelatedToken> Tokens, bool Foil = false)
+{
+    /// <summary>Made only in foil (collector booster treatments, surge foils): every copy of it is a foil.</summary>
+    public bool FoilOnly { get; init; }
+}
 
 /// <summary>A set as seen through its printings.</summary>
 public sealed record SetInfo(string Code, string Name, string Released, string Type, int CardCount);

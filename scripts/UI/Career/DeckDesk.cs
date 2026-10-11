@@ -301,7 +301,7 @@ public partial class DeckDesk : Control
             .GroupBy(c => c.Card.Name, StringComparer.OrdinalIgnoreCase)
             .Select(g => (Entry: Cards.Find(g.Key), Best: g.OrderByDescending(c => c.Count).First().Card, Count: g.Sum(c => c.Count)))
             .Where(x => x.Entry is not null && !Career.World!.IsBasicLand(x.Entry.Name))
-            .Select(x => new Owned(x.Entry!, new DeckEntry(1, x.Entry!.Name, x.Best.Set.Length > 0 ? x.Best.Set : null, x.Best.Number.Length > 0 ? x.Best.Number : null, x.Best.Foil), x.Count));
+            .Select(x => new Owned(x.Entry!, new DeckEntry(1, x.Entry!.Name, x.Best.Set.Length > 0 ? x.Best.Set : null, x.Best.Number.Length > 0 ? x.Best.Number : null, x.Best.Foil) { Surge = x.Best.Surge }, x.Count));
         return owned.Where(Passes).OrderBy(o => o.Card.Definition.Is(CardType.Land)).ThenBy(o => o.Card.ManaValue).ThenBy(o => o.Card.Name).ToList();
     }
 
@@ -398,7 +398,7 @@ public partial class DeckDesk : Control
             MenuKit.Toast(this, $"You have {owned.Count} {owned.Card.Name}.");
             return;
         }
-        DeckList.Adjust(_deck.Main, owned.Card.Name, 1, owned.Printing.Set, owned.Printing.Number, owned.Printing.Foil);
+        DeckList.Adjust(_deck.Main, owned.Card.Name, 1, owned.Printing.Set, owned.Printing.Number, owned.Printing.Foil, owned.Printing.Surge);
         Dirty();
         Refresh();
     }
@@ -407,7 +407,7 @@ public partial class DeckDesk : Control
     {
         var entry = _deck.Main.LastOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         if (entry is null) return;
-        DeckList.Adjust(_deck.Main, entry.Name, -1, entry.Set, entry.Number, entry.Foil);
+        DeckList.Adjust(_deck.Main, entry.Name, -1, entry.Set, entry.Number, entry.Foil, entry.Surge);
         Dirty();
         Refresh();
     }
@@ -596,13 +596,13 @@ public partial class DeckDesk : Control
     // ---------------------------------------------------------------- helpers
 
     private static CardDefinition Definition(DeckEntry entry) =>
-        Cards.TryGet(entry.Name, entry.Set, entry.Number, entry.Foil, out var d) ? d : Cards.Find(entry.Name)!.Definition;
+        DeckList.TryResolve(Cards, entry, out var d) ? d : Cards.Find(entry.Name)!.Definition;
 
     private static CardView ViewOf(CardDefinition d) => new()
     {
         Id = new CardId(-1), Owner = new PlayerId(0), Controller = new PlayerId(0), Zone = Zone.Hand, IsHidden = false,
         Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
-        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil,
+        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil, Surge = d.Surge,
     };
 
     private void ShowPreview(CardNode card, Control anchor)

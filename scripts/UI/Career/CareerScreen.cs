@@ -125,7 +125,7 @@ public partial class CareerScreen : Control
     /// <summary>
     /// Testing: ARCANUM_CAREER_START=&lt;starting deck&gt; starts a career when there is none; ARCANUM_CAREER_PAGE=&lt;page&gt; opens
     /// store, boosters, precons, counter, a website page (Matches, Practice, Challenges, Events, Market, Cards), opening
-    /// (the first unopened booster), decks (the deck builder), daily or ante (plays one), enter (today's first event), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck).
+    /// (the first unopened booster), decks (the deck builder), daily or ante (plays one), enter (today's first event), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck), surge:&lt;set&gt; (opens collector boosters until a surge foil comes).
     /// </summary>
     private bool RunTestHooks()
     {
@@ -160,6 +160,17 @@ public partial class CareerScreen : Control
                 Career.Do(new BuyPrecon(Career.Now, test[4..]));
                 Career.Decks.Save(UniqueDeckName(DeckTitle(test[4..])), precon.Commander.Count > 0 ? CareerRules.Commander : "casual", precon);
                 OpenWeb(WebPage.Events, instant: true);
+                return true;
+            case var surge when surge.StartsWith("surge:"):
+                // Buys and opens collector boosters of a set until one has a surge foil, and shows it.
+                for (int i = 0; i < 200; i++)
+                {
+                    Career.Do(new BuyBooster(Career.Now, test[6..], Collector: true));
+                    var key = CareerRules.SealedKey(test[6..], true);
+                    var peek = CareerRandom.For(State.Seed, "booster", State.BoostersOpened);
+                    if (World.Generator(test[6..], true).Open(peek).Any(c => c.Surge)) { OpenBooster(key); return true; }
+                    Career.Do(new OpenBooster(Career.Now, test[6..], Collector: true));
+                }
                 return true;
             case "store": GoTo(Place.Store); return true;
             case "boosters" or "precons" or "counter" or "offers": GoTo(Place.Store); OnStore(test.ToLowerInvariant()); return true;
@@ -800,7 +811,7 @@ public partial class CareerScreen : Control
         {
             var row = new HBoxContainer();
             row.AddThemeConstantOverride("separation", 12);
-            var name = CareerStyle.Text($"{count} × {World.SetName(set)}", 22);
+            var name = CareerStyle.Text($"{count} × {World.BoosterName(set)}", 22);
             name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             row.AddChild(name);
             row.AddChild(CareerStyle.Button("Open one", () => OpenBooster(set), 20, primary: true));
@@ -887,25 +898,36 @@ public partial class CareerScreen : Control
     private void BoostersNote(VBoxContainer box)
     {
         var featured = World.FeaturedSet(CareerRules.DayOf(Career.Now));
-        box.AddChild(CareerStyle.Text($"{CareerRules.Money(World.Content.BoosterPrice)} each. You have {CareerRules.Money(State.Cash)}.", 22, CareerStyle.InkDim));
+        box.AddChild(CareerStyle.Text($"Boosters {CareerRules.Money(World.Content.BoosterPrice)}, collector boosters {CareerRules.Money(World.Content.CollectorPrice)}. You have {CareerRules.Money(State.Cash)}.", 22, CareerStyle.InkDim));
         var list = new VBoxContainer();
         list.AddThemeConstantOverride("separation", 8);
         foreach (var set in World.Content.Sets.Where(World.SellsBoosters))
         {
-            var row = new HBoxContainer();
-            row.AddThemeConstantOverride("separation", 12);
-            var name = CareerStyle.Text(World.SetName(set) + (set.Equals(featured, StringComparison.OrdinalIgnoreCase) ? "  (featured)" : ""), 22);
-            name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-            row.AddChild(name);
-            int owned = State.Sealed.GetValueOrDefault(set.ToLowerInvariant());
-            if (owned > 0) row.AddChild(CareerStyle.Text($"{owned} unopened", 18, CareerStyle.InkDim));
-            var buy = CareerStyle.Button("Buy", () => { Try(() => Career.Do(new BuyBooster(Career.Now, set))); RefreshNote(); }, 20, primary: true);
-            buy.Disabled = State.Cash < World.Content.BoosterPrice;
-            row.AddChild(buy);
-            var open = CareerStyle.Button("Open", () => OpenBooster(set), 20);
-            open.Disabled = owned == 0;
-            row.AddChild(open);
-            list.AddChild(row);
+            foreach (bool collector in World.SellsCollector(set) ? new[] { false, true } : new[] { false })
+            {
+                var key = CareerRules.SealedKey(set, collector);
+                int price = collector ? World.Content.CollectorPrice : World.Content.BoosterPrice;
+                var row = new HBoxContainer();
+                row.AddThemeConstantOverride("separation", 12);
+                var name = CareerStyle.Text(World.BoosterName(key) + (!collector && set.Equals(featured, StringComparison.OrdinalIgnoreCase) ? "  (featured)" : ""), collector ? 20 : 22,
+                    collector ? CareerStyle.PaperEdge : CareerStyle.Ink);
+                name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                if (collector && World.Sets[set].Collector is { } spec)
+                {
+                    name.TooltipText = spec.Description;
+                    name.MouseFilter = MouseFilterEnum.Pass;
+                }
+                row.AddChild(name);
+                int owned = State.Sealed.GetValueOrDefault(key);
+                if (owned > 0) row.AddChild(CareerStyle.Text($"{owned} unopened", 18, CareerStyle.InkDim));
+                var buy = CareerStyle.Button(collector ? $"Buy · {CareerRules.Money(price)}" : "Buy", () => { Try(() => Career.Do(new BuyBooster(Career.Now, set, collector))); RefreshNote(); }, 20, primary: true);
+                buy.Disabled = State.Cash < price;
+                row.AddChild(buy);
+                var open = CareerStyle.Button("Open", () => OpenBooster(key), 20);
+                open.Disabled = owned == 0;
+                row.AddChild(open);
+                list.AddChild(row);
+            }
         }
         box.AddChild(Scrolled(list));
     }
@@ -1032,7 +1054,7 @@ public partial class CareerScreen : Control
         {
             var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Stop };
             row.AddThemeConstantOverride("separation", 12);
-            var name = CareerStyle.Text($"{count} × {card.Name}{(card.Foil ? " (foil)" : "")}", 19, ink);
+            var name = CareerStyle.Text($"{count} × {card.Name}{(card.Surge ? " (surge foil)" : card.Foil ? " (foil)" : "")}", 19, ink);
             name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             name.ClipText = true;
             row.AddChild(name);
@@ -1096,10 +1118,12 @@ public partial class CareerScreen : Control
 
     // ---------------------------------------------------------------- opening boosters
 
-    private void OpenBooster(string set)
+    /// <summary>Opens an unopened booster (its key: the set code, ":collector" after it for a collector booster).</summary>
+    private void OpenBooster(string key)
     {
+        var (set, collector) = CareerRules.ParseSealed(key);
         List<PoolCard> cards;
-        try { cards = Career.Do(new OpenBooster(Career.Now, set)).Cards.ToList(); }
+        try { cards = Career.Do(new OpenBooster(Career.Now, set, collector)).Cards.ToList(); }
         catch (CareerRuleException e)
         {
             MenuKit.Toast(this, e.Message);
@@ -1114,29 +1138,29 @@ public partial class CareerScreen : Control
         var box = new VBoxContainer { AnchorRight = 1, AnchorBottom = 1, OffsetLeft = 40, OffsetTop = 40, OffsetRight = -40, OffsetBottom = -30 };
         box.AddThemeConstantOverride("separation", 16);
         overlay.AddChild(box);
-        box.AddChild(CareerStyle.Text($"{World.SetName(set)} booster", 34, CareerStyle.Gold));
+        box.AddChild(CareerStyle.Text($"{World.BoosterName(key)} booster", 34, CareerStyle.Gold));
         var flow = new HFlowContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         flow.AddThemeConstantOverride("h_separation", 10);
         flow.AddThemeConstantOverride("v_separation", 10);
         var nodes = new List<CardNode>();
         foreach (var card in cards)
         {
-            var key = CardKey.Of(card);
+            var cardKey = CardKey.Of(card);
             var holder = new Control { CustomMinimumSize = TileSize };
             var node = new CardNode { Size = TileSize };
             holder.AddChild(node);
-            node.Setup(ViewOf(DefinitionOf(key)), showCostPips: false);
-            node.HoverStarted += _ => ShowPreview(DefinitionOf(key), holder);
+            node.Setup(ViewOf(DefinitionOf(cardKey)), showCostPips: false);
+            node.HoverStarted += _ => ShowPreview(DefinitionOf(cardKey), holder);
             node.HoverEnded += _ => _preview.Visible = false;
-            node.TooltipText = $"{card.Rarity} · sells for {CareerRules.Money(SellPrice(key))}";
+            node.TooltipText = $"{card.Rarity}{(card.Surge ? " · surge foil" : card.Foil ? " · foil" : "")} · sells for {CareerRules.Money(SellPrice(cardKey))}";
             flow.AddChild(holder);
             nodes.Add(node);
         }
         box.AddChild(Scrolled(flow));
         var actions = new HBoxContainer();
         actions.AddThemeConstantOverride("separation", 12);
-        int left = State.Sealed.GetValueOrDefault(set);
-        var again = CareerStyle.Button($"Open another ({left} left)", () => { overlay.QueueFree(); _preview.Visible = false; OpenBooster(set); }, 22, primary: true);
+        int left = State.Sealed.GetValueOrDefault(key);
+        var again = CareerStyle.Button($"Open another ({left} left)", () => { overlay.QueueFree(); _preview.Visible = false; OpenBooster(key); }, 22, primary: true);
         again.Disabled = left == 0;
         actions.AddChild(again);
         actions.AddChild(CareerStyle.Button("Done", () => { overlay.QueueFree(); _preview.Visible = false; }, 22));
@@ -1148,7 +1172,8 @@ public partial class CareerScreen : Control
         if (BoosterOpening.Available && Settings.Current.BoosterOpening != "skip" && World.Sets.TryGetValue(set, out var definition))
         {
             foreach (var node in nodes) node.Modulate = Colors.Transparent;
-            var opening = new BoosterOpening(definition.PackImage, definition.PackImageSeals, definition.Name, automatic: Settings.Current.BoosterOpening == "auto");
+            var opening = new BoosterOpening((collector ? definition.Collector?.PackImage : null) ?? definition.PackImage, definition.PackImageSeals,
+                World.BoosterName(key), automatic: Settings.Current.BoosterOpening == "auto");
             opening.Opened += _ => Reveal(nodes);
             overlay.AddChild(opening);
         }
@@ -1193,13 +1218,13 @@ public partial class CareerScreen : Control
     }
 
     private static CardDefinition DefinitionOf(CardKey card) =>
-        Cards.TryGet(card.Name, card.Set.Length > 0 ? card.Set : null, card.Number.Length > 0 ? card.Number : null, card.Foil, out var d) ? d : Cards.Find(card.Name)!.Definition;
+        DeckList.TryResolve(Cards, card.ToEntry(), out var d) ? d : Cards.Find(card.Name)!.Definition;
 
     private static CardView ViewOf(CardDefinition d) => new()
     {
         Id = new CardId(-1), Owner = new PlayerId(0), Controller = new PlayerId(0), Zone = Zone.Hand, IsHidden = false,
         Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
-        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil,
+        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil, Surge = d.Surge,
     };
 
     private void ShowPreview(CardDefinition definition, Control anchor)

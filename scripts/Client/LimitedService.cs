@@ -262,7 +262,7 @@ public sealed class LimitedService : ILimitedSession
     }
 
     public static DraftOption Option(PoolCard card) =>
-        new(Cards.TryGet(card.Name, card.Set.Length > 0 ? card.Set : null, card.Number.Length > 0 ? card.Number : null, card.Foil, out var d) ? d : Cards.Find(card.Name)!.Definition, card.Rarity);
+        new(DeckList.TryResolve(Cards, card.ToEntry(), out var d) ? d : Cards.Find(card.Name)!.Definition, card.Rarity);
 
     /// <summary>The person takes a card; the computer players pick at the same time, then the boosters move on.</summary>
     public void HumanPick(int index)

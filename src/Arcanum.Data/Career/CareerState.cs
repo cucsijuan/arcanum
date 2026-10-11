@@ -6,28 +6,28 @@ using Arcanum.Data.Limited;
 namespace Arcanum.Data.Career;
 
 /// <summary>A card of a collection: the card, the printing it is (set code in capitals, as in deck lists) and whether it is a foil.</summary>
-public readonly record struct CardKey(string Name, string Set, string Number, bool Foil = false)
+public readonly record struct CardKey(string Name, string Set, string Number, bool Foil = false, bool Surge = false)
 {
-    public static CardKey Of(PoolCard card) => new(card.Name, card.Set.ToUpperInvariant(), card.Number, card.Foil);
+    public static CardKey Of(PoolCard card) => new(card.Name, card.Set.ToUpperInvariant(), card.Number, card.Foil || card.Surge, card.Surge);
 
-    public static CardKey Of(DeckEntry entry) => new(entry.Name, entry.Set?.ToUpperInvariant() ?? "", entry.Number ?? "", entry.Foil);
+    public static CardKey Of(DeckEntry entry) => new(entry.Name, entry.Set?.ToUpperInvariant() ?? "", entry.Number ?? "", entry.Foil, entry.Surge);
 
-    /// <summary>"Name|SET|number" ("|F" after it for a foil): the collection's dictionary key in saves.</summary>
-    public override string ToString() => Foil ? $"{Name}|{Set}|{Number}|F" : $"{Name}|{Set}|{Number}";
+    /// <summary>"Name|SET|number" ("|F" after it for a foil, "|S" for a surge foil): the collection's dictionary key in saves.</summary>
+    public override string ToString() => Surge ? $"{Name}|{Set}|{Number}|S" : Foil ? $"{Name}|{Set}|{Number}|F" : $"{Name}|{Set}|{Number}";
 
     public static CardKey Parse(string text)
     {
         var parts = text.Split('|');
         return parts.Length switch
         {
-            4 => new(parts[0], parts[1], parts[2], parts[3] == "F"),
+            4 => new(parts[0], parts[1], parts[2], parts[3] is "F" or "S", parts[3] == "S"),
             3 => new(parts[0], parts[1], parts[2]),
             _ => new(text, "", ""),
         };
     }
 
     /// <summary>A deck line for one copy of this card.</summary>
-    public DeckEntry ToEntry(int count = 1) => new(count, Name, Set.Length > 0 ? Set : null, Number.Length > 0 ? Number : null, Foil);
+    public DeckEntry ToEntry(int count = 1) => new(count, Name, Set.Length > 0 ? Set : null, Number.Length > 0 ? Number : null, Foil) { Surge = Surge };
 }
 
 /// <summary>A match that has started and has no result yet.</summary>

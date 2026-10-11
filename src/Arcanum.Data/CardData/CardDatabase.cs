@@ -96,6 +96,7 @@ public sealed class CardDatabase : ICardDatabase
         if (!_byName.TryGetValue(name, out var entry)) { definition = null!; return false; }
         var printing = set is null ? null : entry.Record.FindPrinting(set, collectorNumber);
         foil &= (printing ?? entry.Record.DefaultPrinting)?.Foil == true;
+        foil |= printing?.FoilOnly == true; // a printing made only in foil is always a foil
         if (printing is null && !foil) { definition = entry.Definition; return true; }
         string key = (printing?.Id ?? "default:" + entry.Record.OracleId) + (foil ? "|foil" : "");
         lock (_byPrinting)

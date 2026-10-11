@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Masks a card image with rounded corners, and draws the shine of a foil card: a rainbow (color dodge) and a soft
-// glare (overlay) centered on the pointer, the rainbow's hue turning as the pointer moves across the card.
+// glare (overlay) centered on the pointer, the rainbow's hue turning as the pointer moves across the card. A surge foil
+// also moves on its own: rainbow bands waving across the card and twinkling points, brighter under the pointer.
 shader_type canvas_item;
 
 uniform vec2 rect_size = vec2(90.0, 126.0);
@@ -9,6 +10,8 @@ uniform float radius = 5.0;
 uniform float foil = 0.0;
 // The pointer on the card, 0..1 across and down.
 uniform vec2 foil_at = vec2(0.5);
+// A surge foil (1) or not (0).
+uniform float surge = 0.0;
 
 vec3 hsl(float hue, float s, float l) {
 	vec3 k = mod(vec3(0.0, 8.0, 4.0) + hue / 30.0, 12.0);
@@ -39,6 +42,21 @@ void fragment() {
 		float g = length((UV - foil_at) / (max(foil_at, 1.0 - foil_at) * 1.41421));
 		float glare = g < 0.4 ? mix(0.18, 0.05, g / 0.4) : mix(0.05, 0.0, clamp((g - 0.4) / 0.28, 0.0, 1.0));
 		tex.rgb = mix(tex.rgb, overlay(tex.rgb, vec3(1.0)), glare * foil);
+	}
+	if (surge > 0.0) {
+		float t = TIME * 0.35;
+		// Rainbow bands running diagonally, their edges waving, drifting across the card.
+		float wave = sin((UV.x * 1.3 + UV.y) * 18.0 + sin(UV.y * 9.0 + t * 2.0) * 1.6 - t * 4.0);
+		float bands = smoothstep(0.45, 1.0, wave);
+		float hue = fract((UV.x + UV.y) * 0.9 + t * 0.2 + foil_at.x * 0.5) * 360.0;
+		vec3 rainbow = hsl(hue, 0.85, 0.6);
+		float strength = surge * (0.22 + 0.45 * foil);
+		tex.rgb = mix(tex.rgb, color_dodge(tex.rgb, rainbow * 0.9), (0.35 + 0.65 * bands) * strength);
+		// Twinkling points.
+		vec2 cell = floor(UV * vec2(28.0, 40.0));
+		float n = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+		float twinkle = smoothstep(0.985, 1.0, n) * (0.5 + 0.5 * sin(t * 6.0 + n * 40.0));
+		tex.rgb = min(tex.rgb + twinkle * strength * 0.8, vec3(1.0));
 	}
 	vec2 p = UV * rect_size;
 	vec2 q = abs(p - rect_size * 0.5) - (rect_size * 0.5 - vec2(radius));

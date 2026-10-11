@@ -391,13 +391,13 @@ public partial class EventScreen : Control
     }
 
     private static Arcanum.Engine.Cards.CardDefinition Definition(PoolCard card) =>
-        Cards.TryGet(card.Name, card.Set.Length > 0 ? card.Set : null, card.Number.Length > 0 ? card.Number : null, card.Foil, out var d) ? d : Cards.Find(card.Name)!.Definition;
+        DeckList.TryResolve(Cards, card.ToEntry(), out var d) ? d : Cards.Find(card.Name)!.Definition;
 
     private static CardView ViewOf(Arcanum.Engine.Cards.CardDefinition d) => new()
     {
         Id = new CardId(-1), Owner = new PlayerId(0), Controller = new PlayerId(0), Zone = Zone.Hand, IsHidden = false,
         Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
-        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil,
+        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil, Surge = d.Surge,
     };
 
     private void ShowPreview(Arcanum.Engine.Cards.CardDefinition definition, Control anchor)

@@ -54,7 +54,7 @@ public class PrintingTests
     public void PaperPrintingsAreImportedOldestFirst()
     {
         var cub = Database().Find("Glade Cub")!.Record;
-        Assert.Equal(new[] { "p-old", "p-new", "p-alt" }, cub.Printings.Select(p => p.Id));
+        Assert.Equal(new[] { "p-old", "p-new", "p-star", "p-alt" }, cub.Printings.Select(p => p.Id));
         Assert.Equal("p-default", cub.DefaultPrintingId);
         Assert.False(cub.FindPrinting("new", "300")!.Booster);
         Assert.Equal("uncommon", cub.FindPrinting("OLD")!.Rarity);
@@ -67,7 +67,7 @@ public class PrintingTests
         Assert.Equal(new[] { "new", "old" }, db.Sets.Select(s => s.Code));
         Assert.Equal("New Set", db.FindSet("NEW")!.Name);
         Assert.Equal(new[] { "Glade Cub" }, db.Search(new CardQuery { Set = "old" }).Select(e => e.Name));
-        Assert.Equal(new[] { "10", "11", "300" }, db.PrintingsIn("new").Select(x => x.Printing.CollectorNumber));
+        Assert.Equal(new[] { "10", "10★", "11", "300" }, db.PrintingsIn("new").Select(x => x.Printing.CollectorNumber));
     }
 
     [Fact]
@@ -145,8 +145,10 @@ public class PrintingTests
     {
         var db = Database();
         var cub = db.Find("Glade Cub")!.Record;
-        // A printing made only in foil is not a printing to choose: its picture shows the foil.
-        Assert.Null(cub.FindPrinting("new", "10★"));
+        // A printing made only in foil (a collector booster's) is kept: every copy of it is a foil.
+        Assert.True(cub.FindPrinting("new", "10★")!.FoilOnly);
+        Assert.False(cub.FindPrinting("new", "10")!.FoilOnly);
+        Assert.True(db.TryGet("Glade Cub", "NEW", "10★", foil: false, out var star) && star.Foil);
         Assert.True(cub.FindPrinting("new", "10")!.Foil);
         Assert.False(cub.FindPrinting("old", "2")!.Foil);
         Assert.True(db.CanBeFoil("Glade Cub", "NEW", "10"));

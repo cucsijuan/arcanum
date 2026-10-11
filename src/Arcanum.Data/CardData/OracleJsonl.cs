@@ -106,9 +106,14 @@ public static class OracleJsonl
     private static Printing? PrintingFrom(JsonElement c)
     {
         if (Str(c, "set") is not { } set || Str(c, "id") is not { } id || Str(c, "collector_number") is not { } number) return null;
+        var finishes = Finishes(c);
+        bool foilOnly = finishes.Count > 0 && !finishes.Contains("nonfoil") || c.TryGetProperty("foil_only", out var fo) && fo.ValueKind == JsonValueKind.True;
         return new Printing(set, Str(c, "set_name") ?? set.ToUpperInvariant(), number, Str(c, "rarity") ?? "common", id,
             Str(c, "released_at") ?? "", Str(c, "set_type") ?? "", c.TryGetProperty("booster", out var b) && b.ValueKind == JsonValueKind.True,
-            Tokens(c), Finishes(c).Contains("foil") || (c.TryGetProperty("foil", out var f) && f.ValueKind == JsonValueKind.True));
+            Tokens(c), foilOnly || finishes.Contains("foil") || finishes.Contains("etched") || (c.TryGetProperty("foil", out var f) && f.ValueKind == JsonValueKind.True))
+        {
+            FoilOnly = foilOnly,
+        };
     }
 
     /// <summary>The finishes a printing was made in ("nonfoil", "foil", "etched"); empty when the source doesn't say.</summary>
@@ -125,8 +130,8 @@ public static class OracleJsonl
 
     /// <summary>
     /// Reads the printings source (one line per printing) and returns the paper printings of each card by oracle id,
-    /// oldest first. Digital-only printings, oversized cards and other languages are skipped, and so are printings made
-    /// only in foil: their pictures show the foil, which the game draws itself on foil copies of the other printings.
+    /// oldest first. Digital-only printings, oversized cards and other languages are skipped. Printings made only in foil
+    /// (collector booster treatments, surge foils) are kept and marked so: their copies are always foils.
     /// Tokens keep their printings in token sets: each is one more picture a deck can show its tokens with.
     /// </summary>
     public static Dictionary<string, List<Printing>> ImportPrintings(Stream source)
@@ -145,7 +150,6 @@ public static class OracleJsonl
             if (Str(c, "lang") is { } lang && lang != "en") continue;
             bool token = Str(c, "layout") == "token";
             if ((token ? SkippedTokenSetTypes : SkippedSetTypes).Contains(Str(c, "set_type") ?? "")) continue;
-            if (Finishes(c) is { Count: > 0 } finishes && !finishes.Contains("nonfoil")) continue;
             if (PrintingFrom(c) is not { } printing) continue;
             if (!byCard.TryGetValue(oracleId, out var list)) byCard[oracleId] = list = new List<Printing>();
             list.Add(printing);
@@ -221,6 +225,7 @@ public static class OracleJsonl
                         WriteIf(writer, "set_type", p.SetType);
                         if (p.Booster) writer.WriteBoolean("booster", true);
                         if (p.Foil) writer.WriteBoolean("foil", true);
+                        if (p.FoilOnly) writer.WriteBoolean("foil_only", true);
                         WriteTokens(writer, p.Tokens);
                         writer.WriteEndObject();
                     }
