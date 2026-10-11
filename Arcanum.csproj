@@ -6,11 +6,12 @@
     <RootNamespace>Arcanum</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Engine libraries live in their own projects; keep them out of the Godot assembly glob. -->
+    <!-- Engine libraries and the career service live in their own projects; keep them out of the Godot assembly glob. -->
     <Compile Remove="src/**" />
     <Compile Remove="tests/**" />
     <Compile Remove="tools/**" />
-    <None Remove="src/**;tests/**;tools/**" />
+    <Compile Remove="server/**" />
+    <None Remove="src/**;tests/**;tools/**;server/**" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="src/Arcanum.Engine/Arcanum.Engine.csproj" />

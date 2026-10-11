@@ -155,9 +155,9 @@ across devices and reinstalls.
     tokens, so the Discord client secret stays on the server; the game gets the access token and a refresh token.
   - EOS Developer Portal: Discord added as an identity provider for the product (Discord application id) and allowed
     in the client policy.
-  - The refresh token is stored encrypted on disk; when EOS warns that the login is about to expire, the game gets a
+  - The refresh token is stored on disk readable only by the user (`user://account.json`); when EOS warns that the login is about to expire, the game gets a
     new Discord access token and logs in again without asking the player.
-  - Spike first: confirm EOS accepts a token from the plain OAuth2 flow (the SDK documents the token as the one the
+  - Confirmed (2026-10-11): EOS accepts the access token of the plain OAuth2 flow (the SDK documents the one the
     Discord SDK returns; both are OAuth2 access tokens of the same Discord application).
 - **More providers later: Epic, Google** (`Epic` / `EpicIdToken` through Epic Account Services, which needs Epic's
   approval of the product; `GoogleIdToken`). Apple (`AppleIdToken`) becomes mandatory when the game ships on iOS with
@@ -239,14 +239,14 @@ career rules library as the game, without a second copy in another language).
 
 | Piece | Choice |
 |---|---|
-| Machine | Always Free compute VM (Ampere/ARM, Linux); .NET runtime installed, service built for `linux-arm64` |
+| Machine | Always Free compute VM `VM.Standard.E2.1.Micro` (x86, 1 GB RAM + 2 GB swap; Ampere had no capacity), Ubuntu 24.04; ASP.NET runtime from Ubuntu's packages, service built for `linux-x64` |
 | Service | ASP.NET minimal API in its own project (e.g. `server/Arcanum.CareerService`), referencing `Arcanum.Data` for the career rules |
-| Endpoints | `POST /career/sync` (snapshot + journal → new signed snapshot or rejection), `GET /career/profile` (last signed snapshot, for a new install), `POST /career/prize` (online event results), `POST /auth/discord` (OAuth code → Discord tokens, keeps the client secret), `GET /health` |
+| Endpoints | `POST /career/sync` (snapshot + journal → new signed snapshot or rejection), `GET /career/profile` (last signed snapshot, for a new install), `POST /career/prize` (online event results), `POST /auth/discord` (OAuth code → Discord tokens, keeps the client secret), `POST /auth/discord/refresh`, `GET /health` (also the service's clock) |
 | Auth | EOS Connect ID token in each request, verified against EOS's public keys; the player id comes from the token, never from the body |
 | Data | SQLite: per player the last snapshot hash, counter and signed snapshot; rejected journals for review |
 | Keys | Ed25519 signing key in a file readable only by the service user, outside the repo; public key compiled into the game; a key id in each signature so the key can be rotated |
 | HTTPS | Reverse proxy with automatic certificates (Caddy) on a domain or free subdomain; only ports 80/443 open in the VM's security list and firewall |
-| Running | systemd unit with restart; deploys by a GitHub Actions workflow (build, copy over SSH, restart), secrets in repository secrets |
+| Running | systemd unit with restart (`server/Arcanum.CareerService/deploy`: `setup.sh` once on the machine, `deploy.sh` builds and copies over SSH); secrets in `/etc/arcanum-career/secrets.env` on the machine only (`Discord__ClientSecret=…`). Later a GitHub Actions workflow does the deploy |
 | Backups | daily copy of the SQLite file off the VM (losing it means players fall back to their last signed snapshot, not to nothing) |
 | Limits | rate limit per player and per address; journal size cap |
 

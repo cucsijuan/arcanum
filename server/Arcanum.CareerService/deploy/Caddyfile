@@ -1,0 +1,8 @@
+# /etc/caddy/Caddyfile: HTTPS (certificate from Let's Encrypt) in front of the career service.
+arcanum-career.duckdns.org {
+	encode gzip
+	request_body {
+		max_size 4MB
+	}
+	reverse_proxy 127.0.0.1:5080
+}

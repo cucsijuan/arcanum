@@ -61,6 +61,42 @@ public partial class OnlineScreen : Control
         Rebuild();
         AutoStart();
         OfferRejoin();
+        OfferAccount();
+    }
+
+    private static bool _accountDeclined;
+
+    /// <summary>
+    /// Playing on the internet needs a Discord sign-in: offered here (once per session when declined; the local network
+    /// works without it, and the settings sign in too).
+    /// </summary>
+    private void OfferAccount()
+    {
+        if (!Online.NeedsAccount || _accountDeclined || Online.IsActive || OS.GetEnvironment("ARCANUM_ONLINE_HOST").Length > 0
+            || OS.GetEnvironment("ARCANUM_ONLINE_JOIN").Length > 0 || OS.GetEnvironment("ARCANUM_ONLINE_CODE").Length > 0) return;
+        MenuKit.Modal(this, "Play on the internet",
+            "Sign in with Discord to host and join games on the internet. Your online identity follows your Discord account to any computer; " +
+            "the game only learns your Discord user id and name. Games on the local network don't need it.", null,
+            ("Local network only", () => _accountDeclined = true),
+            ("Sign in with Discord", SignInWithDiscord));
+    }
+
+    private async void SignInWithDiscord()
+    {
+        ShowStatus("Waiting for Discord in your browser…");
+        try
+        {
+            using var cancel = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            await Account.SignInWithDiscordAsync(cancel.Token);
+            if (!IsInstanceValid(this)) return;
+            ShowStatus("Signed in with Discord.");
+            Online.SignIn(PlayerName);
+        }
+        catch (OperationCanceledException) { if (IsInstanceValid(this)) ShowStatus("Signing in with Discord took too long; try again from the settings."); }
+        catch (Exception e)
+        {
+            if (IsInstanceValid(this)) ShowStatus(e is System.Net.Http.HttpRequestException ? "The sign-in service can't be reached; try again later." : e.Message);
+        }
     }
 
     /// <summary>

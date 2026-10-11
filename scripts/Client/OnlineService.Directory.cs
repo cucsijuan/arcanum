@@ -44,6 +44,9 @@ public partial class OnlineService
         }
     }
 
+    /// <summary>Playing on the internet needs the player to sign in with Discord first (this build has internet lobbies).</summary>
+    public bool NeedsAccount => Internet is not null && !Internet.IsAvailable && !Account.HasDiscord && !Account.UsesDeviceAccount;
+
     private string? _internetError;
     private bool _publishWaiting;
 

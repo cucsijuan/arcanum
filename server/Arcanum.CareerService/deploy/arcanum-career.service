@@ -1,0 +1,24 @@
+# systemd unit for the career service: /etc/systemd/system/arcanum-career.service
+# Secrets (Discord__ClientSecret=...) go in /etc/arcanum-career/secrets.env, readable only by root.
+[Unit]
+Description=Arcanum career service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=arcanum
+WorkingDirectory=/opt/arcanum-career
+ExecStart=/usr/bin/dotnet /opt/arcanum-career/Arcanum.CareerService.dll
+EnvironmentFile=/etc/arcanum-career/secrets.env
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+StateDirectory=arcanum-career
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

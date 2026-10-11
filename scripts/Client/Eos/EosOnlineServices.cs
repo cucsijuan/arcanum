@@ -15,7 +15,8 @@ using Epic.OnlineServices.Platform;
 namespace Arcanum.Client.Eos;
 
 /// <summary>
-/// Internet lobbies and connections through Epic Online Services: players sign in with a device account (no Epic account),
+/// Internet lobbies and connections through Epic Online Services: players sign in with their Discord account (a device
+/// account only behind a developer switch),
 /// hosted lobbies are listed in the service's lobby directory, and players reach the host with peer-to-peer connections that
 /// fall back to the service's relays when a direct path isn't possible. Every SDK call runs on one thread of its own.
 /// </summary>
@@ -30,6 +31,7 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink
         AttrListed = "LISTED", AttrEvent = "EVENT";
 
     private readonly EosKeys _keys;
+    private readonly Func<CancellationToken, Task<string?>> _discordToken;
     private readonly string _productVersion;
     private readonly ConcurrentQueue<Action> _work = new();
     private readonly ConcurrentQueue<(string Peer, byte[] Packet)> _outgoing = new();
@@ -42,6 +44,7 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink
     private volatile ProductUserId? _user;
     private Task<OnlineIdentity>? _signIn;
     private bool _deviceReplaced;
+    private ulong _expiryNotice;
 
     // EOS thread only.
     private PlatformInterface? _platform;
@@ -53,9 +56,11 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink
     /// <summary>Diagnostics from the SDK and this service.</summary>
     public event Action<string>? Log;
 
-    public EosOnlineServices(EosKeys keys, string productVersion)
+    /// <param name="discordToken">A Discord access token for the player, or null when they haven't signed in with Discord.</param>
+    public EosOnlineServices(EosKeys keys, string productVersion, Func<CancellationToken, Task<string?>> discordToken)
     {
         _keys = keys;
+        _discordToken = discordToken;
         _productVersion = productVersion;
         _relay = new PacketRelay(this);
         Lobbies = new Directory(this);
@@ -77,8 +82,18 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink
         lock (_work)
         {
             if (_signIn is { IsFaulted: false, IsCanceled: false }) return _signIn;
-            return _signIn = OnEos<OnlineIdentity>(done => CreateDeviceId(displayName, done));
+            return _signIn = SignIn(displayName, cancel);
         }
+    }
+
+    private static bool DeviceAccount => Account.UsesDeviceAccount;
+
+    private async Task<OnlineIdentity> SignIn(string displayName, CancellationToken cancel)
+    {
+        if (DeviceAccount) return await OnEos<OnlineIdentity>(done => CreateDeviceId(displayName, done));
+        var token = await _discordToken(cancel)
+            ?? throw new InvalidOperationException("sign in with Discord (Settings, Account) to play on the internet.");
+        return await OnEos<OnlineIdentity>(done => Login(displayName, ExternalCredentialType.DiscordAccessToken, token, done));
     }
 
     public void Dispose()
@@ -180,7 +195,7 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink
         PlatformInterface.Shutdown();
     }
 
-    // ------------------------------------------------------------------ sign-in (device account)
+    // ------------------------------------------------------------------ sign-in
 
     private void CreateDeviceId(string displayName, TaskCompletionSource<OnlineIdentity> done)
     {
@@ -196,18 +211,18 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink
         }
         connect.CreateDeviceId(ref create, null, (ref CreateDeviceIdCallbackInfo info) =>
         {
-            if (info.ResultCode is Result.Success or Result.DuplicateNotAllowed) Login(displayName, done);
+            if (info.ResultCode is Result.Success or Result.DuplicateNotAllowed) Login(displayName, ExternalCredentialType.DeviceidAccessToken, null, done);
             else Fail(done, "creating the device account", info.ResultCode);
         });
     }
 
-    private void Login(string displayName, TaskCompletionSource<OnlineIdentity> done)
+    private void Login(string displayName, ExternalCredentialType type, string? token, TaskCompletionSource<OnlineIdentity> done)
     {
         var connect = _platform!.GetConnectInterface();
         string name = displayName.Length > 32 ? displayName[..32] : displayName.Length == 0 ? "Player" : displayName;
         var login = new LoginOptions
         {
-            Credentials = new Epic.OnlineServices.Connect.Credentials { Type = ExternalCredentialType.DeviceidAccessToken },
+            Credentials = new Epic.OnlineServices.Connect.Credentials { Type = type, Token = token },
             UserLoginInfo = new UserLoginInfo { DisplayName = name },
         };
         connect.Login(ref login, null, (ref LoginCallbackInfo info) =>
@@ -228,6 +243,12 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink
 
     private void SignedIn(ProductUserId user, string name, TaskCompletionSource<OnlineIdentity> done)
     {
+        if (_user is not null)
+        {
+            done.TrySetResult(new OnlineIdentity(user.ToString(), name)); // signed in again before the sign-in expired
+            return;
+        }
+        if (!DeviceAccount) WatchExpiry(name);
         var p2p = _platform!.GetP2PInterface();
         var requests = new AddNotifyPeerConnectionRequestOptions { LocalUserId = user, SocketId = _socket };
         p2p.AddNotifyPeerConnectionRequest(ref requests, null, (ref OnIncomingConnectionRequestInfo info) =>
@@ -243,6 +264,31 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink
         });
         _user = user;
         done.TrySetResult(new OnlineIdentity(user.ToString(), name));
+    }
+
+    /// <summary>Before the sign-in expires (Discord's tokens last a while; the online services' sign-in an hour), sign in again with a new token.</summary>
+    private void WatchExpiry(string name)
+    {
+        if (_expiryNotice != 0) return;
+        var connect = _platform!.GetConnectInterface();
+        var notify = new AddNotifyAuthExpirationOptions();
+        _expiryNotice = connect.AddNotifyAuthExpiration(ref notify, null, (ref AuthExpirationCallbackInfo _) => SignInAgain(name));
+    }
+
+    private async void SignInAgain(string name)
+    {
+        try
+        {
+            if (await _discordToken(CancellationToken.None) is not { } token)
+            {
+                Log?.Invoke("Online services: the Discord sign-in is gone; signing in again needs the player.");
+                return;
+            }
+            var again = new TaskCompletionSource<OnlineIdentity>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _work.Enqueue(() => Login(name, ExternalCredentialType.DiscordAccessToken, token, again));
+            await again.Task;
+        }
+        catch (Exception e) { Log?.Invoke($"Online services couldn't renew the sign-in: {e.Message}"); }
     }
 
     private static void Fail<T>(TaskCompletionSource<T> done, string what, Result result) =>

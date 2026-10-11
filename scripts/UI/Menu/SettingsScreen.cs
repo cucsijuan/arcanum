@@ -175,12 +175,57 @@ public partial class SettingsScreen : Control
             "When the game starts, look for a newer version of the game or of the card content and offer to install it."));
 
         box.AddChild(SettingsKit.Section("Online"));
+        box.AddChild(Row("Discord account", DiscordAccount(),
+            "Sign in with Discord to play on the internet: your online identity (and later your career) follows your Discord account to any computer. " +
+            "The game only learns your Discord user id and name."));
         var limits = new[] { (0, "No limit"), (30, "30 seconds"), (60, "1 minute"), (120, "2 minutes"), (300, "5 minutes") };
         box.AddChild(Row("Time per decision", SettingsKit.Choice(limits.Select(l => l.Item2).ToList(), Math.Max(0, Array.FindIndex(limits, l => l.Item1 == S.DecisionSeconds)),
             i => { S.DecisionSeconds = limits[i].Item1; Settings.Save(); }),
             "For games you host: how long each player has for a decision before the computer makes it for them (they keep playing afterwards). " +
             "Passing priority with your stops never counts. Players who disconnect have their own wait."));
         return box;
+    }
+
+    private CancellationTokenSource? _discordSignIn;
+
+    /// <summary>Signed in or not, and the button to sign in (it waits for the browser; pressed again, it stops waiting) or out.</summary>
+    private Control DiscordAccount()
+    {
+        var row = new HBoxContainer { CustomMinimumSize = new Vector2(SettingsKit.ControlWidth, 0) };
+        row.AddThemeConstantOverride("separation", 12);
+        var state = BoardStyle.MakeLabel("", 16);
+        state.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        state.VerticalAlignment = VerticalAlignment.Center;
+        var button = BoardStyle.MakeButton("", 15, compact: true);
+        void Show(string? note = null)
+        {
+            bool waiting = _discordSignIn is not null;
+            state.Text = note ?? (waiting ? "Waiting for the browser…" : Account.HasDiscord ? "Signed in" : "Not signed in");
+            button.Text = waiting ? "Cancel" : Account.HasDiscord ? "Sign out" : "Sign in";
+        }
+        button.Pressed += async () =>
+        {
+            if (_discordSignIn is { } waiting) { waiting.Cancel(); return; }
+            if (Account.HasDiscord) { Account.SignOut(); Show(); return; }
+            using var cancel = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            _discordSignIn = cancel;
+            Show();
+            string? note = null;
+            try { await Account.SignInWithDiscordAsync(cancel.Token); }
+            catch (OperationCanceledException) { }
+            catch (Exception e) { note = e is System.Net.Http.HttpRequestException ? "The sign-in service can't be reached." : e.Message; }
+            _discordSignIn = null;
+            if (IsInstanceValid(button)) Show(note);
+        };
+        Show();
+        row.AddChild(state);
+        row.AddChild(button);
+        return row;
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationPredelete) _discordSignIn?.Cancel();
     }
 
     private static Button StopToggle(Step step, bool own)

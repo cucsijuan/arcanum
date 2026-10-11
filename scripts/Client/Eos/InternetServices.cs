@@ -10,7 +10,7 @@ public static class InternetServices
     {
 #if ARCANUM_EOS
         if (EosKeys.Current is not { } keys) return null;
-        var eos = new EosOnlineServices(keys, version);
+        var eos = new EosOnlineServices(keys, version, Account.DiscordAccessTokenAsync);
         eos.Log += log;
         return eos;
 #else
