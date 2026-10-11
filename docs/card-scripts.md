@@ -858,3 +858,28 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   removed this way" (a mana ability, rule 605.1a). Paying a cost uses as many counters as needed; activated on its own, the player chooses
   how many. Counter kind `storage`.
 - `endTurn` exiles the spell that ends the turn too (rule 723.1b).
+
+## Cost filters, counts, conditions and casting restrictions
+
+- **Trigger** `combatDamageToPlayerOrPlaneswalker`: "whenever this creature deals combat damage to a player or planeswalker", once for
+  each player or planeswalker it damaged (amount: that damage; `"triggerAmount"` is "that many").
+- **Cost filters** (activated abilities): `"sacrificeFilter": filter` says what a `sacrifice:` / `sacrificeAny:` cost sacrifices
+  ("sacrifice another black creature": `"sacrifice:creature"` with `{ "types": ["creature"], "colors": ["B"] }`); `"tapFilter": filter`
+  says what a `tapPermanents:` / `tapCreatures:` cost taps ("tap three untapped Zombies you control": `"tapPermanents:3:creature"` with
+  `{ "types": ["creature"], "subtype": "Zombie" }`, the source included). Cost `life:commanderColors` is "pay life equal to the number of
+  colors in your commanders' color identity" (none without a commander).
+- **Filters**: `"allTypes": ["artifact", "creature"]` needs every listed type ("artifact creature"), where `types` needs any one.
+- **Quantities**: `"triggeredToughness"` (the toughness of the object the trigger was about), `{ "halfDown": quantity }` (half, rounded
+  down), `{ "devotion": "B" }` (devotion to black, rule 700.5; a list for several colors), `{ "graveyard": f, "of": "everyone" }` /
+  `"of": "opponents"` (all graveyards / your opponents' graveyards), `"playersWhoDrewThisWay"` (players who drew a card in an earlier
+  draw effect of the same spell or ability: "for each opponent who drew a card this way"), `{ "opponentsWithMore": "cards" }` (opponents
+  with more cards in hand than you; also `"life"`, `"creatures"`, `"lands"`).
+- **Conditions**: `{ "opponentDealtDamage": 7 }` (an opponent was dealt that much damage this turn), `{ "greatestManaValue": filter }`
+  (you control the matching permanent with the greatest mana value or one tied for it), `{ "sameName": filter, "count": 3 }` (you
+  control that many matching permanents with the same name), `{ "opponentControls": filter, "count": 4 }` (an opponent controls that
+  many), `"attachedControllerIsMonarch"` (the controller of the permanent this is attached to is the monarch).
+- **Static abilities**: `"preventDamage": "combat"` (prevent all combat damage that would be dealt to the affected permanents).
+- **Card-wide**: `"cantCastDuringFirstTurns": 3` ("you can't cast this spell during your first, second, or third turns of the game", for
+  every way of casting it), `"graveyardCastIf": condition` ("you may cast this card from your graveyard as long as you control a
+  Zombie"), `replaces` `OpponentsNontokenCreaturesExiledInsteadOfDying` (with the `creatureExiledInstead` trigger).
+- Ability words `Lieutenant`, `Enrage`, `Celebration`, `Pack tactics` and `Imprint` only label rules text the script spells out.

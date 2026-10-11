@@ -553,6 +553,9 @@ public sealed partial class Game
         public List<CardId> Discarded { get; } = new();
         public List<CardId> Found { get; } = new();
 
+        /// <summary>Players who drew at least one card in a draw effect of this spell or ability ("for each opponent who drew a card this way").</summary>
+        public List<PlayerId> PlayersWhoDrew { get; } = new();
+
         /// <summary>Power and toughness of revealed cards as they were revealed ("draw cards equal to its power").</summary>
         public Dictionary<CardId, (int Power, int Toughness)> FoundStats { get; } = new();
         public List<CardId> Returned { get; } = new();
@@ -667,8 +670,11 @@ public sealed partial class Game
             QuantityKind.RingLevel => State.GetPlayer(ctx.Controller).RingLevel,
             QuantityKind.AttachedThisWay => ctx.Results.Attached,
             QuantityKind.SourceToughness => ctx.Source.Zone == Zone.Battlefield || ctx.Source.LastKnownInfo is null ? ctx.Source.Toughness : ctx.Source.LastKnownInfo.Toughness,
-            QuantityKind.GraveyardCount => State.GetPlayer(q.OfAffectedPlayer && ctx.AffectedPlayer is { } affected ? affected
-                    : q.ControlledByTarget && ctx.TargetAt(q.Index)?.Player is { } graveOwner ? graveOwner : ctx.Controller).Graveyard.Select(State.GetCard)
+            QuantityKind.GraveyardCount => (q.OfEveryone ? State.Players.Select(p => p.Id)
+                    : q.OfOpponents ? State.OpponentsOf(ctx.Controller)
+                    : new[] { q.OfAffectedPlayer && ctx.AffectedPlayer is { } affected ? affected
+                        : q.ControlledByTarget && ctx.TargetAt(q.Index)?.Player is { } graveOwner ? graveOwner : ctx.Controller })
+                .SelectMany(p => State.GetPlayer(p).Graveyard).Select(State.GetCard)
                 .Count(c => q.Filter is null || Matches(q.Filter with { Controller = ControllerFilter.Any }, c, ctx.Controller, ctx.Source, ctx.Controller)),
             QuantityKind.SourcePower => ctx.Source.Zone == Zone.Battlefield || ctx.Source.LastKnownInfo is null ? ctx.Source.Power : ctx.Source.LastKnownInfo.Power,
             QuantityKind.TargetPower => TargetLastKnown()?.Power ?? TargetCard()?.Power ?? 0,
@@ -731,9 +737,14 @@ public sealed partial class Game
             QuantityKind.GreatestOtherPower => State.PermanentsControlledBy(ctx.Controller).Where(c => c.IsCreature && c.Id != ctx.Source.Id)
                 .Select(c => c.Power).DefaultIfEmpty(0).Max(),
             QuantityKind.TriggeredPower => ctx.Trigger is { Subject: { } t } about ? TriggeredPowerOf(State.GetCard(t), about.SubjectVersion) : 0,
+            QuantityKind.TriggeredToughness => ctx.Trigger is { Subject: { } tt } aboutT ? TriggeredToughnessOf(State.GetCard(tt), aboutT.SubjectVersion) : 0,
             QuantityKind.RingBearerPower => RingBearerOf(ctx.Controller) is { } bearer ? bearer.Power : 0,
             QuantityKind.Sum => q.Parts?.Sum(part => Eval(part, ctx)) ?? 0,
             QuantityKind.HalfRoundedUp => (Math.Max(0, Eval(q.Parts![0], ctx)) + 1) / 2, // rule 107.1a
+            QuantityKind.HalfRoundedDown => Math.Max(0, Eval(q.Parts![0], ctx)) / 2,
+            QuantityKind.Devotion => DevotionTo(ctx.Controller, q.Filter?.Colors ?? Array.Empty<string>()),
+            QuantityKind.PlayersWhoDrewThisWay => ctx.Results.PlayersWhoDrew.Count(p => q.Filter?.Controller != ControllerFilter.Opponent || p != ctx.Controller),
+            QuantityKind.OpponentsWithMore => State.OpponentsOf(ctx.Controller).Count(o => OpponentMeasure(q.Measure!, o) > OpponentMeasure(q.Measure!, ctx.Controller)),
             QuantityKind.AffectedManaValue or QuantityKind.FoundPower or QuantityKind.FoundToughness => EvalOrigins(q, ctx),
             QuantityKind.PermanentsSacrificedThisTurn => State.PermanentsSacrificedThisTurn,
             QuantityKind.SacrificedThisWay => ctx.Results.Sacrificed.Count,
@@ -1815,7 +1826,12 @@ public sealed partial class Game
             }
                 break;
             case DrawCards d:
-                foreach (var player in PlayersFor(d.Who, ctx).ToList()) await DrawAsync(player, Eval(d.Count, ctx with { AffectedPlayer = player }));
+                foreach (var player in PlayersFor(d.Who, ctx).ToList())
+                {
+                    int drawnBefore = State.GetPlayer(player).CardsDrawnThisTurn;
+                    await DrawAsync(player, Eval(d.Count, ctx with { AffectedPlayer = player }));
+                    if (State.GetPlayer(player).CardsDrawnThisTurn > drawnBefore) ctx.Results.PlayersWhoDrew.Add(player);
+                }
                 break;
             case GainLife g:
                 foreach (var player in PlayersFor(g.Who, ctx).ToList()) await GainLifeAsync(player, Eval(g.Amount, ctx));
@@ -4002,7 +4018,7 @@ public sealed partial class Game
     private bool HoldsAtTrigger(Condition condition, PlayerId controller, Card source, TriggerInfo? info)
     {
         var ctx = new EffectContext(controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>()) { Trigger = info };
-        static bool AboutTrigger(Quantity q) => q.Kind is QuantityKind.ManaSpent or QuantityKind.TriggerAmount or QuantityKind.TriggeredPower or QuantityKind.TriggeredColors;
+        static bool AboutTrigger(Quantity q) => q.Kind is QuantityKind.ManaSpent or QuantityKind.TriggerAmount or QuantityKind.TriggeredPower or QuantityKind.TriggeredToughness or QuantityKind.TriggeredColors;
         return condition switch
         {
             TriggeredMatches or TriggeredPlayerHasMostLife or TriggeredHadCounters or TriggeredPlayerIsYou => HoldsIn(condition, ctx),
@@ -4080,6 +4096,14 @@ public sealed partial class Game
             SourceHadCounters h => (source?.LastKnownInfo?.Counters.GetValueOrDefault(h.Kind) ?? 0) > 0,
             DifferentNames d => State.PermanentsControlledBy(controller).Where(c => Matches(d.Filter, c, c.Controller, source, controller)).Select(c => c.Name).Distinct().Count() >= d.AtLeast,
             IsMonarch => State.Monarch == controller,
+            OpponentControls oc => State.OpponentsOf(controller).Any(o => State.PermanentsControlledBy(o)
+                .Count(c => Matches(oc.Filter with { Controller = ControllerFilter.Any }, c, o, source, controller)) >= oc.AtLeast),
+            OpponentDealtDamageThisTurn od => State.OpponentsOf(controller).Any(o => State.GetPlayer(o).DamageTakenThisTurn >= od.AtLeast),
+            YouControlGreatestManaValue gm => State.Battlefield.Select(State.GetCard).Where(c => Matches(gm.Filter with { Controller = ControllerFilter.Any }, c, c.Controller, source, controller)).ToList() is { Count: > 0 } among
+                && among.Where(c => c.Controller == controller).Select(ManaValueOf).DefaultIfEmpty(int.MinValue).Max() >= among.Max(ManaValueOf),
+            YouControlSameName sn => State.PermanentsControlledBy(controller).Where(c => Matches(sn.Filter, c, c.Controller, source, controller))
+                .GroupBy(c => c.Name).Any(g => g.Count() >= sn.AtLeast),
+            AttachedControllerIsMonarch => source?.AttachedTo is { } host && State.Monarch == State.GetCard(host).Controller,
             SourceHasAnyCounters => source is not null && source.Counters.Values.Any(v => v > 0),
             TriggeredHadCounters => true, // checked where known
             CardTypesInGraveyard ct => new[] { CardType.Artifact, CardType.Battle, CardType.Creature, CardType.Enchantment, CardType.Instant, CardType.Kindred, CardType.Land, CardType.Planeswalker, CardType.Sorcery }
@@ -4132,7 +4156,7 @@ public sealed partial class Game
         q is not null && (q.Kind == QuantityKind.OtherCreaturesSharingTypeWithAffected || (q.Parts?.Any(DependsOnAffected) ?? false));
 
     private static bool DependsOnTargets(Quantity q) => q.Kind is QuantityKind.TargetPower or QuantityKind.TargetToughness or QuantityKind.TargetManaValue
-        or QuantityKind.X or QuantityKind.TriggerAmount or QuantityKind.TriggeredPower or QuantityKind.SacrificedPower or QuantityKind.SacrificedToughness
+        or QuantityKind.X or QuantityKind.TriggerAmount or QuantityKind.TriggeredPower or QuantityKind.TriggeredToughness or QuantityKind.SacrificedPower or QuantityKind.SacrificedToughness
         or QuantityKind.LifeLostThisWay or QuantityKind.MilledThisWay or QuantityKind.DestroyedThisWay or QuantityKind.ExcessDamage or QuantityKind.ExiledThisWay
         or QuantityKind.DiscardedThisWay or QuantityKind.ReturnedThisWay or QuantityKind.MilledManaValue or QuantityKind.TappedThisWay or QuantityKind.ManaSpent
         || q.ControlledByTarget || q.ControlledByTriggeredPlayer;
@@ -4236,6 +4260,7 @@ public sealed partial class Game
         var supertypes = lk?.Supertypes ?? obj.Supertypes;
         var attachedTo = lk is null ? obj.AttachedTo : lk.AttachedTo;
         if (filter.Types != 0 && (types & filter.Types) == 0) return false;
+        if ((types & filter.AllTypes) != filter.AllTypes) return false;
         if ((types & filter.ExcludedTypes) != 0) return false;
         if (filter.Subtype is { } subtype && !HasSubtype(subtype)) return false;
         if (filter.Controller == ControllerFilter.You && objController != sourceController) return false;
@@ -4700,7 +4725,7 @@ public sealed partial class Game
                         card.GrantedKeywords.UnionWith(ability.GrantedKeywords);
                         card.LostKeywords.ExceptWith(ability.GrantedKeywords); // a later grant gives back a keyword lost earlier (timestamps, rule 613.7)
                         if (ability.LosesKeywords is { } loses) { card.LostKeywords.UnionWith(loses); card.GrantedKeywords.ExceptWith(loses); }
-                        if (ability.PreventsDamage > card.StaticDamagePrevention) card.StaticDamagePrevention = ability.PreventsDamage;
+                        card.StaticDamagePrevention |= ability.PreventsDamage;
                         if (ability.CantActivateAbilities) card.AbilitiesCantBeActivated = true;
                         if (ability.GrantsAbilities is { } granted) card.GrantedAbilities.AddRange(granted.Select(g => g with { GrantedBy = source.Id }));
                         if (ability.GrantsMana is { } mana) card.GrantedManaOptions.Add(new ManaOption(mana, ability.GrantsManaAmount));

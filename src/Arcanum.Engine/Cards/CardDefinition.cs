@@ -108,6 +108,8 @@ public enum Replacements : long
     OpponentsLifeGainBecomesLoss = 1L << 53,
     /// <summary>"If this creature would die, exile it instead."</summary>
     ExileInsteadOfDying = 1L << 54,
+    /// <summary>"If a nontoken creature an opponent controls would die, instead exile that card" (and the "creatureExiledInstead" trigger).</summary>
+    OpponentsNontokenCreaturesExiledInsteadOfDying = 1L << 55,
 }
 
 /// <summary>
@@ -286,6 +288,9 @@ public sealed partial record CardDefinition
     /// <summary>"This artifact can't be sacrificed."</summary>
     public bool CantBeSacrificed { get; init; }
 
+    /// <summary>"You can't cast this spell during your first, second, or third turns of the game": that many of its owner's first turns.</summary>
+    public int CantCastDuringFirstTurns { get; init; }
+
     /// <summary>"Creatures with power greater than the number of cards in your hand can't attack."</summary>
     public bool CantAttackIfPowerAboveHandSize { get; init; }
 
@@ -370,6 +375,9 @@ public sealed partial record CardDefinition
 
     /// <summary>Extra cost to cast it from your graveyard ("by removing six counters from among creatures you control").</summary>
     public ExtraCost? GraveyardCastCost { get; init; }
+
+    /// <summary>"You may cast this card from your graveyard as long as [condition]" (no extra cost).</summary>
+    public Condition? GraveyardCastIf { get; init; }
 
     /// <summary>Characteristic-defining power/toughness ("equal to the number of creatures you control").</summary>
     public Quantity? PowerFrom { get; init; }

@@ -138,6 +138,16 @@ public enum QuantityKind
     /// <summary>The power / toughness of the card a reveal found, as it was when revealed ("equal to its power").</summary>
     FoundPower,
     FoundToughness,
+    /// <summary>The toughness of the object the trigger event was about ("life equal to that creature's toughness").</summary>
+    TriggeredToughness,
+    /// <summary>Half of <see cref="Quantity.Parts"/>' single quantity, rounded down ("half the number of Zombies you control, rounded down").</summary>
+    HalfRoundedDown,
+    /// <summary>Devotion to the color in <see cref="Quantity.Filter"/>: the mana symbols of that color among the mana costs of permanents you control (rule 700.5).</summary>
+    Devotion,
+    /// <summary>Players who drew a card in an earlier draw effect of this spell or ability (opponents only with an opponent <see cref="Quantity.Filter"/>).</summary>
+    PlayersWhoDrewThisWay,
+    /// <summary>Opponents with more of <see cref="Quantity.Measure"/> (life, creatures, lands, cards in hand) than the controller.</summary>
+    OpponentsWithMore,
 }
 
 /// <summary>
@@ -155,6 +165,15 @@ public sealed record Quantity(int Value, QuantityKind Kind = QuantityKind.Fixed,
 
     /// <summary>For <see cref="QuantityKind.GraveyardCount"/>: the graveyard of the player the effect is affecting ("in that player's graveyard").</summary>
     public bool OfAffectedPlayer { get; init; }
+
+    /// <summary>For <see cref="QuantityKind.GraveyardCount"/>: every player's graveyard ("in all graveyards").</summary>
+    public bool OfEveryone { get; init; }
+
+    /// <summary>For <see cref="QuantityKind.GraveyardCount"/>: the graveyards of the controller's opponents ("in your opponents' graveyards").</summary>
+    public bool OfOpponents { get; init; }
+
+    /// <summary>For <see cref="QuantityKind.OpponentsWithMore"/>: what is compared ("life", "creatures", "lands", "cards").</summary>
+    public string? Measure { get; init; }
 
     /// <summary>For <see cref="QuantityKind.Sum"/>: the quantities added together.</summary>
     public IReadOnlyList<Quantity>? Parts { get; init; }

@@ -66,7 +66,8 @@ public sealed partial class Game
                 list.Add(new(ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard));
             if (from == Zone.Battlefield && card.IsCreature)
                 list.AddRange(State.Battlefield.Select(State.GetCard)
-                    .Where(c => c.Controller != card.Controller && (c.Replaces & Cards.Replacements.OpponentsCreaturesExiledInsteadOfDying) != 0)
+                    .Where(c => c.Controller != card.Controller && ((c.Replaces & Cards.Replacements.OpponentsCreaturesExiledInsteadOfDying) != 0
+                        || (!card.Definition.IsToken && (c.Replaces & Cards.Replacements.OpponentsNontokenCreaturesExiledInsteadOfDying) != 0)))
                     .Select(c => new ZoneReplacement(ZoneReplacementKind.ExiledByOpponentsPermanent, c)));
             if (State.ExileInsteadOfGraveyard.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileInsteadOfGraveyard));
             if ((card.Is(Cards.CardType.Instant) || card.Is(Cards.CardType.Sorcery))

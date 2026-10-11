@@ -393,7 +393,8 @@ public sealed partial class Game
         if (Has(playerId, Replacements.LandsFromGraveyard))
             foreach (var id in player.Graveyard.Where(id => State.GetCard(id).Is(CardType.Land))) yield return id;
         foreach (var id in player.Graveyard)
-            if (State.GetCard(id).Definition.GraveyardCastCost is not null || State.GetCard(id).PrintedDefinition.SplitHalves?.Any(h => h.Aftermath) == true) yield return id;
+            if (State.GetCard(id).Definition.GraveyardCastCost is not null || State.GetCard(id).PrintedDefinition.SplitHalves?.Any(h => h.Aftermath) == true
+                || (State.GetCard(id).Definition.GraveyardCastIf is { } castIf && Holds(castIf, playerId, State.GetCard(id)))) yield return id;
         // Cards that went on an adventure (rule 715.4).
         foreach (var id in player.Exile)
             if (State.GetCard(id).OnAdventure) yield return id;
@@ -617,7 +618,7 @@ public sealed partial class Game
         // A spell none of whose ways to pay can be paid can't be cast (rule 601.2h), however it's being cast.
         if (!LegendarySpellAllowed(card, player.Id)) return false;
         // "Can't cast spells" also stops casting as part of an effect (rule 101.2).
-        if (SpellsForbidden(player.Id) || CastForbiddenByName(card, player.Id)) return false;
+        if (SpellsForbidden(player.Id) || CastForbiddenByName(card, player.Id) || CastForbiddenThisEarly(card, player.Id)) return false;
         var payable = PayableCastingWays(card, player.Id, flashExtra);
         if (payable.Count == 0) return false;
         bool flashback = exileAfter || IsFlashbackCast(card);
@@ -1034,12 +1035,21 @@ public sealed partial class Game
             _pendingTriggers.Add(new PendingTrigger(entry.WhenPlayed!.Value.Source, entry.WhenPlayed.Value.Ability, player));
     }
 
+    /// <summary>The life an extra cost has its player pay.</summary>
+    private int LifeToPay(ExtraCost extra, PlayerId player) =>
+        extra.PayLife + (extra.LifeFromCommanderColors ? CommanderColorCount(player) : 0);
+
+    /// <summary>The number of colors in a player's commanders' color identity (none without a commander).</summary>
+    private int CommanderColorCount(PlayerId player) =>
+        State.Cards.Values.Where(c => c.IsCommander && c.Owner == player).SelectMany(c => c.Definition.ColorIdentity).Distinct().Count();
+
     private bool CanPayExtra(PlayerId playerId, ExtraCost? extra, CardId source)
     {
         if (extra is null) return true;
         var player = State.GetPlayer(playerId);
         if (player.Hand.Count(id => id != source && DiscardableFor(extra, id, playerId, source)) < extra.Discard) return false;
-        if (extra.PayLife > player.Life || (extra.PayLife > 0 && player.CantLoseLifeTurn == State.TurnNumber)) return false; // rule 119.8
+        int life = LifeToPay(extra, playerId);
+        if (life > player.Life || (life > 0 && player.CantLoseLifeTurn == State.TurnNumber)) return false; // rule 119.8
         if (ExilableFromGraveyard(player, extra, source).Count < extra.ExileFromGraveyard) return false;
         if (extra.ReturnExiledWithSource is { } exiledFilter && !ExiledWith(State.GetCard(source), exiledFilter).Any()) return false;
         if (extra.Sacrifice is { } filter && SacrificeCandidates(playerId, filter, source).Count < extra.SacrificeCount) return false;
@@ -1077,7 +1087,7 @@ public sealed partial class Game
     {
         if (extra is null) return Array.Empty<CardId>();
         var player = State.GetPlayer(playerId);
-        if (extra.PayLife > 0) ChangeLife(playerId, -extra.PayLife);
+        if (LifeToPay(extra, playerId) is > 0 and var lifePaid) ChangeLife(playerId, -lifePaid);
         if (extra.ExileFromGraveyard > 0)
         {
             var cards = ExilableFromGraveyard(player, extra, source);

@@ -25,7 +25,9 @@ public enum AffectedScope
 }
 
 /// <summary>Damage a static ability prevents to the permanents it affects.</summary>
-public enum StaticDamagePrevention { None, Noncombat, All }
+/// <summary>Which damage a static ability prevents to the affected permanents ("prevent all combat damage that would be dealt to this creature").</summary>
+[Flags]
+public enum StaticDamagePrevention { None = 0, Noncombat = 1, Combat = 2, All = Noncombat | Combat }
 
 /// <summary>Filter for a static ability: scope, "other" (excludes the source) and an optional subtype.</summary>
 public sealed record AffectedFilter(AffectedScope Scope, bool Other = false, string? Subtype = null);

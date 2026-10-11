@@ -82,4 +82,13 @@ public sealed partial class Game
         if ((subject.LastKnownOf(version) ?? subject.LastKnownOf(version - 1)) is { } lki) return lki.Power;
         return subject.Zone == Zone.Battlefield ? subject.PrintedDefinition.Power ?? 0 : subject.Power;
     }
+
+    /// <summary>The toughness of the object a trigger was about, as <see cref="TriggeredPowerOf"/> works out its power.</summary>
+    private static int TriggeredToughnessOf(Card subject, int version)
+    {
+        if (subject.Version == version)
+            return subject.Zone == Zone.Battlefield ? subject.Toughness : subject.LastKnownOf(version - 1)?.Toughness ?? subject.Toughness;
+        if ((subject.LastKnownOf(version) ?? subject.LastKnownOf(version - 1)) is { } lki) return lki.Toughness;
+        return subject.Zone == Zone.Battlefield ? subject.PrintedDefinition.Toughness ?? 0 : subject.Toughness;
+    }
 }

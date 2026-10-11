@@ -49,6 +49,7 @@ public sealed partial class Game
         }
         foreach (var permanent in State.PermanentsControlledBy(active.Id)) permanent.ControlledSinceTurnStart = true;
         State.LastTurnOf[active.Id] = State.TurnNumber;
+        active.TurnsTaken++;
         State.Goads.RemoveAll(g => g.Goader == active.Id); // "until your next turn"
         State.LastingEffects.RemoveAll(e => e.UntilTurnOf == active.Id);
         active.Protected = false; // "protection from everything until your next turn"

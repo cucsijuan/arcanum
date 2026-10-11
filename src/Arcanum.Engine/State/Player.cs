@@ -20,6 +20,9 @@ public sealed class Player
     public ManaPool ManaPool { get; } = new();
     public int LandsPlayedThisTurn { get; set; }
 
+    /// <summary>How many turns this player has begun ("your first, second, or third turns of the game").</summary>
+    public int TurnsTaken { get; set; }
+
     /// <summary>This player attacked with at least one creature this turn (raid).</summary>
     public bool AttackedThisTurn { get; set; }
 

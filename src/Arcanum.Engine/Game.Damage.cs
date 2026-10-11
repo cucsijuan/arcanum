@@ -270,8 +270,7 @@ public sealed partial class Game
         if (State.DamagePreventions.Any(d => d.Card == source.Id && d.Version == source.Version)) return "its damage is prevented";
         if (targetPlayer is { } protectedPlayer && State.GetPlayer(protectedPlayer).Protected) return "protection"; // protection from everything
         if (targetCard is not null && ProtectedFrom(targetCard, source)) return "protection"; // 702.16e
-        if (targetCard is not null && (targetCard.StaticDamagePrevention == StaticDamagePrevention.All
-                                       || (!combat && targetCard.StaticDamagePrevention == StaticDamagePrevention.Noncombat)))
+        if (targetCard is not null && (targetCard.StaticDamagePrevention & (combat ? StaticDamagePrevention.Combat : StaticDamagePrevention.Noncombat)) != 0)
             return "a static ability";
         if (combat)
         {

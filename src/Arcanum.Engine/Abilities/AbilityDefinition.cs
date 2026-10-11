@@ -576,6 +576,9 @@ public sealed record ObjectFilter(
     /// <summary>Dealt damage this turn by the object the source remembers ("a creature dealt damage by that creature this turn"), by object (rule 400.7).</summary>
     public bool DamagedThisTurnByRemembered { get; init; }
 
+    /// <summary>Card types it must all have ("artifact creature"), where <see cref="Types"/> asks for any one of them.</summary>
+    public Cards.CardType AllTypes { get; init; }
+
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 
     public static readonly ObjectFilter YourCreatures = new(Cards.CardType.Creature);

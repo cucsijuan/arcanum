@@ -231,3 +231,18 @@ public sealed record IsMonarch : Condition;
 
 /// <summary>"If there is no monarch".</summary>
 public sealed record NoMonarch : Condition;
+
+/// <summary>"If an opponent was dealt [N] or more damage this turn".</summary>
+public sealed record OpponentDealtDamageThisTurn(int AtLeast) : Condition;
+
+/// <summary>"If you control the [filter] with the greatest mana value or tied for the greatest mana value" (among all such permanents).</summary>
+public sealed record YouControlGreatestManaValue(ObjectFilter Filter) : Condition;
+
+/// <summary>"If you control [N] or more [filter] permanents with the same name".</summary>
+public sealed record YouControlSameName(ObjectFilter Filter, int AtLeast) : Condition;
+
+/// <summary>"If the controller of the permanent this is attached to is the monarch" ("unless that player is the monarch").</summary>
+public sealed record AttachedControllerIsMonarch : Condition;
+
+/// <summary>"If an opponent controls [N] or more [filter]" (any one opponent).</summary>
+public sealed record OpponentControls(ObjectFilter Filter, int AtLeast) : Condition;
