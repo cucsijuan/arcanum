@@ -34,6 +34,9 @@ public sealed class CareerService
     /// <summary>A new season arrived: the calendar and prices may have changed.</summary>
     public event Action? SeasonChanged;
 
+    /// <summary>The career was replaced by the cloud's, or the cloud's state changed (<see cref="CloudStatus"/>).</summary>
+    public event Action? CloudChanged;
+
     /// <summary>The career's decks: only cards of the collection, no starter decks.</summary>
     public DeckStore Decks { get; } = new(Folder + "/decks", starters: false);
 
@@ -147,6 +150,7 @@ public sealed class CareerService
         save.Content = _contentId;
         _save = save;
         Write();
+        SyncSoon();
         return result;
     }
 
@@ -162,8 +166,165 @@ public sealed class CareerService
     {
         if (File.Exists(SavePath)) File.Move(SavePath, SavePath + ".old", overwrite: true);
         foreach (var deck in Decks.List(null)) Decks.Delete(deck);
+        File.WriteAllText(EndedPath, DateTime.UtcNow.ToString("O")); // the cloud's copy ends too
         _save = null;
         Problem = null;
+        SyncSoon();
+    }
+
+    // ---------------------------------------------------------------- the cloud
+
+    /// <summary>The career's file in the cloud (ARCANUM_CAREER_CLOUD changes it, for test runs that must not touch the player's).</summary>
+    private static string CloudFile => OS.GetEnvironment("ARCANUM_CAREER_CLOUD") is { Length: > 0 } name ? name : "career.zip";
+    private string FolderPath => ProjectSettings.GlobalizePath(Folder);
+    private string EndedPath => Path.Combine(FolderPath, "ended");
+
+    /// <summary>Where the career stands with the cloud, for the player.</summary>
+    public string CloudStatus { get; private set; } = "";
+
+    /// <summary>
+    /// Asked when the career here and the cloud's went on separately: true keeps this device's, false takes the cloud's,
+    /// null decides later. The screens set it.
+    /// </summary>
+    public Func<CareerSave, CareerSave, Task<bool?>>? AskConflict { get; set; }
+
+    private bool _syncing, _syncAgain;
+    private int _syncSoon;
+
+    /// <summary>Sends the career to the cloud a few seconds after it changes (changes close together go once).</summary>
+    public async void SyncSoon()
+    {
+        int mine = ++_syncSoon;
+        await Task.Delay(TimeSpan.FromSeconds(4));
+        if (mine == _syncSoon) await SyncAsync();
+    }
+
+    /// <summary>
+    /// Brings the career here and the cloud's together: the one ahead replaces the other (the replaced files are kept
+    /// as a backup next to the career), and when both went on the player chooses. Without a Discord sign-in (or with
+    /// ARCANUM_CAREER_OFFLINE=1) the career stays on this device only.
+    /// </summary>
+    public async Task SyncAsync()
+    {
+        if (_syncing) { _syncAgain = true; return; }
+        if (OS.GetEnvironment("ARCANUM_CAREER_OFFLINE") == "1" || World is null) return;
+        _syncing = true;
+        try
+        {
+            do
+            {
+                _syncAgain = false;
+                await SyncOnce();
+            } while (_syncAgain);
+        }
+        catch (Exception e)
+        {
+            SetCloud($"Not saved to the cloud: {e.GetBaseException().Message}");
+            GD.Print($"Career: cloud sync failed: {e}");
+        }
+        finally { _syncing = false; }
+    }
+
+    private async Task SyncOnce()
+    {
+        if (await App.Instance.Online.CloudAsync() is not { } cloud)
+        {
+            SetCloud(Account.HasDiscord ? $"Not saved to the cloud. {App.Instance.Online.InternetStatus}" : "Kept on this computer only: sign in with Discord to keep it in the cloud.");
+            return;
+        }
+        var remoteBytes = await cloud.ReadAsync(CloudFile);
+        var remote = remoteBytes is null ? null : CareerBundle.Unpack(remoteBytes);
+        var local = LocalBundle();
+        var key = CareerSave.DefaultKey;
+        switch (CareerCloud.Compare(local, remote, key))
+        {
+            case CloudSync.Same:
+                break;
+            case CloudSync.Upload:
+                await cloud.WriteAsync(CloudFile, local!.Pack());
+                break;
+            case CloudSync.Download:
+                TakeBundle(remote!, local);
+                break;
+            case CloudSync.Conflict:
+                bool? keepMine = AskConflict is { } ask ? await ask(CareerCloud.Read(local!, key)!, CareerCloud.Read(remote!, key)!) : null;
+                if (keepMine is null)
+                {
+                    SetCloud("Not saved to the cloud: this computer's career and the cloud's went on separately.");
+                    return;
+                }
+                if (keepMine == true)
+                {
+                    Backup(remote!, "cloud");
+                    await cloud.WriteAsync(CloudFile, local!.Pack());
+                }
+                else TakeBundle(remote!, local);
+                break;
+        }
+        SetCloud($"Saved to the cloud ({DateTime.Now:HH:mm}).");
+    }
+
+    private void SetCloud(string status)
+    {
+        CloudStatus = status;
+        CloudChanged?.Invoke();
+    }
+
+    /// <summary>The career's files here (null: there has never been a career on this device).</summary>
+    private CareerBundle? LocalBundle()
+    {
+        var bundle = new CareerBundle();
+        var times = new List<DateTime>();
+        void Add(string path, string name)
+        {
+            if (!File.Exists(path)) return;
+            bundle.Files[name] = File.ReadAllBytes(path);
+            times.Add(File.GetLastWriteTimeUtc(path));
+        }
+        Add(SavePath, CareerBundle.SaveName);
+        Add(Path.Combine(FolderPath, "event.json"), "event.json");
+        var decks = Path.Combine(FolderPath, "decks");
+        if (Directory.Exists(decks))
+            foreach (var file in Directory.GetFiles(decks)) Add(file, "decks/" + Path.GetFileName(file));
+        if (bundle.Save is null && File.Exists(EndedPath)) times.Add(File.GetLastWriteTimeUtc(EndedPath));
+        if (times.Count == 0) return null;
+        bundle.SavedUtc = times.Max();
+        return bundle;
+    }
+
+    /// <summary>Replaces the career here with the cloud's (this device's files are kept in a backup zip).</summary>
+    private void TakeBundle(CareerBundle remote, CareerBundle? local)
+    {
+        if (local is not null) Backup(local, "computer");
+        Directory.CreateDirectory(FolderPath);
+        if (File.Exists(SavePath)) File.Delete(SavePath);
+        var decks = Path.Combine(FolderPath, "decks");
+        if (Directory.Exists(decks)) foreach (var file in Directory.GetFiles(decks)) File.Delete(file);
+        File.Delete(Path.Combine(FolderPath, "event.json"));
+        foreach (var (name, data) in remote.Files)
+        {
+            var path = Path.Combine(FolderPath, name);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, data);
+            File.SetLastWriteTimeUtc(path, remote.SavedUtc);
+        }
+        if (remote.Save is null)
+        {
+            File.WriteAllText(EndedPath, remote.SavedUtc.ToString("O"));
+            File.SetLastWriteTimeUtc(EndedPath, remote.SavedUtc);
+        }
+        else if (File.Exists(EndedPath)) File.Delete(EndedPath);
+        _save = null;
+        _events = null;
+        Problem = null;
+        Load();
+        CloudChanged?.Invoke();
+    }
+
+    private void Backup(CareerBundle bundle, string from)
+    {
+        Directory.CreateDirectory(FolderPath);
+        File.WriteAllBytes(Path.Combine(FolderPath, $"backup-{from}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.zip"), bundle.Pack());
     }
 
     private void Write()

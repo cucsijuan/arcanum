@@ -11,6 +11,7 @@ using Epic.OnlineServices.Lobby;
 using Epic.OnlineServices.Logging;
 using Epic.OnlineServices.P2P;
 using Epic.OnlineServices.Platform;
+using Epic.OnlineServices.PlayerDataStorage;
 
 namespace Arcanum.Client.Eos;
 
@@ -20,7 +21,7 @@ namespace Arcanum.Client.Eos;
 /// hosted lobbies are listed in the service's lobby directory, and players reach the host with peer-to-peer connections that
 /// fall back to the service's relays when a direct path isn't possible. Every SDK call runs on one thread of its own.
 /// </summary>
-internal sealed class EosOnlineServices : IOnlineServices, IPacketLink
+internal sealed class EosOnlineServices : IOnlineServices, IPacketLink, ICloudStorage
 {
     private const string SocketName = "ArcanumGame";
     private const string BucketPrefix = "arcanum:";
@@ -177,6 +178,7 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink
             CacheDirectory = Path.Combine(Path.GetTempPath(), "arcanum-eos"),
             Flags = PlatformFlags.DisableOverlay,
         };
+        if (_keys.EncryptionKey.Length == 64) options.EncryptionKey = _keys.EncryptionKey;
         System.IO.Directory.CreateDirectory(options.CacheDirectory);
         _platform = PlatformInterface.Create(ref options) ?? throw new InvalidOperationException("the platform couldn't be created (check the product keys)");
     }
@@ -223,7 +225,8 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink
         var login = new LoginOptions
         {
             Credentials = new Epic.OnlineServices.Connect.Credentials { Type = type, Token = token },
-            UserLoginInfo = new UserLoginInfo { DisplayName = name },
+            // Only device accounts take a display name; other providers must leave it out.
+            UserLoginInfo = type == ExternalCredentialType.DeviceidAccessToken ? new UserLoginInfo { DisplayName = name } : null,
         };
         connect.Login(ref login, null, (ref LoginCallbackInfo info) =>
         {
@@ -290,6 +293,60 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink
         }
         catch (Exception e) { Log?.Invoke($"Online services couldn't renew the sign-in: {e.Message}"); }
     }
+
+    // ------------------------------------------------------------------ the player's files
+
+    public bool IsReady => _user is not null && _keys.EncryptionKey.Length == 64;
+
+    private const uint Chunk = 64 * 1024;
+
+    public Task<byte[]?> ReadAsync(string name, CancellationToken cancel = default) => OnEos<byte[]?>(done =>
+    {
+        if (!IsReady) { done.TrySetException(new InvalidOperationException("Cloud saves aren't available.")); return; }
+        var data = new MemoryStream();
+        var read = new ReadFileOptions
+        {
+            LocalUserId = _user, Filename = name, ReadChunkLengthBytes = Chunk,
+            ReadFileDataCallback = (ref ReadFileDataCallbackInfo chunk) =>
+            {
+                if (chunk.DataChunk.Array is { } array) data.Write(array, chunk.DataChunk.Offset, chunk.DataChunk.Count);
+                return cancel.IsCancellationRequested ? ReadResult.CancelRequest : ReadResult.ContinueReading;
+            },
+        };
+        PlayerDataStorageFileTransferRequest? request = null;
+        request = _platform!.GetPlayerDataStorageInterface().ReadFile(ref read, null, (ref ReadFileCallbackInfo info) =>
+        {
+            if (info.ResultCode == Result.Success) done.TrySetResult(data.ToArray());
+            else if (info.ResultCode == Result.NotFound) done.TrySetResult(null);
+            else Fail(done, $"reading '{name}'", info.ResultCode);
+            request?.Release();
+        });
+    });
+
+    public Task WriteAsync(string name, byte[] data, CancellationToken cancel = default) => OnEos<bool>(done =>
+    {
+        if (!IsReady) { done.TrySetException(new InvalidOperationException("Cloud saves aren't available.")); return; }
+        int sent = 0;
+        var write = new WriteFileOptions
+        {
+            LocalUserId = _user, Filename = name, ChunkLengthBytes = Chunk,
+            WriteFileDataCallback = (ref WriteFileDataCallbackInfo chunk, out ArraySegment<byte> buffer) =>
+            {
+                int count = Math.Min((int)chunk.DataBufferLengthBytes, data.Length - sent);
+                buffer = new ArraySegment<byte>(data, sent, count);
+                sent += count;
+                if (cancel.IsCancellationRequested) return WriteResult.CancelRequest;
+                return sent >= data.Length ? WriteResult.CompleteRequest : WriteResult.ContinueWriting;
+            },
+        };
+        PlayerDataStorageFileTransferRequest? request = null;
+        request = _platform!.GetPlayerDataStorageInterface().WriteFile(ref write, null, (ref WriteFileCallbackInfo info) =>
+        {
+            if (info.ResultCode == Result.Success) done.TrySetResult(true);
+            else Fail(done, $"saving '{name}'", info.ResultCode);
+            request?.Release();
+        });
+    });
 
     private static void Fail<T>(TaskCompletionSource<T> done, string what, Result result) =>
         done.TrySetException(new InvalidOperationException($"Online services failed {what}: {result}."));

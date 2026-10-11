@@ -74,6 +74,22 @@ public partial class OnlineService
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// The player's cloud files, signing in to the online services first when the player has an account (null: this
+    /// build has none, the player hasn't signed in with Discord, or the services can't be reached).
+    /// </summary>
+    public async Task<ICloudStorage?> CloudAsync()
+    {
+        if (Internet is not ICloudStorage cloud || !(Account.HasDiscord || Account.UsesDeviceAccount)) return null;
+        if (!Internet.IsAvailable)
+        {
+            SignIn(Settings.PlayerName);
+            try { if (_signIn is { } signIn) await signIn; }
+            catch (Exception) { /* the status says why */ }
+        }
+        return cloud.IsReady ? cloud : null;
+    }
+
     /// <summary>The hosted lobby as published: its invite code and what the browser shows.</summary>
     public LobbyListing? PublishedLobby => _published;
 

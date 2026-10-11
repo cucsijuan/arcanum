@@ -103,7 +103,15 @@ public partial class CareerScreen : Control
         BuildHud();
         AddChild(_preview);
         Career.SeasonChanged += Refresh;
-        TreeExiting += () => Career.SeasonChanged -= Refresh;
+        Career.CloudChanged += Refresh;
+        Career.AskConflict = AskCloudConflict;
+        TreeExiting += () =>
+        {
+            Career.SeasonChanged -= Refresh;
+            Career.CloudChanged -= Refresh;
+            Career.AskConflict = null;
+        };
+        _ = Career.SyncAsync();
 
         // A daily match left before it ended counts as lost.
         if (Career.HasCareer && State.Pending is { } pending)
@@ -1136,10 +1144,26 @@ public partial class CareerScreen : Control
         foreach (var note in Enumerable.Reverse(State.Notes))
             notes.AddChild(CareerStyle.Text($"{note.Utc.ToLocalTime():MMM d, HH:mm}  {note.Text}", 18, CareerStyle.InkDim, wrap: true));
         page.AddChild(Scrolled(notes));
+        if (Career.CloudStatus.Length > 0) page.AddChild(CareerStyle.Text(Career.CloudStatus, 18, CareerStyle.InkDim, wrap: true));
         var end = CareerStyle.Button("End this career", () => MenuKit.Modal(this, "End this career?", "Your cards, cash and career decks are gone for good (the save is kept as a backup file).", null,
             ("Keep playing", () => { }), ("End it", () => { Career.Abandon(); Refresh(); })), 16);
         end.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
         page.AddChild(end);
+    }
+
+    /// <summary>The career here and the cloud's went on separately: the player keeps one (the other is kept as a backup file).</summary>
+    private Task<bool?> AskCloudConflict(CareerSave mine, CareerSave theirs)
+    {
+        var answer = new TaskCompletionSource<bool?>();
+        static string Summary(CareerSave save) =>
+            $"{save.State.Day:MMM d}, {CareerRules.Money(save.State.Cash)}, {save.State.CollectionSize} cards, last played {save.State.LastUtc.ToLocalTime():MMM d HH:mm}";
+        MenuKit.Modal(this, "Two careers",
+            "Your career on this computer and the one in the cloud went on separately (played on two computers without syncing).\n\n"
+            + $"This computer: {Summary(mine)}\nThe cloud: {Summary(theirs)}\n\nWhich one do you keep? The other is saved as a backup file in the career's folder.", null,
+            ("Decide later", () => answer.TrySetResult(null)),
+            ("Use the cloud's", () => answer.TrySetResult(false)),
+            ("Keep this computer's", () => answer.TrySetResult(true)));
+        return answer.Task;
     }
 
     // ---------------------------------------------------------------- the store

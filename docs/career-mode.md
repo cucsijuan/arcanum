@@ -144,8 +144,13 @@ shows them and the pointer's position; Ctrl+click copies a point).
   which serves `/career/season/<module id>.json` as a static file. The game downloads it when it changed (at start;
   the screens refresh when it arrives) and keeps it; offline it uses the last one, or the module's own.
   `schemaVersion`: a file newer than the game understands is ignored (the last one stays).
-- **Player Data Storage** (per-user files): cloud copy of the career save, so it survives reinstalls and moves between
-  devices with the player's account (see *Accounts*).
+- **Player Data Storage** (per-user files): cloud copy of the career, so it survives reinstalls and moves between
+  devices with the player's account (see *Accounts*). The career's folder (save, career decks, an event in progress)
+  goes up as one zip (`career.zip`) a few seconds after each change and when the career opens. The journals decide:
+  the one that continues the other wins (a new device takes the cloud's); with the same journal the newer files win;
+  journals that went apart ask the player which to keep, and the other is kept as a backup zip in the career's folder.
+  Ending a career ends the cloud's too. Needs the product's encryption key (`EOS_ENCRYPTION_KEY`) and a client policy
+  with Player Data Storage; without a Discord sign-in the career stays on the device.
 - **Leaderboards / Stats:** rank per format, event wins, season standings.
 - **Server time:** dailies and event windows use the service's time when online (learned from the season download's
   answer); offline uses the local clock but never goes backwards from the last time seen.
