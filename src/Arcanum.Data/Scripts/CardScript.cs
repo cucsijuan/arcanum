@@ -687,6 +687,7 @@ public static partial class CardScriptParser
         "upkeep" => TriggerEvent.YourUpkeep,
         "endStep" => TriggerEvent.YourEndStep,
         "combatDamageToPlayer" => TriggerEvent.DealsCombatDamageToPlayer,
+        "combatDamageToPlayerOrPlaneswalker" => TriggerEvent.DealsCombatDamageToPlayerOrPlaneswalker,
         "blocks" => TriggerEvent.Blocks,
         "attacksOrBlocks" => TriggerEvent.AttacksOrBlocks,
         "creatureEnters" => TriggerEvent.CreatureEnters,

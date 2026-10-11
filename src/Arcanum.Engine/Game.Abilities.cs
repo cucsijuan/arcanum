@@ -5041,15 +5041,22 @@ public sealed partial class Game
                     Queue(card.Id, TriggerEvent.YourSourceDealsNoncombatDamageToOpponent, source.Controller, new TriggerInfo(source.Id, source.Version, burned, nd.Amount));
                 break;
             }
-            case DamageDealt { IsCombat: true, TargetCard: not null } cd2:
-                NoteCombatDamage(State.GetCard(cd2.Source), null, cd2.Amount);
+            case DamageDealt { IsCombat: true, TargetCard: { } dealtTo } cd2:
+            {
+                var source = State.GetCard(cd2.Source);
+                NoteCombatDamage(source, null, cd2.Amount);
+                var damaged = State.GetCard(dealtTo);
+                if (damaged.Is(CardType.Planeswalker))
+                    Queue(cd2.Source, TriggerEvent.DealsCombatDamageToPlayerOrPlaneswalker, source.Controller, About(source, damaged.Controller, cd2.Amount));
                 break;
+            }
             case DamageDealt { IsCombat: true, TargetPlayer: { } hurt } d:
             {
                 NoteCombatDamage(State.GetCard(d.Source), hurt, d.Amount);
                 var source = State.GetCard(d.Source);
                 QueueMonarchTaken(source, hurt);
                 Queue(d.Source, TriggerEvent.DealsCombatDamageToPlayer, source.Controller, About(source, hurt, d.Amount));
+                Queue(d.Source, TriggerEvent.DealsCombatDamageToPlayerOrPlaneswalker, source.Controller, About(source, hurt, d.Amount));
                 QueueObservers(TriggerEvent.CreatureDealsCombatDamageToPlayer, source, source.Controller, About(source, hurt, d.Amount));
                 break;
             }

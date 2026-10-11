@@ -362,6 +362,8 @@ public enum TriggerEvent
     CreatureBecomesBlocked,
     /// <summary>"Whenever a [filter] permanent becomes the target of a spell or ability you control" (subject: that permanent), also when a target is changed to it.</summary>
     BecomesTargetOfYours,
+    /// <summary>"Whenever this deals combat damage to a player or planeswalker": once for each player or planeswalker dealt damage (amount: that damage).</summary>
+    DealsCombatDamageToPlayerOrPlaneswalker,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
