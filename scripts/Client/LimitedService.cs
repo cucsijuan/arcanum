@@ -20,7 +20,20 @@ public sealed record LimitedSource(string Id, string Name, bool IsCube, int Boos
 /// </summary>
 public sealed class LimitedService : ILimitedSession
 {
-    private static string SavePath => ProjectSettings.GlobalizePath("user://limited/current.json");
+    private readonly string _savePath, _returnScene;
+    private readonly string? _table;
+
+    /// <param name="savePath">Where the event is saved (the career keeps its events apart from the Play screen's).</param>
+    /// <param name="returnScene">Where a game of the event goes back to.</param>
+    /// <param name="table">A table picture for the event's games (see <see cref="MatchSetup.Table"/>).</param>
+    public LimitedService(string savePath = "user://limited/current.json", string returnScene = App.LimitedScene, string? table = null)
+    {
+        _savePath = savePath;
+        _returnScene = returnScene;
+        _table = table;
+    }
+
+    private string SavePath => ProjectSettings.GlobalizePath(_savePath);
     private static string UserCubes => ProjectSettings.GlobalizePath("user://cubes");
 
     private DraftSession? _draft;
@@ -117,6 +130,32 @@ public sealed class LimitedService : ILimitedSession
             ? App.Instance.Module!.ReadCube(parts[2])
             : File.ReadAllText(System.IO.Path.Combine(UserCubes, parts[2] + ".txt"));
         return CubeBoosters.CardsFrom(DeckList.Parse(text), Cards, unknown);
+    }
+
+    /// <summary>
+    /// Starts an event made elsewhere (the career's calendar): a draft begins drafting, sealed opens the pools, and
+    /// seats that all have their decks already (a constructed event) go straight to the first round.
+    /// </summary>
+    public void Begin(LimitedEvent ev, Random random)
+    {
+        _random = random;
+        Current = ev;
+        _draft = null;
+        if (ev.Seats.All(s => s.Deck is not null)) StartPlaying();
+        else if (ev.Mode == LimitedMode.Draft)
+        {
+            ev.Stage = EventStage.Drafting;
+            _draft = new DraftSession(SourceFor(ev), ev.Seats.Count, ev.BoostersPerPlayer, _random);
+            BotPicks();
+        }
+        else
+        {
+            var boosters = SourceFor(ev);
+            foreach (var seat in ev.Seats)
+                for (int i = 0; i < ev.BoostersPerPlayer; i++) seat.Pool.AddRange(boosters.Open(_random));
+            FinishPools();
+        }
+        Save();
     }
 
     /// <summary>Opens boosters for an event; a cube leaves out the cards already opened (<paramref name="opened"/>).</summary>
@@ -390,7 +429,8 @@ public sealed class LimitedService : ILimitedSession
         return new MatchSetup(seats, 20)
         {
             Event = new EventHook(winner => RecordGame(match, winner is null ? null : winner == 0 ? human : opponent),
-                App.LimitedScene, $"Round {ev.Rounds.Count} · game {game}"),
+                _returnScene, $"Round {ev.Rounds.Count} · game {game}"),
+            Table = _table,
         };
     }
 

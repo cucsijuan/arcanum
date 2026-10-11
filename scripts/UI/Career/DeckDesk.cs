@@ -4,6 +4,7 @@ using Arcanum.Data.CardData;
 using Arcanum.Data.Career;
 using Arcanum.Data.Decks;
 using Arcanum.Data.Formats;
+using Arcanum.Data.Limited;
 using Arcanum.Engine.Cards;
 using Arcanum.Engine.Core;
 using Arcanum.Engine.Mana;
@@ -22,6 +23,18 @@ namespace Arcanum.UI.Career;
 /// </summary>
 public partial class DeckDesk : Control
 {
+    /// <summary>
+    /// A deck built from an event's pool instead of the collection: the pool, the deck so far, what's wrong with a deck,
+    /// a deck built automatically, and what happens when the player leaves (keeping the deck) or is done.
+    /// </summary>
+    public sealed record PoolBuild(IReadOnlyList<PoolCard> Pool, DeckList Deck, Func<DeckList, List<string>> Problems,
+        Func<DeckList> AutoBuild, Action<DeckList> Keep, Action<DeckList> Done);
+
+    /// <summary>Set before opening the desk to build from a pool (an event's); null builds career decks.</summary>
+    public static PoolBuild? Building { get; set; }
+
+    private PoolBuild? _pool;
+
     private const int Columns = 6, Rows = 3;
     private static readonly string[] ColumnNames = { "1", "2", "3", "4", "5", "6+", "Lands" };
     private static readonly (string Label, CardType Type)[] TypeFilters =
@@ -56,6 +69,8 @@ public partial class DeckDesk : Control
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
         Theme = CareerStyle.Notes;
+        _pool = Building;
+        Building = null;
         if (!Career.HasCareer || App.Instance.Cards is null)
         {
             Callable.From(() => App.Instance.GoTo(App.CareerScene)).CallDeferred();
@@ -65,6 +80,12 @@ public partial class DeckDesk : Control
         BuildLayout();
         _preview.Size = new Vector2(300, 418);
         AddChild(_preview);
+        if (_pool is not null)
+        {
+            _deck = DeckList.Parse(_pool.Deck.Export());
+            Refresh();
+            return;
+        }
         RefreshSaved();
         if (_saved.Count > 0) Load(_saved[0]);
         else NewDeck();
@@ -145,7 +166,6 @@ public partial class DeckDesk : Control
 
     private void BuildLayout()
     {
-        var light = new Color(1f, 0.95f, 0.85f);
         _top.AddThemeConstantOverride("separation", 10);
         _top.Alignment = BoxContainer.AlignmentMode.Center;
         AddChild(_top);
@@ -153,9 +173,24 @@ public partial class DeckDesk : Control
         // Above the mat: leave, the deck chosen, its name, saving; then the filters.
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 10);
-        var back = CareerStyle.Button("< Room", Leave, 20);
-        back.TooltipText = "Back to your room (Esc)";
+        var back = CareerStyle.Button(_pool is null ? "< Room" : "< Event", Leave, 20);
+        back.TooltipText = _pool is null ? "Back to your room (Esc)" : "Back to the event, keeping this deck (Esc)";
         row.AddChild(back);
+        if (_pool is { } pool)
+        {
+            row.AddChild(CareerStyle.Text("Build your deck from the cards you drafted: 40 cards or more, basic lands are free.", 20, new Color(1f, 0.95f, 0.85f)));
+            row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+            row.AddChild(CareerStyle.Button("Build for me", () => { _deck = pool.AutoBuild(); Refresh(); }, 20));
+            var done = CareerStyle.Button("Done", () =>
+            {
+                if (pool.Problems(_deck) is [var first, ..]) MenuKit.Toast(this, first);
+                else pool.Done(_deck);
+            }, 20, primary: true);
+            row.AddChild(done);
+            _top.AddChild(row);
+            BuildFilters();
+            return;
+        }
         _decks.ItemSelected += i =>
         {
             int index = (int)i;
@@ -169,6 +204,12 @@ public partial class DeckDesk : Control
         row.AddChild(CareerStyle.Button("Delete", AskDelete, 20));
         row.AddChild(CareerStyle.Button("Save", Save, 20, primary: true));
         _top.AddChild(row);
+        BuildFilters();
+    }
+
+    private void BuildFilters()
+    {
+        var light = new Color(1f, 0.95f, 0.85f);
 
         var filters = new HBoxContainer();
         filters.AddThemeConstantOverride("separation", 8);
@@ -237,7 +278,10 @@ public partial class DeckDesk : Control
     /// <summary>The cards owned that pass the filters, one per name (with the printing owned most), by mana value.</summary>
     private List<Owned> OwnedCards()
     {
-        var owned = Career.State.Cards
+        var cards = _pool is not null
+            ? _pool.Pool.Select(c => (Card: CardKey.Of(c), Count: 1))
+            : Career.State.Cards;
+        var owned = cards
             .GroupBy(c => c.Card.Name, StringComparer.OrdinalIgnoreCase)
             .Select(g => (Entry: Cards.Find(g.Key), Best: g.OrderByDescending(c => c.Count).First().Card, Count: g.Sum(c => c.Count)))
             .Where(x => x.Entry is not null && !Career.World!.IsBasicLand(x.Entry.Name))
@@ -386,7 +430,7 @@ public partial class DeckDesk : Control
 
         int total = _deck.Main.Sum(e => e.Count);
         _count.Text = $"{total} cards";
-        var problems = Career.Missing(_deck).Select(m => $"You have {m.Owned} of the {m.Needed} {m.Name}.")
+        var problems = _pool is not null ? _pool.Problems(_deck) : Career.Missing(_deck).Select(m => $"You have {m.Owned} of the {m.Needed} {m.Name}.")
             .Concat(DeckValidator.Validate(_deck, FormatRules.Casual, Cards).Where(i => i.Severity == IssueSeverity.Error).Select(i => i.Message)).ToList();
         _problems.Text = problems.Count == 0 ? "Ready to play." : string.Join("\n", problems.Take(3));
         _problems.AddThemeColorOverride("font_color", problems.Count == 0 ? CareerStyle.Good : CareerStyle.Bad);
@@ -478,7 +522,11 @@ public partial class DeckDesk : Control
             ("Keep editing", () => cancelled?.Invoke()), ("Discard", proceed));
     }
 
-    private void Leave() => Confirm(() => App.Instance.GoTo(App.CareerScene));
+    private void Leave()
+    {
+        if (_pool is not null) _pool.Keep(_deck);
+        else Confirm(() => App.Instance.GoTo(App.CareerScene));
+    }
 
     // ---------------------------------------------------------------- helpers
 

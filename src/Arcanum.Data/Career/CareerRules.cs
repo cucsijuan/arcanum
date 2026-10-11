@@ -54,6 +54,8 @@ public static class CareerRules
                 OpenBooster open => Open(state, open, world),
                 SellCard sell => Sell(state, sell, world),
                 TakeOffer offer => Take(state, offer, world),
+                EnterEvent enter => Enter(state, enter, world),
+                FinishEvent finish => Finish(state, finish, world),
                 _ => throw new CareerRuleException($"Unknown career action {action.GetType().Name}."),
             };
         }
@@ -469,6 +471,119 @@ public static class CareerRules
         if (state.OffersTaken.Count > 60) state.OffersTaken.RemoveAt(0);
         return new CareerResult(new[] { new PoolCard(get.Name, get.Set.ToLowerInvariant(), get.Number, "") }, offer.Kind == Bargain ? -offer.Price : 0);
     }
+
+    // ---------------------------------------------------------------- the calendar
+
+    public const string Draft = "draft", Constructed = "constructed";
+    public const string PayCash = "cash", PayBoosters = "boosters", PayTokens = "tokens";
+
+    /// <summary>The store's events on a day (UTC).</summary>
+    public static IReadOnlyList<EventSpec> EventsOn(CareerWorld world, DateOnly day) =>
+        world.Content.Events.Where(e => Happens(e, day)).ToList();
+
+    public static bool Happens(EventSpec e, DateOnly day) => e.When.Equals("lastSunday", StringComparison.OrdinalIgnoreCase)
+        ? day.DayOfWeek == DayOfWeek.Sunday && day.AddDays(7).Month != day.Month
+        : Enum.TryParse<DayOfWeek>(e.When, true, out var weekday) && day.DayOfWeek == weekday;
+
+    /// <summary>The next day (from <paramref name="from"/>, included) the event happens.</summary>
+    public static DateOnly NextDay(EventSpec e, DateOnly from)
+    {
+        for (int i = 0; i < 40; i++) if (Happens(e, from.AddDays(i))) return from.AddDays(i);
+        return from;
+    }
+
+    /// <summary>The set a draft event opens on a day.</summary>
+    public static string EventSet(CareerWorld world, EventSpec e, DateOnly day) =>
+        (e.Set.Equals("featured", StringComparison.OrdinalIgnoreCase) ? world.FeaturedSet(day) : e.Set).ToLowerInvariant();
+
+    public static bool Played(CareerState state, EventSpec e, DateOnly day) => state.EventsPlayed.Contains($"{day.DayNumber}:{e.Id}");
+
+    /// <summary>What the player wins with a record and a place: the first prize that fits.</summary>
+    public static PrizeSpec? PrizeFor(EventSpec e, int wins, int place) =>
+        e.Prizes.FirstOrDefault(p => p.Wins >= 0 ? wins >= p.Wins : p.Place == 0 || place <= p.Place);
+
+    private static CareerResult Enter(CareerState state, EnterEvent enter, CareerWorld world)
+    {
+        if (state.Event is not null) throw new CareerRuleException("You are already in an event.");
+        if (state.Pending is not null) throw new CareerRuleException("Finish your match first.");
+        var e = world.Content.Events.FirstOrDefault(x => x.Id == enter.Event) ?? throw new CareerRuleException("There is no such event.");
+        if (!Happens(e, state.Day)) throw new CareerRuleException($"{e.Name} isn't today.");
+        if (Played(state, e, state.Day)) throw new CareerRuleException($"You already played {e.Name} today.");
+        if (Tier(state, world) < e.MinTier) throw new CareerRuleException($"{e.Name} needs a {world.Content.Tiers[Math.Min(e.MinTier, world.Content.Tiers.Count - 1)].Name}'s reputation.");
+        string deck = "";
+        if (e.Kind == Constructed)
+        {
+            if (enter.Deck is null) throw new CareerRuleException("Choose a deck.");
+            PlayableDeck(enter.Deck, state, world);
+            deck = enter.Deck;
+        }
+        var set = e.Kind == Draft ? EventSet(world, e, state.Day) : "";
+        switch (enter.Pay)
+        {
+            case PayCash: Pay(state, e.Entry); break;
+            case PayBoosters when e.EntryBoosters > 0 && e.Kind == Draft:
+                if (state.Sealed.GetValueOrDefault(set) < e.EntryBoosters) throw new CareerRuleException($"It takes {e.EntryBoosters} {world.SetName(set)} boosters.");
+                state.AddSealed(set, -e.EntryBoosters);
+                break;
+            case PayTokens when e.EntryTokens > 0:
+                if (state.Tokens < e.EntryTokens) throw new CareerRuleException($"It takes {e.EntryTokens} qualification token{(e.EntryTokens == 1 ? "" : "s")}.");
+                state.Tokens -= e.EntryTokens;
+                break;
+            default: throw new CareerRuleException("That's no way to pay this entry.");
+        }
+        var seed = (ulong)CareerRandom.For(state.Seed, "event:" + e.Id, state.Day.DayNumber).NextInt64();
+        state.Event = new EventEntry(e.Id, state.Day, seed, set, deck);
+        state.EventsPlayed.Add($"{state.Day.DayNumber}:{e.Id}");
+        if (state.EventsPlayed.Count > 100) state.EventsPlayed.RemoveAt(0);
+        state.Note(enter.Utc, $"Entered {e.Name}.");
+        return new CareerResult(Array.Empty<PoolCard>(), enter.Pay == PayCash ? -e.Entry : 0);
+    }
+
+    private static CareerResult Finish(CareerState state, FinishEvent finish, CareerWorld world)
+    {
+        var entry = state.Event ?? throw new CareerRuleException("You aren't in an event.");
+        var e = world.Content.Events.FirstOrDefault(x => x.Id == entry.Id) ?? throw new CareerRuleException("There is no such event.");
+        if (finish.Wins + finish.Losses + finish.Draws > e.Rounds || finish.Place < 1 || finish.Place > e.Players)
+            throw new CareerRuleException("That result can't be.");
+        var pool = new List<PoolCard>();
+        if (e.Kind == Draft)
+        {
+            // The drafted cards are the player's to keep: of the event's set (or a sheet of its boosters), a draft's worth.
+            var generator = world.Generator(entry.Set);
+            int expected = world.Sets[entry.Set].BoostersPerPlayer * generator.Set.Booster!.CardCount;
+            var cards = (finish.Pool ?? Array.Empty<string>()).Select(CardKey.Parse).ToList();
+            if (cards.Count > expected || cards.Any(c => world.Cards.Find(c.Name) is null)) throw new CareerRuleException("Those aren't the cards of this draft.");
+            foreach (var card in cards)
+            {
+                state.AddCard(card, 1);
+                pool.Add(new PoolCard(card.Name, card.Set.ToLowerInvariant(), card.Number, ""));
+            }
+        }
+        state.Event = null;
+        state.Wins += finish.Wins;
+        state.Losses += finish.Losses;
+        // The event's wins count for the week's "win matches" challenges.
+        foreach (var challenge in WeekChallenges(state, world, state.Day).Where(c => c.Kind == "winMatch"))
+            for (int i = 0; i < finish.Wins; i++) AdvanceChallenge(state, world, finish.Utc, challenge);
+        var prize = PrizeFor(e, finish.Wins, finish.Place);
+        var won = new List<string>();
+        if (prize is not null)
+        {
+            state.Cash += prize.Cash;
+            var set = (e.Kind == Draft ? entry.Set : world.FeaturedSet(entry.Day)).ToLowerInvariant();
+            if (prize.Boosters > 0) state.AddSealed(set, prize.Boosters);
+            state.Tokens += prize.Tokens;
+            state.Reputation += prize.Reputation;
+            if (prize.Cash > 0) won.Add(Money(prize.Cash));
+            if (prize.Boosters > 0) won.Add($"{prize.Boosters} {world.SetName(set)} booster{(prize.Boosters == 1 ? "" : "s")}");
+            if (prize.Tokens > 0) won.Add($"{prize.Tokens} qualification token{(prize.Tokens == 1 ? "" : "s")}");
+        }
+        state.Note(finish.Utc, $"{e.Name}: {Ordinal(finish.Place)} of {e.Players}, {finish.Wins}-{finish.Losses}{(finish.Draws > 0 ? $"-{finish.Draws}" : "")}"
+            + (won.Count > 0 ? $"; won {string.Join(", ", won)}." : "."));
+        return new CareerResult(pool, prize?.Cash ?? 0);
+    }
+
+    public static string Ordinal(int n) => n + (n % 100 is 11 or 12 or 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
 
     // ---------------------------------------------------------------- challenges
 

@@ -41,6 +41,7 @@ public partial class App : Node
     public const string OnlineScene = "res://scenes/online/Online.tscn";
     public const string CareerScene = "res://scenes/career/Career.tscn";
     public const string DeckDeskScene = "res://scenes/career/DeckDesk.tscn";
+    public const string EventScene = "res://scenes/career/Event.tscn";
 
     public const string SourceUrl = "https://github.com/cucsijuan/arcanum";
 

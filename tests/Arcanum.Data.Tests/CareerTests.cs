@@ -67,6 +67,13 @@ public class CareerTests
             { "id": "open", "text": "Open a booster", "kind": "openBoosters", "count": 1, "boosters": 1 }
           ],
           "challengesPerWeek": 2,
+          "events": [
+            { "id": "draft", "name": "Draft night", "when": "Wednesday", "kind": "draft", "players": 8, "rounds": 3, "entry": 1500, "entryBoosters": 3,
+              "prizes": [{ "wins": 3, "boosters": 6, "reputation": 10 }, { "wins": 2, "boosters": 3 }, { "wins": 0, "reputation": 1 }] },
+            { "id": "sat", "name": "Saturday tournament", "when": "Saturday", "kind": "constructed", "players": 8, "rounds": 3, "entry": 2000,
+              "prizes": [{ "place": 1, "cash": 10000, "tokens": 1 }, { "place": 4, "cash": 2000 }, { "reputation": 2 }] },
+            { "id": "champ", "name": "Championship", "when": "lastSunday", "kind": "constructed", "players": 16, "rounds": 4, "entry": 5000, "entryTokens": 1, "minTier": 1 }
+          ],
           "opponents": [
             { "id": "ana", "name": "Ana", "decks": ["other"] },
             { "id": "bo", "name": "Bo", "decks": ["starter"] },
@@ -407,5 +414,58 @@ public class CareerTests
         Assert.Equal(later.Export(), CareerRules.OpponentDeck(state, world, "dee", "sixty").Export());
         // A regular who isn't a rival keeps their deck.
         Assert.Equal(world.Deck("other").Export(), CareerRules.OpponentDeck(state, world, "ana", "other").Export());
+    }
+
+    [Fact]
+    public void EventsHappenOnTheirDays()
+    {
+        var world = World();
+        var wednesday = new DateOnly(2026, 10, 14);
+        Assert.Equal(new[] { "draft" }, CareerRules.EventsOn(world, wednesday).Select(e => e.Id));
+        Assert.Empty(CareerRules.EventsOn(world, wednesday.AddDays(1)));
+        Assert.Equal(new[] { "champ" }, CareerRules.EventsOn(world, new DateOnly(2026, 10, 25)).Select(e => e.Id)); // the last Sunday of October
+        Assert.Empty(CareerRules.EventsOn(world, new DateOnly(2026, 10, 18)));
+        Assert.Equal(wednesday, CareerRules.NextDay(world.Content.Events[0], new DateOnly(2026, 10, 12)));
+    }
+
+    [Fact]
+    public void ADraftNightIsEnteredOnceAndItsCardsAndPrizesAreKept()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(T0.AddMinutes(1), "draft", CareerRules.PayCash), world)); // Monday
+        var wednesday = T0.AddDays(2);
+        Do(state, journal, world, new EnterEvent(wednesday, "draft", CareerRules.PayBoosters));
+        Assert.False(state.Sealed.ContainsKey("abc")); // the three starting boosters paid for it
+        Assert.Equal("abc", state.Event!.Set);
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(wednesday.AddMinutes(1), "draft", CareerRules.PayCash), world));
+        int before = state.CollectionSize;
+        var pool = Enumerable.Range(1, 24).Select(i => new CardKey($"Card {1 + i % 15}", "ABC", $"{1 + i % 15}").ToString()).ToList();
+        Do(state, journal, world, new FinishEvent(wednesday.AddHours(2), 2, 1, 0, 3, pool));
+        Assert.Equal(before + 24, state.CollectionSize);
+        Assert.Equal(3, state.Sealed["abc"]);
+        Assert.Null(state.Event);
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(wednesday.AddHours(3), "draft", CareerRules.PayCash), world));
+    }
+
+    [Fact]
+    public void ConstructedEventsTakeAnOwnedDeckAndPayByPlace()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        state.Cash = 5000;
+        var saturday = T0.AddDays(5);
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(saturday, "sat", CareerRules.PayCash), world));
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(saturday, "sat", CareerRules.PayCash, "8 Card 1\n52 Card 19"), world));
+        Do(state, journal, world, new EnterEvent(saturday, "sat", CareerRules.PayCash, Sixty));
+        Assert.Equal(3000, state.Cash);
+        Do(state, journal, world, new FinishEvent(saturday.AddHours(2), 3, 0, 0, 1));
+        Assert.Equal(13000, state.Cash);
+        Assert.Equal(1, state.Tokens);
+
+        // The championship takes a token, but only from a Regular.
+        var sunday = T0.AddDays(13);
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(sunday, "champ", CareerRules.PayTokens, Sixty), world));
+        state.Reputation = 10;
+        Do(state, journal, world, new EnterEvent(sunday, "champ", CareerRules.PayTokens, Sixty));
+        Assert.Equal(0, state.Tokens);
     }
 }

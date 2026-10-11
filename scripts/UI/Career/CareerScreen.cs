@@ -125,7 +125,7 @@ public partial class CareerScreen : Control
     /// <summary>
     /// Testing: ARCANUM_CAREER_START=&lt;starting deck&gt; starts a career when there is none; ARCANUM_CAREER_PAGE=&lt;page&gt; opens
     /// store, boosters, precons, counter, a website page (Matches, Practice, Challenges, Events, Market, Cards), opening
-    /// (the first unopened booster), decks (the deck builder), daily or ante (plays one).
+    /// (the first unopened booster), decks (the deck builder), daily or ante (plays one), enter (today's first event), event (the event entered).
     /// </summary>
     private bool RunTestHooks()
     {
@@ -145,6 +145,14 @@ public partial class CareerScreen : Control
                 var list = Career.Decks.Load(anteDeck).Deck;
                 Career.Do(new StartAnte(Career.Now, CareerRules.Opponents(State, World)[0].Id, list.Export()));
                 Play(list, WebPage.Practice);
+                return true;
+            case "event" when Career.CurrentEvent() is not null:
+                App.Instance.GoTo(App.EventScene);
+                return true;
+            case "enter" when CareerRules.EventsOn(World, CareerRules.DayOf(Career.Now)) is [var today, ..]:
+                Career.Enter(today, today.Kind == CareerRules.Draft ? CareerRules.PayBoosters : CareerRules.PayCash,
+                    today.Kind == CareerRules.Constructed ? Career.Decks.Load(Career.Decks.List(null)[0]).Deck : null);
+                App.Instance.GoTo(App.EventScene);
                 return true;
             case "store": GoTo(Place.Store); return true;
             case "boosters" or "precons" or "counter" or "offers": GoTo(Place.Store); OnStore(test.ToLowerInvariant()); return true;
@@ -665,11 +673,98 @@ public partial class CareerScreen : Control
         }
     }
 
-    private static void EventsPage(VBoxContainer page)
+    /// <summary>The calendar: the event the player is in, today's events with their entries, and what comes next.</summary>
+    private void EventsPage(VBoxContainer page)
     {
-        page.AddChild(CareerStyle.Text("Events calendar", 28));
-        page.AddChild(CareerStyle.Text("Coming soon to the store: draft nights, commander nights, the Saturday tournament and the monthly championship. "
-            + "Keep playing your daily matches and building your collection!", 20, CareerStyle.InkDim, wrap: true));
+        var now = Career.Now;
+        var today = CareerRules.DayOf(now);
+        if (Career.CurrentEvent() is var (current, entry, _))
+        {
+            page.AddChild(CareerStyle.Text($"You are playing {current.Name} ({entry.Day:dddd})", 28, CareerStyle.TitleBar));
+            page.AddChild(CareerStyle.Button("Go to the event", () => App.Instance.GoTo(App.EventScene), 24, primary: true));
+            return;
+        }
+
+        var list = new VBoxContainer();
+        list.AddThemeConstantOverride("separation", 10);
+        var todays = CareerRules.EventsOn(World, today);
+        list.AddChild(CareerStyle.Text(todays.Count == 0 ? $"No event today ({today:dddd})." : $"Today, {today:dddd}", 28, CareerStyle.TitleBar));
+        DeckList? deck = null;
+        List<string> problems = new();
+        if (todays.Any(e => e.Kind == CareerRules.Constructed))
+            if (DeckPicker(list) is var (chosen, issues)) (deck, problems) = (chosen, issues);
+        foreach (var e in todays) EventRow(list, e, today, deck, problems);
+
+        list.AddChild(new Control { CustomMinimumSize = new Vector2(0, 10) });
+        list.AddChild(CareerStyle.Text("Coming up", 26, CareerStyle.TitleBar));
+        foreach (var e in World.Content.Events.OrderBy(e => CareerRules.NextDay(e, today.AddDays(1))))
+        {
+            var day = CareerRules.NextDay(e, today.AddDays(1));
+            list.AddChild(CareerStyle.Text($"{day:dddd, MMMM d}: {e.Name}. {Describe(e, day)}", 18, CareerStyle.InkDim, wrap: true));
+        }
+        list.AddChild(CareerStyle.Text($"Qualification tokens: {State.Tokens}", 18, CareerStyle.InkDim));
+        page.AddChild(Scrolled(list));
+    }
+
+    private static string Describe(EventSpec e, DateOnly day)
+    {
+        var kind = e.Kind == CareerRules.Draft ? $"Draft of {World.SetName(CareerRules.EventSet(World, e, day))}" : "Constructed, bring your deck";
+        var entry = new List<string> { CareerRules.Money(e.Entry) };
+        if (e.EntryBoosters > 0) entry.Add($"{e.EntryBoosters} boosters of the set");
+        if (e.EntryTokens > 0) entry.Add($"{e.EntryTokens} qualification token{(e.EntryTokens == 1 ? "" : "s")}");
+        var tier = e.MinTier > 0 ? $" For {World.Content.Tiers[Math.Min(e.MinTier, World.Content.Tiers.Count - 1)].Name}s and up." : "";
+        return $"{kind}, {e.Players} players, {e.Rounds} rounds{(e.BestOf > 1 ? $" (best of {e.BestOf})" : "")}. Entry: {string.Join(" or ", entry)}.{tier}";
+    }
+
+    private void EventRow(VBoxContainer list, EventSpec e, DateOnly day, DeckList? deck, List<string> problems)
+    {
+        list.AddChild(CareerStyle.Text(e.Name, 26));
+        list.AddChild(CareerStyle.Text(Describe(e, day), 19, CareerStyle.InkDim, wrap: true));
+        var prizes = e.Prizes.Select(p => (p.Wins >= 0 ? $"{p.Wins} wins" : p.Place switch { 0 => "everyone else", 1 => "1st", _ => $"top {p.Place}" }) + ": "
+            + string.Join(", ", new[]
+            {
+                p.Cash > 0 ? CareerRules.Money(p.Cash) : null, p.Boosters > 0 ? $"{p.Boosters} boosters" : null,
+                p.Tokens > 0 ? $"{p.Tokens} token{(p.Tokens == 1 ? "" : "s")}" : null, p.Reputation > 0 ? $"{p.Reputation} reputation" : null,
+            }.OfType<string>()));
+        list.AddChild(CareerStyle.Text("Prizes: " + string.Join(" · ", prizes), 17, CareerStyle.InkDim, wrap: true));
+        if (CareerRules.Played(State, e, day))
+        {
+            list.AddChild(CareerStyle.Text("You played it today.", 19, CareerStyle.Good));
+            return;
+        }
+        if (CareerRules.Tier(State, World) < e.MinTier)
+        {
+            list.AddChild(CareerStyle.Text("Your reputation isn't high enough yet.", 19, CareerStyle.Bad));
+            return;
+        }
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        void Way(string pay, string text, bool can)
+        {
+            var b = CareerStyle.Button(text, () =>
+            {
+                try
+                {
+                    Career.Enter(e, pay, e.Kind == CareerRules.Constructed ? deck : null);
+                    App.Instance.GoTo(App.EventScene);
+                }
+                catch (CareerRuleException x)
+                {
+                    MenuKit.Toast(this, x.Message);
+                    Refresh();
+                }
+            }, 20, primary: true);
+            b.Disabled = !can || (e.Kind == CareerRules.Constructed && (deck is null || problems.Count > 0));
+            row.AddChild(b);
+        }
+        Way(CareerRules.PayCash, $"Enter · {CareerRules.Money(e.Entry)}", State.Cash >= e.Entry);
+        if (e.Kind == CareerRules.Draft && e.EntryBoosters > 0)
+        {
+            var set = CareerRules.EventSet(World, e, day);
+            Way(CareerRules.PayBoosters, $"Enter · {e.EntryBoosters} boosters", State.Sealed.GetValueOrDefault(set) >= e.EntryBoosters);
+        }
+        if (e.EntryTokens > 0) Way(CareerRules.PayTokens, $"Enter · {e.EntryTokens} token{(e.EntryTokens == 1 ? "" : "s")}", State.Tokens >= e.EntryTokens);
+        list.AddChild(row);
     }
 
     private void CardsPage(VBoxContainer page)

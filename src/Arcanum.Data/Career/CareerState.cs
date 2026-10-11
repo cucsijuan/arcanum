@@ -45,6 +45,9 @@ public sealed record PendingMatch(string OpponentId, string Deck, string Reward 
 /// <summary>One of a day's offers: a regular sells <see cref="Get"/> for <see cref="Price"/>, or trades it for <see cref="Give"/> (CardKey texts).</summary>
 public sealed record CareerOffer(int Index, string Kind, string OpponentId, string Get, string Give, int Price);
 
+/// <summary>An event entered: which, on what day, its seed (its boosters and pairings), the set drafted or the deck played.</summary>
+public sealed record EventEntry(string Id, DateOnly Day, ulong Seed, string Set = "", string Deck = "");
+
 /// <summary>Something that happened in the career, newest last (shown on the hub).</summary>
 public sealed record CareerNote(DateTime Utc, string Text);
 
@@ -100,6 +103,15 @@ public sealed class CareerState
     /// <summary>The store's offers of <see cref="OffersDay"/>, made when the day began (from the collection as it was then).</summary>
     public List<CareerOffer> Offers { get; set; } = new();
     public DateOnly OffersDay { get; set; }
+
+    /// <summary>The event the player is in (entered, not finished yet).</summary>
+    public EventEntry? Event { get; set; }
+
+    /// <summary>Events played, as "day number:event id" (one entry a day each).</summary>
+    public List<string> EventsPlayed { get; set; } = new();
+
+    /// <summary>Qualification tokens won (some events take them as entry).</summary>
+    public int Tokens { get; set; }
 
     /// <summary>The store's offers taken, as "day number:offer index".</summary>
     public List<string> OffersTaken { get; set; } = new();

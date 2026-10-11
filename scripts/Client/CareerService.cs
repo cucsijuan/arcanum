@@ -2,6 +2,7 @@
 using Arcanum.Data.CardData;
 using Arcanum.Data.Career;
 using Arcanum.Data.Decks;
+using Arcanum.Data.Limited;
 using Arcanum.Data.Modules;
 using Godot;
 
@@ -133,6 +134,100 @@ public sealed class CareerService
             Event = new EventHook(winner => Do(new FinishMatch(Now, winner == 0)), App.CareerScene, title) { ReturnText = "Back home" },
             Table = ResourceLoader.Exists(TableImage) ? TableImage : null,
         };
+    }
+
+    // ---------------------------------------------------------------- the calendar's events
+
+    private LimitedService? _events;
+
+    /// <summary>The event entered, run like the Play screen's limited events but kept with the career and played on the store's table.</summary>
+    public LimitedService Events => _events ??= new LimitedService(Folder + "/event.json", App.EventScene, ResourceLoader.Exists(TableImage) ? TableImage : null);
+
+    /// <summary>The calendar event entered, if any, with its running event (rebuilt from its seed when its file is gone).</summary>
+    public (EventSpec Spec, EventEntry Entry, LimitedEvent Running)? CurrentEvent()
+    {
+        if (!HasCareer || State.Event is not { } entry || World!.Content.Events.FirstOrDefault(e => e.Id == entry.Id) is not { } spec) return null;
+        Events.Load();
+        if (Events.Current is null) Begin(spec, entry);
+        return (spec, entry, Events.Current!);
+    }
+
+    /// <summary>Enters today's event (paying as chosen) and sets it up: the seats, and the draft or the decks.</summary>
+    public void Enter(EventSpec spec, string pay, DeckList? deck)
+    {
+        Events.Abandon(); // any leftover of an earlier event
+        Do(new EnterEvent(Now, spec.Id, pay, deck?.Export()));
+        Begin(spec, State.Event!);
+    }
+
+    private void Begin(EventSpec spec, EventEntry entry)
+    {
+        var world = World!;
+        var random = new Random((int)(entry.Seed & 0x7FFFFFFF));
+        // The regulars come first (in a random order), then visitors.
+        var regulars = world.Content.Opponents.OrderBy(_ => random.Next()).ToList();
+        var visitors = world.Content.Visitors.OrderBy(_ => random.Next()).ToList();
+        var seats = new List<EventSeat> { new() { Name = Settings.PlayerName, IsHuman = true, Deck = spec.Kind == CareerRules.Constructed ? DeckList.Parse(entry.Deck) : null } };
+        for (int i = 1; i < spec.Players; i++)
+        {
+            DeckList? deck = null;
+            string name;
+            if (i - 1 < regulars.Count)
+            {
+                var regular = regulars[i - 1];
+                name = regular.Name;
+                if (spec.Kind == CareerRules.Constructed) deck = CareerRules.OpponentDeck(State, world, regular.Id, regular.Decks[random.Next(regular.Decks.Count)]);
+            }
+            else
+            {
+                int v = i - 1 - regulars.Count;
+                name = v < visitors.Count ? visitors[v] : $"Visitor {v + 1}";
+                if (spec.Kind == CareerRules.Constructed && world.Content.Precons.Count > 0)
+                    deck = world.Deck(world.Content.Precons[random.Next(world.Content.Precons.Count)].Deck);
+            }
+            seats.Add(new EventSeat { Name = name, Deck = deck });
+        }
+        var ev = new LimitedEvent
+        {
+            Mode = spec.Kind == CareerRules.Draft ? LimitedMode.Draft : LimitedMode.Sealed,
+            Source = spec.Kind == CareerRules.Draft ? "set:" + entry.Set : "constructed:" + spec.Id,
+            BestOf = spec.BestOf, Seed = (int)(entry.Seed & 0x7FFFFFFF), RoundsTotal = spec.Rounds, Seats = seats,
+            BoostersPerPlayer = spec.Kind == CareerRules.Draft ? world.Sets[entry.Set].BoostersPerPlayer : 0,
+        };
+        Events.Begin(ev, random);
+    }
+
+    /// <summary>The player's record in the running event: wins, losses, draws (byes are wins).</summary>
+    public static (int Wins, int Losses, int Draws) Record(LimitedEvent ev)
+    {
+        int me = ev.HumanSeat, wins = 0, losses = 0, draws = 0;
+        foreach (var m in ev.Rounds.SelectMany(r => r).Where(m => m.Done && m.Involves(me)))
+        {
+            if (m.SeatB is null) { wins++; continue; }
+            int mine = m.WinsOf(me), theirs = m.WinsOf(m.Opponent(me)!.Value);
+            if (mine > theirs) wins++;
+            else if (mine < theirs) losses++;
+            else draws++;
+        }
+        return (wins, losses, draws);
+    }
+
+    /// <summary>
+    /// Ends the event: its result (dropping out early ends it with the record so far, in last place), the drafted cards
+    /// kept, the prizes; returns what the career's rules gave.
+    /// </summary>
+    public CareerResult FinishEvent(bool drop = false)
+    {
+        var (spec, _, ev) = CurrentEvent() ?? throw new CareerRuleException("You aren't in an event.");
+        var (wins, losses, draws) = Record(ev);
+        int place = drop || ev.Stage != EventStage.Finished ? spec.Players : ev.Standings().IndexOf(ev.HumanSeat) + 1;
+        var pool = spec.Kind == CareerRules.Draft
+            ? (ev.Stage == EventStage.Drafting ? Events.Draft?.Picks[ev.HumanSeat] ?? new List<Arcanum.Data.Limited.PoolCard>() : ev.Seats[ev.HumanSeat].Pool)
+                .Select(c => CardKey.Of(c).ToString()).ToList()
+            : null;
+        var result = Do(new FinishEvent(Now, wins, losses, draws, place, pool));
+        Events.Abandon();
+        return result;
     }
 
     private static void RemoveOne(List<Arcanum.Engine.Cards.CardDefinition> deck, string name)

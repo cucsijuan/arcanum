@@ -44,6 +44,12 @@ public sealed record CareerContent
 
     public OfferSpec Offers { get; init; } = new();
 
+    /// <summary>The store's calendar: events on fixed days of the week or of the month.</summary>
+    public IReadOnlyList<EventSpec> Events { get; init; } = Array.Empty<EventSpec>();
+
+    /// <summary>Names of visitors who fill an event's seats after the regulars.</summary>
+    public IReadOnlyList<string> Visitors { get; init; } = Array.Empty<string>();
+
     /// <summary>Sets whose boosters the store sells (each needs a booster definition).</summary>
     public IReadOnlyList<string> Sets { get; init; } = Array.Empty<string>();
 
@@ -115,6 +121,29 @@ public sealed record TierSpec(string Name, int Reputation);
 /// <param name="Cash">Reward in cents.</param>
 /// <param name="Boosters">Reward in boosters of the featured set.</param>
 public sealed record ChallengeSpec(string Id, string Text, string Kind, int Count = 1, int Value = 0, int Cash = 0, int Boosters = 0);
+
+/// <summary>An event on the store's calendar.</summary>
+/// <param name="Id">Stable id (kept in saves).</param>
+/// <param name="Name">Shown name.</param>
+/// <param name="When">A day of the week ("Wednesday"), or "lastSunday" (the last Sunday of the month); UTC days.</param>
+/// <param name="Kind">draft or constructed (constructed: a career deck, casual rules).</param>
+/// <param name="Set">Draft: the set code, or "featured" for the week's featured set.</param>
+/// <param name="Players">Seats, filled with computer players.</param>
+/// <param name="Rounds">Swiss rounds.</param>
+/// <param name="BestOf">Games per match.</param>
+/// <param name="Entry">Entry fee in cents.</param>
+/// <param name="EntryBoosters">Draft: may enter with this many boosters of the event's set instead (0: no).</param>
+/// <param name="EntryTokens">May enter with this many qualification tokens instead (0: no).</param>
+/// <param name="MinTier">The reputation tier it takes.</param>
+/// <param name="Prizes">The first prize that fits the player's result is theirs.</param>
+public sealed record EventSpec(string Id, string Name, string When, string Kind, string Set = "featured", int Players = 8, int Rounds = 3,
+    int BestOf = 1, int Entry = 0, int EntryBoosters = 0, int EntryTokens = 0, int MinTier = 0, IReadOnlyList<PrizeSpec>? Prizes = null)
+{
+    public IReadOnlyList<PrizeSpec> Prizes { get; init; } = Prizes ?? Array.Empty<PrizeSpec>();
+}
+
+/// <summary>A prize for a place (1 = first; <see cref="Place"/> covers places up to it) or for a number of match wins.</summary>
+public sealed record PrizeSpec(int Place = 0, int Wins = -1, int Cash = 0, int Boosters = 0, int Tokens = 0, int Reputation = 0);
 
 /// <param name="Deck">Module deck name.</param>
 /// <param name="Price">Price in cents; 0 uses the store's default.</param>
