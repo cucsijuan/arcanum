@@ -186,7 +186,7 @@ public partial class CareerScreen : Control
                     _chatStep = ChatStep.Stake;
                     var cheapest = State.Cards.Select(c => c.Card).Where(c => !World.IsBasicLand(c.Name)).OrderBy(c => CareerMarket.Price(State, World, c, Today)).First();
                     OfferStake(offer, _chatWant, cheapest);
-                    if (OS.GetEnvironment("ARCANUM_CAREER_PICK") == "1") PickStake(_chatDeck!, offer.Opponent.Name);
+                    if (OS.GetEnvironment("ARCANUM_CAREER_PICK") == "1") PickStake(offer.Opponent.Name);
                 }
                 return true;
             case "store": GoTo(Place.Store); return true;
@@ -728,7 +728,7 @@ public partial class CareerScreen : Control
                 buttons.AddThemeConstantOverride("h_separation", 10);
                 buttons.AddThemeConstantOverride("v_separation", 8);
                 buttons.AddChild(CareerStyle.Button("Offer it", () => OfferStake(offer, want, suggested), 20, primary: true));
-                buttons.AddChild(CareerStyle.Button("Choose another card…", () => PickStake(deck, offer.Opponent.Name), 20));
+                buttons.AddChild(CareerStyle.Button("Choose another card…", () => PickStake(offer.Opponent.Name), 20));
                 buttons.AddChild(CareerStyle.Button("Ask for another card", () =>
                 {
                     _chat.Add(new ChatLine(true, "Actually, let me pick another one."));
@@ -770,7 +770,7 @@ public partial class CareerScreen : Control
         State.Cards.Select(c => c.Card).Where(c => !World.IsBasicLand(c.Name)).OrderBy(c => CareerMarket.Price(State, World, c, Today)).ToList();
 
     /// <summary>Choosing the stake on the desk, the deck's cards on the mat with their prices; the chat comes back with it offered.</summary>
-    private static void PickStake(DeckList deck, string opponent)
+    private static void PickStake(string opponent)
     {
         DeckDesk.Picking = new DeckDesk.CardPick($"Choose the card you put up against {opponent}", Stakes(),
             card => CareerRules.Money(CareerMarket.Price(State, World, card, Today)),
