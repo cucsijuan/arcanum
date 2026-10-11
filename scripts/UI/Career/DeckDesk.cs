@@ -35,7 +35,21 @@ public partial class DeckDesk : Control
 
     private PoolBuild? _pool;
 
-    private const int Columns = 6, Rows = 3;
+    /// <summary>
+    /// Choosing one card on the mat instead of building (an ante's stake): the cards to choose from, the tag each card
+    /// shows (its price), and what happens when one is picked or the player goes back.
+    /// </summary>
+    public sealed record CardPick(string Title, IReadOnlyList<CardKey> Cards, Func<CardKey, string> Tag, Action<CardKey> Picked, Action Cancelled);
+
+    /// <summary>Set before opening the desk to pick a card; null builds a deck.</summary>
+    public static CardPick? Picking { get; set; }
+
+    private CardPick? _pick;
+
+    /// <summary>Cards across the collection's part of the mat: all of it when picking a card.</summary>
+    private int GridColumns => _pick is null ? 6 : 10;
+
+    private const int Rows = 3;
     private static readonly string[] ColumnNames = { "1", "2", "3", "4", "5", "6+", "Lands" };
     private static readonly (string Label, CardType Type)[] TypeFilters =
     {
@@ -51,11 +65,13 @@ public partial class DeckDesk : Control
     private int _page;
     private string _search = "";
     private int _type;
+    private string? _set; // the set filter (code, upper case), null for every set
+    private readonly OptionButton _sets = new() { FocusMode = FocusModeEnum.None };
     private readonly HashSet<char> _colors = new();
 
     private readonly LineEdit _name = new() { PlaceholderText = "Deck name", CustomMinimumSize = new Vector2(320, 0) };
     private readonly OptionButton _decks = new() { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(300, 0) };
-    private readonly GridContainer _grid = new() { Columns = Columns };
+    private readonly GridContainer _grid = new();
     private readonly Label _pageInfo = CareerStyle.Text("", 18, new Color(1f, 0.95f, 0.85f));
     private readonly HBoxContainer _columns = new();
     private readonly HBoxContainer _basics = new();
@@ -73,6 +89,9 @@ public partial class DeckDesk : Control
         Theme = CareerStyle.Notes;
         _pool = Building;
         Building = null;
+        _pick = Picking;
+        Picking = null;
+        _grid.Columns = GridColumns;
         if (!Career.HasCareer || App.Instance.Cards is null)
         {
             Callable.From(() => App.Instance.GoTo(App.CareerScene)).CallDeferred();
@@ -86,6 +105,11 @@ public partial class DeckDesk : Control
         {
             _deck = DeckList.Parse(_pool.Deck.Export());
             Refresh();
+            return;
+        }
+        if (_pick is not null)
+        {
+            ShowPage(0);
             return;
         }
         RefreshSaved();
@@ -158,11 +182,12 @@ public partial class DeckDesk : Control
         _bottom.Position = new Vector2(mat.Position.X, mat.End.Y + 14);
         _bottom.Size = new Vector2(mat.Size.X, Math.Max(0, Size.Y - mat.End.Y - 28));
         // Cards of the collection: six across half the mat, three rows under the pager.
-        float width = (inner.Size.X * 0.54f - (Columns - 1) * 8) / Columns;
+        int columns = GridColumns;
+        float width = (inner.Size.X * (_pick is null ? 0.54f : 1f) - (columns - 1) * 8) / columns;
         float height = (inner.Size.Y - 52 - (Rows - 1) * 8) / Rows;
         width = Math.Max(60, Math.Min(width, height / 1.39f));
         _tile = new Vector2(width, width * 1.39f);
-        _left.CustomMinimumSize = new Vector2(Columns * width + (Columns - 1) * 8, 0);
+        _left.CustomMinimumSize = new Vector2(columns * width + (columns - 1) * 8, 0);
         if (IsNodeReady()) Refresh();
     }
 
@@ -175,9 +200,18 @@ public partial class DeckDesk : Control
         // Above the mat: leave, the deck chosen, its name, saving; then the filters.
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 10);
-        var back = CareerStyle.Button(_pool is null ? "< Room" : "< Event", Leave, 20);
-        back.TooltipText = _pool is null ? "Back to your room (Esc)" : "Back to the event, keeping this deck (Esc)";
+        var back = CareerStyle.Button(_pick is not null ? "< Back" : _pool is null ? "< Room" : "< Event", Leave, 20);
+        back.TooltipText = _pick is not null ? "Back without choosing (Esc)" : _pool is null ? "Back to your room (Esc)" : "Back to the event, keeping this deck (Esc)";
         row.AddChild(back);
+        if (_pick is { } pick)
+        {
+            row.AddChild(CareerStyle.Text(pick.Title, 22, new Color(1f, 0.95f, 0.85f)));
+            _top.AddChild(row);
+            BuildFilters();
+            _deckScroll.Visible = false;
+            _bottom.Visible = false;
+            return;
+        }
         if (_pool is { } pool)
         {
             row.AddChild(CareerStyle.Text("Build your deck from the cards you drafted: 40 cards or more, basic lands are free.", 20, new Color(1f, 0.95f, 0.85f)));
@@ -249,6 +283,9 @@ public partial class DeckDesk : Control
         foreach (var (label, _) in TypeFilters) type.AddItem(label);
         type.ItemSelected += i => { _type = (int)i; ShowPage(0); };
         filters.AddChild(type);
+        // Sets: those of the cards on offer (filled once they are known).
+        _sets.ItemSelected += i => { _set = i == 0 ? null : _sets.GetItemMetadata((int)i).AsString(); ShowPage(0); };
+        filters.AddChild(_sets);
         filters.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
         filters.AddChild(_count);
         _top.AddChild(filters);
@@ -294,15 +331,39 @@ public partial class DeckDesk : Control
     /// <summary>The cards owned that pass the filters, one per name (with the printing owned most), by mana value.</summary>
     private List<Owned> OwnedCards()
     {
-        var cards = _pool is not null
+        if (_pick is not null)
+            return _pick.Cards.Where(k => Cards.Find(k.Name) is not null && InSet(k))
+                .Select(k => new Owned(Cards.Find(k.Name)!, k.ToEntry(), Career.State.Owned(k)))
+                .Where(Passes).OrderBy(o => o.Card.ManaValue).ThenBy(o => o.Card.Name).ToList();
+        var cards = (_pool is not null
             ? _pool.Pool.Select(c => (Card: CardKey.Of(c), Count: 1))
-            : Career.State.Cards;
+            : Career.State.Cards).Where(c => InSet(c.Card));
         var owned = cards
             .GroupBy(c => c.Card.Name, StringComparer.OrdinalIgnoreCase)
             .Select(g => (Entry: Cards.Find(g.Key), Best: g.OrderByDescending(c => c.Count).First().Card, Count: g.Sum(c => c.Count)))
             .Where(x => x.Entry is not null && !Career.World!.IsBasicLand(x.Entry.Name))
             .Select(x => new Owned(x.Entry!, new DeckEntry(1, x.Entry!.Name, x.Best.Set.Length > 0 ? x.Best.Set : null, x.Best.Number.Length > 0 ? x.Best.Number : null, x.Best.Foil) { Surge = x.Best.Surge }, x.Count));
         return owned.Where(Passes).OrderBy(o => o.Card.Definition.Is(CardType.Land)).ThenBy(o => o.Card.ManaValue).ThenBy(o => o.Card.Name).ToList();
+    }
+
+    private bool InSet(CardKey card) => _set is null || card.Set.Equals(_set, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The set filter's choices: every set the cards on offer come from, by name.</summary>
+    private void FillSets()
+    {
+        var keys = _pick is not null ? _pick.Cards
+            : _pool is not null ? _pool.Pool.Select(CardKey.Of).ToList()
+            : Career.State.Cards.Select(c => c.Card).ToList();
+        _sets.Clear();
+        _sets.AddItem("All sets");
+        foreach (var code in keys.Select(k => k.Set.ToUpperInvariant()).Where(c => c.Length > 0).Distinct().OrderBy(c => Career.World!.SetName(c.ToLowerInvariant())))
+        {
+            _sets.AddItem(Cards.FindSet(code)?.Name ?? Career.World!.SetName(code.ToLowerInvariant()));
+            _sets.SetItemMetadata(_sets.ItemCount - 1, code);
+        }
+        int selected = _set is null ? 0 : Enumerable.Range(1, _sets.ItemCount - 1).FirstOrDefault(i => _sets.GetItemMetadata(i).AsString() == _set);
+        _sets.Selected = selected;
+        if (selected == 0) _set = null;
     }
 
     private bool Passes(Owned owned)
@@ -324,13 +385,25 @@ public partial class DeckDesk : Control
 
     private void ShowPage(int page)
     {
+        if (_sets.ItemCount == 0) FillSets();
         var cards = OwnedCards();
-        int pageSize = Columns * Rows;
+        int pageSize = GridColumns * Rows;
         int pages = Math.Max(1, (cards.Count + pageSize - 1) / pageSize);
         _page = Math.Clamp(page, 0, pages - 1);
         foreach (var child in _grid.GetChildren()) child.QueueFree();
         foreach (var owned in cards.Skip(_page * pageSize).Take(pageSize))
         {
+            if (_pick is { } pick)
+            {
+                var key = CardKey.Of(owned.Printing);
+                var pickTile = Tile(Definition(owned.Printing), false);
+                Badge(pickTile, pick.Tag(key), false);
+                var pickCard = pickTile.GetChild<CardNode>(0);
+                pickCard.TooltipText = "Choose this card";
+                pickCard.Clicked += _ => pick.Picked(key);
+                _grid.AddChild(pickTile);
+                continue;
+            }
             int inDeck = InDeck(owned.Card.Name);
             var tile = Tile(Definition(owned.Printing), owned.Count - inDeck <= 0);
             Badge(tile, $"{inDeck}/{owned.Count}", inDeck > 0);
@@ -361,7 +434,8 @@ public partial class DeckDesk : Control
 
     private void Badge(Control tile, string text, bool lit)
     {
-        var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(_tile.X - 54, 4) };
+        // In the card's top right corner, whatever its width.
+        var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, AnchorLeft = 1, AnchorRight = 1, OffsetRight = -4, OffsetTop = 4, GrowHorizontal = GrowDirection.Begin };
         panel.AddThemeStyleboxOverride("panel", CareerStyle.Box(lit ? BoardStyle.Playable : new Color(0, 0, 0, 0.7f), null, 0, 8, 3));
         panel.AddChild(CareerStyle.Text(text, 17, lit ? new Color("16171a") : Colors.White));
         tile.AddChild(panel);
@@ -416,7 +490,7 @@ public partial class DeckDesk : Control
     {
         HidePreview();
         ShowPage(_page);
-        ShowDeck();
+        if (_pick is null) ShowDeck();
     }
 
     private void ShowDeck()
@@ -589,7 +663,8 @@ public partial class DeckDesk : Control
 
     private void Leave()
     {
-        if (_pool is not null) _pool.Keep(_deck);
+        if (_pick is not null) _pick.Cancelled();
+        else if (_pool is not null) _pool.Keep(_deck);
         else Confirm(() => App.Instance.GoTo(App.CareerScene));
     }
 

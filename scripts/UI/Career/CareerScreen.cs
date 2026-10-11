@@ -186,6 +186,7 @@ public partial class CareerScreen : Control
                     _chatStep = ChatStep.Stake;
                     var cheapest = State.Cards.Select(c => c.Card).Where(c => !World.IsBasicLand(c.Name)).OrderBy(c => CareerMarket.Price(State, World, c, Today)).First();
                     OfferStake(offer, _chatWant, cheapest);
+                    if (OS.GetEnvironment("ARCANUM_CAREER_PICK") == "1") PickStake(_chatDeck!, offer.Opponent.Name);
                 }
                 return true;
             case "store": GoTo(Place.Store); return true;
@@ -641,14 +642,16 @@ public partial class CareerScreen : Control
     /// <summary>A message of the chat: the player's or the regular's, with cards shown under it.</summary>
     private sealed record ChatLine(bool Mine, string Text, IReadOnlyList<CardKey>? Cards = null);
 
-    private readonly List<ChatLine> _chat = new();
-    private string _chatWith = "";
-    private DeckList? _chatDeck;
-    private CareerRules.AnteCard? _chatWant;
-    private CardKey? _chatStake;
-    private ChatStep _chatStep;
-    private int _stakeIndex;
-    private bool _stakePicked;
+    // The chat lives on while the player chooses a stake on the desk (another screen).
+    private static readonly List<ChatLine> _chat = new();
+    private static string _chatWith = "";
+    private static DeckList? _chatDeck;
+    private static CareerRules.AnteCard? _chatWant;
+    private static CardKey? _chatStake;
+    private static ChatStep _chatStep;
+
+    /// <summary>A stake chosen on the desk, offered when the chat shows again.</summary>
+    private static CardKey? _pickedStake;
 
     private static string Say(IReadOnlyList<string> lines) => lines.Count == 0 ? "" : lines[Random.Shared.Next(lines.Count)];
 
@@ -661,7 +664,6 @@ public partial class CareerScreen : Control
         _chatDeck = deck;
         _chatWant = null;
         _chatStep = ChatStep.Choose;
-        _stakePicked = false;
         _chat.Add(new ChatLine(false, Say(World.Content.Ante.Greetings), offer.Cards.Select(c => c.Card).ToList()));
         _webPage = WebPage.Chat;
         ShowWebPage();
@@ -676,6 +678,12 @@ public partial class CareerScreen : Control
             return;
         }
         var offer = CareerRules.AnteOfferOf(State, World, _chatWith, Today);
+        if (_pickedStake is { } picked && _chatWant is { } wanted && _chatStep == ChatStep.Stake)
+        {
+            _pickedStake = null;
+            OfferStake(offer, wanted, picked);
+            return;
+        }
         var head = new HBoxContainer();
         var back = CareerStyle.LinkButton("<< Back");
         back.Pressed += () => { _webPage = WebPage.Practice; ShowWebPage(); };
@@ -703,30 +711,24 @@ public partial class CareerScreen : Control
                 break;
             case ChatStep.Stake:
                 var want = _chatWant!;
-                var stakes = deck.Main.Where(e => !World.IsBasicLand(e.Name)).Select(e => e.Name).Distinct(StringComparer.OrdinalIgnoreCase)
-                    .SelectMany(name => State.Cards.Where(c => c.Card.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Select(c => c.Card))
-                    .OrderBy(c => CareerMarket.Price(State, World, c, Today)).ToList();
+                var stakes = Stakes(deck);
                 if (stakes.Count == 0)
                 {
                     reply.AddChild(CareerStyle.Text("Your deck has nothing to stake.", 20, CareerStyle.Bad));
                     break;
                 }
-                // Until the player picks one, the cheapest stake the regular would take (the dearest when none would do).
-                if (!_stakePicked)
-                    _stakeIndex = stakes.FindIndex(c => CareerRules.AnteAccepted(State, World, want, c, Today)) is var fair and >= 0 ? fair : stakes.Count - 1;
-                _stakeIndex = Math.Clamp(_stakeIndex, 0, stakes.Count - 1);
-                var picker = new OptionButton { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(380, 0) };
-                foreach (var c in stakes) picker.AddItem($"{c.Name}{(c.Surge ? " (surge foil)" : c.Foil ? " (foil)" : "")} · {CareerRules.Money(CareerMarket.Price(State, World, c, Today))}");
-                picker.Selected = _stakeIndex;
-                picker.ItemSelected += i => { _stakeIndex = (int)i; _stakePicked = true; ShowWebPage(); };
-                reply.AddChild(SmallCard(stakes[_stakeIndex]));
+                // The cheapest stake the regular would take is offered first (the dearest when none would do).
+                var suggested = stakes.FirstOrDefault(c => CareerRules.AnteAccepted(State, World, want, c, Today));
+                if (suggested == default) suggested = stakes[^1];
+                reply.AddChild(SmallCard(suggested));
                 var choose = new VBoxContainer();
                 choose.AddThemeConstantOverride("separation", 8);
-                choose.AddChild(CareerStyle.Text("Your stake:", 20));
-                choose.AddChild(picker);
-                var buttons = new HBoxContainer();
-                buttons.AddThemeConstantOverride("separation", 10);
-                buttons.AddChild(CareerStyle.Button("Offer it", () => OfferStake(offer, want, stakes[_stakeIndex]), 20, primary: true));
+                choose.AddChild(CareerStyle.Text($"Your stake: {suggested.Name} · {CareerRules.Money(CareerMarket.Price(State, World, suggested, Today))}", 20, wrap: true));
+                var buttons = new HFlowContainer();
+                buttons.AddThemeConstantOverride("h_separation", 10);
+                buttons.AddThemeConstantOverride("v_separation", 8);
+                buttons.AddChild(CareerStyle.Button("Offer it", () => OfferStake(offer, want, suggested), 20, primary: true));
+                buttons.AddChild(CareerStyle.Button("Choose another card…", () => PickStake(deck, offer.Opponent.Name), 20));
                 buttons.AddChild(CareerStyle.Button("Ask for another card", () =>
                 {
                     _chat.Add(new ChatLine(true, "Actually, let me pick another one."));
@@ -735,6 +737,7 @@ public partial class CareerScreen : Control
                     ShowWebPage();
                 }, 18));
                 choose.AddChild(buttons);
+                choose.SizeFlagsHorizontal = SizeFlags.ExpandFill;
                 reply.AddChild(choose);
                 break;
             case ChatStep.Agreed:
@@ -762,6 +765,31 @@ public partial class CareerScreen : Control
         page.AddChild(reply);
     }
 
+    /// <summary>The cards of a deck the player can stake: every printing of them owned (basic lands aren't worth it), cheapest first.</summary>
+    private static List<CardKey> Stakes(DeckList deck) =>
+        deck.Main.Where(e => !World.IsBasicLand(e.Name)).Select(e => e.Name).Distinct(StringComparer.OrdinalIgnoreCase)
+            .SelectMany(name => State.Cards.Where(c => c.Card.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Select(c => c.Card))
+            .OrderBy(c => CareerMarket.Price(State, World, c, Today)).ToList();
+
+    /// <summary>Choosing the stake on the desk, the deck's cards on the mat with their prices; the chat comes back with it offered.</summary>
+    private static void PickStake(DeckList deck, string opponent)
+    {
+        DeckDesk.Picking = new DeckDesk.CardPick($"Choose the card you put up against {opponent}", Stakes(deck),
+            card => CareerRules.Money(CareerMarket.Price(State, World, card, Today)),
+            card =>
+            {
+                _pickedStake = card;
+                OpenOn = nameof(WebPage.Chat);
+                App.Instance.GoTo(App.CareerScene);
+            },
+            () =>
+            {
+                OpenOn = nameof(WebPage.Chat);
+                App.Instance.GoTo(App.CareerScene);
+            });
+        App.Instance.GoTo(App.DeckDeskScene);
+    }
+
     /// <summary>The player offers a stake for the card they chose: the regular takes it or turns it down.</summary>
     private void OfferStake(CareerRules.AnteOffer offer, CareerRules.AnteCard want, CardKey stake)
     {
@@ -769,7 +797,6 @@ public partial class CareerScreen : Control
         if (!CareerRules.AnteAccepted(State, World, want, stake, Today))
         {
             _chat.Add(new ChatLine(false, Say(World.Content.Ante.Declines)));
-            _stakePicked = false;
         }
         else
         {
@@ -815,7 +842,6 @@ public partial class CareerScreen : Control
                         _chat.Add(new ChatLine(true, $"I'll play for your {card.Name}.", new[] { card }));
                         _chat.Add(new ChatLine(false, Say(World.Content.Ante.AskStake)));
                         _chatStep = ChatStep.Stake;
-                        _stakePicked = false;
                         ShowWebPage();
                     };
                 }
