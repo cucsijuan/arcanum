@@ -80,10 +80,19 @@ public partial class App : Node
         AddChild(Content);
         AddChild(Online);
         // ARCANUM_SHOT=<file.png>[,seconds]: saves a picture of the screen after a while (default 8 s) and quits (screenshots).
+        // ARCANUM_SHOT_POINTER=x,y moves the pointer there a moment before (to show what hovering does).
         if (OS.GetEnvironment("ARCANUM_SHOT") is { Length: > 0 } shot)
         {
             var parts = shot.Split(',');
-            GetTree().CreateTimer(parts.Length > 1 && double.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 8).Timeout += () =>
+            double delay = parts.Length > 1 && double.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 8;
+            if (OS.GetEnvironment("ARCANUM_SHOT_POINTER").Split(',') is [var px, var py]
+                && float.TryParse(px, System.Globalization.CultureInfo.InvariantCulture, out var x) && float.TryParse(py, System.Globalization.CultureInfo.InvariantCulture, out var y))
+                GetTree().CreateTimer(Math.Max(0, delay - 1.5)).Timeout += () =>
+                {
+                    GetViewport().WarpMouse(new Vector2(x, y));
+                    Input.ParseInputEvent(new InputEventMouseMotion { Position = new Vector2(x, y), GlobalPosition = new Vector2(x, y), Relative = new Vector2(1, 1) });
+                };
+            GetTree().CreateTimer(delay).Timeout += () =>
             {
                 GetViewport().GetTexture().GetImage().SavePng(parts[0]);
                 GetTree().Quit();
