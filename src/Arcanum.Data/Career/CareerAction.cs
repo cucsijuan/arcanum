@@ -38,13 +38,13 @@ public sealed record StartAnte(DateTime Utc, string Opponent, string Deck) : Car
 /// <summary>The match in progress (daily, practice or ante) ended.</summary>
 public sealed record FinishMatch(DateTime Utc, bool Won) : CareerAction(Utc);
 
-/// <summary>Buys a booster of a set: its play or draft booster, or its collector booster.</summary>
-public sealed record BuyBooster(DateTime Utc, string Set, bool Collector = false) : CareerAction(Utc);
+/// <summary>Buys a booster of a set: of a kind ("set", "collector"...), or its play or draft booster when none.</summary>
+public sealed record BuyBooster(DateTime Utc, string Set, string? Kind = null) : CareerAction(Utc);
 
 public sealed record BuyPrecon(DateTime Utc, string Deck) : CareerAction(Utc);
 
 /// <summary>Opens an unopened booster of a set; its cards come from the career seed and the number of boosters opened.</summary>
-public sealed record OpenBooster(DateTime Utc, string Set, bool Collector = false) : CareerAction(Utc);
+public sealed record OpenBooster(DateTime Utc, string Set, string? Kind = null) : CareerAction(Utc);
 
 /// <summary>Enters today's event, paying with "cash", "boosters" or "tokens"; a constructed event takes the deck list played.</summary>
 public sealed record EnterEvent(DateTime Utc, string Event, string Pay, string? Deck = null) : CareerAction(Utc);

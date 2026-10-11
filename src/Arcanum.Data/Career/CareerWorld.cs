@@ -35,21 +35,27 @@ public sealed class CareerWorld
         _readDeck = readDeck;
     }
 
-    /// <summary>Opens a set's play or draft boosters, or its collector boosters.</summary>
-    public BoosterGenerator Generator(string set, bool collector = false)
+    /// <summary>Opens a set's boosters of a kind (null: its play or draft booster; "set", "collector"...).</summary>
+    public BoosterGenerator Generator(string set, string? kind = null)
     {
-        var key = CareerRules.SealedKey(set, collector);
+        var key = CareerRules.SealedKey(set, kind);
         if (_generators.TryGetValue(key, out var generator)) return generator;
-        if (!Sets.TryGetValue(set, out var definition) || (collector ? definition.Collector : definition.Booster) is not { } spec)
-            throw new CareerRuleException($"There are no {(collector ? "collector " : "")}boosters of '{set}'.");
+        if (!Sets.TryGetValue(set, out var definition) || definition.BoosterOf(kind) is not { } spec)
+            throw new CareerRuleException($"There are no {kind} boosters of '{set}'.");
         return _generators[key] = new BoosterGenerator(definition, Cards, spec);
     }
 
-    /// <summary>The store sells collector boosters of this set.</summary>
-    public bool SellsCollector(string set) => SellsBoosters(set) && Sets[set].Collector is not null;
+    /// <summary>The kinds of boosters the store sells of a set: null (its play or draft booster) first, then its others with a price.</summary>
+    public IReadOnlyList<string?> BoosterKinds(string set) =>
+        !SellsBoosters(set) ? Array.Empty<string?>()
+            : new string?[] { null }.Concat(Sets[set].Boosters.Keys.Where(Content.BoosterPrices.ContainsKey)).ToList();
 
-    /// <summary>"Foundations" or "Foundations collector" for an unopened boosters key.</summary>
-    public string BoosterName(string key) => CareerRules.ParseSealed(key) is var (set, collector) ? SetName(set) + (collector ? " collector" : "") : key;
+    public int BoosterPrice(string? kind) => string.IsNullOrEmpty(kind) ? Content.BoosterPrice : Content.BoosterPrices.GetValueOrDefault(kind);
+
+    /// <summary>"Foundations Play Booster" or "Foundations Collector Booster" for an unopened boosters key.</summary>
+    public string BoosterName(string key) =>
+        CareerRules.ParseSealed(key) is var (set, kind) && Sets.TryGetValue(set, out var definition) && definition.BoosterOf(kind) is { } spec
+            ? $"{definition.Name} {spec.Name}" : SetName(key);
 
     public string SetName(string set) => Sets.TryGetValue(set, out var s) ? s.Name : set.ToUpperInvariant();
 

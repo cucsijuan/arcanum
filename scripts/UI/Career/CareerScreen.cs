@@ -165,11 +165,11 @@ public partial class CareerScreen : Control
                 // Buys and opens collector boosters of a set until one has a surge foil, and shows it.
                 for (int i = 0; i < 200; i++)
                 {
-                    Career.Do(new BuyBooster(Career.Now, test[6..], Collector: true));
-                    var key = CareerRules.SealedKey(test[6..], true);
+                    Career.Do(new BuyBooster(Career.Now, test[6..], "collector"));
+                    var key = CareerRules.SealedKey(test[6..], "collector");
                     var peek = CareerRandom.For(State.Seed, "booster", State.BoostersOpened);
-                    if (World.Generator(test[6..], true).Open(peek).Any(c => c.Surge)) { OpenBooster(key); return true; }
-                    Career.Do(new OpenBooster(Career.Now, test[6..], Collector: true));
+                    if (World.Generator(test[6..], "collector").Open(peek).Any(c => c.Surge)) { OpenBooster(key); return true; }
+                    Career.Do(new OpenBooster(Career.Now, test[6..], "collector"));
                 }
                 return true;
             case "store": GoTo(Place.Store); return true;
@@ -898,21 +898,22 @@ public partial class CareerScreen : Control
     private void BoostersNote(VBoxContainer box)
     {
         var featured = World.FeaturedSet(CareerRules.DayOf(Career.Now));
-        box.AddChild(CareerStyle.Text($"Boosters {CareerRules.Money(World.Content.BoosterPrice)}, collector boosters {CareerRules.Money(World.Content.CollectorPrice)}. You have {CareerRules.Money(State.Cash)}.", 22, CareerStyle.InkDim));
+        box.AddChild(CareerStyle.Text($"Every kind of booster each set was sold in. You have {CareerRules.Money(State.Cash)}.", 22, CareerStyle.InkDim));
         var list = new VBoxContainer();
         list.AddThemeConstantOverride("separation", 8);
         foreach (var set in World.Content.Sets.Where(World.SellsBoosters))
         {
-            foreach (bool collector in World.SellsCollector(set) ? new[] { false, true } : new[] { false })
+            bool first = true;
+            foreach (var kind in World.BoosterKinds(set))
             {
-                var key = CareerRules.SealedKey(set, collector);
-                int price = collector ? World.Content.CollectorPrice : World.Content.BoosterPrice;
+                var key = CareerRules.SealedKey(set, kind);
+                int price = World.BoosterPrice(kind);
                 var row = new HBoxContainer();
                 row.AddThemeConstantOverride("separation", 12);
-                var name = CareerStyle.Text(World.BoosterName(key) + (!collector && set.Equals(featured, StringComparison.OrdinalIgnoreCase) ? "  (featured)" : ""), collector ? 20 : 22,
-                    collector ? CareerStyle.PaperEdge : CareerStyle.Ink);
+                var name = CareerStyle.Text(World.BoosterName(key) + (first && set.Equals(featured, StringComparison.OrdinalIgnoreCase) ? "  (featured)" : ""), first ? 22 : 20,
+                    first ? CareerStyle.Ink : CareerStyle.PaperEdge);
                 name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-                if (collector && World.Sets[set].Collector is { } spec)
+                if (World.Sets[set].BoosterOf(kind) is { Description.Length: > 0 } spec)
                 {
                     name.TooltipText = spec.Description;
                     name.MouseFilter = MouseFilterEnum.Pass;
@@ -920,13 +921,14 @@ public partial class CareerScreen : Control
                 row.AddChild(name);
                 int owned = State.Sealed.GetValueOrDefault(key);
                 if (owned > 0) row.AddChild(CareerStyle.Text($"{owned} unopened", 18, CareerStyle.InkDim));
-                var buy = CareerStyle.Button(collector ? $"Buy · {CareerRules.Money(price)}" : "Buy", () => { Try(() => Career.Do(new BuyBooster(Career.Now, set, collector))); RefreshNote(); }, 20, primary: true);
+                var buy = CareerStyle.Button($"Buy · {CareerRules.Money(price)}", () => { Try(() => Career.Do(new BuyBooster(Career.Now, set, kind))); RefreshNote(); }, 20, primary: true);
                 buy.Disabled = State.Cash < price;
                 row.AddChild(buy);
                 var open = CareerStyle.Button("Open", () => OpenBooster(key), 20);
                 open.Disabled = owned == 0;
                 row.AddChild(open);
                 list.AddChild(row);
+                first = false;
             }
         }
         box.AddChild(Scrolled(list));
@@ -1121,9 +1123,9 @@ public partial class CareerScreen : Control
     /// <summary>Opens an unopened booster (its key: the set code, ":collector" after it for a collector booster).</summary>
     private void OpenBooster(string key)
     {
-        var (set, collector) = CareerRules.ParseSealed(key);
+        var (set, kind) = CareerRules.ParseSealed(key);
         List<PoolCard> cards;
-        try { cards = Career.Do(new OpenBooster(Career.Now, set, collector)).Cards.ToList(); }
+        try { cards = Career.Do(new OpenBooster(Career.Now, set, kind)).Cards.ToList(); }
         catch (CareerRuleException e)
         {
             MenuKit.Toast(this, e.Message);
@@ -1138,7 +1140,7 @@ public partial class CareerScreen : Control
         var box = new VBoxContainer { AnchorRight = 1, AnchorBottom = 1, OffsetLeft = 40, OffsetTop = 40, OffsetRight = -40, OffsetBottom = -30 };
         box.AddThemeConstantOverride("separation", 16);
         overlay.AddChild(box);
-        box.AddChild(CareerStyle.Text($"{World.BoosterName(key)} booster", 34, CareerStyle.Gold));
+        box.AddChild(CareerStyle.Text($"{World.BoosterName(key)}", 34, CareerStyle.Gold));
         var flow = new HFlowContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         flow.AddThemeConstantOverride("h_separation", 10);
         flow.AddThemeConstantOverride("v_separation", 10);
@@ -1172,7 +1174,7 @@ public partial class CareerScreen : Control
         if (BoosterOpening.Available && Settings.Current.BoosterOpening != "skip" && World.Sets.TryGetValue(set, out var definition))
         {
             foreach (var node in nodes) node.Modulate = Colors.Transparent;
-            var opening = new BoosterOpening((collector ? definition.Collector?.PackImage : null) ?? definition.PackImage, definition.PackImageSeals,
+            var opening = new BoosterOpening(definition.BoosterOf(kind)?.PackImage ?? definition.PackImage, definition.PackImageSeals,
                 World.BoosterName(key), automatic: Settings.Current.BoosterOpening == "auto");
             opening.Opened += _ => Reveal(nodes);
             overlay.AddChild(opening);

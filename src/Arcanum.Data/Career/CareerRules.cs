@@ -23,11 +23,10 @@ public static class CareerRules
 
     public static DateOnly DayOf(DateTime utc) => DateOnly.FromDateTime(utc);
 
-    /// <summary>The unopened boosters' key: the set code, ":collector" after it for its collector boosters.</summary>
-    public static string SealedKey(string set, bool collector) => collector ? set.ToLowerInvariant() + ":collector" : set.ToLowerInvariant();
+    /// <summary>The unopened boosters' key: the set code, ":kind" after it for its other boosters (":collector").</summary>
+    public static string SealedKey(string set, string? kind) => string.IsNullOrEmpty(kind) ? set.ToLowerInvariant() : $"{set.ToLowerInvariant()}:{kind}";
 
-    public static (string Set, bool Collector) ParseSealed(string key) =>
-        key.EndsWith(":collector", StringComparison.Ordinal) ? (key[..^10], true) : (key, false);
+    public static (string Set, string? Kind) ParseSealed(string key) => key.IndexOf(':') is var i and >= 0 ? (key[..i], key[(i + 1)..]) : (key, null);
 
     /// <summary>A career's state after its whole journal.</summary>
     public static CareerState Replay(IEnumerable<CareerAction> journal, CareerWorld world)
@@ -639,12 +638,13 @@ public static class CareerRules
 
     private static CareerResult Buy(CareerState state, BuyBooster buy, CareerWorld world)
     {
-        if (!(buy.Collector ? world.SellsCollector(buy.Set) : world.SellsBoosters(buy.Set)))
-            throw new CareerRuleException($"The store doesn't sell {world.SetName(buy.Set)} {(buy.Collector ? "collector " : "")}boosters.");
-        int price = buy.Collector ? world.Content.CollectorPrice : world.Content.BoosterPrice;
+        var key = SealedKey(buy.Set, buy.Kind);
+        if (!world.BoosterKinds(buy.Set.ToLowerInvariant()).Contains(string.IsNullOrEmpty(buy.Kind) ? null : buy.Kind))
+            throw new CareerRuleException($"The store doesn't sell {world.BoosterName(key)}s.");
+        int price = world.BoosterPrice(buy.Kind);
         Pay(state, price);
-        state.AddSealed(SealedKey(buy.Set, buy.Collector), 1);
-        state.Note(buy.Utc, $"Bought a {world.SetName(buy.Set)} {(buy.Collector ? "collector " : "")}booster.");
+        state.AddSealed(key, 1);
+        state.Note(buy.Utc, $"Bought a {world.BoosterName(key)}.");
         return new CareerResult(Array.Empty<PoolCard>(), -price);
     }
 
@@ -661,9 +661,9 @@ public static class CareerRules
 
     private static CareerResult Open(CareerState state, OpenBooster open, CareerWorld world)
     {
-        var key = SealedKey(open.Set, open.Collector);
+        var key = SealedKey(open.Set, open.Kind);
         if (state.Sealed.GetValueOrDefault(key) == 0) throw new CareerRuleException($"No unopened {world.BoosterName(key)} booster.");
-        var cards = world.Generator(open.Set.ToLowerInvariant(), open.Collector).Open(CareerRandom.For(state.Seed, "booster", state.BoostersOpened));
+        var cards = world.Generator(open.Set.ToLowerInvariant(), open.Kind).Open(CareerRandom.For(state.Seed, "booster", state.BoostersOpened));
         state.BoostersOpened++;
         state.AddSealed(key, -1);
         foreach (var card in cards) state.AddCard(CardKey.Of(card), 1);

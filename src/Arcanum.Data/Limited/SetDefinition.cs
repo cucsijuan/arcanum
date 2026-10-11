@@ -71,8 +71,14 @@ public sealed record SetDefinition
     public IReadOnlyList<string> Cards { get; init; } = Array.Empty<string>();
     public BoosterSpec? Booster { get; init; }
 
-    /// <summary>The set's collector booster, if it has one.</summary>
-    public BoosterSpec? Collector { get; init; }
+    /// <summary>
+    /// The set's other boosters, as they were sold, by kind ("set", "collector"...); limited events use only
+    /// <see cref="Booster"/> (the play or draft booster).
+    /// </summary>
+    public IReadOnlyDictionary<string, BoosterSpec> Boosters { get; init; } = new Dictionary<string, BoosterSpec>();
+
+    /// <summary>The set's booster of a kind: <see cref="Booster"/> for null or "", otherwise one of <see cref="Boosters"/>.</summary>
+    public BoosterSpec? BoosterOf(string? kind) => string.IsNullOrEmpty(kind) ? Booster : Boosters.GetValueOrDefault(kind);
 
     /// <summary>Boosters each player opens in a draft.</summary>
     public int BoostersPerPlayer { get; init; } = 3;
@@ -101,7 +107,9 @@ public sealed record SetDefinition
             Released = Str(e, "released") ?? "",
             Cards = Strings(e, "cards") ?? new List<string>(),
             Booster = e.TryGetProperty("booster", out var b) ? ParseBooster(b) : null,
-            Collector = e.TryGetProperty("collector", out var cb) ? ParseBooster(cb) : null,
+            Boosters = e.TryGetProperty("boosters", out var more) && more.ValueKind == JsonValueKind.Object
+                ? more.EnumerateObject().ToDictionary(k => k.Name, k => ParseBooster(k.Value))
+                : new Dictionary<string, BoosterSpec>(),
             BoostersPerPlayer = limited.ValueKind == JsonValueKind.Object && limited.TryGetProperty("boostersPerPlayer", out var bp) ? bp.GetInt32() : 3,
             SealedBoosters = limited.ValueKind == JsonValueKind.Object && limited.TryGetProperty("sealedBoosters", out var sb) ? sb.GetInt32() : 6,
             PackImage = Pack(e) is { } p && p.TryGetProperty("image", out var image) && image.ValueKind == JsonValueKind.String ? image.GetString() : null,
