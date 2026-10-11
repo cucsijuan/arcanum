@@ -19,6 +19,9 @@ public sealed record Printing(
 {
     /// <summary>Made only in foil (collector booster treatments, surge foils): every copy of it is a foil.</summary>
     public bool FoilOnly { get; init; }
+
+    /// <summary>The artwork's identifier in the card source (the same picture across printings), when it has one.</summary>
+    public string? Illustration { get; init; }
 }
 
 /// <summary>A set as seen through its printings.</summary>

@@ -103,12 +103,23 @@ public sealed class CardDatabase : ICardDatabase
         {
             if (!_byPrinting.TryGetValue(key, out definition!))
             {
-                definition = printing is null ? entry.Definition : CardFactory.ForPrinting(entry.Definition, printing);
+                definition = printing is null ? entry.Definition : CardFactory.ForPrinting(entry.Definition, printing, Picture(entry.Record, printing));
                 if (foil) definition = definition with { Foil = true };
                 _byPrinting[key] = definition;
             }
         }
         return true;
+    }
+
+    /// <summary>
+    /// The printing whose picture shows a printing: for one made only in foil, a printing of the same artwork that isn't
+    /// (the same set's first), so the foil is drawn by the game on the plain picture; otherwise the printing itself.
+    /// </summary>
+    private static Printing Picture(CardRecord record, Printing printing)
+    {
+        if (!printing.FoilOnly || printing.Illustration is null) return printing;
+        return record.Printings.Where(p => !p.FoilOnly && p.Illustration == printing.Illustration)
+            .OrderBy(p => p.Set == printing.Set ? 0 : 1).FirstOrDefault() ?? printing;
     }
 
     /// <summary>Whether the card can be a foil copy in this printing (or, without a set, in its default printing).</summary>

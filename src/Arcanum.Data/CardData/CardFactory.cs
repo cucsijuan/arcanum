@@ -272,13 +272,14 @@ public static partial class CardFactory
     /// The card as printed in <paramref name="printing"/>: same rules, with that printing's picture and the tokens
     /// printed alongside it.
     /// </summary>
-    public static CardDefinition ForPrinting(CardDefinition definition, Printing printing) => definition with
+    /// <param name="picture">The printing whose picture to show (the printing itself when null).</param>
+    public static CardDefinition ForPrinting(CardDefinition definition, Printing printing, Printing? picture = null) => definition with
     {
-        ImageKey = printing.Id,
+        ImageKey = (picture ?? printing).Id,
         Spell = WithTokenImages(definition.Spell, printing.Tokens, replace: true),
         Abilities = definition.Abilities.Select(a => WithTokenImages(a, printing.Tokens, replace: true)!).ToList(),
-        Adventure = definition.Adventure is { } adventure ? ForPrinting(adventure, printing) : null,
-        BackFace = definition.BackFace is { } back ? ForPrinting(back, printing) : null,
+        Adventure = definition.Adventure is { } adventure ? ForPrinting(adventure, printing, picture) : null,
+        BackFace = definition.BackFace is { } back ? ForPrinting(back, printing, picture) : null,
     };
 
     /// <summary>

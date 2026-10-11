@@ -185,4 +185,23 @@ public class PrintingTests
         Assert.Equal(new[] { "p-en", "p-elvish", "p-elvish-z" }, printings["o-1"].Select(p => p.Id));
         Assert.True(printings["o-1"].Single(p => p.Id == "p-elvish-z").FoilOnly);
     }
+
+    [Fact]
+    public void AFoilOnlyPrintingShowsThePlainPrintingOfItsArtwork()
+    {
+        const string cards = """{"oracle_id":"o-1","name":"Glade Cub","layout":"normal","mana_cost":"{1}{G}","type_line":"Creature — Bear","oracle_text":"","power":"2","toughness":"2"}""";
+        const string prints = """
+            {"oracle_id":"o-1","id":"p-plain","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"408","rarity":"rare","released_at":"2024-01-01","set_type":"expansion","lang":"en","finishes":["nonfoil"],"illustration_id":"art-1"}
+            {"oracle_id":"o-1","id":"p-serial","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"408z","rarity":"rare","released_at":"2024-01-01","set_type":"expansion","lang":"en","finishes":["foil"],"illustration_id":"art-1"}
+            {"oracle_id":"o-1","id":"p-surge","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"500","rarity":"rare","released_at":"2024-01-01","set_type":"expansion","lang":"en","finishes":["foil"],"illustration_id":"art-2"}
+            """;
+        static Stream Text(string s) => new MemoryStream(System.Text.Encoding.UTF8.GetBytes(s));
+        var db = new CardDatabase(OracleJsonl.WithPrintings(OracleJsonl.Import(Text(cards)), OracleJsonl.ImportPrintings(Text(prints))));
+        Assert.True(db.TryGet("Glade Cub", "NEW", "408z", false, out var serial));
+        Assert.Equal("p-plain", serial.ImageKey); // the same artwork exists plain: its picture, foil drawn by the game
+        Assert.True(serial.Foil);
+        Assert.True(db.TryGet("Glade Cub", "NEW", "500", false, out var surge));
+        Assert.Equal("p-surge", surge.ImageKey); // no plain printing of that artwork: its own picture
+        Assert.True(surge.Foil);
+    }
 }

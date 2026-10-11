@@ -113,6 +113,7 @@ public static class OracleJsonl
             Tokens(c), foilOnly || finishes.Contains("foil") || finishes.Contains("etched") || (c.TryGetProperty("foil", out var f) && f.ValueKind == JsonValueKind.True))
         {
             FoilOnly = foilOnly,
+            Illustration = Str(c, "illustration_id"),
         };
     }
 
@@ -240,6 +241,7 @@ public static class OracleJsonl
                         if (p.Booster) writer.WriteBoolean("booster", true);
                         if (p.Foil) writer.WriteBoolean("foil", true);
                         if (p.FoilOnly) writer.WriteBoolean("foil_only", true);
+                        if (p.Illustration is { } art) writer.WriteString("illustration_id", art);
                         WriteTokens(writer, p.Tokens);
                         writer.WriteEndObject();
                     }
