@@ -11,7 +11,9 @@ namespace Arcanum.Data.Career;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "do")]
 [JsonDerivedType(typeof(StartCareer), "start")]
 [JsonDerivedType(typeof(StartDaily), "daily")]
-[JsonDerivedType(typeof(FinishDaily), "result")]
+[JsonDerivedType(typeof(FinishMatch), "result")]
+[JsonDerivedType(typeof(StartPractice), "practice")]
+[JsonDerivedType(typeof(StartAnte), "ante")]
 [JsonDerivedType(typeof(BuyBooster), "buyBooster")]
 [JsonDerivedType(typeof(BuyPrecon), "buyPrecon")]
 [JsonDerivedType(typeof(OpenBooster), "open")]
@@ -21,11 +23,17 @@ public abstract record CareerAction(DateTime Utc);
 /// <summary>A new career: its seed and the preconstructed deck chosen to start with.</summary>
 public sealed record StartCareer(DateTime Utc, ulong Seed, string Deck) : CareerAction(Utc);
 
-/// <summary>The next daily match starts, with the prize chosen for a win ("cash" or "booster").</summary>
-public sealed record StartDaily(DateTime Utc, string Reward) : CareerAction(Utc);
+/// <summary>The next daily match starts, with the prize chosen for a win ("cash" or "booster") and the player's deck list.</summary>
+public sealed record StartDaily(DateTime Utc, string Reward, string? Deck = null) : CareerAction(Utc);
 
-/// <summary>The daily match in progress ended.</summary>
-public sealed record FinishDaily(DateTime Utc, bool Won) : CareerAction(Utc);
+/// <summary>A practice match against a regular the player chose.</summary>
+public sealed record StartPractice(DateTime Utc, string Opponent, string Deck) : CareerAction(Utc);
+
+/// <summary>An ante match against a regular: each player antes a card at random from their deck; the winner keeps both.</summary>
+public sealed record StartAnte(DateTime Utc, string Opponent, string Deck) : CareerAction(Utc);
+
+/// <summary>The match in progress (daily, practice or ante) ended.</summary>
+public sealed record FinishMatch(DateTime Utc, bool Won) : CareerAction(Utc);
 
 public sealed record BuyBooster(DateTime Utc, string Set) : CareerAction(Utc);
 

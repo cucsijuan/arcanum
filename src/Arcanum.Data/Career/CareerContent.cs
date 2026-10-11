@@ -30,6 +30,18 @@ public sealed record CareerContent
 
     public DailySpec Dailies { get; init; } = new();
 
+    public PracticeSpec Practice { get; init; } = new();
+
+    public AnteSpec Ante { get; init; } = new();
+
+    /// <summary>Reputation tiers, lowest first: each one opens the regulars of its tier (and the ones below).</summary>
+    public IReadOnlyList<TierSpec> Tiers { get; init; } = new[] { new TierSpec("Newcomer", 0) };
+
+    /// <summary>The challenges a week's ones are drawn from.</summary>
+    public IReadOnlyList<ChallengeSpec> Challenges { get; init; } = Array.Empty<ChallengeSpec>();
+
+    public int ChallengesPerWeek { get; init; } = 3;
+
     /// <summary>Sets whose boosters the store sells (each needs a booster definition).</summary>
     public IReadOnlyList<string> Sets { get; init; } = Array.Empty<string>();
 
@@ -74,6 +86,28 @@ public sealed record StarterSpec(int Cash = 1000, int Boosters = 3, IReadOnlyLis
 /// <param name="WinBoosters">Boosters of the featured set for a win when the player chose boosters.</param>
 public sealed record DailySpec(int PerDay = 2, int Win = 450, int Loss = 100, int WinBoosters = 1);
 
+/// <param name="PaidPerDay">Practice matches a day that pay (the others count for nothing but practice).</param>
+/// <param name="Win">Cash for a paid win.</param>
+/// <param name="Loss">Cash for a paid loss.</param>
+public sealed record PracticeSpec(int PaidPerDay = 3, int Win = 50, int Loss = 20);
+
+/// <param name="PerDay">Ante matches a day.</param>
+public sealed record AnteSpec(int PerDay = 3);
+
+/// <param name="Name">Shown name ("Regular").</param>
+/// <param name="Reputation">Reputation it takes.</param>
+public sealed record TierSpec(string Name, int Reputation);
+
+/// <summary>A goal for the week: <see cref="Kind"/> says what counts (see <see cref="CareerRules"/>).</summary>
+/// <param name="Id">Stable id (kept in saves).</param>
+/// <param name="Text">What to do, as shown.</param>
+/// <param name="Kind">winDaily, winMatch, winAnte, winCheap (a deck worth at most Value cents), winMono, openBoosters, playPractice.</param>
+/// <param name="Count">How many times.</param>
+/// <param name="Value">The kind's amount (winCheap: the deck's highest value in cents).</param>
+/// <param name="Cash">Reward in cents.</param>
+/// <param name="Boosters">Reward in boosters of the featured set.</param>
+public sealed record ChallengeSpec(string Id, string Text, string Kind, int Count = 1, int Value = 0, int Cash = 0, int Boosters = 0);
+
 /// <param name="Deck">Module deck name.</param>
 /// <param name="Price">Price in cents; 0 uses the store's default.</param>
 public sealed record PreconSpec(string Deck, int Price = 0);
@@ -82,7 +116,8 @@ public sealed record PreconSpec(string Deck, int Price = 0);
 /// <param name="Name">Shown name.</param>
 /// <param name="Style">One line about how they play.</param>
 /// <param name="Decks">Module deck names they play.</param>
-public sealed record OpponentSpec(string Id, string Name, string Style = "", IReadOnlyList<string>? Decks = null)
+/// <param name="Tier">The reputation tier the player needs to meet them (index in <see cref="CareerContent.Tiers"/>).</param>
+public sealed record OpponentSpec(string Id, string Name, string Style = "", IReadOnlyList<string>? Decks = null, int Tier = 0)
 {
     public IReadOnlyList<string> Decks { get; init; } = Decks ?? Array.Empty<string>();
 }

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using Arcanum.Data.Decks;
+using Arcanum.Data.Formats;
 using Arcanum.Data.Limited;
+using Arcanum.Engine.Cards;
 
 namespace Arcanum.Data.Career;
 
@@ -17,6 +19,7 @@ public sealed record MissingCard(string Name, int Needed, int Owned);
 public static class CareerRules
 {
     public const string CashReward = "cash", BoosterReward = "booster";
+    public const string Daily = "daily", Practice = "practice", Ante = "ante";
 
     public static DateOnly DayOf(DateTime utc) => DateOnly.FromDateTime(utc);
 
@@ -34,14 +37,16 @@ public static class CareerRules
         if (action is StartCareer start) return Start(state, start, world);
         if (state.StartedUtc == default) throw new CareerRuleException("The career hasn't started.");
         if (action.Utc < state.LastUtc) throw new CareerRuleException("The career's clock can't go back.");
-        var (lastUtc, day, played) = (state.LastUtc, state.Day, state.DailiesPlayed);
+        var (lastUtc, day, dailies, practices, antes) = (state.LastUtc, state.Day, state.DailiesPlayed, state.PracticePlayed, state.AntesPlayed);
         Advance(state, action.Utc);
         try
         {
             return action switch
             {
                 StartDaily daily => BeginDaily(state, daily, world),
-                FinishDaily result => EndDaily(state, result, world),
+                StartPractice practice => BeginPractice(state, practice, world),
+                StartAnte ante => BeginAnte(state, ante, world),
+                FinishMatch result => EndMatch(state, result, world),
                 BuyBooster buy => Buy(state, buy, world),
                 BuyPrecon buy => Buy(state, buy, world),
                 OpenBooster open => Open(state, open, world),
@@ -51,7 +56,7 @@ public static class CareerRules
         }
         catch (CareerRuleException)
         {
-            (state.LastUtc, state.Day, state.DailiesPlayed) = (lastUtc, day, played);
+            (state.LastUtc, state.Day, state.DailiesPlayed, state.PracticePlayed, state.AntesPlayed) = (lastUtc, day, dailies, practices, antes);
             throw;
         }
     }
@@ -66,18 +71,93 @@ public static class CareerRules
         var day = DayOf(utc) > state.Day ? DayOf(utc) : state.Day;
         int played = DayOf(utc) > state.Day ? 0 : state.DailiesPlayed;
         var random = CareerRandom.For(state.Seed, "daily", day.DayNumber, played);
-        var opponents = world.Content.Opponents;
+        var opponents = Opponents(state, world);
         var opponent = opponents[random.Next(opponents.Count)];
         // Not the same regular twice in a row on one day when there is a choice.
         if (played > 0 && opponents.Count > 1 && opponent.Id == PreviousOpponent(state, world, day, played))
-            opponent = opponents[(opponents.ToList().IndexOf(opponent) + 1 + random.Next(opponents.Count - 1)) % opponents.Count];
+            opponent = opponents[(IndexOf(opponents, opponent) + 1 + random.Next(opponents.Count - 1)) % opponents.Count];
         return (opponent, opponent.Decks[random.Next(opponent.Decks.Count)]);
     }
 
     private static string PreviousOpponent(CareerState state, CareerWorld world, DateOnly day, int played)
     {
         var random = CareerRandom.For(state.Seed, "daily", day.DayNumber, played - 1);
-        return world.Content.Opponents[random.Next(world.Content.Opponents.Count)].Id;
+        var opponents = Opponents(state, world);
+        return opponents[random.Next(opponents.Count)].Id;
+    }
+
+    private static int IndexOf(IReadOnlyList<OpponentSpec> list, OpponentSpec item)
+    {
+        for (int i = 0; i < list.Count; i++) if (list[i] == item) return i;
+        return -1;
+    }
+
+    /// <summary>The reputation tier reached (index in the content's tiers).</summary>
+    public static int Tier(CareerState state, CareerWorld world)
+    {
+        int tier = 0;
+        for (int i = 0; i < world.Content.Tiers.Count; i++)
+            if (state.Reputation >= world.Content.Tiers[i].Reputation) tier = i;
+        return tier;
+    }
+
+    /// <summary>The regulars the player can meet at their tier (all of them if the content gives none for it).</summary>
+    public static IReadOnlyList<OpponentSpec> Opponents(CareerState state, CareerWorld world)
+    {
+        int tier = Tier(state, world);
+        var met = world.Content.Opponents.Where(o => o.Tier <= tier).ToList();
+        return met.Count > 0 ? met : world.Content.Opponents;
+    }
+
+    /// <summary>Paid practice matches left today.</summary>
+    public static int PaidPracticeLeft(CareerState state, CareerWorld world, DateTime utc) =>
+        Math.Max(0, world.Content.Practice.PaidPerDay - (DayOf(utc) > state.Day ? 0 : state.PracticePlayed));
+
+    public static int AntesLeft(CareerState state, CareerWorld world, DateTime utc) =>
+        Math.Max(0, world.Content.Ante.PerDay - (DayOf(utc) > state.Day ? 0 : state.AntesPlayed));
+
+    /// <summary>The week a day belongs to (weeks start on Monday).</summary>
+    public static int WeekOf(DateOnly day) => day.DayNumber / 7;
+
+    /// <summary>The challenges of the week of <paramref name="day"/>, drawn from the content's pool by the career seed.</summary>
+    public static IReadOnlyList<ChallengeSpec> WeekChallenges(CareerState state, CareerWorld world, DateOnly day)
+    {
+        var pool = world.Content.Challenges.ToList();
+        var random = CareerRandom.For(state.Seed, "challenges", WeekOf(day));
+        var chosen = new List<ChallengeSpec>();
+        while (chosen.Count < world.Content.ChallengesPerWeek && pool.Count > 0)
+        {
+            int i = random.Next(pool.Count);
+            chosen.Add(pool[i]);
+            pool.RemoveAt(i);
+        }
+        return chosen;
+    }
+
+    /// <summary>A challenge's progress in the week of <paramref name="day"/>.</summary>
+    public static int Progress(CareerState state, ChallengeSpec challenge, DateOnly day) =>
+        state.Challenges.GetValueOrDefault($"{WeekOf(day)}:{challenge.Id}");
+
+    /// <summary>A deck's value: its cards' values (basic lands are worth nothing).</summary>
+    public static int DeckValue(DeckList deck, CareerWorld world) => deck.Main.Concat(deck.Sideboard).Sum(e => world.Value(CardKey.Of(e)) * e.Count);
+
+    /// <summary>The colors of a deck's spells' mana costs (W, U, B, R, G).</summary>
+    public static HashSet<char> DeckColors(DeckList deck, CareerWorld world)
+    {
+        var colors = new HashSet<char>();
+        foreach (var entry in deck.Main)
+            if (world.Cards.Find(entry.Name) is { } card)
+                foreach (char c in card.Definition.ManaCost.ToString())
+                    if ("WUBRG".Contains(c)) colors.Add(c);
+        return colors;
+    }
+
+    /// <summary>Why a deck can't be played in a career match (cards not owned, not a legal casual deck); empty when it can.</summary>
+    public static List<string> DeckProblems(DeckList deck, CareerState state, CareerWorld world)
+    {
+        var problems = Missing(deck, state, world).Select(m => $"You have {m.Owned} of the {m.Needed} {m.Name} this deck uses.").ToList();
+        problems.AddRange(DeckValidator.Validate(deck, FormatRules.Casual, world.Cards).Where(i => i.Severity == IssueSeverity.Error).Select(i => i.Message));
+        return problems;
     }
 
     /// <summary>Cards the deck needs more copies of than the collection has, by name (any printing counts; basic lands are free).</summary>
@@ -101,6 +181,8 @@ public static class CareerRules
         {
             state.Day = day;
             state.DailiesPlayed = 0;
+            state.PracticePlayed = 0;
+            state.AntesPlayed = 0;
         }
     }
 
@@ -122,25 +204,127 @@ public static class CareerRules
 
     private static CareerResult BeginDaily(CareerState state, StartDaily daily, CareerWorld world)
     {
-        if (state.Pending is not null) throw new CareerRuleException("A daily match is already in progress.");
+        if (state.Pending is not null) throw new CareerRuleException("A match is already in progress.");
         if (daily.Reward is not (CashReward or BoosterReward)) throw new CareerRuleException("Choose cash or a booster as the prize.");
         if (DailiesLeft(state, world, daily.Utc) == 0) throw new CareerRuleException("No daily matches left today.");
+        if (daily.Deck is not null) PlayableDeck(daily.Deck, state, world);
         var (opponent, deck) = NextDailyOpponent(state, world, daily.Utc);
         state.DailiesPlayed++;
-        state.Pending = new PendingDaily(opponent.Id, deck, daily.Reward) { Set = world.FeaturedSet(state.Day).ToLowerInvariant() };
+        state.Pending = new PendingMatch(opponent.Id, deck, daily.Reward) { Set = world.FeaturedSet(state.Day).ToLowerInvariant(), PlayerDeck = daily.Deck ?? "" };
         return new CareerResult(Array.Empty<PoolCard>(), 0);
     }
 
-    private static CareerResult EndDaily(CareerState state, FinishDaily result, CareerWorld world)
+    private static CareerResult BeginPractice(CareerState state, StartPractice practice, CareerWorld world)
     {
-        var pending = state.Pending ?? throw new CareerRuleException("No daily match is in progress.");
+        if (state.Pending is not null) throw new CareerRuleException("A match is already in progress.");
+        var opponent = Opponent(state, world, practice.Opponent);
+        PlayableDeck(practice.Deck, state, world);
+        var random = CareerRandom.For(state.Seed, Practice, state.Day.DayNumber, state.PracticePlayed);
+        state.PracticePlayed++;
+        state.Pending = new PendingMatch(opponent.Id, opponent.Decks[random.Next(opponent.Decks.Count)]) { Kind = Practice, PlayerDeck = practice.Deck };
+        return new CareerResult(Array.Empty<PoolCard>(), 0);
+    }
+
+    /// <summary>
+    /// Each player antes a card at random from their deck (rule of ante): the player's leaves the collection until the
+    /// match ends; both are out of the decks for the game.
+    /// </summary>
+    private static CareerResult BeginAnte(CareerState state, StartAnte ante, CareerWorld world)
+    {
+        if (state.Pending is not null) throw new CareerRuleException("A match is already in progress.");
+        if (AntesLeft(state, world, ante.Utc) == 0) throw new CareerRuleException("No ante matches left today.");
+        var opponent = Opponent(state, world, ante.Opponent);
+        var deck = PlayableDeck(ante.Deck, state, world);
+        var random = CareerRandom.For(state.Seed, Ante, state.Day.DayNumber, state.AntesPlayed);
+        var theirDeck = opponent.Decks[random.Next(opponent.Decks.Count)];
+        var mine = Pick(deck, random);
+        var theirs = Pick(world.Deck(theirDeck), random);
+        // The card leaves the collection in a printing owned: the deck's own when it is, otherwise another one.
+        var key = CardKey.Of(mine);
+        if (state.Owned(key) == 0 && !world.IsBasicLand(mine.Name))
+            key = state.Cards.First(c => c.Card.Name.Equals(mine.Name, StringComparison.OrdinalIgnoreCase)).Card;
+        state.AddCard(key, -1);
+        state.AntesPlayed++;
+        state.Pending = new PendingMatch(opponent.Id, theirDeck)
+        {
+            Kind = Ante, PlayerDeck = ante.Deck, PlayerAnte = key.ToString(), OpponentAnte = CardKey.Of(theirs).ToString(),
+        };
+        return new CareerResult(Array.Empty<PoolCard>(), 0);
+    }
+
+    private static DeckEntry Pick(DeckList deck, Random random)
+    {
+        var cards = deck.Main.SelectMany(e => Enumerable.Repeat(e, e.Count)).ToList();
+        if (cards.Count == 0) throw new CareerRuleException("The deck is empty.");
+        return cards[random.Next(cards.Count)];
+    }
+
+    private static OpponentSpec Opponent(CareerState state, CareerWorld world, string id) =>
+        Opponents(state, world).FirstOrDefault(o => o.Id == id) ?? throw new CareerRuleException("You can't play that regular yet.");
+
+    private static DeckList PlayableDeck(string text, CareerState state, CareerWorld world)
+    {
+        DeckList deck;
+        try { deck = DeckList.Parse(text); }
+        catch (FormatException) { throw new CareerRuleException("That deck list can't be read."); }
+        if (DeckProblems(deck, state, world) is [var first, ..]) throw new CareerRuleException(first);
+        return deck;
+    }
+
+    private static CareerResult EndMatch(CareerState state, FinishMatch result, CareerWorld world)
+    {
+        var pending = state.Pending ?? throw new CareerRuleException("No match is in progress.");
         state.Pending = null;
-        var dailies = world.Content.Dailies;
         var name = world.Content.Opponents.FirstOrDefault(o => o.Id == pending.OpponentId)?.Name ?? pending.OpponentId;
+        var outcome = pending.Kind switch
+        {
+            Practice => EndPractice(state, result, world, name),
+            Ante => EndAnte(state, result, pending, name),
+            _ => EndDaily(state, result, world, pending, name),
+        };
+        if (result.Won) state.Wins++;
+        else state.Losses++;
+        Count(state, world, result.Utc, pending, result.Won);
+        return outcome;
+    }
+
+    private static CareerResult EndPractice(CareerState state, FinishMatch result, CareerWorld world, string name)
+    {
+        var practice = world.Content.Practice;
+        if (state.PracticePlayed > practice.PaidPerDay)
+        {
+            state.Note(result.Utc, $"{(result.Won ? "Beat" : "Lost to")} {name} in practice.");
+            return new CareerResult(Array.Empty<PoolCard>(), 0);
+        }
+        int cash = result.Won ? practice.Win : practice.Loss;
+        if (result.Won) state.Reputation += 1;
+        state.Cash += cash;
+        state.Note(result.Utc, $"{(result.Won ? "Beat" : "Lost to")} {name} in practice: {Money(cash)}.");
+        return new CareerResult(Array.Empty<PoolCard>(), cash);
+    }
+
+    private static CareerResult EndAnte(CareerState state, FinishMatch result, PendingMatch pending, string name)
+    {
+        var mine = CardKey.Parse(pending.PlayerAnte);
+        var theirs = CardKey.Parse(pending.OpponentAnte);
+        if (!result.Won)
+        {
+            state.Note(result.Utc, $"Lost an ante match to {name}: {name} keeps your {mine.Name}.");
+            return new CareerResult(Array.Empty<PoolCard>(), 0);
+        }
+        state.AddCard(mine, 1);
+        state.AddCard(theirs, 1);
+        state.Reputation += 2;
+        state.Note(result.Utc, $"Beat {name} in an ante match: you keep their {theirs.Name}.");
+        return new CareerResult(new[] { new PoolCard(theirs.Name, theirs.Set.ToLowerInvariant(), theirs.Number, "") }, 0);
+    }
+
+    private static CareerResult EndDaily(CareerState state, FinishMatch result, CareerWorld world, PendingMatch pending, string name)
+    {
+        var dailies = world.Content.Dailies;
         int cash = 0;
         if (result.Won)
         {
-            state.Wins++;
             state.Reputation += 3;
             if (pending.Reward == BoosterReward)
             {
@@ -155,13 +339,55 @@ public static class CareerRules
         }
         else
         {
-            state.Losses++;
             state.Reputation += 1;
             cash = dailies.Loss;
             state.Note(result.Utc, $"Lost a daily match to {name}: {Money(cash)}.");
         }
         state.Cash += cash;
         return new CareerResult(Array.Empty<PoolCard>(), cash);
+    }
+
+    // ---------------------------------------------------------------- challenges
+
+    /// <summary>Counts a finished match for the week's challenges (and pays the ones it completes).</summary>
+    private static void Count(CareerState state, CareerWorld world, DateTime utc, PendingMatch match, bool won)
+    {
+        DeckList? deck = null;
+        if (match.PlayerDeck.Length > 0)
+            try { deck = DeckList.Parse(match.PlayerDeck); } catch (FormatException) { }
+        foreach (var challenge in WeekChallenges(state, world, state.Day))
+        {
+            bool counts = challenge.Kind switch
+            {
+                "winDaily" => won && match.Kind == Daily,
+                "winMatch" => won,
+                "winAnte" => won && match.Kind == Ante,
+                "playPractice" => match.Kind == Practice,
+                "winCheap" => won && deck is not null && DeckValue(deck, world) <= challenge.Value,
+                "winMono" => won && deck is not null && DeckColors(deck, world).Count == 1,
+                _ => false,
+            };
+            if (counts) AdvanceChallenge(state, world, utc, challenge);
+        }
+    }
+
+    private static void AdvanceChallenge(CareerState state, CareerWorld world, DateTime utc, ChallengeSpec challenge)
+    {
+        var key = $"{WeekOf(state.Day)}:{challenge.Id}";
+        int progress = state.Challenges.GetValueOrDefault(key);
+        if (progress >= challenge.Count) return;
+        state.Challenges[key] = ++progress;
+        if (progress < challenge.Count) return;
+        state.Cash += challenge.Cash;
+        var set = world.FeaturedSet(state.Day).ToLowerInvariant();
+        if (challenge.Boosters > 0) state.AddSealed(set, challenge.Boosters);
+        state.Reputation += 2;
+        var prize = string.Join(" and ", new[]
+        {
+            challenge.Cash > 0 ? Money(challenge.Cash) : null,
+            challenge.Boosters > 0 ? $"{challenge.Boosters} {world.SetName(set)} booster{(challenge.Boosters == 1 ? "" : "s")}" : null,
+        }.OfType<string>());
+        state.Note(utc, $"Challenge done: {challenge.Text}{(prize.Length > 0 ? $" ({prize})" : "")}.");
     }
 
     private static CareerResult Buy(CareerState state, BuyBooster buy, CareerWorld world)
@@ -192,6 +418,8 @@ public static class CareerRules
         state.BoostersOpened++;
         state.AddSealed(set, -1);
         foreach (var card in cards) state.AddCard(CardKey.Of(card), 1);
+        foreach (var challenge in WeekChallenges(state, world, state.Day).Where(c => c.Kind == "openBoosters"))
+            AdvanceChallenge(state, world, open.Utc, challenge);
         return new CareerResult(cards, 0);
     }
 

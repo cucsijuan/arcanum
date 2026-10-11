@@ -110,19 +110,34 @@ public sealed class CareerService
     /// <summary>A deck's cards the collection doesn't have enough of.</summary>
     public List<MissingCard> Missing(DeckList deck) => CareerRules.Missing(deck, State, World!);
 
-    /// <summary>The next daily match against the opponent of the day, with the board's table; null when none is left.</summary>
-    public MatchSetup? DailyMatch(DeckList deck, string playerName)
+    /// <summary>
+    /// The board for the match just started (daily, practice or ante), on the store's table. In an ante match each
+    /// anted card is out of its deck for the game.
+    /// </summary>
+    public MatchSetup Match(DeckList deck, string playerName)
     {
         var world = World!;
-        var pending = State.Pending ?? throw new InvalidOperationException("No daily match started.");
+        var pending = State.Pending ?? throw new InvalidOperationException("No match started.");
         var opponent = world.Content.Opponents.First(o => o.Id == pending.OpponentId);
         var cards = App.Instance.Cards!;
         var (mine, _) = deck.Resolve(cards);
         var (theirs, _) = world.Deck(pending.Deck).Resolve(cards);
+        if (pending.Kind == CareerRules.Ante)
+        {
+            RemoveOne(mine, CardKey.Parse(pending.PlayerAnte).Name);
+            RemoveOne(theirs, CardKey.Parse(pending.OpponentAnte).Name);
+        }
+        var title = pending.Kind switch { CareerRules.Practice => "Practice match", CareerRules.Ante => "Ante match", _ => "Daily match" };
         return new MatchSetup(new[] { new GameSession.Seat(playerName, mine), new GameSession.Seat(opponent.Name, theirs, IsBot: true) }, 20)
         {
-            Event = new EventHook(winner => Do(new FinishDaily(Now, winner == 0)), App.CareerScene, "Daily match") { ReturnText = "Back home" },
+            Event = new EventHook(winner => Do(new FinishMatch(Now, winner == 0)), App.CareerScene, title) { ReturnText = "Back home" },
             Table = ResourceLoader.Exists(TableImage) ? TableImage : null,
         };
+    }
+
+    private static void RemoveOne(List<Arcanum.Engine.Cards.CardDefinition> deck, string name)
+    {
+        int i = deck.FindIndex(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        if (i >= 0) deck.RemoveAt(i);
     }
 }

@@ -25,7 +25,7 @@ public partial class CareerScreen : Control
 {
     private enum Place { Room, Store }
 
-    public enum WebPage { Matches, Events, Market, Cards }
+    public enum WebPage { Matches, Practice, Challenges, Events, Market, Cards }
 
     private const string Kit = "res://ui-art/kit/career/";
     private static readonly Vector2 TileSize = new(150, 210);
@@ -105,7 +105,7 @@ public partial class CareerScreen : Control
         // A daily match left before it ended counts as lost.
         if (Career.HasCareer && State.Pending is { } pending)
         {
-            Career.Do(new FinishDaily(Career.Now, Won: false));
+            Career.Do(new FinishMatch(Career.Now, Won: false));
             MenuKit.Toast(this, $"The daily match against {OpponentName(pending.OpponentId)} wasn't finished: it counts as a loss.");
         }
 
@@ -123,8 +123,8 @@ public partial class CareerScreen : Control
 
     /// <summary>
     /// Testing: ARCANUM_CAREER_START=&lt;starting deck&gt; starts a career when there is none; ARCANUM_CAREER_PAGE=&lt;page&gt; opens
-    /// store, boosters, precons, counter, a website page (Matches, Events, Market, Cards), opening (the first unopened
-    /// booster), decks (the deck builder) or daily (plays a daily match).
+    /// store, boosters, precons, counter, a website page (Matches, Practice, Challenges, Events, Market, Cards), opening
+    /// (the first unopened booster), decks (the deck builder), daily or ante (plays one).
     /// </summary>
     private bool RunTestHooks()
     {
@@ -135,9 +135,15 @@ public partial class CareerScreen : Control
         {
             case "decks": OpenDeckBuilder(); return true;
             case "daily" when Career.Decks.List(null) is [var first, ..]:
-                Career.Do(new StartDaily(Career.Now, _reward));
-                App.Instance.PendingMatch = Career.DailyMatch(Career.Decks.Load(first).Deck, Settings.PlayerName);
+                var testDeck = Career.Decks.Load(first).Deck;
+                Career.Do(new StartDaily(Career.Now, _reward, testDeck.Export()));
+                App.Instance.PendingMatch = Career.Match(testDeck, Settings.PlayerName);
                 App.Instance.GoTo(App.GameBoardScene);
+                return true;
+            case "ante" when Career.Decks.List(null) is [var anteDeck, ..]:
+                var list = Career.Decks.Load(anteDeck).Deck;
+                Career.Do(new StartAnte(Career.Now, CareerRules.Opponents(State, World)[0].Id, list.Export()));
+                Play(list, WebPage.Practice);
                 return true;
             case "store": GoTo(Place.Store); return true;
             case "boosters" or "precons" or "counter": GoTo(Place.Store); OnStore(test.ToLowerInvariant()); return true;
@@ -387,14 +393,14 @@ public partial class CareerScreen : Control
         }
         var nav = new HBoxContainer();
         nav.AddThemeConstantOverride("separation", 18);
-        foreach (var (p, text) in new[] { (WebPage.Matches, "Daily matches"), (WebPage.Events, "Events"), (WebPage.Market, "Sell cards"), (WebPage.Cards, "My cards") })
+        foreach (var (p, text) in new[] { (WebPage.Matches, "Daily matches"), (WebPage.Practice, "Practice & ante"), (WebPage.Challenges, "Challenges"), (WebPage.Events, "Events"), (WebPage.Market, "Sell cards"), (WebPage.Cards, "My cards") })
         {
             var link = CareerStyle.LinkButton(text, p == _webPage);
             link.Pressed += () => { _webPage = p; ShowWebPage(); };
             nav.AddChild(link);
         }
         nav.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-        var visit = CareerStyle.LinkButton("Visit the store →");
+        var visit = CareerStyle.LinkButton("Visit the store >>");
         visit.Pressed += () => GoTo(Place.Store);
         nav.AddChild(visit);
         body.AddChild(nav);
@@ -405,6 +411,8 @@ public partial class CareerScreen : Control
         body.AddChild(content);
         switch (_webPage)
         {
+            case WebPage.Practice: PracticePage(content); break;
+            case WebPage.Challenges: ChallengesPage(content); break;
             case WebPage.Events: EventsPage(content); break;
             case WebPage.Market: CollectionList(content, CareerStyle.Ink); break;
             case WebPage.Cards: CardsPage(content); break;
@@ -456,25 +464,7 @@ public partial class CareerScreen : Control
         page.AddChild(CareerStyle.Text($"Today you play {opponent.Name}", 30, CareerStyle.Ink));
         page.AddChild(CareerStyle.Text($"{opponent.Style}  Plays {DeckColors(World.Deck(deck))}.", 20, CareerStyle.InkDim, wrap: true));
 
-        var decks = Career.Decks.List(null);
-        if (decks.Count == 0)
-        {
-            page.AddChild(CareerStyle.Text("You have no decks: build one with the boxes of cards on your shelf.", 22, CareerStyle.Bad, wrap: true));
-            return;
-        }
-        _deckIndex = Math.Clamp(_deckIndex, 0, decks.Count - 1);
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 12);
-        row.AddChild(CareerStyle.Text("Your deck:", 22));
-        var picker = new OptionButton { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(360, 0) };
-        foreach (var d in decks) picker.AddItem(d.Name);
-        picker.Selected = _deckIndex;
-        picker.ItemSelected += i => { _deckIndex = (int)i; ShowWebPage(); };
-        row.AddChild(picker);
-        page.AddChild(row);
-        var (chosen, _) = Career.Decks.Load(decks[_deckIndex]);
-        var problems = DeckProblems(chosen);
-        foreach (var problem in problems.Take(3)) page.AddChild(CareerStyle.Text(problem, 18, CareerStyle.Bad, wrap: true));
+        if (DeckPicker(page) is not var (chosen, problems)) return;
 
         var dailies = World.Content.Dailies;
         var prizes = new HBoxContainer();
@@ -482,7 +472,7 @@ public partial class CareerScreen : Control
         prizes.AddChild(CareerStyle.Text("Prize for a win:", 22));
         foreach (var (reward, text) in new[] { (CareerRules.CashReward, CareerRules.Money(dailies.Win)), (CareerRules.BoosterReward, $"{dailies.WinBoosters} {World.SetName(featured)} booster{(dailies.WinBoosters == 1 ? "" : "s")}") })
         {
-            var b = CareerStyle.Button((_reward == reward ? "◉ " : "○ ") + text, () => { _reward = reward; ShowWebPage(); }, 20);
+            var b = CareerStyle.Button((_reward == reward ? "(*) " : "( ) ") + text, () => { _reward = reward; ShowWebPage(); }, 20);
             prizes.AddChild(b);
         }
         page.AddChild(prizes);
@@ -491,10 +481,8 @@ public partial class CareerScreen : Control
         {
             try
             {
-                Career.Do(new StartDaily(Career.Now, _reward));
-                App.Instance.PendingMatch = Career.DailyMatch(chosen, Settings.PlayerName);
-                OpenOn = nameof(WebPage.Matches); // back from the match, to the website's matches page
-                App.Instance.GoTo(App.GameBoardScene);
+                Career.Do(new StartDaily(Career.Now, _reward, chosen.Export()));
+                Play(chosen, WebPage.Matches);
             }
             catch (CareerRuleException e)
             {
@@ -511,7 +499,169 @@ public partial class CareerScreen : Control
     private static void Record(VBoxContainer page)
     {
         page.AddChild(new Control { SizeFlagsVertical = SizeFlags.ExpandFill });
-        page.AddChild(CareerStyle.Text($"Your record: {State.Wins} wins, {State.Losses} losses  ·  reputation {State.Reputation}", 18, CareerStyle.InkDim));
+        page.AddChild(CareerStyle.Text($"Your record: {State.Wins} wins, {State.Losses} losses  ·  {TierText()}", 18, CareerStyle.InkDim));
+    }
+
+    /// <summary>"Regular (45 reputation, 55 to Local favorite)".</summary>
+    private static string TierText()
+    {
+        var tiers = World.Content.Tiers;
+        int tier = CareerRules.Tier(State, World);
+        var next = tier + 1 < tiers.Count ? $", {tiers[tier + 1].Reputation - State.Reputation} to {tiers[tier + 1].Name}" : "";
+        return $"{tiers[tier].Name} ({State.Reputation} reputation{next})";
+    }
+
+    /// <summary>The career deck chooser (shared by every kind of match) and what keeps the chosen deck from being played; null without decks.</summary>
+    private (DeckList Deck, List<string> Problems)? DeckPicker(VBoxContainer page)
+    {
+        var decks = Career.Decks.List(null);
+        if (decks.Count == 0)
+        {
+            page.AddChild(CareerStyle.Text("You have no decks: build one with the boxes of cards on your shelf.", 22, CareerStyle.Bad, wrap: true));
+            return null;
+        }
+        _deckIndex = Math.Clamp(_deckIndex, 0, decks.Count - 1);
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 12);
+        row.AddChild(CareerStyle.Text("Your deck:", 22));
+        var picker = new OptionButton { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(360, 0) };
+        foreach (var d in decks) picker.AddItem(d.Name);
+        picker.Selected = _deckIndex;
+        picker.ItemSelected += i => { _deckIndex = (int)i; ShowWebPage(); };
+        row.AddChild(picker);
+        page.AddChild(row);
+        var (chosen, _) = Career.Decks.Load(decks[_deckIndex]);
+        var problems = CareerRules.DeckProblems(chosen, State, World);
+        foreach (var problem in problems.Take(3)) page.AddChild(CareerStyle.Text(problem, 18, CareerStyle.Bad, wrap: true));
+        return (chosen, problems);
+    }
+
+    /// <summary>Goes to the board for the match just started; afterwards the website opens on <paramref name="back"/>.</summary>
+    private static void Play(DeckList deck, WebPage back)
+    {
+        App.Instance.PendingMatch = Career.Match(deck, Settings.PlayerName);
+        OpenOn = back.ToString();
+        App.Instance.GoTo(App.GameBoardScene);
+    }
+
+    private string _practiceOpponent = "", _anteOpponent = "";
+
+    private void PracticePage(VBoxContainer page)
+    {
+        var now = Career.Now;
+        if (DeckPicker(page) is not var (chosen, problems)) return;
+        var opponents = CareerRules.Opponents(State, World);
+
+        // Practice.
+        var practice = World.Content.Practice;
+        int paid = CareerRules.PaidPracticeLeft(State, World, now);
+        page.AddChild(CareerStyle.Text("Practice", 28, CareerStyle.TitleBar));
+        page.AddChild(CareerStyle.Text(paid > 0
+            ? $"Play any regular you know. {paid} more practice match{(paid == 1 ? "" : "es")} pay today ({CareerRules.Money(practice.Win)} for a win, {CareerRules.Money(practice.Loss)} for a loss)."
+            : "Play any regular you know. Practice doesn't pay any more today, but it's still practice.", 19, CareerStyle.InkDim, wrap: true));
+        page.AddChild(OpponentRow(opponents, _practiceOpponent, id => _practiceOpponent = id, "Practice", problems.Count > 0, id =>
+        {
+            Career.Do(new StartPractice(Career.Now, id, chosen.Export()));
+            Play(chosen, WebPage.Practice);
+        }));
+
+        // Ante.
+        int antes = CareerRules.AntesLeft(State, World, now);
+        page.AddChild(new Control { CustomMinimumSize = new Vector2(0, 8) });
+        page.AddChild(CareerStyle.Text("Ante match", 28, CareerStyle.TitleBar));
+        page.AddChild(CareerStyle.Text("Playing for keeps: each of you antes a card at random from your deck, and the winner keeps both. "
+            + $"The anted cards stay out of the game. {antes} ante match{(antes == 1 ? "" : "es")} left today.", 19, CareerStyle.InkDim, wrap: true));
+        page.AddChild(OpponentRow(opponents, _anteOpponent, id => _anteOpponent = id, "Play for keeps", problems.Count > 0 || antes == 0, id =>
+        {
+            Career.Do(new StartAnte(Career.Now, id, chosen.Export()));
+            var match = State.Pending!;
+            var mine = CardKey.Parse(match.PlayerAnte);
+            var theirs = CardKey.Parse(match.OpponentAnte);
+            var cards = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+            cards.AddThemeConstantOverride("separation", 30);
+            foreach (var (who, card) in new[] { ("You ante", mine), ($"{OpponentName(match.OpponentId)} antes", theirs) })
+            {
+                var column = new VBoxContainer();
+                column.AddChild(CareerStyle.Text(who, 20, CareerStyle.Gold));
+                var node = new CardNode { Size = new Vector2(200, 279), CustomMinimumSize = new Vector2(200, 279) };
+                node.Setup(ViewOf(DefinitionOf(card)), showCostPips: false);
+                column.AddChild(node);
+                cards.AddChild(column);
+            }
+            MenuKit.Modal(this, "The antes", "The winner keeps both cards.", cards, ("Play", () => Play(chosen, WebPage.Practice)));
+        }));
+        Record(page);
+    }
+
+    /// <summary>A regular to play (a chooser) and the button that starts the match.</summary>
+    private Control OpponentRow(IReadOnlyList<OpponentSpec> opponents, string chosen, Action<string> choose, string action, bool disabled, Action<string> start)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 12);
+        var picker = new OptionButton { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(300, 0) };
+        int selected = 0;
+        for (int i = 0; i < opponents.Count; i++)
+        {
+            picker.AddItem($"{opponents[i].Name} · {World.Content.Tiers[Math.Min(opponents[i].Tier, World.Content.Tiers.Count - 1)].Name}");
+            if (opponents[i].Id == chosen) selected = i;
+        }
+        picker.Selected = selected;
+        picker.ItemSelected += i => { choose(opponents[(int)i].Id); ShowWebPage(); };
+        row.AddChild(picker);
+        var opponent = opponents[selected];
+        var style = CareerStyle.Text(opponent.Style, 17, CareerStyle.InkDim, wrap: true);
+        style.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        row.AddChild(style);
+        var button = CareerStyle.Button(action, () =>
+        {
+            try { start(opponent.Id); }
+            catch (CareerRuleException e)
+            {
+                MenuKit.Toast(this, e.Message);
+                Refresh();
+            }
+        }, 22, primary: true);
+        button.Disabled = disabled;
+        row.AddChild(button);
+        return row;
+    }
+
+    private static void ChallengesPage(VBoxContainer page)
+    {
+        var day = CareerRules.DayOf(Career.Now);
+        var monday = DateOnly.FromDayNumber(CareerRules.WeekOf(day) * 7);
+        page.AddChild(CareerStyle.Text($"This week's challenges (until {monday.AddDays(6):dddd, MMMM d})", 26));
+        foreach (var challenge in CareerRules.WeekChallenges(State, World, day))
+        {
+            int progress = Math.Min(challenge.Count, CareerRules.Progress(State, challenge, day));
+            bool done = progress >= challenge.Count;
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 14);
+            var text = CareerStyle.Text((done ? "Done: " : "") + challenge.Text, 22, done ? CareerStyle.Good : CareerStyle.Ink);
+            text.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            row.AddChild(text);
+            var prize = string.Join(" + ", new[]
+            {
+                challenge.Cash > 0 ? CareerRules.Money(challenge.Cash) : null,
+                challenge.Boosters > 0 ? $"{challenge.Boosters} booster{(challenge.Boosters == 1 ? "" : "s")}" : null,
+            }.OfType<string>());
+            row.AddChild(CareerStyle.Text(prize, 18, CareerStyle.InkDim));
+            var bar = new ProgressBar { MaxValue = challenge.Count, Value = progress, ShowPercentage = false, CustomMinimumSize = new Vector2(180, 18), SizeFlagsVertical = SizeFlags.ShrinkCenter };
+            bar.AddThemeStyleboxOverride("background", CareerStyle.Box(new Color("ddd6c8"), CareerStyle.InkDim, 1));
+            bar.AddThemeStyleboxOverride("fill", CareerStyle.Box(CareerStyle.Good));
+            row.AddChild(bar);
+            row.AddChild(CareerStyle.Text($"{progress}/{challenge.Count}", 18, CareerStyle.InkDim));
+            page.AddChild(row);
+        }
+        page.AddChild(new Control { CustomMinimumSize = new Vector2(0, 10) });
+        page.AddChild(CareerStyle.Text("Reputation", 26));
+        page.AddChild(CareerStyle.Text($"You are a {TierText()}. Reputation comes from matches and challenges; each tier lets you meet tougher regulars.", 19, CareerStyle.InkDim, wrap: true));
+        foreach (var (tier, i) in World.Content.Tiers.Select((t, i) => (t, i)))
+        {
+            var names = World.Content.Opponents.Where(o => o.Tier == i).Select(o => o.Name).ToList();
+            bool reached = State.Reputation >= tier.Reputation;
+            page.AddChild(CareerStyle.Text($"{(reached ? "[x]" : "[ ]")} {tier.Name} ({tier.Reputation}){(names.Count > 0 ? ": " + string.Join(", ", names) : "")}", 18, reached ? CareerStyle.Ink : CareerStyle.InkDim, wrap: true));
+        }
     }
 
     private static void EventsPage(VBoxContainer page)
@@ -545,14 +695,6 @@ public partial class CareerScreen : Control
             ("Keep playing", () => { }), ("End it", () => { Career.Abandon(); Refresh(); })), 16);
         end.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
         page.AddChild(end);
-    }
-
-    /// <summary>Why a deck can't be played in a daily match: cards not owned, or not a legal casual deck.</summary>
-    private static List<string> DeckProblems(DeckList deck)
-    {
-        var problems = Career.Missing(deck).Select(m => $"You have {m.Owned} of the {m.Needed} {m.Name} this deck uses.").ToList();
-        problems.AddRange(DeckValidator.Validate(deck, FormatRules.Casual, Cards).Where(i => i.Severity == IssueSeverity.Error).Select(i => i.Message));
-        return problems;
     }
 
     // ---------------------------------------------------------------- the store
@@ -631,7 +773,7 @@ public partial class CareerScreen : Control
         {
             var row = new HBoxContainer();
             row.AddThemeConstantOverride("separation", 12);
-            var name = CareerStyle.Text(World.SetName(set) + (set.Equals(featured, StringComparison.OrdinalIgnoreCase) ? "  ★" : ""), 22);
+            var name = CareerStyle.Text(World.SetName(set) + (set.Equals(featured, StringComparison.OrdinalIgnoreCase) ? "  (featured)" : ""), 22);
             name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             row.AddChild(name);
             int owned = State.Sealed.GetValueOrDefault(set.ToLowerInvariant());

@@ -54,14 +54,23 @@ public class CareerTests
           "boosterPrice": 400,
           "preconPrice": 1500,
           "sellRate": 0.5,
-          "starter": { "cash": 1000, "boosters": 3, "decks": ["starter"] },
+          "starter": { "cash": 1000, "boosters": 3, "decks": ["starter", "sixty"] },
           "dailies": { "perDay": 2, "win": 400, "loss": 100, "winBoosters": 1 },
           "sets": ["abc"],
           "featured": ["abc"],
           "precons": [{ "deck": "other" }],
+          "practice": { "paidPerDay": 2, "win": 50, "loss": 20 },
+          "ante": { "perDay": 2 },
+          "tiers": [{ "name": "Newcomer", "reputation": 0 }, { "name": "Regular", "reputation": 10 }],
+          "challenges": [
+            { "id": "w2", "text": "Win 2 matches", "kind": "winMatch", "count": 2, "cash": 300 },
+            { "id": "open", "text": "Open a booster", "kind": "openBoosters", "count": 1, "boosters": 1 }
+          ],
+          "challengesPerWeek": 2,
           "opponents": [
             { "id": "ana", "name": "Ana", "decks": ["other"] },
-            { "id": "bo", "name": "Bo", "decks": ["starter"] }
+            { "id": "bo", "name": "Bo", "decks": ["starter"] },
+            { "id": "cy", "name": "Cy", "decks": ["other"], "tier": 1 }
           ]
         }
         """;
@@ -69,11 +78,13 @@ public class CareerTests
     private static readonly Dictionary<string, string> Decks = new()
     {
         ["starter"] = "4 Card 1 (ABC) 1\n2 Card 16 (ABC) 16\n10 Card 19 (ABC) 19",
+        ["sixty"] = "4 Card 1 (ABC) 1\n56 Card 19 (ABC) 19",
         ["other"] = "4 Card 2 (ABC) 2\n1 Card 18 (ABC) 18",
     };
 
-    private static CareerWorld World() =>
-        new(CareerContent.Parse(ContentJson), Database(), new[] { SetDefinition.Parse(SetJson) }, name => Decks.GetValueOrDefault(name));
+    /// <summary>The test world; the week's challenges only when asked (they pay, which other tests don't count on).</summary>
+    private static CareerWorld World(bool challenges = false) =>
+        new(CareerContent.Parse(challenges ? ContentJson : ContentJson.Replace("\"challengesPerWeek\": 2", "\"challengesPerWeek\": 0")), Database(), new[] { SetDefinition.Parse(SetJson) }, name => Decks.GetValueOrDefault(name));
 
     private static readonly DateTime T0 = new(2026, 10, 12, 10, 0, 0, DateTimeKind.Utc);
 
@@ -132,7 +143,7 @@ public class CareerTests
         for (int i = 0; i < 2; i++)
         {
             Do(state, journal, world, new StartDaily(T0.AddMinutes(10 * i + 1), CareerRules.CashReward));
-            Do(state, journal, world, new FinishDaily(T0.AddMinutes(10 * i + 5), Won: true));
+            Do(state, journal, world, new FinishMatch(T0.AddMinutes(10 * i + 5), Won: true));
         }
         Assert.Equal(1800, state.Cash);
         Assert.Equal(0, CareerRules.DailiesLeft(state, world, T0.AddHours(1)));
@@ -143,7 +154,7 @@ public class CareerTests
         var later = T0.AddDays(3);
         Assert.Equal(2, CareerRules.DailiesLeft(state, world, later));
         Do(state, journal, world, new StartDaily(later, CareerRules.BoosterReward));
-        Do(state, journal, world, new FinishDaily(later.AddMinutes(5), Won: true));
+        Do(state, journal, world, new FinishMatch(later.AddMinutes(5), Won: true));
         Assert.Equal(4, state.Sealed["abc"]);
         Assert.Equal(1, CareerRules.DailiesLeft(state, world, later.AddMinutes(6)));
     }
@@ -157,7 +168,7 @@ public class CareerTests
         Do(state, journal, world, new StartDaily(T0.AddMinutes(1), CareerRules.BoosterReward));
         Assert.Equal(expected.Opponent.Id, state.Pending!.OpponentId);
         Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new StartDaily(T0.AddMinutes(2), CareerRules.CashReward), world));
-        Do(state, journal, world, new FinishDaily(T0.AddMinutes(9), Won: false));
+        Do(state, journal, world, new FinishMatch(T0.AddMinutes(9), Won: false));
         Assert.Equal(1100, state.Cash);
         Assert.Equal(3, state.Sealed["abc"]);
         Assert.Equal(1, state.Losses);
@@ -239,5 +250,103 @@ public class CareerTests
         var sa = Enumerable.Range(0, 20).Select(_ => a.Next(1000)).ToList();
         Assert.Equal(sa, Enumerable.Range(0, 20).Select(_ => b.Next(1000)));
         Assert.NotEqual(sa, Enumerable.Range(0, 20).Select(_ => c.Next(1000)));
+    }
+
+    private static string Sixty => Decks["sixty"];
+
+    private static (CareerState State, List<CareerAction> Journal, CareerWorld World) StartedWithSixty(bool challenges = false)
+    {
+        var world = World(challenges);
+        var state = new CareerState();
+        var journal = new List<CareerAction> { new StartCareer(T0, 42, "sixty") };
+        CareerRules.Apply(state, journal[0], world);
+        return (state, journal, world);
+    }
+
+    [Fact]
+    public void MatchesNeedADeckOfOwnedCards()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        var refused = Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new StartPractice(T0.AddMinutes(1), "ana", "8 Card 1\n52 Card 19"), world));
+        Assert.Contains("You have 4 of the 8 Card 1", refused.Message);
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new StartDaily(T0.AddMinutes(1), CareerRules.CashReward, "4 Card 1\n10 Card 19"), world));
+        Do(state, journal, world, new StartDaily(T0.AddMinutes(1), CareerRules.CashReward, Sixty));
+    }
+
+    [Fact]
+    public void PracticePaysOnlyTheFirstMatchesOfTheDay()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        for (int i = 0; i < 3; i++)
+        {
+            Do(state, journal, world, new StartPractice(T0.AddMinutes(10 * i + 1), "bo", Sixty));
+            Do(state, journal, world, new FinishMatch(T0.AddMinutes(10 * i + 5), Won: true));
+        }
+        Assert.Equal(1000 + 2 * 50, state.Cash);
+        Assert.Equal(0, CareerRules.PaidPracticeLeft(state, world, T0.AddHours(1)));
+        Assert.Equal(2, CareerRules.PaidPracticeLeft(state, world, T0.AddDays(1)));
+    }
+
+    [Fact]
+    public void AnteTakesACardOutUntilTheMatchEndsAndTheWinnerKeepsBoth()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        int before = state.CollectionSize;
+        Do(state, journal, world, new StartAnte(T0.AddMinutes(1), "ana", Sixty));
+        var pending = state.Pending!;
+        Assert.Equal(CareerRules.Ante, pending.Kind);
+        Assert.Equal(before - 1, state.CollectionSize);
+        Assert.Contains(CardKey.Parse(pending.OpponentAnte).Name, new[] { "Card 2", "Card 18" });
+        Do(state, journal, world, new FinishMatch(T0.AddMinutes(9), Won: true));
+        Assert.Equal(before + 1, state.CollectionSize);
+        Assert.Equal(1, state.Owned(CardKey.Parse(pending.OpponentAnte)));
+
+        Do(state, journal, world, new StartAnte(T0.AddMinutes(10), "ana", Sixty));
+        var lost = CardKey.Parse(state.Pending!.PlayerAnte);
+        int owned = state.OwnedByName(lost.Name);
+        Do(state, journal, world, new FinishMatch(T0.AddMinutes(19), Won: false));
+        Assert.Equal(owned, state.OwnedByName(lost.Name)); // it stays gone
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new StartAnte(T0.AddMinutes(20), "ana", Sixty), world));
+
+        Assert.Equal(JsonSerializer.Serialize(state), JsonSerializer.Serialize(CareerRules.Replay(journal, World())));
+    }
+
+    [Fact]
+    public void ReputationOpensTheNextTiersRegulars()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        Assert.DoesNotContain(CareerRules.Opponents(state, world), o => o.Id == "cy");
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new StartPractice(T0.AddMinutes(1), "cy", Sixty), world));
+        for (int i = 0; i < 4; i++)
+        {
+            Do(state, journal, world, new StartAnte(T0.AddDays(i).AddMinutes(1), "ana", Sixty));
+            Do(state, journal, world, new FinishMatch(T0.AddDays(i).AddMinutes(5), Won: true));
+            Do(state, journal, world, new StartDaily(T0.AddDays(i).AddMinutes(6), CareerRules.CashReward, Sixty));
+            Do(state, journal, world, new FinishMatch(T0.AddDays(i).AddMinutes(9), Won: true));
+        }
+        Assert.True(state.Reputation >= 10);
+        Assert.Equal(1, CareerRules.Tier(state, world));
+        Do(state, journal, world, new StartPractice(T0.AddDays(5), "cy", Sixty));
+    }
+
+    [Fact]
+    public void WeeklyChallengesCountAndPayOnce()
+    {
+        var (state, journal, world) = StartedWithSixty(challenges: true);
+        var week = CareerRules.WeekChallenges(state, world, state.Day);
+        Assert.Equal(2, week.Count);
+        int cash = state.Cash;
+        for (int i = 0; i < 3; i++)
+        {
+            Do(state, journal, world, new StartPractice(T0.AddMinutes(10 * i + 1), "bo", Sixty));
+            Do(state, journal, world, new FinishMatch(T0.AddMinutes(10 * i + 5), Won: true));
+        }
+        var winTwo = week.First(c => c.Id == "w2");
+        Assert.Equal(2, CareerRules.Progress(state, winTwo, state.Day));
+        Assert.Equal(cash + 2 * 50 + 300, state.Cash); // the third win is unpaid practice and the challenge pays once
+        int sealedBefore = state.Sealed["abc"];
+        Do(state, journal, world, new OpenBooster(T0.AddHours(1), "abc"));
+        Assert.Equal(sealedBefore, state.Sealed["abc"]); // opened one, got one
+        Assert.Contains(state.Notes, n => n.Text.StartsWith("Challenge done: Open a booster"));
     }
 }

@@ -22,12 +22,24 @@ public readonly record struct CardKey(string Name, string Set, string Number)
     }
 }
 
-/// <summary>A daily match that has started and has no result yet.</summary>
-/// <param name="Reward">"cash" or "booster": the prize chosen for a win.</param>
-public sealed record PendingDaily(string OpponentId, string Deck, string Reward)
+/// <summary>A match that has started and has no result yet.</summary>
+/// <param name="OpponentId">The regular played.</param>
+/// <param name="Deck">The module deck they play.</param>
+/// <param name="Reward">Daily matches: "cash" or "booster", the prize chosen for a win.</param>
+public sealed record PendingMatch(string OpponentId, string Deck, string Reward = "")
 {
+    /// <summary>daily, practice or ante.</summary>
+    public string Kind { get; init; } = CareerRules.Daily;
+
     /// <summary>The featured set when the match started: a booster prize is of this set.</summary>
     public string Set { get; init; } = "";
+
+    /// <summary>The player's deck list (for the week's challenges); empty in matches started before it was kept.</summary>
+    public string PlayerDeck { get; init; } = "";
+
+    /// <summary>Ante matches: the card each player antes (<see cref="CardKey"/> text); the player's is out of the collection until the match ends.</summary>
+    public string PlayerAnte { get; init; } = "";
+    public string OpponentAnte { get; init; } = "";
 }
 
 /// <summary>Something that happened in the career, newest last (shown on the hub).</summary>
@@ -45,7 +57,18 @@ public sealed class CareerState
     /// <summary>The current day (UTC) and how many daily matches have been played on it.</summary>
     public DateOnly Day { get; set; }
     public int DailiesPlayed { get; set; }
-    public PendingDaily? Pending { get; set; }
+    public int PracticePlayed { get; set; }
+    public int AntesPlayed { get; set; }
+    public PendingMatch? Pending { get; set; }
+
+    /// <summary>The week's challenges' progress by "week:id"; a challenge whose progress reached its count is done.</summary>
+    public SortedDictionary<string, int> Challenges
+    {
+        get => _challenges;
+        set => _challenges = new(value, StringComparer.Ordinal);
+    }
+
+    private SortedDictionary<string, int> _challenges = new(StringComparer.Ordinal);
 
     /// <summary>Cash in cents.</summary>
     public int Cash { get; set; }
