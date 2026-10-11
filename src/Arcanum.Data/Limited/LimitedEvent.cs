@@ -244,6 +244,7 @@ public sealed class LimitedEvent
             w.WriteStringValue(c.Set);
             w.WriteStringValue(c.Number);
             w.WriteStringValue(c.Rarity);
+            if (c.Foil) w.WriteBooleanValue(true); // a foil has a fifth value
             w.WriteEndArray();
         }
         w.WriteEndArray();
@@ -253,5 +254,6 @@ public sealed class LimitedEvent
         e.TryGetProperty(name, out var list) ? ReadCardArray(list) : new List<PoolCard>();
 
     private static List<PoolCard> ReadCardArray(JsonElement list) =>
-        list.EnumerateArray().Select(c => new PoolCard(c[0].GetString()!, c[1].GetString()!, c[2].GetString()!, c[3].GetString()!)).ToList();
+        list.EnumerateArray().Select(c => new PoolCard(c[0].GetString()!, c[1].GetString()!, c[2].GetString()!, c[3].GetString()!,
+            c.GetArrayLength() > 4 && c[4].GetBoolean())).ToList();
 }

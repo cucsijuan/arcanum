@@ -5,11 +5,11 @@ using Arcanum.Engine.Cards;
 
 namespace Arcanum.Data.Limited;
 
-/// <summary>A card in a booster or a pool: the card and the printing it came as.</summary>
-public sealed record PoolCard(string Name, string Set, string Number, string Rarity)
+/// <summary>A card in a booster or a pool: the card and the printing it came as (a traditional foil or not).</summary>
+public sealed record PoolCard(string Name, string Set, string Number, string Rarity, bool Foil = false)
 {
     /// <summary>A deck line for this card (with its printing when it has one).</summary>
-    public DeckEntry ToEntry(int count = 1) => Set.Length == 0 ? new(count, Name) : new(count, Name, Set.ToUpperInvariant(), Number);
+    public DeckEntry ToEntry(int count = 1) => Set.Length == 0 ? new(count, Name) : new(count, Name, Set.ToUpperInvariant(), Number, Foil);
 
     public static PoolCard Of(CardEntry card, Printing printing) => new(card.Name, printing.Set, printing.CollectorNumber, printing.Rarity);
 }
@@ -61,6 +61,7 @@ public sealed class BoosterGenerator : IBoosterSource
         if (sheet.Names is { } names && !names.Contains(card.Name, StringComparer.OrdinalIgnoreCase)) return false;
         if (sheet.Numbers is { } numbers && !numbers.Contains(printing.CollectorNumber, StringComparer.OrdinalIgnoreCase)) return false;
         if (sheet.Exclude.Contains(card.Name, StringComparer.OrdinalIgnoreCase)) return false;
+        if (sheet.Foil && !printing.Foil) return false;
         return true;
     }
 
@@ -79,7 +80,8 @@ public sealed class BoosterGenerator : IBoosterSource
                 var choices = slot.Wildcard || slot.RepeatSheets.Contains(sheetName) ? sheet : sheet.Where(c => !pack.Any(p => p.Name == c[0].Name)).ToList();
                 if (choices.Count == 0) choices = sheet;
                 var variants = choices[random.Next(choices.Count)];
-                pack.Add(variants[random.Next(variants.Length)]);
+                var card = variants[random.Next(variants.Length)];
+                pack.Add(_spec.Sheets[sheetName].Foil ? card with { Foil = true } : card);
             }
         }
         return pack;

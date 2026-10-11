@@ -56,9 +56,10 @@ public sealed class CareerWorld
     public bool IsBasicLand(string name) =>
         Cards.Find(name) is { } card && (card.Definition.Supertypes & Supertype.Basic) != 0 && card.Definition.Is(CardType.Land);
 
-    /// <summary>A card's value in cents, from its printing's rarity (a card without a known printing counts as its rarest one).</summary>
+    /// <summary>A card's value in cents, from its printing's rarity (a card without a known printing counts as its rarest one); a foil is worth more.</summary>
     public int Value(CardKey card)
     {
+        if (card.Foil) return (int)(Value(card with { Foil = false }) * Content.FoilMultiplier);
         if (IsBasicLand(card.Name)) return 0;
         var printings = Cards.Find(card.Name)?.Record.Printings ?? (IReadOnlyList<Printing>)Array.Empty<Printing>();
         var printing = printings.FirstOrDefault(p => p.Set.Equals(card.Set, StringComparison.OrdinalIgnoreCase) && p.CollectorNumber == card.Number);

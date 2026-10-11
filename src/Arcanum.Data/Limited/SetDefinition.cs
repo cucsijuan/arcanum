@@ -26,6 +26,9 @@ public sealed record SheetSpec
 
     /// <summary>Card names left out.</summary>
     public IReadOnlyList<string> Exclude { get; init; } = Array.Empty<string>();
+
+    /// <summary>The sheet's cards are traditional foils (only printings made in foil).</summary>
+    public bool Foil { get; init; }
 }
 
 /// <summary>
@@ -114,6 +117,7 @@ public sealed record SetDefinition
                 Names = Strings(s, "names"),
                 Numbers = Strings(s, "numbers")?.SelectMany(ExpandRange).ToList(),
                 Exclude = Strings(s, "exclude") ?? new List<string>(),
+                Foil = s.TryGetProperty("foil", out var fo) && fo.GetBoolean(),
             };
         }
         var slots = new List<SlotSpec>();

@@ -12,7 +12,7 @@ public class BoosterTests
         $$"""{"oracle_id":"o-{{i}}","name":"Card {{i}}","layout":"normal","mana_cost":"{1}","type_line":"{{type}}","oracle_text":"","power":"1","toughness":"1"}""";
 
     private static string Print(int i, string rarity, bool booster = true, string set = "abc", int? number = null) =>
-        $$"""{"oracle_id":"o-{{i}}","id":"p-{{set}}-{{i}}","set":"{{set}}","set_name":"Set","collector_number":"{{number ?? i}}","rarity":"{{rarity}}","released_at":"2024-01-01","booster":{{(booster ? "true" : "false")}},"lang":"en"}""";
+        $$"""{"oracle_id":"o-{{i}}","id":"p-{{set}}-{{i}}","set":"{{set}}","set_name":"Set","collector_number":"{{number ?? i}}","rarity":"{{rarity}}","released_at":"2024-01-01","booster":{{(booster ? "true" : "false")}},"lang":"en","finishes":["nonfoil"{{(i % 2 == 0 ? ",\"foil\"" : "")}}]}""";
 
     /// <summary>10 commons (1–10), 5 uncommons (11–15), 2 rares (16–17), 1 mythic (18), a land (19, two arts), a card outside boosters (20), a guest from another set (21).</summary>
     private static CardDatabase Database()
@@ -166,5 +166,24 @@ public class BoosterTests
             repeated |= pack.Take(8).Any(c => c.Name == pack[8].Name);
         }
         Assert.True(repeated); // the foil can be a card the booster already has; the commons never repeat
+    }
+
+    [Fact]
+    public void FoilSheetsGiveFoilsOfPrintingsMadeInFoil()
+    {
+        const string json = """
+            {
+              "code": "abc", "name": "Alphabet",
+              "booster": {
+                "name": "Test", "sheets": { "common": { "rarity": "common", "basic": false }, "foil": { "rarity": "common", "basic": false, "foil": true } },
+                "slots": [ { "count": 3, "sheet": "common" }, { "count": 1, "sheet": "foil" } ]
+              }
+            }
+            """;
+        var gen = new BoosterGenerator(SetDefinition.Parse(json), Database());
+        Assert.All(gen.Sheet("foil"), c => Assert.Equal(0, int.Parse(c.Number) % 2)); // only the even ones are made in foil
+        var pack = gen.Open(new Random(3));
+        Assert.Equal(new[] { false, false, false, true }, pack.Select(c => c.Foil));
+        Assert.True(pack[3].ToEntry().Foil);
     }
 }

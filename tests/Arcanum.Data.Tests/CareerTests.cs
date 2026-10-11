@@ -468,4 +468,15 @@ public class CareerTests
         Do(state, journal, world, new EnterEvent(sunday, "champ", CareerRules.PayTokens, Sixty));
         Assert.Equal(0, state.Tokens);
     }
+
+    [Fact]
+    public void FoilsAreKeptApartAndWorthMore()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        var foil = new CardKey("Card 16", "ABC", "16", Foil: true);
+        Assert.Equal(foil, CardKey.Parse(foil.ToString()));
+        Assert.Equal(new CardKey("Card 16", "ABC", "16"), CardKey.Parse("Card 16|ABC|16"));
+        Assert.Equal(2 * world.Value(foil with { Foil = false }), world.Value(foil));
+        Assert.True(CardKey.Parse(foil.ToString()).ToEntry().Foil);
+    }
 }

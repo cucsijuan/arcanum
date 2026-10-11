@@ -1007,7 +1007,7 @@ public partial class CareerScreen : Control
         {
             var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Stop };
             row.AddThemeConstantOverride("separation", 12);
-            var name = CareerStyle.Text($"{count} × {card.Name}", 19, ink);
+            var name = CareerStyle.Text($"{count} × {card.Name}{(card.Foil ? " (foil)" : "")}", 19, ink);
             name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             name.ClipText = true;
             row.AddChild(name);
@@ -1151,13 +1151,13 @@ public partial class CareerScreen : Control
     }
 
     private static CardDefinition DefinitionOf(CardKey card) =>
-        Cards.TryGet(card.Name, card.Set.Length > 0 ? card.Set : null, card.Number.Length > 0 ? card.Number : null, out var d) ? d : Cards.Find(card.Name)!.Definition;
+        Cards.TryGet(card.Name, card.Set.Length > 0 ? card.Set : null, card.Number.Length > 0 ? card.Number : null, card.Foil, out var d) ? d : Cards.Find(card.Name)!.Definition;
 
     private static CardView ViewOf(CardDefinition d) => new()
     {
         Id = new CardId(-1), Owner = new PlayerId(0), Controller = new PlayerId(0), Zone = Zone.Hand, IsHidden = false,
         Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
-        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey,
+        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil,
     };
 
     private void ShowPreview(CardDefinition definition, Control anchor)

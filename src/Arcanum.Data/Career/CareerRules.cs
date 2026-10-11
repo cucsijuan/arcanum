@@ -322,7 +322,7 @@ public static class CareerRules
         state.AddCard(theirs, 1);
         state.Reputation += 2;
         state.Note(result.Utc, $"Beat {name} in an ante match: you keep their {theirs.Name}.");
-        return new CareerResult(new[] { new PoolCard(theirs.Name, theirs.Set.ToLowerInvariant(), theirs.Number, "") }, 0);
+        return new CareerResult(new[] { new PoolCard(theirs.Name, theirs.Set.ToLowerInvariant(), theirs.Number, "", theirs.Foil) }, 0);
     }
 
     private static CareerResult EndDaily(CareerState state, FinishMatch result, CareerWorld world, PendingMatch pending, string name)
@@ -469,7 +469,7 @@ public static class CareerRules
         state.AddCard(get, 1);
         state.OffersTaken.Add($"{state.Day.DayNumber}:{take.Offer}");
         if (state.OffersTaken.Count > 60) state.OffersTaken.RemoveAt(0);
-        return new CareerResult(new[] { new PoolCard(get.Name, get.Set.ToLowerInvariant(), get.Number, "") }, offer.Kind == Bargain ? -offer.Price : 0);
+        return new CareerResult(new[] { new PoolCard(get.Name, get.Set.ToLowerInvariant(), get.Number, "", get.Foil) }, offer.Kind == Bargain ? -offer.Price : 0);
     }
 
     // ---------------------------------------------------------------- the calendar
@@ -556,7 +556,7 @@ public static class CareerRules
             foreach (var card in cards)
             {
                 state.AddCard(card, 1);
-                pool.Add(new PoolCard(card.Name, card.Set.ToLowerInvariant(), card.Number, ""));
+                pool.Add(new PoolCard(card.Name, card.Set.ToLowerInvariant(), card.Number, "", card.Foil));
             }
         }
         state.Event = null;
@@ -686,7 +686,7 @@ public static class CareerRules
         {
             var rarity = world.Cards.Find(entry.Name)?.Record.Printings
                 .FirstOrDefault(p => p.Set.Equals(entry.Set ?? "", StringComparison.OrdinalIgnoreCase) && p.CollectorNumber == entry.Number)?.Rarity ?? "";
-            for (int i = 0; i < entry.Count; i++) cards.Add(new PoolCard(entry.Name, entry.Set?.ToLowerInvariant() ?? "", entry.Number ?? "", rarity));
+            for (int i = 0; i < entry.Count; i++) cards.Add(new PoolCard(entry.Name, entry.Set?.ToLowerInvariant() ?? "", entry.Number ?? "", rarity, entry.Foil));
         }
         return cards;
     }

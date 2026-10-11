@@ -5,21 +5,29 @@ using Arcanum.Data.Limited;
 
 namespace Arcanum.Data.Career;
 
-/// <summary>A card of a collection: the card and the printing it is (set code in capitals, as in deck lists).</summary>
-public readonly record struct CardKey(string Name, string Set, string Number)
+/// <summary>A card of a collection: the card, the printing it is (set code in capitals, as in deck lists) and whether it is a foil.</summary>
+public readonly record struct CardKey(string Name, string Set, string Number, bool Foil = false)
 {
-    public static CardKey Of(PoolCard card) => new(card.Name, card.Set.ToUpperInvariant(), card.Number);
+    public static CardKey Of(PoolCard card) => new(card.Name, card.Set.ToUpperInvariant(), card.Number, card.Foil);
 
-    public static CardKey Of(DeckEntry entry) => new(entry.Name, entry.Set?.ToUpperInvariant() ?? "", entry.Number ?? "");
+    public static CardKey Of(DeckEntry entry) => new(entry.Name, entry.Set?.ToUpperInvariant() ?? "", entry.Number ?? "", entry.Foil);
 
-    /// <summary>"Name|SET|number": the collection's dictionary key in saves.</summary>
-    public override string ToString() => $"{Name}|{Set}|{Number}";
+    /// <summary>"Name|SET|number" ("|F" after it for a foil): the collection's dictionary key in saves.</summary>
+    public override string ToString() => Foil ? $"{Name}|{Set}|{Number}|F" : $"{Name}|{Set}|{Number}";
 
     public static CardKey Parse(string text)
     {
         var parts = text.Split('|');
-        return parts.Length == 3 ? new(parts[0], parts[1], parts[2]) : new(text, "", "");
+        return parts.Length switch
+        {
+            4 => new(parts[0], parts[1], parts[2], parts[3] == "F"),
+            3 => new(parts[0], parts[1], parts[2]),
+            _ => new(text, "", ""),
+        };
     }
+
+    /// <summary>A deck line for one copy of this card.</summary>
+    public DeckEntry ToEntry(int count = 1) => new(count, Name, Set.Length > 0 ? Set : null, Number.Length > 0 ? Number : null, Foil);
 }
 
 /// <summary>A match that has started and has no result yet.</summary>
