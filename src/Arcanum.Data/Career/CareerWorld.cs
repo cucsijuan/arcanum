@@ -56,32 +56,10 @@ public sealed class CareerWorld
             : new string?[] { null }.Concat(Sets[set].Boosters.Keys.Where(Content.BoosterPrices.ContainsKey)).ToList();
 
     /// <summary>A booster kind's price on a day (the season may change it).</summary>
-    public int BoosterPrice(string? kind, DateOnly day)
-    {
-        int price = string.IsNullOrEmpty(kind) ? Content.BoosterPrice : Content.BoosterPrices.GetValueOrDefault(kind);
-        foreach (var change in Season.On(day))
-        {
-            if (string.IsNullOrEmpty(kind)) price = change.BoosterPrice ?? price;
-            else if (change.BoosterPrices.TryGetValue(kind, out var changed)) price = changed;
-        }
-        return price;
-    }
+    public int BoosterPrice(string? kind, DateOnly day) => Season.BoosterPrice(Content, kind, day);
 
     /// <summary>The store's calendar on a day: the content's events with the season's changes in force.</summary>
-    public IReadOnlyList<EventSpec> Events(DateOnly day)
-    {
-        var events = Content.Events.ToList();
-        foreach (var change in Season.On(day))
-        {
-            events.RemoveAll(e => change.Cancel.Contains(e.Id, StringComparer.Ordinal));
-            foreach (var added in change.Events)
-            {
-                int at = events.FindIndex(e => e.Id == added.Id);
-                if (at >= 0) events[at] = added; else events.Add(added);
-            }
-        }
-        return events;
-    }
+    public IReadOnlyList<EventSpec> Events(DateOnly day) => Season.Events(Content, day);
 
     /// <summary>An event of the calendar on a day, by id.</summary>
     public EventSpec? Event(string id, DateOnly day) => Events(day).FirstOrDefault(e => e.Id == id);
@@ -104,8 +82,7 @@ public sealed class CareerWorld
     }
 
     /// <summary>The set featured in the week of <paramref name="day"/> (weeks start on Monday), unless the season features another.</summary>
-    public string FeaturedSet(DateOnly day) =>
-        Season.On(day).LastOrDefault(c => c.Featured is { Length: > 0 })?.Featured ?? Content.Featured[day.DayNumber / 7 % Content.Featured.Count];
+    public string FeaturedSet(DateOnly day) => Season.FeaturedSet(Content, day);
 
     /// <summary>The store sells boosters of this set.</summary>
     public bool SellsBoosters(string set) =>

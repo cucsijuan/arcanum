@@ -609,4 +609,31 @@ public class CareerTests
         Assert.Null(published.ChangedPast(edited, new DateOnly(2026, 10, 18)));
         Assert.Throws<FormatException>(() => CareerSeason.Parse("{ \"schemaVersion\": 99 }"));
     }
+
+    [Fact]
+    public void OnlineEventsPayTheirShareAgainstTheComputerAndPvpOnlyOnesCantBePlayedOffline()
+    {
+        const string season = """
+            { "changes": [ { "from": "2026-10-12", "events": [
+                { "id": "draft", "name": "Draft night", "when": "Wednesday", "kind": "draft", "players": 8, "rounds": 3, "entry": 1500,
+                  "prizes": [{ "wins": 3, "boosters": 6, "tokens": 1, "reputation": 10 }, { "wins": 0, "reputation": 1 }],
+                  "online": { "starts": ["18:00", "21:00"], "offlineScale": 0.5 } },
+                { "id": "pvp", "name": "Online cup", "when": "Wednesday", "kind": "draft", "entry": 1000, "prizes": [{ "place": 1, "boosters": 8 }],
+                  "online": { "starts": ["20:00"], "pvpOnly": true } } ] } ] }
+            """;
+        var world = World(season: season);
+        var state = new CareerState();
+        CareerRules.Apply(state, new StartCareer(T0, 42, "starter"), world);
+        var wednesday = new DateTime(2026, 10, 14, 19, 0, 0, DateTimeKind.Utc);
+        var draft = world.Event("draft", DateOnly.FromDateTime(wednesday))!;
+        Assert.Equal(new PrizeSpec(Wins: 3, Boosters: 3, Tokens: 0, Reputation: 5), CareerRules.PrizeFor(draft, 3, 1));
+        Assert.Equal(6, CareerRules.PrizeFor(draft, 3, 1, online: true)!.Boosters);
+        var refused = Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(wednesday, "pvp", CareerRules.PayCash), world));
+        Assert.Contains("online only", refused.Message);
+
+        var broken = CareerSeason.Parse(season.Replace("\"18:00\", \"21:00\"", "\"6pm\"").Replace("\"pvpOnly\": true", "\"pvpOnly\": true, \"checkIn\": 1"));
+        var problems = broken.Problems(world.Content, world.Sets, new HashSet<string>());
+        Assert.Contains(problems, p => p.Contains("'6pm'"));
+        Assert.Contains(problems, p => p.Contains("check-in"));
+    }
 }

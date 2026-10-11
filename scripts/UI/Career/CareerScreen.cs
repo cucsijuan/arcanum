@@ -1047,14 +1047,24 @@ public partial class CareerScreen : Control
         if (e.EntryBoosters > 0) entry.Add($"{e.EntryBoosters} boosters of the set");
         if (e.EntryTokens > 0) entry.Add($"{e.EntryTokens} qualification token{(e.EntryTokens == 1 ? "" : "s")}");
         var tier = e.MinTier > 0 ? $" For {World.Content.Tiers[Math.Min(e.MinTier, World.Content.Tiers.Count - 1)].Name}s and up." : "";
-        return $"{kind}, {e.Players} players, {e.Rounds} rounds{(e.BestOf > 1 ? $" (best of {e.BestOf})" : "")}. Entry: {string.Join(" or ", entry)}.{tier}";
+        return $"{kind}, {e.Players} players, {e.Rounds} rounds{(e.BestOf > 1 ? $" (best of {e.BestOf})" : "")}. Entry: {string.Join(" or ", entry)}.{tier}{OnlineText(e, day)}";
+    }
+
+    /// <summary>When an online event starts (in the player's time), and what playing it against the computer pays.</summary>
+    private static string OnlineText(EventSpec e, DateOnly day)
+    {
+        if (e.Online is not { } online) return "";
+        var times = online.Starts.Select(t => TimeOnly.TryParseExact(t, "HH:mm", out var utc)
+            ? day.ToDateTime(utc, DateTimeKind.Utc).ToLocalTime().ToString("HH:mm") : t);
+        var when = $" Online at {string.Join(", ", times)} (your time; online play is coming soon)";
+        return online.PvpOnly ? when + ", online only." : $"{when}; against the computer it pays {online.OfflineScale:0%} of the prizes.";
     }
 
     private void EventRow(VBoxContainer list, EventSpec e, DateOnly day, DeckList? deck, List<string> problems)
     {
         list.AddChild(CareerStyle.Text(e.Name, 26));
         list.AddChild(CareerStyle.Text(Describe(e, day), 19, CareerStyle.InkDim, wrap: true));
-        var prizes = e.Prizes.Select(p => (p.Wins >= 0 ? $"{p.Wins} wins" : p.Place switch { 0 => "everyone else", 1 => "1st", _ => $"top {p.Place}" }) + ": "
+        var prizes = CareerRules.PrizesOf(e).Select(p => (p.Wins >= 0 ? $"{p.Wins} wins" : p.Place switch { 0 => "everyone else", 1 => "1st", _ => $"top {p.Place}" }) + ": "
             + string.Join(", ", new[]
             {
                 p.Cash > 0 ? CareerRules.Money(p.Cash) : null, p.Boosters > 0 ? $"{p.Boosters} boosters" : null,
@@ -1064,6 +1074,11 @@ public partial class CareerScreen : Control
         if (CareerRules.Played(State, e, day))
         {
             list.AddChild(CareerStyle.Text("You played it today.", 19, CareerStyle.Good));
+            return;
+        }
+        if (e.Online is { PvpOnly: true })
+        {
+            list.AddChild(CareerStyle.Text("It's played online only.", 19, CareerStyle.InkDim));
             return;
         }
         if (CareerRules.Tier(State, World) < e.MinTier)

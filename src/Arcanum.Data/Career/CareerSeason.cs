@@ -44,6 +44,13 @@ public sealed record CareerSeason
         return season;
     }
 
+    /// <summary>The season as its file (every field written, so it reads back the same).</summary>
+    public string ToJson() => JsonSerializer.Serialize(this, new JsonSerializerOptions(Options)
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    });
+
     /// <summary>What's wrong with the season for a content module's career (sets, booster kinds, decks and events it names).</summary>
     public IReadOnlyList<string> Problems(CareerContent content, IReadOnlyDictionary<string, Limited.SetDefinition> sets, ICollection<string> decks)
     {
@@ -73,9 +80,50 @@ public sealed record CareerSeason
                 foreach (var deck in e.Decks.Where(d => !decks.Contains(d))) problems.Add($"{where}: there is no deck '{deck}'.");
                 if (e.Players < 2 || e.Rounds < 1 || e.BestOf < 1 || e.Entry < 0) problems.Add($"{where}: players, rounds, best of or entry make no sense.");
                 if (e.Prizes.Count == 0) problems.Add($"{where}: it has no prizes.");
+                if (e.Online is { } online)
+                {
+                    if (online.Starts.Count == 0) problems.Add($"{where}: an online event needs its start times.");
+                    foreach (var start in online.Starts.Where(t => !TimeOnly.TryParseExact(t, "HH:mm", out _)))
+                        problems.Add($"{where}: start time '{start}' must be like 20:00 (UTC).");
+                    if (online.Starts.Distinct().Count() != online.Starts.Count) problems.Add($"{where}: a start time is repeated.");
+                    if (online.CheckIn is < 5 or > 240) problems.Add($"{where}: check-in must open between 5 and 240 minutes before the start.");
+                    if (online.OfflineScale is < 0 or > 1) problems.Add($"{where}: the offline share of the prizes must be between 0 and 100%.");
+                }
             }
         }
         return problems;
+    }
+
+    /// <summary>The store's calendar on a day: the content's events with the changes in force.</summary>
+    public IReadOnlyList<EventSpec> Events(CareerContent content, DateOnly day)
+    {
+        var events = content.Events.ToList();
+        foreach (var change in On(day))
+        {
+            events.RemoveAll(e => change.Cancel.Contains(e.Id, StringComparer.Ordinal));
+            foreach (var added in change.Events)
+            {
+                int at = events.FindIndex(e => e.Id == added.Id);
+                if (at >= 0) events[at] = added; else events.Add(added);
+            }
+        }
+        return events;
+    }
+
+    /// <summary>The week's featured set (the content's rotation, weeks from Monday), unless a change features another.</summary>
+    public string FeaturedSet(CareerContent content, DateOnly day) =>
+        On(day).LastOrDefault(c => c.Featured is { Length: > 0 })?.Featured ?? content.Featured[day.DayNumber / 7 % content.Featured.Count];
+
+    /// <summary>A booster kind's price on a day (null or empty: play or draft boosters).</summary>
+    public int BoosterPrice(CareerContent content, string? kind, DateOnly day)
+    {
+        int price = string.IsNullOrEmpty(kind) ? content.BoosterPrice : content.BoosterPrices.GetValueOrDefault(kind);
+        foreach (var change in On(day))
+        {
+            if (string.IsNullOrEmpty(kind)) price = change.BoosterPrice ?? price;
+            else if (change.BoosterPrices.TryGetValue(kind, out var changed)) price = changed;
+        }
+        return price;
     }
 
     /// <summary>The changes in force on a day.</summary>

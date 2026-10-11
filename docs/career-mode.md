@@ -93,7 +93,10 @@ Default week (illustrative):
 | Last Sunday | Monthly championship | $50 or qualification | top players get a qualification token |
 | Seasonal | International tournament | qualification token | PvP only (config) |
 
-Offline, events are always PvE. Online, `modes` decides; the big ones are `pvp` only.
+Offline, events are always PvE. An event with `online` (start times UTC, check-in minutes, `pvpOnly`, `offlineScale`)
+is also played online at those times (empty seats get computer players); unless it's PvP only, it can be played
+against the computer any time of its day for `offlineScale` of the prizes. Until online events exist (C5) the game
+plays them offline at that share, and PvP-only ones show as online only.
 
 **Prerelease:** when the content module gains a new set, a sealed prerelease event for it runs for a week. A natural
 hook: new content → new event.
@@ -133,6 +136,9 @@ shows them and the pointer's position; Ctrl+click copies a point).
 - **Season file** (served by the career service, not EOS Title Storage: the service needs the same file to verify
   careers, so it lives in one place): the module's `career/season.json` lists changes, each from a day on (to a last
   day, optionally): events added, replaced (same id) or cancelled; the featured set; booster prices; a line of news.
+  The season editor (`dotnet run --project tools/SeasonEditor -- <module dir>`, a page on this computer) plans it on a
+  calendar (store events, the season's, cancelled ones, featured set, prices and news per day; played days locked),
+  with forms for changes and events, and saves or publishes it.
   `server/Arcanum.CareerService/deploy/publish-season.sh <module dir>` checks it (`tools/SeasonCheck`: everything it
   names exists, and no day already played changes, since careers are replayed with it) and puts it on the service,
   which serves `/career/season/<module id>.json` as a static file. The game downloads it when it changed (at start;

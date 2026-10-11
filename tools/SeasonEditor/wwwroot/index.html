@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Season editor</title>
+<style>
+  :root {
+    --bg: #f4f1ea; --panel: #fffdf8; --ink: #22252b; --dim: #6b6f78; --line: #ddd6c8; --accent: #2d5fa8;
+    --module: #e6e2d8; --season: #d6e6ff; --changed: #ffe2b8; --cancel: #c0392b; --past: #ebe8e1; --bad: #fde3e0; --good: #2e7d4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #17181b; --panel: #1f2125; --ink: #e8e6e1; --dim: #9a9ea6; --line: #33363c; --accent: #7fb0ff;
+      --module: #2c2e33; --season: #233a5c; --changed: #5a4321; --cancel: #ff7a6b; --past: #1b1c1f; --bad: #4a2523; --good: #6fcf97; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; gap: 12px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0 12px 0 0; }
+  header .note { color: var(--dim); flex: 1; }
+  button { font: inherit; padding: 6px 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.small { padding: 2px 8px; font-size: 12px; }
+  button.danger { color: var(--cancel); }
+  main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(380px, 1fr); gap: 16px; padding: 16px 18px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .problems { margin: 0 18px; padding: 10px 14px; border-radius: 6px; background: var(--bad); white-space: pre-wrap; }
+  .problems:empty { display: none; }
+  .message { margin: 8px 18px 0; color: var(--good); white-space: pre-wrap; }
+  .message.bad { color: var(--cancel); }
+  .cal-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .cal-head h2 { margin: 0; font-size: 17px; flex: 1; }
+  .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .dow { text-align: center; color: var(--dim); font-size: 12px; padding: 2px; }
+  .day { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; min-height: 108px; padding: 4px 5px; cursor: pointer; overflow: hidden; }
+  .day.other { opacity: .5; }
+  .day.past { background: var(--past); cursor: default; }
+  .day.today { outline: 2px solid var(--accent); }
+  .day.selected { outline: 2px solid var(--good); }
+  .day .num { font-weight: 600; display: flex; justify-content: space-between; font-size: 12px; }
+  .day .feat { color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .day .feat.changed { color: var(--accent); font-weight: 600; }
+  .chip { display: block; font-size: 11px; padding: 1px 5px; border-radius: 4px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--module); }
+  .chip.season { background: var(--season); }
+  .chip.changed { background: var(--changed); }
+  .chip.cancel { background: transparent; color: var(--cancel); text-decoration: line-through; }
+  .chip.news { background: transparent; color: var(--accent); }
+  .chip.price { background: transparent; color: var(--good); }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; color: var(--dim); font-size: 12px; }
+  .legend .chip { display: inline-block; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
+  .panel h3 { margin: 0 0 8px; font-size: 15px; display: flex; gap: 8px; align-items: center; }
+  .panel h3 span { flex: 1; }
+  .panel.locked { opacity: .75; }
+  .panel.focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--season); }
+  .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  .row label { min-width: 110px; color: var(--dim); }
+  input, select, textarea { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--ink); }
+  input[type=number] { width: 80px; }
+  textarea { width: 100%; min-height: 44px; }
+  .event { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 8px 0; background: var(--bg); }
+  .event h4 { margin: 0 0 4px; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+  .event h4 span { flex: 1; }
+  table.prizes { border-collapse: collapse; width: 100%; font-size: 12px; }
+  table.prizes td, table.prizes th { padding: 2px 3px; text-align: left; }
+  table.prizes input[type=number] { width: 64px; }
+  .checks { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .hint { color: var(--dim); font-size: 12px; }
+  .menu { position: fixed; z-index: 20; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px; box-shadow: 0 6px 24px rgba(0,0,0,.25); display: flex; flex-direction: column; gap: 4px; min-width: 240px; }
+  .menu .title { font-weight: 600; padding: 2px 6px; }
+  .menu button { text-align: left; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Season editor</h1>
+  <span class="note" id="note"></span>
+  <span class="hint" id="dirty"></span>
+  <button id="add">+ Change</button>
+  <button id="save">Save to module</button>
+  <button id="publish" class="primary">Publish</button>
+</header>
+<div class="message" id="message"></div>
+<div class="problems" id="problems"></div>
+<main>
+  <section>
+    <div class="cal-head">
+      <button id="prev">&lsaquo;</button>
+      <h2 id="month"></h2>
+      <button id="next">&rsaquo;</button>
+      <button id="todayBtn">Today</button>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="legend">
+      <span><span class="chip">store event</span> from the module</span>
+      <span><span class="chip season">added</span> by the season</span>
+      <span><span class="chip changed">changed</span> by the season</span>
+      <span><span class="chip cancel">cancelled</span></span>
+      <span>&#x25F7; online at set times (or offline) &middot; &#x2694; online only</span>
+      <span>Days up to today are played: they can't change.</span>
+    </div>
+  </section>
+  <section id="changes"></section>
+</main>
+<script>
+"use strict";
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const KINDS = { draft: "Draft", constructed: "Constructed", commander: "Commander" };
+let C = null;          // the module's content
+let season = null;     // the season being edited
+let month = null;      // first day of the month shown (Date, UTC)
+let selected = null;   // the selected day (yyyy-mm-dd)
+let focus = -1;        // the change shown highlighted
+let dirty = false;
+
+const $ = id => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k in e && typeof v !== "string") e[k] = v;
+    else e.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid !== null && kid !== undefined) e.append(kid);
+  return e;
+};
+const iso = d => d.toISOString().slice(0, 10);
+const parse = s => new Date(s + "T00:00:00Z");
+const addDays = (s, n) => { const d = parse(s); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
+const money = cents => "$" + (cents / 100).toFixed(2);
+const setName = code => (C.sets.find(s => s.code === code) || { name: code }).name;
+const today = () => C.today;
+// A UTC time of day ("20:00") in this computer's time.
+const local = t => { const [h, m] = t.split(":").map(Number); return new Date(Date.UTC(2026, 0, 1, h, m)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " here"; };
+const slug = text => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "event";
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  return r.json();
+}
+
+function changed() {
+  dirty = true;
+  $("dirty").textContent = "Unsaved changes";
+  refresh();
+}
+
+let pending = null;
+function refresh() {
+  clearTimeout(pending);
+  pending = setTimeout(drawCalendar, 120);
+}
+
+// ------------------------------------------------------------------ the calendar
+
+async function drawCalendar() {
+  const first = new Date(month);
+  const start = new Date(first); start.setUTCDate(1 - ((first.getUTCDay() + 6) % 7)); // back to Monday
+  const answer = await api("/api/calendar", { season, from: iso(start), days: 42 });
+  $("problems").textContent = answer.problems.length ? "Can't publish yet:\n" + answer.problems.join("\n") : "";
+  $("publish").disabled = answer.problems.length > 0;
+  $("month").textContent = first.toLocaleDateString("en", { month: "long", year: "numeric", timeZone: "UTC" });
+  const grid = $("grid");
+  grid.replaceChildren(...WEEKDAYS.map(d => el("div", { class: "dow" }, d.slice(0, 3))));
+  const defaultPrice = C.boosterPrice;
+  for (const day of answer.days) {
+    const d = parse(day.date);
+    const cls = ["day"];
+    if (d.getUTCMonth() !== first.getUTCMonth()) cls.push("other");
+    if (day.past) cls.push("past");
+    if (day.date === today()) cls.push("today");
+    if (day.date === selected) cls.push("selected");
+    const cell = el("div", { class: cls.join(" "), title: day.past ? "Already played" : "Click to plan this day" },
+      el("div", { class: "num" }, el("span", {}, String(d.getUTCDate())), day.prices.play !== defaultPrice ? el("span", { class: "chip price" }, money(day.prices.play)) : null),
+      el("div", { class: "feat" + (day.featuredChanged ? " changed" : ""), title: "Featured: " + day.featuredName }, day.featuredName),
+      day.events.map(e => el("span", { class: "chip " + e.source,
+        title: `${e.name} (${KINDS[e.kind] || e.kind}${e.set ? ", " + setName(e.set) : ""}), entry ${money(e.entry)}` +
+          (e.starts ? `\nOnline at ${e.starts.map(t => `${t} UTC (${local(t)})`).join(", ")}${e.pvpOnly ? ", PvP only" : ", or offline any time"}` : "") },
+        (e.pvpOnly ? "\u2694 " : e.starts ? "\u25F7 " : "") + e.name)),
+      day.cancelled.map(name => el("span", { class: "chip cancel" }, name)),
+      day.news.map(n => el("span", { class: "chip news", title: n }, "✉ " + n)));
+    if (!day.past) cell.addEventListener("click", ev => dayMenu(day, ev));
+    grid.append(cell);
+  }
+}
+
+function dayMenu(day, ev) {
+  closeMenu();
+  selected = day.date;
+  refresh();
+  const menu = el("div", { class: "menu", id: "menu" },
+    el("div", { class: "title" }, parse(day.date).toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" })),
+    el("button", { onclick: () => { addChange(day.date, day.date, true); closeMenu(); } }, "One-off event on this day"),
+    el("button", { onclick: () => { addChange(day.date, addDays(day.date, 6), false); closeMenu(); } }, "Special week from this day"),
+    el("button", { onclick: () => { addChange(day.date, null, false); closeMenu(); } }, "Change from this day on"),
+    ...season.changes.map((c, i) => [c, i]).filter(([c]) => c.from <= day.date && (!c.until || day.date <= c.until))
+      .map(([c, i]) => el("button", { onclick: () => { focus = i; drawChanges(); closeMenu(); document.querySelector(`[data-change="${i}"]`)?.scrollIntoView({ behavior: "smooth" }); } },
+        `Edit: ${describeChange(c)}`)));
+  document.body.append(menu);
+  menu.style.left = Math.min(ev.clientX, innerWidth - 260) + "px";
+  menu.style.top = Math.min(ev.clientY, innerHeight - menu.offsetHeight - 10) + "px";
+  setTimeout(() => document.addEventListener("click", closeMenu, { once: true }), 0);
+}
+function closeMenu() { $("menu")?.remove(); }
+
+// ------------------------------------------------------------------ the changes
+
+function describeChange(c) {
+  const parts = [];
+  if (c.events.length) parts.push(c.events.map(e => e.name).join(", "));
+  if (c.cancel.length) parts.push("cancels " + c.cancel.join(", "));
+  if (c.featured) parts.push("featured " + setName(c.featured));
+  if (c.boosterPrice != null || Object.keys(c.boosterPrices).length) parts.push("prices");
+  if (c.news) parts.push("news");
+  const days = c.until ? (c.until === c.from ? c.from : `${c.from} to ${c.until}`) : `from ${c.from}`;
+  return `${days}: ${parts.join("; ") || "nothing yet"}`;
+}
+
+function newEvent(when) {
+  return { id: "special-" + Date.now().toString(36), name: "Special event", when, kind: "draft", set: "featured", players: 8, rounds: 3, bestOf: 1,
+    entry: 1500, entryBoosters: 0, entryTokens: 0, minTier: 0, online: null, prizes: [{ place: 0, wins: 2, cash: 0, boosters: 3, tokens: 0, reputation: 2 }, { place: 0, wins: 0, cash: 0, boosters: 0, tokens: 0, reputation: 1 }], decks: [] };
+}
+
+function addChange(from, until, withEvent) {
+  const change = { from: from || addDays(today(), 1), until, events: [], cancel: [], featured: null, boosterPrice: null, boosterPrices: {}, news: null };
+  if (withEvent) change.events.push(newEvent(from));
+  season.changes.push(change);
+  focus = season.changes.length - 1;
+  drawChanges();
+  changed();
+  document.querySelector(`[data-change="${focus}"]`)?.scrollIntoView({ behavior: "smooth" });
+}
+
+function field(label, input, hint) {
+  return el("div", { class: "row" }, el("label", {}, label), input, hint ? el("span", { class: "hint" }, hint) : null);
+}
+function text(value, set, props = {}) { return el("input", { type: "text", value: value ?? "", oninput: e => { set(e.target.value); changed(); }, ...props }); }
+function number(value, set, props = {}) { return el("input", { type: "number", value: value ?? 0, oninput: e => { set(Number(e.target.value)); changed(); }, ...props }); }
+function dollars(cents, set, props = {}) {
+  return el("input", { type: "number", step: "0.25", min: "0", value: cents == null ? "" : (cents / 100).toFixed(2), placeholder: props.placeholder || "",
+    oninput: e => { set(e.target.value === "" ? null : Math.round(Number(e.target.value) * 100)); changed(); }, disabled: !!props.disabled });
+}
+function date(value, set, props = {}) { return el("input", { type: "date", value: value ?? "", oninput: e => { set(e.target.value || null); changed(); }, ...props }); }
+function choice(options, value, set, props = {}) {
+  const s = el("select", { onchange: e => { set(e.target.value); changed(); drawChanges(); }, ...props }, options.map(([v, t]) => el("option", { value: v }, t)));
+  s.value = value ?? "";
+  return s;
+}
+
+function drawChanges() {
+  const box = $("changes");
+  box.replaceChildren();
+  if (!season.changes.length)
+    box.append(el("div", { class: "panel" }, el("h3", {}, "No changes"), el("p", { class: "hint" },
+      "Click a day on the calendar to plan a one-off event or a special week, or press “+ Change”. Without changes the store runs the module's own calendar.")));
+  season.changes.forEach((c, i) => box.append(drawChange(c, i)));
+}
+
+function drawChange(c, i) {
+  const started = c.from <= today();
+  const lock = started ? { disabled: true } : {};
+  const panel = el("div", { class: "panel" + (started ? " locked" : "") + (i === focus ? " focus" : ""), "data-change": String(i) });
+  panel.append(el("h3", {}, el("span", {}, describeChange(c)),
+    started ? el("span", { class: "hint" }, "in force: only its last day can change") :
+      el("button", { class: "small danger", onclick: () => { season.changes.splice(i, 1); focus = -1; drawChanges(); changed(); } }, "Delete")));
+  panel.append(field("First day", date(c.from, v => c.from = v, { ...lock, min: addDays(today(), 1) })));
+  panel.append(field("Last day", date(c.until, v => c.until = v, { min: started ? today() : c.from }), "empty: from then on"));
+  panel.append(field("Featured set", choice([["", "— the usual rotation —"], ...C.sets.map(s => [s.code, s.name])], c.featured, v => c.featured = v || null, lock)));
+  panel.append(field("Play boosters", dollars(c.boosterPrice, v => c.boosterPrice = v, { placeholder: money(C.boosterPrice).slice(1), ...lock }), "empty: the usual " + money(C.boosterPrice)));
+  for (const kind of C.kinds)
+    panel.append(field(kind[0].toUpperCase() + kind.slice(1) + " boosters", dollars(c.boosterPrices[kind], v => { if (v == null) delete c.boosterPrices[kind]; else c.boosterPrices[kind] = v; },
+      { placeholder: money(C.boosterPrices[kind]).slice(1), ...lock }), "empty: the usual " + money(C.boosterPrices[kind])));
+  panel.append(field("News", text(c.news, v => c.news = v || null, { ...lock, style: "flex:1", placeholder: "A line on the store's events page" })));
+  const earlier = season.changes.slice(0, i).flatMap(x => x.events);
+  const cancellable = [...C.events, ...earlier].filter((e, k, all) => all.findIndex(x => x.id === e.id) === k);
+  panel.append(field("Cancel", el("div", { class: "checks" }, cancellable.map(e => el("label", {},
+    el("input", { type: "checkbox", checked: c.cancel.includes(e.id), disabled: started, onchange: ev => {
+      c.cancel = ev.target.checked ? [...c.cancel, e.id] : c.cancel.filter(x => x !== e.id); changed(); } }), " " + e.name)))));
+  c.events.forEach((e, k) => panel.append(drawEvent(c, e, k, started)));
+  if (!started) {
+    const replace = choice([["", "Change a store event…"], ...C.events.map(e => [e.id, e.name])], "", v => {
+      if (!v) return;
+      const copy = JSON.parse(JSON.stringify(C.events.find(e => e.id === v)));
+      c.events.push(copy);
+    });
+    panel.append(el("div", { class: "row" },
+      el("button", { class: "small", onclick: () => { c.events.push(newEvent(c.until === c.from ? c.from : WEEKDAYS[(parse(c.from).getUTCDay() + 6) % 7])); drawChanges(); changed(); } }, "+ New event"),
+      replace));
+  }
+  return panel;
+}
+
+function drawEvent(c, e, k, started) {
+  const lock = started ? { disabled: true } : {};
+  const isDate = /^\d{4}-\d{2}-\d{2}$/.test(e.when);
+  const replaces = C.events.some(x => x.id === e.id);
+  const box = el("div", { class: "event" });
+  box.append(el("h4", {}, el("span", {}, (replaces ? "Changes: " : "") + e.name),
+    started ? null : el("button", { class: "small danger", onclick: () => { c.events.splice(k, 1); drawChanges(); changed(); } }, "Remove")));
+  box.append(field("Name", text(e.name, v => { if (!replaces && e.id.startsWith("special-")) e.id = "special-" + slug(v); e.name = v; }, { ...lock, style: "flex:1" })));
+  box.append(field("Id", text(e.id, v => e.id = v, { ...lock, disabled: started || replaces }), replaces ? "same id: replaces the store's event" : "kept in saves; don't reuse"));
+  box.append(field("When", choice([...WEEKDAYS.map(d => [d, "Every " + d]), ["lastSunday", "Last Sunday of the month"], ["date", "On a date"]],
+    isDate ? "date" : e.when, v => e.when = v === "date" ? (c.until === c.from ? c.from : addDays(today(), 1)) : v, lock),
+    isDate ? date(e.when, v => e.when = v || c.from, { ...lock, min: c.from, max: c.until || "" }) : null));
+  box.append(field("Kind", choice(Object.entries(KINDS), e.kind, v => e.kind = v, lock)));
+  if (e.kind === "draft")
+    box.append(field("Set", choice([["featured", "The week's featured set"], ...C.sets.map(s => [s.code, s.name])], e.set, v => e.set = v, lock)));
+  box.append(field("Players", number(e.players, v => e.players = v, { ...lock, min: 2 }), null));
+  box.append(field("Rounds", number(e.rounds, v => e.rounds = v, { ...lock, min: 1 })));
+  if (e.kind !== "commander") box.append(field("Best of", choice([["1", "1 game"], ["3", "3 games"]], String(e.bestOf), v => e.bestOf = Number(v), lock)));
+  box.append(field("Entry", dollars(e.entry, v => e.entry = v ?? 0, lock)));
+  if (e.kind === "draft") box.append(field("Or boosters", number(e.entryBoosters, v => e.entryBoosters = v, { ...lock, min: 0 }), "0: no"));
+  box.append(field("Or tokens", number(e.entryTokens, v => e.entryTokens = v, { ...lock, min: 0 }), "qualification tokens; 0: no"));
+  box.append(field("Reputation", choice(C.tiers.map((t, n) => [String(n), t + (n === 0 ? " (anyone)" : " and up")]), String(e.minTier), v => e.minTier = Number(v), lock)));
+  if (e.kind === "commander") {
+    const decks = el("select", { multiple: true, size: 6, style: "flex:1", disabled: started, onchange: ev => { e.decks = [...ev.target.selectedOptions].map(o => o.value); changed(); } },
+      C.decks.map(d => el("option", { value: d, selected: e.decks.includes(d) }, d)));
+    box.append(field("Their decks", decks, "Ctrl+click for several"));
+  }
+  box.append(drawOnline(e, started));
+  box.append(drawPrizes(e, started));
+  return box;
+}
+
+function drawOnline(e, started) {
+  const wrap = el("div", {});
+  wrap.append(field("Online", el("label", {}, el("input", { type: "checkbox", checked: !!e.online, disabled: started, onchange: ev => {
+    e.online = ev.target.checked ? { starts: ["20:00"], checkIn: 30, pvpOnly: false, offlineScale: 0.5 } : null; drawChanges(); changed(); } }),
+    " played online at set times (empty seats get computer players)")));
+  if (!e.online) return wrap;
+  const o = e.online;
+  const times = el("div", { class: "checks" }, o.starts.map((t, n) => el("span", {},
+    el("input", { type: "time", value: t, disabled: started, onchange: ev => { o.starts[n] = ev.target.value; o.starts.sort(); drawChanges(); changed(); } }),
+    el("span", { class: "hint" }, " " + local(t) + " "),
+    started || o.starts.length === 1 ? null : el("button", { class: "small danger", onclick: () => { o.starts.splice(n, 1); drawChanges(); changed(); } }, "\u00d7"))));
+  wrap.append(field("Starts (UTC)", times));
+  if (!started) {
+    const every = el("input", { type: "number", value: 2, min: 1, max: 12 });
+    const from = el("input", { type: "time", value: "16:00" });
+    const to = el("input", { type: "time", value: "22:00" });
+    wrap.append(el("div", { class: "row" }, el("label", {}, ""),
+      el("button", { class: "small", onclick: () => { o.starts.push(o.starts.at(-1) === "23:00" ? "12:00" : "23:00"); o.starts = [...new Set(o.starts)].sort(); drawChanges(); changed(); } }, "+ Time"),
+      el("span", { class: "hint" }, "or every"), every, el("span", { class: "hint" }, "hours from"), from, el("span", { class: "hint" }, "to"), to,
+      el("button", { class: "small", onclick: () => {
+        const [fh, fm] = from.value.split(":").map(Number), [th, tm] = to.value.split(":").map(Number), step = Math.max(1, Number(every.value)) * 60;
+        const list = [];
+        for (let m = fh * 60 + fm; m <= th * 60 + tm; m += step) list.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+        if (list.length) { o.starts = list; drawChanges(); changed(); }
+      } }, "Set")));
+  }
+  wrap.append(field("Check-in", number(o.checkIn, v => o.checkIn = v, { disabled: started, min: 5, max: 240 }), "minutes before each start"));
+  wrap.append(field("PvP only", el("label", {}, el("input", { type: "checkbox", checked: o.pvpOnly, disabled: started, onchange: ev => { o.pvpOnly = ev.target.checked; drawChanges(); changed(); } }),
+    " no version against the computer (big tournaments)")));
+  if (!o.pvpOnly)
+    wrap.append(field("Offline pays", el("input", { type: "number", min: 0, max: 100, step: 5, value: Math.round(o.offlineScale * 100), disabled: started,
+      oninput: ev => { o.offlineScale = Number(ev.target.value) / 100; changed(); } }), "% of the prizes, played against the computer any time of the day"));
+  return wrap;
+}
+
+function drawPrizes(e, started) {
+  const lock = started ? { disabled: true } : {};
+  const table = el("table", { class: "prizes" }, el("tr", {}, ["For", "", "Cash", "Boosters", "Tokens", "Rep.", ""].map(h => el("th", {}, h))));
+  e.prizes.forEach((p, n) => {
+    const type = p.wins >= 0 ? "wins" : p.place > 0 ? "place" : "all";
+    table.append(el("tr", {},
+      el("td", {}, choice([["wins", "Wins ≥"], ["place", "Place ≤"], ["all", "Everyone"]], type, v => {
+        if (v === "wins") { p.wins = Math.max(0, p.wins); p.place = 0; } else if (v === "place") { p.wins = -1; p.place = Math.max(1, p.place); } else { p.wins = -1; p.place = 0; }
+      }, lock)),
+      el("td", {}, type === "all" ? "" : number(type === "wins" ? p.wins : p.place, v => { if (type === "wins") p.wins = v; else p.place = v; }, { ...lock, min: type === "wins" ? 0 : 1 })),
+      el("td", {}, dollars(p.cash, v => p.cash = v ?? 0, lock)),
+      el("td", {}, number(p.boosters, v => p.boosters = v, { ...lock, min: 0 })),
+      el("td", {}, number(p.tokens, v => p.tokens = v, { ...lock, min: 0 })),
+      el("td", {}, number(p.reputation, v => p.reputation = v, { ...lock, min: 0 })),
+      el("td", {}, started ? "" : el("button", { class: "small danger", onclick: () => { e.prizes.splice(n, 1); drawChanges(); changed(); } }, "×"))));
+  });
+  const wrap = el("div", {}, el("div", { class: "hint" }, "Prizes: the first row that fits the player's result is theirs."), table);
+  if (!started) wrap.append(el("button", { class: "small", onclick: () => { e.prizes.push({ place: 0, wins: -1, cash: 0, boosters: 0, tokens: 0, reputation: 1 }); drawChanges(); changed(); } }, "+ Prize"));
+  return wrap;
+}
+
+// ------------------------------------------------------------------ saving and publishing
+
+function say(text, bad) { const m = $("message"); m.textContent = text; m.className = "message" + (bad ? " bad" : ""); }
+
+$("save").onclick = async () => {
+  const r = await api("/api/save", { season });
+  say(r.message, !r.ok);
+  if (r.ok) { dirty = false; $("dirty").textContent = ""; }
+};
+$("publish").onclick = async () => {
+  if (!confirm("Publish this season? Players get it the next time they start the game.")) return;
+  $("publish").disabled = true;
+  say("Publishing…");
+  const r = await api("/api/publish", { season });
+  say(r.message, !r.ok);
+  if (r.ok) { dirty = false; $("dirty").textContent = ""; }
+  C = await api("/api/content");
+  $("note").textContent = `${C.module} · ${C.publishedNote}`;
+  refresh();
+};
+$("add").onclick = () => addChange(null, null, false);
+$("prev").onclick = () => { month.setUTCMonth(month.getUTCMonth() - 1); refresh(); };
+$("next").onclick = () => { month.setUTCMonth(month.getUTCMonth() + 1); refresh(); };
+$("todayBtn").onclick = () => { month = parse(today().slice(0, 8) + "01"); refresh(); };
+addEventListener("beforeunload", e => { if (dirty) e.preventDefault(); });
+
+(async () => {
+  C = await api("/api/content");
+  season = await api("/api/season");
+  $("note").textContent = `${C.module} · ${C.publishedNote}`;
+  month = parse(today().slice(0, 8) + "01");
+  drawChanges();
+  refresh();
+})();
+</script>
+</body>
+</html>

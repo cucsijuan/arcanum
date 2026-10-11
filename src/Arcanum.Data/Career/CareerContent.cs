@@ -171,6 +171,29 @@ public sealed record EventSpec(string Id, string Name, string When, string Kind,
 
     /// <summary>Commander events: the module decks the computer players bring.</summary>
     public IReadOnlyList<string> Decks { get; init; } = Array.Empty<string>();
+
+    /// <summary>Played online at set times too (null: only against the computer, any time of its day).</summary>
+    public OnlineSpec? Online { get; init; }
+}
+
+/// <summary>
+/// An event played online: it starts at set times (players check in before; seats left empty get computer players,
+/// and matches against them pay as offline). Unless it's PvP only, it can also be played against the computer any time
+/// of its day, for prizes scaled by <see cref="OfflineScale"/>.
+/// </summary>
+public sealed record OnlineSpec
+{
+    /// <summary>Start times of its day, UTC ("20:00").</summary>
+    public IReadOnlyList<string> Starts { get; init; } = Array.Empty<string>();
+
+    /// <summary>Minutes before each start that check-in opens.</summary>
+    public int CheckIn { get; init; } = 30;
+
+    /// <summary>Only online: no version against the computer.</summary>
+    public bool PvpOnly { get; init; }
+
+    /// <summary>The share of the prizes the version against the computer pays (0 to 1).</summary>
+    public double OfflineScale { get; init; } = 0.5;
 }
 
 /// <summary>A prize for a place (1 = first; <see cref="Place"/> covers places up to it) or for a number of match wins.</summary>

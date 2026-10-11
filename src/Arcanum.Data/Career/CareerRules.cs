@@ -566,8 +566,19 @@ public static class CareerRules
     public static bool Played(CareerState state, EventSpec e, DateOnly day) => state.EventsPlayed.Contains($"{day.DayNumber}:{e.Id}");
 
     /// <summary>What the player wins with a record and a place: the first prize that fits.</summary>
-    public static PrizeSpec? PrizeFor(EventSpec e, int wins, int place) =>
-        e.Prizes.FirstOrDefault(p => p.Wins >= 0 ? wins >= p.Wins : p.Place == 0 || place <= p.Place);
+    /// <param name="online">Played online (an online event played against the computer pays its offline share).</param>
+    public static PrizeSpec? PrizeFor(EventSpec e, int wins, int place, bool online = false) =>
+        PrizesOf(e, online).FirstOrDefault(p => p.Wins >= 0 ? wins >= p.Wins : p.Place == 0 || place <= p.Place);
+
+    /// <summary>An event's prizes: an online event's version against the computer pays its share (counts rounded down).</summary>
+    public static IReadOnlyList<PrizeSpec> PrizesOf(EventSpec e, bool online = false) =>
+        e.Online is { } o && !online
+            ? e.Prizes.Select(p => p with
+            {
+                Cash = (int)Math.Round(p.Cash * o.OfflineScale), Boosters = (int)Math.Floor(p.Boosters * o.OfflineScale),
+                Tokens = (int)Math.Floor(p.Tokens * o.OfflineScale), Reputation = (int)Math.Round(p.Reputation * o.OfflineScale),
+            }).ToList()
+            : e.Prizes;
 
     private static CareerResult Enter(CareerState state, EnterEvent enter, CareerWorld world)
     {
@@ -575,6 +586,7 @@ public static class CareerRules
         if (state.Pending is not null) throw new CareerRuleException("Finish your match first.");
         var e = world.Event(enter.Event, state.Day) ?? throw new CareerRuleException("There is no such event.");
         if (!Happens(e, state.Day)) throw new CareerRuleException($"{e.Name} isn't today.");
+        if (e.Online is { PvpOnly: true }) throw new CareerRuleException($"{e.Name} is played online only.");
         if (Played(state, e, state.Day)) throw new CareerRuleException($"You already played {e.Name} today.");
         if (Tier(state, world) < e.MinTier) throw new CareerRuleException($"{e.Name} needs a {world.Content.Tiers[Math.Min(e.MinTier, world.Content.Tiers.Count - 1)].Name}'s reputation.");
         string deck = "";
