@@ -72,6 +72,8 @@ public class CareerTests
               "prizes": [{ "wins": 3, "boosters": 6, "reputation": 10 }, { "wins": 2, "boosters": 3 }, { "wins": 0, "reputation": 1 }] },
             { "id": "sat", "name": "Saturday tournament", "when": "Saturday", "kind": "constructed", "players": 8, "rounds": 3, "entry": 2000,
               "prizes": [{ "place": 1, "cash": 10000, "tokens": 1 }, { "place": 4, "cash": 2000 }, { "reputation": 2 }] },
+            { "id": "cmd", "name": "Commander night", "when": "Friday", "kind": "commander", "players": 4, "rounds": 2, "entry": 500,
+              "prizes": [{ "wins": 1, "boosters": 2 }, { "wins": 0, "reputation": 3 }] },
             { "id": "champ", "name": "Championship", "when": "lastSunday", "kind": "constructed", "players": 16, "rounds": 4, "entry": 5000, "entryTokens": 1, "minTier": 1 }
           ],
           "opponents": [
@@ -478,5 +480,15 @@ public class CareerTests
         Assert.Equal(new CardKey("Card 16", "ABC", "16"), CardKey.Parse("Card 16|ABC|16"));
         Assert.Equal(2 * world.Value(foil with { Foil = false }), world.Value(foil));
         Assert.True(CardKey.Parse(foil.ToString()).ToEntry().Foil);
+    }
+
+    [Fact]
+    public void CommanderNightTakesACommanderDeck()
+    {
+        var (state, journal, world) = StartedWithSixty();
+        var friday = T0.AddDays(4);
+        var refused = Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(friday, "cmd", CareerRules.PayCash, Sixty), world));
+        Assert.Contains("Commander", refused.Message + string.Join(" ", CareerRules.DeckProblems(DeckList.Parse(Sixty), state, world, commander: true)));
+        Assert.Empty(CareerRules.DeckProblems(DeckList.Parse(Sixty), state, world));
     }
 }

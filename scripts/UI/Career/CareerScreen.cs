@@ -62,7 +62,7 @@ public partial class CareerScreen : Control
     private Control? _note;
     private WebPage _webPage = WebPage.Matches;
     private string _reward = CareerRules.CashReward;
-    private int _deckIndex;
+    private int _deckIndex, _commanderDeckIndex;
     private string _filter = "";
 
     private static CareerService Career => App.Instance.Career;
@@ -125,7 +125,7 @@ public partial class CareerScreen : Control
     /// <summary>
     /// Testing: ARCANUM_CAREER_START=&lt;starting deck&gt; starts a career when there is none; ARCANUM_CAREER_PAGE=&lt;page&gt; opens
     /// store, boosters, precons, counter, a website page (Matches, Practice, Challenges, Events, Market, Cards), opening
-    /// (the first unopened booster), decks (the deck builder), daily or ante (plays one), enter (today's first event), event (the event entered).
+    /// (the first unopened booster), decks (the deck builder), daily or ante (plays one), enter (today's first event), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck).
     /// </summary>
     private bool RunTestHooks()
     {
@@ -151,8 +151,15 @@ public partial class CareerScreen : Control
                 return true;
             case "enter" when CareerRules.EventsOn(World, CareerRules.DayOf(Career.Now)) is [var today, ..]:
                 Career.Enter(today, today.Kind == CareerRules.Draft ? CareerRules.PayBoosters : CareerRules.PayCash,
-                    today.Kind == CareerRules.Constructed ? Career.Decks.Load(Career.Decks.List(null)[0]).Deck : null);
+                    today.Kind == CareerRules.Draft ? null : Career.Decks.Load(Career.Decks.List(null)
+                        .First(d => (d.FormatId == CareerRules.Commander) == (today.Kind == CareerRules.Commander))).Deck);
                 App.Instance.GoTo(App.EventScene);
+                return true;
+            case var buy when buy.StartsWith("buy:"):
+                var precon = World.Deck(test[4..]);
+                Career.Do(new BuyPrecon(Career.Now, test[4..]));
+                Career.Decks.Save(UniqueDeckName(DeckTitle(test[4..])), precon.Commander.Count > 0 ? CareerRules.Commander : "casual", precon);
+                OpenWeb(WebPage.Events, instant: true);
                 return true;
             case "store": GoTo(Place.Store); return true;
             case "boosters" or "precons" or "counter" or "offers": GoTo(Place.Store); OnStore(test.ToLowerInvariant()); return true;
@@ -521,26 +528,34 @@ public partial class CareerScreen : Control
     }
 
     /// <summary>The career deck chooser (shared by every kind of match) and what keeps the chosen deck from being played; null without decks.</summary>
-    private (DeckList Deck, List<string> Problems)? DeckPicker(VBoxContainer page)
+    private (DeckList Deck, List<string> Problems)? DeckPicker(VBoxContainer page, bool commander = false)
     {
-        var decks = Career.Decks.List(null);
+        var decks = Career.Decks.List(null).Where(d => (d.FormatId == CareerRules.Commander) == commander).ToList();
         if (decks.Count == 0)
         {
-            page.AddChild(CareerStyle.Text("You have no decks: build one with the boxes of cards on your shelf.", 22, CareerStyle.Bad, wrap: true));
+            page.AddChild(CareerStyle.Text(commander
+                ? "You have no Commander decks: buy a Commander deck at the store or build one with the boxes of cards on your shelf."
+                : "You have no decks: build one with the boxes of cards on your shelf.", 22, CareerStyle.Bad, wrap: true));
             return null;
         }
-        _deckIndex = Math.Clamp(_deckIndex, 0, decks.Count - 1);
+        ref int index = ref commander ? ref _commanderDeckIndex : ref _deckIndex;
+        index = Math.Clamp(index, 0, decks.Count - 1);
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 12);
-        row.AddChild(CareerStyle.Text("Your deck:", 22));
+        row.AddChild(CareerStyle.Text(commander ? "Your Commander deck:" : "Your deck:", 22));
         var picker = new OptionButton { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(360, 0) };
         foreach (var d in decks) picker.AddItem(d.Name);
-        picker.Selected = _deckIndex;
-        picker.ItemSelected += i => { _deckIndex = (int)i; ShowWebPage(); };
+        picker.Selected = index;
+        picker.ItemSelected += i =>
+        {
+            if (commander) _commanderDeckIndex = (int)i;
+            else _deckIndex = (int)i;
+            ShowWebPage();
+        };
         row.AddChild(picker);
         page.AddChild(row);
-        var (chosen, _) = Career.Decks.Load(decks[_deckIndex]);
-        var problems = CareerRules.DeckProblems(chosen, State, World);
+        var (chosen, _) = Career.Decks.Load(decks[index]);
+        var problems = CareerRules.DeckProblems(chosen, State, World, commander);
         foreach (var problem in problems.Take(3)) page.AddChild(CareerStyle.Text(problem, 18, CareerStyle.Bad, wrap: true));
         return (chosen, problems);
     }
@@ -689,11 +704,14 @@ public partial class CareerScreen : Control
         list.AddThemeConstantOverride("separation", 10);
         var todays = CareerRules.EventsOn(World, today);
         list.AddChild(CareerStyle.Text(todays.Count == 0 ? $"No event today ({today:dddd})." : $"Today, {today:dddd}", 28, CareerStyle.TitleBar));
-        DeckList? deck = null;
-        List<string> problems = new();
-        if (todays.Any(e => e.Kind == CareerRules.Constructed))
-            if (DeckPicker(list) is var (chosen, issues)) (deck, problems) = (chosen, issues);
-        foreach (var e in todays) EventRow(list, e, today, deck, problems);
+        (DeckList Deck, List<string> Problems)? deck = null, commanderDeck = null;
+        if (todays.Any(e => e.Kind == CareerRules.Constructed)) deck = DeckPicker(list);
+        if (todays.Any(e => e.Kind == CareerRules.Commander)) commanderDeck = DeckPicker(list, commander: true);
+        foreach (var e in todays)
+        {
+            var chosen = e.Kind == CareerRules.Commander ? commanderDeck : deck;
+            EventRow(list, e, today, chosen?.Deck, chosen?.Problems ?? new List<string>());
+        }
 
         list.AddChild(new Control { CustomMinimumSize = new Vector2(0, 10) });
         list.AddChild(CareerStyle.Text("Coming up", 26, CareerStyle.TitleBar));
@@ -708,7 +726,13 @@ public partial class CareerScreen : Control
 
     private static string Describe(EventSpec e, DateOnly day)
     {
-        var kind = e.Kind == CareerRules.Draft ? $"Draft of {World.SetName(CareerRules.EventSet(World, e, day))}" : "Constructed, bring your deck";
+        var kind = e.Kind switch
+        {
+            CareerRules.Draft => $"Draft of {World.SetName(CareerRules.EventSet(World, e, day))}",
+            CareerRules.Commander => "Commander, bring your Commander deck; pods of",
+            _ => "Constructed, bring your deck",
+        };
+        if (e.Kind == CareerRules.Commander) return $"{kind} {e.Players}, {e.Rounds} games. Entry: {CareerRules.Money(e.Entry)}.";
         var entry = new List<string> { CareerRules.Money(e.Entry) };
         if (e.EntryBoosters > 0) entry.Add($"{e.EntryBoosters} boosters of the set");
         if (e.EntryTokens > 0) entry.Add($"{e.EntryTokens} qualification token{(e.EntryTokens == 1 ? "" : "s")}");
@@ -745,7 +769,7 @@ public partial class CareerScreen : Control
             {
                 try
                 {
-                    Career.Enter(e, pay, e.Kind == CareerRules.Constructed ? deck : null);
+                    Career.Enter(e, pay, e.Kind is CareerRules.Constructed or CareerRules.Commander ? deck : null);
                     App.Instance.GoTo(App.EventScene);
                 }
                 catch (CareerRuleException x)
@@ -754,7 +778,7 @@ public partial class CareerScreen : Control
                     Refresh();
                 }
             }, 20, primary: true);
-            b.Disabled = !can || (e.Kind == CareerRules.Constructed && (deck is null || problems.Count > 0));
+            b.Disabled = !can || (e.Kind is CareerRules.Constructed or CareerRules.Commander && (deck is null || problems.Count > 0));
             row.AddChild(b);
         }
         Way(CareerRules.PayCash, $"Enter · {CareerRules.Money(e.Entry)}", State.Cash >= e.Entry);
@@ -959,7 +983,7 @@ public partial class CareerScreen : Control
                 Try(() =>
                 {
                     Career.Do(new BuyPrecon(Career.Now, precon.Deck));
-                    Career.Decks.Save(UniqueDeckName(DeckTitle(precon.Deck)), "casual", deck);
+                    Career.Decks.Save(UniqueDeckName(DeckTitle(precon.Deck)), deck.Commander.Count > 0 ? CareerRules.Commander : "casual", deck);
                     MenuKit.Toast(this, "Added to your collection and your decks");
                 });
                 RefreshNote();

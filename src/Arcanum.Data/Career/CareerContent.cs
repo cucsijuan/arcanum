@@ -129,7 +129,8 @@ public sealed record ChallengeSpec(string Id, string Text, string Kind, int Coun
 /// <param name="Id">Stable id (kept in saves).</param>
 /// <param name="Name">Shown name.</param>
 /// <param name="When">A day of the week ("Wednesday"), or "lastSunday" (the last Sunday of the month); UTC days.</param>
-/// <param name="Kind">draft or constructed (constructed: a career deck, casual rules).</param>
+/// <param name="Kind">draft, constructed (a career deck, casual rules) or commander (a career Commander deck; pods of
+/// <see cref="Players"/> play <see cref="Rounds"/> games, prizes by games won).</param>
 /// <param name="Set">Draft: the set code, or "featured" for the week's featured set.</param>
 /// <param name="Players">Seats, filled with computer players.</param>
 /// <param name="Rounds">Swiss rounds.</param>
@@ -143,6 +144,9 @@ public sealed record EventSpec(string Id, string Name, string When, string Kind,
     int BestOf = 1, int Entry = 0, int EntryBoosters = 0, int EntryTokens = 0, int MinTier = 0, IReadOnlyList<PrizeSpec>? Prizes = null)
 {
     public IReadOnlyList<PrizeSpec> Prizes { get; init; } = Prizes ?? Array.Empty<PrizeSpec>();
+
+    /// <summary>Commander events: the module decks the computer players bring.</summary>
+    public IReadOnlyList<string> Decks { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>A prize for a place (1 = first; <see cref="Place"/> covers places up to it) or for a number of match wins.</summary>

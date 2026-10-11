@@ -44,6 +44,8 @@ public partial class DeckDesk : Control
     };
 
     private DeckList _deck = new();
+    private bool _commander;
+    private readonly Button _kind = new() { FocusMode = FocusModeEnum.None };
     private DeckInfo? _info;
     private bool _dirty;
     private int _page;
@@ -200,6 +202,20 @@ public partial class DeckDesk : Control
         _name.TextChanged += _ => Dirty();
         _name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         row.AddChild(_name);
+        _kind.Pressed += () =>
+        {
+            _commander = !_commander;
+            if (!_commander && _deck.Commander.Count > 0)
+            {
+                // The commanders go back into the deck.
+                foreach (var c in _deck.Commander) DeckList.Adjust(_deck.Main, c.Name, c.Count, c.Set, c.Number, c.Foil);
+                _deck.Commander.Clear();
+            }
+            Dirty();
+            Refresh();
+        };
+        _kind.TooltipText = "A casual deck (60 cards or more) or a Commander deck (100 cards, one of each, led by a legendary creature)";
+        row.AddChild(_kind);
         row.AddChild(CareerStyle.Button("New", () => Confirm(NewDeck), 20));
         row.AddChild(CareerStyle.Button("Delete", AskDelete, 20));
         row.AddChild(CareerStyle.Button("Save", Save, 20, primary: true));
@@ -320,7 +336,12 @@ public partial class DeckDesk : Control
             Badge(tile, $"{inDeck}/{owned.Count}", inDeck > 0);
             var card = tile.GetChild<CardNode>(0);
             card.Clicked += _ => Add(owned);
-            card.RightClicked += _ => Remove(owned.Card.Name);
+            card.RightClicked += _ =>
+            {
+                if (_commander && CanLead(owned.Card.Definition)) MakeCommander(owned);
+                else Remove(owned.Card.Name);
+            };
+            if (_commander && CanLead(owned.Card.Definition)) card.TooltipText = "Right-click to make it your commander";
             _grid.AddChild(tile);
         }
         _pageInfo.Text = cards.Count == 0 ? "No cards match" : $"{cards.Count} cards · page {_page + 1} of {pages}";
@@ -348,7 +369,27 @@ public partial class DeckDesk : Control
 
     // ---------------------------------------------------------------- the deck
 
-    private int InDeck(string name) => _deck.Main.Where(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Sum(e => e.Count);
+    private int InDeck(string name) => _deck.Main.Concat(_deck.Commander).Where(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Sum(e => e.Count);
+
+    /// <summary>A legendary creature can lead a Commander deck.</summary>
+    private static bool CanLead(Arcanum.Engine.Cards.CardDefinition d) => (d.Supertypes & Supertype.Legendary) != 0 && d.Is(CardType.Creature);
+
+    /// <summary>Makes a card the deck's commander (the one before goes back into the deck).</summary>
+    private void MakeCommander(Owned owned)
+    {
+        foreach (var c in _deck.Commander) DeckList.Adjust(_deck.Main, c.Name, c.Count, c.Set, c.Number, c.Foil);
+        _deck.Commander.Clear();
+        var inMain = _deck.Main.FirstOrDefault(e => e.Name.Equals(owned.Card.Name, StringComparison.OrdinalIgnoreCase));
+        if (inMain is not null) DeckList.Adjust(_deck.Main, inMain.Name, -1, inMain.Set, inMain.Number, inMain.Foil);
+        else if (InDeck(owned.Card.Name) >= owned.Count)
+        {
+            MenuKit.Toast(this, $"You have {owned.Count} {owned.Card.Name}.");
+            return;
+        }
+        _deck.Commander.Add(owned.Printing with { Count = 1 });
+        Dirty();
+        Refresh();
+    }
 
     private void Add(Owned owned)
     {
@@ -381,6 +422,27 @@ public partial class DeckDesk : Control
     private void ShowDeck()
     {
         foreach (var child in _columns.GetChildren()) child.QueueFree();
+        _kind.Text = _commander ? "Commander deck" : "Casual deck";
+        if (_commander)
+        {
+            var box = new VBoxContainer();
+            box.AddThemeConstantOverride("separation", 2);
+            box.AddChild(CareerStyle.Text("Commander", 16, CareerStyle.Gold));
+            var size = _tile * DeckScale();
+            foreach (var entry in _deck.Commander)
+            {
+                var card = new CardNode { Size = size, CustomMinimumSize = size };
+                card.Setup(ViewOf(Definition(entry)), showCostPips: false);
+                card.HoverStarted += c => ShowPreview(c, c);
+                card.HoverEnded += _ => HidePreview();
+                card.Clicked += _ => { _deck.Commander.Remove(entry); Dirty(); Refresh(); };
+                card.TooltipText = "Click to take it out";
+                box.AddChild(card);
+            }
+            if (_deck.Commander.Count == 0)
+                box.AddChild(CareerStyle.Text("Right-click a legendary\ncreature of yours", 14, new Color(1f, 0.95f, 0.85f, 0.7f)));
+            _columns.AddChild(box);
+        }
         var cards = _deck.Main.SelectMany(e => Enumerable.Repeat(e, e.Count))
             .Where(e => !Career.World!.IsBasicLand(e.Name))
             .Select(e => (Entry: e, Def: Definition(e))).ToList();
@@ -428,19 +490,20 @@ public partial class DeckDesk : Control
             _basics.AddChild(cell);
         }
 
-        int total = _deck.Main.Sum(e => e.Count);
+        int total = _deck.Main.Sum(e => e.Count) + _deck.Commander.Sum(e => e.Count);
         _count.Text = $"{total} cards";
-        var problems = _pool is not null ? _pool.Problems(_deck) : Career.Missing(_deck).Select(m => $"You have {m.Owned} of the {m.Needed} {m.Name}.")
-            .Concat(DeckValidator.Validate(_deck, FormatRules.Casual, Cards).Where(i => i.Severity == IssueSeverity.Error).Select(i => i.Message)).ToList();
+        var problems = _pool is not null ? _pool.Problems(_deck) : CareerRules.DeckProblems(_deck, Career.State, Career.World!, _commander)
+            .Select(p => p.Replace(" this deck uses", "")).ToList();
         _problems.Text = problems.Count == 0 ? "Ready to play." : string.Join("\n", problems.Take(3));
         _problems.AddThemeColorOverride("font_color", problems.Count == 0 ? CareerStyle.Good : CareerStyle.Bad);
     }
 
-    /// <summary>The deck's cards are drawn smaller so that its seven columns fit the rest of the mat.</summary>
+    /// <summary>The deck's cards are drawn smaller so that its columns (seven, eight with the commander) fit the rest of the mat.</summary>
     private float DeckScale()
     {
         float room = _matBox.Size.X - _left.CustomMinimumSize.X - 28 - 20; // the gap, the scroll bar
-        return Math.Clamp((room - (ColumnNames.Length - 1) * 6) / ColumnNames.Length / _tile.X, 0.4f, 0.85f);
+        int columns = ColumnNames.Length + (_commander ? 1 : 0);
+        return Math.Clamp((room - (columns - 1) * 6) / columns / _tile.X, 0.4f, 0.85f);
     }
 
     private static int ColumnOf(CardDefinition d) => d.Is(CardType.Land) ? 6 : Math.Clamp(d.ManaCost.ManaValue - 1, 0, 5);
@@ -470,6 +533,7 @@ public partial class DeckDesk : Control
     private void Load(DeckInfo info)
     {
         (_deck, _) = Career.Decks.Load(info);
+        _commander = info.FormatId == CareerRules.Commander || _deck.Commander.Count > 0;
         _info = info;
         _name.Text = info.Name;
         _dirty = false;
@@ -480,6 +544,7 @@ public partial class DeckDesk : Control
     private void NewDeck()
     {
         _deck = new DeckList();
+        _commander = false;
         _info = null;
         _name.Text = "New deck";
         _dirty = false;
@@ -497,7 +562,7 @@ public partial class DeckDesk : Control
             MenuKit.Toast(this, "Give the deck a name first.");
             return;
         }
-        _info = Career.Decks.Save(name, "casual", _deck, _info);
+        _info = Career.Decks.Save(name, _commander ? CareerRules.Commander : "casual", _deck, _info);
         _dirty = false;
         RefreshSaved();
         MenuKit.Toast(this, $"Saved “{name}”");

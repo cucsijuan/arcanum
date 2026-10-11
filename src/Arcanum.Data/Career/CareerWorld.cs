@@ -17,9 +17,18 @@ public sealed class CareerWorld
     public CardDatabase Cards { get; }
     public IReadOnlyDictionary<string, SetDefinition> Sets { get; }
 
+    /// <summary>The Commander format's rules (the module's, or the usual ones).</summary>
+    public Formats.FormatRules CommanderFormat { get; }
+
     /// <param name="readDeck">A module deck's text by name, or null when there is no such deck.</param>
-    public CareerWorld(CareerContent content, CardDatabase cards, IEnumerable<SetDefinition> sets, Func<string, string?> readDeck)
+    /// <param name="formats">The module's formats (for the Commander format's rules).</param>
+    public CareerWorld(CareerContent content, CardDatabase cards, IEnumerable<SetDefinition> sets, Func<string, string?> readDeck,
+        IEnumerable<Formats.FormatRules>? formats = null)
     {
+        CommanderFormat = formats?.FirstOrDefault(f => f.Commander) ?? new Formats.FormatRules
+        {
+            Id = "commander", Name = "Commander", MinDeckSize = 100, MaxDeckSize = 100, MaxCopies = 1, Commander = true, StartingLife = 40,
+        };
         Content = content;
         Cards = cards;
         Sets = sets.ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase);

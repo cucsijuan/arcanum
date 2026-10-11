@@ -49,7 +49,7 @@ public sealed class CareerService
             return;
         }
         var deckNames = module.DeckNames().ToHashSet(StringComparer.OrdinalIgnoreCase);
-        World = new CareerWorld(content, cards, module.LoadSets(), name => deckNames.Contains(name) ? module.ReadDeck(name) : null);
+        World = new CareerWorld(content, cards, module.LoadSets(), name => deckNames.Contains(name) ? module.ReadDeck(name) : null, module.LoadFormats());
         _contentId = $"{module.Manifest.Id} {module.Manifest.Version}";
         Load();
     }
@@ -144,9 +144,11 @@ public sealed class CareerService
     public LimitedService Events => _events ??= new LimitedService(Folder + "/event.json", App.EventScene, ResourceLoader.Exists(TableImage) ? TableImage : null);
 
     /// <summary>The calendar event entered, if any, with its running event (rebuilt from its seed when its file is gone).</summary>
-    public (EventSpec Spec, EventEntry Entry, LimitedEvent Running)? CurrentEvent()
+    /// <summary>The calendar event entered, if any: a draft or constructed one with its running event (rebuilt from its seed when its file is gone), a Commander one without (see <see cref="Pod"/>).</summary>
+    public (EventSpec Spec, EventEntry Entry, LimitedEvent? Running)? CurrentEvent()
     {
         if (!HasCareer || State.Event is not { } entry || World!.Content.Events.FirstOrDefault(e => e.Id == entry.Id) is not { } spec) return null;
+        if (spec.Kind == CareerRules.Commander) return (spec, entry, null);
         Events.Load();
         if (Events.Current is null) Begin(spec, entry);
         return (spec, entry, Events.Current!);
@@ -156,8 +158,10 @@ public sealed class CareerService
     public void Enter(EventSpec spec, string pay, DeckList? deck)
     {
         Events.Abandon(); // any leftover of an earlier event
+        if (File.Exists(PodPath)) File.Delete(PodPath);
+        _pod = null;
         Do(new EnterEvent(Now, spec.Id, pay, deck?.Export()));
-        Begin(spec, State.Event!);
+        if (spec.Kind != CareerRules.Commander) Begin(spec, State.Event!);
     }
 
     private void Begin(EventSpec spec, EventEntry entry)
@@ -218,7 +222,17 @@ public sealed class CareerService
     /// </summary>
     public CareerResult FinishEvent(bool drop = false)
     {
-        var (spec, _, ev) = CurrentEvent() ?? throw new CareerRuleException("You aren't in an event.");
+        var (spec, _, running) = CurrentEvent() ?? throw new CareerRuleException("You aren't in an event.");
+        if (running is not { } ev)
+        {
+            var pod = Pod()!;
+            int mine = pod.Winners.Count(w => w == 0), even = pod.Winners.Count(w => w < 0);
+            int podPlace = drop ? spec.Players : 1 + Enumerable.Range(1, pod.Names.Count - 1).Count(s => pod.Winners.Count(w => w == s) > mine);
+            var podResult = Do(new FinishEvent(Now, mine, pod.Winners.Count - mine - even, even, podPlace));
+            if (File.Exists(PodPath)) File.Delete(PodPath);
+            _pod = null;
+            return podResult;
+        }
         var (wins, losses, draws) = Record(ev);
         int place = drop || ev.Stage != EventStage.Finished ? spec.Players : ev.Standings().IndexOf(ev.HumanSeat) + 1;
         var pool = spec.Kind == CareerRules.Draft
@@ -228,6 +242,72 @@ public sealed class CareerService
         var result = Do(new FinishEvent(Now, wins, losses, draws, place, pool));
         Events.Abandon();
         return result;
+    }
+
+    // ---------------------------------------------------------------- Commander pods
+
+    /// <summary>A Commander event's pod: its players (the person first), the decks of the others, each game's winner (-1: a draw).</summary>
+    public sealed class CommanderPod
+    {
+        public List<string> Names { get; set; } = new();
+        public List<string> Decks { get; set; } = new();
+        public List<int> Winners { get; set; } = new();
+    }
+
+    private CommanderPod? _pod;
+    private static string PodPath => ProjectSettings.GlobalizePath(Folder + "/pod.json");
+
+    /// <summary>The pod of the Commander event entered (made from the event's seed the first time).</summary>
+    public CommanderPod? Pod()
+    {
+        if (CurrentEvent() is not { Running: null } current) return null;
+        var (spec, entry) = (current.Spec, current.Entry);
+        if (_pod is not null) return _pod;
+        if (File.Exists(PodPath))
+            try { return _pod = System.Text.Json.JsonSerializer.Deserialize<CommanderPod>(File.ReadAllText(PodPath)); }
+            catch (System.Text.Json.JsonException) { }
+        var random = new Random((int)(entry.Seed & 0x7FFFFFFF));
+        var regulars = World!.Content.Opponents.OrderBy(_ => random.Next()).ToList();
+        var decks = spec.Decks.OrderBy(_ => random.Next()).ToList();
+        _pod = new CommanderPod();
+        _pod.Names.Add(Settings.PlayerName);
+        _pod.Decks.Add("");
+        for (int i = 1; i < spec.Players; i++)
+        {
+            _pod.Names.Add(i - 1 < regulars.Count ? regulars[i - 1].Name : $"Visitor {i}");
+            _pod.Decks.Add(decks.Count == 0 ? "" : decks[(i - 1) % decks.Count]);
+        }
+        SavePod();
+        return _pod;
+    }
+
+    private void SavePod()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(PodPath)!);
+        File.WriteAllText(PodPath, System.Text.Json.JsonSerializer.Serialize(_pod));
+    }
+
+    /// <summary>The pod's next game: everyone's Commander deck, the format's starting life; the winner is kept and the game goes back to the event.</summary>
+    public MatchSetup PodGame()
+    {
+        var (spec, entry, _) = CurrentEvent()!.Value;
+        var pod = Pod()!;
+        var cards = App.Instance.Cards!;
+        var seats = new List<GameSession.Seat>();
+        for (int i = 0; i < pod.Names.Count; i++)
+        {
+            var deck = i == 0 ? DeckList.Parse(entry.Deck) : World!.Deck(pod.Decks[i]);
+            var (main, _) = deck.Resolve(cards);
+            seats.Add(new GameSession.Seat(pod.Names[i], main, IsBot: i > 0, deck.ResolveCommanders(cards)));
+        }
+        return new MatchSetup(seats, World!.CommanderFormat.StartingLife, Commander: true)
+        {
+            Event = new EventHook(winner =>
+            {
+                pod.Winners.Add(winner ?? -1);
+                SavePod();
+            }, App.EventScene, $"{spec.Name} · game {pod.Winners.Count + 1}") { ReturnText = "Back to the event" },
+        };
     }
 
     private static void RemoveOne(List<Arcanum.Engine.Cards.CardDefinition> deck, string name)

@@ -58,7 +58,14 @@ public partial class EventScreen : Control
         AddChild(_preview);
         // Testing: ARCANUM_CAREER_AUTO=draft drafts automatically; =play also builds the deck and starts the rounds; =desk opens the
         // desk once drafted; =collect collects a finished event's prizes.
-        if (OS.GetEnvironment("ARCANUM_CAREER_AUTO") is { Length: > 0 } auto && Career.CurrentEvent() is var (_, _, running))
+        if (OS.GetEnvironment("ARCANUM_CAREER_AUTO") == "play" && OS.GetEnvironment("ARCANUM_AUTOPLAY").Length > 0
+            && Career.CurrentEvent() is ({ } podEvent, _, null) && Career.Pod()!.Winners.Count < podEvent.Rounds)
+        {
+            App.Instance.PendingMatch = Career.PodGame();
+            Callable.From(() => App.Instance.GoTo(App.GameBoardScene)).CallDeferred();
+            return;
+        }
+        if (OS.GetEnvironment("ARCANUM_CAREER_AUTO") is { Length: > 0 } auto && Career.CurrentEvent() is (_, _, { } running))
         {
             while (running.Stage == EventStage.Drafting) Service.Pick(Service.AutoPickIndex());
             if (auto == "play" && running.Stage == EventStage.Building)
@@ -97,9 +104,14 @@ public partial class EventScreen : Control
     {
         _preview.Visible = false;
         foreach (var child in _content.GetChildren()) child.QueueFree();
-        if (Career.CurrentEvent() is not var (spec, entry, ev))
+        if (Career.CurrentEvent() is not var (spec, entry, running))
         {
             Leave();
+            return;
+        }
+        if (running is not { } ev)
+        {
+            ShowPod(spec, entry);
             return;
         }
         switch (ev.Stage)
@@ -277,6 +289,69 @@ public partial class EventScreen : Control
         catch (CareerRuleException e) { MenuKit.Toast(this, e.Message); return; }
         CareerScreen.OpenOn = nameof(CareerScreen.WebPage.Cards);
         App.Instance.GoTo(App.CareerScene);
+    }
+
+    // ---------------------------------------------------------------- Commander pods
+
+    private void ShowPod(EventSpec spec, EventEntry entry)
+    {
+        var pod = Career.Pod()!;
+        int played = pod.Winners.Count;
+        bool finished = played >= spec.Rounds;
+        _title.Text = finished ? $"{spec.Name} · the night is over" : $"{spec.Name} · game {played + 1} of {spec.Rounds}";
+        var body = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        body.AddThemeConstantOverride("separation", 24);
+        _content.AddChild(body);
+
+        var main = Note(Vector2.Zero);
+        main.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        main.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+        var box = (VBoxContainer)main.GetChild(0);
+        int mine = pod.Winners.Count(w => w == 0);
+        if (finished)
+        {
+            int place = 1 + Enumerable.Range(1, pod.Names.Count - 1).Count(s => pod.Winners.Count(w => w == s) > mine);
+            box.AddChild(CareerStyle.Text($"You won {mine} of {spec.Rounds} games.", 30, CareerStyle.PaperEdge));
+            box.AddChild(CareerStyle.Text(PrizeText(CareerRules.PrizeFor(spec, mine, place), spec), 22, CareerStyle.Ink, wrap: true));
+            var collect = CareerStyle.Button("Collect and go home", Collect, 24, primary: true);
+            collect.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+            box.AddChild(collect);
+        }
+        else
+        {
+            box.AddChild(CareerStyle.Text("Your pod", 30, CareerStyle.PaperEdge));
+            box.AddChild(CareerStyle.Text($"Four players, {Career.World!.CommanderFormat.StartingLife} life, the last one standing wins the game. {spec.Rounds} games tonight.", 20, CareerStyle.InkDim, wrap: true));
+            var actions = new HBoxContainer();
+            actions.AddThemeConstantOverride("separation", 12);
+            actions.AddChild(CareerStyle.Button($"Play game {played + 1}", () =>
+            {
+                App.Instance.PendingMatch = Career.PodGame();
+                App.Instance.GoTo(App.GameBoardScene);
+            }, 24, primary: true));
+            actions.AddChild(CareerStyle.Button("Go home early", () => MenuKit.Modal(this, "Go home early?", "The night ends for you with the games played so far.", null,
+                ("Stay", () => { }), ("Go home", () =>
+                {
+                    Career.FinishEvent(drop: true);
+                    Leave();
+                })), 20));
+            box.AddChild(actions);
+        }
+        for (int g = 0; g < played; g++)
+            box.AddChild(CareerStyle.Text($"Game {g + 1}: {(pod.Winners[g] < 0 ? "a draw" : pod.Names[pod.Winners[g]] + " won")}", 19, pod.Winners[g] == 0 ? CareerStyle.Good : CareerStyle.Ink));
+        body.AddChild(main);
+
+        // The players and their commanders.
+        var players = Note(new Vector2(460, 0));
+        players.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+        var list = (VBoxContainer)players.GetChild(0);
+        list.AddChild(CareerStyle.Text("At the table", 26, CareerStyle.PaperEdge));
+        for (int i = 0; i < pod.Names.Count; i++)
+        {
+            var deck = i == 0 ? DeckList.Parse(entry.Deck) : Career.World!.Deck(pod.Decks[i]);
+            var commander = string.Join(" & ", deck.Commander.Select(c => c.Name));
+            list.AddChild(CareerStyle.Text($"{pod.Names[i]}: {(commander.Length > 0 ? commander : "no commander")} · {pod.Winners.Count(w => w == i)} won", 19, i == 0 ? CareerStyle.Good : CareerStyle.Ink, wrap: true));
+        }
+        body.AddChild(players);
     }
 
     private static string PrizeText(PrizeSpec? prize, EventSpec spec)

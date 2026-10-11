@@ -158,11 +158,12 @@ public static class CareerRules
         return colors;
     }
 
-    /// <summary>Why a deck can't be played in a career match (cards not owned, not a legal casual deck); empty when it can.</summary>
-    public static List<string> DeckProblems(DeckList deck, CareerState state, CareerWorld world)
+    /// <summary>Why a deck can't be played in a career match (cards not owned, not a legal casual or Commander deck); empty when it can.</summary>
+    public static List<string> DeckProblems(DeckList deck, CareerState state, CareerWorld world, bool commander = false)
     {
         var problems = Missing(deck, state, world).Select(m => $"You have {m.Owned} of the {m.Needed} {m.Name} this deck uses.").ToList();
-        problems.AddRange(DeckValidator.Validate(deck, FormatRules.Casual, world.Cards).Where(i => i.Severity == IssueSeverity.Error).Select(i => i.Message));
+        problems.AddRange(DeckValidator.Validate(deck, commander ? world.CommanderFormat : FormatRules.Casual, world.Cards)
+            .Where(i => i.Severity == IssueSeverity.Error).Select(i => i.Message));
         return problems;
     }
 
@@ -268,12 +269,12 @@ public static class CareerRules
     private static OpponentSpec Opponent(CareerState state, CareerWorld world, string id) =>
         Opponents(state, world).FirstOrDefault(o => o.Id == id) ?? throw new CareerRuleException("You can't play that regular yet.");
 
-    private static DeckList PlayableDeck(string text, CareerState state, CareerWorld world)
+    private static DeckList PlayableDeck(string text, CareerState state, CareerWorld world, bool commander = false)
     {
         DeckList deck;
         try { deck = DeckList.Parse(text); }
         catch (FormatException) { throw new CareerRuleException("That deck list can't be read."); }
-        if (DeckProblems(deck, state, world) is [var first, ..]) throw new CareerRuleException(first);
+        if (DeckProblems(deck, state, world, commander) is [var first, ..]) throw new CareerRuleException(first);
         return deck;
     }
 
@@ -474,7 +475,7 @@ public static class CareerRules
 
     // ---------------------------------------------------------------- the calendar
 
-    public const string Draft = "draft", Constructed = "constructed";
+    public const string Draft = "draft", Constructed = "constructed", Commander = "commander";
     public const string PayCash = "cash", PayBoosters = "boosters", PayTokens = "tokens";
 
     /// <summary>The store's events on a day (UTC).</summary>
@@ -511,10 +512,10 @@ public static class CareerRules
         if (Played(state, e, state.Day)) throw new CareerRuleException($"You already played {e.Name} today.");
         if (Tier(state, world) < e.MinTier) throw new CareerRuleException($"{e.Name} needs a {world.Content.Tiers[Math.Min(e.MinTier, world.Content.Tiers.Count - 1)].Name}'s reputation.");
         string deck = "";
-        if (e.Kind == Constructed)
+        if (e.Kind is Constructed or Commander)
         {
-            if (enter.Deck is null) throw new CareerRuleException("Choose a deck.");
-            PlayableDeck(enter.Deck, state, world);
+            if (enter.Deck is null) throw new CareerRuleException(e.Kind == Commander ? "Choose a Commander deck." : "Choose a deck.");
+            PlayableDeck(enter.Deck, state, world, e.Kind == Commander);
             deck = enter.Deck;
         }
         var set = e.Kind == Draft ? EventSet(world, e, state.Day) : "";
