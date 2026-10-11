@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Masks a card image with rounded corners, and draws the shine of a foil card: a rainbow (color dodge) and a soft
 // glare (overlay) centered on the pointer, the rainbow's hue turning as the pointer moves across the card. A surge foil
-// has the pattern of its foil paper: long, soft diagonal streaks rising to the right, with wavy edges fading into each other,
-// breaking off and merging, a rainbow running down the card and a fine diffraction grain; the pattern stays put on the card
-// while its colors and shine turn with the pointer (as tilting the card would), and drift slowly on their own.
+// has the pattern of its foil paper: long, smooth diagonal streaks rising to the right in three families at slightly
+// different angles that cross and run into each other, with soft edges, breaking off and merging, and a rainbow running
+// down the card; the pattern stays put on the card while its colors and shine turn with the pointer (as tilting the card
+// would), and drift slowly on their own.
 shader_type canvas_item;
 
 uniform vec2 rect_size = vec2(90.0, 126.0);
@@ -51,18 +52,17 @@ float fbm(vec2 p, int octaves) {
 	return sum;
 }
 
-// One family of streaks across the foil: bands of a warped wave, their width and presence varying along them.
-// Returns the band (x) and its thin bright edge lines (y).
+// One family of streaks across the foil: smooth bands of a warped wave, their width and presence varying along them, with soft
+// edges. Returns the band (x) and the soft bright line along its edge (y).
 vec2 streaks(vec2 along_across, float warp, float freq, float turn, float seed) {
 	float c = cos(turn), s = sin(turn);
 	vec2 q = vec2(along_across.x * c - along_across.y * s, along_across.x * s + along_across.y * c);
-	float jag = fbm(q * vec2(30.0, 35.0) + seed, 2);
-	float f = sin(q.y * freq + warp + jag * 0.6) * 0.5 + 0.5;
+	float f = sin(q.y * freq + warp) * 0.5 + 0.5;
 	float th = 0.25 + 0.65 * fbm(q * vec2(5.0, 4.0) + vec2(4.0 + seed, 8.0), 2);
-	float fill = smoothstep(th - 0.15, th + 0.45, f);
-	float d1 = (f - th - 0.1) / 0.16, d2 = (f - 0.92) / 0.12;
-	float edge = exp(-d1 * d1) + 0.4 * exp(-d2 * d2);
-	float on = smoothstep(0.28, 0.62, fbm(q * vec2(4.5, 7.0) + vec2(9.0 + seed, 2.0), 3));
+	float fill = smoothstep(th - 0.12, th + 0.38, f);
+	float d = (f - th - 0.05) / 0.14;
+	float edge = exp(-d * d) * 0.6;
+	float on = clamp((fbm(q * vec2(4.5, 7.0) + vec2(9.0 + seed, 2.0), 3) - 0.38) / 0.18, 0.0, 1.0);
 	return vec2(fill, edge) * on;
 }
 
@@ -91,17 +91,18 @@ void fragment() {
 		float w = fbm(aa * 1.3, 4);
 		float w2 = fbm(aa * vec2(3.5, 4.0) + vec2(3.0, 1.0), 3);
 		float warp = w * 22.0 + w2 * 8.0;
+		// Three families at different angles, so streaks cross and run into each other.
 		vec2 s1 = streaks(aa, warp, 80.0, 0.0, 0.0);
-		vec2 s2 = streaks(aa, warp, 53.0, 0.12, 13.0) * 0.8;
+		vec2 s2 = streaks(aa, warp, 60.0, 0.28, 13.0) * 0.85;
+		vec2 s3 = streaks(aa, warp, 55.0, -0.22, 29.0) * 0.85;
 		float lum = clamp(0.45 + fbm(aa * 2.5 + vec2(1.0, 4.0), 3) * 1.1, 0.0, 1.3);
-		float band = max(s1.x, s2.x) * lum, edge = max(s1.y, s2.y) * lum;
-		float grain = fbm(pos * 260.0, 2);
+		float band = max(max(s1.x, s2.x), s3.x) * lum, edge = max(max(s1.y, s2.y), s3.y) * lum;
 		// The rainbow runs down the card, bent by the streaks' flow; tilting (the pointer) and time turn it.
 		float t = TIME * 0.03;
 		float hue = fract(-pos.y * 0.9 + pos.x * 0.3 + w * 0.55 + w2 * 0.45 + 0.55 + (foil_at.x - foil_at.y) * 0.6 + t) * 360.0;
 		vec3 rainbow = hsl(hue, 0.9, 0.55);
 		float light = 0.35 + 0.65 * foil * clamp(1.2 - length(UV - foil_at) * 1.1, 0.25, 1.0);
-		float m = clamp((band * 0.7 + edge * 0.35) * (0.85 + 0.3 * grain), 0.0, 1.0) * light * surge;
+		float m = clamp(band * 0.55 + edge * 0.8, 0.0, 1.0) * light * surge;
 		// The foil's color shows through the ink: light areas take the streak's color, dark ones get a colored sheen.
 		vec3 tinted = clamp(tex.rgb * (0.35 + 1.0 * rainbow) + rainbow * 0.18, 0.0, 1.0);
 		tex.rgb = mix(tex.rgb, tinted, m);
