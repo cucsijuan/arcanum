@@ -126,8 +126,8 @@ shows them and the pointer's position; Ctrl+click copies a point).
   deck's controls on the wood above the mat, the cards owned on the left of the mat, the deck on the right in columns
   by mana value, basic lands (free) and the deck's state on the wood below. Playmats will be changeable: a picture
   in `mats/` is drawn over the mat's area (`mats/default.jpg` for now).
-- The art must stay generic: no recognizable toy, game or brand look-alikes (the store's "space ranger" figure resembles
-  a well-known toy and should be redrawn before shipping).
+- The art must stay generic: no recognizable toy, game or brand look-alikes (the store's wall is plain where a toy
+  look-alike was).
 
 ## Online
 
@@ -327,7 +327,7 @@ C1–C3 are fully useful without any online part, so the mode can ship early as 
 The store sells every kind of booster each set was sold in (play or draft, set, collector), each sheet with its exact
 printings (their own art), traditional and surge foils at their real rates; limited events open only the play or
 draft booster. A card is a foil, or a surge foil, only where that printing was made so. Pending (urgent): the third
-set's set booster's The List slot (see the roadmap's backlog).
+set's set booster's reprint-list slot (see the roadmap's backlog).
 
 ## Decisions to take
 
