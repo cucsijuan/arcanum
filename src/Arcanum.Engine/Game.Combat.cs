@@ -51,7 +51,7 @@ public sealed partial class Game
             // costs are paid as attackers are declared; a declaration whose costs aren't paid is illegal and is made again.
             var total = Mana.ManaCost.Zero;
             foreach (var d in declared)
-                if (AttackTax(d.Defender) is { } tax) total = total.Plus(tax);
+                if (AttackTax(d.Defender, d.Planeswalker) is { } tax) total = total.Plus(tax);
             if (total.ManaValue > 0
                 && !(Payable(active, total, null) && await PayManaAsync(State.GetPlayer(active), declared[0].Attacker, total, null)))
             {
@@ -61,7 +61,7 @@ public sealed partial class Game
                     return;
                 }
                 // A controller that keeps declaring attacks it won't pay for gets no taxed attacks.
-                declared = declared.Where(d => AttackTax(d.Defender) is null).ToList();
+                declared = declared.Where(d => AttackTax(d.Defender, d.Planeswalker) is null).ToList();
                 var untaxed = request.WithoutTaxedDefenders();
                 if (!untaxed.IsLegal(declared, out _)) declared = untaxed.Complete(declared);
             }
@@ -151,12 +151,16 @@ public sealed partial class Game
         attacker.Definition.CantAttackUnlessDefenderControls is { } needed && attacker.HasTextAbilities
         && !State.PermanentsControlledBy(defender).Any(p => Matches(needed with { Controller = Abilities.ControllerFilter.Any }, p, defender, attacker, attacker.Controller));
 
-    /// <summary>The total cost to attack <paramref name="defender"/> with one creature, or null when attacking them is free.</summary>
-    private Mana.ManaCost? AttackTax(PlayerId defender)
+    /// <summary>
+    /// The total cost to attack <paramref name="defender"/> (or <paramref name="planeswalker"/>, one they control) with one creature, or null
+    /// when that attack is free. Some taxes are only on attacking the player ("creatures can't attack you unless …").
+    /// </summary>
+    private Mana.ManaCost? AttackTax(PlayerId defender, CardId? planeswalker = null)
     {
         var total = Mana.ManaCost.Zero;
         foreach (var c in State.PermanentsControlledBy(defender))
-            if (c.Definition.AttackTax is { } tax && c.HasTextAbilities && (c.Definition.AttackTaxIf is not { } cond || Holds(cond, defender, c))) total = total.Plus(tax);
+            if (c.Definition.AttackTax is { } tax && c.HasTextAbilities && (c.Definition.AttackTaxIf is not { } cond || Holds(cond, defender, c))
+                && !(planeswalker is not null && c.Definition.AttackTaxPlayerOnly)) total = total.Plus(tax);
         return total.ManaValue > 0 ? total : null;
     }
 

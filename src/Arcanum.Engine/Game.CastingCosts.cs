@@ -36,6 +36,10 @@ public sealed partial class Game
         public int KickCount { get; init; }
         public int ReplicateCount { get; init; }
         public int SquadCount { get; init; }
+        /// <summary>Modes chosen beyond the first, each paying the escalate cost (rule 702.120).</summary>
+        public int EscalatedModes { get; init; }
+        /// <summary>Artifacts tapped for improvise (rule 702.126): kept out of the mana payment.</summary>
+        public IReadOnlyCollection<CardId> Improvised { get; init; } = Array.Empty<CardId>();
         public IReadOnlyList<Card> Spliced { get; init; } = Array.Empty<Card>();
         public bool Conspire { get; init; }
         public int X { get; init; }
@@ -77,6 +81,7 @@ public sealed partial class Game
         for (int i = 0; i < c.KickCount; i++) cost = cost.Plus(card.Definition.Multikicker!);
         for (int i = 0; i < c.ReplicateCount; i++) cost = cost.Plus(card.Definition.Replicate!);
         for (int i = 0; i < c.SquadCount; i++) cost = cost.Plus(card.Definition.Squad!);
+        for (int i = 0; i < c.EscalatedModes; i++) cost = cost.Plus(card.Definition.Escalate!);
         foreach (var other in c.Spliced) cost = cost.Plus(other.Definition.Splice!);
         foreach (var taxer in State.Battlefield.Select(State.GetCard))
             foreach (var increase in taxer.Abilities.OfType<SpellCostIncrease>())
@@ -112,6 +117,7 @@ public sealed partial class Game
     {
         var costs = new List<ExtraCost?> { card.Definition.AdditionalCost, c.Option?.Extra };
         if (card.Zone == Zone.Graveyard) costs.Add(GraveyardCost(card));
+        if (c.Way.Kind == CastingWayKind.Alternative) costs.Add(card.Definition.AlternativeCost?.Extra);
         if (IsFlashbackCast(card))
         {
             costs.Add(card.Definition.FlashbackExtra);
@@ -135,8 +141,21 @@ public sealed partial class Game
         if (graveyard < 0) return false;
         if (c.Conspire && ConspireCandidates(card, caster).Count < 2) return false;
         if (card.Definition.Delve) total = total.MinusGeneric(graveyard); // 702.66a
+        if (card.Definition.Improvise && total.Generic > 0)
+        {
+            // 702.126a: each artifact tapped this way pays for {1}; try the artifacts that don't make mana first.
+            var artifacts = ImproviseCandidates(card, caster);
+            for (int n = 0; n <= Math.Min(total.Generic, artifacts.Count); n++)
+                if (CanPayCastingMana(card, caster, c with { Improvised = artifacts.Take(n).Select(a => a.Id).ToList() }, total.MinusGeneric(n))) return true;
+            return false;
+        }
         return CanPayCastingMana(card, caster, c, total);
     }
+
+    /// <summary>Untapped artifacts the caster controls that can be tapped for improvise, those without mana abilities first.</summary>
+    private List<Card> ImproviseCandidates(Card card, PlayerId caster) =>
+        State.PermanentsControlledBy(caster).Where(a => a.Is(CardType.Artifact) && !a.Tapped && a.Id != card.Id)
+            .OrderBy(a => a.ManaOptions.Count > 0 ? 1 : 0).ToList();
 
     private bool CanPayCastingMana(Card card, PlayerId caster, CastingChoices c, ManaCost mana) =>
         mana.Variants().Any(v => ManaPayment.FindPlan(State, caster, v, usable: SpellManaUsable(card, caster, c), unitUsable: UnitUsableFor(card, isAbility: false)) is not null);
@@ -204,6 +223,7 @@ public sealed partial class Game
             var manaCreatures = candidates.Where(s => s.ManaOptions.Count > 0).ToList();
             if (candidates.Count - manaCreatures.Count < 2) reserved.UnionWith(manaCreatures.Select(s => s.Id));
         }
+        reserved.UnionWith(c.Improvised);
         return reserved.Count == 0 ? usable : (source, o) => !reserved.Contains(source.Id) && usable(source, o);
     }
 

@@ -410,7 +410,11 @@ public sealed partial class Game
                 break;
         }
 
+        // A promised gift stays known to the permanent a spell becomes ("when it enters, they draw a card", rule 702.174).
+        var giftTo = from == Zone.Stack && to == Zone.Battlefield && card.GiftPromised ? card.GiftTo : null;
         card.ResetStatus();
+        card.GiftPromised = giftTo is not null;
+        card.GiftTo = giftTo;
         // A double-faced card enters front face up unless it's put onto the battlefield transformed (rule 712.14).
         card.Transformed = transformed && to == Zone.Battlefield && card.IsDoubleFaced;
         if (to == Zone.Battlefield && _pendingCopies.Remove((id, card.Version - 1), out var copied)) card.CopiedDefinition = copied;

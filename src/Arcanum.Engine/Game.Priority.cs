@@ -629,8 +629,8 @@ public sealed partial class Game
         // 601.2b: announcements, each one only if what's been announced so far can still be paid with it.
         // A gift is promised (or not) as the spell is cast, to an opponent (rule 702.174a).
         PlayerId? giftTo = null;
-        if (card.Definition.Gift is not null && State.OpponentsOf(player.Id).Any()
-            && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Promise an opponent a gift ({card.Definition.Gift.Name}) for {card.Name}?", cardId)))
+        if ((card.Definition.Gift is not null || card.Definition.GiftCard) && State.OpponentsOf(player.Id).Any()
+            && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Promise an opponent a gift ({(card.Definition.GiftCard ? "a card" : card.Definition.Gift!.Name)}) for {card.Name}?", cardId)))
             giftTo = await ChooseOpponentAsync(player.Id, card, "Choose the opponent who gets the gift");
         // The mana cost or an alternative cost (118.9), such as dash or "without paying its mana cost".
         var way = await ChooseCastingWayAsync(player.Id, card, payable.Select(c => c.Way).Distinct().ToList());
@@ -674,11 +674,23 @@ public sealed partial class Game
         if (kicked && ability?.WhenKicked is { } kickedVersion) ability = kickedVersion;
         if (ability is not null)
         {
+            // Escalate: no more modes than the extra costs can be paid for.
+            if (card.Definition.Escalate is not null && ability.Modes is not null)
+            {
+                int escalations = 0;
+                while (escalations + 1 < ability.ModeCount && CanPayToCast(card, player.Id, choices with { EscalatedModes = escalations + 1 })) escalations++;
+                ability = ability with { ModeCount = Math.Min(ability.ModeCount, escalations + 1) };
+            }
             ability = await ChooseModesAsync(player.Id, ability, cardId, canCancel: true);
             if (ability is null) return false;
+            if (card.Definition.Escalate is not null)
+                choices = choices with { EscalatedModes = Math.Max(0, ability.Effects.OfType<ModeEffects>().Count() - 1) };
         }
         if (choices.Spliced.Count > 0)
             ability = (ability ?? new SpellAbility()) with { Effects = (ability?.Effects ?? Array.Empty<Effect>()).Concat(choices.Spliced.SelectMany(c => c.Definition.Spell?.Effects ?? Array.Empty<Effect>())).ToList() };
+        // Targets that only a promised gift gives the spell (702.174).
+        if (giftTo is null && ability?.Targets.Any(t => t.OnlyIfGiftPromised) == true)
+            ability = ability with { Targets = ability.Targets.Where(t => !t.OnlyIfGiftPromised).ToList() };
         // X: in the cost it's cast for, or in an additional cost ("pay X life", "exile X cards from your graveyard").
         bool exilesX = flashback && card.Zone == Zone.Graveyard && card.Definition.FlashbackExilesX;
         if (choices.Way.Mana.XCount > 0 || card.Definition.PayXLife || exilesX)
@@ -736,6 +748,26 @@ public sealed partial class Game
                 Require(exiled.Count >= least && exiled.Count <= most && exiled.Distinct().Count() == exiled.Count && exiled.All(graveyard.Contains), "Choose cards from your graveyard.");
                 delved = exiled.ToList();
                 cost = cost.MinusGeneric(delved.Count);
+            }
+        }
+        // Improvise (702.126): each artifact tapped while paying pays for {1}.
+        if (card.Definition.Improvise && cost.Generic > 0)
+        {
+            var artifacts = ImproviseCandidates(card, player.Id);
+            int most = Math.Min(cost.Generic, artifacts.Count);
+            int least = 0;
+            while (least < most && !CanPayCastingMana(card, player.Id, choices with { Improvised = artifacts.Take(least).Select(a => a.Id).ToList() }, cost.MinusGeneric(least))) least++;
+            if (most > 0)
+            {
+                var picked = await ControllerOf(player.Id).ChooseCardsAsync(ViewFor(player.Id), new CardChoiceRequest($"Improvise: tap up to {most} artifacts (each pays for {{1}})", cardId,
+                    artifacts.Select(a => ViewBuilder.Card(State, a.Id, player.Id)).ToList(), least, most, CardChoicePurpose.Sacrifice));
+                Require(picked.Count >= least && picked.Count <= most && picked.Distinct().Count() == picked.Count && picked.All(id => artifacts.Any(a => a.Id == id)),
+                    "Choose untapped artifacts you control.");
+                Require(CanPayCastingMana(card, player.Id, choices with { Improvised = picked.ToList() }, cost.MinusGeneric(picked.Count)),
+                    "The rest of the cost can't be paid without those artifacts.");
+                choices = choices with { Improvised = picked.ToList() };
+                foreach (var id in picked) Tap(State.GetCard(id));
+                cost = cost.MinusGeneric(picked.Count);
             }
         }
         var paidMana = await PayManaTapsAsync(player, cardId, cost, exclude: null, SpellManaUsable(card, player.Id, choices), UnitUsableFor(card, isAbility: false));
@@ -801,6 +833,7 @@ public sealed partial class Game
         card.ManaSpent = cost.ManaValue;
         card.PaidWithTreasure = treasure;
         card.GiftPromised = giftTo is not null;
+        card.GiftTo = giftTo;
         card.Uncounterable = uncounterable;
         card.Kicked = kicked;
         card.CastFromHand = fromHand;

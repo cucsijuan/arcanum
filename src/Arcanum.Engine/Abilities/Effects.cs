@@ -13,6 +13,9 @@ public sealed record DealDamage(Quantity Amount, Subject To) : Effect
 
     /// <summary>"Excess damage is dealt to that creature's controller instead".</summary>
     public bool ExcessToController { get; init; }
+
+    /// <summary>The object that deals the damage, when it isn't the source of the effect ("it deals X damage", "that creature deals damage").</summary>
+    public Subject? From { get; init; }
 }
 public sealed record DrawCards(Quantity Count, Subject Who) : Effect;
 public sealed record GainLife(Quantity Amount, Subject Who) : Effect;
@@ -1121,3 +1124,12 @@ public sealed record IgnoreHexproofThisTurn : Effect;
 
 /// <summary>"Until end of turn, you may cast [filter] spells from your graveyard."</summary>
 public sealed record MayCastFromGraveyardThisTurn(ObjectFilter Filter) : Effect;
+
+/// <summary>Myriad (rule 702.116): a token copy of the source attacking each other opponent (or a planeswalker they control), exiled at end of combat.</summary>
+public sealed record Myriad : Effect;
+
+/// <summary>A permanent's promised gift, given as it enters (rule 702.174): to the opponent it was promised to.</summary>
+public sealed record GivePromisedGift : Effect;
+
+/// <summary>"Double the power and toughness of [each creature] until end of turn" (rule 701.10d-e).</summary>
+public sealed record DoublePowerAndToughness(Subject What) : Effect;

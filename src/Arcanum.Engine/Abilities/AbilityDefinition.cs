@@ -364,6 +364,8 @@ public enum TriggerEvent
     BecomesTargetOfYours,
     /// <summary>"Whenever this deals combat damage to a player or planeswalker": once for each player or planeswalker dealt damage (amount: that damage).</summary>
     DealsCombatDamageToPlayerOrPlaneswalker,
+    /// <summary>"Whenever another permanent you control leaves the battlefield" — matched against <see cref="TriggeredAbility.Filter"/> as it last existed.</summary>
+    PermanentLeaves,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -514,6 +516,9 @@ public sealed record ObjectFilter(
     /// <summary>Attacking the filter's controller or a planeswalker they control ("a creature attacks you or a planeswalker you control").</summary>
     public bool AttackingYou { get; init; }
 
+    /// <summary>Attacking the filter's controller, not a planeswalker ("creatures attacking you").</summary>
+    public bool AttackingYouDirectly { get; init; }
+
     /// <summary>A spell cast from a graveyard / a permanent that entered from a graveyard.</summary>
     public bool FromGraveyard { get; init; }
 
@@ -578,6 +583,9 @@ public sealed record ObjectFilter(
 
     /// <summary>Card types it must all have ("artifact creature"), where <see cref="Types"/> asks for any one of them.</summary>
     public Cards.CardType AllTypes { get; init; }
+
+    /// <summary>A creature with the greatest power among creatures its controller controls ("a creature with the greatest power among creatures they control").</summary>
+    public bool GreatestPowerAmongItsController { get; init; }
 
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 

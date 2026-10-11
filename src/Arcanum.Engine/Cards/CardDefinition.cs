@@ -291,6 +291,15 @@ public sealed partial record CardDefinition
     /// <summary>"You can't cast this spell during your first, second, or third turns of the game": that many of its owner's first turns.</summary>
     public int CantCastDuringFirstTurns { get; init; }
 
+    /// <summary>Escalate (rule 702.120): this cost is paid once for each mode chosen beyond the first.</summary>
+    public ManaCost? Escalate { get; init; }
+
+    /// <summary>Improvise (rule 702.126): untapped artifacts can be tapped to pay for {1} each of its generic mana.</summary>
+    public bool Improvise { get; init; }
+
+    /// <summary>Its <see cref="AttackTax"/> is only on attacking its controller, not their planeswalkers ("creatures can't attack you unless …").</summary>
+    public bool AttackTaxPlayerOnly { get; init; }
+
     /// <summary>"Creatures with power greater than the number of cards in your hand can't attack."</summary>
     public bool CantAttackIfPowerAboveHandSize { get; init; }
 
@@ -424,6 +433,9 @@ public sealed partial record CardDefinition
 
     /// <summary>"Gift a [token]" (rule 702.174): an opponent the caster promises it to creates this token before the spell's other effects.</summary>
     public CardDefinition? Gift { get; init; }
+
+    /// <summary>"Gift a card": the promised opponent draws a card.</summary>
+    public bool GiftCard { get; init; }
 
     /// <summary>"You may cast this spell as though it had flash if [condition]."</summary>
     public Condition? FlashIf { get; init; }

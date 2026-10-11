@@ -57,7 +57,11 @@ public sealed record CostReduction(int Amount, Condition? Condition = null, Obje
 public sealed record CostOption(Mana.ManaCost? Mana, ExtraCost? Extra);
 
 /// <summary>"You may pay [cost] rather than pay this spell's mana cost if [condition]".</summary>
-public sealed record AlternativeCost(Mana.ManaCost Cost, Condition? If = null);
+public sealed record AlternativeCost(Mana.ManaCost Cost, Condition? If = null)
+{
+    /// <summary>Non-mana parts of the alternative cost ("pay {W} and tap four untapped creatures you control with flying").</summary>
+    public ExtraCost? Extra { get; init; }
+}
 
 /// <summary>Riders on mana from a source (rule 106.6): what happens when it's spent on matching spells.</summary>
 public enum ManaRider { None, HasteForDragonCreatureSpells, CopyRedInstantOrSorcery, LegendaryUncounterable, Uncounterable, InstantOrSorceryUncounterable, ScryIfSharesTypeWithCommander }

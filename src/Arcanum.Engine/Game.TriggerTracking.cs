@@ -43,7 +43,7 @@ public sealed partial class Game
                     _ => false,
                 };
                 if (watching && Matches(ability.Filter ?? DefaultFilter(ability.Trigger), aimed, aimed.Controller, observer, observer.Controller))
-                    AddPending(observer.Id, ability, observer.Controller, new TriggerInfo(aimed.Id, aimed.Version, aimed.Controller));
+                    AddPending(observer.Id, ability, observer.Controller, new TriggerInfo(aimed.Id, aimed.Version, item.Controller)); // "that player": the spell's or ability's controller
             }
     }
 

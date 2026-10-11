@@ -36,11 +36,11 @@ public static partial class CardFactory
         "Amass", "Recruit", "Gift", "Behold", "Landwalk", "Goad",
         "Revolt", "Delirium", "Battalion", "Fateful hour", "Spell mastery", "Addendum", "Regenerate", "Triple", "Populate", "Exert",
         "Secret council", "Will of the council", "Council's dilemma", "Tempting offer", "Transform",
-        "Lieutenant", "Enrage", "Celebration", "Pack tactics", "Imprint",
+        "Lieutenant", "Enrage", "Celebration", "Pack tactics", "Imprint", "Living weapon",
         "Renown", // its trigger and the renowned designation come from the script (rule 702.112)
         // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
         "Persist", "Undying", "Dethrone", "Hideaway", "Heal", "Aftermath",
-        "Devour", "Multikicker", "Replicate", "Squad", "Dash", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
+        "Devour", "Multikicker", "Replicate", "Escalate", "Improvise", "Myriad", "Squad", "Dash", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
         // Pairing rules for two commanders (deck construction); "Partner with" also has a trigger derived below.
         "Partner", "Partner with", "Friends forever", "Choose a background", "Doctor's companion",
     };

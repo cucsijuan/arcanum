@@ -132,6 +132,9 @@ public sealed class Card
     /// <summary>As a spell: its caster promised the gift.</summary>
     public bool GiftPromised { get; set; }
 
+    /// <summary>The opponent a gift was promised to as this was cast (kept as a permanent spell enters the battlefield).</summary>
+    public Core.PlayerId? GiftTo { get; set; }
+
     /// <summary>Exiled face down: only the players in <see cref="KnownTo"/> may look at it (rule 406.3).</summary>
     public bool FaceDown { get; set; }
 
@@ -627,6 +630,7 @@ public sealed class Card
         ManaSpent = 0;
         PaidWithTreasure = false;
         GiftPromised = false;
+        GiftTo = null;
         FaceDown = false;
         KnownTo.Clear();
         Uncounterable = false;

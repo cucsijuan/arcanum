@@ -60,6 +60,9 @@ public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = C
     /// </summary>
     public bool PerPlayer { get; init; }
 
+    /// <summary>A target the spell has only if a gift was promised as it was cast ("if the gift was promised, return target …").</summary>
+    public bool OnlyIfGiftPromised { get; init; }
+
     /// <summary>The controller must be this player (set when a <see cref="PerPlayer"/> requirement is split up).</summary>
     public PlayerId? OnlyControlledBy { get; init; }
 

@@ -148,6 +148,8 @@ public enum QuantityKind
     PlayersWhoDrewThisWay,
     /// <summary>Opponents with more of <see cref="Quantity.Measure"/> (life, creatures, lands, cards in hand) than the controller.</summary>
     OpponentsWithMore,
+    /// <summary>The greatest mana value among the commanders the controller owns, wherever they are ("among your commanders").</summary>
+    GreatestCommanderManaValueAnywhere,
 }
 
 /// <summary>

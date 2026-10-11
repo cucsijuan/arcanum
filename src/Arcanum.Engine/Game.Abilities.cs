@@ -435,10 +435,7 @@ public sealed partial class Game
         context.Results.Sacrificed.AddRange(item.SacrificedForCost);
         context.Results.Discarded.AddRange(item.DiscardedForCost);
         // A promised gift is given before the spell's other effects (rule 702.174b).
-        if (item is SpellOnStack { GiftTo: { } giftee } && source.Definition.Gift is { } gift && !State.GetPlayer(giftee).HasLost)
-        {
-            await CreateTokenEventAsync(giftee, gift, 1, false, source);
-        }
+        if (item is SpellOnStack { GiftTo: { } giftee } && (source.Is(CardType.Instant) || source.Is(CardType.Sorcery))) await GiveGiftAsync(giftee, source);
         if (item is AbilityOnStack { Ability: var counted }) source.ResolvedThisTurn[counted] = source.ResolvedThisTurn.GetValueOrDefault(counted) + 1;
         await ApplyAllAsync(ability.Effects, context);
         _announcedX = -1;
@@ -700,6 +697,8 @@ public sealed partial class Game
             QuantityKind.DamageTakenThisTurn => ctx.ChosenAt(q.Index)?.Player is { } hurt ? State.GetPlayer(hurt).DamageTakenThisTurn : 0,
             QuantityKind.TargetPlayersGreatestPower => ctx.TargetAt(q.Index)?.Player is { } owner
                 ? State.PermanentsControlledBy(owner).Where(c => c.IsCreature).Select(c => c.Power).DefaultIfEmpty(0).Max() : 0,
+            QuantityKind.GreatestCommanderManaValueAnywhere => State.Cards.Values.Where(c => c.IsCommander && c.Owner == ctx.Controller)
+                .Select(c => c.ManaValue).DefaultIfEmpty(0).Max(),
             QuantityKind.GreatestCommanderManaValue => State.Cards.Values.Where(c => c.IsCommander && c.Owner == ctx.Controller && c.Zone is Zone.Battlefield or Zone.Command)
                 .Select(c => c.ManaValue).DefaultIfEmpty(0).Max(),
             QuantityKind.OtherAttackersSharingTypeWithTriggered => ctx.Trigger?.Subject is { } attackerId && State.GetCard(attackerId) is var trig && State.Combat is { } fight
@@ -762,6 +761,12 @@ public sealed partial class Game
         {
             case ModeEffects m:
                 await ApplyAllAsync(m.Effects, ctx with { TargetOffset = m.TargetOffset });
+                break;
+            case Myriad:
+                await MyriadAsync(ctx);
+                break;
+            case GivePromisedGift:
+                if (ctx.Source.GiftTo is { } promisedTo) await GiveGiftAsync(promisedTo, ctx.Source);
                 break;
             case ExileUntilSourceLeaves eu:
                 // If the source already left the battlefield, nothing is exiled (it would return at once).
@@ -1803,8 +1808,17 @@ public sealed partial class Game
                 int amount = Eval(d.Amount, ctx);
                 var cards = CardsFor(d.To, ctx).ToList();
                 var parts = new List<DamagePart>();
+                // "It deals X damage": another object deals the damage (no damage if there's no such object).
+                var dealer = ctx.Source;
+                if (d.From is { } from)
+                {
+                    // An object that has left its zone still deals the damage, as it last existed (rule 608.2h).
+                    var other = from.Kind == SubjectKind.Triggered && ctx.Trigger?.Subject is { } dealerId ? State.GetCard(dealerId) : CardsFor(from, ctx).FirstOrDefault();
+                    if (other is null) break;
+                    dealer = other;
+                }
                 // Lethal damage is 1 from a deathtouch source (rule 702.2c).
-                int LethalFor(Card card) => Math.Max(0, card.Toughness - card.Damage) is var l && ctx.Source.Has(Keyword.Deathtouch) && l > 0 ? 1 : Math.Max(0, card.Toughness - card.Damage);
+                int LethalFor(Card card) => Math.Max(0, card.Toughness - card.Damage) is var l && dealer.Has(Keyword.Deathtouch) && l > 0 ? 1 : Math.Max(0, card.Toughness - card.Damage);
                 // "Dealt damage this way" and excess damage are noted as the damage is dealt (DamagePart.Report): inside
                 // "simultaneously" that's once the whole event has been put together and dealt.
                 foreach (var card in cards)
@@ -1813,15 +1827,15 @@ public sealed partial class Game
                     if (d.ExcessToController && card.IsCreature && amount > lethal)
                     {
                         // "Excess damage is dealt to that creature's controller instead."
-                        parts.Add(new DamagePart(ctx.Source, card, null, lethal, false) { Report = ctx.Results, CountExcess = false, Unpreventable = d.Unpreventable });
-                        parts.Add(new DamagePart(ctx.Source, null, card.Controller, amount - lethal, false) { Report = ctx.Results, Unpreventable = d.Unpreventable });
+                        parts.Add(new DamagePart(dealer, card, null, lethal, false) { Report = ctx.Results, CountExcess = false, Unpreventable = d.Unpreventable });
+                        parts.Add(new DamagePart(dealer, null, card.Controller, amount - lethal, false) { Report = ctx.Results, Unpreventable = d.Unpreventable });
                         continue;
                     }
-                    parts.Add(new DamagePart(ctx.Source, card, null, amount, false) { Report = ctx.Results, Unpreventable = d.Unpreventable });
+                    parts.Add(new DamagePart(dealer, card, null, amount, false) { Report = ctx.Results, Unpreventable = d.Unpreventable });
                 }
                 // "That creature" is the object the trigger is about, never its controller as well.
                 if (d.To.Kind != SubjectKind.Triggered)
-                    foreach (var player in PlayersFor(d.To, ctx)) parts.Add(new DamagePart(ctx.Source, null, player, amount, false) { Report = ctx.Results, Unpreventable = d.Unpreventable });
+                    foreach (var player in PlayersFor(d.To, ctx)) parts.Add(new DamagePart(dealer, null, player, amount, false) { Report = ctx.Results, Unpreventable = d.Unpreventable });
                 await DealDamageEventAsync(parts);
             }
                 break;
@@ -2019,6 +2033,11 @@ public sealed partial class Game
                         CantBeBlockedBy = p.CantBeBlockedBy,
                     });
             }
+                break;
+            case DoublePowerAndToughness dpt:
+                // 701.10d-e: it gets +X/+X, X being its power and toughness now (a negative power doubles down).
+                foreach (var card in CardsFor(dpt.What, ctx).Where(c => c.IsCreature).ToList())
+                    State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(card.Id, card.Version, card.Power, card.Toughness, Array.Empty<Keyword>()) { Timestamp = NewTimestamp() });
                 break;
             case AddCounters a:
             {
@@ -4285,6 +4304,7 @@ public sealed partial class Game
         if (filter.OwnedByYou && obj.Owner != sourceController) return false;
         if (filter.PutIntoZoneThisTurn && obj.ZoneChangedTurn != State.TurnNumber) return false;
         if (filter.AttackingYou && State.Combat?.FindAttack(obj.Id)?.Defender != sourceController) return false;
+        if (filter.AttackingYouDirectly && (State.Combat?.FindAttack(obj.Id) is not { } direct || direct.Defender != sourceController || direct.Planeswalker is not null)) return false;
         if (filter.FromGraveyard && !(obj.Zone == Zone.Stack ? obj.CastFromGraveyard : obj.EnteredFrom == Zone.Graveyard)) return false;
         if (filter.CastFromHand && !obj.CastFromHand) return false;
         if (filter.HasXInCost && obj.Definition.ManaCost.XCount == 0) return false;
@@ -4318,6 +4338,8 @@ public sealed partial class Game
         if (filter.NotChosenType && source?.ChosenType is { } notType && HasSubtype(notType)) return false;
         if (filter.LeastPower && obj.IsCreature
             && State.PermanentsControlledBy(objController).Where(c => c.IsCreature).Any(c => c.Power < power)) return false;
+        if (filter.GreatestPowerAmongItsController && obj.IsCreature
+            && State.PermanentsControlledBy(objController).Where(c => c.IsCreature).Any(c => c.Power > power)) return false;
         if (filter.DamagedThisTurn && !DamagedThisTurnBy(obj, lastKnown, (_, _) => true)) return false;
         if (filter.BlockingSource && (source is null || State.Combat?.FindAttack(source.Id) is not { } blocked || !blocked.Blockers.Contains(obj.Id))) return false;
         if (filter.DealtCombatDamageToYou && (source is null || !obj.CombatDamagedPlayers.Contains(source.Controller))) return false;
@@ -4829,6 +4851,8 @@ public sealed partial class Game
                 foreach (var watching in abilities.Where(x => x.Trigger == TriggerEvent.CreatureLeaves))
                     if (Matches((watching.Filter ?? ObjectFilter.Anything) with { Controller = ControllerFilter.Any }, State.GetCard(departed.Card), departed.LastController, observer, observer.Controller, lastKnown: true))
                         AddPending(observer.Id, watching, observer.Controller, new TriggerInfo(departed.Card, State.GetCard(departed.Card).Version, departed.LastController));
+        // "Whenever another permanent you control leaves the battlefield" (judged as it last existed there).
+        if (e is CardMoved { From: Zone.Battlefield } leftField) QueueObservers(TriggerEvent.PermanentLeaves, State.GetCard(leftField.Card), leftField.LastController);
         // "Whenever this creature deals damage to a Goblin or Orc."
         if (e is DamageDealt { TargetCard: { } hurtId } damageToCreature && State.GetCard(damageToCreature.Source) is { } damager)
             foreach (var ability in TriggerAbilitiesOf(damager).Where(a => a.Trigger == TriggerEvent.DealsDamageToCreature))
@@ -5214,7 +5238,7 @@ public sealed partial class Game
     {
         info ??= new TriggerInfo(subject.Id, subject.Version, subjectController);
         // A creature that died is judged as it last existed on the battlefield (rule 603.10a).
-        bool lastKnown = trigger is TriggerEvent.CreatureDies or TriggerEvent.PermanentDies;
+        bool lastKnown = trigger is TriggerEvent.CreatureDies or TriggerEvent.PermanentDies or TriggerEvent.PermanentLeaves;
         foreach (var (observer, abilities) in Observers())
             foreach (var ability in abilities)
                 if (ability.Trigger == trigger && Matches(ability.Filter ?? DefaultFilter(trigger), subject, subjectController, observer, observer.Controller, lastKnown))
@@ -5258,7 +5282,7 @@ public sealed partial class Game
     private static ObjectFilter DefaultFilter(TriggerEvent trigger) => trigger switch
     {
         TriggerEvent.LandEnters => new ObjectFilter(CardType.Land),
-        TriggerEvent.PermanentEnters or TriggerEvent.LeavesGraveyard or TriggerEvent.PermanentDies => new ObjectFilter(),
+        TriggerEvent.PermanentEnters or TriggerEvent.LeavesGraveyard or TriggerEvent.PermanentDies or TriggerEvent.PermanentLeaves => new ObjectFilter(),
         _ => ObjectFilter.YourCreatures,
     };
 
@@ -5388,6 +5412,8 @@ public sealed partial class Game
     private void QueueEnterTriggers(CardId id)
     {
         var entering = State.GetCard(id);
+        // A permanent spell's promised gift: "when it enters, [they get the gift]" (rule 702.174).
+        if (entering.GiftPromised && entering.GiftTo is not null) _pendingTriggers.Add(new PendingTrigger(id, GiftOnEnter, entering.Controller));
         Queue(id, TriggerEvent.EntersBattlefield, entering.Controller);
         if (entering.IsCreature) QueueObservers(TriggerEvent.CreatureEnters, entering, entering.Controller);
         QueueObservers(TriggerEvent.PermanentEnters, entering, entering.Controller);
@@ -5483,6 +5509,21 @@ public sealed partial class Game
         Effects = new Effect[] { new DrawCards(1, Subject.You), new Discard(1, Subject.You) },
         Text = "The Ring: your Ring-bearer attacks — draw a card, then discard a card.",
     };
+
+    private static readonly TriggeredAbility GiftOnEnter = new()
+    {
+        Trigger = TriggerEvent.EntersBattlefield,
+        Effects = new Effect[] { new GivePromisedGift() },
+        Text = "Gift: the opponent who was promised the gift gets it.",
+    };
+
+    /// <summary>The promised gift (rule 702.174): a card to draw or a token, for an opponent still in the game.</summary>
+    private async Task GiveGiftAsync(PlayerId giftee, Card source)
+    {
+        if (State.GetPlayer(giftee).HasLost) return;
+        if (source.Definition.GiftCard) await DrawAsync(giftee);
+        else if (source.Definition.Gift is { } gift) await CreateTokenEventAsync(giftee, gift, 1, false, source);
+    }
 
     private static readonly TriggeredAbility RingDrain = new()
     {

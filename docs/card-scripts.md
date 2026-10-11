@@ -883,3 +883,21 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   every way of casting it), `"graveyardCastIf": condition` ("you may cast this card from your graveyard as long as you control a
   Zombie"), `replaces` `OpponentsNontokenCreaturesExiledInsteadOfDying` (with the `creatureExiledInstead` trigger).
 - Ability words `Lieutenant`, `Enrage`, `Celebration`, `Pack tactics` and `Imprint` only label rules text the script spells out.
+- **Damage from another object**: `damage` takes `"from": subject` ("it deals X damage", "it deals damage equal to its power"): that object
+  deals the damage (its deathtouch and lifelink apply); with `"triggered"`, an object that has left the battlefield still deals it as it
+  last existed.
+- **Trigger** `permanentLeaves` with a `filter` ("whenever another permanent you control leaves the battlefield", judged as it last
+  existed; permanents leaving at the same time see each other), usually with `"if": "triggeredHadCounters"`. `permanentBecomesTarget`
+  and `becomesTargetOfYours` now make `"triggeredPlayer"` the controller of the spell or ability ("deals 3 damage to that player").
+- **Filters**: `"attackingYouDirectly": true` (attacking you, not one of your planeswalkers: "creatures attacking you"), `"greatestPower":
+  true` (a creature with the greatest power among those its controller controls).
+- **Casting**: card-wide `"escalate": "{G}"` (paid once for each mode chosen beyond the first; no more modes than can be paid for),
+  `"improvise": true` (each untapped artifact tapped while paying pays for {1}), `alternativeCost` with `"extra"` (a non-mana part, e.g.
+  `{ "tap": { "types": ["creature"], "keyword": "Flying" }, "tapCount": 4 }`), `"gift": "card"` (the promised opponent draws a card). A
+  permanent spell's promised gift is given as it enters (a triggered ability), an instant's or sorcery's before its other effects; a target
+  with `"onlyIfGiftPromised": true` exists only if the gift was promised.
+- **Effects**: `{ "myriad": true }` (rule 702.116: for each opponent other than the defending player, you may create a token copy tapped
+  and attacking that player or a planeswalker they control, exiled at end of combat), `{ "doublePowerAndToughness": subject }` (until end
+  of turn). Card-wide `"attackTaxPlayerOnly": true` limits an `attackTax` to attacks on the player ("creatures can't attack you unless …").
+- Quantity `"greatestCommanderManaValueAnywhere"` (among your commanders wherever they are); ability word `Living weapon` labels the
+  scripted enters trigger (a 0/0 black Phyrexian Germ token, then `{ "attach": "created" }`).
