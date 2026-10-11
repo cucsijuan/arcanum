@@ -39,15 +39,15 @@ public partial class DeckDesk : Control
     /// Choosing one card on the mat instead of building (an ante's stake): the cards to choose from, the tag each card
     /// shows (its price), and what happens when one is picked or the player goes back.
     /// </summary>
-    /// <param name="DeckNames">The names of a deck's cards: a filter then shows only them.</param>
+    /// <param name="InDecks">The names of the cards in the player's decks: a filter then hides them.</param>
     public sealed record CardPick(string Title, IReadOnlyList<CardKey> Cards, Func<CardKey, string> Tag, Action<CardKey> Picked, Action Cancelled,
-        IReadOnlySet<string>? DeckNames = null);
+        IReadOnlySet<string>? InDecks = null);
 
     /// <summary>Set before opening the desk to pick a card; null builds a deck.</summary>
     public static CardPick? Picking { get; set; }
 
     private CardPick? _pick;
-    private bool _deckOnly;
+    private bool _hideInDecks;
 
     /// <summary>Cards across the collection's part of the mat: all of it when picking a card.</summary>
     private int GridColumns => _pick is null ? 6 : 10;
@@ -209,15 +209,15 @@ public partial class DeckDesk : Control
         if (_pick is { } pick)
         {
             row.AddChild(CareerStyle.Text(pick.Title, 22, new Color(1f, 0.95f, 0.85f)));
-            if (pick.DeckNames is not null)
+            if (pick.InDecks is not null)
             {
                 row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-                var deckOnly = new CheckButton { Text = "Only this deck's cards", FocusMode = FocusModeEnum.None };
+                var deckOnly = new CheckButton { Text = "Hide cards in my decks", FocusMode = FocusModeEnum.None };
                 deckOnly.AddThemeColorOverride("font_color", new Color(1f, 0.95f, 0.85f));
                 deckOnly.AddThemeColorOverride("font_pressed_color", new Color(1f, 0.95f, 0.85f));
                 deckOnly.AddThemeColorOverride("font_hover_color", new Color(1f, 0.95f, 0.85f));
                 deckOnly.AddThemeFontSizeOverride("font_size", 20);
-                deckOnly.Toggled += on => { _deckOnly = on; ShowPage(0); };
+                deckOnly.Toggled += on => { _hideInDecks = on; ShowPage(0); };
                 row.AddChild(deckOnly);
             }
             _top.AddChild(row);
@@ -346,7 +346,7 @@ public partial class DeckDesk : Control
     private List<Owned> OwnedCards()
     {
         if (_pick is not null)
-            return _pick.Cards.Where(k => Cards.Find(k.Name) is not null && InSet(k) && (!_deckOnly || _pick.DeckNames?.Contains(k.Name) != false))
+            return _pick.Cards.Where(k => Cards.Find(k.Name) is not null && InSet(k) && (!_hideInDecks || _pick.InDecks?.Contains(k.Name) != true))
                 .Select(k => new Owned(Cards.Find(k.Name)!, k.ToEntry(), Career.State.Owned(k)))
                 .Where(Passes).OrderBy(o => o.Card.ManaValue).ThenBy(o => o.Card.Name).ToList();
         var cards = (_pool is not null

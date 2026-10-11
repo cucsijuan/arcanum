@@ -785,7 +785,8 @@ public partial class CareerScreen : Control
                 OpenOn = nameof(WebPage.Chat);
                 App.Instance.GoTo(App.CareerScene);
             },
-            deck.Main.Select(e => e.Name).ToHashSet(StringComparer.OrdinalIgnoreCase));
+            Career.Decks.List(null).SelectMany(d => Career.Decks.Load(d).Deck is var list ? list.Main.Concat(list.Commander).Concat(list.Sideboard) : Enumerable.Empty<DeckEntry>())
+                .Select(e => e.Name).ToHashSet(StringComparer.OrdinalIgnoreCase));
         App.Instance.GoTo(App.DeckDeskScene);
     }
 
