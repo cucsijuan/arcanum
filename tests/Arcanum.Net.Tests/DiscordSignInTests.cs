@@ -102,4 +102,26 @@ public class DiscordSignInTests
         var signIn = new DiscordSignIn(new HttpClient(new FakeService(HttpStatusCode.Unauthorized)) { BaseAddress = new Uri("https://service.test/") }, "123");
         await Assert.ThrowsAsync<DiscordRefusedException>(() => signIn.RefreshAsync("old", CancellationToken.None));
     }
+
+    /// <summary>Stands in for Discord's API: answers users/@me with a user.</summary>
+    private sealed class FakeDiscord(string user) : HttpMessageHandler
+    {
+        public string? Authorization;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancel)
+        {
+            Authorization = request.Headers.Authorization?.ToString();
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(user, Encoding.UTF8, "application/json") });
+        }
+    }
+
+    [Fact]
+    public async Task The_players_name_is_their_display_name_or_else_their_user_name()
+    {
+        var discord = new FakeDiscord("{\"id\":\"1\",\"username\":\"juan_42\",\"global_name\":\"Juan\"}");
+        Assert.Equal("Juan", await DiscordSignIn.NameAsync(new HttpClient(discord) { BaseAddress = new Uri("https://discord.test/api/") }, "at", CancellationToken.None));
+        Assert.Equal("Bearer at", discord.Authorization);
+        var plain = new FakeDiscord("{\"id\":\"1\",\"username\":\"juan_42\",\"global_name\":null}");
+        Assert.Equal("juan_42", await DiscordSignIn.NameAsync(new HttpClient(plain) { BaseAddress = new Uri("https://discord.test/api/") }, "at", CancellationToken.None));
+    }
 }

@@ -185,8 +185,8 @@ across devices and reinstalls.
   - Unlinking is refused for the last linked account, so a player can't lock themselves out.
   - Signing in on a new device with a provider that has no EOS user yet asks: *new profile* or *link to an existing
     one* (sign in with a provider already linked there first).
-- **Display name:** offered from the Discord name the first time; the existing player name setting keeps working and
-  can be changed.
+- **Display name:** after signing in with Discord, its display name (or user name) is offered as the player's name
+  when it's another one; the player name setting keeps working and can be changed.
 - **Device ID:** no longer used for players. Kept only behind a developer switch (`ARCANUM_EOS_NEW_DEVICE` and similar)
   so two instances can be tested on one computer without two Discord accounts. Online play through the internet
   requires a signed-in account; local-network play and everything offline do not.

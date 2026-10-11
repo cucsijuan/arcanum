@@ -23,6 +23,7 @@ public static class Account
     private const string Path = "user://account.json";
     private static readonly System.Net.Http.HttpClient Http = new() { BaseAddress = ServiceUrl, Timeout = TimeSpan.FromSeconds(20) };
     private static readonly DiscordSignIn Discord = new(Http, DiscordClientId);
+    private static readonly System.Net.Http.HttpClient DiscordApi = new() { BaseAddress = new Uri("https://discord.com/api/v10/"), Timeout = TimeSpan.FromSeconds(15) };
     private static string? _refreshToken;
     private static bool _loaded;
     private static readonly SemaphoreSlim Refreshing = new(1, 1);
@@ -44,12 +45,17 @@ public static class Account
         get { Load(); return _refreshToken is not null; }
     }
 
-    /// <summary>Opens Discord's sign-in in the browser and waits for the player (until <paramref name="cancel"/>).</summary>
-    public static async Task SignInWithDiscordAsync(CancellationToken cancel)
+    /// <summary>
+    /// Opens Discord's sign-in in the browser and waits for the player (until <paramref name="cancel"/>); returns their
+    /// Discord name (null when Discord doesn't say).
+    /// </summary>
+    public static async Task<string?> SignInWithDiscordAsync(CancellationToken cancel)
     {
         var tokens = await Discord.SignInAsync(url => OS.ShellOpen(url), cancel);
         Keep(tokens);
         Changed?.Invoke();
+        try { return await DiscordSignIn.NameAsync(DiscordApi, tokens.AccessToken, cancel); }
+        catch (Exception) { return null; } // the name is only offered
     }
 
     /// <summary>

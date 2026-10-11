@@ -125,7 +125,7 @@ public partial class SettingsScreen : Control
     {
         var box = Column();
         box.AddChild(SettingsKit.Section("Play"));
-        var playerName = MenuKit.TextField(Settings.PlayerName, "Your name");
+        var playerName = _playerName = MenuKit.TextField(Settings.PlayerName, "Your name");
         playerName.MaxLength = 32;
         playerName.TextChanged += text =>
         {
@@ -187,6 +187,7 @@ public partial class SettingsScreen : Control
     }
 
     private CancellationTokenSource? _discordSignIn;
+    private LineEdit _playerName = null!;
 
     /// <summary>Signed in or not, and the button to sign in (it waits for the browser; pressed again, it stops waiting) or out.</summary>
     private Control DiscordAccount()
@@ -211,7 +212,11 @@ public partial class SettingsScreen : Control
             _discordSignIn = cancel;
             Show();
             string? note = null;
-            try { await Account.SignInWithDiscordAsync(cancel.Token); }
+            try
+            {
+                var name = await Account.SignInWithDiscordAsync(cancel.Token);
+                AccountPrompt.OfferName(this, name, () => { if (IsInstanceValid(_playerName)) _playerName.Text = Settings.PlayerName; });
+            }
             catch (OperationCanceledException) { }
             catch (Exception e) { note = e is System.Net.Http.HttpRequestException ? "The sign-in service can't be reached." : e.Message; }
             _discordSignIn = null;

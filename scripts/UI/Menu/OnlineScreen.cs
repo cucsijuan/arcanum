@@ -87,8 +87,9 @@ public partial class OnlineScreen : Control
         try
         {
             using var cancel = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-            await Account.SignInWithDiscordAsync(cancel.Token);
+            var name = await Account.SignInWithDiscordAsync(cancel.Token);
             if (!IsInstanceValid(this)) return;
+            AccountPrompt.OfferName(this, name, Rebuild);
             ShowStatus("Signed in with Discord.");
             Online.SignIn(PlayerName);
         }

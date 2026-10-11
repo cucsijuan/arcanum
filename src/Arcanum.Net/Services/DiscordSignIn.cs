@@ -82,6 +82,20 @@ public sealed class DiscordSignIn(HttpClient service, string clientId, int port 
         }
     }
 
+    /// <summary>The player's Discord name (display name, or user name without one), or null when Discord doesn't say.</summary>
+    /// <param name="discord">A client for Discord's API (https://discord.com/api/v10/).</param>
+    public static async Task<string?> NameAsync(HttpClient discord, string accessToken, CancellationToken cancel)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "users/@me");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await discord.SendAsync(request, cancel);
+        if (!response.IsSuccessStatusCode) return null;
+        using var json = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancel));
+        foreach (var field in new[] { "global_name", "username" })
+            if (json.RootElement.TryGetProperty(field, out var value) && value.GetString() is { Length: > 0 } name) return name.Trim();
+        return null;
+    }
+
     /// <summary>New tokens from a refresh token, without the player.</summary>
     public Task<DiscordTokens> RefreshAsync(string refreshToken, CancellationToken cancel) =>
         Post("auth/discord/refresh", new { refreshToken }, cancel);
