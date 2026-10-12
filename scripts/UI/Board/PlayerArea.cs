@@ -752,7 +752,7 @@ public partial class PlayerArea : Control
             float localCenter = group.Key - GlobalPosition.X;
             for (int i = 0; i < list.Count; i++)
             {
-                float x = localCenter + (i - (list.Count - 1) / 2f) * slot - size.X / 2;
+                float x = Math.Clamp(localCenter + (i - (list.Count - 1) / 2f) * slot - size.X / 2, 0, Math.Max(0, Size.X - size.X));
                 var top = list[i].Top;
                 bool tapped = top.Tapped || _staged.Contains(top.Id);
                 PlaceStack(list[i], new Vector2(x, y + forward), size, tapped ? 90 : 0, BlockersZ + Math.Min(i * 4, 20) + StackPeeks);

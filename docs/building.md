@@ -38,6 +38,8 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`): pushing 
 `.github/export/export_presets.cfg` and publishes a release with both zips and the notes in `docs/releases/vX.Y.Z.md`.
 Running the workflow by hand only exports, keeping the zips as workflow artifacts.
 
+`tools/release.sh` does the whole release. It asks for the version, sets it in `project.godot`, creates the release notes from the last notes' Install section and opens them in `$EDITOR` when they're missing, builds and runs the tests, optionally tests the export on GitHub, commits `Version X.Y.Z` with any changed tracked files (after asking), pushes, and after confirmation pushes the tag and waits for the release.
+
 ## Debug options
 Environment variables useful while developing and testing:
 

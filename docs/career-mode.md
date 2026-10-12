@@ -136,7 +136,7 @@ shows them and the pointer's position; Ctrl+click copies a point).
 - **Season file** (served by the career service, not EOS Title Storage: the service needs the same file to verify
   careers, so it lives in one place): the module's `career/season.json` lists changes, each from a day on (to a last
   day, optionally): events added, replaced (same id) or cancelled; the featured set; booster prices; a line of news.
-  The season editor (`dotnet run --project tools/SeasonEditor -- <module dir>`, a page on this computer) plans it on a
+  The season editor (started with `tools/season-editor.sh [module dir] [user@host]`, a page on this computer) plans it on a
   calendar (store events, the season's, cancelled ones, featured set, prices and news per day; played days locked),
   with forms for changes and events. It starts from the published season, keeps a draft on this computer
   (`~/.local/share/arcanum-season-editor/<module id>.json`, dropped once published), downloads it as a file and

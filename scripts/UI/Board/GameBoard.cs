@@ -722,7 +722,14 @@ public partial class GameBoard : Control
             foreach (var blocker in attack.Blockers) Align(blocker, attack.Attacker);
         if (decision is BlockDecision)
             foreach (var (blocker, blocked) in _blocks) Align(blocker, blocked[0]);
-        foreach (var area in _areas.Where(a => a != activeArea)) area.Refresh(view, false, staged, attacking, blockerAlign);
+        foreach (var area in _areas.Where(a => a != activeArea))
+        {
+            // Blockers stay in their owner's area: they line up with the attacker only when it's above or below them (two
+            // players); with opponents side by side they keep their place and the arrow shows what they block.
+            var rect = area.GetGlobalRect();
+            var own = blockerAlign.Where(kv => kv.Value >= rect.Position.X && kv.Value <= rect.End.X).ToDictionary(kv => kv.Key, kv => kv.Value);
+            area.Refresh(view, false, staged, attacking, own);
+        }
         _turnNumber.Text = Math.Max(1, view.TurnNumber).ToString();
         _stepLabel.Text = view.TurnNumber == 0 ? "Mulligan" : EventLogFormatter.StepName(view.Step);
         _phaseBar.SetCurrentStep(view.TurnNumber == 0 ? null : view.Step);
