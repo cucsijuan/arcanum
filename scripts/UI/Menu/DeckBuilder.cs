@@ -55,6 +55,24 @@ public partial class DeckBuilder : Control
     private readonly Label _resultInfo = BoardStyle.MakeLabel("", 14, BoardStyle.TextDim);
     private readonly Button _prev = BoardStyle.MakeButton("‹ Prev", 15);
     private readonly Button _next = BoardStyle.MakeButton("Next ›", 15);
+    private readonly HBoxContainer _filters = new();
+
+    // Suggestions for the commander (community statistics from the module's source), shown instead of the search.
+    private static readonly string[] SuggestionSorts = { "Most played", "Highest synergy" };
+    private readonly HBoxContainer _modeRow = new();
+    private readonly Button _searchMode = BoardStyle.MakeButton("Search", 15);
+    private readonly Button _suggestMode = BoardStyle.MakeButton("Suggestions", 15);
+    private readonly VBoxContainer _suggestBar = new() { Visible = false };
+    private readonly OptionButton _suggestSection = MenuKit.Options(Array.Empty<string>());
+    private readonly OptionButton _suggestSort = MenuKit.Options(SuggestionSorts);
+    private readonly OptionButton _suggestVariant = MenuKit.Options(Array.Empty<string>());
+    private readonly Label _suggestInfo = BoardStyle.MakeLabel("", 13, BoardStyle.TextDim);
+    private bool _suggesting;
+    private CommanderInsights? _insights;
+    private string? _insightsKey;
+    private string _insightsSlug = "";
+    private readonly List<string?> _variants = new();
+    private readonly Dictionary<string, InsightCard> _suggestStats = new(StringComparer.OrdinalIgnoreCase);
 
     // Deck panel controls
     private readonly OptionButton _deckPicker = MenuKit.Options(Array.Empty<string>());
@@ -107,6 +125,8 @@ public partial class DeckBuilder : Control
         RunSearch();
         // Debug: ARCANUM_OPEN_DECK=<n> opens the n-th saved/starter deck (screenshots, smoke tests).
         if (int.TryParse(OS.GetEnvironment("ARCANUM_OPEN_DECK"), out int open) && open >= 0 && open < _saved.Count) LoadDeck(_saved[open]);
+        // Debug: ARCANUM_SUGGEST=1 shows the commander suggestions of the opened deck.
+        if (OS.GetEnvironment("ARCANUM_SUGGEST") == "1") SetSuggesting(true);
     }
 
     private CardDatabase Cards => App.Instance.Cards!;
@@ -150,7 +170,9 @@ public partial class DeckBuilder : Control
         left.AddThemeConstantOverride("separation", 12);
         body.AddChild(left);
 
-        var filters = new HBoxContainer();
+        BuildSuggestionControls(left);
+
+        var filters = _filters;
         filters.AddThemeConstantOverride("separation", 10);
         _search.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _search.TextChanged += _ => _searchDelay.Start();
@@ -179,6 +201,7 @@ public partial class DeckBuilder : Control
         filters.AddChild(_mvFilter);
         filters.AddChild(_setFilter);
         left.AddChild(filters);
+        left.AddChild(_suggestBar);
 
         var toggles = new HBoxContainer();
         toggles.AddThemeConstantOverride("separation", 24);
@@ -268,12 +291,251 @@ public partial class DeckBuilder : Control
         AddChild(_importDialog);
     }
 
+    // ---------------------------------------------------------------- commander suggestions
+
+    private void BuildSuggestionControls(VBoxContainer left)
+    {
+        _modeRow.AddThemeConstantOverride("separation", 8);
+        _modeRow.Visible = false;
+        foreach (var button in new[] { _searchMode, _suggestMode })
+        {
+            button.ToggleMode = true;
+            button.CustomMinimumSize = new Vector2(150, 38);
+            _modeRow.AddChild(button);
+        }
+        _searchMode.SetPressedNoSignal(true);
+        _suggestMode.TooltipText = "The cards most played with your commander, by the community's decks";
+        _searchMode.Pressed += () => SetSuggesting(false);
+        _suggestMode.Pressed += () => SetSuggesting(true);
+        left.AddChild(_modeRow);
+
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        _suggestSection.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        _suggestSection.TooltipText = "Group of suggested cards";
+        _suggestSection.ItemSelected += _ => ShowSuggestions();
+        _suggestSort.TooltipText = "Most played: share of the decks that could play the card that do · Highest synergy: played the most above other decks of its colors";
+        _suggestSort.ItemSelected += _ => ShowSuggestions();
+        _suggestVariant.CustomMinimumSize = new Vector2(240, 0);
+        _suggestVariant.ClipText = true;
+        _suggestVariant.TooltipText = "All the commander's decks, only budget or expensive ones, or one theme";
+        _suggestVariant.ItemSelected += _ => LoadInsights();
+        var average = BoardStyle.MakeButton("Use average deck", 15);
+        average.CustomMinimumSize = new Vector2(170, 40);
+        average.TooltipText = "Replace the main deck with the average deck of this commander (and theme)";
+        average.Pressed += AskAverageDeck;
+        row.AddChild(_suggestSection);
+        row.AddChild(_suggestSort);
+        row.AddChild(_suggestVariant);
+        row.AddChild(average);
+        _suggestBar.AddThemeConstantOverride("separation", 6);
+        _suggestBar.AddChild(row);
+        _suggestInfo.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _suggestBar.AddChild(_suggestInfo);
+    }
+
+    private static string Signed(double share) => (share >= 0 ? "+" : "−") + Math.Abs(share).ToString("P0");
+
+    /// <summary>Whether suggestions can be shown: a commander format, a commander chosen and a module with the statistics source.</summary>
+    private bool CanSuggest => App.Instance.Formats.Count > 0 && Format.Commander && _deck.Commander.Count > 0
+                               && CommanderInsightsSource.Available(App.Instance.Module);
+
+    /// <summary>Shows or hides the Search / Suggestions switch as the deck changes, and reloads suggestions for a new commander.</summary>
+    private void RefreshSuggestMode()
+    {
+        _modeRow.Visible = CanSuggest;
+        // Choosing a commander is done from the search.
+        if ((!CanSuggest || _editingCommander) && _suggesting) SetSuggesting(false);
+        else if (_suggesting && CommanderSlug() != _insightsSlug) LoadInsights();
+        else if (_suggesting) RefreshSuggestInfo();
+    }
+
+    private void SetSuggesting(bool on)
+    {
+        _suggesting = on && CanSuggest;
+        _searchMode.SetPressedNoSignal(!_suggesting);
+        _suggestMode.SetPressedNoSignal(_suggesting);
+        _filters.Visible = !_suggesting;
+        _suggestBar.Visible = _suggesting;
+        if (_suggesting && _deck.Commander.Count > 0 && _editingCommander)
+        {
+            // Suggestions are cards for the main deck.
+            _editingCommander = false;
+            RefreshDeck();
+        }
+        if (_suggesting) LoadInsights();
+        else
+        {
+            if (_insights is null) _insightsKey = null; // try again next time
+            RunSearch();
+        }
+    }
+
+    private string CommanderSlug() => CommanderInsights.Slug(_deck.Commander.Select(e => e.Name));
+
+    private string? SelectedVariant => _suggestVariant.Selected >= 0 && _suggestVariant.Selected < _variants.Count ? _variants[_suggestVariant.Selected] : null;
+
+    /// <summary>Downloads (or reads from the cache) the statistics for the deck's commander and the chosen theme, then shows them.</summary>
+    private async void LoadInsights()
+    {
+        if (App.Instance.Module is not { } module) return;
+        string slug = CommanderSlug();
+        if (slug != _insightsSlug)
+        {
+            _variants.Clear();
+            _insightsSlug = slug;
+        }
+        string? variant = SelectedVariant;
+        string key = slug + "|" + variant;
+        if (key == _insightsKey)
+        {
+            // Already shown, or still loading.
+            if (_insights is not null) ShowSuggestions();
+            return;
+        }
+        _insightsKey = key;
+        _insights = null;
+        _results = new List<(CardEntry, Printing?)>();
+        ShowPage(0);
+        _resultInfo.Text = "Loading suggestions…";
+        _suggestInfo.Text = "";
+        var insights = await CommanderInsightsSource.PageAsync(module, slug, variant);
+        if (_insightsKey != key || !IsInsideTree()) return; // the commander or theme changed while loading
+        _insights = insights;
+        if (insights is null)
+        {
+            _resultInfo.Text = "No suggestions for this commander";
+            _suggestInfo.Text = "There are no community statistics for this commander (or they couldn't be downloaded).";
+            return;
+        }
+        if (_variants.Count == 0)
+        {
+            // Themes come with the commander's own page; a theme's page lists the same ones.
+            _suggestVariant.Clear();
+            void Variant(string label, string? value) { _variants.Add(value); _suggestVariant.AddItem(label); }
+            Variant($"All decks ({insights.Decks:N0})", null);
+            Variant("Budget", "budget");
+            Variant("Expensive", "expensive");
+            foreach (var theme in insights.Themes.Take(30)) Variant($"{theme.Name} ({theme.Decks:N0})", theme.Slug);
+            _suggestVariant.Selected = 0;
+        }
+        _suggestSection.Clear();
+        _suggestSection.AddItem("All suggestions");
+        foreach (var section in insights.Sections) _suggestSection.AddItem($"{section.Title} ({section.Cards.Count})");
+        _suggestSection.Selected = 0;
+        ShowSuggestions();
+    }
+
+    /// <summary>Fills the grid with the chosen group of suggestions the card pool has, sorted as chosen.</summary>
+    private void ShowSuggestions()
+    {
+        if (_insights is not { } insights) return;
+        int section = _suggestSection.Selected;
+        var cards = section <= 0 || section > insights.Sections.Count
+            ? insights.Sections.SelectMany(s => s.Cards).DistinctBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            : insights.Sections[section - 1].Cards;
+        cards = _suggestSort.Selected == 1 ? cards.OrderByDescending(c => c.Synergy) : cards.OrderByDescending(c => c.Inclusion);
+        _suggestStats.Clear();
+        var results = new List<(CardEntry, Printing?)>();
+        int missing = 0, hidden = 0;
+        string? legality = _legalOnly.ButtonPressed ? Format.Legality : null;
+        foreach (var suggestion in cards)
+        {
+            if (Cards.Find(suggestion.Name) is not { } entry) { missing++; continue; }
+            if (_supportedOnly.ButtonPressed && entry.Support != CardSupport.Full) { hidden++; continue; }
+            if (legality is not null && !(entry.Record.Legalities.TryGetValue(legality, out var status) && status is "legal" or "restricted")) { hidden++; continue; }
+            if (!_suggestStats.TryAdd(entry.Name, suggestion)) continue;
+            results.Add((entry, null));
+        }
+        _results = results;
+        ShowPage(0);
+        var notes = new List<string>();
+        if (hidden > 0) notes.Add($"{hidden} hidden by the filters");
+        if (missing > 0) notes.Add($"{missing} not in the card pool");
+        if (notes.Count > 0) _resultInfo.Text += " · " + string.Join(" · ", notes);
+        RefreshSuggestInfo();
+    }
+
+    /// <summary>The number of decks behind the suggestions and the average deck's card types beside this deck's.</summary>
+    private void RefreshSuggestInfo()
+    {
+        if (_insights is not { } insights) return;
+        var mine = _deck.Main.GroupBy(e => GroupName(Cards.Find(e.Name)?.Definition)).ToDictionary(g => g.Key, g => g.Sum(e => e.Count));
+        var types = new (string Key, string Group, string Label)[]
+        {
+            ("creature", "Creatures", "creatures"), ("planeswalker", "Planeswalkers", "planeswalkers"), ("instant", "Instants", "instants"),
+            ("sorcery", "Sorceries", "sorceries"), ("artifact", "Artifacts", "artifacts"), ("enchantment", "Enchantments", "enchantments"),
+            ("land", "Lands", "lands"),
+        };
+        var parts = types.Where(t => insights.AverageTypes.GetValueOrDefault(t.Key) > 0)
+            .Select(t => $"{insights.AverageTypes[t.Key]} {t.Label} (yours {mine.GetValueOrDefault(t.Group)})");
+        _suggestInfo.Text = $"From {insights.Decks:N0} community decks · % = decks that play it · synergy = above other decks of its colors\n"
+                            + "Average deck: " + string.Join(" · ", parts);
+    }
+
+    private void AskAverageDeck()
+    {
+        if (App.Instance.Module is not { } module || _deck.Commander.Count == 0) return;
+        string slug = CommanderSlug();
+        string? variant = SelectedVariant;
+        Ask("Replace the main deck with the average deck of this commander" + (variant is null ? "" : $" ({_suggestVariant.GetItemText(_suggestVariant.Selected)})") + "?",
+            async () =>
+            {
+                var average = await CommanderInsightsSource.AverageDeckAsync(module, slug, variant);
+                if (!IsInsideTree() || CommanderSlug() != slug) return;
+                if (average is null)
+                {
+                    MenuKit.Toast(this, "There is no average deck for this commander.");
+                    return;
+                }
+                UseAverageDeck(average);
+            });
+    }
+
+    /// <summary>Makes the average deck the main deck, leaving out cards the pool lacks (and, with "Playable only", unsupported ones).</summary>
+    private void UseAverageDeck(DeckList average)
+    {
+        var missing = new List<string>();
+        var unsupported = new List<string>();
+        _deck.Main.Clear();
+        foreach (var line in average.Main)
+        {
+            if (Cards.Find(line.Name) is not { } entry) { missing.Add(line.Name); continue; }
+            if (_supportedOnly.ButtonPressed && entry.Support != CardSupport.Full) { unsupported.Add(entry.Name); continue; }
+            DeckList.Adjust(_deck.Main, entry.Name, line.Count);
+        }
+        _editingCommander = false;
+        _editingSideboard = false;
+        _editingTokens = false;
+        MarkDirty();
+        RefreshDeck();
+        ShowPage(_page);
+        if (missing.Count == 0 && unsupported.Count == 0)
+        {
+            MenuKit.Toast(this, $"Average deck loaded: {_deck.Main.Sum(e => e.Count)} cards");
+            return;
+        }
+        var text = $"Average deck loaded: {_deck.Main.Sum(e => e.Count)} cards. Left out:";
+        if (unsupported.Count > 0) text += $"\n\nNot playable yet ({unsupported.Count}): " + string.Join(", ", unsupported);
+        if (missing.Count > 0) text += $"\n\nNot in the card pool ({missing.Count}): " + string.Join(", ", missing);
+        var dialog = new AcceptDialog { Title = "Average deck", DialogText = text, DialogAutowrap = true, Size = new Vector2I(620, 320) };
+        dialog.Confirmed += dialog.QueueFree;
+        dialog.Canceled += dialog.QueueFree;
+        AddChild(dialog);
+        dialog.PopupCentered();
+    }
+
     // ---------------------------------------------------------------- search
 
     private void RunSearch()
     {
         if (App.Instance.Cards is null) return;
-        var colors = _colorToggles.Where(kv => kv.Key != "C" && kv.Value.ButtonPressed).Select(kv => kv.Key).ToHashSet();
+        if (_suggesting)
+        {
+            ShowSuggestions();
+            return;
+        }
+        var colors =_colorToggles.Where(kv => kv.Key != "C" && kv.Value.ButtonPressed).Select(kv => kv.Key).ToHashSet();
         int mv = _mvFilter.Selected;
         var query = new CardQuery
         {
@@ -337,6 +599,18 @@ public partial class DeckBuilder : Control
         {
             card.Modulate = new Color(1, 1, 1, 0.6f);
             card.TooltipText = (card.TooltipText.Length > 0 ? card.TooltipText + "\n" : "") + "Not fully supported yet: some of its rules won't work in games.";
+        }
+        if (_suggesting && _suggestStats.TryGetValue(entry.Name, out var stats))
+        {
+            var strip = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(8, TileSize.Y - 38), Size = new Vector2(TileSize.X - 16, 30) };
+            strip.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.07f, 0.08f, 0.1f, 0.88f), 8));
+            var text = BoardStyle.MakeLabel($"{stats.Inclusion:P0} · {Signed(stats.Synergy)}", 15, BoardStyle.Text, bold: true);
+            text.HorizontalAlignment = HorizontalAlignment.Center;
+            strip.AddChild(text);
+            tile.AddChild(strip);
+            card.TooltipText = (card.TooltipText.Length > 0 ? card.TooltipText + "\n" : "")
+                + $"In {stats.Inclusion:P0} of the decks that could play it ({stats.Decks:N0} of {stats.PotentialDecks:N0}).\n"
+                + $"Synergy {Signed(stats.Synergy)}: how much more it is played with this commander than in other decks of its colors.";
         }
         int copies = Section.Where(e => e.Name.Equals(entry.Name, StringComparison.OrdinalIgnoreCase)).Sum(e => e.Count);
         if (copies > 0)
@@ -438,6 +712,7 @@ public partial class DeckBuilder : Control
 
         RefreshCurve();
         RefreshValidation();
+        RefreshSuggestMode();
     }
 
     // ---------------------------------------------------------------- token pictures

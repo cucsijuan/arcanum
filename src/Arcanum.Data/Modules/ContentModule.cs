@@ -28,10 +28,18 @@ public sealed record PrintingSource(string Index, string DownloadField);
 /// </summary>
 public sealed record CardBackSource(string Id, string Name, string Url);
 
+/// <summary>
+/// Where the deck builder gets community statistics for a commander (<see cref="Decks.CommanderInsights"/>): the
+/// commander's page and its average deck, by the commander's page name ({slug}; a theme or budget page is
+/// "{slug}/theme"). Downloads are kept for <paramref name="CacheDays"/> days.
+/// </summary>
+public sealed record CommanderInsightSource(string PageTemplate, string AverageDeckTemplate, int CacheDays);
+
 /// <param name="Printings">Optional: without it cards have no set information and show their default picture.</param>
 /// <param name="CardBacks">Optional card back designs offered in the settings beside the built-in ones.</param>
+/// <param name="CommanderInsights">Optional: without it the deck builder offers no commander suggestions.</param>
 public sealed record ModuleSources(string UserAgent, CardSource Cards, ImageSource Images, PrintingSource? Printings = null,
-    IReadOnlyList<CardBackSource>? CardBacks = null);
+    IReadOnlyList<CardBackSource>? CardBacks = null, CommanderInsightSource? CommanderInsights = null);
 
 /// <summary>
 /// A content module installed on disk: where card data and images come from, card scripts, formats and decks.
@@ -78,7 +86,11 @@ public sealed class ContentModule
                 : null,
             s.TryGetProperty("cardBacks", out var backs) && backs.ValueKind == JsonValueKind.Array
                 ? backs.EnumerateArray().Select(b => new CardBackSource(Required(b, "id"), Required(b, "name"), Required(b, "url"))).ToList()
-                : Array.Empty<CardBackSource>());
+                : Array.Empty<CardBackSource>(),
+            s.TryGetProperty("commanderInsights", out var insights)
+                ? new CommanderInsightSource(Required(insights, "pageTemplate"), Required(insights, "averageDeckTemplate"),
+                    insights.TryGetProperty("cacheDays", out var days) ? days.GetInt32() : 7)
+                : null);
 
         return new ContentModule(directory, manifest, sources);
     }
@@ -181,6 +193,15 @@ public sealed class ContentModule
 
     /// <summary>URL of the picture of one of the module's card back designs, or null if it offers no such design.</summary>
     public string? CardBackUrl(string id) => Sources.CardBacks?.FirstOrDefault(b => b.Id == id)?.Url;
+
+    /// <summary>
+    /// URL of a commander's statistics page (or, with <paramref name="averageDeck"/>, of its average deck), optionally
+    /// for one theme or budget; null if the module has no such source.
+    /// </summary>
+    public string? CommanderInsightsUrl(string slug, string? variant = null, bool averageDeck = false) =>
+        Sources.CommanderInsights is { } source
+            ? (averageDeck ? source.AverageDeckTemplate : source.PageTemplate).Replace("{slug}", string.IsNullOrEmpty(variant) ? slug : slug + "/" + variant)
+            : null;
 
     private string DecksDirectory => Path.Combine(Directory, "decks");
 

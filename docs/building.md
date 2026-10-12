@@ -58,6 +58,7 @@ Environment variables useful while developing and testing:
 | `ARCANUM_AUTOPLAY=showcase:<Decision>` | Autoplay until the first decision of that type, then freeze (screenshots) |
 | `ARCANUM_TEST_UNDO=1` | With autoplay, undo now and then to exercise replay |
 | `ARCANUM_OPEN_DECK=<n>` | Deck builder opens the n-th deck |
+| `ARCANUM_SUGGEST=1` | With `ARCANUM_OPEN_DECK`: the deck builder opens on the commander suggestions (commander decks only) |
 | `ARCANUM_MODULE_PATH=<dir>` | Use a content module from this folder |
 | `ARCANUM_UPDATE_FROM=<version>` | The update check runs as if the game were that version (shows the update dialog; outside an exported build it offers the download page) |
 | `ARCANUM_OPEN=online` | The main menu opens the online screen at once (exported builds can't be given a scene) |

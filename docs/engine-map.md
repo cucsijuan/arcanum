@@ -69,6 +69,18 @@ Large groups of related vocabulary get their own partial files so the main switc
 | Per-card and per-game state | `State/Card.cs`, `State/Player.cs`, `State/GameState.cs`, `State/StackItem.cs` |
 | Events the UI and log see | `Events/GameEvent.cs` |
 
+## Commander suggestions
+
+The deck builder can show the community statistics of the chosen commander. These are not rules and the engine never reads them.
+
+| Piece | Where |
+|-------|-------|
+| Parsing the commander page and average deck, `Slug` (page name) | `Arcanum.Data/Decks/CommanderInsights.cs` |
+| Source URLs (`commanderInsights` in the module's `sources.json`), `CommanderInsightsUrl` | `Arcanum.Data/Modules/ContentModule.cs` |
+| Download, cache in `user://commander_insights`, offline fallback | `scripts/Client/CommanderInsightsSource.cs` |
+| Search / Suggestions switch, sections, sort, variants, average deck | `scripts/UI/Menu/DeckBuilder.cs` |
+| Tests | `tests/Arcanum.Data.Tests/CommanderInsightsTests.cs` |
+
 ## Adding a mechanic
 
 1. Read the rule in the comprehensive rules and decide the exact behaviour, choices and UI it implies (no approximations).
