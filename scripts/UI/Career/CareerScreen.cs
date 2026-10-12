@@ -1372,14 +1372,15 @@ public partial class CareerScreen : Control
         box.AddChild(MarketNews());
         var top = new HBoxContainer();
         top.AddThemeConstantOverride("separation", 10);
-        var search = new LineEdit { Text = _filter, PlaceholderText = "Filter by name…", CustomMinimumSize = new Vector2(300, 0) };
+        var search = new LineEdit { Text = _filter, PlaceholderText = CardSearchBox.Placeholder, CustomMinimumSize = new Vector2(420, 0) };
+        var filter = CardSearchBox.Read(search, Cards);
         search.TextSubmitted += text => { _filter = text; Redraw(); };
         top.AddChild(search);
         top.AddChild(CareerStyle.Button("Filter", () => { _filter = search.Text; Redraw(); }, 18));
         top.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
         var extras = Extras();
         var sellExtras = CareerStyle.Button($"Sell extras ({extras.Sum(e => e.Count)}) · {CareerRules.Money(extras.Sum(e => SellPrice(e.Card) * e.Count))}", () =>
-            MenuKit.Modal(this, "Sell extras?", $"Sell every copy beyond the fourth of each card: {extras.Sum(e => e.Count)} cards for {CareerRules.Money(extras.Sum(e => SellPrice(e.Card) * e.Count))}?", null,
+            MenuKit.Modal(this, "Sell extras?", $"Sell every copy beyond the fourth of each card (or beyond what your decks use): {extras.Sum(e => e.Count)} cards for {CareerRules.Money(extras.Sum(e => SellPrice(e.Card) * e.Count))}?", null,
                 ("Cancel", () => { }), ("Sell", () => { Try(() => { foreach (var (card, count) in Extras()) Career.Do(new SellCard(Career.Now, card.ToString(), count)); }); Redraw(); })), 18);
         sellExtras.Disabled = extras.Count == 0;
         top.AddChild(sellExtras);
@@ -1388,7 +1389,7 @@ public partial class CareerScreen : Control
         var list = new VBoxContainer();
         list.AddThemeConstantOverride("separation", 2);
         var cards = State.Cards
-            .Where(c => _filter.Length == 0 || c.Card.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase))
+            .Where(c => _filter.Length == 0 || Cards.Find(c.Card.Name) is { } entry && filter.Matches(entry, c.Card.Set, c.Card.Number, c.Card.Foil))
             .OrderByDescending(c => SellPrice(c.Card)).ThenBy(c => c.Card.Name).ToList();
         foreach (var (card, count) in cards.Take(300))
         {
@@ -1403,7 +1404,7 @@ public partial class CareerScreen : Control
             double factor = CareerMarket.Factor(State, World, card.Name, Today);
             if (price > 0 && Math.Abs(factor - 1) >= 0.05)
                 row.AddChild(CareerStyle.Text($"{(factor > 1 ? "+" : "")}{(factor - 1) * 100:0}%", 16, factor > 1 ? CareerStyle.Good : CareerStyle.Bad));
-            var sell = CareerStyle.Button(price > 0 ? $"Sell · {CareerRules.Money(price)}" : "Not bought", () => { Try(() => Career.Do(new SellCard(Career.Now, card.ToString(), 1))); Redraw(); }, 16);
+            var sell = CareerStyle.Button(price > 0 ? $"Sell · {CareerRules.Money(price)}" : "Not bought", () => SellOne(card, price), 16);
             sell.CustomMinimumSize = new Vector2(150, 0);
             sell.Disabled = price == 0;
             row.AddChild(sell);
@@ -1415,6 +1416,33 @@ public partial class CareerScreen : Control
         if (cards.Count > 300) list.AddChild(CareerStyle.Text($"…and {cards.Count - 300} more: filter by name to find them.", 18, CareerStyle.InkDim));
         box.AddChild(Scrolled(list));
     }
+
+    /// <summary>
+    /// Sells a copy; when a deck needs it (by name, or that printing) it asks first, while copies no deck uses sell
+    /// straight away.
+    /// </summary>
+    private void SellOne(CardKey card, int price)
+    {
+        void Sell() { Try(() => Career.Do(new SellCard(Career.Now, card.ToString(), 1))); Redraw(); }
+        var uses = DeckUses();
+        int byName = State.OwnedByName(card.Name) - 1, printing = State.Owned(card) - 1;
+        var decks = uses.Where(d => d.Names.GetValueOrDefault(card.Name) > byName || d.Printings.GetValueOrDefault(card.ToString()) > printing)
+            .Select(d => d.Name).ToList();
+        if (decks.Count == 0 || World.IsBasicLand(card.Name)) { Sell(); return; }
+        MenuKit.Modal(this, "Sell a card from your decks?",
+            $"{card.Name} is in {string.Join(", ", decks)}. Sell it for {CareerRules.Money(price)} anyway?", null,
+            ("Cancel", () => { }), ("Sell", Sell));
+    }
+
+    /// <summary>The career's decks: copies each uses of every card, by name and by printing.</summary>
+    private static List<(string Name, Dictionary<string, int> Names, Dictionary<string, int> Printings)> DeckUses() =>
+        Career.Decks.List(null).Select(info =>
+        {
+            var entries = Career.Decks.Load(info).Deck is var deck ? deck.Main.Concat(deck.Sideboard).Concat(deck.Commander).ToList() : new();
+            var names = entries.GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Sum(e => e.Count), StringComparer.OrdinalIgnoreCase);
+            var printings = entries.Where(e => e.Set is not null).GroupBy(e => CardKey.Of(e).ToString()).ToDictionary(g => g.Key, g => g.Sum(e => e.Count));
+            return (info.Name, names, printings);
+        }).ToList();
 
     /// <summary>The career's day now (the day the website shows).</summary>
     private static DateOnly Today => CareerRules.DayOf(Career.Now) is var now && now > State.Day ? now : State.Day;
@@ -1438,15 +1466,19 @@ public partial class CareerScreen : Control
         Refresh();
     }
 
-    /// <summary>Copies beyond the fourth of each card (by name, keeping the most valuable printings); basic lands left out.</summary>
+    /// <summary>
+    /// Copies beyond the fourth of each card, or beyond what a deck uses when that's more (by name, keeping the printings
+    /// decks use, then the most valuable); basic lands left out.
+    /// </summary>
     private static List<(CardKey Card, int Count)> Extras()
     {
         var extras = new List<(CardKey, int)>();
+        var uses = DeckUses();
         foreach (var group in State.Cards.GroupBy(c => c.Card.Name, StringComparer.OrdinalIgnoreCase))
         {
             if (World.IsBasicLand(group.Key) || group.All(c => SellPrice(c.Card) == 0)) continue;
-            int keep = 4;
-            foreach (var (card, count) in group.OrderByDescending(c => World.Value(c.Card)))
+            int keep = Math.Max(4, uses.Select(d => d.Names.GetValueOrDefault(group.Key)).DefaultIfEmpty().Max());
+            foreach (var (card, count) in group.OrderByDescending(c => uses.Any(d => d.Printings.ContainsKey(c.Card.ToString()))).ThenByDescending(c => World.Value(c.Card)))
             {
                 int kept = Math.Min(keep, count);
                 keep -= kept;
