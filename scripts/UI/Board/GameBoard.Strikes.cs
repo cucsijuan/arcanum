@@ -30,6 +30,7 @@ public partial class GameBoard
         _strikes.Add(new Strike(damage.Source, source, source?.View ?? ViewOf(ev, damage.Source),
             source?.GlobalPosition ?? Vector2.Zero, source?.Size ?? Vector2.Zero, source?.Rotation ?? 0,
             damage.TargetCard, damage.TargetPlayer, damage.Amount));
+        if (damage.TargetPlayer is { } hit) AreaOf(hit).HoldDamage(damage.Amount); // the counter drops as the blow lands
         if (_strikesQueued) return;
         _strikesQueued = true;
         Callable.From(PlayStrikes).CallDeferred();
@@ -51,6 +52,7 @@ public partial class GameBoard
             previous = strike.SourceId;
             await StrikeAsync(strike);
         }
+        foreach (var area in _areas) area.LandAllDamage(); // nothing left held back if a blow couldn't be shown
         Hold(0.6); // the last numbers are seen before the game moves on
         _striking = false;
     }
@@ -63,7 +65,11 @@ public partial class GameBoard
 
     private async Task StrikeAsync(Strike strike)
     {
-        if (ImpactPoint(strike) is not { } impact) return;
+        if (ImpactPoint(strike) is not { } impact)
+        {
+            if (strike.TargetPlayer is { } player) AreaOf(player).LandDamage(strike.Amount);
+            return;
+        }
         float k = BoardStyle.AnimationScale;
         if (strike.View is not { } view || strike.Size == Vector2.Zero || k <= 0)
         {
@@ -106,6 +112,7 @@ public partial class GameBoard
         if (strike.TargetPlayer is { } player)
         {
             var area = AreaOf(player);
+            area.LandDamage(strike.Amount);
             SpawnFloatingText($"-{strike.Amount}", area.LifeGlobalCenter + new Vector2(0, 62), BoardStyle.Attacking, rise: 30);
             area.FlashLife(BoardStyle.Attacking);
         }

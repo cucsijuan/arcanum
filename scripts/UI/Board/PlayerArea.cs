@@ -255,6 +255,32 @@ public partial class PlayerArea : Control
     /// <param name="stagedTaps">Sources picked in an unconfirmed mana payment; drawn as tapped.</param>
     /// <param name="attacking">Creatures shown stepped forward towards the opponent (declared or being declared).</param>
     /// <param name="blockerAlign">Blockers to place in front of their attacker: blocker → attacker's global center X.</param>
+    private int _shownLife, _damageToLand;
+
+    /// <summary>
+    /// Combat damage to this player that is still to be shown landing: the counter shows the life before it and drops
+    /// as each blow lands (<see cref="LandDamage"/>).
+    /// </summary>
+    public void HoldDamage(int amount)
+    {
+        _damageToLand += Math.Max(0, amount);
+        ShowLife();
+    }
+
+    public void LandDamage(int amount)
+    {
+        _damageToLand = Math.Max(0, _damageToLand - Math.Max(0, amount));
+        ShowLife();
+    }
+
+    public void LandAllDamage()
+    {
+        _damageToLand = 0;
+        ShowLife();
+    }
+
+    private void ShowLife() => _life.Text = (_shownLife + _damageToLand).ToString();
+
     public void Refresh(GameView view, bool isActive, IReadOnlySet<CardId>? stagedTaps = null, IReadOnlySet<CardId>? attacking = null,
         IReadOnlyDictionary<CardId, float>? blockerAlign = null)
     {
@@ -263,7 +289,8 @@ public partial class PlayerArea : Control
         _blockerAlign = blockerAlign ?? new Dictionary<CardId, float>();
         var me = view.Players[Player.Value];
         RefreshPool(me);
-        _life.Text = me.Life.ToString();
+        _shownLife = me.Life;
+        ShowLife();
         _life.AddThemeColorOverride("font_color", me.HasLost ? BoardStyle.TextDim : BoardStyle.Text);
         _name.Text = (me.HasLost ? $"{me.Name} (defeated)" : me.Name) + (SeatNote is { } note ? $" · {note}" : "");
         _nameBadge.ResetSize();
