@@ -43,6 +43,9 @@ public sealed record CareerContent
 
     public AnteSpec Ante { get; init; } = new();
 
+    /// <summary>The store's forum on the website: what the regulars write when they look for a game.</summary>
+    public ForumSpec Forum { get; init; } = new();
+
     /// <summary>Reputation tiers, lowest first: each one opens the regulars of its tier (and the ones below).</summary>
     public IReadOnlyList<TierSpec> Tiers { get; init; } = new[] { new TierSpec("Newcomer", 0) };
 
@@ -107,6 +110,20 @@ public sealed record DailySpec(int PerDay = 2, int Win = 450, int Loss = 100, in
 /// <param name="Win">Cash for a paid win.</param>
 /// <param name="Loss">Cash for a paid loss.</param>
 public sealed record PracticeSpec(int PaidPerDay = 3, int Win = 50, int Loss = 20);
+
+/// <summary>
+/// The website's forum: the regulars' posts offering ante and practice games (a title and a post, one of each at random),
+/// and what they say when the player answers a practice post.
+/// </summary>
+public sealed record ForumSpec
+{
+    public string Name { get; init; } = "TCG Forum";
+    public IReadOnlyList<string> AnteTitles { get; init; } = new[] { "Anyone up for an ante game?" };
+    public IReadOnlyList<string> AnteBodies { get; init; } = new[] { "Looking for a game for keeps today. I've got a few cards I'm willing to put up. Send me a message!" };
+    public IReadOnlyList<string> PracticeTitles { get; init; } = new[] { "Practice partner wanted" };
+    public IReadOnlyList<string> PracticeBodies { get; init; } = new[] { "Testing a deck and need someone to play against. Just for fun, nothing on the line." };
+    public IReadOnlyList<string> PracticeGreetings { get; init; } = new[] { "Hey, thanks for answering! Meet you at the store?" };
+}
 
 /// <param name="PerDay">Ante matches a day.</param>
 /// <param name="MinRatio">A regular plays only for a stake worth at least this share of what they put up.</param>

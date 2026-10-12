@@ -25,7 +25,7 @@ public partial class CareerScreen : Control
 {
     private enum Place { Room, Store }
 
-    public enum WebPage { Matches, Practice, Challenges, Events, Market, Cards, Chat }
+    public enum WebPage { Matches, Practice, Challenges, Events, Market, Cards, Chat, Forum }
 
     private const string Kit = "res://ui-art/kit/career/";
     private static readonly Vector2 TileSize = new(150, 210);
@@ -141,7 +141,7 @@ public partial class CareerScreen : Control
     /// <summary>
     /// Testing: ARCANUM_CAREER_START=&lt;starting deck&gt; starts a career when there is none; ARCANUM_CAREER_PAGE=&lt;page&gt; opens
     /// store, boosters, precons, counter, a website page (Matches, Practice, Challenges, Events, Market, Cards), opening
-    /// (the first unopened booster), decks (the deck builder), daily or ante (plays one), enter (today's first event), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck), surge:&lt;set&gt; (opens collector boosters until a surge foil comes), chat or chat2 (the ante chat).
+    /// (the first unopened booster), decks (the deck builder), daily or ante (plays one), enter (today's first event), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck), surge:&lt;set&gt; (opens collector boosters until a surge foil comes), chat or chat2 (the ante chat), thread:&lt;id prefix&gt; (a forum thread: pinned, event:, ante:, practice:).
     /// </summary>
     private bool RunTestHooks()
     {
@@ -211,6 +211,12 @@ public partial class CareerScreen : Control
             case "store": GoTo(Place.Store); return true;
             case "boosters" or "precons" or "counter" or "offers": GoTo(Place.Store); OnStore(test.ToLowerInvariant()); return true;
             case "opening" when State.Sealed.Count > 0: OpenBooster(State.Sealed.Keys.First()); return true;
+        }
+        if (test.StartsWith("thread:") && ForumThreads().FirstOrDefault(t => t.Id.StartsWith(test[7..])) is { } thread)
+        {
+            _forumThread = thread.Id;
+            OpenWeb(WebPage.Forum, instant: true);
+            return true;
         }
         if (Enum.TryParse<WebPage>(test, true, out var page)) OpenWeb(page, instant: true);
         return false;
@@ -456,10 +462,11 @@ public partial class CareerScreen : Control
         }
         var nav = new HBoxContainer();
         nav.AddThemeConstantOverride("separation", 18);
-        foreach (var (p, text) in new[] { (WebPage.Matches, "Daily matches"), (WebPage.Practice, "Practice & ante"), (WebPage.Challenges, "Challenges"), (WebPage.Events, "Events"), (WebPage.Market, "Sell cards"), (WebPage.Cards, "My cards") })
+        var current = _webPage is WebPage.Practice or WebPage.Events or WebPage.Chat ? WebPage.Forum : _webPage;
+        foreach (var (p, text) in new[] { (WebPage.Matches, "Daily matches"), (WebPage.Forum, World.Content.Forum.Name), (WebPage.Challenges, "Challenges"), (WebPage.Market, "Sell cards"), (WebPage.Cards, "My cards") })
         {
-            var link = CareerStyle.LinkButton(text, p == _webPage);
-            link.Pressed += () => { _webPage = p; ShowWebPage(); };
+            var link = CareerStyle.LinkButton(text, p == current);
+            link.Pressed += () => { _webPage = p; _forumThread = null; ShowWebPage(); };
             nav.AddChild(link);
         }
         nav.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
@@ -474,10 +481,9 @@ public partial class CareerScreen : Control
         body.AddChild(content);
         switch (_webPage)
         {
-            case WebPage.Practice: PracticePage(content); break;
+            case WebPage.Practice or WebPage.Events or WebPage.Forum: ForumPage(content); break;
             case WebPage.Chat: ChatPage(content); break;
             case WebPage.Challenges: ChallengesPage(content); break;
-            case WebPage.Events: EventsPage(content); break;
             case WebPage.Market: CollectionList(content, CareerStyle.Ink); break;
             case WebPage.Cards: CardsPage(content); break;
             default: MatchesPage(content); break;
@@ -618,51 +624,6 @@ public partial class CareerScreen : Control
         App.Instance.GoTo(App.GameBoardScene);
     }
 
-    private string _practiceOpponent = "", _anteOpponent = "";
-
-    private void PracticePage(VBoxContainer page)
-    {
-        var now = Career.Now;
-        if (DeckPicker(page) is not var (chosen, problems)) return;
-        var opponents = CareerRules.Opponents(State, World);
-
-        // Practice.
-        var practice = World.Content.Practice;
-        int paid = CareerRules.PaidPracticeLeft(State, World, now);
-        page.AddChild(CareerStyle.Text("Practice", 28, CareerStyle.TitleBar));
-        page.AddChild(CareerStyle.Text(paid > 0
-            ? $"Play any regular you know. {paid} more practice match{(paid == 1 ? "" : "es")} pay today ({CareerRules.Money(practice.Win)} for a win, {CareerRules.Money(practice.Loss)} for a loss)."
-            : "Play any regular you know. Practice doesn't pay any more today, but it's still practice.", 19, CareerStyle.InkDim, wrap: true));
-        page.AddChild(OpponentRow(opponents, _practiceOpponent, id => _practiceOpponent = id, "Practice", problems.Count > 0, id =>
-        {
-            Career.Do(new StartPractice(Career.Now, id, chosen.Export()));
-            Play(chosen, WebPage.Practice);
-        }));
-
-        // Ante.
-        int antes = CareerRules.AntesLeft(State, World, now);
-        page.AddChild(new Control { CustomMinimumSize = new Vector2(0, 8) });
-        page.AddChild(CareerStyle.Text("Ante match", 28, CareerStyle.TitleBar));
-        page.AddChild(CareerStyle.Text("Playing for keeps: message a regular, choose one of the cards they put up and offer one of yours; "
-            + $"the winner keeps both, and the anted cards stay out of the game. {antes} ante match{(antes == 1 ? "" : "es")} left today.", 19, CareerStyle.InkDim, wrap: true));
-        if (problems.Count > 0)
-            page.AddChild(CareerStyle.Text("This deck can't be played yet (see above in red): fix it in the deck builder or choose another deck.", 19, CareerStyle.Bad, wrap: true));
-        if (antes > 0)
-        {
-            var regulars = new HFlowContainer();
-            regulars.AddThemeConstantOverride("h_separation", 10);
-            regulars.AddThemeConstantOverride("v_separation", 8);
-            foreach (var o in opponents)
-            {
-                var message = CareerStyle.Button($"Message {o.Name}", () => OpenChat(o.Id, chosen), 18);
-                message.Disabled = problems.Count > 0;
-                regulars.AddChild(message);
-            }
-            page.AddChild(regulars);
-        }
-        Record(page);
-    }
-
     // ---------------------------------------------------------------- the ante chat
 
     private enum ChatStep { Choose, Stake, Agreed }
@@ -677,6 +638,7 @@ public partial class CareerScreen : Control
     private static CareerRules.AnteCard? _chatWant;
     private static CardKey? _chatStake;
     private static ChatStep _chatStep;
+    private static bool _chatPractice; // a practice game agreed on the forum, not an ante
 
     /// <summary>A stake chosen on the desk, offered when the chat shows again.</summary>
     private static CardKey? _pickedStake;
@@ -691,6 +653,7 @@ public partial class CareerScreen : Control
         _chatWith = opponentId;
         _chatDeck = deck;
         _chatWant = null;
+        _chatPractice = false;
         _chatStep = ChatStep.Choose;
         _chat.Add(new ChatLine(false, Say(World.Content.Ante.Greetings), offer.Cards.Select(c => c.Card).ToList()));
         _webPage = WebPage.Chat;
@@ -701,8 +664,8 @@ public partial class CareerScreen : Control
     {
         if (_chatDeck is not { } deck || _chatWith.Length == 0)
         {
-            _webPage = WebPage.Practice;
-            PracticePage(page);
+            _webPage = WebPage.Forum;
+            ForumPage(page);
             return;
         }
         var offer = CareerRules.AnteOfferOf(State, World, _chatWith, Today);
@@ -714,7 +677,7 @@ public partial class CareerScreen : Control
         }
         var head = new HBoxContainer();
         var back = CareerStyle.LinkButton("<< Back");
-        back.Pressed += () => { _webPage = WebPage.Practice; ShowWebPage(); };
+        back.Pressed += () => { _webPage = WebPage.Forum; ShowWebPage(); };
         head.AddChild(back);
         head.AddChild(CareerStyle.Text($"  Chat with {offer.Opponent.Name}", 26, CareerStyle.TitleBar));
         page.AddChild(head);
@@ -773,8 +736,10 @@ public partial class CareerScreen : Control
                 {
                     try
                     {
-                        Career.Do(new StartAnte(Career.Now, offer.Opponent.Id, deck.Export(), _chatStake!.Value.ToString(), _chatWant!.Card.ToString()));
-                        Play(deck, WebPage.Practice);
+                        if (_chatPractice) Career.Do(new StartPractice(Career.Now, offer.Opponent.Id, deck.Export()));
+                        else Career.Do(new StartAnte(Career.Now, offer.Opponent.Id, deck.Export(), _chatStake!.Value.ToString(), _chatWant!.Card.ToString()));
+                        _forumThread = null; // the offers change after a match
+                        Play(deck, WebPage.Forum);
                     }
                     catch (CareerRuleException e) { MenuKit.Toast(this, e.Message); Refresh(); }
                 }, 22, primary: true));
@@ -784,7 +749,7 @@ public partial class CareerScreen : Control
         {
             var leave = CareerStyle.Button("Never mind", () =>
             {
-                _webPage = WebPage.Practice;
+                _webPage = WebPage.Forum;
                 ShowWebPage();
             }, 18);
             leave.SizeFlagsVertical = SizeFlags.ShrinkEnd;
@@ -944,39 +909,6 @@ public partial class CareerScreen : Control
         tween.Parallel().TweenMethod(Callable.From<float>(v => light.SetShaderParameter("strength", v)), 0f, 1f, 0.6);
     }
 
-    /// <summary>A regular to play (a chooser) and the button that starts the match.</summary>
-    private Control OpponentRow(IReadOnlyList<OpponentSpec> opponents, string chosen, Action<string> choose, string action, bool disabled, Action<string> start)
-    {
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 12);
-        var picker = new OptionButton { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(300, 0) };
-        int selected = 0;
-        for (int i = 0; i < opponents.Count; i++)
-        {
-            picker.AddItem($"{opponents[i].Name} · {World.Content.Tiers[Math.Min(opponents[i].Tier, World.Content.Tiers.Count - 1)].Name}");
-            if (opponents[i].Id == chosen) selected = i;
-        }
-        picker.Selected = selected;
-        picker.ItemSelected += i => { choose(opponents[(int)i].Id); ShowWebPage(); };
-        row.AddChild(picker);
-        var opponent = opponents[selected];
-        var style = CareerStyle.Text(opponent.Style, 17, CareerStyle.InkDim, wrap: true);
-        style.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        row.AddChild(style);
-        var button = CareerStyle.Button(action, () =>
-        {
-            try { start(opponent.Id); }
-            catch (CareerRuleException e)
-            {
-                MenuKit.Toast(this, e.Message);
-                Refresh();
-            }
-        }, 22, primary: true);
-        button.Disabled = disabled;
-        row.AddChild(button);
-        return row;
-    }
-
     private static void ChallengesPage(VBoxContainer page)
     {
         var day = CareerRules.DayOf(Career.Now);
@@ -1015,59 +947,6 @@ public partial class CareerScreen : Control
         }
     }
 
-    /// <summary>The calendar: the event the player is in, today's events with their entries, and what comes next.</summary>
-    private void EventsPage(VBoxContainer page)
-    {
-        var now = Career.Now;
-        var today = CareerRules.DayOf(now);
-        if (Career.CurrentEvent() is var (current, entry, _))
-        {
-            page.AddChild(CareerStyle.Text($"You are playing {current.Name} ({entry.Day:dddd})", 28, CareerStyle.TitleBar));
-            page.AddChild(CareerStyle.Button("Go to the event", () => App.Instance.GoTo(App.EventScene), 24, primary: true));
-            return;
-        }
-
-        var list = new VBoxContainer();
-        list.AddThemeConstantOverride("separation", 10);
-        foreach (var news in World.News(today))
-            list.AddChild(CareerStyle.Text(news, 22, CareerStyle.Ink, wrap: true));
-        var todays = CareerRules.EventsOn(World, today);
-        list.AddChild(CareerStyle.Text(todays.Count == 0 ? $"No event today ({today:dddd})." : $"Today, {today:dddd}", 28, CareerStyle.TitleBar));
-        (DeckList Deck, List<string> Problems)? deck = null, commanderDeck = null;
-        if (todays.Any(e => e.Kind == CareerRules.Constructed)) deck = DeckPicker(list);
-        if (todays.Any(e => e.Kind == CareerRules.Commander)) commanderDeck = DeckPicker(list, commander: true);
-        foreach (var e in todays)
-        {
-            var chosen = e.Kind == CareerRules.Commander ? commanderDeck : deck;
-            EventRow(list, e, today, chosen?.Deck, chosen?.Problems ?? new List<string>());
-        }
-
-        list.AddChild(new Control { CustomMinimumSize = new Vector2(0, 10) });
-        list.AddChild(CareerStyle.Text("Coming up", 26, CareerStyle.TitleBar));
-        foreach (var (e, day) in CareerRules.Upcoming(World, today.AddDays(1)))
-        {
-            list.AddChild(CareerStyle.Text($"{day:dddd, MMMM d}: {e.Name}. {Describe(e, day)}", 18, CareerStyle.InkDim, wrap: true));
-        }
-        list.AddChild(CareerStyle.Text($"Qualification tokens: {State.Tokens}", 18, CareerStyle.InkDim));
-        page.AddChild(Scrolled(list));
-    }
-
-    private static string Describe(EventSpec e, DateOnly day)
-    {
-        var kind = e.Kind switch
-        {
-            CareerRules.Draft => $"Draft of {World.SetName(CareerRules.EventSet(World, e, day))}",
-            CareerRules.Commander => "Commander, bring your Commander deck; pods of",
-            _ => "Constructed, bring your deck",
-        };
-        if (e.Kind == CareerRules.Commander) return $"{kind} {e.Players}, {e.Rounds} games. Entry: {CareerRules.Money(e.Entry)}.";
-        var entry = new List<string> { CareerRules.Money(e.Entry) };
-        if (e.EntryBoosters > 0) entry.Add($"{e.EntryBoosters} boosters of the set");
-        if (e.EntryTokens > 0) entry.Add($"{e.EntryTokens} qualification token{(e.EntryTokens == 1 ? "" : "s")}");
-        var tier = e.MinTier > 0 ? $" For {World.Content.Tiers[Math.Min(e.MinTier, World.Content.Tiers.Count - 1)].Name}s and up." : "";
-        return $"{kind}, {e.Players} players, {e.Rounds} rounds{(e.BestOf > 1 ? $" (best of {e.BestOf})" : "")}. Entry: {string.Join(" or ", entry)}.{tier}{OnlineText(e, day)}";
-    }
-
     /// <summary>When an online event starts (in the player's time), and what playing it against the computer pays.</summary>
     private static string OnlineText(EventSpec e, DateOnly day)
     {
@@ -1076,62 +955,6 @@ public partial class CareerScreen : Control
             ? day.ToDateTime(utc, DateTimeKind.Utc).ToLocalTime().ToString("HH:mm") : t);
         var when = $" Online at {string.Join(", ", times)} (your time; online play is coming soon)";
         return online.PvpOnly ? when + ", online only." : $"{when}; against the computer it pays {online.OfflineScale:0%} of the prizes.";
-    }
-
-    private void EventRow(VBoxContainer list, EventSpec e, DateOnly day, DeckList? deck, List<string> problems)
-    {
-        list.AddChild(CareerStyle.Text(e.Name, 26));
-        list.AddChild(CareerStyle.Text(Describe(e, day), 19, CareerStyle.InkDim, wrap: true));
-        var prizes = CareerRules.PrizesOf(e).Select(p => (p.Wins >= 0 ? $"{p.Wins} wins" : p.Place switch { 0 => "everyone else", 1 => "1st", _ => $"top {p.Place}" }) + ": "
-            + string.Join(", ", new[]
-            {
-                p.Cash > 0 ? CareerRules.Money(p.Cash) : null, p.Boosters > 0 ? $"{p.Boosters} booster{(p.Boosters == 1 ? "" : "s")}" : null,
-                p.Tokens > 0 ? $"{p.Tokens} token{(p.Tokens == 1 ? "" : "s")}" : null, p.Reputation > 0 ? $"{p.Reputation} reputation" : null,
-            }.OfType<string>()));
-        list.AddChild(CareerStyle.Text("Prizes: " + string.Join(" · ", prizes), 17, CareerStyle.InkDim, wrap: true));
-        if (CareerRules.Played(State, e, day))
-        {
-            list.AddChild(CareerStyle.Text("You played it today.", 19, CareerStyle.Good));
-            return;
-        }
-        if (e.Online is { PvpOnly: true })
-        {
-            list.AddChild(CareerStyle.Text("It's played online only.", 19, CareerStyle.InkDim));
-            return;
-        }
-        if (CareerRules.Tier(State, World) < e.MinTier)
-        {
-            list.AddChild(CareerStyle.Text("Your reputation isn't high enough yet.", 19, CareerStyle.Bad));
-            return;
-        }
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 10);
-        void Way(string pay, string text, bool can)
-        {
-            var b = CareerStyle.Button(text, () =>
-            {
-                try
-                {
-                    Career.Enter(e, pay, e.Kind is CareerRules.Constructed or CareerRules.Commander ? deck : null);
-                    App.Instance.GoTo(App.EventScene);
-                }
-                catch (CareerRuleException x)
-                {
-                    MenuKit.Toast(this, x.Message);
-                    Refresh();
-                }
-            }, 20, primary: true);
-            b.Disabled = !can || (e.Kind is CareerRules.Constructed or CareerRules.Commander && (deck is null || problems.Count > 0));
-            row.AddChild(b);
-        }
-        Way(CareerRules.PayCash, $"Enter · {CareerRules.Money(e.Entry)}", State.Cash >= e.Entry);
-        if (e.Kind == CareerRules.Draft && e.EntryBoosters > 0)
-        {
-            var set = CareerRules.EventSet(World, e, day);
-            Way(CareerRules.PayBoosters, $"Enter · {e.EntryBoosters} boosters", State.Sealed.GetValueOrDefault(set) >= e.EntryBoosters);
-        }
-        if (e.EntryTokens > 0) Way(CareerRules.PayTokens, $"Enter · {e.EntryTokens} token{(e.EntryTokens == 1 ? "" : "s")}", State.Tokens >= e.EntryTokens);
-        list.AddChild(row);
     }
 
     private void CardsPage(VBoxContainer page)

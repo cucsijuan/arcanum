@@ -1,0 +1,389 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+using Arcanum.Client;
+using Arcanum.Data.Career;
+using Arcanum.Data.Decks;
+using Arcanum.UI.Menu;
+using Godot;
+
+namespace Arcanum.UI.Career;
+
+/// <summary>
+/// The store's forum on the website: a pinned post with the coming events, a post for each of today's events (where the
+/// player registers), and the regulars' posts offering ante and practice games (where the player contacts them). It looks
+/// like a forum dressed up as a game table: felt category bars, posts on card stock, a colored token for each author.
+/// </summary>
+public partial class CareerScreen
+{
+    /// <summary>The thread open in the forum; null shows the boards.</summary>
+    private static string? _forumThread;
+
+    private enum ThreadKind { Pinned, Event, Ante, Practice }
+
+    /// <summary>One thread: its id (kept while the page refreshes), title, author and what it is about.</summary>
+    private sealed record ForumThread(string Id, ThreadKind Kind, string Title, string Author, OpponentSpec? Opponent = null, EventSpec? Event = null, string Body = "");
+
+    private static readonly Color Felt = new("2f5d3a");
+    private static readonly Color FeltDark = new("23472c");
+    private static readonly Color Stock = new("fbf5e6");
+    private static readonly Color Cardboard = new("8a6a45");
+    private static readonly Color[] Tokens = { new("c0392b"), new("2e86c1"), new("27ae60"), new("f39c12"), new("8e44ad"), new("16a085"), new("d35400"), new("34495e") };
+
+    private void ForumPage(VBoxContainer page)
+    {
+        var threads = ForumThreads();
+        if (_forumThread is { } id && threads.FirstOrDefault(t => t.Id == id) is { } open)
+        {
+            ThreadPage(page, open);
+            return;
+        }
+        _forumThread = null;
+        var boards = new VBoxContainer();
+        boards.AddThemeConstantOverride("separation", 14);
+        boards.AddChild(CareerStyle.Text($"Welcome to the {World.Content.Forum.Name}: the store's events and players looking for a game.", 19, CareerStyle.InkDim, wrap: true));
+
+        if (Career.CurrentEvent() is var (current, _, _))
+        {
+            var playing = new HBoxContainer();
+            playing.AddThemeConstantOverride("separation", 12);
+            playing.AddChild(CareerStyle.Text($"You are registered in {current.Name}.", 20, CareerStyle.Good));
+            playing.AddChild(CareerStyle.Button("Go to the event", () => App.Instance.GoTo(App.EventScene), 18, primary: true));
+            boards.AddChild(playing);
+        }
+
+        boards.AddChild(Board("Events", "Store announcements and today's events.", threads.Where(t => t.Kind is ThreadKind.Pinned or ThreadKind.Event)));
+        var practice = World.Content.Practice;
+        int paid = CareerRules.PaidPracticeLeft(State, World, Career.Now);
+        int antes = CareerRules.AntesLeft(State, World, Career.Now);
+        boards.AddChild(Board("Match offers",
+            $"Regulars looking for a game. Ante: {antes} left today. Practice: {(paid > 0 ? $"{paid} more pay today ({CareerRules.Money(practice.Win)} a win, {CareerRules.Money(practice.Loss)} a loss)" : "no more pay today")}.",
+            threads.Where(t => t.Kind is ThreadKind.Ante or ThreadKind.Practice)));
+        page.AddChild(Scrolled(boards));
+        page.AddChild(CareerStyle.Text($"Your record: {State.Wins} wins, {State.Losses} losses  ·  {TierText()}", 18, CareerStyle.InkDim));
+    }
+
+    /// <summary>A category: a felt header bar and its threads on card stock.</summary>
+    private Control Board(string name, string description, IEnumerable<ForumThread> threads)
+    {
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 0);
+        var header = new PanelContainer();
+        var headerStyle = CareerStyle.Box(Felt, FeltDark, 2, 0, 10);
+        headerStyle.CornerRadiusTopLeft = headerStyle.CornerRadiusTopRight = 10;
+        header.AddThemeStyleboxOverride("panel", headerStyle);
+        var headerText = new VBoxContainer();
+        headerText.AddThemeConstantOverride("separation", 2);
+        headerText.AddChild(CareerStyle.Text(name, 26, CareerStyle.Gold));
+        headerText.AddChild(CareerStyle.Text(description, 16, new Color("d9e8d6"), wrap: true));
+        header.AddChild(headerText);
+        box.AddChild(header);
+
+        var list = new PanelContainer();
+        var listStyle = CareerStyle.Box(Stock, Cardboard, 2, 0, 0);
+        listStyle.CornerRadiusBottomLeft = listStyle.CornerRadiusBottomRight = 10;
+        list.AddThemeStyleboxOverride("panel", listStyle);
+        var rows = new VBoxContainer();
+        rows.AddThemeConstantOverride("separation", 0);
+        list.AddChild(rows);
+        var items = threads.ToList();
+        if (items.Count == 0) rows.AddChild(Padded(CareerStyle.Text("Nothing here right now. Check back later!", 18, CareerStyle.InkDim)));
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (i > 0) rows.AddChild(new ColorRect { Color = new Color(Cardboard, 0.35f), CustomMinimumSize = new Vector2(0, 1) });
+            rows.AddChild(ThreadRow(items[i]));
+        }
+        box.AddChild(list);
+        return box;
+    }
+
+    private static MarginContainer Padded(Control inner, int horizontal = 14, int vertical = 10)
+    {
+        var margin = new MarginContainer();
+        margin.AddThemeConstantOverride("margin_left", horizontal);
+        margin.AddThemeConstantOverride("margin_right", horizontal);
+        margin.AddThemeConstantOverride("margin_top", vertical);
+        margin.AddThemeConstantOverride("margin_bottom", vertical);
+        margin.AddChild(inner);
+        return margin;
+    }
+
+    /// <summary>A thread in its board: the author's token, the title (a link), who wrote it, and a tag for its kind.</summary>
+    private Control ThreadRow(ForumThread thread)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 12);
+        row.AddChild(AuthorToken(thread.Author, 38));
+        var text = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        text.AddThemeConstantOverride("separation", 0);
+        var title = CareerStyle.LinkButton(thread.Title, size: 20);
+        title.Alignment = HorizontalAlignment.Left;
+        title.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+        title.Pressed += () => { _forumThread = thread.Id; ShowWebPage(); };
+        text.AddChild(title);
+        text.AddChild(CareerStyle.Text($"by {thread.Author}", 15, CareerStyle.InkDim));
+        row.AddChild(text);
+        var (tag, color) = thread.Kind switch
+        {
+            ThreadKind.Pinned => ("PINNED", new Color("b3261e")),
+            ThreadKind.Event => ("TODAY", new Color("b7791f")),
+            ThreadKind.Ante => ("ANTE", new Color("7d3c98")),
+            _ => ("PRACTICE", new Color("2e6f9e")),
+        };
+        var badge = new PanelContainer { SizeFlagsVertical = SizeFlags.ShrinkCenter };
+        badge.AddThemeStyleboxOverride("panel", CareerStyle.Box(color, color.Darkened(0.3f), 1, 6, 4));
+        badge.AddChild(CareerStyle.Text(tag, 14, Colors.White));
+        row.AddChild(badge);
+        return Padded(row);
+    }
+
+    /// <summary>A round game token in the author's color with their initial.</summary>
+    private static Control AuthorToken(string author, float size)
+    {
+        var color = Tokens[(int)(StableHash(author) % (uint)Tokens.Length)];
+        var token = new PanelContainer { CustomMinimumSize = new Vector2(size, size), SizeFlagsVertical = SizeFlags.ShrinkCenter };
+        var style = CareerStyle.Box(color, color.Darkened(0.35f), 3, (int)(size / 2));
+        style.ShadowColor = new Color(0, 0, 0, 0.25f);
+        style.ShadowSize = 2;
+        style.ShadowOffset = new Vector2(1, 2);
+        token.AddThemeStyleboxOverride("panel", style);
+        var initial = CareerStyle.Text(author.Length > 0 ? author[..1].ToUpperInvariant() : "?", (int)(size * 0.45f), Colors.White);
+        initial.HorizontalAlignment = HorizontalAlignment.Center;
+        initial.VerticalAlignment = VerticalAlignment.Center;
+        token.AddChild(initial);
+        return token;
+    }
+
+    /// <summary>A thread opened: where it is, then the post with its author on the left.</summary>
+    private void ThreadPage(VBoxContainer page, ForumThread thread)
+    {
+        var crumbs = new HBoxContainer();
+        crumbs.AddThemeConstantOverride("separation", 6);
+        var forum = CareerStyle.LinkButton(World.Content.Forum.Name, size: 18);
+        forum.Pressed += () => { _forumThread = null; ShowWebPage(); };
+        crumbs.AddChild(forum);
+        crumbs.AddChild(CareerStyle.Text($"›  {(thread.Kind is ThreadKind.Pinned or ThreadKind.Event ? "Events" : "Match offers")}  ›", 18, CareerStyle.InkDim));
+        page.AddChild(crumbs);
+        page.AddChild(CareerStyle.Text(thread.Title, 30, CareerStyle.TitleBar));
+
+        var post = new PanelContainer();
+        post.AddThemeStyleboxOverride("panel", CareerStyle.Box(Stock, Cardboard, 2, 10, 0));
+        var columns = new HBoxContainer();
+        columns.AddThemeConstantOverride("separation", 0);
+        post.AddChild(columns);
+
+        var authorColumn = new PanelContainer { CustomMinimumSize = new Vector2(190, 0) };
+        var authorStyle = CareerStyle.Box(new Color("efe4c8"), null, 0, 0, 14);
+        authorStyle.CornerRadiusTopLeft = authorStyle.CornerRadiusBottomLeft = 10;
+        authorColumn.AddThemeStyleboxOverride("panel", authorStyle);
+        var author = new VBoxContainer();
+        author.AddThemeConstantOverride("separation", 6);
+        var token = AuthorToken(thread.Author, 64);
+        token.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
+        author.AddChild(token);
+        var name = CareerStyle.Text(thread.Author, 18, CareerStyle.Ink, wrap: true);
+        name.HorizontalAlignment = HorizontalAlignment.Center;
+        author.AddChild(name);
+        var role = thread.Opponent is { } o ? World.Content.Tiers[Math.Min(o.Tier, World.Content.Tiers.Count - 1)].Name : "Store staff";
+        var roleText = CareerStyle.Text(role, 15, CareerStyle.InkDim, wrap: true);
+        roleText.HorizontalAlignment = HorizontalAlignment.Center;
+        author.AddChild(roleText);
+        authorColumn.AddChild(author);
+        columns.AddChild(authorColumn);
+
+        var body = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        body.AddThemeConstantOverride("separation", 10);
+        switch (thread.Kind)
+        {
+            case ThreadKind.Pinned: UpcomingPost(body); break;
+            case ThreadKind.Event: EventPost(body, thread.Event!); break;
+            default: OfferPost(body, thread); break;
+        }
+        columns.AddChild(Padded(body, 18, 14));
+        columns.GetChild<Control>(1).SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        page.AddChild(Scrolled(post));
+    }
+
+    /// <summary>The pinned post: the coming week, a date per heading, its events as bullets and their details under them.</summary>
+    private static void UpcomingPost(VBoxContainer body)
+    {
+        var today = CareerRules.DayOf(Career.Now);
+        foreach (var news in World.News(today)) body.AddChild(CareerStyle.Text(news, 19, CareerStyle.Ink, wrap: true));
+        body.AddChild(CareerStyle.Text("Here's what's on at the store this week. See you there!", 19, CareerStyle.Ink, wrap: true));
+        for (int i = 0; i < 7; i++)
+        {
+            var day = today.AddDays(i);
+            var events = CareerRules.EventsOn(World, day);
+            if (events.Count == 0) continue;
+            body.AddChild(CareerStyle.Text(i == 0 ? $"Today, {day:dddd MMMM d}" : $"{day:dddd, MMMM d}", 22, CareerStyle.TitleBar));
+            foreach (var e in events)
+            {
+                body.AddChild(Bullet(e.Name, 0, 19, CareerStyle.Ink));
+                foreach (var detail in EventDetails(e, day)) body.AddChild(Bullet(detail, 1, 16, CareerStyle.InkDim));
+            }
+        }
+        body.AddChild(CareerStyle.Text($"Your qualification tokens: {State.Tokens}", 16, CareerStyle.InkDim));
+    }
+
+    private static Control Bullet(string text, int level, int size, Color color)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 8);
+        row.AddChild(new Control { CustomMinimumSize = new Vector2(18 + level * 26, 0) });
+        row.AddChild(CareerStyle.Text(level == 0 ? "•" : "–", size, color));
+        var label = CareerStyle.Text(text, size, color, wrap: true);
+        label.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        row.AddChild(label);
+        return row;
+    }
+
+    /// <summary>An event's facts, one per line: the format, the table, the entry, the prizes and when it's played online.</summary>
+    private static IEnumerable<string> EventDetails(EventSpec e, DateOnly day)
+    {
+        yield return e.Kind switch
+        {
+            CareerRules.Draft => $"Format: draft of {World.SetName(CareerRules.EventSet(World, e, day))}",
+            CareerRules.Commander => "Format: Commander (bring your Commander deck)",
+            _ => "Format: constructed (bring your deck)",
+        };
+        yield return e.Kind == CareerRules.Commander ? $"Pods of {e.Players}, {e.Rounds} games" : $"{e.Players} players, {e.Rounds} rounds{(e.BestOf > 1 ? $", best of {e.BestOf}" : "")}";
+        var entry = new List<string> { CareerRules.Money(e.Entry) };
+        if (e.EntryBoosters > 0) entry.Add($"{e.EntryBoosters} boosters of the set");
+        if (e.EntryTokens > 0) entry.Add($"{e.EntryTokens} qualification token{(e.EntryTokens == 1 ? "" : "s")}");
+        yield return "Entry: " + string.Join(" or ", entry);
+        var prizes = CareerRules.PrizesOf(e).Select(p => (p.Wins >= 0 ? $"{p.Wins} wins" : p.Place switch { 0 => "everyone else", 1 => "1st", _ => $"top {p.Place}" }) + ": "
+            + string.Join(", ", new[]
+            {
+                p.Cash > 0 ? CareerRules.Money(p.Cash) : null, p.Boosters > 0 ? $"{p.Boosters} booster{(p.Boosters == 1 ? "" : "s")}" : null,
+                p.Tokens > 0 ? $"{p.Tokens} token{(p.Tokens == 1 ? "" : "s")}" : null, p.Reputation > 0 ? $"{p.Reputation} reputation" : null,
+            }.OfType<string>())).ToList();
+        if (prizes.Count > 0) yield return "Prizes: " + string.Join(" · ", prizes);
+        if (e.MinTier > 0) yield return $"For {World.Content.Tiers[Math.Min(e.MinTier, World.Content.Tiers.Count - 1)].Name}s and up";
+        if (OnlineText(e, day) is { Length: > 0 } online) yield return online.Trim();
+    }
+
+    /// <summary>Today's event: its details, then registering (one link per way to pay the entry).</summary>
+    private void EventPost(VBoxContainer body, EventSpec e)
+    {
+        var today = CareerRules.DayOf(Career.Now);
+        body.AddChild(CareerStyle.Text($"{e.Name} is on today! Here are the details:", 20, CareerStyle.Ink, wrap: true));
+        foreach (var detail in EventDetails(e, today)) body.AddChild(Bullet(detail, 0, 18, CareerStyle.Ink));
+        if (Career.CurrentEvent() is var (current, _, _))
+        {
+            body.AddChild(CareerStyle.Text(current.Id == e.Id ? "You're registered." : $"You're registered in {current.Name}; finish it first.", 19, CareerStyle.Good));
+            body.AddChild(CareerStyle.Button("Go to the event", () => App.Instance.GoTo(App.EventScene), 20, primary: true));
+            return;
+        }
+        if (CareerRules.Played(State, e, today)) { body.AddChild(CareerStyle.Text("You played it today.", 19, CareerStyle.Good)); return; }
+        if (e.Online is { PvpOnly: true }) { body.AddChild(CareerStyle.Text("It's played online only.", 19, CareerStyle.InkDim)); return; }
+        if (CareerRules.Tier(State, World) < e.MinTier) { body.AddChild(CareerStyle.Text("Your reputation isn't high enough yet.", 19, CareerStyle.Bad)); return; }
+
+        (DeckList Deck, List<string> Problems)? deck = null;
+        if (e.Kind is CareerRules.Constructed or CareerRules.Commander)
+        {
+            deck = DeckPicker(body, commander: e.Kind == CareerRules.Commander);
+            if (deck is null) return;
+        }
+        var links = new HFlowContainer();
+        links.AddThemeConstantOverride("h_separation", 20);
+        void Way(string pay, string price, bool can)
+        {
+            var link = CareerStyle.LinkButton($"Register ({price}) and Go to LGS", size: 20);
+            link.Disabled = !can || deck is { Problems.Count: > 0 };
+            link.Pressed += () =>
+            {
+                try
+                {
+                    Career.Enter(e, pay, deck?.Deck);
+                    App.Instance.GoTo(App.EventScene);
+                }
+                catch (CareerRuleException x)
+                {
+                    MenuKit.Toast(this, x.Message);
+                    Refresh();
+                }
+            };
+            links.AddChild(link);
+        }
+        Way(CareerRules.PayCash, CareerRules.Money(e.Entry), State.Cash >= e.Entry);
+        if (e.Kind == CareerRules.Draft && e.EntryBoosters > 0)
+            Way(CareerRules.PayBoosters, $"{e.EntryBoosters} boosters", State.Sealed.GetValueOrDefault(CareerRules.EventSet(World, e, today)) >= e.EntryBoosters);
+        if (e.EntryTokens > 0) Way(CareerRules.PayTokens, $"{e.EntryTokens} token{(e.EntryTokens == 1 ? "" : "s")}", State.Tokens >= e.EntryTokens);
+        body.AddChild(links);
+    }
+
+    /// <summary>A regular's offer: their post, what they play, and Contact (the ante chat, or a short chat before a practice game).</summary>
+    private void OfferPost(VBoxContainer body, ForumThread thread)
+    {
+        var opponent = thread.Opponent!;
+        body.AddChild(CareerStyle.Text(thread.Body, 20, CareerStyle.Ink, wrap: true));
+        body.AddChild(CareerStyle.Text($"— {opponent.Name}. {opponent.Style}", 17, CareerStyle.InkDim, wrap: true));
+        if (thread.Kind == ThreadKind.Ante)
+            body.AddChild(CareerStyle.Text("An ante match: you pick one of the cards they put up and offer one of yours; the winner keeps both.", 16, CareerStyle.InkDim, wrap: true));
+        if (DeckPicker(body) is not var (deck, problems)) return;
+        var contact = CareerStyle.LinkButton($"Contact {opponent.Name}", size: 22);
+        contact.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+        contact.Disabled = problems.Count > 0;
+        contact.Pressed += () =>
+        {
+            if (thread.Kind == ThreadKind.Ante) OpenChat(opponent.Id, deck);
+            else OpenPracticeChat(opponent.Id, deck);
+        };
+        body.AddChild(contact);
+        if (problems.Count > 0) body.AddChild(CareerStyle.Text("This deck can't be played yet: fix it in the deck builder or choose another deck.", 17, CareerStyle.Bad, wrap: true));
+    }
+
+    /// <summary>
+    /// The threads right now: the pinned post, today's events, an ante offer for each ante match left (up to eight) and a
+    /// few practice offers. The offers are drawn again after each match, so the board changes as the day goes on.
+    /// </summary>
+    private static List<ForumThread> ForumThreads()
+    {
+        var now = Career.Now;
+        var today = CareerRules.DayOf(now);
+        var store = World.Content.StoreName;
+        var threads = new List<ForumThread> { new("pinned", ThreadKind.Pinned, "Upcoming events", store) };
+        threads.AddRange(CareerRules.EventsOn(World, today).Select(e => new ForumThread($"event:{e.Id}", ThreadKind.Event, $"[TODAY!] {e.Name}", store, Event: e)));
+
+        var forum = World.Content.Forum;
+        var regulars = CareerRules.Opponents(State, World);
+        uint seed = StableHash($"{State.Seed}/{today.DayNumber}/{State.AntesPlayed}/{State.PracticePlayed}/{State.Wins + State.Losses}");
+        var random = new Random((int)seed);
+        IEnumerable<OpponentSpec> Posters(int count)
+        {
+            var order = regulars.OrderBy(_ => random.Next()).ToList();
+            for (int i = 0; i < count && order.Count > 0; i++) yield return order[i % order.Count];
+        }
+        string Pick(IReadOnlyList<string> lines) => lines.Count == 0 ? "" : lines[random.Next(lines.Count)];
+
+        int antes = Math.Min(8, CareerRules.AntesLeft(State, World, now));
+        int n = 0;
+        foreach (var o in Posters(antes))
+            threads.Add(new ForumThread($"ante:{seed}:{n++}", ThreadKind.Ante, Pick(forum.AnteTitles), o.Name, o, Body: Pick(forum.AnteBodies)));
+        n = 0;
+        foreach (var o in Posters(Math.Min(4, regulars.Count)))
+            threads.Add(new ForumThread($"practice:{seed}:{n++}", ThreadKind.Practice, Pick(forum.PracticeTitles), o.Name, o, Body: Pick(forum.PracticeBodies)));
+        return threads;
+    }
+
+    /// <summary>The same number for the same text in every run (string hash codes change from run to run).</summary>
+    private static uint StableHash(string text)
+    {
+        uint hash = 2166136261;
+        foreach (char c in text) hash = (hash ^ c) * 16777619;
+        return hash;
+    }
+
+    /// <summary>Answering a practice post: the regular says hi, and the game is one click away.</summary>
+    private void OpenPracticeChat(string opponentId, DeckList deck)
+    {
+        _chat.Clear();
+        _chatWith = opponentId;
+        _chatDeck = deck;
+        _chatWant = null;
+        _chatPractice = true;
+        _chatStep = ChatStep.Agreed;
+        _chat.Add(new ChatLine(true, "Saw your post. Still looking for a game?"));
+        _chat.Add(new ChatLine(false, Say(World.Content.Forum.PracticeGreetings)));
+        _webPage = WebPage.Chat;
+        ShowWebPage();
+    }
+}
