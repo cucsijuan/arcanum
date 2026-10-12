@@ -1075,7 +1075,7 @@ public partial class CareerScreen : Control
         var prizes = CareerRules.PrizesOf(e).Select(p => (p.Wins >= 0 ? $"{p.Wins} wins" : p.Place switch { 0 => "everyone else", 1 => "1st", _ => $"top {p.Place}" }) + ": "
             + string.Join(", ", new[]
             {
-                p.Cash > 0 ? CareerRules.Money(p.Cash) : null, p.Boosters > 0 ? $"{p.Boosters} boosters" : null,
+                p.Cash > 0 ? CareerRules.Money(p.Cash) : null, p.Boosters > 0 ? $"{p.Boosters} booster{(p.Boosters == 1 ? "" : "s")}" : null,
                 p.Tokens > 0 ? $"{p.Tokens} token{(p.Tokens == 1 ? "" : "s")}" : null, p.Reputation > 0 ? $"{p.Reputation} reputation" : null,
             }.OfType<string>()));
         list.AddChild(CareerStyle.Text("Prizes: " + string.Join(" · ", prizes), 17, CareerStyle.InkDim, wrap: true));

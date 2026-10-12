@@ -301,7 +301,7 @@ function drawEvent(c, e, k, started) {
     started ? null : el("button", { class: "small danger", onclick: () => { c.events.splice(k, 1); drawChanges(); changed(); } }, "Remove")));
   box.append(field("Name", text(e.name, v => { if (!replaces && e.id.startsWith("special-")) e.id = "special-" + slug(v); e.name = v; }, { ...lock, style: "flex:1" })));
   box.append(field("Id", text(e.id, v => e.id = v, { ...lock, disabled: started || replaces }), replaces ? "same id: replaces the store's event" : "kept in saves; don't reuse"));
-  box.append(field("When", choice([...WEEKDAYS.map(d => [d, "Every " + d]), ["lastSunday", "Last Sunday of the month"], ["date", "On a date"]],
+  box.append(field("When", choice([["daily", "Every day"], ...WEEKDAYS.map(d => [d, "Every " + d]), ["lastSunday", "Last Sunday of the month"], ["date", "On a date"]],
     isDate ? "date" : e.when, v => e.when = v === "date" ? (c.until === c.from ? c.from : addDays(today(), 1)) : v, lock),
     isDate ? date(e.when, v => e.when = v || c.from, { ...lock, min: c.from, max: c.until || "" }) : null));
   box.append(field("Kind", choice(Object.entries(KINDS), e.kind, v => e.kind = v, lock)));

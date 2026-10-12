@@ -377,6 +377,33 @@ public class CareerTests
     }
 
     [Fact]
+    public void ADailyEventHappensEveryDayAndCountsForItsChallenge()
+    {
+        var json = ContentJson
+            .Replace("\"challengesPerWeek\": 2", "\"challengesPerWeek\": 3")
+            .Replace("{ \"id\": \"open\", \"text\": \"Open a booster\"",
+                "{ \"id\": \"drafts\", \"text\": \"Play 2 daily drafts\", \"kind\": \"playEvent\", \"event\": \"daily\", \"count\": 2, \"cash\": 700 },\n            { \"id\": \"open\", \"text\": \"Open a booster\"")
+            .Replace("\"events\": [", "\"events\": [\n            { \"id\": \"daily\", \"name\": \"Daily draft\", \"when\": \"daily\", \"kind\": \"draft\", \"players\": 8, \"rounds\": 3, \"entry\": 100, \"prizes\": [{ \"wins\": 2, \"boosters\": 1, \"cash\": 450 }] },");
+        var world = new CareerWorld(CareerContent.Parse(json), Database(), new[] { SetDefinition.Parse(SetJson) }, name => Decks.GetValueOrDefault(name));
+        for (int d = 0; d < 7; d++) Assert.Contains(CareerRules.EventsOn(world, new DateOnly(2026, 10, 12).AddDays(d)), e => e.Id == "daily");
+        var state = new CareerState();
+        var journal = new List<CareerAction> { new StartCareer(T0, 42, "sixty") };
+        CareerRules.Apply(state, journal[0], world);
+        var drafts = CareerRules.WeekChallenges(state, world, state.Day).First(c => c.Id == "drafts");
+        int cash = state.Cash;
+        var pool = Enumerable.Range(1, 24).Select(i => new CardKey($"Card {1 + i % 15}", "ABC", $"{1 + i % 15}").ToString()).ToList();
+        for (int day = 0; day < 2; day++)
+        {
+            var at = T0.AddDays(day).AddMinutes(1);
+            Do(state, journal, world, new EnterEvent(at, "daily", CareerRules.PayCash));
+            Do(state, journal, world, new FinishEvent(at.AddHours(1), day == 0 ? 2 : 0, day == 0 ? 1 : 3, 0, 4, pool));
+            Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(at.AddHours(2), "daily", CareerRules.PayCash), world)); // once a day
+        }
+        Assert.Equal(2, CareerRules.Progress(state, drafts, state.Day));
+        Assert.Equal(cash - 2 * 100 + 450 + 700 + 300, state.Cash); // two entries, one prize, the drafts challenge and "win 2 matches"
+    }
+
+    [Fact]
     public void TheStoresOffersStayAllDayAndCanBeTakenOnce()
     {
         var (state, journal, world) = StartedWithSixty();

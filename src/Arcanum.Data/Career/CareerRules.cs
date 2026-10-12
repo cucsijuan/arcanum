@@ -541,9 +541,10 @@ public static class CareerRules
     public static IReadOnlyList<EventSpec> EventsOn(CareerWorld world, DateOnly day) =>
         world.Events(day).Where(e => Happens(e, day)).ToList();
 
-    /// <summary>Whether an event happens on a day: its "when" is a day of the week, "lastSunday" or a date (2026-10-24).</summary>
+    /// <summary>Whether an event happens on a day: its "when" is "daily", a day of the week, "lastSunday" or a date (2026-10-24).</summary>
     public static bool Happens(EventSpec e, DateOnly day) =>
-        e.When.Equals("lastSunday", StringComparison.OrdinalIgnoreCase) ? day.DayOfWeek == DayOfWeek.Sunday && day.AddDays(7).Month != day.Month
+        e.When.Equals("daily", StringComparison.OrdinalIgnoreCase) ? true
+        : e.When.Equals("lastSunday", StringComparison.OrdinalIgnoreCase) ? day.DayOfWeek == DayOfWeek.Sunday && day.AddDays(7).Month != day.Month
         : DateOnly.TryParseExact(e.When, "yyyy-MM-dd", out var date) ? day == date
         : Enum.TryParse<DayOfWeek>(e.When, true, out var weekday) && day.DayOfWeek == weekday;
 
@@ -644,6 +645,9 @@ public static class CareerRules
         // The event's wins count for the week's "win matches" challenges.
         foreach (var challenge in WeekChallenges(state, world, state.Day).Where(c => c.Kind == "winMatch"))
             for (int i = 0; i < finish.Wins; i++) AdvanceChallenge(state, world, finish.Utc, challenge);
+        // "Play N daily drafts": once for each time the event is played through.
+        foreach (var challenge in WeekChallenges(state, world, state.Day).Where(c => c.Kind == "playEvent" && c.Event == e.Id))
+            AdvanceChallenge(state, world, finish.Utc, challenge);
         var prize = PrizeFor(e, finish.Wins, finish.Place);
         var won = new List<string>();
         if (prize is not null)

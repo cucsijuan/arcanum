@@ -142,17 +142,22 @@ public sealed record TierSpec(string Name, int Reputation);
 /// <summary>A goal for the week: <see cref="Kind"/> says what counts (see <see cref="CareerRules"/>).</summary>
 /// <param name="Id">Stable id (kept in saves).</param>
 /// <param name="Text">What to do, as shown.</param>
-/// <param name="Kind">winDaily, winMatch, winAnte, winCheap (a deck worth at most Value cents), winMono, openBoosters, playPractice.</param>
+/// <param name="Kind">winDaily, winMatch, winAnte, winCheap (a deck worth at most Value cents), winMono, openBoosters, playPractice,
+/// playEvent (the event <see cref="ChallengeSpec.Event"/> played through).</param>
 /// <param name="Count">How many times.</param>
 /// <param name="Value">The kind's amount (winCheap: the deck's highest value in cents).</param>
 /// <param name="Cash">Reward in cents.</param>
 /// <param name="Boosters">Reward in boosters of the featured set.</param>
-public sealed record ChallengeSpec(string Id, string Text, string Kind, int Count = 1, int Value = 0, int Cash = 0, int Boosters = 0);
+public sealed record ChallengeSpec(string Id, string Text, string Kind, int Count = 1, int Value = 0, int Cash = 0, int Boosters = 0)
+{
+    /// <summary>playEvent: the id of the event that counts.</summary>
+    public string Event { get; init; } = "";
+}
 
 /// <summary>An event on the store's calendar.</summary>
 /// <param name="Id">Stable id (kept in saves).</param>
 /// <param name="Name">Shown name.</param>
-/// <param name="When">A day of the week ("Wednesday"), or "lastSunday" (the last Sunday of the month); UTC days.</param>
+/// <param name="When">"daily", a day of the week ("Wednesday"), or "lastSunday" (the last Sunday of the month); UTC days.</param>
 /// <param name="Kind">draft, constructed (a career deck, casual rules) or commander (a career Commander deck; pods of
 /// <see cref="Players"/> play <see cref="Rounds"/> games, prizes by games won).</param>
 /// <param name="Set">Draft: the set code, or "featured" for the week's featured set.</param>

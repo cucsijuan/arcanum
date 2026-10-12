@@ -70,8 +70,9 @@ public sealed record CareerSeason
                 known.Add(e.Id);
                 string where = $"{at}, event '{e.Id}'";
                 bool date = DateOnly.TryParseExact(e.When, "yyyy-MM-dd", out var day);
-                if (!date && !e.When.Equals("lastSunday", StringComparison.OrdinalIgnoreCase) && !Enum.TryParse<DayOfWeek>(e.When, true, out _))
-                    problems.Add($"{where}: \"when\" must be a day of the week, \"lastSunday\" or a date (2026-10-24).");
+                if (!date && !e.When.Equals("lastSunday", StringComparison.OrdinalIgnoreCase) && !e.When.Equals("daily", StringComparison.OrdinalIgnoreCase)
+                    && !Enum.TryParse<DayOfWeek>(e.When, true, out _))
+                    problems.Add($"{where}: \"when\" must be \"daily\", a day of the week, \"lastSunday\" or a date (2026-10-24).");
                 if (date && (day < change.From || change.Until is { } until && day > until)) problems.Add($"{where}: its date is outside the change's days.");
                 if (e.Kind is not (CareerRules.Draft or CareerRules.Constructed or CareerRules.Commander)) problems.Add($"{where}: unknown kind '{e.Kind}'.");
                 if (e.Kind == CareerRules.Draft && !e.Set.Equals("featured", StringComparison.OrdinalIgnoreCase) && !Sold(e.Set))
