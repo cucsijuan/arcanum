@@ -1155,7 +1155,7 @@ public partial class GameBoard : Control
                 _prompt.Text = $"{who}: {nameDecision.Request.Prompt}";
                 var box = new VBoxContainer();
                 box.AddThemeConstantOverride("separation", 6);
-                var search = new LineEdit { PlaceholderText = "Type part of a card name, or search (t:creature c:g)", Text = _nameFilter, CustomMinimumSize = new Vector2(340, 34) };
+                var search = new LineEdit { PlaceholderText = Arcanum.UI.Menu.CardSearchBox.Placeholder, Text = _nameFilter, CustomMinimumSize = new Vector2(340, 34) };
                 var results = new GridContainer { Columns = 3 };
                 results.AddThemeConstantOverride("h_separation", 6);
                 results.AddThemeConstantOverride("v_separation", 6);

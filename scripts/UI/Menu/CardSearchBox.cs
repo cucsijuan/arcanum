@@ -10,7 +10,7 @@ namespace Arcanum.UI.Menu;
 /// </summary>
 public static class CardSearchBox
 {
-    public const string Placeholder = "Search cards (t:creature c:g mv<=3 o:draw)…";
+    public const string Placeholder = "Search…";
 
     public const string Help =
         "Loose words search card names. Keywords search the rest:\n" +
