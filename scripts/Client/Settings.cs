@@ -64,6 +64,8 @@ public sealed class SettingsData
 
     // Video
     public bool Fullscreen { get; set; }
+    /// <summary>The window's size when not fullscreen, "1600x900"; empty keeps the size it opens with.</summary>
+    public string WindowSize { get; set; } = "";
     public bool VSync { get; set; } = true;
     public double UiScale { get; set; } = 1.0;
 }
@@ -109,7 +111,20 @@ public static class Settings
     public static void Apply()
     {
         var s = Current;
-        DisplayServer.WindowSetMode(s.Fullscreen ? DisplayServer.WindowMode.Fullscreen : DisplayServer.WindowMode.Windowed);
+        bool modeChanged = _appliedFullscreen != s.Fullscreen;
+        _appliedFullscreen = s.Fullscreen;
+        if (modeChanged) DisplayServer.WindowSetMode(s.Fullscreen ? DisplayServer.WindowMode.Fullscreen : DisplayServer.WindowMode.Windowed);
+        // The size is set only when it (or the mode) changed, so saving other settings keeps a window the player resized by hand.
+        if (!s.Fullscreen && (modeChanged || _appliedSize != s.WindowSize) && ParseSize(s.WindowSize) is { } size && DisplayServer.GetName() != "headless")
+        {
+            if (DisplayServer.WindowGetMode() == DisplayServer.WindowMode.Maximized) DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
+            int screen = DisplayServer.WindowGetCurrentScreen();
+            var usable = DisplayServer.ScreenGetUsableRect(screen);
+            size = new Vector2I(Math.Min(size.X, usable.Size.X), Math.Min(size.Y, usable.Size.Y));
+            DisplayServer.WindowSetSize(size);
+            DisplayServer.WindowSetPosition(usable.Position + (usable.Size - size) / 2);
+        }
+        _appliedSize = s.WindowSize;
         DisplayServer.WindowSetVsyncMode(s.VSync ? DisplayServer.VSyncMode.Enabled : DisplayServer.VSyncMode.Disabled);
         if (Godot.Engine.GetMainLoop() is SceneTree tree) tree.Root.ContentScaleFactor = (float)Math.Clamp(s.UiScale, 0.6, 2.0);
         AudioServer.SetBusVolumeDb(0, Mathf.LinearToDb((float)Math.Clamp(s.MasterVolume, 0, 1)));
@@ -117,6 +132,17 @@ public static class Settings
         UI.Board.BoardStyle.CardBack = s.CardBack;
         UI.Board.BoardStyle.FoilShine = (float)Math.Clamp(s.FoilShine, 0, 1);
     }
+
+    private static bool? _appliedFullscreen;
+    private static string? _appliedSize;
+
+    /// <summary>Window sizes offered in the settings (16:9 and 16:10), as "WIDTHxHEIGHT".</summary>
+    public static readonly string[] WindowSizes =
+        { "1280x720", "1280x800", "1366x768", "1440x900", "1600x900", "1680x1050", "1920x1080", "1920x1200", "2560x1440", "2560x1600", "3840x2160" };
+
+    public static Vector2I? ParseSize(string text) =>
+        text.Split('x') is [var w, var h] && int.TryParse(w, out int width) && int.TryParse(h, out int height) && width >= 640 && height >= 360
+            ? new Vector2I(width, height) : null;
 
     public static IEnumerable<Step> ParseSteps(IEnumerable<string> names) =>
         names.Select(n => Enum.TryParse<Step>(n, out var step) ? (Step?)step : null).OfType<Step>();

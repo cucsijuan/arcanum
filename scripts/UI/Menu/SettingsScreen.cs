@@ -323,11 +323,24 @@ public partial class SettingsScreen : Control
         return box;
     }
 
+    private static Control WindowSizeChoice()
+    {
+        var usable = DisplayServer.ScreenGetUsableRect(DisplayServer.WindowGetCurrentScreen()).Size;
+        var sizes = Settings.WindowSizes.Where(t => Settings.ParseSize(t) is { } v && v.X <= usable.X && v.Y <= usable.Y).ToList();
+        if (sizes.Count == 0) sizes.Add(Settings.WindowSizes[0]);
+        if (S.WindowSize.Length > 0 && !sizes.Contains(S.WindowSize)) sizes.Add(S.WindowSize);
+        var current = S.WindowSize.Length > 0 ? S.WindowSize : $"{DisplayServer.WindowGetSize().X}x{DisplayServer.WindowGetSize().Y}";
+        int index = sizes.IndexOf(current);
+        if (index < 0) { sizes.Insert(0, current); index = 0; }
+        return SettingsKit.Choice(sizes.Select(t => t.Replace("x", " × ")).ToList(), index, i => { S.WindowSize = sizes[i]; Settings.Save(); });
+    }
+
     private static Control VideoPage()
     {
         var box = Column();
         box.AddChild(SettingsKit.Section("Display"));
         box.AddChild(Switch("Fullscreen", S.Fullscreen, v => S.Fullscreen = v, "Fill the whole screen, or play in a window."));
+        box.AddChild(Row("Window size", WindowSizeChoice(), "The window's size when not fullscreen (only sizes that fit this screen). Fullscreen always uses the screen's own resolution; the game scales to any size."));
         box.AddChild(Switch("V-Sync", S.VSync, v => S.VSync = v, "Match the screen's refresh rate: no tearing, a little more input delay."));
         // Applied when the slider is released, so it doesn't jump around under the pointer while it rescales.
         box.AddChild(Row("Interface scale", SettingsKit.Slider(0.75, 1.5, 0.05, S.UiScale, v => $"{v:0.##}×", v => { S.UiScale = v; Settings.Save(); }, commitOnRelease: true),
