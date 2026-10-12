@@ -8,7 +8,7 @@ public class GenericRepositoryTests
 {
     /// <summary>
     /// Optional guard with ARCANUM_MODULE_PATH: the repository is generic, so no full card name of the content module
-    /// (two words or more) appears in the C# sources, scripts or tests.
+    /// (two words or more) appears in the C# sources, scripts, tests or docs.
     /// </summary>
     [Fact]
     public void NoModuleCardNameAppearsInTheRepository()
@@ -24,7 +24,7 @@ public class GenericRepositoryTests
         var names = new HashSet<string>();
         foreach (var file in Directory.EnumerateFiles(scripts, "*.json"))
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(file));
+            using var doc = JsonDocument.Parse(File.ReadAllText(file), new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }); // scripts allow both
             if (doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("name", out var n) && n.GetString() is { } name && name.Contains(' '))
                 names.Add(name);
         }
@@ -34,14 +34,15 @@ public class GenericRepositoryTests
         var self = Path.GetFullPath(Path.Combine(root, "tests", "Arcanum.Data.Tests", "GenericRepositoryTests.cs"));
         var sep = Path.DirectorySeparatorChar;
         var found = new List<string>();
-        foreach (var top in new[] { "src", "scripts", "tests" })
-            foreach (var file in Directory.EnumerateFiles(Path.Combine(root, top), "*.cs", SearchOption.AllDirectories))
-            {
-                if (Path.GetFullPath(file) == self || file.Contains($"{sep}bin{sep}") || file.Contains($"{sep}obj{sep}")) continue;
-                var lines = File.ReadAllLines(file);
-                for (int i = 0; i < lines.Length; i++)
-                    if (pattern.Match(lines[i]) is { Success: true } m) found.Add($"{Path.GetRelativePath(root, file)}:{i + 1} {m.Value}");
-            }
+        var files = new[] { "src", "scripts", "tests" }.SelectMany(top => Directory.EnumerateFiles(Path.Combine(root, top), "*.cs", SearchOption.AllDirectories))
+            .Concat(Directory.EnumerateFiles(Path.Combine(root, "docs"), "*.md", SearchOption.AllDirectories));
+        foreach (var file in files)
+        {
+            if (Path.GetFullPath(file) == self || file.Contains($"{sep}bin{sep}") || file.Contains($"{sep}obj{sep}")) continue;
+            var lines = File.ReadAllLines(file);
+            for (int i = 0; i < lines.Length; i++)
+                if (pattern.Match(lines[i]) is { Success: true } m) found.Add($"{Path.GetRelativePath(root, file)}:{i + 1} {m.Value}");
+        }
         Assert.True(found.Count == 0, "Module card names in the repository:\n" + string.Join("\n", found.Take(30)));
     }
 }

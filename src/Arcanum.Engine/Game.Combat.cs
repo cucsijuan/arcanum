@@ -227,7 +227,7 @@ public sealed partial class Game
     /// <summary>"You can't win the game": a permanent saying so, or an opponent's "your opponents can't win the game (this turn)".</summary>
     private bool CantWin(PlayerId player) =>
         Has(player, Cards.Replacements.OpponentsCantLoseYouCantWin)
-        // "Your opponents can't win the game" (Platinum Angel, Angel's Grace): any opponent saying so stops the win.
+        // "Your opponents can't win the game": any opponent saying so stops the win.
         || State.OpponentsOf(player).Any(o => Has(o, Cards.Replacements.YouCantLose) || State.GetPlayer(o).CantLoseGameTurn == State.TurnNumber);
 
     /// <summary>Whether the creature is its controller's Ring-bearer and the Ring has tempted them at least <paramref name="level"/> times.</summary>

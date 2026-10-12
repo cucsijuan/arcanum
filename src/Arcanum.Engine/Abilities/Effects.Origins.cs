@@ -5,8 +5,8 @@ namespace Arcanum.Engine.Abilities;
 public abstract record OriginsEffect : Effect;
 
 /// <summary>
-/// "Each player shuffles their hand and graveyard into their library" (Day's Undoing) / "… all cards from their hand and all
-/// permanents they own into their library, then draws that many cards" (The Great Aurora): every card moves at once (one event,
+/// "Each player shuffles their hand and graveyard into their library" (Fresh Start) / "… all cards from their hand and all
+/// permanents they own into their library, then draws that many cards" (Grand Aurora): every card moves at once (one event,
 /// tokens included and then gone), each library is shuffled, and with <see cref="DrawThatMany"/> each player draws as many cards
 /// as they put into their library this way (tokens counted).
 /// </summary>

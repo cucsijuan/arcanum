@@ -73,41 +73,41 @@ public partial class ScriptedVocabularyTests
     private const string TouchOfMoongloveScript = """
         { "spell": { "targets": ["creature:you"], "effects": [
           { "pump": [1, 0], "what": "target", "keywords": ["Deathtouch"] },
-          { "emblem": "Touch of Moonglove", "untilEndOfTurn": true, "about": "target", "abilities": [
+          { "emblem": "Moonglove Touch", "untilEndOfTurn": true, "about": "target", "abilities": [
             { "trigger": "creatureDies", "filter": { "types": ["creature"], "controller": "any", "damagedThisTurnByThat": true },
               "effects": [{ "loseLife": 2, "who": "triggeredPlayer" }],
               "text": "Whenever a creature dealt damage by that creature this turn dies, its controller loses 2 life." } ] } ] } }
         """;
 
-    private const string ChandraFrontScript = """
+    private const string FireProdigyScript = """
         { "abilities": [
           { "trigger": "castSpell", "filter": { "colors": ["R"] }, "effects": [{ "untap": "self" }], "text": "Whenever you cast a red spell, untap Chandra." },
           { "cost": "{T}", "targets": ["playerOrPlaneswalker"], "effects": [
               { "damage": 1, "to": "target" },
               { "if": { "dealtDamageThisTurn": 3 }, "then": [{ "blink": "self", "transformed": true }] } ],
-            "text": "{T}: Chandra deals 1 damage to target player or planeswalker. If Chandra has dealt 3 or more damage this turn, exile her, then return her to the battlefield transformed under her owner's control." } ] }
+            "text": "{T}: Fire Prodigy deals 1 damage to target player or planeswalker. If Fire Prodigy has dealt 3 or more damage this turn, exile her, then return her to the battlefield transformed under her owner's control." } ] }
         """;
 
-    private const string ChandraBackScript = """
+    private const string RoaringFlameScript = """
         { "abilities": [
           { "cost": "+1", "targets": ["playerOrPlaneswalker"], "effects": [{ "damage": 2, "to": "target" }], "text": "+1" },
           { "cost": "-2", "targets": ["creature"], "effects": [{ "damage": 2, "to": "target" }], "text": "-2" },
           { "cost": "-7", "effects": [
               { "damage": 6, "to": "opponents" },
-              { "emblem": "Chandra, Roaring Flame", "for": "playersDamagedThisWay", "abilities": [
+              { "emblem": "Roaring Flame", "for": "playersDamagedThisWay", "abilities": [
                 { "trigger": "upkeep", "effects": [{ "damage": 3, "to": "you" }], "text": "At the beginning of your upkeep, this emblem deals 3 damage to you." } ] } ],
             "text": "-7" } ] }
         """;
 
-    private static CardDefinition ChandraRoaringFlame() => Scripted("Chandra, Roaring Flame", CardType.Planeswalker, "{0}", ChandraBackScript, colors: new[] { "R" }) with
+    private static CardDefinition RoaringFlame() => Scripted("Roaring Flame", CardType.Planeswalker, "{0}", RoaringFlameScript, colors: new[] { "R" }) with
     {
         Loyalty = 4, Supertypes = Supertype.Legendary, Subtypes = new[] { "Chandra" },
     };
 
-    private static CardDefinition ChandraFireOfKaladesh() =>
-        Scripted("Chandra, Fire of Kaladesh", CardType.Creature, "{1}{R}{R}", ChandraFrontScript, 2, 2, new[] { "Human", "Shaman" }, new[] { "R" }) with
+    private static CardDefinition FireProdigy() =>
+        Scripted("Fire Prodigy", CardType.Creature, "{1}{R}{R}", FireProdigyScript, 2, 2, new[] { "Human", "Shaman" }, new[] { "R" }) with
         {
-            Supertypes = Supertype.Legendary, BackFace = ChandraRoaringFlame(),
+            Supertypes = Supertype.Legendary, BackFace = RoaringFlame(),
         };
 
     private static CardDefinition RedSpark(string name = "Spark") =>
@@ -141,7 +141,7 @@ public partial class ScriptedVocabularyTests
     public async Task ValeronWardensDrawsWhenItBecomesRenownedAndRenownTriggersOnlyOnce()
     {
         var s = new Scenario();
-        var wardens = s.Add(P0, Creature("Valeron Wardens", ValeronWardensScript, 1, 3));
+        var wardens = s.Add(P0, Creature("Valor Wardens", ValeronWardensScript, 1, 3));
         s.Attacker.Act = (_, _) => PassPriority.Instance;
         await s.RunUntilTurn();
         Assert.True(s.Card(wardens).Renowned);
@@ -153,8 +153,8 @@ public partial class ScriptedVocabularyTests
     public async Task AnotherCreatureBecomingRenownedTriggersTheWatcherButAnOpponentsDoesNot()
     {
         var s = new Scenario();
-        s.Add(P0, Creature("Valeron Wardens", ValeronWardensScript, 1, 3));
-        s.Add(P0, Creature("Topan Freeblade", $$"""{ "abilities": [ {{RenownOne}} ] }""", 2, 2));
+        s.Add(P0, Creature("Valor Wardens", ValeronWardensScript, 1, 3));
+        s.Add(P0, Creature("Free Blade", $$"""{ "abilities": [ {{RenownOne}} ] }""", 2, 2));
         s.Add(P1, Creature("Watching Wardens", ValeronWardensScript, 1, 3));
         s.Attacker.Act = (_, _) => PassPriority.Instance;
         await s.RunUntilTurn();
@@ -180,8 +180,8 @@ public partial class ScriptedVocabularyTests
     public async Task RelicSeekerFindsAnEquipmentWhenItBecomesRenowned()
     {
         var s = new Scenario();
-        s.Add(P0, Creature("Relic Seeker", RelicSeekerScript, 2, 2));
-        var sword = s.Game.SetupInLibrary(P0, new CardDefinition { Name = "Short Sword", Types = CardType.Artifact, Subtypes = new[] { "Equipment" }, ManaCost = ManaCost.Parse("{1}") });
+        s.Add(P0, Creature("Relic Hunter", RelicSeekerScript, 2, 2));
+        var sword = s.Game.SetupInLibrary(P0, new CardDefinition { Name = "Small Sword", Types = CardType.Artifact, Subtypes = new[] { "Equipment" }, ManaCost = ManaCost.Parse("{1}") });
         bool first = true;
         s.Attacker.Act = (_, _) =>
         {
@@ -201,7 +201,7 @@ public partial class ScriptedVocabularyTests
     public async Task SomberwaldAlphaPumpsEachBlockedAttackerOnceHoweverManyBlockIt()
     {
         var s = new Scenario();
-        var alpha = s.Add(P0, Creature("Somberwald Alpha", SomberwaldAlphaScript, 3, 2));
+        var alpha = s.Add(P0, Creature("Pack Alpha", SomberwaldAlphaScript, 3, 2));
         var bear = s.Add(P0, Scenario.Creature("Bear", 2, 2));
         var wall1 = s.Add(P1, Scenario.Creature("Wall", 0, 4));
         var wall2 = s.Add(P1, Scenario.Creature("Wall", 0, 4));
@@ -223,7 +223,7 @@ public partial class ScriptedVocabularyTests
         var s = new Scenario();
         s.Lands(P0, 2);
         var bear = s.Add(P0, Scenario.Creature("Bear", 2, 2));
-        var call = s.Game.SetupPermanent(P0, Scripted("Call of the Full Moon", CardType.Enchantment, "{1}{R}", CallOfTheFullMoonScript, subtypes: new[] { "Aura" }), bear);
+        var call = s.Game.SetupPermanent(P0, Scripted("Moon Call", CardType.Enchantment, "{1}{R}", CallOfTheFullMoonScript, subtypes: new[] { "Aura" }), bear);
         for (int i = 0; i < spells; i++) s.InHand(P0, RedSpark($"Spark {i}"));
         Acting(s, activations: 0);
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
@@ -251,49 +251,49 @@ public partial class ScriptedVocabularyTests
     // ------------------------------------------------------------------ damage this object dealt this turn
 
     [Fact]
-    public async Task ChandraTransformsOnceSheHasDealtThreeDamageThisTurn()
+    public async Task FireProdigyTransformsOnceSheHasDealtThreeDamageThisTurn()
     {
         var s = new Scenario();
         s.Lands(P0, 2);
-        var chandra = s.Add(P0, ChandraFireOfKaladesh());
+        var walker = s.Add(P0, FireProdigy());
         var spark1 = s.InHand(P0, RedSpark("Spark 1"));
         var spark2 = s.InHand(P0, RedSpark("Spark 2"));
-        Sequence(s, Activate(chandra), Cast(spark1), Activate(chandra), Cast(spark2), Activate(chandra));
+        Sequence(s, Activate(walker), Cast(spark1), Activate(walker), Cast(spark2), Activate(walker));
         s.Attacker.Targets = (_, request) => new[] { request.LegalAt(0).First(t => t.Player == P1) };
-        int versionBefore = s.Card(chandra).Version;
+        int versionBefore = s.Card(walker).Version;
         await s.RunUntilTurn();
         Assert.Equal(17, s.Game.State.GetPlayer(P1).Life);
-        Assert.Equal(Zone.Battlefield, s.Card(chandra).Zone);
-        Assert.True(s.Card(chandra).Transformed);
-        Assert.Equal("Chandra, Roaring Flame", s.Card(chandra).Name);
-        Assert.NotEqual(versionBefore, s.Card(chandra).Version); // exiled and returned: a new object
-        Assert.Equal(4, s.Card(chandra).CounterCount(CounterKind.Loyalty));
+        Assert.Equal(Zone.Battlefield, s.Card(walker).Zone);
+        Assert.True(s.Card(walker).Transformed);
+        Assert.Equal("Roaring Flame", s.Card(walker).Name);
+        Assert.NotEqual(versionBefore, s.Card(walker).Version); // exiled and returned: a new object
+        Assert.Equal(4, s.Card(walker).CounterCount(CounterKind.Loyalty));
     }
 
     [Fact]
-    public async Task ChandraDoesNotTransformBeforeThreeDamage()
+    public async Task FireProdigyDoesNotTransformBeforeThreeDamage()
     {
         var s = new Scenario();
         s.Lands(P0, 1);
-        var chandra = s.Add(P0, ChandraFireOfKaladesh());
+        var walker = s.Add(P0, FireProdigy());
         var spark = s.InHand(P0, RedSpark());
-        Sequence(s, Activate(chandra), Cast(spark), Activate(chandra));
+        Sequence(s, Activate(walker), Cast(spark), Activate(walker));
         s.Attacker.Targets = (_, request) => new[] { request.LegalAt(0).First(t => t.Player == P1) };
         await s.RunUntilTurn();
         Assert.Equal(18, s.Game.State.GetPlayer(P1).Life);
-        Assert.False(s.Card(chandra).Transformed);
+        Assert.False(s.Card(walker).Transformed);
     }
 
     [Fact]
-    public async Task CombatDamageCountsTowardChandrasDamageThisTurn()
+    public async Task CombatDamageCountsTowardFireProdigysDamageThisTurn()
     {
         var s = new Scenario();
-        var chandra = s.Add(P0, ChandraFireOfKaladesh());
+        var walker = s.Add(P0, FireProdigy());
         bool attacked = false;
         // Attack for 2, then after combat use her ability (she has vigilance-free tapping: give her an untap via a red spell).
         var spark = s.InHand(P0, RedSpark());
         s.Lands(P0, 1);
-        s.Attacker.Attack = (_, _, defenders) => attacked ? Array.Empty<AttackDeclaration>() : new[] { new AttackDeclaration(chandra, defenders[0]) };
+        s.Attacker.Attack = (_, _, defenders) => attacked ? Array.Empty<AttackDeclaration>() : new[] { new AttackDeclaration(walker, defenders[0]) };
         bool settling = false;
         int step = 0;
         s.Attacker.Act = (_, legal) =>
@@ -304,7 +304,7 @@ public partial class ScriptedVocabularyTests
             PlayerAction? action = step switch
             {
                 0 => legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == spark),
-                1 => legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == chandra),
+                1 => legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == walker),
                 _ => null,
             };
             if (action is null) return PassPriority.Instance;
@@ -315,16 +315,16 @@ public partial class ScriptedVocabularyTests
         s.Attacker.Targets = (_, request) => new[] { request.LegalAt(0).First(t => t.Player == P1) };
         await s.RunUntilTurn();
         Assert.Equal(17, s.Game.State.GetPlayer(P1).Life);
-        Assert.True(s.Card(chandra).Transformed);
+        Assert.True(s.Card(walker).Transformed);
     }
 
     [Fact]
-    public async Task ChandrasUltimateGivesAnEmblemToEachPlayerDealtDamage()
+    public async Task RoaringFlamesUltimateGivesAnEmblemToEachPlayerDealtDamage()
     {
         var s = new Scenario();
-        var chandra = s.Add(P0, ChandraRoaringFlame());
-        s.Card(chandra).Counters[CounterKind.Loyalty] = 7;
-        s.Attacker.Act = (_, legal) => legal.OfType<ActivateAbility>().LastOrDefault(a => a.Source == chandra) is { } ultimate && s.Card(chandra).Zone == Zone.Battlefield
+        var walker = s.Add(P0, RoaringFlame());
+        s.Card(walker).Counters[CounterKind.Loyalty] = 7;
+        s.Attacker.Act = (_, legal) => legal.OfType<ActivateAbility>().LastOrDefault(a => a.Source == walker) is { } ultimate && s.Card(walker).Zone == Zone.Battlefield
                                        && s.Game.State.Stack.Count == 0 && !s.Game.Log.OfType<AbilityActivated>().Any() ? ultimate : PassPriority.Instance;
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
         await s.RunUntilTurn(3);
@@ -338,10 +338,10 @@ public partial class ScriptedVocabularyTests
     public async Task APlayerWhoseDamageWasPreventedGetsNoEmblem()
     {
         var s = new Scenario();
-        var chandra = s.Add(P0, ChandraRoaringFlame());
-        s.Card(chandra).Counters[CounterKind.Loyalty] = 7;
+        var walker = s.Add(P0, RoaringFlame());
+        s.Card(walker).Counters[CounterKind.Loyalty] = 7;
         s.Game.State.PreventionShields.Add(new PreventionShield(1, false) { ToPlayer = P1 });
-        s.Attacker.Act = (_, legal) => legal.OfType<ActivateAbility>().LastOrDefault(a => a.Source == chandra) is { } ultimate
+        s.Attacker.Act = (_, legal) => legal.OfType<ActivateAbility>().LastOrDefault(a => a.Source == walker) is { } ultimate
                                        && s.Game.State.Stack.Count == 0 && !s.Game.Log.OfType<AbilityActivated>().Any() ? ultimate : PassPriority.Instance;
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
         await s.RunUntilTurn();
@@ -505,7 +505,7 @@ public partial class ScriptedVocabularyTests
     public async Task ThopterSpyNetworkMakesAThopterOnlyWhileYouControlAnArtifact(bool artifact, int thopters)
     {
         var s = new Scenario();
-        s.Add(P0, Scripted("Thopter Spy Network", CardType.Enchantment, "{2}{U}{U}", ThopterSpyNetworkScript));
+        s.Add(P0, Scripted("Spy Network", CardType.Enchantment, "{2}{U}{U}", ThopterSpyNetworkScript));
         if (artifact) s.Add(P0, Scripted("Bauble", CardType.Artifact, "{0}", "{}"));
         s.Attacker.Act = (_, _) => PassPriority.Instance;
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
@@ -517,7 +517,7 @@ public partial class ScriptedVocabularyTests
     public async Task ThopterSpyNetworkDrawsOnceForSeveralArtifactCreaturesHittingOnePlayer()
     {
         var s = new Scenario();
-        s.Add(P0, Scripted("Thopter Spy Network", CardType.Enchantment, "{2}{U}{U}", ThopterSpyNetworkScript));
+        s.Add(P0, Scripted("Spy Network", CardType.Enchantment, "{2}{U}{U}", ThopterSpyNetworkScript));
         s.Add(P0, Scripted("Construct", CardType.Artifact | CardType.Creature, "{2}", "{}", 2, 2));
         s.Add(P0, Scripted("Construct", CardType.Artifact | CardType.Creature, "{2}", "{}", 2, 2));
         s.Add(P0, Scenario.Creature("Bear", 2, 2));
@@ -532,7 +532,7 @@ public partial class ScriptedVocabularyTests
     {
         var p2 = new PlayerId(2);
         var (game, players) = ThreePlayers();
-        game.SetupPermanent(P0, Scripted("Thopter Spy Network", CardType.Enchantment, "{2}{U}{U}", ThopterSpyNetworkScript));
+        game.SetupPermanent(P0, Scripted("Spy Network", CardType.Enchantment, "{2}{U}{U}", ThopterSpyNetworkScript));
         var a = game.SetupPermanent(P0, Scripted("Construct", CardType.Artifact | CardType.Creature, "{2}", "{}", 2, 2));
         var b = game.SetupPermanent(P0, Scripted("Construct", CardType.Artifact | CardType.Creature, "{2}", "{}", 2, 2));
         players[0].Act = (_, _) => PassPriority.Instance;
@@ -552,7 +552,7 @@ public partial class ScriptedVocabularyTests
     private static CardDefinition Shock() => Scripted("Shock", CardType.Instant, "{R}", """{ "spell": { "targets": ["creature"], "effects": [{ "damage": 2, "to": "target" }] } }""", colors: new[] { "R" });
 
     [Theory]
-    [InlineData(true, 18)]  // the pinger damaged it earlier this turn, before Touch of Moonglove resolved
+    [InlineData(true, 18)]  // the pinger damaged it earlier this turn, before Moonglove Touch resolved
     [InlineData(false, 20)] // never damaged by the pinger
     public async Task TouchOfMoongloveCountsDamageDealtBeforeItResolved(bool pinged, int expectedLife)
     {
@@ -561,7 +561,7 @@ public partial class ScriptedVocabularyTests
         s.Add(P0, GenericCards.Swamp);
         var pinger = s.Add(P0, Pinger());
         var bear = s.Add(P1, Scenario.Creature("Bear", 2, 2));
-        var touch = s.InHand(P0, Scripted("Touch of Moonglove", CardType.Instant, "{B}", TouchOfMoongloveScript));
+        var touch = s.InHand(P0, Scripted("Moonglove Touch", CardType.Instant, "{B}", TouchOfMoongloveScript));
         var shock = s.InHand(P0, Shock());
         var steps = new List<Func<IReadOnlyList<PlayerAction>, PlayerAction?>>();
         if (pinged) steps.Add(Activate(pinger));
@@ -588,7 +588,7 @@ public partial class ScriptedVocabularyTests
         };
         s.Lands(P0, 1);
         s.Add(P0, GenericCards.Swamp);
-        var touch = s.InHand(P0, Scripted("Touch of Moonglove", CardType.Instant, "{B}", TouchOfMoongloveScript));
+        var touch = s.InHand(P0, Scripted("Moonglove Touch", CardType.Instant, "{B}", TouchOfMoongloveScript));
         var shock = s.InHand(P0, Shock());
         Sequence(s, Cast(touch), Cast(shock));
         s.Attacker.Targets = (_, request) => new[] { request.LegalAt(0).First(t => t.Card == (request.Source == touch ? pinger : bear)) };

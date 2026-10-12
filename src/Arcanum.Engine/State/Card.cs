@@ -420,7 +420,7 @@ public sealed class Card
 
     private static readonly HashSet<string> SpellTypes = new(StringComparer.OrdinalIgnoreCase) { "Adventure", "Arcane", "Lesson", "Trap", "Omen" };
 
-    /// <summary>Planeswalker types (rule 205.3j), kept apart from creature types: an animated Gideon that becomes a Frog is still a Gideon.</summary>
+    /// <summary>Planeswalker types (rule 205.3j), kept apart from creature types: an animated planeswalker that becomes a Frog keeps its planeswalker type.</summary>
     private static readonly HashSet<string> PlaneswalkerTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "Ajani", "Aminatou", "Angrath", "Arlinn", "Ashiok", "Bahamut", "Basri", "Bolas", "Calix", "Chandra", "Comet", "Dack", "Dakkon",

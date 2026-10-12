@@ -4708,8 +4708,8 @@ public sealed partial class Game
         }
 
         // "Enchanted land is the chosen type" (rule 305.7) removes the abilities from the land's rules text, so it applies before any
-        // effect those abilities would generate (rule 613.8a(c) dependency): Convincing Mirage on Urborg, Tomb of Yawgmoth means Urborg's
-        // "each land is a Swamp" doesn't exist. Lands losing their text this way generate no static abilities below.
+        // effect those abilities would generate (rule 613.8a(c) dependency): an Aura making a land an Island, on a land whose ability
+        // makes every land a Swamp, means that "each land is a Swamp" doesn't exist. Lands losing their text this way generate no static abilities below.
         foreach (var (source, ability) in Statics(a => a.SetChosenLandType))
             if (source.ChosenType is not null && !source.LosesTextAbilities)
                 foreach (var affected in AffectedBy(source, ability).Where(a => a.Is(CardType.Land)).ToList())

@@ -17,7 +17,7 @@ namespace Arcanum.Engine.Tests;
 /// <summary>
 /// Magic Origins replacement and prevention effects, played with their scripts: prevention shields on one object, damage
 /// "plus 1", "prevent 1" from creatures, life gain doubled or turned into life loss (ordered by rule 616.1), exile instead of
-/// dying, tokens exiled instead of entering, Kytheon's end-of-combat transformation and Gideon's abilities.
+/// dying, tokens exiled instead of entering, the town hero's end-of-combat transformation and the champion's abilities.
 /// </summary>
 public class OriginsReplacementTests
 {
@@ -76,7 +76,7 @@ public class OriginsReplacementTests
             { "if": { "target": "target", "is": { "renowned": true } }, "then": [{ "untap": "target" }] } ] } }
         """;
 
-    private static CardDefinition EnshroudingMist() => Make("Enshrouding Mist", "Instant", EnshroudingMistScript, "{W}");
+    private static CardDefinition EnshroudingMist() => Make("Shroud Mist", "Instant", EnshroudingMistScript, "{W}");
 
     private static CardDefinition Shock(string name = "Shock", int amount = 3, string cost = "{R}", string[]? colors = null) =>
         Make(name, "Instant", $$"""{ "spell": { "targets": ["any"], "effects": [{ "damage": {{amount}}, "to": "target" }] } }""", cost, colors: colors ?? new[] { "R" });
@@ -87,74 +87,74 @@ public class OriginsReplacementTests
     private static CardDefinition Bear(string name = "Bear", string pt = "2/2", string[]? keywords = null, string[]? colors = null) =>
         Make(name, "Creature — Bear", "{}", "{1}", pt, keywords: keywords, colors: colors);
 
-    private static CardDefinition EmbermawHellion() => Make("Embermaw Hellion", "Creature — Hellion",
+    private static CardDefinition EmbermawHellion() => Make("Ember Hellion", "Creature — Hellion",
         """{ "damageBonus": { "sources": { "colors": ["R"], "other": true }, "amount": 1 } }""", "{3}{R}{R}", "4/5", "Trample", new[] { "Trample" }, new[] { "R" });
 
-    private static CardDefinition OrbsOfWarding() => Make("Orbs of Warding", "Artifact",
+    private static CardDefinition OrbsOfWarding() => Make("Warding Orbs", "Artifact",
         """{ "givesHexproof": true, "preventDamageToYou": { "sources": { "types": ["creature"] }, "amount": 1 } }""", "{5}");
 
-    private static CardDefinition TaintedRemedy() => Make("Tainted Remedy", "Enchantment", """{ "replaces": ["OpponentsLifeGainBecomesLoss"] }""", "{2}{B}");
+    private static CardDefinition TaintedRemedy() => Make("Spoiled Remedy", "Enchantment", """{ "replaces": ["OpponentsLifeGainBecomesLoss"] }""", "{2}{B}");
 
-    private static CardDefinition Archive() => Make("Alhammarret's Archive", "Legendary Artifact", """{ "replaces": ["DoubleLifeGain", "DrawTwoExceptFirstInDrawStep"] }""", "{5}");
+    private static CardDefinition Archive() => Make("Archive of Doubling", "Legendary Artifact", """{ "replaces": ["DoubleLifeGain", "DrawTwoExceptFirstInDrawStep"] }""", "{5}");
 
     private static CardDefinition Heal(int amount = 3) => Make("Heal", "Instant", $$"""{ "spell": { "effects": [{ "gainLife": {{amount}} }] } }""");
 
-    private static CardDefinition PossessedSkaab() => Make("Possessed Skaab", "Creature — Zombie", """
+    private static CardDefinition PossessedSkaab() => Make("Stitched Husk", "Creature — Zombie", """
         { "replaces": ["ExileInsteadOfDying"], "abilities": [{ "trigger": "enters",
             "targets": [{ "kind": "graveyardCard", "controller": "you", "filter": { "types": ["instant", "sorcery", "creature"] } }],
             "effects": [{ "bounce": "target" }] }] }
         """, "", "3/2");
 
-    private static CardDefinition HallowedMoonlight(bool nontokenOnly = false) => Make(nontokenOnly ? "Mistcall" : "Hallowed Moonlight", "Instant",
+    private static CardDefinition HallowedMoonlight(bool nontokenOnly = false) => Make(nontokenOnly ? "Mistcall" : "Holy Moonlight", "Instant",
         nontokenOnly
             ? """{ "spell": { "effects": [{ "exileUncastEntering": { "types": ["creature"], "token": false } }] } }"""
             : """{ "spell": { "effects": [{ "exileUncastEntering": { "types": ["creature"] } }, { "draw": 1 }] } }""");
 
-    private static CardDefinition Soldiers() => Make("Raise the Alarm", "Instant",
+    private static CardDefinition Soldiers() => Make("Sound the Alarm", "Instant",
         """{ "spell": { "effects": [{ "tokens": 2, "token": { "name": "Soldier", "types": "Creature — Soldier", "power": 1, "toughness": 1, "colors": ["W"] } }] } }""");
 
-    private const string KytheonScript = """
+    private const string TownHeroScript = """
         {
           "abilities": [
             { "trigger": "endOfCombat", "if": { "attackedThisCombatWithOthers": 2 }, "effects": [{ "blink": "self", "transformed": true }],
-              "text": "At end of combat, if Kytheon and at least two other creatures attacked this combat, exile Kytheon, then return him to the battlefield transformed under his owner's control." },
+              "text": "At end of combat, if Town Hero and at least two other creatures attacked this combat, exile Kytheon, then return him to the battlefield transformed under his owner's control." },
             { "cost": "{2}{W}", "effects": [{ "pump": [0, 0], "what": "self", "keywords": ["Indestructible"] }], "text": "{2}{W}: Kytheon gains indestructible until end of turn." }
           ],
           "back": { "abilities": [
             { "cost": "+2", "targets": [{ "kind": "creature", "controller": "opponent", "optional": true }], "effects": [{ "attacksSourceNextTurn": "target" }],
-              "text": "+2: Up to one target creature an opponent controls attacks Gideon during its controller's next turn if able." },
+              "text": "+2: Up to one target creature an opponent controls attacks Forged Champion during its controller's next turn if able." },
             { "cost": "+1", "targets": ["creature"], "effects": [{ "pump": [0, 0], "what": "target", "keywords": ["Indestructible"], "untilYourNextTurn": true }, { "untap": "target" }],
               "text": "+1: Until your next turn, target creature gains indestructible. Untap that creature." },
             { "cost": "0", "effects": [
                 { "become": "self", "power": 4, "toughness": 4, "addTypes": ["creature"], "addSubtypes": ["Human", "Soldier"], "keywords": ["Indestructible"] },
                 { "preventDamage": true, "to": "self" } ],
-              "text": "0: Until end of turn, Gideon becomes a 4/4 Human Soldier creature with indestructible that's still a planeswalker. Prevent all damage that would be dealt to him this turn." }
+              "text": "0: Until end of turn, Forged Champion becomes a 4/4 Human Soldier creature with indestructible that's still a planeswalker. Prevent all damage that would be dealt to him this turn." }
           ] }
         }
         """;
 
-    private static CardDefinition Kytheon()
+    private static CardDefinition TownHero()
     {
         const string json = """
-            {"oracle_id":"ori-kytheon","name":"Kytheon, Hero of Akros // Gideon, Battle-Forged","layout":"transform","mana_cost":"","type_line":"Legendary Creature — Human Soldier // Legendary Planeswalker — Gideon","oracle_text":"","colors":["W"],"keywords":["Transform"],"games":["paper"],
-             "card_faces":[{"name":"Kytheon, Hero of Akros","mana_cost":"{W}","type_line":"Legendary Creature — Human Soldier","oracle_text":"At end of combat, if Kytheon and at least two other creatures attacked this combat, exile Kytheon, then return him to the battlefield transformed under his owner's control.\n{2}{W}: Kytheon gains indestructible until end of turn.","power":"2","toughness":"1","colors":["W"]},
-                           {"name":"Gideon, Battle-Forged","mana_cost":"","type_line":"Legendary Planeswalker — Gideon","oracle_text":"+2: Up to one target creature an opponent controls attacks Gideon during its controller's next turn if able.\n+1: Until your next turn, target creature gains indestructible. Untap that creature.\n0: Until end of turn, Gideon becomes a 4/4 Human Soldier creature with indestructible that's still a planeswalker. Prevent all damage that would be dealt to him this turn.","loyalty":"3","colors":["W"]}]}
+            {"oracle_id":"ori-hero","name":"Town Hero // Forged Champion","layout":"transform","mana_cost":"","type_line":"Legendary Creature — Human Soldier // Legendary Planeswalker — Gideon","oracle_text":"","colors":["W"],"keywords":["Transform"],"games":["paper"],
+             "card_faces":[{"name":"Town Hero","mana_cost":"{W}","type_line":"Legendary Creature — Human Soldier","oracle_text":"At end of combat, if Town Hero and at least two other creatures attacked this combat, exile Kytheon, then return him to the battlefield transformed under his owner's control.\n{2}{W}: Kytheon gains indestructible until end of turn.","power":"2","toughness":"1","colors":["W"]},
+                           {"name":"Forged Champion","mana_cost":"","type_line":"Legendary Planeswalker — Gideon","oracle_text":"+2: Up to one target creature an opponent controls attacks Forged Champion during its controller's next turn if able.\n+1: Until your next turn, target creature gains indestructible. Untap that creature.\n0: Until end of turn, Forged Champion becomes a 4/4 Human Soldier creature with indestructible that's still a planeswalker. Prevent all damage that would be dealt to him this turn.","loyalty":"3","colors":["W"]}]}
             """;
         var record = OracleJsonl.Import(new MemoryStream(Encoding.UTF8.GetBytes(json.ReplaceLineEndings(" ")))).First();
-        return CardFactory.Create(record, CardScriptParser.Parse(KytheonScript)).Definition;
+        return CardFactory.Create(record, CardScriptParser.Parse(TownHeroScript)).Definition;
     }
 
-    /// <summary>Gideon, Battle-Forged on the battlefield (Kytheon turned over), under player 0's control since the turn began.</summary>
-    private static CardId Gideon(Scenario s)
+    /// <summary>Forged Champion on the battlefield (Town Hero turned over), under player 0's control since the turn began.</summary>
+    private static CardId Champion(Scenario s)
     {
-        var id = s.Add(P0, Kytheon().BackFace!);
+        var id = s.Add(P0, TownHero().BackFace!);
         var card = s.Card(id);
         card.Counters[CounterKind.Loyalty] = 3;
         card.ControlledSinceTurnStart = true;
         return id;
     }
 
-    // ------------------------------------------------------------------ Enshrouding Mist: a shield on one object
+    // ------------------------------------------------------------------ Shroud Mist: a shield on one object
 
     [Fact]
     public async Task EnshroudingMistPreventsDamageToThatCreatureOnlyAndUntapsItIfRenowned()
@@ -169,7 +169,7 @@ public class OriginsReplacementTests
         s.InHand(P0, EnshroudingMist());
         s.InHand(P0, Shock());
         s.InHand(P0, Sweep(2));
-        Script(s, Cast(s, "Enshrouding Mist"), Cast(s, "Shock"), Cast(s, "Sweep"));
+        Script(s, Cast(s, "Shroud Mist"), Cast(s, "Shock"), Cast(s, "Sweep"));
         Aim(s, Named(s, "Hero"));
         await s.RunUntilTurn();
         Assert.Equal(Zone.Battlefield, s.Card(hero).Zone);
@@ -189,14 +189,14 @@ public class OriginsReplacementTests
         s.InHand(P0, EnshroudingMist());
         s.InHand(P0, Make("Flicker", "Instant", """{ "spell": { "targets": ["creature"], "effects": [{ "blink": "target" }] } }"""));
         s.InHand(P0, Shock());
-        Script(s, Cast(s, "Enshrouding Mist"), Cast(s, "Flicker"), Cast(s, "Shock"));
+        Script(s, Cast(s, "Shroud Mist"), Cast(s, "Flicker"), Cast(s, "Shock"));
         Aim(s, Named(s, "Hero"));
         await s.RunUntilTurn();
         // After the flicker it's a new object: the shield doesn't apply to it, so Shock kills it.
         Assert.Equal(Zone.Graveyard, s.Card(hero).Zone);
     }
 
-    // ------------------------------------------------------------------ Embermaw Hellion and Orbs of Warding
+    // ------------------------------------------------------------------ Ember Hellion and Warding Orbs
 
     [Fact]
     public async Task EmbermawHellionAddsOneToOtherRedSourcesOnly()
@@ -260,10 +260,10 @@ public class OriginsReplacementTests
         s.Attacker.Attack = (_, attackers, defenders) => attackers.Select(x => new AttackDeclaration(x, defenders[0])).ToList();
         await s.RunUntilTurn();
         Assert.Equal(20 - 3 - 1 - 2, Life(s, P1));
-        Assert.True(s.Game.State.PermanentsControlledBy(P1).Single(c => c.Name == "Orbs of Warding").Definition.GivesControllerHexproof);
+        Assert.True(s.Game.State.PermanentsControlledBy(P1).Single(c => c.Name == "Warding Orbs").Definition.GivesControllerHexproof);
     }
 
-    // ------------------------------------------------------------------ life gain: Alhammarret's Archive and Tainted Remedy
+    // ------------------------------------------------------------------ life gain: Archive of Doubling and Spoiled Remedy
 
     [Fact]
     public async Task TaintedRemedyTurnsAnOpponentsLifeGainAndLifelinkIntoLifeLoss()
@@ -294,7 +294,7 @@ public class OriginsReplacementTests
     }
 
     [Fact]
-    public async Task AlhammarretsArchiveDoublesLifeGain()
+    public async Task ArchiveOfDoublingDoublesLifeGain()
     {
         var s = new Scenario();
         s.Add(P0, Archive());
@@ -320,7 +320,7 @@ public class OriginsReplacementTests
         Assert.Equal(expected, Life(s, P0));
     }
 
-    // ------------------------------------------------------------------ Possessed Skaab
+    // ------------------------------------------------------------------ Stitched Husk
 
     [Fact]
     public async Task PossessedSkaabReturnsACardAndIsExiledInsteadOfDying()
@@ -330,14 +330,14 @@ public class OriginsReplacementTests
         s.InHand(P0, Make("Ponder", "Sorcery", """{ "spell": { "effects": [{ "scry": 1 }] } }"""));
         var skaab = s.InHand(P0, PossessedSkaab());
         s.InHand(P0, Shock());
-        Script(s, Cast(s, "Ponder"), Cast(s, "Possessed Skaab"), Cast(s, "Shock"));
-        Aim(s, t => t.Card is { } c && (s.Card(c).Name is "Ponder" or "Possessed Skaab"));
+        Script(s, Cast(s, "Ponder"), Cast(s, "Stitched Husk"), Cast(s, "Shock"));
+        Aim(s, t => t.Card is { } c && (s.Card(c).Name is "Ponder" or "Stitched Husk"));
         await s.RunUntilTurn();
         Assert.Contains(s.Game.Log.OfType<CardMoved>(), m => s.Card(m.Card).Name == "Ponder" && m.From == Zone.Graveyard && m.To == Zone.Hand);
         Assert.Equal(Zone.Exile, s.Card(skaab).Zone);
     }
 
-    // ------------------------------------------------------------------ Hallowed Moonlight
+    // ------------------------------------------------------------------ Holy Moonlight
 
     [Fact]
     public async Task HallowedMoonlightExilesCreatureTokensToo()
@@ -345,7 +345,7 @@ public class OriginsReplacementTests
         var s = new Scenario();
         s.InHand(P0, HallowedMoonlight());
         s.InHand(P0, Soldiers());
-        Script(s, Cast(s, "Hallowed Moonlight"), Cast(s, "Raise the Alarm"));
+        Script(s, Cast(s, "Holy Moonlight"), Cast(s, "Sound the Alarm"));
         await s.RunUntilTurn();
         Assert.DoesNotContain(s.Game.State.Battlefield, id => s.Card(id).Name == "Soldier");
         Assert.Empty(s.Game.Log.OfType<TokenCreated>());
@@ -369,7 +369,7 @@ public class OriginsReplacementTests
             var stack = s.Game.State.Stack;
             PlayerAction? next = phase switch
             {
-                0 when stack.Count == 0 => Cast(s, "Hallowed Moonlight")(legal),
+                0 when stack.Count == 0 => Cast(s, "Holy Moonlight")(legal),
                 1 when stack.Count == 0 => Cast(s, "Cast Bear")(legal),
                 2 when stack.Count == 0 => Cast(s, "Copied Bear")(legal),
                 3 when stack.Count == 1 => Cast(s, "Twincast")(legal),
@@ -407,64 +407,64 @@ public class OriginsReplacementTests
         var s = new Scenario();
         s.InHand(P0, HallowedMoonlight(nontokenOnly: true));
         s.InHand(P0, Soldiers());
-        Script(s, Cast(s, "Mistcall"), Cast(s, "Raise the Alarm"));
+        Script(s, Cast(s, "Mistcall"), Cast(s, "Sound the Alarm"));
         await s.RunUntilTurn();
         Assert.Equal(2, s.Game.State.Battlefield.Count(id => s.Card(id).Name == "Soldier"));
     }
 
-    // ------------------------------------------------------------------ Kytheon and Gideon
+    // ------------------------------------------------------------------ Town Hero and Forged Champion
 
     [Fact]
-    public async Task KytheonTransformsAfterAttackingWithTwoOthersEvenIfOneDied()
+    public async Task TownHeroTransformsAfterAttackingWithTwoOthersEvenIfOneDied()
     {
         var s = new Scenario();
-        var kytheon = s.Add(P0, Kytheon());
+        var hero = s.Add(P0, TownHero());
         var a = s.Add(P0, Bear("A"));
         var b = s.Add(P0, Bear("B"));
-        foreach (var id in new[] { kytheon, a, b }) s.Card(id).ControlledSinceTurnStart = true;
+        foreach (var id in new[] { hero, a, b }) s.Card(id).ControlledSinceTurnStart = true;
         var wall = s.Add(P1, Bear("Wall", "0/5"));
         var ogre = s.Add(P1, Bear("Ogre", "3/3"));
         Script(s);
         s.Attacker.Attack = (_, attackers, defenders) => attackers.Select(x => new AttackDeclaration(x, defenders[0])).ToList();
-        s.Defender.Block = (_, _, _) => new[] { new BlockDeclaration(ogre, a), new BlockDeclaration(wall, kytheon) };
+        s.Defender.Block = (_, _, _) => new[] { new BlockDeclaration(ogre, a), new BlockDeclaration(wall, hero) };
         await s.RunUntilTurn();
         Assert.Equal(Zone.Graveyard, s.Card(a).Zone);
-        var gideon = s.Card(kytheon);
-        Assert.Equal(Zone.Battlefield, gideon.Zone);
-        Assert.True(gideon.Transformed);
-        Assert.True(gideon.Is(CardType.Planeswalker));
-        Assert.Equal(3, gideon.CounterCount(CounterKind.Loyalty));
+        var champion = s.Card(hero);
+        Assert.Equal(Zone.Battlefield, champion.Zone);
+        Assert.True(champion.Transformed);
+        Assert.True(champion.Is(CardType.Planeswalker));
+        Assert.Equal(3, champion.CounterCount(CounterKind.Loyalty));
     }
 
     [Fact]
-    public async Task KytheonStaysWithOnlyOneOtherAttacker()
+    public async Task TownHeroStaysWithOnlyOneOtherAttacker()
     {
         var s = new Scenario();
-        var kytheon = s.Add(P0, Kytheon());
+        var hero = s.Add(P0, TownHero());
         var a = s.Add(P0, Bear("A"));
-        foreach (var id in new[] { kytheon, a }) s.Card(id).ControlledSinceTurnStart = true;
+        foreach (var id in new[] { hero, a }) s.Card(id).ControlledSinceTurnStart = true;
         s.Add(P0, Bear("Home")); // doesn't attack
         Script(s);
-        s.Attacker.Attack = (_, attackers, defenders) => new[] { new AttackDeclaration(kytheon, defenders[0]), new AttackDeclaration(a, defenders[0]) };
+        s.Attacker.Attack = (_, attackers, defenders) => new[] { new AttackDeclaration(hero, defenders[0]), new AttackDeclaration(a, defenders[0]) };
         await s.RunUntilTurn();
-        Assert.False(s.Card(kytheon).Transformed);
+        Assert.False(s.Card(hero).Transformed);
     }
 
     [Fact]
-    public async Task GideonsZeroMakesHimAnIndestructibleCreatureWhoseDamageIsPrevented()
+    public async Task ChampionsZeroMakesHimAnIndestructibleCreatureWhoseDamageIsPrevented()
     {
         var s = new Scenario();
-        var gideon = Gideon(s);
+        var champion = Champion(s);
         var giant = s.Add(P1, Bear("Giant", "6/6"));
-        Script(s, Activate(s, gideon, "0:"));
-        s.Attacker.Attack = (_, attackers, defenders) => attackers.Where(x => x == gideon).Select(x => new AttackDeclaration(x, defenders[0])).ToList();
-        s.Defender.Block = (_, _, _) => new[] { new BlockDeclaration(giant, gideon) };
+        Script(s, Activate(s, champion, "0:"));
+        s.Attacker.Attack = (_, attackers, defenders) => attackers.Where(x => x == champion).Select(x => new AttackDeclaration(x, defenders[0])).ToList();
+        s.Defender.Block = (_, _, _) => new[] { new BlockDeclaration(giant, champion) };
         await s.RunUntilTurn();
-        var g = s.Card(gideon);
+        var g = s.Card(champion);
         Assert.Equal(Zone.Battlefield, g.Zone);
         Assert.Equal(3, g.CounterCount(CounterKind.Loyalty));
-        Assert.Contains(s.Game.Log.OfType<DamageDealt>(), d => d.Source == gideon && d.TargetCard == giant && d.Amount == 4);
-        Assert.DoesNotContain(s.Game.Log.OfType<DamageDealt>(), d => d.TargetCard == gideon);
+        Assert.Contains(s.Game.Log.OfType<DamageDealt>(), d => d.Source == champion && d.TargetCard == giant && d.Amount == 4);
+        Assert.DoesNotContain(s.Game.Log.OfType<DamageDealt>(), d => d.TargetCard == champion);
         Assert.False(g.IsCreature); // until end of turn
     }
 
@@ -492,13 +492,13 @@ public class OriginsReplacementTests
     }
 
     [Fact]
-    public async Task GideonsPlusTwoMakesTheCreatureAttackHimDuringItsControllersNextTurnOnly()
+    public async Task ChampionsPlusTwoMakesTheCreatureAttackHimDuringItsControllersNextTurnOnly()
     {
         var s = new Scenario();
-        var gideon = Gideon(s);
+        var champion = Champion(s);
         var bear = s.Add(P1, Bear("Bear"));
         s.Card(bear).ControlledSinceTurnStart = true;
-        Script(s, Activate(s, gideon, "+2"));
+        Script(s, Activate(s, champion, "+2"));
         Aim(s, Named(s, "Bear"));
         var requests = new Dictionary<int, AttackRequest>();
         s.Defender.Attack = (view, attackers, defenders) =>
@@ -511,20 +511,20 @@ public class OriginsReplacementTests
         var next = requests[2];
         Assert.False(next.IsLegal(Array.Empty<AttackDeclaration>(), out _));
         Assert.False(next.IsLegal(new[] { new AttackDeclaration(bear, P0) }, out _));
-        Assert.True(next.IsLegal(new[] { new AttackDeclaration(bear, P0, gideon) }, out _));
+        Assert.True(next.IsLegal(new[] { new AttackDeclaration(bear, P0, champion) }, out _));
         Assert.True(requests[4].IsLegal(Array.Empty<AttackDeclaration>(), out _)); // only that turn
     }
 
     [Fact]
-    public async Task GideonsPlusOneGivesIndestructibleUntilYourNextTurnAndUntaps()
+    public async Task ChampionsPlusOneGivesIndestructibleUntilYourNextTurnAndUntaps()
     {
         var s = new Scenario();
         Lands(s, P0, GenericCards.Mountain, 1);
-        var gideon = Gideon(s);
+        var champion = Champion(s);
         var bear = s.Add(P0, Bear("Bear"));
         s.Card(bear).Tapped = true;
         s.InHand(P0, Make("Murder", "Instant", """{ "spell": { "targets": ["creature"], "effects": [{ "destroy": "target" }] } }""", "{R}"));
-        Script(s, Activate(s, gideon, "+1"), Cast(s, "Murder"));
+        Script(s, Activate(s, champion, "+1"), Cast(s, "Murder"));
         Aim(s, Named(s, "Bear"));
         await s.RunUntilTurn();
         Assert.Equal(Zone.Battlefield, s.Card(bear).Zone);

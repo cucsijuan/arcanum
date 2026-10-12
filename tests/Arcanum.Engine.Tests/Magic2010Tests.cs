@@ -61,7 +61,7 @@ public class Magic2010Tests
         owner.GetZone(zone).Add(id);
     }
 
-    // ------------------------------------------------------------------ Doom Blade, Dread Warlock, Silence, Soul Bleed
+    // ------------------------------------------------------------------ Dark Blade, Shade Warlock, Silence, Bleeding Soul
 
     [Fact]
     public async Task DoomBladeCantTargetABlackCreature()
@@ -70,7 +70,7 @@ public class Magic2010Tests
         Lands(s, P0, GenericCards.Swamp, 2);
         var black = s.Add(P1, Black("Shade", 2, 2));
         var bear = s.Add(P1, Creature("Bear", 2, 2));
-        s.InHand(P0, M("Doom Blade"));
+        s.InHand(P0, M("Dark Blade"));
         IReadOnlyList<Target>? legal = null;
         s.Attacker.Targets = (v, r) => { legal = r.LegalAt(0); return TestController.FirstAllowed(v, r); };
         await s.RunUntilTurn();
@@ -84,7 +84,7 @@ public class Magic2010Tests
     public async Task DreadWarlockCanBeBlockedOnlyByBlackCreatures()
     {
         var s = new Scenario();
-        var warlock = s.Add(P0, M("Dread Warlock"));
+        var warlock = s.Add(P0, M("Shade Warlock"));
         var black = s.Add(P1, Black("Shade", 1, 1));
         var bear = s.Add(P1, Creature("Bear", 1, 1));
         s.Attacker.Act = (_, _) => PassPriority.Instance;
@@ -126,13 +126,13 @@ public class Magic2010Tests
         s.Attacker.Act = (_, _) => PassPriority.Instance;
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
         var bear = s.Add(P1, Creature("Bear", 2, 2));
-        s.Game.SetupPermanent(P0, M("Soul Bleed"), bear);
+        s.Game.SetupPermanent(P0, M("Bleeding Soul"), bear);
         await s.RunUntilTurn(4);
         Assert.Equal(19, P(s, P1).Life); // turn 2's upkeep (theirs); not in player 0's upkeeps
         Assert.Equal(20, P(s, P0).Life);
     }
 
-    // ------------------------------------------------------------------ Traumatize, Ponder, Lurking Predators, Polymorph
+    // ------------------------------------------------------------------ Traumatize, Ponder, Lurking Hunters, Polymorph
 
     [Fact]
     public async Task TraumatizeMillsHalfTheLibraryRoundedDown()
@@ -174,7 +174,7 @@ public class Magic2010Tests
     public async Task LurkingPredatorsPutsARevealedCreatureOntoTheBattlefield()
     {
         var s = Casting();
-        s.Add(P0, M("Lurking Predators"));
+        s.Add(P0, M("Lurking Hunters"));
         var wurm = s.Game.SetupInLibrary(P0, GenericCards.GreatWurm);
         Lands(s, P1, GenericCards.Mountain, 1);
         s.InHand(P1, GenericCards.EmberBolt);
@@ -189,7 +189,7 @@ public class Magic2010Tests
     public async Task LurkingPredatorsMayPutANoncreatureCardOnTheBottom()
     {
         var s = Casting();
-        s.Add(P0, M("Lurking Predators"));
+        s.Add(P0, M("Lurking Hunters"));
         var bolt = s.Game.SetupInLibrary(P0, GenericCards.EmberBolt);
         Lands(s, P1, GenericCards.Mountain, 1);
         s.InHand(P1, GenericCards.EmberBolt);
@@ -236,7 +236,7 @@ public class Magic2010Tests
         Assert.Equal(Zone.Battlefield, s.Card(wurm).Zone);
     }
 
-    // ------------------------------------------------------------------ Rise from the Grave, Awakener Druid, Ajani, CDAs
+    // ------------------------------------------------------------------ Up from the Grave, Forest Waker, Lion Elder, CDAs
 
     [Fact]
     public async Task RiseFromTheGraveMakesItABlackZombieInAddition()
@@ -244,7 +244,7 @@ public class Magic2010Tests
         var s = Casting();
         Lands(s, P0, GenericCards.Swamp, 5);
         var bear = s.Game.SetupInLibrary(P1, GenericCards.GladeCub);
-        s.InHand(P0, M("Rise from the Grave"));
+        s.InHand(P0, M("Up from the Grave"));
         OnFirstAction(s, () => MoveTo(s, bear, Zone.Graveyard));
         s.Attacker.Targets = (_, r) => new[] { Target.Of(bear) };
         await s.RunUntilTurn();
@@ -261,7 +261,7 @@ public class Magic2010Tests
         var s = Casting();
         Lands(s, P0, GenericCards.Mountain, 3);
         var forest = s.Add(P0, GenericCards.Forest);
-        var druid = s.InHand(P0, M("Awakener Druid"));
+        var druid = s.InHand(P0, M("Forest Waker"));
         var kill = s.InHand(P0, new CardDefinition
         {
             Name = "Kill", Types = CardType.Sorcery, ManaCost = ManaCost.Zero,
@@ -287,10 +287,10 @@ public class Magic2010Tests
     }
 
     [Fact]
-    public async Task AjanisAvatarHasPowerAndToughnessEqualToYourLife()
+    public async Task LionElderAvatarHasPowerAndToughnessEqualToYourLife()
     {
         var s = Casting();
-        var ajani = s.Add(P0, M("Ajani Goldmane"));
+        var ajani = s.Add(P0, M("Lion Elder"));
         s.Card(ajani).Counters[CounterKind.Loyalty] = 6;
         s.Attacker.Act = (_, legal) =>
         {
@@ -305,10 +305,10 @@ public class Magic2010Tests
     }
 
     [Fact]
-    public async Task AjaniPutsCountersOnCreaturesAndGivesThemVigilance()
+    public async Task LionElderPutsCountersOnCreaturesAndGivesThemVigilance()
     {
         var s = Casting();
-        var ajani = s.Add(P0, M("Ajani Goldmane"));
+        var ajani = s.Add(P0, M("Lion Elder"));
         s.Card(ajani).Counters[CounterKind.Loyalty] = 4;
         var bear = s.Add(P0, Creature("Bear", 2, 2));
         var foe = s.Add(P1, Creature("Foe", 2, 2));
@@ -345,13 +345,13 @@ public class Magic2010Tests
         Assert.Equal(0, s.Game.ViewFor(P0).Players[1].Graveyard.First(c => c.Id == inGraveyard).Power);
     }
 
-    // ------------------------------------------------------------------ Coat of Arms, Telepathy, Vampire Nocturnus, Convincing Mirage
+    // ------------------------------------------------------------------ Banner of Kin, Telepathy, Night Vampire, Land Mirage
 
     [Fact]
     public async Task CoatOfArmsCountsOtherCreaturesSharingATypeWithEachCreature()
     {
         var s = new Scenario();
-        s.Add(P0, M("Coat of Arms"));
+        s.Add(P0, M("Banner of Kin"));
         var warrior = s.Add(P0, Creature("Goblin Warrior", 1, 1) with { Subtypes = new[] { "Goblin", "Warrior" } });
         var shaman = s.Add(P1, Creature("Goblin Shaman", 1, 1) with { Subtypes = new[] { "Goblin", "Shaman" } });
         var elf = s.Add(P0, Creature("Elf", 1, 1) with { Subtypes = new[] { "Elf" } });
@@ -419,7 +419,7 @@ public class Magic2010Tests
     public async Task VampireNocturnusPlaysWithTheTopCardRevealedAndPumpsVampiresWhileItIsBlack()
     {
         var s = new Scenario();
-        var nocturnus = s.Add(P0, M("Vampire Nocturnus"));
+        var nocturnus = s.Add(P0, M("Night Vampire"));
         var vampire = s.Add(P0, Creature("Vampire", 2, 2) with { Subtypes = new[] { "Vampire" } });
         var bear = s.Add(P0, Creature("Bear", 2, 2));
         var enemyVampire = s.Add(P1, Creature("Vampire", 2, 2) with { Subtypes = new[] { "Vampire" } });
@@ -448,7 +448,7 @@ public class Magic2010Tests
     public async Task VampireNocturnusDoesNothingWhileTheTopCardIsntBlack()
     {
         var s = new Scenario();
-        var nocturnus = s.Add(P0, M("Vampire Nocturnus"));
+        var nocturnus = s.Add(P0, M("Night Vampire"));
         await s.RunUntilTurn(1); // the library is all Forests
         Assert.Equal(3, s.Card(nocturnus).Power);
         Assert.False(s.Card(nocturnus).Has(Keyword.Flying));
@@ -463,9 +463,9 @@ public class Magic2010Tests
         var s = Casting();
         Lands(s, P0, GenericCards.Island, 2);
         var forest = s.Add(P1, GenericCards.Forest);
-        var dual = s.Add(P1, new CardDefinition { Name = "Rootbound Crag", Types = CardType.Land, TapForMana = new[] { ManaType.Red, ManaType.Green }, EntersTapped = true });
-        s.InHand(P0, M("Convincing Mirage"));
-        s.InHand(P0, M("Convincing Mirage"));
+        var dual = s.Add(P1, new CardDefinition { Name = "Rooted Crag", Types = CardType.Land, TapForMana = new[] { ManaType.Red, ManaType.Green }, EntersTapped = true });
+        s.InHand(P0, M("Land Mirage"));
+        s.InHand(P0, M("Land Mirage"));
         int cast = 0;
         s.Attacker.Targets = (_, r) => new[] { Target.Of(cast++ == 0 ? forest : dual) };
         s.Attacker.Option = (_, r) => Array.IndexOf(new[] { "Plains", "Island", "Swamp", "Mountain", "Forest" }, "Island");
@@ -481,44 +481,44 @@ public class Magic2010Tests
         }
     }
 
-    /// <summary>A land whose text sets every land's type, like Urborg, Tomb of Yawgmoth.</summary>
-    private static CardDefinition UrborgLike() => Arcanum.Data.CardData.CardFactory.Create(new Arcanum.Data.CardData.CardRecord
+    /// <summary>A land whose text sets every land's type, like Swamp Tomb.</summary>
+    private static CardDefinition SwampTombLike() => Arcanum.Data.CardData.CardFactory.Create(new Arcanum.Data.CardData.CardRecord
     {
-        OracleId = "db6174d7-211d-4817-b8e4-8384594c83f9", Name = "Urborg, Tomb of Yawgmoth", Layout = "normal", ManaCost = "", TypeLine = "Legendary Land",
+        OracleId = "db6174d7-211d-4817-b8e4-8384594c83f9", Name = "Swamp Tomb", Layout = "normal", ManaCost = "", TypeLine = "Legendary Land",
         OracleText = "Each land is a Swamp in addition to its other land types.", Keywords = Array.Empty<string>(),
     }, Arcanum.Data.Scripts.CardScriptParser.Parse(
-        "{\"name\": \"Urborg, Tomb of Yawgmoth\", \"abilities\": [{\"static\": {\"affects\": \"permanents\", \"filter\": {\"types\": [\"land\"]}, "
+        "{\"name\": \"Swamp Tomb\", \"abilities\": [{\"static\": {\"affects\": \"permanents\", \"filter\": {\"types\": [\"land\"]}, "
         + "\"addSubtypes\": [\"Swamp\"]}, \"text\": \"Each land is a Swamp in addition to its other land types.\"}]}")).Definition;
 
     [Fact]
-    public async Task ConvincingMirageOnUrborgMeansUrborgsEffectDoesntExist()
+    public async Task LandMirageOnSwampTombMeansItsEffectDoesntExist()
     {
         var s = Casting();
         Lands(s, P0, GenericCards.Island, 2);
-        var urborg = s.Add(P1, UrborgLike());
+        var tomb = s.Add(P1, SwampTombLike());
         var forest = s.Add(P1, GenericCards.Forest);
-        var mirage = s.InHand(P0, M("Convincing Mirage"));
-        s.Attacker.Targets = (_, r) => new[] { Target.Of(urborg) };
+        var mirage = s.InHand(P0, M("Land Mirage"));
+        s.Attacker.Targets = (_, r) => new[] { Target.Of(tomb) };
         s.Attacker.Option = (_, r) => Array.IndexOf(new[] { "Plains", "Island", "Swamp", "Mountain", "Forest" }, "Island");
         bool forestWasSwampBefore = false;
-        (bool Urborg, bool Forest)? enchanted = null, afterMirageLeft = null;
+        (bool Tomb, bool Forest)? enchanted = null, afterMirageLeft = null;
         s.Defender.Act = (_, _) =>
         {
             if (enchanted is null && s.Card(mirage).Zone == Zone.Battlefield)
             {
-                enchanted = (s.Card(urborg).HasSubtype("Swamp") || !s.Card(urborg).HasSubtype("Island"), s.Card(forest).HasSubtype("Swamp"));
+                enchanted = (s.Card(tomb).HasSubtype("Swamp") || !s.Card(tomb).HasSubtype("Island"), s.Card(forest).HasSubtype("Swamp"));
                 s.Game.State.Battlefield.Remove(mirage);
                 MoveTo(s, mirage, Zone.Graveyard);
             }
             else if (enchanted is not null && afterMirageLeft is null)
-                afterMirageLeft = (s.Card(urborg).HasSubtype("Swamp"), s.Card(forest).HasSubtype("Swamp"));
+                afterMirageLeft = (s.Card(tomb).HasSubtype("Swamp"), s.Card(forest).HasSubtype("Swamp"));
             return PassPriority.Instance;
         };
         OnFirstAction(s, () => forestWasSwampBefore = s.Card(forest).HasSubtype("Swamp"));
         await s.RunUntilTurn(3);
         Assert.True(forestWasSwampBefore);
-        Assert.Equal((false, false), enchanted); // Urborg is just an Island: its "each land is a Swamp" doesn't exist (rules 305.7, 613.8a)
-        Assert.Equal((true, true), afterMirageLeft); // with the Mirage gone, Urborg's effect is back
+        Assert.Equal((false, false), enchanted); // the tomb is just an Island: its "each land is a Swamp" doesn't exist (rules 305.7, 613.8a)
+        Assert.Equal((true, true), afterMirageLeft); // with the Mirage gone, the tomb's effect is back
     }
 
     // ------------------------------------------------------------------ card names
@@ -594,13 +594,13 @@ public class Magic2010Tests
     {
         var s = Casting();
         Lands(s, P0, GenericCards.Island, 4);
-        var djinn = s.Add(P1, M("Djinn of Wishes"));
+        var djinn = s.Add(P1, M("Wish Djinn"));
         var clone = s.InHand(P0, M("Clone"));
         s.Attacker.Choose = (_, r) => r.Options.Where(o => o.Id == djinn).Select(o => o.Id).ToList();
         await s.RunUntilTurn();
         var card = s.Card(clone);
         Assert.Equal(Zone.Battlefield, card.Zone);
-        Assert.Equal("Djinn of Wishes", card.Name);
+        Assert.Equal("Wish Djinn", card.Name);
         Assert.Equal((4, 4), (card.Power, card.Toughness));
         Assert.True(card.Has(Keyword.Flying));
         Assert.Equal(3, card.CounterCount(CounterKind.Wish)); // "enters with three wish counters" is part of what it copies
@@ -644,13 +644,13 @@ public class Magic2010Tests
         Assert.Equal("Clone", s.Card(clone).Name);
     }
 
-    // ------------------------------------------------------------------ Hive Mind
+    // ------------------------------------------------------------------ Shared Mind
 
     [Fact]
     public async Task HiveMindGivesEachOtherPlayerACopyTheyMayRetarget()
     {
         var s = Casting();
-        s.Add(P0, M("Hive Mind"));
+        s.Add(P0, M("Shared Mind"));
         Lands(s, P0, GenericCards.Mountain, 1);
         var mine = s.Add(P0, Creature("Mine", 3, 3));
         var theirs = s.Add(P1, Creature("Theirs", 3, 3));
@@ -674,7 +674,7 @@ public class Magic2010Tests
         var lands = Decks.Of((GenericCards.Forest, 20));
         var game = new Game(new GameConfig { Seed = 1, StartingPlayer = P0 },
             new[] { new PlayerSetup("A", a, lands), new PlayerSetup("B", b, lands), new PlayerSetup("C", c, lands) });
-        game.SetupPermanent(P1, M("Hive Mind"));
+        game.SetupPermanent(P1, M("Shared Mind"));
         game.SetupPermanent(P0, GenericCards.Mountain);
         game.SetupInHand(P0, GenericCards.EmberBolt with { Spell = new SpellAbility { Effects = new Effect[] { new GainLife(1, Subject.You) } } });
         a.Act = (_, legal) => legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
@@ -689,7 +689,7 @@ public class Magic2010Tests
         Assert.Equal(21, game.State.GetPlayer(P0).Life);
     }
 
-    // ------------------------------------------------------------------ Warp World, Open the Vaults
+    // ------------------------------------------------------------------ World Warp, Vaults Opened
 
     private static CardDefinition Might => new()
     {
@@ -709,7 +709,7 @@ public class Magic2010Tests
         var aura = s.Game.SetupPermanent(P0, Might, bear);
         var token = s.Add(P0, Token("Soldier", 1, 1));
         s.Add(P1, Creature("Theirs", 2, 2));
-        var warp = s.InHand(P0, M("Warp World"));
+        var warp = s.InHand(P0, M("World Warp"));
         await s.RunUntilTurn();
         Assert.Equal(Zone.Graveyard, s.Card(warp).Zone);
         Assert.DoesNotContain(token, s.Game.State.Battlefield);
@@ -736,7 +736,7 @@ public class Magic2010Tests
         var relic = s.Game.SetupInLibrary(P0, Relic);
         var aura = s.Game.SetupInLibrary(P0, Might);
         var golem = s.Game.SetupInLibrary(P1, Creature("Golem", 3, 3) with { Types = CardType.Artifact | CardType.Creature });
-        s.InHand(P0, M("Open the Vaults"));
+        s.InHand(P0, M("Vaults Opened"));
         OnFirstAction(s, () => { MoveTo(s, relic, Zone.Graveyard); MoveTo(s, aura, Zone.Graveyard); MoveTo(s, golem, Zone.Graveyard); });
         await s.RunUntilTurn();
         Assert.Equal(Zone.Battlefield, s.Card(relic).Zone);
@@ -753,7 +753,7 @@ public class Magic2010Tests
         var mine = s.Add(P0, Creature("Mine", 2, 2));
         s.Add(P1, Creature("Theirs", 2, 2));
         var aura = s.Game.SetupInLibrary(P1, Might);
-        s.InHand(P0, M("Open the Vaults"));
+        s.InHand(P0, M("Vaults Opened"));
         OnFirstAction(s, () => MoveTo(s, aura, Zone.Graveyard));
         TargetRequest? asked = null;
         s.Defender.Targets = (_, r) => { asked = r; return new[] { Target.Of(mine) }; };
@@ -765,13 +765,13 @@ public class Magic2010Tests
         Assert.Equal(3, s.Card(mine).Power);
     }
 
-    // ------------------------------------------------------------------ Mirror of Fate, Haunting Echoes, Sphinx Ambassador
+    // ------------------------------------------------------------------ Fate Mirror, Echo Haunting, Envoy Sphinx
 
     [Fact]
     public async Task MirrorOfFateRebuildsTheLibraryFromChosenExiledCards()
     {
         var s = Casting();
-        var mirror = s.Add(P0, M("Mirror of Fate"));
+        var mirror = s.Add(P0, M("Fate Mirror"));
         var a = s.Game.SetupInLibrary(P0, Creature("Alpha", 1, 1));
         var b = s.Game.SetupInLibrary(P0, Creature("Beta", 1, 1));
         var c = s.Game.SetupInLibrary(P0, Creature("Gamma", 1, 1));
@@ -801,7 +801,7 @@ public class Magic2010Tests
         var dead = s.Game.SetupInLibrary(P1, GenericCards.GladeCub);
         var forest = s.Game.SetupInLibrary(P1, GenericCards.Forest);
         var copies = new[] { s.Game.SetupInLibrary(P1, GenericCards.GladeCub), s.Game.SetupInLibrary(P1, GenericCards.GladeCub) };
-        s.InHand(P0, M("Haunting Echoes"));
+        s.InHand(P0, M("Echo Haunting"));
         OnFirstAction(s, () => { MoveTo(s, dead, Zone.Graveyard); MoveTo(s, forest, Zone.Graveyard); s.Restack(P1, copies); });
         s.Attacker.Targets = (_, r) => new[] { Target.Of(P1) };
         CardChoiceRequest? search = null;
@@ -819,7 +819,7 @@ public class Magic2010Tests
     private static Scenario SphinxAttacks(out CardId wurm)
     {
         var s = new Scenario();
-        s.Add(P0, M("Sphinx Ambassador"));
+        s.Add(P0, M("Envoy Sphinx"));
         var found = wurm = s.Game.SetupInLibrary(P1, GenericCards.GreatWurm);
         s.Attacker.Act = (_, _) => PassPriority.Instance;
         s.Attacker.Choose = (_, r) => r.Options.Where(o => o.Id == found).Select(o => o.Id).ToList();
@@ -860,14 +860,14 @@ public class Magic2010Tests
         Assert.Contains(s.Game.Log, e => e is LibraryShuffled { Player.Value: 1 });
     }
 
-    // ------------------------------------------------------------------ Djinn of Wishes
+    // ------------------------------------------------------------------ Wish Djinn
 
     [Fact]
     public async Task DjinnOfWishesPlaysALandAsTheLandDropThenExilesWhatItCantPlay()
     {
         var s = Casting();
         Lands(s, P0, GenericCards.Island, 17);
-        var djinn = s.InHand(P0, M("Djinn of Wishes"));
+        var djinn = s.InHand(P0, M("Wish Djinn"));
         var first = s.Game.SetupInLibrary(P0, GenericCards.Mountain);
         var second = s.Game.SetupInLibrary(P0, GenericCards.Plains);
         var third = s.Game.SetupInLibrary(P0, GenericCards.GladeCub);

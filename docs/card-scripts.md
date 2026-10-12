@@ -503,7 +503,7 @@ Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYo
 - Triggers `blocksOrBlockedBy` ("whenever this creature blocks or becomes blocked by a creature") and `blocksCreature`
   ("whenever this creature blocks a creature"): once per creature on the other side, which is `"triggered"`. `blocks` triggers
   once however many creatures it blocks.
-- `{ "tapAllToDamage": filter, "to": "target" }` (Master of the Wild Hunt): taps all your untapped permanents matching the
+- `{ "tapAllToDamage": filter, "to": "target" }`: taps all your untapped permanents matching the
   filter; each one tapped this way deals damage equal to its power to the target creature, which deals damage equal to its
   power divided as its controller chooses among them, all at once.
 - Filter `"toughnessLessThanPower": true`: toughness less than the source's power (last known if it left the battlefield).
@@ -615,16 +615,16 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   has the copiable values of that object (rule 707.2: its printed values plus any copy effect on it, so copying a copy copies the
   original; never counters or other effects), including its "enters with counters" and "as this enters" rules and its enters
   triggers. It stays a card (copying a token doesn't make it a token). Choosing nothing leaves it as printed (Clone: a 0/0).
-- **Auras entering without being cast** (any effect: `reanimate`, `reanimateAll`, Warp World …): the player it enters for chooses
+- **Auras entering without being cast** (any effect: `reanimate`, `reanimateAll`, `warpWorld` …): the player it enters for chooses
   what it enchants, among what its enchant ability allows that it isn't protected from and that isn't entering at the same time;
   with nothing legal it stays where it is (rules 303.4f–g).
 - **Names**: `"chooseOnEnter": "cardName"` chooses any card name without looking at anything;
   `"lookAtOpponentsHandThenCardName"` first looks at an opponent's hand; `"nonbasicLandCardName"` offers only names of nonbasic land cards. Names come from the game's card database
   (`GameConfig.CardNames`) or, without one, from the cards the chooser knows of, so a hidden card is never given away.
 - **Effects**: `{ "copySpell": "triggered", "eachOtherPlayer": true }` (each player other than the spell's controller copies it, in APNAP
-  order; a spell that already left the stack is copied as it last existed there), `{ "warpWorld": true }`,
-  `{ "rebuildLibraryFromExile": 7 }` (Mirror of Fate), `{ "exileGraveyardAndNamesakes": "target", "filter": f }` (Haunting Echoes; the
-  searcher may leave cards, rule 701.19b), `{ "searchThenNameCard": "triggeredPlayer", "filter": f }` (Sphinx Ambassador: the searcher
+  order; a spell that already left the stack is copied as it last existed there), `{ "warpWorld": true }` (each player shuffles their permanents into their library and puts that many back),
+  `{ "rebuildLibraryFromExile": 7 }` (choose up to seven exiled cards and replace your library with them), `{ "exileGraveyardAndNamesakes": "target", "filter": f }` (the
+  searcher may leave cards, rule 701.19b), `{ "searchThenNameCard": "triggeredPlayer", "filter": f }` (the searcher
   must find a card if there is one; the other player names a card without knowing it), `{ "playTopFree": true }` (reveal the top card,
   play it free or exile it; a land only on your turn with a land play left, and it counts as your land play), `{ "shuffle": "you" }`,
   `{ "opponentsCantCastSpells": true }` (this turn; "can't cast" also stops casting during an effect).
@@ -715,7 +715,7 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   its tax; the defending player pays it for each blocking creature as blockers are declared (rules 509.1d, 509.1h-i), activating
   mana abilities as needed; a declaration that isn't paid for is made again (after a few, no blocks). While blocking costs
   something, no blocking requirement has to be obeyed (509.1c: a requirement is never paid for); the block request carries
-  `TaxPerBlocker`. Together with `"attackTax": "{1}", "attackTaxIf": "untapped"` this is Archangel of Tithes.
+  `TaxPerBlocker`. Together with `"attackTax": "{1}", "attackTaxIf": "untapped"` this gives both taxes.
 - **Keyword** `Can block only creatures with flying` (grant it with a static `"keywords"`): a blocking restriction; requirements to
   block an attacker it can't block don't apply to it.
 - **"Attacks alone"**: `{ "attackersExactly": 1 }` counts every attacking creature, whoever controls the ability; all attackers are
@@ -754,7 +754,7 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   created by a permanent's ability ("at the beginning of the next upkeep, …") remember the object that created them.
   Scripts don't need workarounds such as `"if": { "not": "transformed" }` for this any more (they stay harmless).
 - **`"renowned"` uses last known information**: an intervening `"if": "renowned"` (or `{ "not": "renowned" }`) is checked on
-  resolution against the source as it last existed on the battlefield if it left (rules 603.4, 608.2h), e.g. Scab-Clan Berserker.
+  resolution against the source as it last existed on the battlefield if it left (rules 603.4, 608.2h).
 - **"Up to N target …"**: a target with `"upTo": N` (a number or a quantity such as `"X"`) becomes N optional, different targets
   for spells, activated and loyalty abilities as well as triggered abilities. X is announced first (601.2b), so `"upTo": "X"`
   works with `{X}` in an activated ability's cost. A spell or ability whose only targets are "up to" ones can be cast or
@@ -825,7 +825,7 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `{ "shuffleIntoLibraries": "everyone", "hand": true, "graveyard": true }` ("each player shuffles their hand and graveyard into their
   library"): everything moves at once (one event), then each library is shuffled. `"permanents": true` adds the permanents each player
   owns (tokens too, which then cease to exist); `"drawThatMany": true` then has each player draw as many cards as they put into their
-  library this way, tokens counted (The Great Aurora).
+  library this way, tokens counted.
 - `{ "eachPutsFromHand": filter, "who": "everyone" }`: each player, in turn order, chooses any number of matching cards from their hand;
   then all of them enter the battlefield at the same time under the control of the player who put them there.
 - `{ "revealTopCastFree": 7, "of": "target", "filter": f, "casts": 1, "moreCastsIf": condition, "moreCasts": 2, "rest": "graveyard" }`:

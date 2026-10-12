@@ -91,7 +91,7 @@ public class DamageAndPreventionTests
         s.Lands(P0, 4);
         var bear = s.Add(P0, Creature("Bear", 2, 2));
         var foe = s.Add(P1, Creature("Foe", 2, 2));
-        s.InHand(P0, Spell("Safe Passage", "{1}", new SpellAbility
+        s.InHand(P0, Spell("Safe Road", "{1}", new SpellAbility
         {
             Effects = new Effect[] { new PreventDamageThisTurn(false, ToYou: true) { ToYourCreatures = true } },
         }, CardType.Instant));
@@ -100,12 +100,12 @@ public class DamageAndPreventionTests
         {
             Effects = new Effect[] { new DealDamage(3, new Subject(SubjectKind.Each, Filter: new ObjectFilter(CardType.Creature, Controller: ControllerFilter.Any))), new DealDamage(3, Subject.EachOpponent), new DealDamage(3, Subject.You) },
         }));
-        // Safe Passage first, then the creature, then the sweeper.
+        // Safe Road first, then the creature, then the sweeper.
         int step = 0;
         s.Attacker.Act = (_, legal) =>
         {
             var casts = legal.OfType<CastSpell>().ToList();
-            var order = new[] { "Safe Passage", "Late", "Pyroclasm" };
+            var order = new[] { "Safe Road", "Late", "Pyroclasm" };
             if (step < 3 && casts.FirstOrDefault(c => s.Card(c.Card).Name == order[step]) is { } next) { step++; return next; }
             return PassPriority.Instance;
         };
@@ -126,7 +126,7 @@ public class DamageAndPreventionTests
         var bird = s.Add(P0, Creature("Bird", 1, 1, Keyword.Flying));
         var armor = s.Add(P0, new CardDefinition
         {
-            Name = "Magebane Armor", Types = CardType.Artifact, Subtypes = new[] { "Equipment" },
+            Name = "Spellproof Armor", Types = CardType.Artifact, Subtypes = new[] { "Equipment" },
             Abilities = new AbilityDefinition[]
             {
                 new StaticAbility(new AffectedFilter(AffectedScope.Equipped), 2, 4) { LosesKeywords = new[] { Keyword.Flying } },
@@ -166,7 +166,7 @@ public class DamageAndPreventionTests
         Assert.True(flyingAfter); // the later effect's timestamp wins (rule 613.7)
     }
 
-    // ---------------------------------------------------------------- Protean Hydra
+    // ---------------------------------------------------------------- Shifting Hydra
 
     private static CardDefinition Hydra() => Creature("Hydra", 0, 0) with
     {
@@ -227,7 +227,7 @@ public class DamageAndPreventionTests
         }
     }
 
-    // ---------------------------------------------------------------- redirection (Harm's Way)
+    // ---------------------------------------------------------------- redirection (Safe Turn)
 
     [Fact]
     public async Task HarmsWayRedirectsTheNextTwoDamageAcrossTwoEvents()
@@ -246,7 +246,7 @@ public class DamageAndPreventionTests
                 },
             },
         });
-        s.InHand(P0, Spell("Harm's Way", "{1}", new SpellAbility
+        s.InHand(P0, Spell("Safe Turn", "{1}", new SpellAbility
         {
             Targets = new[] { new TargetSpec(TargetKind.Any) },
             Effects = new Effect[] { new RedirectNextDamage(2, Subject.TargetAt(0)) },
@@ -278,7 +278,7 @@ public class DamageAndPreventionTests
         {
             Effects = new Effect[] { new DealDamage(2, new Subject(SubjectKind.Each, Filter: new ObjectFilter(CardType.Creature, Controller: ControllerFilter.Any))) },
         }));
-        s.InHand(P0, Spell("Harm's Way", "{1}", new SpellAbility
+        s.InHand(P0, Spell("Safe Turn", "{1}", new SpellAbility
         {
             Targets = new[] { new TargetSpec(TargetKind.Any) },
             Effects = new Effect[] { new RedirectNextDamage(2, Subject.TargetAt(0)) },
@@ -546,7 +546,7 @@ public class DamageAndPreventionTests
         Assert.Equal(19, Life(s, P0));
     }
 
-    // ---------------------------------------------------------------- becomes-target triggers, Ice Cage
+    // ---------------------------------------------------------------- becomes-target triggers, Frost Cage
 
     [Fact]
     public async Task IllusionaryServantIsSacrificedWhenItsControllerTargetsIt()
@@ -560,7 +560,7 @@ public class DamageAndPreventionTests
                 new TriggeredAbility { Trigger = TriggerEvent.BecomesTarget, Effects = new Effect[] { new SacrificeIt(Subject.Self) }, Text = "When this creature becomes the target of a spell or ability, sacrifice it." },
             },
         });
-        s.InHand(P0, Spell("Giant Growth", "{1}", new SpellAbility
+        s.InHand(P0, Spell("Sudden Growth", "{1}", new SpellAbility
         {
             Targets = new[] { new TargetSpec(TargetKind.Creature) }, Effects = new Effect[] { new PumpUntilEndOfTurn(3, 3, Subject.TargetAt(0)) },
         }, CardType.Instant));
@@ -581,7 +581,7 @@ public class DamageAndPreventionTests
         });
         var cage = s.Add(P0, new CardDefinition
         {
-            Name = "Ice Cage", Types = CardType.Enchantment, Subtypes = new[] { "Aura" }, EnchantTarget = new TargetSpec(TargetKind.Creature),
+            Name = "Frost Cage", Types = CardType.Enchantment, Subtypes = new[] { "Aura" }, EnchantTarget = new TargetSpec(TargetKind.Creature),
             Abilities = new AbilityDefinition[]
             {
                 new StaticAbility(new AffectedFilter(AffectedScope.Enchanted), Keywords: new[] { Keyword.CantAttack, Keyword.CantBlock }) { CantActivateAbilities = true },
@@ -595,19 +595,19 @@ public class DamageAndPreventionTests
             firstLegal ??= legal;
             return legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault() ?? PassPriority.Instance;
         };
-        s.InHand(P0, Spell("Giant Growth", "{1}", new SpellAbility
+        s.InHand(P0, Spell("Sudden Growth", "{1}", new SpellAbility
         {
             Targets = new[] { new TargetSpec(TargetKind.Creature) }, Effects = new Effect[] { new PumpUntilEndOfTurn(3, 3, Subject.TargetAt(0)) },
         }, CardType.Instant));
         await s.RunUntilTurn();
         Assert.DoesNotContain(firstLegal!, a => a is ActivateAbility x && x.Source == elf || a is ActivateManaAbility m && m.Source == elf);
         Assert.Equal(Zone.Graveyard, s.Card(cage).Zone);
-        Assert.Contains(s.Game.Log, e => e is SpellResolved r && s.Card(r.Card).Name == "Giant Growth"); // the spell still resolved
+        Assert.Contains(s.Game.Log, e => e is SpellResolved r && s.Card(r.Card).Name == "Sudden Growth"); // the spell still resolved
     }
 
     // ---------------------------------------------------------------- costs
 
-    private static CardDefinition ConsumeSpirit() => Spell("Consume Spirit", "{X}{1}{B}", new SpellAbility
+    private static CardDefinition ConsumeSpirit() => Spell("Spirit Drain", "{X}{1}{B}", new SpellAbility
     {
         Targets = new[] { new TargetSpec(TargetKind.Any) },
         Effects = new Effect[] { new DealDamage(new Quantity(0, QuantityKind.X), Subject.TargetAt(0)), new GainLife(new Quantity(0, QuantityKind.X), Subject.You) },
@@ -669,7 +669,7 @@ public class DamageAndPreventionTests
         Assert.Equal(Zone.Battlefield, s.Card(three).Zone);
     }
 
-    // ---------------------------------------------------------------- Chandra Nalaar
+    // ---------------------------------------------------------------- Fire Walker
 
     [Fact]
     public async Task LoyaltyMinusXChoosesXUpToLoyalty()
@@ -677,7 +677,7 @@ public class DamageAndPreventionTests
         var s = Casting();
         var walker = s.Add(P0, new CardDefinition
         {
-            Name = "Chandra", Types = CardType.Planeswalker, Loyalty = 6,
+            Name = "Fire Walker", Types = CardType.Planeswalker, Loyalty = 6,
             Abilities = new AbilityDefinition[]
             {
                 new ActivatedAbility
@@ -700,12 +700,12 @@ public class DamageAndPreventionTests
     }
 
     [Fact]
-    public async Task ChandraUltimateIsOneDamageEvent()
+    public async Task PlaneswalkerUltimateIsOneDamageEvent()
     {
         var s = Casting();
         var walker = s.Add(P0, new CardDefinition
         {
-            Name = "Chandra", Types = CardType.Planeswalker, Loyalty = 8,
+            Name = "Fire Walker", Types = CardType.Planeswalker, Loyalty = 8,
             Abilities = new AbilityDefinition[]
             {
                 new ActivatedAbility

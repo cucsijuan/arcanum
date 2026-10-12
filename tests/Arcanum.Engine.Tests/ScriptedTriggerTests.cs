@@ -179,7 +179,7 @@ public partial class ScriptedVocabularyTests
         s.Lands(P0, 1);
         s.Add(P1, Scripted("Guardian Totem", CardType.Artifact, "{2}", """{ "replaces": ["PreventNoncombatDamageToYourOtherCreatures"] }"""));
         var bear = s.Add(P1, Creature("Pale Bear", "{}", 2, 2));
-        s.InHand(P0, Scripted("Sure Strike", CardType.Instant, "{R}", $$"""{ "spell": { "targets": ["creature"], "effects": [{{effect}}] } }"""));
+        s.InHand(P0, Scripted("True Strike", CardType.Instant, "{R}", $$"""{ "spell": { "targets": ["creature"], "effects": [{{effect}}] } }"""));
         Acting(s, activations: 0);
         s.Attacker.Targets = (_, request) => new[] { request.LegalAt(0).First(t => t.Card == bear) };
         await s.RunUntilTurn();

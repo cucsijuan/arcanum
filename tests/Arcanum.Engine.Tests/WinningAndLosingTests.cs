@@ -13,7 +13,7 @@ namespace Arcanum.Engine.Tests;
 /// <summary>"You can't lose the game and your opponents can't win the game" and drawing from an empty library (rules 104, 704.5b).</summary>
 public class WinningAndLosingTests
 {
-    private static readonly CardDefinition Angel = Creature("Platinum Angel", 4, 4) with { Replaces = Replacements.YouCantLose };
+    private static readonly CardDefinition Angel = Creature("Steel Angel", 4, 4) with { Replaces = Replacements.YouCantLose };
 
     private static CardDefinition Sorcery(string name, params Effect[] effects) => new()
     {
@@ -52,7 +52,7 @@ public class WinningAndLosingTests
         s.Lands(P0, 2);
         var angel = s.Add(P0, Angel);
         var draw = s.InHand(P0, Sorcery("Deep Draw", new DrawCards(40, Subject.You)));
-        var doom = s.InHand(P0, Sorcery("Doom", new Destroy(Subject.Each(new ObjectFilter(Name: "Platinum Angel", Controller: ControllerFilter.Any)))));
+        var doom = s.InHand(P0, Sorcery("Doom", new Destroy(Subject.Each(new ObjectFilter(Name: "Steel Angel", Controller: ControllerFilter.Any)))));
         bool drewDry = false;
         s.Attacker.Act = (_, legal) =>
             legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == draw) is { } first ? first

@@ -290,7 +290,7 @@ public class TokenImageTests
     {
         var record = new CardRecord
         {
-            OracleId = "o-r", Name = "Topan Freeblade", Layout = "normal", ManaCost = "{1}{W}", TypeLine = "Creature — Human Soldier",
+            OracleId = "o-r", Name = "Free Blade", Layout = "normal", ManaCost = "{1}{W}", TypeLine = "Creature — Human Soldier",
             OracleText = "Vigilance\nRenown 1 (When this creature deals combat damage to a player, if it isn't renowned, put a +1/+1 counter on it and it becomes renowned.)",
             Power = "2", Toughness = "2", Keywords = new[] { "Vigilance", "Renown" },
         };

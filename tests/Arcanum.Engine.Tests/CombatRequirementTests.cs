@@ -22,7 +22,7 @@ public class CombatRequirementTests
     private static CardDefinition Jackal => Creature("Jackal", 2, 2, Keyword.CantAttackAlone, Keyword.CantBlockAlone);
     private static CardDefinition Bear => Creature("Bear", 2, 2);
     private static CardDefinition Lure => Creature("Unicorn", 2, 2, Keyword.Lure);
-    private static CardDefinition Guard => Creature("Palace Guard", 1, 4, Keyword.CanBlockAnyNumber);
+    private static CardDefinition Guard => Creature("Keep Guard", 1, 4, Keyword.CanBlockAnyNumber);
 
     private static List<AttackDeclaration> All(IReadOnlyList<CardId> attackers, PlayerId defender) =>
         attackers.Select(a => new AttackDeclaration(a, defender)).ToList();
@@ -463,7 +463,7 @@ public class CombatRequirementTests
         Assert.Equal(Zone.Graveyard, s.Card(aura).Zone);
     }
 
-    // ------------------------------------------------------------------ Stone Giant
+    // ------------------------------------------------------------------ Rock Giant
 
     [Fact]
     public async Task StoneGiantTargetsOnlyCreaturesWithLessToughnessThanItsPowerAndDestroysThemAtTheEndStep()
@@ -558,7 +558,7 @@ public class CombatRequirementTests
         Assert.Equal(Zone.Graveyard, s.Card(bear).Zone);
     }
 
-    // ------------------------------------------------------------------ Master of the Wild Hunt
+    // ------------------------------------------------------------------ Wild Huntmaster
 
     [Fact]
     public async Task TappedWolvesDamageTheTargetWhichDividesItsDamageAmongThem()
@@ -628,7 +628,7 @@ public class CombatRequirementTests
     {
         var s = new Scenario();
         var bear = s.Add(P0, Bear);
-        var wall = s.Add(P1, Creature("Wall of Frost", 0, 7, Keyword.Defender) with
+        var wall = s.Add(P1, Creature("Frost Wall", 0, 7, Keyword.Defender) with
         {
             Abilities = new AbilityDefinition[]
             {
@@ -652,7 +652,7 @@ public class CombatRequirementTests
 
     private static CardDefinition Vines => new()
     {
-        Name = "Entangling Vines", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Enchantment, Subtypes = new[] { "Aura" },
+        Name = "Binding Vines", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Enchantment, Subtypes = new[] { "Aura" },
         EnchantTarget = new TargetSpec(TargetKind.Creature, Filter: new ObjectFilter(Tapped: true, Controller: ControllerFilter.Any)),
         Abilities = new AbilityDefinition[] { new StaticAbility(new AffectedFilter(AffectedScope.Enchanted), Keywords: new[] { Keyword.DoesntUntap }) },
     };

@@ -68,7 +68,7 @@ public class OriginsCombatTests
 
     private static int Life(Scenario s, PlayerId p) => s.Game.State.GetPlayer(p).Life;
 
-    // ------------------------------------------------------------------ Archangel of Tithes
+    // ------------------------------------------------------------------ Tithe Angel
 
     [Theory]
     [InlineData(true)]
@@ -77,7 +77,7 @@ public class OriginsCombatTests
     {
         var s = new Scenario();
         s.Attacker.Act = (_, _) => PassPriority.Instance;
-        var angel = s.Add(P0, Card("Archangel of Tithes"));
+        var angel = s.Add(P0, Card("Tithe Angel"));
         var spiderA = s.Add(P1, Creature("Spider A", 1, 4, Keyword.Reach));
         var spiderB = s.Add(P1, Creature("Spider B", 1, 4, Keyword.Reach));
         var land = canPay ? s.Add(P1, GenericCards.Mountain) : (CardId?)null;
@@ -114,7 +114,7 @@ public class OriginsCombatTests
     {
         var s = new Scenario();
         s.Attacker.Act = (_, _) => PassPriority.Instance;
-        s.Add(P0, Card("Archangel of Tithes") with { Power = 9 }); // lethal unless blocked: the bot wants every blocker
+        s.Add(P0, Card("Tithe Angel") with { Power = 9 }); // lethal unless blocked: the bot wants every blocker
         s.Add(P1, Creature("Spider A", 1, 4, Keyword.Reach));
         s.Add(P1, Creature("Spider B", 1, 4, Keyword.Reach));
         s.Add(P1, GenericCards.Mountain);
@@ -133,7 +133,7 @@ public class OriginsCombatTests
     {
         var s = new Scenario();
         s.Attacker.Act = (_, _) => PassPriority.Instance;
-        var angel = s.Add(P0, Card("Archangel of Tithes"));
+        var angel = s.Add(P0, Card("Tithe Angel"));
         var bear = s.Add(P0, Creature("Bear", 2, 2));
         s.Add(P1, Creature("Wall", 0, 4));
         s.Attacker.Attack = (_, _, d) => new[] { new AttackDeclaration(bear, d[0]) };
@@ -150,7 +150,7 @@ public class OriginsCombatTests
         // "All creatures able to block it do so" asks for a block, but every block costs {1}: a requirement is never paid for (509.1c).
         var s = new Scenario();
         s.Attacker.Act = (_, _) => PassPriority.Instance;
-        s.Add(P0, Card("Archangel of Tithes"));
+        s.Add(P0, Card("Tithe Angel"));
         s.Add(P0, Creature("Bait", 1, 1, Keyword.Lure));
         s.Add(P1, GenericCards.Mountain);
         s.Add(P1, Creature("Wall", 0, 4));
@@ -168,7 +168,7 @@ public class OriginsCombatTests
     {
         var s = new Scenario();
         bool first = true;
-        var angel = s.Add(P1, Card("Archangel of Tithes"));
+        var angel = s.Add(P1, Card("Tithe Angel"));
         s.Attacker.Act = (_, _) =>
         {
             if (first) { first = false; s.Card(angel).Tapped = tapped; }
@@ -189,9 +189,9 @@ public class OriginsCombatTests
         s.Attacker.Act = (_, _) => PassPriority.Instance;
         var ground = s.Add(P0, Creature("Ground", 2, 2));
         var flyer = s.Add(P0, Creature("Flyer", 2, 2, Keyword.Flying));
-        var drake = s.Add(P1, Card("Scrapskin Drake"));
+        var drake = s.Add(P1, Card("Scrap Drake"));
         var walker = s.Add(P1, Creature("Walker", 2, 2));
-        s.Game.SetupPermanent(P1, Card("Stratus Walk"), walker);
+        s.Game.SetupPermanent(P1, Card("Cloud Walk"), walker);
         var plain = s.Add(P1, Creature("Plain", 2, 2));
         await s.RunUntilTurn();
         var request = s.Defender.LastBlockRequest!;
@@ -208,7 +208,7 @@ public class OriginsCombatTests
         var s = new Scenario();
         s.Attacker.Act = (_, _) => PassPriority.Instance;
         s.Add(P0, Creature("Bait", 1, 1, Keyword.Lure));
-        var drake = s.Add(P1, Card("Scrapskin Drake"));
+        var drake = s.Add(P1, Card("Scrap Drake"));
         s.Defender.Block = (_, _, _) => Array.Empty<BlockDeclaration>();
         int life = Life(s, P1);
         await s.RunUntilTurn();
@@ -222,14 +222,14 @@ public class OriginsCombatTests
         var s = new Scenario();
         Lands(s, P0, GenericCards.Island, 2);
         s.Add(P0, Creature("Bear", 2, 2));
-        s.InHand(P0, Card("Stratus Walk"));
+        s.InHand(P0, Card("Cloud Walk"));
         bool playing = false;
         int draws = 0;
         s.Game.EventRaised += e => { if (playing && e is CardDrawn d && d.Player == P0) draws++; };
-        Plays(s.Attacker, () => playing = true, Cast(s, "Stratus Walk"));
+        Plays(s.Attacker, () => playing = true, Cast(s, "Cloud Walk"));
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
         await s.RunUntilTurn();
-        var walk = s.Game.State.Cards.Values.Single(c => c.Name == "Stratus Walk");
+        var walk = s.Game.State.Cards.Values.Single(c => c.Name == "Cloud Walk");
         Assert.Equal(Zone.Battlefield, walk.Zone);
         Assert.Equal(1, draws); // the starting player skips the first draw step: only the Aura's draw
     }
@@ -239,7 +239,7 @@ public class OriginsCombatTests
     {
         var s = new Scenario();
         s.Attacker.Act = (_, _) => PassPriority.Instance;
-        var spirit = s.Add(P0, Card("Orchard Spirit"));
+        var spirit = s.Add(P0, Card("Grove Spirit"));
         var ground = s.Add(P1, Creature("Ground", 2, 2));
         var flyer = s.Add(P1, Creature("Flyer", 1, 1, Keyword.Flying));
         var reach = s.Add(P1, Creature("Spider", 1, 3, Keyword.Reach));
@@ -257,12 +257,12 @@ public class OriginsCombatTests
     public async Task AetherGridTapsTwoArtifactsEvenSummoningSickOnes()
     {
         var s = new Scenario();
-        s.Add(P0, Card("Ghirapur Aether Grid"));
+        s.Add(P0, Card("Aether Grid"));
         var golem = s.Add(P0, Creature("Golem", 1, 1) with { Types = CardType.Artifact | CardType.Creature });
         var trinket = s.Add(P0, new CardDefinition { Name = "Trinket", Types = CardType.Artifact });
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
         s.Attacker.Targets = (_, req) => new[] { Target.Of(P1) };
-        Plays(s.Attacker, () => s.Card(golem).ControlledSinceTurnStart = false, Activate(s, "Ghirapur Aether Grid"));
+        Plays(s.Attacker, () => s.Card(golem).ControlledSinceTurnStart = false, Activate(s, "Aether Grid"));
         int life = Life(s, P1);
         await s.RunUntilTurn();
         Assert.Equal(life - 1, Life(s, P1));
@@ -274,7 +274,7 @@ public class OriginsCombatTests
     public async Task AetherGridNeedsTwoUntappedArtifacts()
     {
         var s = new Scenario();
-        s.Add(P0, Card("Ghirapur Aether Grid"));
+        s.Add(P0, Card("Aether Grid"));
         s.Add(P0, new CardDefinition { Name = "Trinket", Types = CardType.Artifact });
         var tapped = s.Add(P0, new CardDefinition { Name = "Tapped Trinket", Types = CardType.Artifact });
         bool offered = false;
@@ -282,7 +282,7 @@ public class OriginsCombatTests
         s.Attacker.Act = (_, legal) =>
         {
             if (first) { first = false; s.Card(tapped).Tapped = true; return PassPriority.Instance; }
-            offered |= legal.OfType<ActivateAbility>().Any(a => s.Card(a.Source).Name == "Ghirapur Aether Grid");
+            offered |= legal.OfType<ActivateAbility>().Any(a => s.Card(a.Source).Name == "Aether Grid");
             return PassPriority.Instance;
         };
         await s.RunUntilTurn();
@@ -296,9 +296,9 @@ public class OriginsCombatTests
         Lands(s, P0, GenericCards.Island, 4);
         var raider = s.Add(P0, Creature("Raider", 3, 3));
         s.Add(P1, Creature("Wall", 0, 5));
-        s.InHand(P0, Card("Whirler Rogue"));
+        s.InHand(P0, Card("Whirling Rogue"));
         s.Attacker.Targets = (_, req) => req.LegalAt(0).Contains(Target.Of(raider)) ? new[] { Target.Of(raider) } : TestController.FirstAllowed(null!, req);
-        Plays(s.Attacker, null, Cast(s, "Whirler Rogue"), Activate(s, "Whirler Rogue"));
+        Plays(s.Attacker, null, Cast(s, "Whirling Rogue"), Activate(s, "Whirling Rogue"));
         s.Attacker.Attack = (_, _, d) => new[] { new AttackDeclaration(raider, d[0]) };
         s.Defender.Block = (_, blockers, attackers) => attackers.Count > 0 && blockers.Count > 0 ? new[] { new BlockDeclaration(blockers[0], attackers[0]) } : Array.Empty<BlockDeclaration>();
         int life = Life(s, P1);
@@ -315,7 +315,7 @@ public class OriginsCombatTests
     public async Task DiscipleOfTheRingExilesAnInstantOrSorceryCard(bool hasOne)
     {
         var s = new Scenario();
-        var disciple = s.Add(P0, Card("Disciple of the Ring"));
+        var disciple = s.Add(P0, Card("Ring Disciple"));
         s.Add(P0, GenericCards.Island);
         var spell = s.InHand(P0, hasOne ? GenericCards.EmberBolt with { Types = CardType.Sorcery } : Creature("Dead Bear", 2, 2));
         var corpse = s.InHand(P0, Creature("Corpse", 1, 1));
@@ -348,7 +348,7 @@ public class OriginsCombatTests
     {
         var s = new Scenario();
         Lands(s, P0, GenericCards.Island, 6);
-        var goliath = s.InHand(P0, Card("Skaab Goliath"));
+        var goliath = s.InHand(P0, Card("Stitched Goliath"));
         var dead = Enumerable.Range(0, creatures).Select(i => s.InHand(P0, Creature($"Dead {i}", 1, 1))).ToList();
         var bolt = s.InHand(P0, GenericCards.EmberBolt);
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
@@ -376,14 +376,14 @@ public class OriginsCombatTests
     {
         var s = new Scenario();
         Lands(s, P0, GenericCards.Swamp, 5);
-        s.InHand(P0, Card("Gilt-Leaf Winnower"));
+        s.InHand(P0, Card("Leaf Winnower"));
         var square = s.Add(P1, Creature("Square", 2, 2));
         var elf = s.Add(P1, Creature("Elf", 3, 1) with { Subtypes = new[] { "Elf" } });
         var lanky = s.Add(P1, Creature("Lanky", 3, 1));
         TargetRequest? seen = null;
         s.Attacker.Targets = (_, req) => { seen ??= req; return TestController.FirstAllowed(null!, req); };
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
-        Plays(s.Attacker, null, Cast(s, "Gilt-Leaf Winnower"));
+        Plays(s.Attacker, null, Cast(s, "Leaf Winnower"));
         await s.RunUntilTurn();
         Assert.Equal(new[] { Target.Of(lanky) }, seen!.LegalAt(0));
         Assert.Equal(Zone.Graveyard, s.Card(lanky).Zone);
@@ -392,11 +392,11 @@ public class OriginsCombatTests
     }
 
     [Fact]
-    public async Task KothophedDrawsForEachPermanentAnotherPlayerOwnsGoingToAGraveyard()
+    public async Task SoulHoarderDrawsForEachPermanentAnotherPlayerOwnsGoingToAGraveyard()
     {
         var s = new Scenario();
         Lands(s, P0, GenericCards.Swamp, 1);
-        s.Add(P0, Card("Kothophed, Soul Hoarder"));
+        s.Add(P0, Card("Soul Hoarder"));
         s.Add(P0, Creature("Mine", 1, 1));
         var borrowed = s.Add(P1, Creature("Borrowed", 1, 1));
         s.Add(P1, Creature("Theirs", 2, 2));
@@ -425,7 +425,7 @@ public class OriginsCombatTests
         var hero = s.Add(P0, Creature("Hero", 2, 2));
         var friend = s.Add(P0, Creature("Friend", 1, 1));
         s.Add(P0, Creature("Other", 1, 1));
-        s.Game.SetupPermanent(P0, Card("Sigil of Valor"), hero);
+        s.Game.SetupPermanent(P0, Card("Valor Sigil"), hero);
         s.Add(P1, Creature("Enemy", 5, 5)); // not counted: not controlled by the Sigil's controller
         s.Defender.Block = (_, _, _) => Array.Empty<BlockDeclaration>();
         s.Attacker.Attack = (_, _, d) => (alone ? new[] { hero } : new[] { hero, friend }).Select(a => new AttackDeclaration(a, d[0])).ToList();
@@ -439,14 +439,14 @@ public class OriginsCombatTests
     {
         var s = new Scenario();
         Lands(s, P0, GenericCards.Island, 4); // X = 2
-        s.InHand(P0, Card("Displacement Wave"));
+        s.InHand(P0, Card("Sweeping Wave"));
         var two = s.Add(P1, Creature("Two", 2, 2) with { ManaCost = ManaCost.Parse("{1}{G}") });
         var three = s.Add(P1, Creature("Three", 3, 3) with { ManaCost = ManaCost.Parse("{2}{G}") });
         var token = s.Add(P1, Creature("Token", 1, 1) with { IsToken = true, ManaCost = ManaCost.Zero });
         var mine = s.Add(P0, Creature("Mine", 1, 1));
         var forest = s.Add(P1, GenericCards.Forest);
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
-        Plays(s.Attacker, null, Cast(s, "Displacement Wave"));
+        Plays(s.Attacker, null, Cast(s, "Sweeping Wave"));
         await s.RunUntilTurn();
         bool Returned(CardId id) => s.Game.Log.Any(e => e is CardMoved { From: Zone.Battlefield, To: Zone.Hand } m && m.Card == id);
         Assert.True(Returned(two));
@@ -464,7 +464,7 @@ public class OriginsCombatTests
         var s = new Scenario();
         Lands(s, P0, GenericCards.Mountain, 1);
         Lands(s, P0, GenericCards.Forest, 1);
-        var revenge = s.Add(P0, Card("Gaea's Revenge"));
+        var revenge = s.Add(P0, Card("Wild Revenge"));
         var bear = s.Add(P0, Creature("Bear", 2, 2));
         s.InHand(P0, GenericCards.EmberBolt);
         s.InHand(P0, Scripted("Green Bolt", CardType.Instant, "{G}", """{ "spell": { "targets": ["creature"], "effects": [{ "damage": 1, "to": "target" }] } }""") with { ColorIdentity = new[] { "G" } });
@@ -501,12 +501,12 @@ public class OriginsCombatTests
         Lands(s, P0, GenericCards.Mountain, 1);
         Lands(s, P1, GenericCards.Island, 2);
         var bolt = s.InHand(P0, GenericCards.EmberBolt);
-        s.InHand(P1, Card("Psychic Rebuttal"));
+        s.InHand(P1, Card("Mind Rebuttal"));
         var old = Enumerable.Range(0, mastery ? 2 : 1).Select(i => s.InHand(P1, Instant($"Old {i}"))).ToList();
         s.Attacker.Targets = (_, req) => new[] { Target.Of(P1) };
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
         Plays(s.Attacker, () => { foreach (var o in old) ToGraveyard(s, o); }, Cast(s, "Ember Bolt"));
-        Responds(s, "Psychic Rebuttal");
+        Responds(s, "Mind Rebuttal");
         s.Defender.Targets = (_, req) => req.LegalAt(0).Contains(Target.Of(P0)) ? new[] { Target.Of(P0) } : TestController.FirstAllowed(null!, req);
         int life0 = Life(s, P0), life1 = Life(s, P1);
         await s.RunUntilTurn();
@@ -523,14 +523,14 @@ public class OriginsCombatTests
         Lands(s, P1, GenericCards.Island, 2);
         var victim = s.Add(P1, Creature("Victim", 2, 2));
         s.InHand(P0, GenericCards.EmberBolt);
-        s.InHand(P1, Card("Psychic Rebuttal"));
+        s.InHand(P1, Card("Mind Rebuttal"));
         s.Attacker.Targets = (_, req) => new[] { Target.Of(victim) };
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
         Plays(s.Attacker, null, Cast(s, "Ember Bolt"));
         bool offered = false;
         s.Defender.Act = (_, legal) =>
         {
-            offered |= legal.OfType<CastSpell>().Any(c => s.Card(c.Card).Name == "Psychic Rebuttal");
+            offered |= legal.OfType<CastSpell>().Any(c => s.Card(c.Card).Name == "Mind Rebuttal");
             return PassPriority.Instance;
         };
         await s.RunUntilTurn();
@@ -546,14 +546,14 @@ public class OriginsCombatTests
         var s = new Scenario();
         Lands(s, P0, GenericCards.Mountain, 3);
         Lands(s, P1, GenericCards.Island, 2);
-        var firecraft = s.InHand(P0, Card("Exquisite Firecraft"));
-        s.InHand(P1, Card("Psychic Rebuttal"));
+        var firecraft = s.InHand(P0, Card("Fine Firecraft"));
+        s.InHand(P1, Card("Mind Rebuttal"));
         var old = Enumerable.Range(0, mastery ? 2 : 1).Select(i => s.InHand(P0, Instant($"Old {i}"))).ToList();
         var theirOld = Enumerable.Range(0, 2).Select(i => s.InHand(P1, Instant($"Their Old {i}"))).ToList();
         s.Attacker.Targets = (_, req) => new[] { Target.Of(P1) };
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
-        Plays(s.Attacker, () => { foreach (var o in old.Concat(theirOld)) ToGraveyard(s, o); }, Cast(s, "Exquisite Firecraft"));
-        Responds(s, "Psychic Rebuttal");
+        Plays(s.Attacker, () => { foreach (var o in old.Concat(theirOld)) ToGraveyard(s, o); }, Cast(s, "Fine Firecraft"));
+        Responds(s, "Mind Rebuttal");
         s.Defender.Targets = (_, req) => req.LegalAt(0).Contains(Target.Of(P0)) ? new[] { Target.Of(P0) } : TestController.FirstAllowed(null!, req);
         int life0 = Life(s, P0), life1 = Life(s, P1);
         await s.RunUntilTurn();
@@ -580,11 +580,11 @@ public class OriginsCombatTests
         Lands(s, P1, GenericCards.Island, 3);
         var victim = s.Add(P1, Creature("Victim", 2, 2));
         s.InHand(P0, GenericCards.EmberBolt);
-        var meddler = s.InHand(P1, Card("Mizzium Meddler"));
+        var meddler = s.InHand(P1, Card("Spell Meddler"));
         s.Attacker.Targets = (_, req) => new[] { Target.Of(victim) };
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
         Plays(s.Attacker, null, Cast(s, "Ember Bolt"));
-        Responds(s, "Mizzium Meddler");
+        Responds(s, "Spell Meddler");
         OptionRequest? asked = null;
         s.Defender.Option = (_, req) => { asked = req; return 0; };
         await s.RunUntilTurn();
@@ -604,11 +604,11 @@ public class OriginsCombatTests
         var victim = s.Add(P1, Creature("Victim", 1, 1));
         s.InHand(P0, Scripted("Twin Shot", CardType.Instant, "{R}",
             """{ "spell": { "targets": ["creature", "player"], "effects": [{ "damage": 1, "to": "target" }, { "damage": 1, "to": "target2" }] } }"""));
-        var meddler = s.InHand(P1, Card("Mizzium Meddler"));
+        var meddler = s.InHand(P1, Card("Spell Meddler"));
         s.Attacker.Targets = (_, req) => new[] { Target.Of(victim), Target.Of(P1) };
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
         Plays(s.Attacker, null, Cast(s, "Twin Shot"));
-        Responds(s, "Mizzium Meddler");
+        Responds(s, "Spell Meddler");
         OptionRequest? asked = null;
         s.Defender.Option = (_, req) => { asked = req; return 0; };
         int life = Life(s, P1);
@@ -626,11 +626,11 @@ public class OriginsCombatTests
         Lands(s, P0, GenericCards.Mountain, 1);
         Lands(s, P1, GenericCards.Island, 3);
         s.InHand(P0, Scripted("Mind Jab", CardType.Instant, "{R}", """{ "spell": { "targets": ["player"], "effects": [{ "loseLife": 3, "who": "target" }] } }"""));
-        s.InHand(P1, Card("Mizzium Meddler"));
+        s.InHand(P1, Card("Spell Meddler"));
         s.Attacker.Targets = (_, req) => new[] { Target.Of(P1) };
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
         Plays(s.Attacker, null, Cast(s, "Mind Jab"));
-        Responds(s, "Mizzium Meddler");
+        Responds(s, "Spell Meddler");
         bool asked = false;
         s.Defender.Option = (_, _) => { asked = true; return 0; };
         int life = Life(s, P1);

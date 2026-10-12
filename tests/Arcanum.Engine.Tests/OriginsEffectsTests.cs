@@ -63,7 +63,7 @@ public class OriginsEffectsTests
     private static CardDefinition Bolt => Make("Test Bolt", "Instant", """{ "spell": { "targets": ["any"], "effects": [{ "damage": 3, "to": "target" }] } }""", "{1}");
     private static CardDefinition Glyph(string name, string cost = "{1}") => Make(name, "Enchantment", "{}", cost);
 
-    // ------------------------------------------------------------------ Starfield of Nyx
+    // ------------------------------------------------------------------ Star Field
 
     private const string Starfield = """
         { "abilities": [
@@ -78,7 +78,7 @@ public class OriginsEffectsTests
     public async Task StarfieldOfNyxGivesEachOtherNonAuraEnchantmentBasePowerAndToughnessEqualToItsOwnManaValue()
     {
         var s = new Scenario();
-        var starfield = s.Add(P0, Make("Starfield of Nyx", "Enchantment", Starfield, "{4}{W}"));
+        var starfield = s.Add(P0, Make("Star Field", "Enchantment", Starfield, "{4}{W}"));
         var one = s.Add(P0, Glyph("Small Glyph", "{1}"));
         var three = s.Add(P0, Glyph("Big Glyph", "{2}{W}"));
         var aura = s.Add(P0, Make("Odd Aura", "Enchantment — Aura", "{}", "{2}"));
@@ -89,7 +89,7 @@ public class OriginsEffectsTests
         Assert.False(s.Card(one).IsCreature);
 
         var s2 = new Scenario();
-        s2.Add(P0, Make("Starfield of Nyx", "Enchantment", Starfield, "{4}{W}"));
+        s2.Add(P0, Make("Star Field", "Enchantment", Starfield, "{4}{W}"));
         var a = s2.Add(P0, Glyph("Small Glyph", "{1}"));
         var b = s2.Add(P0, Glyph("Big Glyph", "{2}{W}"));
         var aura2 = s2.Add(P0, Make("Odd Aura", "Enchantment — Aura", "{}", "{2}"));
@@ -102,16 +102,16 @@ public class OriginsEffectsTests
         Assert.Equal((3, 3), (s2.Card(b).Power, s2.Card(b).Toughness));
         Assert.False(s2.Card(aura2).IsCreature); // Auras aren't affected
         Assert.False(s2.Card(theirs2).IsCreature); // only yours
-        Assert.DoesNotContain(s2.Game.State.Battlefield, id => s2.Card(id).Name == "Starfield of Nyx" && s2.Card(id).IsCreature); // "each other"
+        Assert.DoesNotContain(s2.Game.State.Battlefield, id => s2.Card(id).Name == "Star Field" && s2.Card(id).IsCreature); // "each other"
         _ = starfield; _ = three; _ = aura; _ = theirs;
     }
 
-    // ------------------------------------------------------------------ Tragic Arrogance
+    // ------------------------------------------------------------------ Proud Ruin
 
     [Fact]
     public async Task TragicArroganceLetsYouChooseForEachPlayerAndEveryoneSacrificesTheRestAtOnceButNotLands()
     {
-        var arrogance = Make("Tragic Arrogance", "Sorcery", """
+        var arrogance = Make("Proud Ruin", "Sorcery", """
             { "spell": { "effects": [{ "keepOneOfEachType": "everyone", "chooser": "you", "kinds": ["artifact", "creature", "enchantment", "planeswalker"], "nonlandOnly": true }] } }
             """, "{1}");
         var s = new Scenario();
@@ -126,7 +126,7 @@ public class OriginsEffectsTests
         s.InHand(P0, arrogance);
         // You choose: the golem both as artifact and creature, Glyph B, and your second creature.
         s.Attacker.Choose = (_, req) => new[] { req.Options.FirstOrDefault(o => o.Name is "Iron Golem" or "Glyph B" or "Mine Two")?.Id ?? req.Options[0].Id };
-        Script(s, Cast(s, "Tragic Arrogance"));
+        Script(s, Cast(s, "Proud Ruin"));
         await s.RunUntilTurn();
         Assert.Equal(Zone.Battlefield, s.Card(golem).Zone);
         Assert.Equal(Zone.Graveyard, s.Card(bear).Zone);
@@ -139,12 +139,12 @@ public class OriginsEffectsTests
         Assert.Null(s.Defender.LastChoice); // the opponent chose nothing
     }
 
-    // ------------------------------------------------------------------ Alhammarret, High Arbiter
+    // ------------------------------------------------------------------ Sphinx Arbiter
 
     [Fact]
-    public async Task AlhammarretNamesARevealedNonlandCardAndOpponentsCantCastItWhileItHasItsAbilities()
+    public async Task SphinxArbiterNamesARevealedNonlandCardAndOpponentsCantCastItWhileItHasItsAbilities()
     {
-        var arbiter = Make("Alhammarret, High Arbiter", "Legendary Creature — Sphinx",
+        var arbiter = Make("Sphinx Arbiter", "Legendary Creature — Sphinx",
             """{ "chooseOnEnter": "opponentsRevealHandsThenNonlandName", "opponentsCantCastChosenName": true }""", "{1}", "5/5", "Flying");
         var s = new Scenario();
         s.Lands(P0, 1);
@@ -154,11 +154,11 @@ public class OriginsEffectsTests
         s.InHand(P0, arbiter);
         var offered = new List<string>();
         s.Attacker.Option = (_, req) => { offered.AddRange(req.Options); return req.Options.ToList().IndexOf("Test Bolt"); };
-        Script(s, Cast(s, "Alhammarret, High Arbiter"));
+        Script(s, Cast(s, "Sphinx Arbiter"));
         IReadOnlyList<PlayerAction>? theirs = null;
         s.Defender.Act = (_, legal) => { theirs ??= legal; return PassPriority.Instance; };
         await s.RunUntilTurn();
-        var hal = s.Game.State.Battlefield.Select(s.Card).Single(c => c.Name.StartsWith("Alhammarret"));
+        var hal = s.Game.State.Battlefield.Select(s.Card).Single(c => c.Name.StartsWith("Sphinx Arbiter"));
         Assert.Equal("Test Bolt", hal.ChosenName);
         Assert.DoesNotContain("Forest", offered); // only nonland cards revealed this way
         Assert.Contains("Test Shard", offered);
@@ -178,23 +178,23 @@ public class OriginsEffectsTests
         IReadOnlyList<PlayerAction>? before = null, after = null;
         s2.Game.EventRaised += e =>
         {
-            if (e is SpellResolved r && s2.Card(r.Card).Name.StartsWith("Alhammarret")) before = null;
+            if (e is SpellResolved r && s2.Card(r.Card).Name.StartsWith("Sphinx Arbiter")) before = null;
             if (e is SpellCast c && c.Card == hush) before = s2.Game.GetLegalActions(P1);
             if (e is SpellResolved h && h.Card == hush) after = Array.Empty<PlayerAction>();
         };
         s2.Defender.Act = (_, legal) => { if (after is { Count: 0 }) after = legal; return PassPriority.Instance; };
-        Script(s2, Cast(s2, "Alhammarret, High Arbiter"), Cast(s2, "Hush"));
+        Script(s2, Cast(s2, "Sphinx Arbiter"), Cast(s2, "Hush"));
         await s2.RunUntilTurn();
         Assert.DoesNotContain(before!, a => a is CastSpell c && c.Card == bolt2);
         Assert.Contains(after!, a => a is CastSpell c && c.Card == bolt2);
     }
 
-    // ------------------------------------------------------------------ Day's Undoing, The Great Aurora
+    // ------------------------------------------------------------------ Fresh Start, Grand Aurora
 
     [Fact]
     public async Task DaysUndoingShufflesHandsAndGraveyardsAwayDrawsSevenAndEndsYourTurn()
     {
-        var undoing = Make("Day's Undoing", "Sorcery", """
+        var undoing = Make("Fresh Start", "Sorcery", """
             { "spell": { "effects": [{ "shuffleIntoLibraries": "everyone", "hand": true, "graveyard": true }, { "draw": 7, "who": "everyone" },
                                      { "if": "yourTurn", "then": [{ "endTurn": true }] }] } }
             """, "{1}");
@@ -207,7 +207,7 @@ public class OriginsEffectsTests
         var spell = s.InHand(P0, undoing);
         int moved = 0;
         s.Game.EventRaised += e => { if (e is CardMoved { To: Zone.Library }) moved++; };
-        Script(s, Cast(s, "Day's Undoing"));
+        Script(s, Cast(s, "Fresh Start"));
         await s.RunUntilTurn();
         Assert.Equal(Zone.Library, s.Card(dead).Zone == Zone.Hand ? Zone.Library : s.Card(dead).Zone); // shuffled in (maybe drawn again)
         Assert.Empty(s.Game.State.GetPlayer(P0).Graveyard);
@@ -221,7 +221,7 @@ public class OriginsEffectsTests
     [Fact]
     public async Task TheGreatAuroraShufflesHandsAndOwnedPermanentsAwayDrawsThatManyAndPutsLandsOntoTheBattlefield()
     {
-        var aurora = Make("The Great Aurora", "Sorcery", """
+        var aurora = Make("Grand Aurora", "Sorcery", """
             { "spell": { "effects": [{ "shuffleIntoLibraries": "everyone", "hand": true, "permanents": true, "drawThatMany": true },
                                      { "eachPutsFromHand": { "types": ["land"] }, "who": "everyone" }, { "exileThisSpell": true }] } }
             """, "{1}");
@@ -233,7 +233,7 @@ public class OriginsEffectsTests
         // P0 puts every land; P1 puts none.
         s.Attacker.Choose = (_, req) => req.Purpose == CardChoicePurpose.ToBattlefield ? req.Options.Select(o => o.Id).ToList() : req.Options.Take(req.Min).Select(o => o.Id).ToList();
         int p0Hand = 0;
-        Script(s, legal => { p0Hand = s.Game.State.GetPlayer(P0).Hand.Count; return Cast(s, "The Great Aurora")(legal); });
+        Script(s, legal => { p0Hand = s.Game.State.GetPlayer(P0).Hand.Count; return Cast(s, "Grand Aurora")(legal); });
         await s.RunUntilTurn();
         Assert.Equal(Zone.Exile, s.Card(spell).Zone);
         Assert.False(s.Game.State.Cards.ContainsKey(token) && s.Card(token).Zone == Zone.Battlefield);
@@ -246,19 +246,19 @@ public class OriginsEffectsTests
         Assert.Empty(s.Game.State.PermanentsControlledBy(P1));
     }
 
-    // ------------------------------------------------------------------ Jace, Vryn's Prodigy // Jace, Telepath Unbound
+    // ------------------------------------------------------------------ Young Prodigy // Unbound Telepath
 
-    private static CardDefinition Jace()
+    private static CardDefinition Prodigy()
     {
-        var front = Make("Jace, Vryn's Prodigy", "Legendary Creature — Human Wizard", """
+        var front = Make("Young Prodigy", "Legendary Creature — Human Wizard", """
             { "abilities": [{ "cost": "{T}", "effects": [{ "draw": 1 }, { "discard": 1 }, { "if": { "graveyard": 5 }, "then": [{ "blink": "self", "transformed": true }] }] }] }
             """, "{1}{U}", "0/2");
-        var back = Make("Jace, Telepath Unbound", "Legendary Planeswalker — Jace", """
+        var back = Make("Unbound Telepath", "Legendary Planeswalker — Jace", """
             { "abilities": [
               { "cost": "+1", "targets": [{ "kind": "creature", "optional": true }], "effects": [{ "pump": [-2, 0], "what": "target", "untilYourNextTurn": true }] },
               { "cost": "-3", "targets": [{ "kind": "graveyardCard", "controller": "you", "filter": { "types": ["instant", "sorcery"] } }],
                 "effects": [{ "castFromGraveyardThisTurn": "target", "exileInstead": true }] },
-              { "cost": "-9", "effects": [{ "emblem": "Jace, Telepath Unbound", "abilities": [
+              { "cost": "-9", "effects": [{ "emblem": "Unbound Telepath", "abilities": [
                   { "trigger": "castSpell", "targets": ["opponent"], "effects": [{ "mill": 5, "who": "target" }], "text": "Whenever you cast a spell, target opponent mills five cards." }] }] }] }
             """, "", null, "", "5");
         return front with { BackFace = back };
@@ -268,14 +268,14 @@ public class OriginsEffectsTests
     public async Task JaceLootsAndWithFiveCardsInTheGraveyardComesBackTransformedWithLoyalty()
     {
         var s = new Scenario();
-        var jace = s.Add(P0, Jace());
+        var prodigy = s.Add(P0, Prodigy());
         for (int i = 0; i < 4; i++) ToGraveyard(s, P0, s.InHand(P0, Glyph($"Old {i}")));
-        Script(s, Activate(s, "Jace, Vryn's Prodigy"));
+        Script(s, Activate(s, "Young Prodigy"));
         await s.RunUntilTurn();
-        var card = s.Card(jace);
+        var card = s.Card(prodigy);
         Assert.Equal(Zone.Battlefield, card.Zone);
         Assert.True(card.Transformed);
-        Assert.Equal("Jace, Telepath Unbound", card.Name);
+        Assert.Equal("Unbound Telepath", card.Name);
         Assert.Equal(5, card.CounterCount(CounterKind.Loyalty));
     }
 
@@ -284,23 +284,23 @@ public class OriginsEffectsTests
     {
         var s = new Scenario();
         s.Lands(P0, 1);
-        var jace = s.Add(P0, Jace());
+        var prodigy = s.Add(P0, Prodigy());
         var bolt = s.InHand(P0, Bolt);
         ToGraveyard(s, P0, bolt);
         for (int i = 0; i < 3; i++) ToGraveyard(s, P0, s.InHand(P0, Glyph($"Old {i}")));
         s.Attacker.Targets = (_, req) => new[] { req.LegalAt(0).FirstOrDefault(t => t.Card == bolt || t.Player == P1) };
         s.Attacker.Act = (_, legal) =>
-            legal.OfType<ActivateAbility>().Cast<PlayerAction>().FirstOrDefault(a => ((ActivateAbility)a).Source == jace && (!s.Card(jace).Transformed || ((ActivateAbility)a).Index == 1))
+            legal.OfType<ActivateAbility>().Cast<PlayerAction>().FirstOrDefault(a => ((ActivateAbility)a).Source == prodigy && (!s.Card(prodigy).Transformed || ((ActivateAbility)a).Index == 1))
             ?? legal.OfType<CastSpell>().Cast<PlayerAction>().FirstOrDefault(c => ((CastSpell)c).Card == bolt)
             ?? PassPriority.Instance;
         s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
         await s.RunUntilTurn();
         Assert.Equal(17, s.Game.State.GetPlayer(P1).Life);
         Assert.Equal(Zone.Exile, s.Card(bolt).Zone);
-        Assert.Equal(2, s.Card(jace).CounterCount(CounterKind.Loyalty));
+        Assert.Equal(2, s.Card(prodigy).CounterCount(CounterKind.Loyalty));
     }
 
-    // ------------------------------------------------------------------ Flameshadow Conjuring
+    // ------------------------------------------------------------------ Flame Echo
 
     private const string Flameshadow = """
         { "abilities": [{ "trigger": "creatureEnters", "filter": { "types": ["creature"], "token": false },
@@ -312,7 +312,7 @@ public class OriginsEffectsTests
     {
         var s = new Scenario();
         s.Lands(P0, 2);
-        s.Add(P0, Make("Flameshadow Conjuring", "Enchantment", Flameshadow, "{3}{R}"));
+        s.Add(P0, Make("Flame Echo", "Enchantment", Flameshadow, "{3}{R}"));
         s.InHand(P0, Scenario.Creature("Ogre", 3, 3));
         Card? token = null;
         bool hadHaste = false, copiableHaste = true;
@@ -340,7 +340,7 @@ public class OriginsEffectsTests
     {
         var s = new Scenario();
         s.Lands(P0, 2);
-        s.Add(P0, Make("Flameshadow Conjuring", "Enchantment", Flameshadow, "{3}{R}"));
+        s.Add(P0, Make("Flame Echo", "Enchantment", Flameshadow, "{3}{R}"));
         s.InHand(P0, Scenario.Creature("Hollow Shade", 0, 0)); // dies to state-based actions before the trigger resolves
         var made = new List<string>();
         s.Game.EventRaised += e => { if (e is TokenCreated t) made.Add(s.Card(t.Card).Name); };
@@ -349,12 +349,12 @@ public class OriginsEffectsTests
         Assert.Equal(new[] { "Hollow Shade" }, made);
     }
 
-    // ------------------------------------------------------------------ Nissa's Revelation, Talent of the Telepath
+    // ------------------------------------------------------------------ Forest Revelation, Telepath's Gift
 
     [Fact]
-    public async Task NissasRevelationDrawsAndGainsFromTheRevealedCreaturesPowerAndToughness()
+    public async Task ForestRevelationDrawsAndGainsFromTheRevealedCreaturesPowerAndToughness()
     {
-        var revelation = Make("Nissa's Revelation", "Sorcery", """
+        var revelation = Make("Forest Revelation", "Sorcery", """
             { "spell": { "effects": [{ "scry": 5 }, { "revealTop": { "types": ["creature"] }, "effects": [{ "draw": { "power": "found" } }, { "gainLife": { "toughness": "found" } }] }] } }
             """, "{1}");
         var s = new Scenario();
@@ -362,7 +362,7 @@ public class OriginsEffectsTests
         var beast = s.Game.SetupInLibrary(P0, Scenario.Creature("Big Beast", 3, 4));
         s.InHand(P0, revelation);
         bool stacked = false;
-        Script(s, legal => { if (!stacked) { stacked = true; s.Restack(P0, beast); } return Cast(s, "Nissa's Revelation")(legal); });
+        Script(s, legal => { if (!stacked) { stacked = true; s.Restack(P0, beast); } return Cast(s, "Forest Revelation")(legal); });
         int handBefore = 0;
         s.Game.EventRaised += e => { if (e is SpellCast) handBefore = s.Game.State.GetPlayer(P0).Hand.Count; };
         int drawn = 0;
@@ -375,7 +375,7 @@ public class OriginsEffectsTests
         _ = handBefore;
     }
 
-    private static CardDefinition Talent() => Make("Talent of the Telepath", "Sorcery", """
+    private static CardDefinition Talent() => Make("Telepath's Gift", "Sorcery", """
         { "spell": { "targets": ["opponent"], "effects": [{ "revealTopCastFree": 7, "of": "target", "filter": { "types": ["instant", "sorcery"] }, "casts": 1,
             "moreCastsIf": { "graveyard": 2, "filter": { "types": ["instant", "sorcery"] } }, "moreCasts": 2, "rest": "graveyard" }] } }
         """, "{1}");
@@ -394,19 +394,19 @@ public class OriginsEffectsTests
         bool stacked = false;
         s.Attacker.Choose = (_, req) => req.Options.Take(1).Select(o => o.Id).ToList();
         s.Attacker.Targets = (_, req) => new[] { req.LegalAt(0).FirstOrDefault(t => t.Player == P1) };
-        Script(s, legal => { if (!stacked) { stacked = true; s.Restack(P1, bolts); } return Cast(s, "Talent of the Telepath")(legal); });
+        Script(s, legal => { if (!stacked) { stacked = true; s.Restack(P1, bolts); } return Cast(s, "Telepath's Gift")(legal); });
         await s.RunUntilTurn();
         Assert.Equal(20 - 3 * casts, s.Game.State.GetPlayer(P1).Life);
         Assert.Equal(7, s.Game.State.GetPlayer(P1).Graveyard.Count); // the bolts cast went to their owner's graveyard after resolving
         Assert.Equal(casts, s.Game.Log.OfType<SpellCast>().Count(c => c.Player == P0 && s.Card(c.Card).Name == "Test Bolt"));
     }
 
-    // ------------------------------------------------------------------ Infinite Obliteration, Nightsnare
+    // ------------------------------------------------------------------ Total Erasure, Nightsnare
 
     [Fact]
     public async Task InfiniteObliterationExilesCardsWithTheNameFromGraveyardHandAndLibrary()
     {
-        var obliteration = Make("Infinite Obliteration", "Sorcery", """
+        var obliteration = Make("Total Erasure", "Sorcery", """
             { "spell": { "targets": ["opponent"], "effects": [{ "nameAndExile": "target", "nameFilter": { "types": ["creature"] } }] } }
             """, "{1}");
         var s = new Scenario();
@@ -419,9 +419,9 @@ public class OriginsEffectsTests
         List<string>? names = null;
         s.Attacker.Option = (_, req) => { names = req.Options.ToList(); return names.IndexOf("Grizzly"); };
         s.Attacker.Choose = (_, req) => req.Options.Select(o => o.Id).ToList();
-        Script(s, Cast(s, "Infinite Obliteration"));
+        Script(s, Cast(s, "Total Erasure"));
         await s.RunUntilTurn();
-        Assert.DoesNotContain("Infinite Obliteration", names!); // only creature card names
+        Assert.DoesNotContain("Total Erasure", names!); // only creature card names
         Assert.All(new[] { inHand, inGrave, inLibrary }, id => Assert.Equal(Zone.Exile, s.Card(id).Zone));
     }
 
@@ -445,12 +445,12 @@ public class OriginsEffectsTests
         if (choose) Assert.Equal(bear, discarded.Single());
     }
 
-    // ------------------------------------------------------------------ Turn to Frog
+    // ------------------------------------------------------------------ Frog Curse
 
     [Fact]
     public async Task TurnToFrogKeepsTheLandTypesOfALandCreatureAndRemovesEverythingElse()
     {
-        var frog = Make("Turn to Frog", "Instant", """
+        var frog = Make("Frog Curse", "Instant", """
             { "spell": { "targets": ["creature"], "effects": [{ "become": "target", "power": 1, "toughness": 1, "setColors": ["U"], "setSubtypes": ["Frog"], "loseAbilities": true }] } }
             """, "{1}");
         var s = new Scenario();
@@ -466,7 +466,7 @@ public class OriginsEffectsTests
             var c = s.Card(dryad);
             (power, toughness, flying, forest, dryadType, frogType, colors) = (c.Power, c.Toughness, c.Has(Keyword.Flying), c.HasSubtype("Forest"), c.HasSubtype("Dryad"), c.HasSubtype("Frog"), c.Colors);
         };
-        Script(s, Cast(s, "Turn to Frog"));
+        Script(s, Cast(s, "Frog Curse"));
         await s.RunUntilTurn();
         Assert.Equal((1, 1), (power, toughness));
         Assert.False(flying);
@@ -480,36 +480,36 @@ public class OriginsEffectsTests
     [Fact]
     public async Task AnAnimatedPlaneswalkerTurnedIntoAFrogKeepsItsPlaneswalkerType()
     {
-        var frog = Make("Turn to Frog", "Instant", """
+        var frog = Make("Frog Curse", "Instant", """
             { "spell": { "targets": ["creature"], "effects": [{ "become": "target", "power": 1, "toughness": 1, "setColors": ["U"], "setSubtypes": ["Frog"], "loseAbilities": true }] } }
             """, "{1}");
         var s = new Scenario();
         s.Lands(P0, 1);
-        var gideon = s.Add(P1, Make("Animated Gideon", "Legendary Planeswalker Creature — Gideon Human Soldier", "{}", "", "4/4", loyalty: "3"));
-        s.Card(gideon).Counters[CounterKind.Loyalty] = 3; // set up on the battlefield without entering, so no loyalty yet
+        var champion = s.Add(P1, Make("Animated Champion", "Legendary Planeswalker Creature — Gideon Human Soldier", "{}", "", "4/4", loyalty: "3"));
+        s.Card(champion).Counters[CounterKind.Loyalty] = 3; // set up on the battlefield without entering, so no loyalty yet
         s.InHand(P0, frog);
         bool gideonType = false, humanType = true, frogType = false;
         s.Game.EventRaised += e =>
         {
             if (e is not SpellResolved) return;
-            var c = s.Card(gideon);
+            var c = s.Card(champion);
             (gideonType, humanType, frogType) = (c.HasSubtype("Gideon"), c.HasSubtype("Human"), c.HasSubtype("Frog"));
         };
-        Script(s, Cast(s, "Turn to Frog"));
+        Script(s, Cast(s, "Frog Curse"));
         await s.RunUntilTurn();
         Assert.True(gideonType);
         Assert.False(humanType);
         Assert.True(frogType);
     }
 
-    // ------------------------------------------------------------------ Mage-Ring Network
+    // ------------------------------------------------------------------ Ring Network
 
     private const string MageRing = """
         { "extraMana": [{ "types": "{C}", "removeCounters": "storage" }],
           "abilities": [{ "cost": "{1}, {T}", "effects": [{ "counters": 1, "what": "self", "kind": "storage" }] }] }
         """;
 
-    private static CardDefinition Network() => Make("Mage-Ring Network", "Land", MageRing, "", null,
+    private static CardDefinition Network() => Make("Ring Network", "Land", MageRing, "", null,
         "{T}: Add {C}.\n{1}, {T}: Put a storage counter on this land.\n{T}, Remove any number of storage counters from this land: Add {C} for each storage counter removed this way.");
 
     [Fact]
@@ -550,7 +550,7 @@ public class OriginsEffectsTests
         var s2 = new Scenario();
         s2.Lands(P0, 1);
         var network2 = s2.Add(P0, Network());
-        Script(s2, Activate(s2, "Mage-Ring Network"));
+        Script(s2, Activate(s2, "Ring Network"));
         await s2.RunUntilTurn();
         Assert.Equal(1, s2.Card(network2).CounterCount(CounterKind.Storage));
     }

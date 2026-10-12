@@ -886,7 +886,7 @@ public sealed record NoSpellsThisTurn : Effect;
 public sealed record PlayTopFreeOrExile : Effect;
 
 /// <summary>
-/// Warp World: each player shuffles all permanents they own into their library, reveals that many cards from the top, puts
+/// World Warp: each player shuffles all permanents they own into their library, reveals that many cards from the top, puts
 /// the artifact, creature and land cards revealed onto the battlefield, then the enchantment cards, then the rest on the bottom.
 /// </summary>
 public sealed record WarpWorld : Effect;
@@ -1166,7 +1166,7 @@ public sealed record AttacksYouThisTurn(Subject What) : Effect;
 public sealed record SkipNextUntap(Subject What, Subject? Player = null) : Effect;
 
 /// <summary>
-/// Master of the Wild Hunt: "Tap all untapped [filter] you control. Each [one] tapped this way deals damage equal to its power
+/// Wild Huntmaster: "Tap all untapped [filter] you control. Each [one] tapped this way deals damage equal to its power
 /// to [target creature]. That creature deals damage equal to its power divided as its controller chooses among any number of
 /// those [creatures]." All of that damage is dealt at the same time.
 /// </summary>

@@ -128,7 +128,7 @@ public class SourceObjectAndUpToTargetsTests
     [InlineData(false, 20)]
     public async Task ARenownedConditionUsesLastKnownInformationWhenTheSourceLeft(bool renowned, int defenderLife)
     {
-        var berserker = Make("Scab-Clan Berserker", "Creature — Human Berserker", Berserker, "{1}{R}{R}", "2/2", "Haste");
+        var berserker = Make("Clan Berserker", "Creature — Human Berserker", Berserker, "{1}{R}{R}", "2/2", "Haste");
         var study = Make("Quiet Study", "Instant", """{ "spell": { "effects": [{ "gainLife": 0 }] } }""", "{1}");
         var recall = Make("Recall", "Instant", """{ "spell": { "targets": ["creature:you"], "effects": [{ "bounce": "target" }] } }""", "{1}");
         var s = new Scenario();

@@ -585,7 +585,7 @@ public sealed partial class Game
     /// <summary>
     /// One draw, after replacement effects (rule 614.11): "draw two instead" and "instead that player skips that draw and you draw
     /// a card". When several apply the drawing player chooses one (rule 616.1); each applies once to an event (614.5), and the
-    /// draws it makes are new events the others can still replace: with two Alhammarret's Archives a draw becomes four.
+    /// draws it makes are new events the others can still replace: with two Archives of Doubling a draw becomes four.
     /// </summary>
     private async Task DrawOneAsync(PlayerId playerId, int depth, IReadOnlySet<CardId>? applied = null)
     {

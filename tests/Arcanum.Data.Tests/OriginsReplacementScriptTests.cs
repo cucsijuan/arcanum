@@ -42,15 +42,15 @@ public class OriginsReplacementScriptTests
         Assert.Equal(SubjectKind.Target, prevent.To!.Kind);
         Assert.False(prevent.CombatOnly);
 
-        var kytheon = CardScriptParser.Parse("""
+        var hero = CardScriptParser.Parse("""
             { "abilities": [{ "trigger": "endOfCombat", "if": { "attackedThisCombatWithOthers": 2 }, "effects": [{ "blink": "self", "transformed": true }] }],
               "back": { "abilities": [{ "cost": "+2", "targets": [{ "kind": "creature", "controller": "opponent", "optional": true }],
                                         "effects": [{ "attacksSourceNextTurn": "target" }] }] } }
             """);
-        var trigger = Assert.IsType<TriggeredAbility>(Assert.Single(kytheon.Abilities));
+        var trigger = Assert.IsType<TriggeredAbility>(Assert.Single(hero.Abilities));
         Assert.Equal(TriggerEvent.EndOfCombat, trigger.Trigger);
         Assert.Equal(new SourceAndOthersAttackedThisCombat(2), trigger.Condition);
-        var plusTwo = Assert.Single(kytheon.Back!.Abilities);
+        var plusTwo = Assert.Single(hero.Back!.Abilities);
         Assert.Equal(SubjectKind.Target, Assert.IsType<AttacksSourceNextTurn>(Assert.Single(plusTwo.Effects)).What.Kind);
     }
 }

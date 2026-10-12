@@ -68,7 +68,7 @@ public class OriginsReviewFixesTests
     private static Func<GameView, TargetRequest, IReadOnlyList<Target>?> Pick(params CardId[] ids) =>
         (_, r) => Enumerable.Range(0, r.Specs.Count).Select(i => ids.Select(Target.Of).First(t => r.LegalAt(i).Contains(t))).ToList();
 
-    // ------------------------------------------------------------------ Mage-Ring Responder (508.5, 608.2h)
+    // ------------------------------------------------------------------ Ring Responder (508.5, 608.2h)
 
     private const string ResponderScript = """
         { "doesntUntap": true,
@@ -82,7 +82,7 @@ public class OriginsReviewFixesTests
     [Fact]
     public async Task ResponderStillDealsItsDamageToTheDefendersCreatureAfterItLeftCombat()
     {
-        var responder = Make("Mage-Ring Responder", "Artifact Creature — Golem", ResponderScript, "{7}", "7/7");
+        var responder = Make("Ring Responder", "Artifact Creature — Golem", ResponderScript, "{7}", "7/7");
         var victim = Make("Tall Victim", "Creature — Wall", "{}", "{1}", "1/7");
         var s = new Scenario();
         Mountains(s, P0, 1);
@@ -99,7 +99,7 @@ public class OriginsReviewFixesTests
         Assert.Equal(Zone.Graveyard, s.Card(target).Zone); // 7 damage to a 1/7
     }
 
-    // ------------------------------------------------------------------ Hangarback Walker (603.10a, 608.2h)
+    // ------------------------------------------------------------------ Thopter Walker (603.10a, 608.2h)
 
     private const string WalkerScript = """
         { "abilities": [
@@ -111,7 +111,7 @@ public class OriginsReviewFixesTests
     [Fact]
     public async Task HangarbackWalkerMakesAThopterForEachCounterItHadEvenIfItCameBackAndDiedAgain()
     {
-        var walker = Make("Hangarback Walker", "Artifact Creature — Construct", WalkerScript, "{X}{X}", "0/0");
+        var walker = Make("Thopter Walker", "Artifact Creature — Construct", WalkerScript, "{X}{X}", "0/0");
         var s = new Scenario();
         Mountains(s, P0, 2);
         var id = s.Add(P0, walker);
@@ -125,7 +125,7 @@ public class OriginsReviewFixesTests
         Assert.Equal(2, thopters);
     }
 
-    // ------------------------------------------------------------------ Sengir Vampire (400.7)
+    // ------------------------------------------------------------------ Old Vampire (400.7)
 
     private const string SengirScript = """
         { "abilities": [
@@ -139,7 +139,7 @@ public class OriginsReviewFixesTests
     [InlineData(true, 0)]  // it became a new object first: Sengir never damaged that one
     public async Task SengirVampireOnlyCountsCreaturesItDamagedAsTheSameObject(bool flickerBeforeItDies, int counters)
     {
-        var sengir = Make("Sengir Vampire", "Creature — Vampire", SengirScript, "{3}{B}{B}", "4/4");
+        var sengir = Make("Old Vampire", "Creature — Vampire", SengirScript, "{3}{B}{B}", "4/4");
         var s = new Scenario();
         Mountains(s, P0, 3);
         var vampire = s.Add(P0, sengir);
@@ -186,12 +186,12 @@ public class OriginsReviewFixesTests
         Assert.NotEqual(Zone.Battlefield, s.Card(grunt).Zone); // a token ceased to exist when it died
     }
 
-    // ------------------------------------------------------------------ Necromantic Summons (614.1c)
+    // ------------------------------------------------------------------ Grave Summons (614.1c)
 
     [Fact]
     public async Task ACreatureReanimatedWithCountersHasThemWhenItsEntersTriggerLooksAtIt()
     {
-        var summons = Make("Necromantic Summons", "Sorcery",
+        var summons = Make("Grave Summons", "Sorcery",
             """{ "spell": { "targets": [{ "kind": "graveyardCard", "filter": { "types": ["creature"] } }], "effects": [{ "reanimate": "target", "counters": 2 }] } }""", "{1}");
         // "Whenever a creature with power 4 or greater enters, you gain 5 life": a 2/2 that enters with two counters is a 4/4.
         var watcher = Make("Big Fan", "Enchantment",
@@ -204,7 +204,7 @@ public class OriginsReviewFixesTests
         owner.Library.Remove(dead); s.Game.State.Battlefield.Remove(dead);
         s.Card(dead).Zone = Zone.Graveyard; owner.Graveyard.Add(dead);
         s.InHand(P0, summons);
-        Script(s.Attacker, Cast(s, "Necromantic Summons"));
+        Script(s.Attacker, Cast(s, "Grave Summons"));
         int before = s.Game.State.GetPlayer(P0).Life;
         int countersWhenItEntered = -1;
         s.Game.EventRaised += e => { if (e is CardMoved { To: Zone.Battlefield } m && m.Card == dead) countersWhenItEntered = s.Card(dead).CounterCount(CounterKind.PlusOnePlusOne); };
@@ -214,12 +214,12 @@ public class OriginsReviewFixesTests
         Assert.Equal(before + 5, s.Game.State.GetPlayer(P0).Life);
     }
 
-    // ------------------------------------------------------------------ Murder Investigation (608.2h)
+    // ------------------------------------------------------------------ Crime Inquiry (608.2h)
 
     [Fact]
     public async Task MurderInvestigationCountsThePowerTheCreatureHadWhenItDiedEvenIfItCameBack()
     {
-        var aura = Make("Murder Investigation", "Enchantment — Aura", """
+        var aura = Make("Crime Inquiry", "Enchantment — Aura", """
             { "abilities": [{ "trigger": "creatureDies", "filter": { "types": ["creature"], "controller": "any", "attachedToSource": true },
                               "effects": [{ "tokens": "triggeredPower", "token": { "name": "Soldier", "types": "Creature — Soldier", "power": 1, "toughness": 1, "colors": ["W"] } }] }] }
             """, "{1}{W}");
@@ -248,10 +248,10 @@ public class OriginsReviewFixesTests
     {
         var s = new Scenario();
         Mountains(s, P0, 1);
-        var spirit = s.Add(P0, OriginsCards.Get("Orchard Spirit"));
+        var spirit = s.Add(P0, OriginsCards.Get("Grove Spirit"));
         var wall = s.Add(P1, Creature("Plain Wall", 0, 5));
-        s.InHand(P0, Make("Turn to Frog", "Instant", TurnToFrog, "{1}"));
-        Script(s.Attacker, Cast(s, "Turn to Frog"));
+        s.InHand(P0, Make("Frog Curse", "Instant", TurnToFrog, "{1}"));
+        Script(s.Attacker, Cast(s, "Frog Curse"));
         s.Attacker.Targets = Pick(spirit);
         s.Attacker.Attack = (_, _, defenders) => new[] { new AttackDeclaration(spirit, defenders[0]) };
         bool couldBlock = false;
@@ -266,9 +266,9 @@ public class OriginsReviewFixesTests
         var s = new Scenario();
         Mountains(s, P0, 1);
         var attacker = s.Add(P0, Creature("Raider", 2, 2));
-        var angel = s.Add(P1, OriginsCards.Get("Archangel of Tithes"));
-        s.InHand(P0, Make("Turn to Frog", "Instant", TurnToFrog, "{1}"));
-        Script(s.Attacker, Cast(s, "Turn to Frog"));
+        var angel = s.Add(P1, OriginsCards.Get("Tithe Angel"));
+        s.InHand(P0, Make("Frog Curse", "Instant", TurnToFrog, "{1}"));
+        Script(s.Attacker, Cast(s, "Frog Curse"));
         s.Attacker.Targets = Pick(angel);
         s.Attacker.Attack = (_, _, defenders) => new[] { new AttackDeclaration(attacker, defenders[0]) };
         int life = s.Game.State.GetPlayer(P1).Life;
@@ -277,7 +277,7 @@ public class OriginsReviewFixesTests
         Assert.Equal(life - 2, s.Game.State.GetPlayer(P1).Life);
     }
 
-    // ------------------------------------------------------------------ Erebos's Titan (108.4)
+    // ------------------------------------------------------------------ Death Titan (108.4)
 
     [Fact]
     public async Task ACardThatDiedUnderAnOpponentsControlHasItsGraveyardAbilitiesControlledByItsOwner()
@@ -308,7 +308,7 @@ public class OriginsReviewFixesTests
         Assert.Equal(life1, s.Game.State.GetPlayer(P1).Life);
     }
 
-    // ------------------------------------------------------------------ Hallowed Moonlight (614.12)
+    // ------------------------------------------------------------------ Holy Moonlight (614.12)
 
     private const string Moonlight = """
         { "spell": { "effects": [{ "exileUncastEntering": { "types": ["creature"] } }, { "draw": 1 }] } }
@@ -323,9 +323,9 @@ public class OriginsReviewFixesTests
         var s = new Scenario();
         Mountains(s, P0, 2);
         var hero = s.Add(P0, front);
-        s.InHand(P0, Make("Hallowed Moonlight", "Instant", Moonlight, "{1}"));
+        s.InHand(P0, Make("Holy Moonlight", "Instant", Moonlight, "{1}"));
         Step Empty(Step then) => legal => s.Game.State.Stack.Count == 0 ? then(legal) : null;
-        Script(s.Attacker, Cast(s, "Hallowed Moonlight"), Empty(legal => legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == hero)));
+        Script(s.Attacker, Cast(s, "Holy Moonlight"), Empty(legal => legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == hero)));
         await s.RunUntilTurn();
         Assert.Equal(Zone.Battlefield, s.Card(hero).Zone); // it enters as a planeswalker, not a creature
         Assert.True(s.Card(hero).Transformed);
@@ -348,15 +348,15 @@ public class OriginsReviewFixesTests
         var owner = s.Game.State.GetPlayer(P0);
         s.Game.State.Battlefield.Remove(relic);
         s.Card(relic).Zone = Zone.Graveyard; owner.Graveyard.Add(relic);
-        s.InHand(P0, Make("Hallowed Moonlight", "Instant", Moonlight, "{1}"));
+        s.InHand(P0, Make("Holy Moonlight", "Instant", Moonlight, "{1}"));
         s.InHand(P0, Make("Raise Relic", "Instant", """{ "spell": { "targets": [{ "kind": "graveyardCard", "filter": { "types": ["enchantment"] } }], "effects": [{ "reanimate": "target" }] } }""", "{1}"));
         Step Empty(Step then) => legal => s.Game.State.Stack.Count == 0 ? then(legal) : null;
-        Script(s.Attacker, Cast(s, "Hallowed Moonlight"), Empty(Cast(s, "Raise Relic")));
+        Script(s.Attacker, Cast(s, "Holy Moonlight"), Empty(Cast(s, "Raise Relic")));
         await s.RunUntilTurn();
         Assert.Equal(Zone.Exile, s.Card(relic).Zone);
     }
 
-    // ------------------------------------------------------------------ Hixus, Prison Warden ("deals combat damage to you")
+    // ------------------------------------------------------------------ Prison Warden ("deals combat damage to you")
 
     [Fact]
     public async Task ATriggerOnCombatDamageToYouWatchesTheDamagedPlayerNotTheAttack()
@@ -382,7 +382,7 @@ public class OriginsReviewFixesTests
     [Fact]
     public async Task MurderInvestigationTriggersWhenItDiesTogetherWithTheCreature()
     {
-        var aura = Make("Murder Investigation", "Enchantment — Aura", """
+        var aura = Make("Crime Inquiry", "Enchantment — Aura", """
             { "abilities": [{ "trigger": "creatureDies", "filter": { "types": ["creature"], "controller": "any", "attachedToSource": true },
                               "effects": [{ "tokens": "triggeredPower", "token": { "name": "Soldier", "types": "Creature — Soldier", "power": 1, "toughness": 1, "colors": ["W"] } }] }] }
             """, "{1}{W}");
@@ -398,7 +398,7 @@ public class OriginsReviewFixesTests
         Assert.Equal(2, s.Game.State.Battlefield.Select(s.Card).Count(c => c.Name == "Soldier")); // it saw the creature die (603.10a)
     }
 
-    // ------------------------------------------------------------------ Alhammarret's Archive (614.5, 616.1)
+    // ------------------------------------------------------------------ Archive of Doubling (614.5, 616.1)
 
     [Fact]
     public async Task TwoArchivesMakeADrawOutsideTheDrawStepFourDraws()
