@@ -13,7 +13,7 @@ public sealed record CardEntry(CardDefinition Definition, CardSupport Support, C
 /// <summary>What to look for in <see cref="CardDatabase.Search"/>. Empty fields don't filter.</summary>
 public sealed record CardQuery
 {
-    /// <summary>Words that must all appear in the name, type line or rules text.</summary>
+    /// <summary>A search in the card search language (<see cref="CardSearch"/>): loose words search names.</summary>
     public string Text { get; init; } = "";
 
     /// <summary>Color letters (W, U, B, R, G); a card matches if it has any of them.</summary>
@@ -166,9 +166,17 @@ public sealed class CardDatabase : ICardDatabase
 
     public IEnumerable<CardDefinition> All => _sorted.Select(e => e.Definition);
 
+    /// <summary>Reads a search in the card search language, with this database's sets for release dates.</summary>
+    public CardFilter Filter(string text) => CardSearch.Parse(text, FindSet);
+
     public IEnumerable<CardEntry> Search(CardQuery query)
     {
-        var words = query.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var filter = Filter(query.Text);
+        return filter.Sort(Find(query, filter));
+    }
+
+    private IEnumerable<CardEntry> Find(CardQuery query, CardFilter filter)
+    {
         foreach (var entry in _sorted)
         {
             var r = entry.Record;
@@ -183,13 +191,11 @@ public sealed class CardDatabase : ICardDatabase
             }
             if (query.LegalIn is { } format && !(r.Legalities.TryGetValue(format, out var status) && status is "legal" or "restricted")) continue;
             if (query.Set is { } set && r.FindPrinting(set) is null) continue;
-            if (words.Length > 0 && !words.All(w => Contains(r.Name, w) || Contains(r.TypeLine, w) || Contains(r.OracleText, w)
-                                                     || r.Faces.Any(f => Contains(f.TypeLine, w) || Contains(f.OracleText, w)))) continue;
+            if (!filter.Matches(entry)) continue;
             yield return entry;
         }
     }
 
-    private static bool Contains(string haystack, string needle) => haystack.Contains(needle, StringComparison.OrdinalIgnoreCase);
 
     // ---------------------------------------------------------------- token pictures
 

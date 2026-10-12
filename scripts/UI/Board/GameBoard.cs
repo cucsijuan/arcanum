@@ -1155,7 +1155,7 @@ public partial class GameBoard : Control
                 _prompt.Text = $"{who}: {nameDecision.Request.Prompt}";
                 var box = new VBoxContainer();
                 box.AddThemeConstantOverride("separation", 6);
-                var search = new LineEdit { PlaceholderText = "Type part of a card name", Text = _nameFilter, CustomMinimumSize = new Vector2(340, 34) };
+                var search = new LineEdit { PlaceholderText = "Type part of a card name, or search (t:creature c:g)", Text = _nameFilter, CustomMinimumSize = new Vector2(340, 34) };
                 var results = new GridContainer { Columns = 3 };
                 results.AddThemeConstantOverride("h_separation", 6);
                 results.AddThemeConstantOverride("v_separation", 6);
@@ -1167,8 +1167,13 @@ public partial class GameBoard : Control
                 {
                     foreach (var child in results.GetChildren()) child.QueueFree();
                     var options = nameDecision.Request.Options;
+                    var cards = App.Instance.Cards;
+                    var query = cards is null ? null : Arcanum.UI.Menu.CardSearchBox.Read(search, cards);
+                    bool Found(string name) => query is null || cards!.Find(name) is not { } entry
+                        ? name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                        : query.Matches(entry);
                     var matches = Enumerable.Range(0, options.Count)
-                        .Where(i => filter.Length == 0 || options[i].Contains(filter, StringComparison.OrdinalIgnoreCase))
+                        .Where(i => filter.Length == 0 || Found(options[i]))
                         .OrderBy(i => filter.Length > 0 && !options[i].StartsWith(filter, StringComparison.OrdinalIgnoreCase)).Take(24).ToList();
                     foreach (var index in matches)
                     {

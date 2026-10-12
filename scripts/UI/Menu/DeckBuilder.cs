@@ -42,7 +42,7 @@ public partial class DeckBuilder : Control
     private readonly List<DeckInfo> _saved = new();
 
     // Search controls
-    private readonly LineEdit _search = MenuKit.TextField("", "Search name, type or rules text…");
+    private readonly LineEdit _search = MenuKit.TextField("", CardSearchBox.Placeholder);
     private readonly Dictionary<string, Button> _colorToggles = new();
     private readonly OptionButton _typeFilter = MenuKit.Options(TypeFilters.Select(t => t.Label));
     private readonly OptionButton _mvFilter = MenuKit.Options(ManaValueFilters);
@@ -287,6 +287,7 @@ public partial class DeckBuilder : Control
             LegalIn = _legalOnly.ButtonPressed ? Format.Legality : null,
             Set = SelectedSet?.Code,
         };
+        CardSearchBox.Read(_search, Cards);
         var found = Cards.Search(query);
         _results = SelectedSet is { } set
             ? found.SelectMany(e => e.Record.Printings.Where(p => p.Set == set.Code).Select(p => (e, (Printing?)p)))

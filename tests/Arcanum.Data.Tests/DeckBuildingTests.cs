@@ -28,7 +28,7 @@ public class DeckBuildingTests
     [Fact]
     public void SearchFiltersByTextColorTypeAndManaValue()
     {
-        Assert.Equal(new[] { "Ember Bolt" }, Db.Search(new CardQuery { Text = "damage" }).Select(e => e.Name));
+        Assert.Equal(new[] { "Ember Bolt" }, Db.Search(new CardQuery { Text = "o:damage" }).Select(e => e.Name));
         Assert.Equal(new[] { "Glade Cub" }, Db.Search(new CardQuery { Colors = new HashSet<string> { "G" } }).Select(e => e.Name));
         Assert.Equal(new[] { "Glade Cub", "Sky Lancer" }, Db.Search(new CardQuery { Types = CardType.Creature }).Select(e => e.Name));
         Assert.Equal(new[] { "Forbidden Idol", "Forest" }, Db.Search(new CardQuery { ManaValueMax = 1, Colorless = true }).Select(e => e.Name));

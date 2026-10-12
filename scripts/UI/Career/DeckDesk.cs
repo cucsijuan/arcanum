@@ -277,8 +277,9 @@ public partial class DeckDesk : Control
 
         var filters = new HBoxContainer();
         filters.AddThemeConstantOverride("separation", 8);
-        var search = new LineEdit { PlaceholderText = "Search your cards…", CustomMinimumSize = new Vector2(280, 0) };
-        search.TextChanged += text => { _search = text; ShowPage(0); };
+        var search = new LineEdit { Text = _search, PlaceholderText = CardSearchBox.Placeholder, CustomMinimumSize = new Vector2(380, 0) };
+        CardSearchBox.Read(search, Cards);
+        search.TextChanged += text => { _search = text; CardSearchBox.Read(search, Cards); ShowPage(0); };
         filters.AddChild(search);
         foreach (char color in "WUBRGC")
         {
@@ -345,13 +346,15 @@ public partial class DeckDesk : Control
     /// <summary>The cards owned that pass the filters, one per name (with the printing owned most), by mana value.</summary>
     private List<Owned> OwnedCards()
     {
+        var filter = Cards.Filter(_search);
+        bool Found(CardKey k) => _search.Length == 0 || Cards.Find(k.Name) is { } entry && filter.Matches(entry, k.Set, k.Number, k.Foil);
         if (_pick is not null)
-            return _pick.Cards.Where(k => Cards.Find(k.Name) is not null && InSet(k) && (!_hideInDecks || _pick.InDecks?.Contains(k.Name) != true))
+            return _pick.Cards.Where(k => Cards.Find(k.Name) is not null && InSet(k) && Found(k) && (!_hideInDecks || _pick.InDecks?.Contains(k.Name) != true))
                 .Select(k => new Owned(Cards.Find(k.Name)!, k.ToEntry(), Career.State.Owned(k)))
                 .Where(Passes).OrderBy(o => o.Card.ManaValue).ThenBy(o => o.Card.Name).ToList();
         var cards = (_pool is not null
             ? _pool.Pool.Select(c => (Card: CardKey.Of(c), Count: 1))
-            : Career.State.Cards).Where(c => InSet(c.Card));
+            : Career.State.Cards).Where(c => InSet(c.Card) && Found(c.Card));
         var owned = cards
             .GroupBy(c => c.Card.Name, StringComparer.OrdinalIgnoreCase)
             .Select(g => (Entry: Cards.Find(g.Key), Best: g.OrderByDescending(c => c.Count).First().Card, Count: g.Sum(c => c.Count)))
@@ -383,7 +386,6 @@ public partial class DeckDesk : Control
     private bool Passes(Owned owned)
     {
         var d = owned.Card.Definition;
-        if (_search.Length > 0 && !d.Name.Contains(_search, StringComparison.OrdinalIgnoreCase)) return false;
         if (TypeFilters[_type].Type != CardType.None && !d.Is(TypeFilters[_type].Type)) return false;
         if (_colors.Count == 0) return true;
         var colors = ColorsOf(d);
