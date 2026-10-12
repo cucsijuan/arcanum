@@ -663,4 +663,130 @@ public class CareerTests
         Assert.Contains(problems, p => p.Contains("'6pm'"));
         Assert.Contains(problems, p => p.Contains("check-in"));
     }
+
+    // ---------------------------------------------------------------- singles: the store's case, the forum, sale posts
+
+    private static (CareerState State, List<CareerAction> Journal, CareerWorld World) Trading()
+    {
+        var world = new CareerWorld(CareerContent.Parse(ContentJson.Replace("\"challengesPerWeek\": 2", "\"challengesPerWeek\": 0")
+                .Replace("\"sets\": [\"abc\"],", "\"sets\": [\"abc\"], \"visitors\": [\"Zed\"], \"market\": { \"since\": \"2026-10-12\" },")),
+            Database(), new[] { SetDefinition.Parse(SetJson) }, name => Decks.GetValueOrDefault(name));
+        var state = new CareerState();
+        var journal = new List<CareerAction> { new StartCareer(T0, 42, "starter") };
+        CareerRules.Apply(state, journal[0], world);
+        return (state, journal, world);
+    }
+
+    [Fact]
+    public void SinglesAreOnlyTradedFromTheMarketsFirstDay()
+    {
+        var (state, _, world) = Started();
+        Assert.Empty(CareerRules.StoreSingles(state, world, state.Day));
+        Assert.Empty(CareerRules.Listings(state, world, state.Day));
+    }
+
+    [Fact]
+    public void NoSingleOrListingCostsLessThanTheStorePaysForIt()
+    {
+        var (state, _, world) = Trading();
+        for (int d = 0; d < 120; d++)
+        {
+            var day = state.Day.AddDays(d);
+            var singles = CareerRules.StoreSingles(state, world, day);
+            Assert.Equal(20, singles.Count);
+            foreach (var single in singles) Assert.True(single.Price > CareerMarket.SellPrice(state, world, single.Card, day), $"{single.Card} on {day}");
+            var listings = CareerRules.Listings(state, world, day);
+            Assert.InRange(listings.Count, 10, 15);
+            foreach (var listing in listings)
+            {
+                int storePays = CareerMarket.SellPrice(state, world, listing.Card, day);
+                Assert.True(listing.Floor > storePays && listing.Floor <= listing.Price, $"{listing.Card} on {day}");
+                // Bought at its lowest and posted back at the cap, it still sells for no more than the cap.
+                Assert.True(CareerRules.SaleCap(state, world, listing.Card, day) >= CareerMarket.Price(state, world, listing.Card, day));
+            }
+        }
+    }
+
+    [Fact]
+    public void BuyingASingleAndAListingTakesTheirPrices()
+    {
+        var (state, journal, world) = Trading();
+        state.Cash = 100000;
+        var single = CareerRules.StoreSingles(state, world, state.Day)[0];
+        int cash = state.Cash, owned = state.Owned(single.Card);
+        Do(state, journal, world, new BuySingle(T0.AddMinutes(1), 0));
+        Assert.Equal(cash - single.Price, state.Cash);
+        Assert.Equal(owned + 1, state.Owned(single.Card));
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new BuySingle(T0.AddMinutes(2), 0), world));
+
+        var listing = CareerRules.Listings(state, world, state.Day)[0];
+        cash = state.Cash;
+        Do(state, journal, world, new BuyListing(T0.AddMinutes(3), 0));
+        Assert.Equal(cash - listing.Price, state.Cash);
+        Assert.True(CareerRules.ListingBought(state, state.Day, 0));
+    }
+
+    [Fact]
+    public void ASellerTakesAnOfferAtTheirFloorCountersOneJustBelowAndTurnsDownLowOnes()
+    {
+        var (state, journal, world) = Trading();
+        state.Cash = 100000;
+        var listing = CareerRules.Listings(state, world, state.Day).First(l => l.Floor >= 20);
+        int i = listing.Index;
+        Do(state, journal, world, new OfferOnListing(T0.AddMinutes(1), i, 1));
+        Assert.False(CareerRules.ListingBought(state, state.Day, i));
+        Assert.Equal(listing.Price, CareerRules.ListingPrice(state, listing, state.Day)); // too low to counter
+        Do(state, journal, world, new OfferOnListing(T0.AddMinutes(2), i, (int)Math.Ceiling(listing.Floor * 0.9)));
+        Assert.True(CareerRules.ListingPrice(state, listing, state.Day) < listing.Price); // a counter-offer
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new OfferOnListing(T0.AddMinutes(3), i, listing.Floor), world)); // no more offers today
+
+        var other = CareerRules.Listings(state, world, state.Day).First(l => l.Index != i);
+        int cash = state.Cash;
+        Do(state, journal, world, new OfferOnListing(T0.AddMinutes(4), other.Index, other.Floor));
+        Assert.True(CareerRules.ListingBought(state, state.Day, other.Index));
+        Assert.Equal(cash - other.Floor, state.Cash);
+    }
+
+    [Fact]
+    public void APostIsSoldOfferedOrExpiresOverTheFollowingDaysAndNeverAboveTheCap()
+    {
+        var (state, journal, world) = Trading();
+        var card = state.Cards.First(c => c.Card.Name == "Card 16").Card;
+        int cap = CareerRules.SaleCap(state, world, card, state.Day);
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new PostSale(T0.AddMinutes(1), card.ToString(), cap + 1), world));
+        int owned = state.Owned(card);
+        int ask = CareerMarket.Price(state, world, card, state.Day);
+        Do(state, journal, world, new PostSale(T0.AddMinutes(2), card.ToString(), ask));
+        Assert.Equal(owned - 1, state.Owned(card)); // out of the collection while it's up
+        var post = state.Posts.Single();
+        for (int d = 1; d <= 9 && post.Status == SaleStatus.Open; d++) Do(state, journal, world, new CheckSales(T0.AddDays(d)));
+        Assert.NotEqual(SaleStatus.Open, post.Status);
+        int cash = state.Cash;
+        if (post.Status == SaleStatus.Offered)
+        {
+            Assert.True(post.Offer < ask);
+            Do(state, journal, world, new AnswerSaleOffer(T0.AddDays(10), post.Id, true));
+            Assert.Equal(SaleStatus.Sold, post.Status);
+            Assert.Equal(cash + post.SoldFor, state.Cash);
+        }
+        else if (post.Status == SaleStatus.Expired) Assert.Equal(owned, state.Owned(card));
+
+        // The journal replayed gives the same career (what the career service checks).
+        var replayed = CareerRules.Replay(journal, world);
+        Assert.Equal(state.Cash, replayed.Cash);
+        Assert.Equal(state.Collection, replayed.Collection);
+        Assert.Equal(post.Status, replayed.Posts.Single().Status);
+    }
+
+    [Fact]
+    public void ATakenDownPostGivesTheCardBack()
+    {
+        var (state, journal, world) = Trading();
+        var card = state.Cards.First(c => c.Card.Name == "Card 16").Card;
+        int owned = state.Owned(card);
+        Do(state, journal, world, new PostSale(T0.AddMinutes(1), card.ToString(), 100));
+        Do(state, journal, world, new TakeDownSale(T0.AddMinutes(2), state.Posts.Single().Id));
+        Assert.Equal(owned, state.Owned(card));
+        Assert.Equal(SaleStatus.TakenDown, state.Posts.Single().Status);
+    }
 }

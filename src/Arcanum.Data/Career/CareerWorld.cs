@@ -122,9 +122,60 @@ public sealed class CareerWorld
         return _printings[set] = list;
     }
 
+    // ---------------------------------------------------------------- printings' art
+
+    private readonly Dictionary<string, Dictionary<string, string>> _baseNumbers = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string>? _inPlayBoosters;
+    private readonly Dictionary<string, List<SingleCandidate>> _singles = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A printing's art: a card's first printing in a set is its usual one; its others there are special arts (borderless,
+    /// showcase, extended art…), found in play boosters or only in collector boosters (and other products).
+    /// </summary>
+    public CardArt ArtOf(CardKey card)
+    {
+        if (card.Set.Length == 0 || card.Number.Length == 0) return CardArt.Usual;
+        if (!_baseNumbers.TryGetValue(card.Set, out var bases))
+            _baseNumbers[card.Set] = bases = Cards.PrintingsIn(card.Set).GroupBy(x => x.Card.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().Printing.CollectorNumber, StringComparer.OrdinalIgnoreCase);
+        if (!bases.TryGetValue(card.Name, out var number) || number == card.Number) return CardArt.Usual;
+        return InPlayBoosters.Contains($"{card.Set.ToLowerInvariant()}|{card.Number}") ? CardArt.SpecialPlay : CardArt.SpecialCollector;
+    }
+
+    /// <summary>Every printing a set's play boosters can hold ("set|number").</summary>
+    private HashSet<string> InPlayBoosters => _inPlayBoosters ??= Sets.Values.Where(s => s.Booster is not null)
+        .SelectMany(s => s.Booster!.Sheets.Keys.SelectMany(sheet => Generator(s.Code).Sheet(sheet)))
+        .Select(c => $"{c.Set.ToLowerInvariant()}|{c.Number}").ToHashSet();
+
+    /// <summary>The cards of a set's boosters (every kind) a single can be, with their art; basic lands and cards that don't work fully left out.</summary>
+    public IReadOnlyList<SingleCandidate> Singles(string set)
+    {
+        if (_singles.TryGetValue(set, out var list)) return list;
+        list = new List<SingleCandidate>();
+        if (Sets.TryGetValue(set, out var definition))
+        {
+            var seen = new HashSet<string>();
+            foreach (var kind in new string?[] { null }.Concat(definition.Boosters.Keys))
+            {
+                if (definition.BoosterOf(kind) is not { } spec) continue;
+                foreach (var sheet in spec.Sheets.Keys)
+                    foreach (var card in Generator(set, kind).Sheet(sheet))
+                        if (seen.Add($"{card.Set.ToLowerInvariant()}|{card.Number}") && !IsBasicLand(card.Name) && Cards.SupportOf(card.Name) == CardSupport.Full)
+                            list.Add(new SingleCandidate(card with { Foil = false, Surge = false }, ArtOf(CardKey.Of(card with { Foil = false, Surge = false }))));
+            }
+        }
+        return _singles[set] = list;
+    }
+
     /// <summary>The weeks' tournament winners worked out so far (see <see cref="CareerMarket.Meta"/>).</summary>
     internal Dictionary<(ulong Seed, int Week), IReadOnlyList<MetaWin>> MetaCache { get; } = new();
 }
+
+/// <summary>A printing's art: the card's usual one, or a special art found in play boosters or only in collector boosters.</summary>
+public enum CardArt { Usual, SpecialPlay, SpecialCollector }
+
+/// <summary>A card a single can be (a printing, not foil yet) and its art.</summary>
+public sealed record SingleCandidate(PoolCard Card, CardArt Art);
 
 /// <summary>An action the career's rules don't allow (not enough cash, no such booster...); the message is for the player.</summary>
 public sealed class CareerRuleException(string message) : Exception(message);

@@ -53,6 +53,35 @@ public sealed record PendingMatch(string OpponentId, string Deck, string Reward 
 /// <summary>One of a day's offers: a regular sells <see cref="Get"/> for <see cref="Price"/>, or trades it for <see cref="Give"/> (CardKey texts).</summary>
 public sealed record CareerOffer(int Index, string Kind, string OpponentId, string Get, string Give, int Price);
 
+/// <summary>One of the store's singles on a day: the card, its price and its art.</summary>
+public sealed record CareerSingle(int Index, CardKey Card, int Price, CardArt Art);
+
+/// <summary>
+/// A card another player lists on the forum on a day: who, the card, the price asked, its art, the lowest price they'd
+/// take (hidden from the player) and their post's title and text.
+/// </summary>
+public sealed record CareerListing(int Index, string Seller, CardKey Card, int Price, CardArt Art, int Floor, string Title, string Body);
+
+/// <summary>What became of a player's sale post.</summary>
+public enum SaleStatus { Open, Offered, Sold, Expired, TakenDown }
+
+/// <summary>A card the player posted for sale on the forum: out of the collection while it is up.</summary>
+public sealed class SalePost
+{
+    public int Id { get; set; }
+    public string Card { get; set; } = "";
+    public int Ask { get; set; }
+    public DateOnly Day { get; set; }
+
+    /// <summary>The last day the post's luck was looked at (the day it went up, at first).</summary>
+    public DateOnly Checked { get; set; }
+    public SaleStatus Status { get; set; }
+
+    /// <summary>A buyer's lower offer waiting for an answer (cents), or the price it sold for.</summary>
+    public int Offer { get; set; }
+    public int SoldFor { get; set; }
+}
+
 /// <summary>An event entered: which, on what day, its seed (its boosters and pairings), the set drafted or the deck played.</summary>
 public sealed record EventEntry(string Id, DateOnly Day, ulong Seed, string Set = "", string Deck = "");
 
@@ -123,6 +152,18 @@ public sealed class CareerState
 
     /// <summary>The store's offers taken, as "day number:offer index".</summary>
     public List<string> OffersTaken { get; set; } = new();
+
+    /// <summary>Singles bought from the store's case and listings bought on the forum, as "day number:index".</summary>
+    public List<string> SinglesBought { get; set; } = new();
+    public List<string> ListingsBought { get; set; } = new();
+
+    /// <summary>Offers made on forum listings ("day number:index" → how many), and the sellers' counter-offers (cents).</summary>
+    public SortedDictionary<string, int> ListingOffers { get; set; } = new(StringComparer.Ordinal);
+    public SortedDictionary<string, int> ListingCounters { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>The player's sale posts on the forum, oldest first.</summary>
+    public List<SalePost> Posts { get; set; } = new();
+    public int NextPostId { get; set; } = 1;
 
     public int Wins { get; set; }
     public int Losses { get; set; }

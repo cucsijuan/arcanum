@@ -462,8 +462,9 @@ public partial class CareerScreen : Control
         }
         var nav = new HBoxContainer();
         nav.AddThemeConstantOverride("separation", 18);
-        var current = _webPage is WebPage.Practice or WebPage.Events or WebPage.Chat ? WebPage.Forum : _webPage;
-        foreach (var (p, text) in new[] { (WebPage.Matches, "Daily matches"), (WebPage.Forum, World.Content.Forum.Name), (WebPage.Challenges, "Challenges"), (WebPage.Market, "Sell cards"), (WebPage.Cards, "My cards") })
+        // Selling moved: to the store at its counter, to other players on the forum.
+        var current = _webPage is WebPage.Practice or WebPage.Events or WebPage.Chat or WebPage.Market ? WebPage.Forum : _webPage;
+        foreach (var (p, text) in new[] { (WebPage.Matches, "Daily matches"), (WebPage.Forum, World.Content.Forum.Name), (WebPage.Challenges, "Challenges"), (WebPage.Cards, "My cards") })
         {
             var link = CareerStyle.LinkButton(text, p == current);
             link.Pressed += () => { _webPage = p; _forumThread = null; ShowWebPage(); };
@@ -484,7 +485,7 @@ public partial class CareerScreen : Control
             case WebPage.Practice or WebPage.Events or WebPage.Forum: ForumPage(content); break;
             case WebPage.Chat: ChatPage(content); break;
             case WebPage.Challenges: ChallengesPage(content); break;
-            case WebPage.Market: CollectionList(content, CareerStyle.Ink); break;
+            case WebPage.Market: ForumPage(content); break;
             case WebPage.Cards: CardsPage(content); break;
             default: MatchesPage(content); break;
         }
@@ -1007,7 +1008,7 @@ public partial class CareerScreen : Control
         {
             case "boosters": OpenNote("Boosters", BoostersNote); break;
             case "precons": OpenNote("Preconstructed decks", PreconsNote); break;
-            case "counter": OpenNote("The counter buys cards", box => CollectionList(box, CareerStyle.Ink)); break;
+            case "counter": OpenNote("The counter", CounterNote); break;
             case "offers": OpenNote("Today's offers", OffersNote); break;
         }
     }
@@ -1103,6 +1104,70 @@ public partial class CareerScreen : Control
             }
         }
         box.AddChild(Scrolled(list));
+    }
+
+    private static bool _sellingAtCounter;
+
+    /// <summary>The counter: the case of singles the store sells today, or the store buying the player's cards.</summary>
+    private void CounterNote(VBoxContainer box)
+    {
+        var tabs = new HBoxContainer();
+        tabs.AddThemeConstantOverride("separation", 18);
+        foreach (var (selling, text) in new[] { (false, "Singles case"), (true, "Sell to the store") })
+        {
+            var tab = CareerStyle.LinkButton(text, selling == _sellingAtCounter, 22);
+            tab.Pressed += () => { _sellingAtCounter = selling; DrawNote(); };
+            tabs.AddChild(tab);
+        }
+        box.AddChild(tabs);
+        if (_sellingAtCounter)
+        {
+            CollectionList(box, CareerStyle.Ink);
+            return;
+        }
+        var day = CareerRules.DayOf(Career.Now);
+        var singles = CareerRules.StoreSingles(State, World, day);
+        if (singles.Count == 0)
+        {
+            box.AddChild(CareerStyle.Text("The case is being set up: the store starts selling singles soon.", 20, CareerStyle.InkDim, wrap: true));
+            return;
+        }
+        box.AddChild(CareerStyle.Text($"Today's singles at the store's prices (the case changes every day). You have {CareerRules.Money(State.Cash)}.", 18, CareerStyle.InkDim, wrap: true));
+        var grid = new HFlowContainer();
+        grid.AddThemeConstantOverride("h_separation", 14);
+        grid.AddThemeConstantOverride("v_separation", 14);
+        foreach (var single in singles)
+        {
+            var cell = new VBoxContainer { CustomMinimumSize = new Vector2(130, 0) };
+            cell.AddThemeConstantOverride("separation", 4);
+            cell.AddChild(SmallCard(single.Card));
+            if (ArtTag(single.Card, single.Art) is { } tag) cell.AddChild(CareerStyle.Text(tag, 14, CareerStyle.PaperEdge));
+            bool sold = CareerRules.SingleBought(State, day, single.Index);
+            var buy = CareerStyle.Button(sold ? "Sold" : CareerRules.Money(single.Price), () =>
+            {
+                Try(() =>
+                {
+                    Career.Do(new BuySingle(Career.Now, single.Index));
+                    MenuKit.Toast(this, $"{single.Card.Name} is yours.");
+                });
+                RefreshNote();
+            }, 18, primary: true);
+            buy.Disabled = sold || State.Cash < single.Price;
+            cell.AddChild(buy);
+            grid.AddChild(cell);
+        }
+        box.AddChild(Scrolled(grid));
+    }
+
+    /// <summary>"Foil", "Special art", "Special art · foil" (collector-only arts say so), or null for a plain card.</summary>
+    private static string? ArtTag(CardKey card, CardArt art)
+    {
+        var parts = new List<string>();
+        if (art == CardArt.SpecialPlay) parts.Add("Special art");
+        if (art == CardArt.SpecialCollector) parts.Add("Collector art");
+        if (card.Surge) parts.Add("Surge foil");
+        else if (card.Foil) parts.Add("Foil");
+        return parts.Count == 0 ? null : string.Join(" · ", parts);
     }
 
     /// <summary>The regulars' offers of the day: a bargain and a trade, each with its cards.</summary>

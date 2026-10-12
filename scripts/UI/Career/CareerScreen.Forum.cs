@@ -17,10 +17,11 @@ public partial class CareerScreen
     /// <summary>The thread open in the forum; null shows the boards.</summary>
     private static string? _forumThread;
 
-    private enum ThreadKind { Pinned, Event, Ante, Practice }
+    private enum ThreadKind { Pinned, Event, Ante, Practice, Listing, MyPosts, NewPost }
 
     /// <summary>One thread: its id (kept while the page refreshes), title, author and what it is about.</summary>
-    private sealed record ForumThread(string Id, ThreadKind Kind, string Title, string Author, OpponentSpec? Opponent = null, EventSpec? Event = null, string Body = "");
+    private sealed record ForumThread(string Id, ThreadKind Kind, string Title, string Author, OpponentSpec? Opponent = null, EventSpec? Event = null, string Body = "",
+        CareerListing? Listing = null);
 
     private static readonly Color Felt = new("2f5d3a");
     private static readonly Color FeltDark = new("23472c");
@@ -30,6 +31,9 @@ public partial class CareerScreen
 
     private void ForumPage(VBoxContainer page)
     {
+        // The player's posts catch up with the days gone by (sold, offered, expired) as the forum opens.
+        if (State.Posts.Any(p => p.Status == SaleStatus.Open && p.Checked < CareerRules.DayOf(Career.Now)))
+            Try(() => Career.Do(new CheckSales(Career.Now)));
         var threads = ForumThreads();
         if (_forumThread is { } id && threads.FirstOrDefault(t => t.Id == id) is { } open)
         {
@@ -57,6 +61,9 @@ public partial class CareerScreen
         boards.AddChild(Board("Match offers",
             $"Regulars looking for a game. Ante: {antes} left today. Practice: {(paid > 0 ? $"{paid} more pay today ({CareerRules.Money(practice.Win)} a win, {CareerRules.Money(practice.Loss)} a loss)" : "no more pay today")}.",
             threads.Where(t => t.Kind is ThreadKind.Ante or ThreadKind.Practice)));
+        if (CareerMarket.Trading(World, CareerRules.DayOf(Career.Now)))
+            boards.AddChild(Board("Buy & Sell", "Players selling cards (make them an offer!) and your own sale posts. Prices swing: a bargain one day, steep the next.",
+                threads.Where(t => t.Kind is ThreadKind.Listing or ThreadKind.MyPosts or ThreadKind.NewPost)));
         page.AddChild(Scrolled(boards));
         page.AddChild(CareerStyle.Text($"Your record: {State.Wins} wins, {State.Losses} losses  ·  {TierText()}", 18, CareerStyle.InkDim));
     }
@@ -126,6 +133,10 @@ public partial class CareerScreen
             ThreadKind.Pinned => ("PINNED", new Color("b3261e")),
             ThreadKind.Event => ("TODAY", new Color("b7791f")),
             ThreadKind.Ante => ("ANTE", new Color("7d3c98")),
+            ThreadKind.Listing when CareerRules.ListingBought(State, CareerRules.DayOf(Career.Now), thread.Listing!.Index) => ("SOLD", new Color("7f7f7f")),
+            ThreadKind.Listing => (CareerRules.Money(thread.Listing!.Price), new Color("1e7a3c")),
+            ThreadKind.MyPosts => ("YOURS", new Color("24345e")),
+            ThreadKind.NewPost => ("NEW", new Color("b7791f")),
             _ => ("PRACTICE", new Color("2e6f9e")),
         };
         var badge = new PanelContainer { SizeFlagsVertical = SizeFlags.ShrinkCenter };
@@ -160,7 +171,8 @@ public partial class CareerScreen
         var forum = CareerStyle.LinkButton(World.Content.Forum.Name, size: 18);
         forum.Pressed += () => { _forumThread = null; ShowWebPage(); };
         crumbs.AddChild(forum);
-        crumbs.AddChild(CareerStyle.Text($"›  {(thread.Kind is ThreadKind.Pinned or ThreadKind.Event ? "Events" : "Match offers")}  ›", 18, CareerStyle.InkDim));
+        var board = thread.Kind switch { ThreadKind.Pinned or ThreadKind.Event => "Events", ThreadKind.Ante or ThreadKind.Practice => "Match offers", _ => "Buy & Sell" };
+        crumbs.AddChild(CareerStyle.Text($"›  {board}  ›", 18, CareerStyle.InkDim));
         page.AddChild(crumbs);
         page.AddChild(CareerStyle.Text(thread.Title, 30, CareerStyle.TitleBar));
 
@@ -182,7 +194,8 @@ public partial class CareerScreen
         var name = CareerStyle.Text(thread.Author, 18, CareerStyle.Ink, wrap: true);
         name.HorizontalAlignment = HorizontalAlignment.Center;
         author.AddChild(name);
-        var role = thread.Opponent is { } o ? World.Content.Tiers[Math.Min(o.Tier, World.Content.Tiers.Count - 1)].Name : "Store staff";
+        var role = thread.Opponent is { } o ? World.Content.Tiers[Math.Min(o.Tier, World.Content.Tiers.Count - 1)].Name
+            : thread.Kind is ThreadKind.MyPosts or ThreadKind.NewPost ? "You" : thread.Kind == ThreadKind.Listing ? "Member" : "Store staff";
         var roleText = CareerStyle.Text(role, 15, CareerStyle.InkDim, wrap: true);
         roleText.HorizontalAlignment = HorizontalAlignment.Center;
         author.AddChild(roleText);
@@ -195,6 +208,9 @@ public partial class CareerScreen
         {
             case ThreadKind.Pinned: UpcomingPost(body); break;
             case ThreadKind.Event: EventPost(body, thread.Event!); break;
+            case ThreadKind.Listing: ListingPost(body, thread.Listing!); break;
+            case ThreadKind.MyPosts: MyPostsPost(body); break;
+            case ThreadKind.NewPost: NewSalePost(body); break;
             default: OfferPost(body, thread); break;
         }
         columns.AddChild(Padded(body, 18, 14));
@@ -361,6 +377,16 @@ public partial class CareerScreen
         n = 0;
         foreach (var o in Posters(Math.Min(4, regulars.Count)))
             threads.Add(new ForumThread($"practice:{seed}:{n++}", ThreadKind.Practice, Pick(forum.PracticeTitles), o.Name, o, Body: Pick(forum.PracticeBodies)));
+
+        if (CareerMarket.Trading(World, today))
+        {
+            threads.Add(new ForumThread("newpost", ThreadKind.NewPost, "Sell a card: write a post", Settings.PlayerName));
+            if (State.Posts.Count > 0)
+                threads.Add(new ForumThread("myposts", ThreadKind.MyPosts, $"Your sale posts ({State.Posts.Count(p => p.Status is SaleStatus.Open or SaleStatus.Offered)} up)", Settings.PlayerName));
+            foreach (var listing in CareerRules.Listings(State, World, today))
+                threads.Add(new ForumThread($"listing:{today.DayNumber}:{listing.Index}", ThreadKind.Listing, listing.Title, listing.Seller,
+                    regulars.FirstOrDefault(o => o.Name == listing.Seller), Body: listing.Body, Listing: listing));
+        }
         return threads;
     }
 
@@ -385,5 +411,248 @@ public partial class CareerScreen
         _chat.Add(new ChatLine(false, Say(World.Content.Forum.PracticeGreetings)));
         _webPage = WebPage.Chat;
         ShowWebPage();
+    }
+
+    // ---------------------------------------------------------------- buy & sell
+
+    /// <summary>The haggling under each of today's listings, as it went (kept while the game runs).</summary>
+    private static readonly Dictionary<string, List<(bool Mine, string Text)>> _haggling = new();
+
+    /// <summary>The card picked for a new sale post (on the desk), until it's posted.</summary>
+    private static CardKey? _saleCard;
+
+    private static string FillMarket(IReadOnlyList<string> lines, string card, int price) =>
+        (lines.Count == 0 ? "" : lines[Random.Shared.Next(lines.Count)]).Replace("{card}", card).Replace("{price}", CareerRules.Money(price));
+
+    /// <summary>An amount of money to type in, in dollars with cents.</summary>
+    private static SpinBox MoneyBox(int cents, int max)
+    {
+        var box = new SpinBox { MinValue = 0.01, MaxValue = Math.Max(0.01, max / 100.0), Step = 0.01, Value = cents / 100.0, Prefix = "$", CustomMinimumSize = new Vector2(150, 0) };
+        box.GetLineEdit().AddThemeFontSizeOverride("font_size", 20);
+        return box;
+    }
+
+    private static int Cents(SpinBox box) => (int)Math.Round(box.Value * 100);
+
+    /// <summary>A listing: the seller's post with the card, the haggling so far, and buying it or making an offer.</summary>
+    private void ListingPost(VBoxContainer body, CareerListing listing)
+    {
+        var day = CareerRules.DayOf(Career.Now);
+        var key = $"{day.DayNumber}:{listing.Index}";
+        var top = new HBoxContainer();
+        top.AddThemeConstantOverride("separation", 16);
+        top.AddChild(SmallCard(listing.Card));
+        var text = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        text.AddThemeConstantOverride("separation", 6);
+        text.AddChild(CareerStyle.Text(listing.Body, 20, CareerStyle.Ink, wrap: true));
+        text.AddChild(CareerStyle.Text($"Asking {CareerRules.Money(listing.Price)}{(ArtTag(listing.Card, listing.Art) is { } tag ? $"  ·  {tag}" : "")}", 19, CareerStyle.TitleBar));
+        text.AddChild(CareerStyle.Text($"It usually goes for about {CareerRules.Money(CareerMarket.Price(State, World, listing.Card, day))}.", 16, CareerStyle.InkDim, wrap: true));
+        top.AddChild(text);
+        body.AddChild(top);
+
+        // The replies so far.
+        foreach (var (mine, line) in _haggling.GetValueOrDefault(key) ?? new())
+            body.AddChild(Reply(mine ? Settings.PlayerName : listing.Seller, line, mine));
+
+        if (CareerRules.ListingBought(State, day, listing.Index))
+        {
+            body.AddChild(CareerStyle.Text("Sold.", 20, CareerStyle.Good));
+            return;
+        }
+        int price = CareerRules.ListingPrice(State, listing, day);
+        int left = CareerRules.OffersLeft(State, World, day, listing.Index);
+        var buy = CareerStyle.LinkButton($"Buy it for {CareerRules.Money(price)}", size: 22);
+        buy.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+        buy.Disabled = State.Cash < price;
+        buy.Pressed += () =>
+        {
+            Try(() =>
+            {
+                Career.Do(new BuyListing(Career.Now, listing.Index));
+                Haggle(key, true, $"I'll take it for {CareerRules.Money(price)}.");
+                Haggle(key, false, FillMarket(World.Content.Market.Accepts, listing.Card.Name, price));
+                MenuKit.Toast(this, $"{listing.Card.Name} is yours.");
+            });
+            ShowWebPage();
+        };
+        body.AddChild(buy);
+        if (left == 0)
+        {
+            body.AddChild(CareerStyle.Text($"{listing.Seller} isn't taking more offers today.", 17, CareerStyle.InkDim));
+            return;
+        }
+        var offerRow = new HBoxContainer();
+        offerRow.AddThemeConstantOverride("separation", 10);
+        offerRow.AddChild(CareerStyle.Text("Your offer:", 20));
+        var amount = MoneyBox((int)Math.Round(price * 0.85), price);
+        offerRow.AddChild(amount);
+        var send = CareerStyle.LinkButton("Make an offer", size: 20);
+        send.Pressed += () =>
+        {
+            int offered = Cents(amount);
+            if (offered > State.Cash) { MenuKit.Toast(this, "You don't have that much."); return; }
+            Try(() =>
+            {
+                int before = CareerRules.ListingPrice(State, listing, day);
+                Career.Do(new OfferOnListing(Career.Now, listing.Index, offered));
+                var market = World.Content.Market;
+                Haggle(key, true, FillMarket(market.BuyerOffers, listing.Card.Name, offered));
+                int now = CareerRules.ListingPrice(State, listing, day);
+                if (CareerRules.ListingBought(State, day, listing.Index)) Haggle(key, false, FillMarket(market.Accepts, listing.Card.Name, offered));
+                else if (now < before) Haggle(key, false, FillMarket(market.Counters, listing.Card.Name, now));
+                else Haggle(key, false, FillMarket(market.Declines, listing.Card.Name, offered));
+            });
+            ShowWebPage();
+        };
+        offerRow.AddChild(send);
+        offerRow.AddChild(CareerStyle.Text($"({left} offer{(left == 1 ? "" : "s")} left today)", 16, CareerStyle.InkDim));
+        body.AddChild(offerRow);
+    }
+
+    private static void Haggle(string key, bool mine, string text)
+    {
+        if (!_haggling.TryGetValue(key, out var lines)) _haggling[key] = lines = new();
+        lines.Add((mine, text));
+    }
+
+    /// <summary>A reply under a post: who wrote it and what (the player's to the right).</summary>
+    private static Control Reply(string author, string text, bool mine)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        if (mine) row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        var bubble = new PanelContainer();
+        bubble.AddThemeStyleboxOverride("panel", CareerStyle.Box(mine ? new Color("dfe9d8") : new Color("efe4c8"), Cardboard, 1, 8, 10));
+        var line = new HBoxContainer();
+        line.AddThemeConstantOverride("separation", 10);
+        line.AddChild(AuthorToken(author, 28));
+        line.AddChild(CareerStyle.Text($"{author}: {text}", 18, CareerStyle.Ink, wrap: true));
+        line.GetChild<Control>(1).CustomMinimumSize = new Vector2(380, 0);
+        bubble.AddChild(line);
+        row.AddChild(bubble);
+        if (!mine) row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        return row;
+    }
+
+    /// <summary>The player's sale posts: each card, its price and what became of it, with the buyers' offers to answer.</summary>
+    private void MyPostsPost(VBoxContainer body)
+    {
+        var market = World.Content.Market;
+        var day = CareerRules.DayOf(Career.Now);
+        body.AddChild(CareerStyle.Text($"Posts stay up {market.PostDays} days. Each day a post may sell, get a lower offer, or nothing; the closer the price to what the card goes for, the sooner it sells.", 17, CareerStyle.InkDim, wrap: true));
+        foreach (var post in State.Posts.AsEnumerable().Reverse())
+        {
+            var card = CardKey.Parse(post.Card);
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 14);
+            row.AddChild(SmallCard(card));
+            var info = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+            info.AddThemeConstantOverride("separation", 6);
+            info.AddChild(CareerStyle.Text($"{card.Name} for {CareerRules.Money(post.Ask)}", 20));
+            int daysLeft = Math.Max(0, market.PostDays - (day.DayNumber - post.Day.DayNumber));
+            var (status, color) = post.Status switch
+            {
+                SaleStatus.Open => ($"Up for {daysLeft} more day{(daysLeft == 1 ? "" : "s")}. Chance to sell each day: {CareerRules.SaleChance(State, World, card, post.Ask, day):0%}.", CareerStyle.InkDim),
+                SaleStatus.Offered => ($"A buyer offers {CareerRules.Money(post.Offer)}.", CareerStyle.TitleBar),
+                SaleStatus.Sold => ($"Sold for {CareerRules.Money(post.SoldFor)}.", CareerStyle.Good),
+                SaleStatus.Expired => ("Nobody bought it; the card is back in your collection.", CareerStyle.InkDim),
+                _ => ("Taken down.", CareerStyle.InkDim),
+            };
+            info.AddChild(CareerStyle.Text(status, 17, color, wrap: true));
+            var actions = new HBoxContainer();
+            actions.AddThemeConstantOverride("separation", 18);
+            void Act(string label, CareerAction action)
+            {
+                var link = CareerStyle.LinkButton(label, size: 18);
+                link.Pressed += () => { Try(() => Career.Do(action)); ShowWebPage(); };
+                actions.AddChild(link);
+            }
+            if (post.Status == SaleStatus.Offered)
+            {
+                Act($"Accept {CareerRules.Money(post.Offer)}", new AnswerSaleOffer(Career.Now, post.Id, true));
+                Act("Decline", new AnswerSaleOffer(Career.Now, post.Id, false));
+            }
+            if (post.Status is SaleStatus.Open or SaleStatus.Offered) Act("Take it down", new TakeDownSale(Career.Now, post.Id));
+            info.AddChild(actions);
+            row.AddChild(info);
+            body.AddChild(row);
+        }
+    }
+
+    /// <summary>Writing a sale post: pick a card on the desk, set a price (up to what anyone would pay) and post it.</summary>
+    private void NewSalePost(VBoxContainer body)
+    {
+        var day = CareerRules.DayOf(Career.Now);
+        var market = World.Content.Market;
+        int up = State.Posts.Count(p => p.Status is SaleStatus.Open or SaleStatus.Offered);
+        body.AddChild(CareerStyle.Text($"Post a card for sale: buyers answer over the next days. Selling here is slower than at the counter and not sure to happen, but it can pay more. You have {up} of {market.PostsMax} posts up.", 18, CareerStyle.Ink, wrap: true));
+        var pick = CareerStyle.LinkButton(_saleCard is null ? "Choose the card…" : "Choose another card…", size: 20);
+        pick.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+        pick.Pressed += PickSaleCard;
+        if (_saleCard is not { } card || State.Owned(card) < 1)
+        {
+            _saleCard = null;
+            body.AddChild(pick);
+            return;
+        }
+        int price = CareerMarket.Price(State, World, card, day);
+        int cap = CareerRules.SaleCap(State, World, card, day);
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 16);
+        row.AddChild(SmallCard(card));
+        var form = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        form.AddThemeConstantOverride("separation", 8);
+        form.AddChild(CareerStyle.Text(card.Name + (ArtTag(card, World.ArtOf(card)) is { } tag ? $"  ·  {tag}" : ""), 20));
+        form.AddChild(CareerStyle.Text($"It goes for about {CareerRules.Money(price)}; nobody pays more than {CareerRules.Money(cap)}. The counter would pay {CareerRules.Money(CareerMarket.SellPrice(State, World, card, day))}.", 17, CareerStyle.InkDim, wrap: true));
+        var priceRow = new HBoxContainer();
+        priceRow.AddThemeConstantOverride("separation", 10);
+        priceRow.AddChild(CareerStyle.Text("Your price:", 20));
+        var ask = MoneyBox(price, cap);
+        priceRow.AddChild(ask);
+        var chance = CareerStyle.Text("", 16, CareerStyle.InkDim);
+        void ShowChance(double _) => chance.Text = $"about {CareerRules.SaleChance(State, World, card, Cents(ask), day):0%} a day to sell";
+        ask.ValueChanged += ShowChance;
+        ShowChance(0);
+        priceRow.AddChild(chance);
+        form.AddChild(priceRow);
+        var actions = new HBoxContainer();
+        actions.AddThemeConstantOverride("separation", 18);
+        var post = CareerStyle.LinkButton("Post it", size: 22);
+        post.Disabled = up >= market.PostsMax;
+        post.Pressed += () =>
+        {
+            Try(() =>
+            {
+                Career.Do(new PostSale(Career.Now, card.ToString(), Cents(ask)));
+                _saleCard = null;
+                _forumThread = "myposts";
+                MenuKit.Toast(this, "Posted! Check back over the next days.");
+            });
+            ShowWebPage();
+        };
+        actions.AddChild(post);
+        actions.AddChild(pick);
+        form.AddChild(actions);
+        row.AddChild(form);
+        body.AddChild(row);
+    }
+
+    /// <summary>Picks the card to sell on the desk (every card but basic lands, with what it goes for); back to the post after.</summary>
+    private static void PickSaleCard()
+    {
+        var day = CareerRules.DayOf(Career.Now);
+        void Back()
+        {
+            _forumThread = "newpost";
+            OpenOn = nameof(WebPage.Forum);
+            App.Instance.GoTo(App.CareerScene);
+        }
+        DeckDesk.Picking = new DeckDesk.CardPick("Choose the card to sell", Stakes(),
+            card => CareerRules.Money(CareerMarket.Price(State, World, card, day)),
+            card => { _saleCard = card; Back(); },
+            Back,
+            Career.Decks.List(null).SelectMany(d => Career.Decks.Load(d).Deck is var list ? list.Main.Concat(list.Commander).Concat(list.Sideboard) : Enumerable.Empty<DeckEntry>())
+                .Select(e => e.Name).ToHashSet(StringComparer.OrdinalIgnoreCase));
+        App.Instance.GoTo(App.DeckDeskScene);
     }
 }

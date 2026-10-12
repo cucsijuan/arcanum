@@ -54,8 +54,20 @@ public static class CareerMarket
     public static int Price(CareerState state, CareerWorld world, CardKey card, DateOnly day)
     {
         int value = world.Value(card);
+        if (value == 0) return 0;
+        double art = Trading(world, day) && world.ArtOf(card) != CardArt.Usual ? world.Content.Market.SpecialPrice : 1;
+        return Math.Max(1, (int)Math.Round(value * art * Factor(state, world, card.Name, day)));
+    }
+
+    /// <summary>A card's price on a day as if it were its usual art (special arts cost more, see <see cref="MarketSpec"/>).</summary>
+    public static int UsualPrice(CareerState state, CareerWorld world, CardKey card, DateOnly day)
+    {
+        int value = world.Value(card);
         return value == 0 ? 0 : Math.Max(1, (int)Math.Round(value * Factor(state, world, card.Name, day)));
     }
+
+    /// <summary>Whether singles are traded on a day (see <see cref="MarketSpec.Since"/>).</summary>
+    public static bool Trading(CareerWorld world, DateOnly day) => world.Content.Market.Since is { } since && day >= since;
 
     /// <summary>What the store pays for one copy on a day.</summary>
     public static int SellPrice(CareerState state, CareerWorld world, CardKey card, DateOnly day) =>

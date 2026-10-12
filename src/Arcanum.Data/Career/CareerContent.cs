@@ -46,6 +46,9 @@ public sealed record CareerContent
     /// <summary>The store's forum on the website: what the regulars write when they look for a game.</summary>
     public ForumSpec Forum { get; init; } = new();
 
+    /// <summary>Single cards: the store's case, the forum's listings and the player's own sale posts.</summary>
+    public MarketSpec Market { get; init; } = new();
+
     /// <summary>Reputation tiers, lowest first: each one opens the regulars of its tier (and the ones below).</summary>
     public IReadOnlyList<TierSpec> Tiers { get; init; } = new[] { new TierSpec("Newcomer", 0) };
 
@@ -123,6 +126,88 @@ public sealed record ForumSpec
     public IReadOnlyList<string> PracticeTitles { get; init; } = new[] { "Practice partner wanted" };
     public IReadOnlyList<string> PracticeBodies { get; init; } = new[] { "Testing a deck and need someone to play against. Just for fun, nothing on the line." };
     public IReadOnlyList<string> PracticeGreetings { get; init; } = new[] { "Hey, thanks for answering! Meet you at the store?" };
+}
+
+/// <summary>
+/// Single cards (prices are fractions of a card's price of the day, see <c>CareerMarket.Price</c>). The store sells a case of
+/// singles a day at a steady markup; other players list cards on the forum at prices that swing either way and haggle;
+/// the player can post cards for sale there too, sold (or answered with a lower offer) over the following days. A
+/// "special" printing is a card's other art in a set (borderless, showcase, extended art…): found in play boosters or
+/// only in collector boosters. Nothing here applies before <see cref="Since"/>, so older careers replay as they were.
+/// </summary>
+public sealed record MarketSpec
+{
+    /// <summary>The first day singles are traded (the special-art prices start then too); null: never.</summary>
+    public DateOnly? Since { get; init; }
+
+    /// <summary>Cards in the store's case each day.</summary>
+    public int SinglesPerDay { get; init; } = 20;
+
+    /// <summary>The store's markup on a single by rarity (0.4: 40% over its price).</summary>
+    public IReadOnlyDictionary<string, double> Markup { get; init; } = new Dictionary<string, double>
+    {
+        ["common"] = 0.4, ["uncommon"] = 0.35, ["rare"] = 0.3, ["mythic"] = 0.2, ["special"] = 0.3, ["bonus"] = 0.3,
+    };
+
+    /// <summary>How often each rarity is picked for a single (relative weights).</summary>
+    public IReadOnlyDictionary<string, int> RarityWeights { get; init; } = new Dictionary<string, int>
+    {
+        ["common"] = 45, ["uncommon"] = 30, ["rare"] = 18, ["mythic"] = 7,
+    };
+
+    /// <summary>Chances that a single is a foil, a special art from play boosters, a special art from collector boosters.</summary>
+    public double FoilChance { get; init; } = 0.15;
+    public double SpecialPlayChance { get; init; } = 0.02;
+    public double SpecialCollectorChance { get; init; } = 0.04;
+
+    /// <summary>The forum has special arts this many times more often than the store.</summary>
+    public double ForumSpecialFactor { get; init; } = 1.5;
+
+    /// <summary>A special art's price compared with the card's usual price (also what the store pays back).</summary>
+    public double SpecialPrice { get; init; } = 2;
+
+    /// <summary>The least a special art costs, compared with the card's usual price: at the store, on the forum.</summary>
+    public double StoreSpecialMin { get; init; } = 3;
+    public double ForumSpecialMin { get; init; } = 2.5;
+
+    /// <summary>Forum listings a day (between both).</summary>
+    public int ListingsMin { get; init; } = 10;
+    public int ListingsMax { get; init; } = 15;
+
+    /// <summary>How far a forum price strays from the card's price by rarity: [least, most] (either way for listings; the most is the player's cap).</summary>
+    public IReadOnlyDictionary<string, double[]> Spread { get; init; } = new Dictionary<string, double[]>
+    {
+        ["common"] = new[] { 0.3, 0.5 }, ["uncommon"] = new[] { 0.2, 0.4 }, ["rare"] = new[] { 0.15, 0.3 }, ["mythic"] = new[] { 0.1, 0.2 },
+        ["special"] = new[] { 0.15, 0.3 }, ["bonus"] = new[] { 0.15, 0.3 },
+    };
+
+    /// <summary>A seller's lowest price, hidden, as a fraction of what they ask: between both.</summary>
+    public double FloorMin { get; init; } = 0.85;
+    public double FloorMax { get; init; } = 0.95;
+
+    /// <summary>Offers the player can make on one listing.</summary>
+    public int OfferAttempts { get; init; } = 2;
+
+    /// <summary>Days a player's post stays up; how many posts at once.</summary>
+    public int PostDays { get; init; } = 7;
+    public int PostsMax { get; init; } = 10;
+
+    /// <summary>Chance a day that a post sells: asking the card's price or less, and asking the most allowed (in between, in proportion).</summary>
+    public double SellChanceFair { get; init; } = 0.5;
+    public double SellChanceCap { get; init; } = 0.1;
+
+    /// <summary>Chance a day of a lower offer instead, and how low it is (fractions of the asking price).</summary>
+    public double OfferChance { get; init; } = 0.25;
+    public double OfferMin { get; init; } = 0.7;
+    public double OfferMax { get; init; } = 0.9;
+
+    /// <summary>The forum's sale posts and the sellers' answers (one at random each time).</summary>
+    public IReadOnlyList<string> ListingTitles { get; init; } = new[] { "WTS: {card}" };
+    public IReadOnlyList<string> ListingBodies { get; init; } = new[] { "Selling my {card}. Asking {price}. Make me an offer if you like." };
+    public IReadOnlyList<string> Accepts { get; init; } = new[] { "Deal! It's yours." };
+    public IReadOnlyList<string> Counters { get; init; } = new[] { "Hmm, too low. Meet me at {price}?" };
+    public IReadOnlyList<string> Declines { get; init; } = new[] { "No way, that's way too low." };
+    public IReadOnlyList<string> BuyerOffers { get; init; } = new[] { "Would you take {price} for it?" };
 }
 
 /// <param name="PerDay">Ante matches a day.</param>

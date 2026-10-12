@@ -21,6 +21,13 @@ namespace Arcanum.Data.Career;
 [JsonDerivedType(typeof(TakeOffer), "offer")]
 [JsonDerivedType(typeof(EnterEvent), "enter")]
 [JsonDerivedType(typeof(FinishEvent), "finishEvent")]
+[JsonDerivedType(typeof(BuySingle), "buySingle")]
+[JsonDerivedType(typeof(BuyListing), "buyListing")]
+[JsonDerivedType(typeof(OfferOnListing), "offerListing")]
+[JsonDerivedType(typeof(PostSale), "postSale")]
+[JsonDerivedType(typeof(AnswerSaleOffer), "answerSale")]
+[JsonDerivedType(typeof(TakeDownSale), "takeDownSale")]
+[JsonDerivedType(typeof(CheckSales), "checkSales")]
 public abstract record CareerAction(DateTime Utc);
 
 /// <summary>A new career: its seed and the preconstructed deck chosen to start with.</summary>
@@ -64,3 +71,24 @@ public sealed record TakeOffer(DateTime Utc, int Offer) : CareerAction(Utc);
 
 /// <summary>Sells copies of a card to the store.</summary>
 public sealed record SellCard(DateTime Utc, string Card, int Count) : CareerAction(Utc);
+
+/// <summary>Buys one of today's singles in the store's case (its index).</summary>
+public sealed record BuySingle(DateTime Utc, int Index) : CareerAction(Utc);
+
+/// <summary>Buys one of today's forum listings at its price (or at the seller's counter-offer when there is one).</summary>
+public sealed record BuyListing(DateTime Utc, int Index) : CareerAction(Utc);
+
+/// <summary>Offers a price (cents) for one of today's forum listings: the seller takes it, counters or turns it down.</summary>
+public sealed record OfferOnListing(DateTime Utc, int Index, int Amount) : CareerAction(Utc);
+
+/// <summary>Posts a card of the collection for sale on the forum at a price (cents).</summary>
+public sealed record PostSale(DateTime Utc, string Card, int Ask) : CareerAction(Utc);
+
+/// <summary>Takes or turns down the offer a buyer made on one of the player's posts.</summary>
+public sealed record AnswerSaleOffer(DateTime Utc, int Post, bool Accept) : CareerAction(Utc);
+
+/// <summary>Takes one of the player's posts down: the card comes back.</summary>
+public sealed record TakeDownSale(DateTime Utc, int Post) : CareerAction(Utc);
+
+/// <summary>Looks at the forum: the player's posts catch up with the days gone by (sold, offered, expired).</summary>
+public sealed record CheckSales(DateTime Utc) : CareerAction(Utc);

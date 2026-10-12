@@ -16,7 +16,7 @@ public sealed record MissingCard(string Name, int Needed, int Owned);
 /// The career's rules: each action checked and applied to a state. Pure and deterministic, so the same journal always
 /// gives the same career (on this device or on a server checking it).
 /// </summary>
-public static class CareerRules
+public static partial class CareerRules
 {
     public const string CashReward = "cash", BoosterReward = "booster";
     public const string Daily = "daily", Practice = "practice", Ante = "ante";
@@ -45,6 +45,7 @@ public static class CareerRules
         var (lastUtc, day, dailies, practices, antes) = (state.LastUtc, state.Day, state.DailiesPlayed, state.PracticePlayed, state.AntesPlayed);
         var (offers, offersDay) = (state.Offers, state.OffersDay);
         Advance(state, action.Utc);
+        ResolveSales(state, world, action.Utc);
         if (state.OffersDay != state.Day) (state.Offers, state.OffersDay) = (MakeOffers(state, world, state.Day), state.Day);
         try
         {
@@ -61,6 +62,13 @@ public static class CareerRules
                 TakeOffer offer => Take(state, offer, world),
                 EnterEvent enter => Enter(state, enter, world),
                 FinishEvent finish => Finish(state, finish, world),
+                BuySingle single => Buy(state, single, world),
+                BuyListing listing => Buy(state, listing, world),
+                OfferOnListing offer => Offer(state, offer, world),
+                PostSale post => Post(state, post, world),
+                AnswerSaleOffer answer => Answer(state, answer, world),
+                TakeDownSale down => TakeDown(state, down),
+                CheckSales => new CareerResult(Array.Empty<PoolCard>(), 0),
                 _ => throw new CareerRuleException($"Unknown career action {action.GetType().Name}."),
             };
         }
