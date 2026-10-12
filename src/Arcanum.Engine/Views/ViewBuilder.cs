@@ -132,6 +132,7 @@ public static class ViewBuilder
             Damage = card.Damage,
             SummoningSick = card.Zone == Zone.Battlefield && card.IsSummoningSick,
             Keywords = Enum.GetValues<Cards.Keyword>().Where(card.Has).Select(Cards.Keywords.DisplayName).ToList(),
+            Wards = card.Zone == Zone.Battlefield ? WardsOf(card) : Array.Empty<string>(),
             PlusOneCounters = card.CounterCount(Abilities.CounterKind.PlusOnePlusOne),
             MinusOneCounters = card.CounterCount(Abilities.CounterKind.MinusOneMinusOne),
             Loyalty = card.CounterCount(Abilities.CounterKind.Loyalty),
@@ -178,6 +179,22 @@ public static class ViewBuilder
     }
 
     /// <summary>One face of a double-faced card as printed (its own characteristics, without effects or counters).</summary>
+    /// <summary>The costs of a permanent's ward abilities, as players read them.</summary>
+    private static List<string> WardsOf(State.Card card)
+    {
+        var wards = new List<string>();
+        if (card.HasTextAbilities)
+        {
+            var d = card.Definition;
+            if (d.WardMana is not null || d.WardLife > 0)
+                wards.Add(string.Join(" and ", new[] { d.WardMana is { } m && m.ManaValue > 0 ? m.ToString() : null, d.WardLife > 0 ? $"{d.WardLife} life" : null }.OfType<string>()));
+            if (d.WardCost is not null) wards.Add("an additional cost");
+            if (d.WardLifeFromPower) wards.Add("life equal to its power");
+        }
+        wards.AddRange(card.GrantedWards.Select(w => w.ToString()));
+        return wards;
+    }
+
     private static CardView PrintedFace(State.Card card, Cards.CardDefinition face, bool isBack) => new()
     {
         Id = card.Id,

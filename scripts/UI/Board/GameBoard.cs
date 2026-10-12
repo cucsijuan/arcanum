@@ -1749,6 +1749,23 @@ public partial class GameBoard : Control
     {
         if (_session.CurrentDecision is not TargetDecision t || !t.Request.CanAddMore(_chosenTargets.Count)) return;
         if (!t.Request.IsAllowed(_chosenTargets.Count, target, _chosenTargets)) return;
+        // Targeting an opponent's warded permanent: ward will counter the spell or ability unless its cost is paid (rule 702.21).
+        if (target.Card is { } id && _session.ViewFor(t.Player).FindCard(id) is { Wards.Count: > 0 } warded && warded.Controller != t.Player
+            && !_chosenTargets.Any(c => c.Card == id))
+        {
+            Arcanum.UI.Menu.MenuKit.Modal(this, $"{warded.Name} has ward",
+                $"Targeting it triggers ward: your spell or ability is countered unless you pay {string.Join(", then ", warded.Wards)}.", null,
+                new (string, Action)[] { ("Choose another target", Refresh) }
+                    .Concat(t.Request.CanCancel ? new (string, Action)[] { ("Cancel", () => { if (!t.IsAnswered) t.Answer(null); }) } : Array.Empty<(string, Action)>())
+                    .Append(("Target it anyway", () => { if (_session.CurrentDecision == t) AddTarget(t, target); }))
+                    .ToArray());
+            return;
+        }
+        AddTarget(t, target);
+    }
+
+    private void AddTarget(TargetDecision t, Arcanum.Engine.Abilities.Target target)
+    {
         _chosenTargets.Add(target);
         if ((!t.Request.LastIsAnyNumber && _chosenTargets.Count == t.Request.Legal.Count) || (t.Request.LastIsAnyNumber && !t.Request.CanAddMore(_chosenTargets.Count) && t.Request.IsComplete(_chosenTargets.Count))) t.Answer(_chosenTargets.ToList());
         else Refresh();

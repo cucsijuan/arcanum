@@ -26,6 +26,8 @@ public sealed record CardView
     public int Damage { get; init; }
     public bool SummoningSick { get; init; }
     public IReadOnlyList<string> Keywords { get; init; } = Array.Empty<string>();
+    /// <summary>What each of its ward abilities makes an opponent pay ("{2}", "3 life"), printed and granted (rule 702.21).</summary>
+    public IReadOnlyList<string> Wards { get; init; } = Array.Empty<string>();
     /// <summary>Rules text of each of the card's abilities, indexed like <c>ActivateAbility.Index</c>.</summary>
     public IReadOnlyList<string> AbilityTexts { get; init; } = Array.Empty<string>();
     public CardId? AttachedTo { get; init; }
