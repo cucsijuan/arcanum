@@ -109,7 +109,7 @@ public sealed record Answer(int Ask, JsonElement Value) : NetMessage;
 /// <summary>
 /// The player's priority stops, so the host passes priority for them without asking over the network each time.
 /// </summary>
-public sealed record Stops(IReadOnlyList<Step> OwnTurn, IReadOnlyList<Step> OpponentTurn, bool FullControl, int? PassingTurn) : NetMessage;
+public sealed record Stops(IReadOnlyList<Step> OwnTurn, IReadOnlyList<Step> OpponentTurn, bool FullControl, int? PassingTurn, int? ResolvingTurn = null) : NetMessage;
 
 // ------------------------------------------------------------------ questions (one per player decision)
 

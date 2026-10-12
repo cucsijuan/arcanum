@@ -136,7 +136,8 @@ public sealed class BotController : IPlayerController
                     + view.Self.Hand.Count(c => (c.Types & CardType.Land) != 0);
         // Lands are dead draws once there are enough; spells far above the mana available are slow.
         bool Unwanted(CardView c) => (c.Types & CardType.Land) != 0 ? lands >= 5 : ManaValue(c.ManaCost) > lands + 2;
-        double Value(CardView c) => (c.Types & CardType.Creature) != 0 ? CreatureValue(c) : 1 + ManaValue(c.ManaCost);
+        double Value(CardView c) => request.Purpose == CardChoicePurpose.Sacrifice ? KeepValue(c)
+            : (c.Types & CardType.Creature) != 0 ? CreatureValue(c) : 1 + ManaValue(c.ManaCost);
 
         IEnumerable<CardView> picks = request.Purpose switch
         {
@@ -398,6 +399,8 @@ public sealed class BotController : IPlayerController
             var ability = Rules(view, activate.Source)?.Abilities.ElementAtOrDefault(activate.Index) as ActivatedAbility;
             if (ability is null || ability.Effects.Any(e => e is AttachSelf) || ability.Cost.Loyalty is not null || ability.Cost.LoyaltyX) continue;
             if (ability.Cost.SacrificeSelf) continue; // keep sacrifice outlets for emergencies
+            // A card for two artifacts, a draw for a discard: only worth it out of cards, with cheap things to give up.
+            if (SpendsCards(ability.Cost) && !(ability.Effects.Any(e => e is DrawCards) && NeedsCards(view) && CheapSacrifice(view, ability.Cost, activate.Source))) continue;
             if (ability.Targets.Count == 0)
             {
                 if (ability.Effects.Any(e => e is DrawCards or CreateTokens)) return activate;
@@ -409,6 +412,47 @@ public sealed class BotController : IPlayerController
             if (target is { Player: not null } && DamageTo(ability, 0) > 0) return activate; // chip damage at the right moment
         }
         return null;
+    }
+
+    /// <summary>
+    /// Costs that give up other cards or permanents (sacrifice another permanent, discard, return or exile one):
+    /// paying them just to draw or make a token loses board for nothing.
+    /// </summary>
+    private static bool SpendsCards(AbilityCost cost) =>
+        cost.ExileSelf || cost.ReturnSelfToHand || cost.DiscardX
+        || cost.Extra is { } extra && (extra.Sacrifice is not null || extra.Discard > 0 || extra.ReturnToHand is not null);
+
+    /// <summary>Out of things to do: no spells left in hand (only lands, or nothing).</summary>
+    private static bool NeedsCards(GameView view) => view.Self.Hand.All(c => (c.Types & CardType.Land) != 0);
+
+    /// <summary>
+    /// A cost that only sacrifices permanents (the least valuable ones, as <see cref="ChooseCardsAsync"/> picks them) and those
+    /// are worth little: tokens, small artifacts. Never the commander, never cards from the hand.
+    /// </summary>
+    private bool CheapSacrifice(GameView view, AbilityCost cost, CardId source)
+    {
+        if (cost.ExileSelf || cost.ReturnSelfToHand || cost.DiscardX || cost.Extra is not { Sacrifice: { } filter } extra
+            || extra.Discard > 0 || extra.ReturnToHand is not null) return false;
+        var picks = view.Battlefield
+            .Where(c => c.Controller == _me && !(filter.Other && c.Id == source)
+                        && (filter.Types == 0 || (c.Types & filter.Types) != 0) && (filter.ExcludedTypes & c.Types) == 0
+                        && (filter.Subtype is null || c.Subtypes.Contains(filter.Subtype, StringComparer.OrdinalIgnoreCase))
+                        && (filter.Token is null || c.IsToken == filter.Token))
+            .OrderBy(KeepValue).Take(extra.SacrificeCount).ToList();
+        return picks.Count == extra.SacrificeCount && picks.All(c => !c.IsCommander && KeepValue(c) <= CheapPermanent);
+    }
+
+    /// <summary>The most a permanent may be worth to be sacrificed for a card (a 1/1 flying token, a small artifact).</summary>
+    private const double CheapPermanent = 4.5;
+
+    /// <summary>How much we'd rather keep a permanent of ours: creatures by their stats, mana sources higher, the commander most.</summary>
+    private static double KeepValue(CardView c)
+    {
+        double value = (c.Types & CardType.Creature) != 0 ? CreatureValue(c) : 1 + ManaValue(c.ManaCost) + c.AbilityTexts.Count;
+        if (c.AbilityTexts.Any(t => t.Contains("Add {", StringComparison.Ordinal))) value += 2;
+        if ((c.Types & CardType.Land) != 0) value += 4;
+        if (c.IsCommander) value += 100;
+        return value;
     }
 
     /// <summary>A pump spell that wins a combat for one of our creatures.</summary>

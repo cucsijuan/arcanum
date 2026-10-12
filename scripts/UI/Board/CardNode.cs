@@ -391,6 +391,7 @@ public partial class CardNode : Control
         var marks = new List<string>();
         if (onBattlefield && view.SummoningSick && (view.Types & Arcanum.Engine.Cards.CardType.Creature) != 0) marks.Add("zz");
         if (onBattlefield && view.AttacksEachCombat) marks.Add("\u2694");
+        if (onBattlefield && (view.Unblockable || view.UnblockableBy.Count > 0)) marks.Add("\u2298"); // can't be blocked
         _marksBadge.Visible = marks.Count > 0;
         _marksLabel.Text = string.Join(" ", marks);
         ApplySize();

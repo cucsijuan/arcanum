@@ -165,6 +165,47 @@ public class BotTests
         Assert.Equal(Zone.Battlefield, game.State.GetCard(small).Zone);
     }
 
+    private static readonly CardDefinition Tinkerer = Scenario.Creature("Tinkerer", 1, 4) with
+    {
+        Abilities = new AbilityDefinition[]
+        {
+            new ActivatedAbility
+            {
+                Cost = new AbilityCost(ManaCost.Parse("{1}")) { Extra = new ExtraCost(Sacrifice: new ObjectFilter(CardType.Artifact), SacrificeCount: 2) },
+                Text = "{1}, Sacrifice two artifacts: Draw a card.", Effects = new Effect[] { new DrawCards(1, Subject.You) },
+            },
+        },
+    };
+
+    /// <summary>The bot draws with "sacrifice two artifacts" only when it has no spells left, giving up its cheapest artifacts.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SacrificesCheapArtifactsToDrawOnlyWhenOutOfSpells(bool spellInHand)
+    {
+        var bot = new BotController(Scenario.P0) { AlwaysKeep = true };
+        var passive = new TestController { Act = (_, _) => PassPriority.Instance, Attack = (_, _, _) => Array.Empty<AttackDeclaration>() };
+        var game = new Game(new GameConfig { Seed = 1, StartingPlayer = Scenario.P0 }, new[]
+        {
+            new PlayerSetup("Bot", bot, Decks.Of((GenericCards.Forest, 20))),
+            new PlayerSetup("Defender", passive, Decks.Of((GenericCards.Forest, 20))),
+        });
+        bot.UseCardRules(id => game.State.Cards.TryGetValue(id, out var c) ? c.Definition : null);
+        var thopter = Scenario.Creature("Thopter", 1, 1, Keyword.Flying) with { Types = CardType.Artifact | CardType.Creature, IsToken = true };
+        var golem = Scenario.Creature("Golem", 4, 4) with { Types = CardType.Artifact | CardType.Creature };
+        game.SetupPermanent(Scenario.P0, Tinkerer);
+        var tokens = new[] { game.SetupPermanent(Scenario.P0, thopter), game.SetupPermanent(Scenario.P0, thopter) };
+        var big = game.SetupPermanent(Scenario.P0, golem);
+        for (int i = 0; i < 3; i++) game.SetupPermanent(Scenario.P0, GenericCards.Forest);
+        if (spellInHand) game.SetupInHand(Scenario.P0, GenericCards.GreatWurm);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        game.EventRaised += e => { if (e is TurnBegan { TurnNumber: 2 }) cts.Cancel(); };
+        try { await game.RunAsync(cts.Token); } catch (OperationCanceledException) { }
+
+        Assert.Equal(Zone.Battlefield, game.State.GetCard(big).Zone);
+        Assert.Equal(spellInHand, tokens.All(t => game.State.Cards.ContainsKey(t) && game.State.GetCard(t).Zone == Zone.Battlefield));
+    }
+
     [Fact]
     public async Task BotOnlyAsksAboutCardsItCanSee()
     {

@@ -1336,6 +1336,12 @@ public partial class GameBoard : Control
                         _session.Policy.PassTurn(view.TurnNumber); // skip the rest of the turn unless an opponent acts
                         p.Answer(PassPriority.Instance);
                     });
+                if (view.Stack.Count > 0)
+                    AddButton("Resolve all this turn", () =>
+                    {
+                        _session.Policy.ResolveAllThisTurn(view.TurnNumber); // no more "respond?" stops until the turn ends
+                        p.Answer(PassPriority.Instance);
+                    });
                 AddButton(resolve, () => p.Answer(PassPriority.Instance), primary: true);
                 break;
             }

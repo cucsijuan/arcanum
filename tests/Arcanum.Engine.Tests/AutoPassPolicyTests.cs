@@ -80,6 +80,19 @@ public class AutoPassPolicyTests
     }
 
     [Fact]
+    public void ResolveAllThisTurnLetsOpponentSpellsResolveUntilTheTurnEnds()
+    {
+        var policy = new AutoPassPolicy();
+        policy.ResolveAllThisTurn(3);
+        Assert.True(policy.ShouldAutoPass(View(Step.PrecombatMain, Opponent, turn: 3, stackTop: Opponent), CanCast));
+        Assert.True(policy.ShouldAutoPass(View(Step.End, Opponent, turn: 3, stackTop: Opponent), CanCast));
+        Assert.False(policy.ShouldAutoPass(View(Step.PrecombatMain, Me, turn: 3), CanCast)); // step stops still apply
+
+        Assert.False(policy.ShouldAutoPass(View(Step.Upkeep, Me, turn: 4, stackTop: Opponent), CanCast)); // next turn: asked again
+        Assert.Null(policy.ResolvingTurn);
+    }
+
+    [Fact]
     public void FullControlStopsEverywhereButStillHonoursEndTurn()
     {
         var policy = new AutoPassPolicy();

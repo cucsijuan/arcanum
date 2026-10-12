@@ -46,6 +46,10 @@ public sealed record CardView
     public int MinusOneCounters { get; init; }
     /// <summary>"Attacks each combat if able."</summary>
     public bool AttacksEachCombat { get; init; }
+    /// <summary>"Can't be blocked" (printed or from an effect).</summary>
+    public bool Unblockable { get; init; }
+    /// <summary>Players whose creatures can't block it this turn ("can't be blocked by the player with the most life").</summary>
+    public IReadOnlyList<PlayerId> UnblockableBy { get; init; } = Array.Empty<PlayerId>();
     /// <summary>Loyalty counters (planeswalkers).</summary>
     public int Loyalty { get; init; }
     /// <summary>Lore counters (Sagas): the chapter reached so far.</summary>

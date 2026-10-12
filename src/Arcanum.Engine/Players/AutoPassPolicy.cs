@@ -12,6 +12,7 @@ namespace Arcanum.Engine.Players;
 /// <item>With a spell on the stack, stops only if an opponent controls the top object (a chance to respond).</item>
 /// <item>With an empty stack, stops only on the steps the player marked, separately for their own and opponents' turns.</item>
 /// <item>"End turn" passes everything until the next turn, unless an opponent casts something the player can answer.</item>
+/// <item>"Resolve all this turn" lets every spell and ability resolve without asking until the turn ends; step stops still apply.</item>
 /// </list>
 /// </summary>
 public sealed class AutoPassPolicy
@@ -24,6 +25,9 @@ public sealed class AutoPassPolicy
 
     /// <summary>Turn number being skipped with "End turn", or null.</summary>
     public int? PassingTurn { get; private set; }
+
+    /// <summary>Turn number during which nothing on the stack asks for a response ("Resolve all this turn"), or null.</summary>
+    public int? ResolvingTurn { get; private set; }
 
     public event Action? Changed;
 
@@ -51,8 +55,16 @@ public sealed class AutoPassPolicy
 
     public void CancelPassTurn()
     {
-        if (PassingTurn is null) return;
+        if (PassingTurn is null && ResolvingTurn is null) return;
         PassingTurn = null;
+        ResolvingTurn = null;
+        Changed?.Invoke();
+    }
+
+    public void ResolveAllThisTurn(int turnNumber)
+    {
+        if (ResolvingTurn == turnNumber) return;
+        ResolvingTurn = turnNumber;
         Changed?.Invoke();
     }
 
@@ -64,9 +76,12 @@ public sealed class AutoPassPolicy
         if (PassingTurn is { } turn)
         {
             if (view.TurnNumber != turn) PassingTurn = null;
-            else if (opponentOnTop && canAct) PassingTurn = null; // something new happened: hand control back
+            else if (opponentOnTop && canAct && ResolvingTurn != turn) PassingTurn = null; // something new happened: hand control back
             else return true;
         }
+
+        if (ResolvingTurn is { } resolving && view.TurnNumber != resolving) ResolvingTurn = null;
+        if (ResolvingTurn is not null && view.Stack.Count > 0) return true;
 
         if (FullControl) return false;
         if (!canAct) return true;

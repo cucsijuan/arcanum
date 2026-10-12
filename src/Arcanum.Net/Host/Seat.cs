@@ -166,8 +166,9 @@ internal sealed class Seat : IPlayerController
         Policy.OpponentTurnStops.Clear();
         Policy.OpponentTurnStops.UnionWith(stops.OpponentTurn);
         Policy.FullControl = stops.FullControl;
+        Policy.CancelPassTurn();
         if (stops.PassingTurn is { } turn) Policy.PassTurn(turn);
-        else Policy.CancelPassTurn();
+        if (stops.ResolvingTurn is { } resolving) Policy.ResolveAllThisTurn(resolving);
     }
 
     // ------------------------------------------------------------------ questions

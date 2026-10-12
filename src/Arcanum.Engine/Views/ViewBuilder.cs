@@ -139,6 +139,8 @@ public static class ViewBuilder
             LoreCounters = card.CounterCount(Abilities.CounterKind.Lore),
             FinalChapter = card.Definition.FinalChapter,
             AttacksEachCombat = card.Definition.AttacksEachCombat && card.HasTextAbilities,
+            Unblockable = card.Zone == Zone.Battlefield && card.Has(Cards.Keyword.CantBeBlocked),
+            UnblockableBy = card.Zone == Zone.Battlefield ? card.UnblockableBy.ToList() : Array.Empty<PlayerId>(),
             IsToken = card.Definition.IsToken,
             OracleText = card.Definition.OracleText,
             Colors = card.Colors,

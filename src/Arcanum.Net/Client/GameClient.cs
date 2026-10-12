@@ -91,7 +91,7 @@ public sealed class GameClient
     private void SendStops()
     {
         if (_policy is null || !IsWelcomed) return;
-        _peer.Send(new Stops(_policy.OwnTurnStops.ToList(), _policy.OpponentTurnStops.ToList(), _policy.FullControl, _policy.PassingTurn));
+        _peer.Send(new Stops(_policy.OwnTurnStops.ToList(), _policy.OpponentTurnStops.ToList(), _policy.FullControl, _policy.PassingTurn, _policy.ResolvingTurn));
     }
 
     public void Poll()
