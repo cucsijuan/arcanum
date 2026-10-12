@@ -63,6 +63,7 @@ public partial class CareerScreen : Control
     private WebPage _webPage = WebPage.Matches;
     private string _reward = CareerRules.CashReward;
     private int _deckIndex, _commanderDeckIndex;
+    private bool _deckPicked, _commanderDeckPicked; // the player chose one; until then the first playable deck is shown
     private string _filter = "";
 
     private static CareerService Career => App.Instance.Career;
@@ -586,6 +587,8 @@ public partial class CareerScreen : Control
             return null;
         }
         ref int index = ref commander ? ref _commanderDeckIndex : ref _deckIndex;
+        if (!(commander ? _commanderDeckPicked : _deckPicked))
+            index = Math.Max(0, decks.FindIndex(d => CareerRules.DeckProblems(Career.Decks.Load(d).Deck, State, World, commander).Count == 0));
         index = Math.Clamp(index, 0, decks.Count - 1);
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 12);
@@ -595,8 +598,8 @@ public partial class CareerScreen : Control
         picker.Selected = index;
         picker.ItemSelected += i =>
         {
-            if (commander) _commanderDeckIndex = (int)i;
-            else _deckIndex = (int)i;
+            if (commander) (_commanderDeckIndex, _commanderDeckPicked) = ((int)i, true);
+            else (_deckIndex, _deckPicked) = ((int)i, true);
             ShowWebPage();
         };
         row.AddChild(picker);
@@ -642,12 +645,19 @@ public partial class CareerScreen : Control
         page.AddChild(CareerStyle.Text("Ante match", 28, CareerStyle.TitleBar));
         page.AddChild(CareerStyle.Text("Playing for keeps: message a regular, choose one of the cards they put up and offer one of yours; "
             + $"the winner keeps both, and the anted cards stay out of the game. {antes} ante match{(antes == 1 ? "" : "es")} left today.", 19, CareerStyle.InkDim, wrap: true));
-        if (problems.Count == 0 && antes > 0)
+        if (problems.Count > 0)
+            page.AddChild(CareerStyle.Text("This deck can't be played yet (see above in red): fix it in the deck builder or choose another deck.", 19, CareerStyle.Bad, wrap: true));
+        if (antes > 0)
         {
             var regulars = new HFlowContainer();
             regulars.AddThemeConstantOverride("h_separation", 10);
             regulars.AddThemeConstantOverride("v_separation", 8);
-            foreach (var o in opponents) regulars.AddChild(CareerStyle.Button($"Message {o.Name}", () => OpenChat(o.Id, chosen), 18));
+            foreach (var o in opponents)
+            {
+                var message = CareerStyle.Button($"Message {o.Name}", () => OpenChat(o.Id, chosen), 18);
+                message.Disabled = problems.Count > 0;
+                regulars.AddChild(message);
+            }
             page.AddChild(regulars);
         }
         Record(page);
