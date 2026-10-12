@@ -138,8 +138,10 @@ shows them and the pointer's position; Ctrl+click copies a point).
   day, optionally): events added, replaced (same id) or cancelled; the featured set; booster prices; a line of news.
   The season editor (`dotnet run --project tools/SeasonEditor -- <module dir>`, a page on this computer) plans it on a
   calendar (store events, the season's, cancelled ones, featured set, prices and news per day; played days locked),
-  with forms for changes and events, and saves or publishes it.
-  `server/Arcanum.CareerService/deploy/publish-season.sh <module dir>` checks it (`tools/SeasonCheck`: everything it
+  with forms for changes and events. It starts from the published season, keeps a draft on this computer
+  (`~/.local/share/arcanum-season-editor/<module id>.json`, dropped once published), downloads it as a file and
+  publishes it; it never writes the module (its `season.json` is replaced by hand when wanted).
+  `server/Arcanum.CareerService/deploy/publish-season.sh <module dir> [user@host] [season file]` checks it (`tools/SeasonCheck`: everything it
   names exists, and no day already played changes, since careers are replayed with it) and puts it on the service,
   which serves `/career/season/<module id>.json` as a static file. The game downloads it when it changed (at start;
   the screens refresh when it arrives) and keeps it; offline it uses the last one, or the module's own.

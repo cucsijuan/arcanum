@@ -78,7 +78,9 @@
   <span class="note" id="note"></span>
   <span class="hint" id="dirty"></span>
   <button id="add">+ Change</button>
-  <button id="save">Save to module</button>
+  <button id="save">Save draft</button>
+  <button id="discard">Discard draft</button>
+  <button id="export">Download JSON</button>
   <button id="publish" class="primary">Publish</button>
 </header>
 <div class="message" id="message"></div>
@@ -388,6 +390,7 @@ $("save").onclick = async () => {
   const r = await api("/api/save", { season });
   say(r.message, !r.ok);
   if (r.ok) { dirty = false; $("dirty").textContent = ""; }
+  await showNote();
 };
 $("publish").onclick = async () => {
   if (!confirm("Publish this season? Players get it the next time they start the game.")) return;
@@ -396,9 +399,22 @@ $("publish").onclick = async () => {
   const r = await api("/api/publish", { season });
   say(r.message, !r.ok);
   if (r.ok) { dirty = false; $("dirty").textContent = ""; }
+  $("publish").disabled = false;
   C = await api("/api/content");
-  $("note").textContent = `${C.module} · ${C.publishedNote}`;
+  await showNote();
   refresh();
+};
+$("discard").onclick = async () => {
+  if (!confirm("Throw the draft away and go back to the published season?")) return;
+  say((await api("/api/discard", {})).message);
+  await load();
+};
+$("export").onclick = async () => {
+  const r = await fetch("/api/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ season }) });
+  if (!r.ok) { say(await r.text(), true); return; }
+  const a = el("a", { href: URL.createObjectURL(await r.blob()), download: "season.json" });
+  a.click();
+  URL.revokeObjectURL(a.href);
 };
 $("add").onclick = () => addChange(null, null, false);
 $("prev").onclick = () => { month.setUTCMonth(month.getUTCMonth() - 1); refresh(); };
@@ -406,13 +422,23 @@ $("next").onclick = () => { month.setUTCMonth(month.getUTCMonth() + 1); refresh(
 $("todayBtn").onclick = () => { month = parse(today().slice(0, 8) + "01"); refresh(); };
 addEventListener("beforeunload", e => { if (dirty) e.preventDefault(); });
 
-(async () => {
-  C = await api("/api/content");
+async function showNote() {
+  const source = await (await fetch("/api/source")).json();
+  $("note").textContent = `${C.module} · ${C.publishedNote} · Editing: ${source.text}`;
+}
+async function load() {
   season = await api("/api/season");
-  $("note").textContent = `${C.module} · ${C.publishedNote}`;
-  month = parse(today().slice(0, 8) + "01");
+  dirty = false; $("dirty").textContent = "";
+  focus = -1;
+  await showNote();
   drawChanges();
   refresh();
+}
+
+(async () => {
+  C = await api("/api/content");
+  month = parse(today().slice(0, 8) + "01");
+  await load();
 })();
 </script>
 </body>

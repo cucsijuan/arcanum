@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The season editor: a page on this computer (http://127.0.0.1:5099) to plan a content module's season on a calendar,
-// check it as the game and the career service will, save it into the module and publish it.
+// check it as the game and the career service will, and publish it. It starts from the published season and keeps a
+// draft on this computer; the module is only read (its season.json is copied in by hand when wanted).
 //   dotnet run --project tools/SeasonEditor -- <module dir> [user@host]
 using System.Diagnostics;
 using System.Text.Json;
@@ -19,7 +20,8 @@ var module = ContentModule.Load(moduleDir);
 var content = module.LoadCareer() ?? throw new InvalidOperationException("The module has no career.");
 var sets = module.LoadSets().ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase);
 var decks = module.DeckNames().ToHashSet(StringComparer.OrdinalIgnoreCase);
-string seasonFile = Path.Combine(moduleDir, "career", "season.json");
+string moduleSeasonFile = Path.Combine(moduleDir, "career", "season.json");
+string draftFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "arcanum-season-editor", module.Manifest.Id + ".json");
 string publishScript = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../server/Arcanum.CareerService/deploy/publish-season.sh"));
 string seasonUrl = $"https://arcanum-career.duckdns.org/career/season/{module.Manifest.Id}.json";
 var web = new JsonSerializerOptions(JsonSerializerDefaults.Web);
@@ -85,11 +87,25 @@ app.MapGet("/api/content", () => Results.Json(new
     publishedNote,
 }, web));
 
-// The season in the module (every field filled in).
+// The season to edit (every field filled in): the draft, else the published season, else the module's.
 app.MapGet("/api/season", () =>
 {
-    var season = File.Exists(seasonFile) ? CareerSeason.Parse(File.ReadAllText(seasonFile)) : CareerSeason.None;
+    var season = File.Exists(draftFile) ? CareerSeason.Parse(File.ReadAllText(draftFile))
+        : published ?? (File.Exists(moduleSeasonFile) ? CareerSeason.Parse(File.ReadAllText(moduleSeasonFile)) : CareerSeason.None);
     return Results.Content(season.ToJson(), "application/json");
+});
+
+// Where the season being edited came from.
+app.MapGet("/api/source", () => Results.Json(new
+{
+    text = File.Exists(draftFile) ? $"Draft ({draftFile})" : published is not null ? "Published season" : "The module's season (the published one couldn't be read)",
+}, web));
+
+// The season as a file (to copy into the module's career/season.json).
+app.MapPost("/api/export", (JsonObject body) =>
+{
+    var (season, error) = Read(body["season"]);
+    return season is null ? Results.BadRequest(error) : Results.Content(season.ToJson() + "\n", "application/json");
 });
 
 // The calendar of a season from a day: each day's events, featured set, prices and news, and the season's problems.
@@ -131,27 +147,41 @@ app.MapPost("/api/calendar", (JsonObject body) =>
     return Results.Json(new { problems = Check(season), days }, web);
 });
 
-// Saves the season into the module (it must read; problems are allowed in a draft, not when publishing).
+void SaveDraft(CareerSeason season)
+{
+    Directory.CreateDirectory(Path.GetDirectoryName(draftFile)!);
+    File.WriteAllText(draftFile, season.ToJson() + "\n");
+}
+
+// Saves the season as a draft on this computer (it must read; problems are allowed in a draft, not when publishing).
 app.MapPost("/api/save", (JsonObject body) =>
 {
     var (season, error) = Read(body["season"]);
     if (season is null) return Results.Json(new { ok = false, message = error }, web);
-    File.WriteAllText(seasonFile, season.ToJson() + "\n");
-    return Results.Json(new { ok = true, message = $"Saved {seasonFile}." }, web);
+    SaveDraft(season);
+    return Results.Json(new { ok = true, message = $"Saved the draft ({draftFile})." }, web);
 });
 
-// Saves, checks and publishes with the deploy script.
+// Throws the draft away: the published season is edited again.
+app.MapPost("/api/discard", () =>
+{
+    File.Delete(draftFile);
+    return Results.Json(new { ok = true, message = "Draft discarded." }, web);
+});
+
+// Checks and publishes with the deploy script; once published, the draft is no longer needed.
 app.MapPost("/api/publish", async (JsonObject body) =>
 {
     var (season, error) = Read(body["season"]);
     if (season is null) return Results.Json(new { ok = false, message = error }, web);
     await ReadPublished();
     if (Check(season) is { Count: > 0 } problems) return Results.Json(new { ok = false, message = string.Join("\n", problems) }, web);
-    File.WriteAllText(seasonFile, season.ToJson() + "\n");
-    var run = Process.Start(new ProcessStartInfo("sh", new[] { publishScript, moduleDir, host }) { RedirectStandardOutput = true, RedirectStandardError = true })!;
+    SaveDraft(season);
+    var run = Process.Start(new ProcessStartInfo("sh", new[] { publishScript, moduleDir, host, draftFile }) { RedirectStandardOutput = true, RedirectStandardError = true })!;
     string output = await run.StandardOutput.ReadToEndAsync() + await run.StandardError.ReadToEndAsync();
     await run.WaitForExitAsync();
     await ReadPublished();
+    if (run.ExitCode == 0) File.Delete(draftFile);
     return Results.Json(new { ok = run.ExitCode == 0, message = output.Trim() }, web);
 });
 
