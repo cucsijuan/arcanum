@@ -373,7 +373,7 @@ public partial class PlayerArea : Control
     /// <summary>Player-wide states as chips beside the name, each with what it means as its tooltip.</summary>
     private void RefreshTags(PlayerView me, GameView view)
     {
-        foreach (var child in _tags.GetChildren()) { _tags.RemoveChild(child); child.QueueFree(); }
+        _newTags.Clear();
         if (me.RingLevel > 0)
         {
             var bearer = me.RingBearer is { } id ? view.FindCard(id)?.Name : null;
@@ -390,9 +390,20 @@ public partial class PlayerArea : Control
         foreach (var emblem in me.Emblems)
             AddTag($"Emblem: {emblem.Name}", new Color("e89ad8"), $"{me.Name}'s emblem{(emblem.UntilEndOfTurn ? " (until end of turn)" : "")}:\n{emblem.Text}");
         if (me.Poison > 0) AddTag($"Poison {me.Poison}/10", new Color("8fd14f"), $"{me.Name} has {me.Poison} poison counter{(me.Poison == 1 ? "" : "s")}; ten or more loses the game.");
+        // Rebuilt only when they change: the board refreshes all the time, and removing controls with tooltips each time
+        // floods the log with the engine's complaints.
+        if (_newTags.SequenceEqual(_shownTags)) return;
+        _shownTags.Clear();
+        _shownTags.AddRange(_newTags);
+        foreach (var child in _tags.GetChildren()) { _tags.RemoveChild(child); child.QueueFree(); }
+        foreach (var (text, accent, tooltip) in _shownTags) MakeTag(text, accent, tooltip);
     }
 
-    private void AddTag(string text, Color accent, string tooltip)
+    private readonly List<(string Text, Color Accent, string Tooltip)> _newTags = new(), _shownTags = new();
+
+    private void AddTag(string text, Color accent, string tooltip) => _newTags.Add((text, accent, tooltip));
+
+    private void MakeTag(string text, Color accent, string tooltip)
     {
         var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Pass, TooltipText = tooltip };
         var box = BoardStyle.Box(new Color(0.08f, 0.08f, 0.1f, 0.94f), 6, accent, 1);

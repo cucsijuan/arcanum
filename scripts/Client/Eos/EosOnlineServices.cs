@@ -281,28 +281,64 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink, ICloudSt
 
     private string _signedInName = "Player";
 
-    /// <summary>Signs in again with the same account; false when that isn't possible without the player.</summary>
-    private async Task<bool> SignInAgainAsync()
+    private Task<bool>? _renewal;
+
+    /// <summary>
+    /// Signs in again with the same account; false when that isn't possible without the player. One renewal runs at a
+    /// time; a failed attempt (the services' hiccups) is tried again a few times over a few minutes, the later ones with a
+    /// fresh Discord token, since the sign-in lasts an hour and the notice comes some minutes before it ends.
+    /// </summary>
+    private Task<bool> SignInAgainAsync()
     {
-        try
+        lock (_work)
         {
-            var again = new TaskCompletionSource<OnlineIdentity>(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (DeviceAccount) _work.Enqueue(() => Login(_signedInName, ExternalCredentialType.DeviceidAccessToken, null, again));
-            else if (await _discordToken(CancellationToken.None) is { } token)
-                _work.Enqueue(() => Login(_signedInName, ExternalCredentialType.DiscordAccessToken, token, again));
-            else
+            if (_renewal is { IsCompleted: false } running) return running;
+            return _renewal = RenewAsync();
+        }
+    }
+
+    private static readonly int[] RenewalDelays = { 0, 5, 15, 30, 60, 120 };
+
+    private async Task<bool> RenewAsync()
+    {
+        for (int attempt = 0; attempt < RenewalDelays.Length; attempt++)
+        {
+            if (RenewalDelays[attempt] > 0) await Task.Delay(TimeSpan.FromSeconds(RenewalDelays[attempt]));
+            try
             {
-                Log?.Invoke("Online services: the Discord sign-in is gone; signing in again needs the player.");
-                return false;
+                var again = new TaskCompletionSource<OnlineIdentity>(TaskCreationOptions.RunContinuationsAsynchronously);
+                if (DeviceAccount) _work.Enqueue(() => Login(_signedInName, ExternalCredentialType.DeviceidAccessToken, null, again));
+                else
+                {
+                    if (attempt > 0) Account.ForgetAccessToken();
+                    if (await _discordToken(CancellationToken.None) is not { } token)
+                    {
+                        Log?.Invoke("Online services: the Discord sign-in is gone; signing in again needs the player.");
+                        return false;
+                    }
+                    _work.Enqueue(() => Login(_signedInName, ExternalCredentialType.DiscordAccessToken, token, again));
+                }
+                await again.Task;
+                if (attempt > 0) Log?.Invoke($"Online services: sign-in renewed (attempt {attempt + 1}).");
+                FlushHeld();
+                return true;
             }
-            await again.Task;
-            return true;
+            catch (Exception e)
+            {
+                Log?.Invoke($"Online services couldn't renew the sign-in (attempt {attempt + 1} of {RenewalDelays.Length}): {e.Message}");
+            }
         }
-        catch (Exception e)
-        {
-            Log?.Invoke($"Online services couldn't renew the sign-in: {e.Message}");
-            return false;
-        }
+        // Out of tries: the packets waiting for the sign-in can't go; their peers are lost.
+        while (_held.TryDequeue(out var item)) _lost.Enqueue(item.Peer);
+        return false;
+    }
+
+    /// <summary>Packets that couldn't go because the sign-in had expired: sent again once it is renewed.</summary>
+    private readonly ConcurrentQueue<(string Peer, byte[] Packet)> _held = new();
+
+    private void FlushHeld()
+    {
+        while (_held.TryDequeue(out var item)) _outgoing.Enqueue(item);
     }
 
     /// <summary>
@@ -427,6 +463,13 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink, ICloudSt
                 Reliability = PacketReliability.ReliableOrdered,
             };
             var result = p2p.SendPacket(ref send);
+            if (result is Result.InvalidAuth or Result.AuthExpired)
+            {
+                // The sign-in ran out: keep the packet, sign in again, then send it (the peer isn't lost for this).
+                _held.Enqueue(item);
+                _ = SignInAgainAsync();
+                continue;
+            }
             if (result != Result.Success)
             {
                 Log?.Invoke($"Sending to {item.Peer} failed: {result}");

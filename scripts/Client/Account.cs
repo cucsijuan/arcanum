@@ -84,6 +84,9 @@ public static class Account
         finally { Refreshing.Release(); }
     }
 
+    /// <summary>Forgets the Discord access token kept, so the next one is fresh (asked for with the refresh token).</summary>
+    public static void ForgetAccessToken() => _access = null;
+
     public static void SignOut()
     {
         _refreshToken = null;
