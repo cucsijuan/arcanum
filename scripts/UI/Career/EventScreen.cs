@@ -42,7 +42,7 @@ public partial class EventScreen : Control
             Callable.From(() => App.Instance.GoTo(App.CareerScene)).CallDeferred();
             return;
         }
-        _table = new ArtScene(ResourceLoader.Exists(CareerService.TableImage) ? GD.Load<Texture2D>(CareerService.TableImage) : null, Array.Empty<Hotspot>());
+        _table = new ArtScene(CareerService.TableFor(CareerRules.DayOf(Career.Now)) is { } table ? GD.Load<Texture2D>(table) : null, Array.Empty<Hotspot>());
         _table.BackRequested += Leave;
         AddChild(_table);
         var top = new HBoxContainer { AnchorRight = 1, OffsetLeft = 20, OffsetTop = 18, OffsetRight = -20 };

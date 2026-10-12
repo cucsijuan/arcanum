@@ -141,6 +141,7 @@ public class CommanderFormatTests
         Card("Noble Upbringing", "Legendary Enchantment — Background", new[] { "G" }, "Commander creatures you own get +1/+1."),
         Card("Plain Bear", "Creature — Bear", new[] { "G" }),
         Card("Ember Imp", "Creature — Imp", new[] { "R" }),
+        Card("Ring Rider", "Creature — Wraith Knight", new[] { "G" }, "Deathtouch\nA deck can have up to nine cards named Ring Rider."),
     }.Concat(Enumerable.Range(0, 60).Select(i => Card($"Elf {i}", "Creature — Elf", new[] { "G" }))));
 
     private static readonly FormatRules Edh = FormatRules.Parse("""
@@ -158,6 +159,20 @@ public class CommanderFormatTests
 
     [Fact]
     public void ValidCommanderDeck() => Assert.Empty(Errors(Deck("Grove Queen")));
+
+    [Fact]
+    public void ACardThatAllowsNineCopiesAllowsNineInCommanderToo()
+    {
+        DeckList With(int riders)
+        {
+            var deck = Deck("Grove Queen");
+            deck.Main.RemoveAll(e => e.Name.StartsWith("Elf ") && int.Parse(e.Name[4..]) < riders);
+            deck.Main.Add(new DeckEntry(riders, "Ring Rider"));
+            return deck;
+        }
+        Assert.Empty(Errors(With(9)));
+        Assert.Contains(Errors(With(10)), e => e.Contains("10 copies of Ring Rider; at most 9"));
+    }
 
     [Fact]
     public void DeckSizeCountsTheCommander()

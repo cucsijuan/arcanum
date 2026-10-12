@@ -9,7 +9,8 @@ if [ ! -d "$src" ]; then
   echo "UI art not found at $src (set ARCANUM_UI_ART)" >&2
   exit 1
 fi
-rm -rf "$root/ui-art"
+# Only the kit is replaced: anything else kept in ui-art/ (pictures being worked on) stays.
+rm -rf "$root/ui-art/kit"
 mkdir -p "$root/ui-art"
 # Only the baked kit is used (tools/bake_kit.py in the art repository makes it from the source art).
 cp -r "$src/kit" "$root/ui-art/kit"

@@ -34,7 +34,8 @@ public partial class CareerScreen : Control
     {
         Hotspot.Rect("computer", "Computer", 0.377f, 0.265f, 0.246f, 0.375f),
         Hotspot.Rect("decks", "Decks", 0.825f, 0.497f, 0.175f, 0.141f),
-        Hotspot.Rect("collection", "My cards", 0.054f, 0.586f, 0.116f, 0.172f),
+        Hotspot.Rect("collection", "My cards", 0.029f, 0.523f, 0.327f, 0.339f),
+        Hotspot.Rect("door", "Go to the store", 0.03f, 0.1f, 0.21f, 0.42f),
     };
 
     private static readonly Hotspot[] StoreSpots =
@@ -306,6 +307,7 @@ public partial class CareerScreen : Control
             case "computer": OpenWeb(_webPage); break;
             case "decks": OpenDeckBuilder(); break;
             case "collection": OpenWeb(WebPage.Cards); break;
+            case "door": GoTo(Place.Store); break;
         }
     }
 

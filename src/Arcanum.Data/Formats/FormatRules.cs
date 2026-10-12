@@ -178,7 +178,7 @@ public static class DeckValidator
 
     /// <summary>
     /// How many copies a deck may have: the format's limit, unless the card says "A deck can have any number of cards
-    /// named …" or "A deck can have up to nine cards named …".
+    /// named …" or "A deck can have up to nine cards named …" (Commander included).
     /// </summary>
     private static int CopyLimit(CardEntry entry, FormatRules format)
     {
@@ -186,7 +186,7 @@ public static class DeckValidator
         if (text.Contains("A deck can have any number of cards named", StringComparison.Ordinal)) return int.MaxValue;
         var m = System.Text.RegularExpressions.Regex.Match(text, @"A deck can have up to (\w+) cards named");
         if (m.Success && Array.IndexOf(NumberWords, m.Groups[1].Value.ToLowerInvariant()) is var n and > 0)
-            return format.MaxCopies == 1 ? 1 : n; // singleton formats still allow one
+            return n; // in singleton formats too (the card's rule overrides the deck's, rule 100.2a)
         return format.MaxCopies;
     }
 

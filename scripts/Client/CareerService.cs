@@ -21,6 +21,14 @@ public sealed class CareerService
     private static string SavePath => ProjectSettings.GlobalizePath(Folder + "/career.sav");
 
     public const string TableImage = "res://ui-art/kit/career/table.jpg";
+
+    /// <summary>The store's tables (the art that's there): a career match is played at one of them, an event at the day's.</summary>
+    private static readonly string[] Tables = { TableImage, "res://ui-art/kit/career/table2.jpg" };
+
+    public static string? AnyTable(Random random) => Tables.Where(t => ResourceLoader.Exists(t)).ToList() is { Count: > 0 } tables ? tables[random.Next(tables.Count)] : null;
+
+    /// <summary>The table the store's events are played at on a day.</summary>
+    public static string? TableFor(DateOnly day) => Tables.Where(t => ResourceLoader.Exists(t)).ToList() is { Count: > 0 } tables ? tables[day.DayNumber % tables.Count] : null;
     public const string StoreImage = "res://ui-art/kit/career/store.jpg";
 
     private CareerSave? _save;
@@ -362,7 +370,7 @@ public sealed class CareerService
         return new MatchSetup(new[] { new GameSession.Seat(playerName, mine), new GameSession.Seat(opponent.Name, theirs, IsBot: true) }, 20)
         {
             Event = new EventHook(winner => Finish(winner == 0), App.CareerScene, title) { ReturnText = "Back home" },
-            Table = ResourceLoader.Exists(TableImage) ? TableImage : null,
+            Table = AnyTable(Random.Shared),
         };
     }
 
@@ -371,7 +379,7 @@ public sealed class CareerService
     private LimitedService? _events;
 
     /// <summary>The event entered, run like the Play screen's limited events but kept with the career and played on the store's table.</summary>
-    public LimitedService Events => _events ??= new LimitedService(Folder + "/event.json", App.EventScene, ResourceLoader.Exists(TableImage) ? TableImage : null);
+    public LimitedService Events => _events ??= new LimitedService(Folder + "/event.json", App.EventScene, TableFor(CareerRules.DayOf(Now)));
 
     /// <summary>The calendar event entered, if any, with its running event (rebuilt from its seed when its file is gone).</summary>
     /// <summary>The calendar event entered, if any: a draft or constructed one with its running event (rebuilt from its seed when its file is gone), a Commander one without (see <see cref="Pod"/>).</summary>
