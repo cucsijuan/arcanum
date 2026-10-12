@@ -130,6 +130,18 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>The affected permanent has the creature types of the last creature card exiled with the source, and is still a Shapeshifter.</summary>
     public bool CreatureTypesOfLastExiled { get; init; }
 
+    /// <summary>Card types the affected permanent loses ("isn't a creature", layer 4).</summary>
+    public Cards.CardType RemoveTypes { get; init; }
+
+    /// <summary>
+    /// The affected creature has "If a creature dying causes a triggered ability of this creature or an emblem you own to trigger, that ability
+    /// triggers an additional time."
+    /// </summary>
+    public bool GrantsDyingTriggerBonus { get; init; }
+
+    /// <summary>With <see cref="ExtraTriggers"/>: Equipment attached to the source trigger an additional time too ("of Cloud or an Equipment attached to it").</summary>
+    public bool ExtraTriggersAttached { get; init; }
+
     /// <summary>"Its activated abilities can't be activated" (mana abilities included).</summary>
     public bool CantActivateAbilities { get; init; }
 }

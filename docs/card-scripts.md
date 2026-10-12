@@ -926,3 +926,46 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   `"chooseOnEnter": "option"` with `"enterOptions": ["Khans", "Dragons"]` and condition `{ "chosenOption": "Khans" }`,
   `"castFromLibraryTop": filter` with `"castFromLibraryTopHaste": true` ("you may cast creature spells with power 4 or greater from the top of
   your library; if you do, it gains haste").
+
+## Heroes, summons and jobs
+
+- **Card frames**: `layout: meld` cards are single-faced; `"meldsWith": name`, `"meldInto": name` name the partner and the combined
+  face, and effect `{ "meld": true }` exiles both and returns them melded (rule 701.42; its mana value is the sum). The combined face is
+  found by name but never listed, searched, collected or allowed in a deck. Flavor words and ability words before " — " ("Gae Bolg —
+  Equip {4}") only label the line, so keywords after them are still derived. `Job select` is derived (create a 1/1 Hero, attach this).
+- **Costs**: Phyrexian symbols `{B/P}` (pay the colored mana or 2 life); `"tiered"` spells give each mode a `"cost"` (rule 702.183; only
+  affordable modes are offered); `"overload": cost` with `"overloaded": spell` (702.96); `"ninjutsu"` / `"commanderNinjutsu"` with ability
+  cost `"…, ninjutsu"` and effect `"ninjutsuEnter"`; `"kickerCost"`, `"discardUpTo"`, `"returnToHand"` extra costs; `"minX"`,
+  `"cantBeCopied"` on abilities; mana options `exileSelf`, `copyNextInstantOrSorcery` (`copies`), `equipOnly`, `addsCounter`, `times`,
+  `abilitiesToo`, `onlyFor`.
+- **Counters**: stun counters stop any untap (one is removed instead, 122.1d); finality counters exile instead of the graveyard;
+  `blight` and `point` kinds. `"countersUpTo"`, `"removeCounterFromAnyNumber"`, `"putSourceCountersOn"`, `"entersWithAdditionalCounters"`.
+- **Effects**: `flipCoin` (`won` / `lost`), `rollDie`, `additionalEndStep` (`"ifFirst"`), `copyAbility` (target `ability:you`, `count`),
+  `copyNextInstantOrSorcery`, `meld`, `ninjutsuEnter`, `searchLibraryOrGraveyard`, `attachFormerlyAttached`, `attachAnyNumber`,
+  `unattachAtNextEndStep`, `unattachWhenControlLost`, `revealAndAlternate`, `rememberChosen`, `exileTop` (`playableDuringLoreTurns`,
+  `playableThisTurn`), `nextCreatureSpell` (`haste`, `counters`), `eachExilesTopPlayLesser`, `exileRandomPermanentCardCopyTapped`,
+  `shuffleFromGraveyard`, `lookHandLandsGraveyard`, `doubleDamageUntilYourNextTurn`, `eachDealsDamageEqualToPower`, `doublePower` /
+  `triplePowerAndToughness`, `thisSpellOntoBattlefieldTransformed`, `castExiledNow`, `handToTop`, `commanderToHand`,
+  `damageRandomOpponent`, `addManaOneColor`, `addManaCombination` (`types`), `exileUntilLesserCastFree`, `revealOnePerCardType`;
+  `gainControl` with `"to"` gives a permanent away; `putFromHand` `tappedAttackingIf`; tokens `attackingEachOpponent` /
+  `attackingChosenDefender`; `mayPay` `lifeFrom`; counter spells `unlessPays`, `exileIfCountered`; `sacrificeAtNextUpkeep`,
+  `sacrificeAtYourNextEndStep`, `sacrificeAtEndOfCombat` on copies; search `differentNames`; `bite` `times`.
+- **Quantities**: `manaSpent` (on the triggering spell), `{ "manaValueSum": f }`, `controlGainedThisWay`, `foundManaValue`,
+  `{ "found": f }`, `discardedManaValue`, `cardTypesAmongDiscarded`, `creaturesDiedThisTurn`, `countersRemovedThisWay`, `rolled`,
+  `opponentsDealtCombatDamage`.
+- **Subjects**: `defendingPlayer`, `{ "milled": f }`, `enteredThisWay`, `exceptChosen`.
+- **Filters**: `notSubtypes`, `zone`, `hasFlashback`; target kinds `ability`, graveyard-or-exiled card; `targetsTotalManaValueAtMost`.
+- **Triggers**: `youSurveil`, `dealsDamage` (once per event, the total), `attachedDealtDamage`, `equippedAttacks`,
+  `equippedCombatDamageToPlayer`, `opponentGainsControlFromYou`, `chosenCreatureLeaves`, `chosenPlayerLoses`, `asTransformsInto`,
+  `postcombatMain`, `mainPhase`, `cardPutIntoGraveyard`; `fromCommandZone` (eminence).
+- **Conditions**: `opponentsCreaturesDied`, `lifeAtMostHalfStarting`, `playerDealtCombatDamage`, `opponentDealtCombatDamageByLegendary`,
+  `firstCombatPhase`, `yourTurnNumberAtMost`, `crewedBySource`, `duringCombat`, `addedManaWithThisThisTurn`.
+- **Static abilities**: `extraTriggersAttached`, `grantsDyingTriggerBonus`, `removeTypes`; `become` with `whileCounter`,
+  `loseLandTypes`, `grantsMana`.
+- **Card-wide**: `payLifeForBlackMana`, `winsDrawingFromEmptyLibrary`, `extraLandPlays`, `opponentsCastAtSorcerySpeed`,
+  `opponentsCantCastNoncreatureSpells`, `libraryTopSpellsForLife`, `tripleManaFromPermanents`, `extraManaFromNonlandPermanents`,
+  `extraTriggersFromAttacking`, `playFromGraveyardOnYourTurn`, `playFromLibraryTop` / `playFromLibraryTopIf`, `graveyardArtifactsForLife`,
+  `wardLifeFromPower`; `replaces` `ExtraColorlessWhenLandTappedForColorless`, `FirstCoinFlipEachTurnWins`, `OpponentsMillFourMore`,
+  `OpponentsNontokenCreaturesExiledGainTwoLife`, `DamageNotRemovedInCleanup`, `RedirectYourDamageToSelf`, `DoubleWizardDamage`,
+  `DoubleCreaturePlusOneCounters`, `ExtraFrogWithTokens`, `ExtraTriggersFromLandsAndBirdsEntering`, `YouHaveProtectionFromOpponents`,
+  `YourLandsEnterUntapped`, `ExileInsteadOfYourGraveyard`.

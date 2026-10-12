@@ -17,7 +17,7 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>What a spell is cast for (rule 118.9): its mana cost or one alternative cost.</summary>
-    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife }
+    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload }
 
     /// <summary>
     /// One way to pay for casting a card: the cost it's cast for (its mana cost, or the flashback or miracle cost it's being
@@ -38,6 +38,8 @@ public sealed partial class Game
         public int SquadCount { get; init; }
         /// <summary>Modes chosen beyond the first, each paying the escalate cost (rule 702.120).</summary>
         public int EscalatedModes { get; init; }
+        /// <summary>Tiered (rule 702.183a): the additional cost of the chosen mode.</summary>
+        public ManaCost? Tier { get; init; }
         /// <summary>Artifacts tapped for improvise (rule 702.126): kept out of the mana payment.</summary>
         public IReadOnlyCollection<CardId> Improvised { get; init; } = Array.Empty<CardId>();
         public IReadOnlyList<Card> Spliced { get; init; } = Array.Empty<Card>();
@@ -51,6 +53,14 @@ public sealed partial class Game
         if ((card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.WithoutPaying)) || _castFree.Contains(card.Id))
             return new() { new(CastingWayKind.WithoutPaying, ManaCost.Zero) };
         if (PaysLife(card)) return new() { new(CastingWayKind.PayLife, ManaCost.Zero, card.ManaValue) };
+        // "You may cast spells from the top of your library. If you cast a spell this way, pay life equal to its mana value": the only way
+        // through that permission; another permission to cast it from there lets it be paid for normally.
+        if (card.Zone == Zone.Library && LibraryTopLifePermission(card, caster))
+        {
+            var life = new List<CastingWay> { new(CastingWayKind.PayLife, ManaCost.Zero, card.ManaValue) };
+            if (LibraryTopPermissions(caster).Any() || LibraryTopManaPermission(card, caster)) life.Add(new(CastingWayKind.ManaCost, card.Definition.ManaCost));
+            return life;
+        }
         if (_miracleCost.TryGetValue(card.Id, out var miracle)) return new() { new(CastingWayKind.ManaCost, miracle) };
         if (card.Zone == Zone.Graveyard && card.Definition.Flashback is { } flashback && !State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version))
         {
@@ -60,6 +70,7 @@ public sealed partial class Game
         }
         var ways = new List<CastingWay> { new(CastingWayKind.ManaCost, card.Definition.ManaCost) };
         if (card.Zone == Zone.Hand && card.Definition.Dash is { } dash) ways.Add(new(CastingWayKind.Dash, dash)); // 702.109a
+        if (card.Definition.Overload is { } overload) ways.Add(new(CastingWayKind.Overload, overload)); // 702.96a
         if (card.Definition.AlternativeCost is { } alt && (alt.If is null || Holds(alt.If, caster, card))) ways.Add(new(CastingWayKind.Alternative, alt.Cost));
         if (card.Zone == Zone.Hand && Has(caster, Replacements.CastFromHandFree)) ways.Add(new(CastingWayKind.WithoutPaying, ManaCost.Zero));
         return ways;
@@ -82,6 +93,7 @@ public sealed partial class Game
         for (int i = 0; i < c.ReplicateCount; i++) cost = cost.Plus(card.Definition.Replicate!);
         for (int i = 0; i < c.SquadCount; i++) cost = cost.Plus(card.Definition.Squad!);
         for (int i = 0; i < c.EscalatedModes; i++) cost = cost.Plus(card.Definition.Escalate!);
+        if (c.Tier is { } tier) cost = cost.Plus(tier);
         foreach (var other in c.Spliced) cost = cost.Plus(other.Definition.Splice!);
         foreach (var taxer in State.Battlefield.Select(State.GetCard))
             foreach (var increase in taxer.Abilities.OfType<SpellCostIncrease>())
@@ -97,13 +109,15 @@ public sealed partial class Game
             int xPart = c.X * c.Way.Mana.XCount;
             int reduced = genericBefore - cost.Generic;
             int xLeft = Math.Max(0, xPart - Math.Max(0, reduced - (genericBefore - xPart)));
-            cost = new ManaCost(cost.Generic - xLeft, cost.Pips.Concat(Enumerable.Repeat(xType, xLeft)).ToList(), cost.Hybrid);
+            cost = new ManaCost(cost.Generic - xLeft, cost.Pips.Concat(Enumerable.Repeat(xType, xLeft)).ToList(), cost.Hybrid) { Phyrexian = cost.Phyrexian };
         }
         // "Mana of any type can be spent" to pay it.
         bool anyType = (card.Is(CardType.Creature) && Has(caster, Replacements.CreaturesFromLibraryTop))
                        || (card.Zone == Zone.Exile && card.CounterCount(CounterKind.Stash) > 0 && Has(caster, Replacements.PlayStashedCards))
-                       || (card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType));
-        return anyType ? new ManaCost(cost.ManaValue, Array.Empty<ManaType>()) : cost;
+                       || (card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType))
+                       || (card.Zone == Zone.Graveyard && State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType));
+        if (anyType) return new ManaCost(cost.ManaValue - cost.Phyrexian.Count, Array.Empty<ManaType>()) { Phyrexian = cost.Phyrexian };
+        return BlackLifeRule(caster, cost);
     }
 
     /// <summary>Cast with flashback (from the graveyard, exiled when it leaves the stack, 702.34a).</summary>
@@ -115,7 +129,7 @@ public sealed partial class Game
     /// <summary>The non-mana costs the announcements commit to (601.2b): additional costs and those of casting from the graveyard.</summary>
     private List<ExtraCost> NonManaCastingCosts(Card card, CastingChoices c)
     {
-        var costs = new List<ExtraCost?> { card.Definition.AdditionalCost, c.Option?.Extra };
+        var costs = new List<ExtraCost?> { card.Definition.AdditionalCost, c.Option?.Extra, c.Kicked ? card.Definition.KickerExtra : null };
         if (card.Zone == Zone.Graveyard) costs.Add(GraveyardCost(card));
         if (c.Way.Kind == CastingWayKind.Alternative) costs.Add(card.Definition.AlternativeCost?.Extra);
         if (IsFlashbackCast(card))
@@ -158,7 +172,17 @@ public sealed partial class Game
             .OrderBy(a => a.ManaOptions.Count > 0 ? 1 : 0).ToList();
 
     private bool CanPayCastingMana(Card card, PlayerId caster, CastingChoices c, ManaCost mana) =>
-        mana.Variants().Any(v => ManaPayment.FindPlan(State, caster, v, usable: SpellManaUsable(card, caster, c), unitUsable: UnitUsableFor(card, isAbility: false)) is not null);
+        LifeAffordable(caster, mana).Any(m => m.Variants().Any(v => ManaPayment.FindPlan(State, caster, v, usable: SpellManaUsable(card, caster, c), unitUsable: UnitUsableFor(card, isAbility: false)) is not null));
+
+    /// <summary>
+    /// The mana costs a player could pay this cost with: each way of paying its Phyrexian symbols with life they can pay (rules 107.4f, 119.4).
+    /// </summary>
+    private IEnumerable<ManaCost> LifeAffordable(PlayerId player, ManaCost cost) =>
+        cost.LifeOptions().Where(o => o.Life == 0 || (o.Life <= State.GetPlayer(player).Life && State.GetPlayer(player).CantLoseLifeTurn != State.TurnNumber)).Select(o => o.Mana);
+
+    /// <summary>"For each {B} in a cost, you may pay 2 life rather than pay that mana" (a permanent the payer controls): its {B} become Phyrexian.</summary>
+    private ManaCost BlackLifeRule(PlayerId payer, ManaCost cost) =>
+        State.PermanentsControlledBy(payer).Any(c => c.HasTextAbilities && c.Definition.PayLifeForBlackMana) ? cost.PhyrexianFor(ManaType.Black) : cost;
 
     /// <summary>Whether the announcements can be paid for, with the targets chosen (or, before that, the best legal ones).</summary>
     private bool CanPayToCast(Card card, PlayerId caster, CastingChoices c, IReadOnlyList<ChosenTarget>? targets = null) =>
@@ -172,12 +196,22 @@ public sealed partial class Game
     {
         var options = card.Definition.AdditionalCostOptions is { Count: > 0 } listed ? listed.Select(o => (CostOption?)o).ToList() : new List<CostOption?> { null };
         return CastingWays(card, caster)
-            .SelectMany(way => options.Select(o => new CastingChoices(way) { Option = o, FlashExtra = flashExtra }))
+            .SelectMany(way => options.Select(o => new CastingChoices(way) { Option = o, FlashExtra = flashExtra, Tier = CheapestTier(card) }))
             .Where(c => CanPayToCast(card, caster, c)).ToList();
     }
 
+    /// <summary>A tiered spell (702.183) is cast with one mode and its cost: the cheapest one, for "can it be cast at all".</summary>
+    private static ManaCost? CheapestTier(Card card) =>
+        CastingTargets(card.Definition)?.Modes is { } modes && modes.Any(m => m.Cost is not null)
+            ? modes.Select(m => m.Cost ?? ManaCost.Zero).MinBy(m => m.ManaValue)
+            : null;
+
     /// <summary>Whether the card may be cast now without paying extra for flash: an instant, flash, or a permission to cast it as though it had flash.</summary>
     private bool TimingAllows(Card card, PlayerId caster, bool sorcerySpeed) =>
+        (sorcerySpeed || !State.OpponentsOf(caster).Any(o => State.PermanentsControlledBy(o).Any(c => c.HasTextAbilities && c.Definition.OpponentsCastAtSorcerySpeed))) &&
+        TimingAllowsIgnoringRestrictions(card, caster, sorcerySpeed);
+
+    private bool TimingAllowsIgnoringRestrictions(Card card, PlayerId caster, bool sorcerySpeed) =>
         card.Is(CardType.Instant) || card.Definition.KeywordAbilities.Contains(Keyword.Flash) || sorcerySpeed
         || Has(caster, Replacements.YourSpellsHaveFlash)
         || (card.Definition.FlashIf is { } flashIf && Holds(flashIf, caster, card))
@@ -190,8 +224,13 @@ public sealed partial class Game
 
     /// <summary>Whether the card can be cast now, timing aside: its legality, a legal target for each requirement and a way to pay.</summary>
     private bool CanBeCast(Card card, PlayerId caster, bool flashExtra) =>
-        LegendarySpellAllowed(card, caster) && !CastForbiddenByName(card, caster) && !CastForbiddenThisEarly(card, caster) && HasLegalTargets(CastingTargets(card.Definition), caster, card.Id)
-        && PayableCastingWays(card, caster, flashExtra).Count > 0;
+        LegendarySpellAllowed(card, caster) && !CastForbiddenByName(card, caster) && !CastForbiddenThisEarly(card, caster) && !NoncreatureForbidden(card, caster)
+        && PayableCastingWays(card, caster, flashExtra).Any(w => w.Way.Kind == CastingWayKind.Overload
+            ? HasLegalTargets(card.Definition.Overloaded, caster, card.Id) : HasLegalTargets(CastingTargets(card.Definition), caster, card.Id));
+
+    /// <summary>"Your opponents can't cast noncreature spells this turn."</summary>
+    private bool NoncreatureForbidden(Card card, PlayerId caster) =>
+        !card.Is(CardType.Creature) && State.NoncreatureSpellsForbiddenFor.Contains((caster, State.TurnNumber));
 
     /// <summary>"You can't cast this spell during your first, second, or third turns of the game."</summary>
     private bool CastForbiddenThisEarly(Card card, PlayerId caster) =>
@@ -236,6 +275,7 @@ public sealed partial class Game
             var question = ways[1].Kind switch
             {
                 CastingWayKind.Dash => $"Cast {card.Name} for its dash cost {ways[1].Mana}?",
+                CastingWayKind.Overload => $"Cast {card.Name} for its overload cost {ways[1].Mana}?",
                 CastingWayKind.WithoutPaying => card.Definition.ManaCost.XCount > 0 ? $"Cast {card.Name} without paying its mana cost (X = 0)?" : $"Cast {card.Name} without paying its mana cost?",
                 _ => $"Pay {ways[1].Mana} instead of the mana cost?",
             };
@@ -245,6 +285,7 @@ public sealed partial class Game
         {
             CastingWayKind.ManaCost => $"Pay its mana cost {w.Mana}",
             CastingWayKind.Dash => $"Dash {w.Mana}",
+            CastingWayKind.Overload => $"Overload {w.Mana}",
             CastingWayKind.WithoutPaying => "Without paying its mana cost",
             _ => $"Pay {w.Mana} instead of the mana cost",
         }).ToList();

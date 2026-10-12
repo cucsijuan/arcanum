@@ -62,6 +62,21 @@ public sealed record ManaOption(IReadOnlyList<ManaType> Types, int Amount = 1, O
     /// </summary>
     public Abilities.CounterKind? RemovesCounters { get; init; }
 
+    /// <summary>"{T}: Add {C}. Put a point counter on this artifact": a counter its source gets as part of the mana ability.</summary>
+    public Abilities.CounterKind? AddsCounter { get; init; }
+
+    /// <summary>"Spend this mana only to cast an Equipment spell or activate an equip ability": besides <see cref="OnlyFor"/> spells, equip abilities only.</summary>
+    public bool EquipOnly { get; init; }
+
+    /// <summary>"{T}, Exile this artifact: Add {U}": exiling its source is part of the cost.</summary>
+    public bool ExileSelf { get; init; }
+
+    /// <summary>"… When you next cast an instant or sorcery spell this turn, copy that spell": the delayed ability it creates as it resolves.</summary>
+    public bool CopyNextInstantOrSorcery { get; init; }
+
+    /// <summary>"Three times as much of that mana" for a <see cref="OneOfEach"/> or <see cref="Combination"/> ability: its mana, this many times over.</summary>
+    public int Times { get; init; } = 1;
+
     /// <summary>How many mana one activation adds.</summary>
-    public int Produces => OneOfEach ? Types.Count : Amount;
+    public int Produces => OneOfEach ? Types.Count * Times : Combination ? Amount * Times : Amount;
 }

@@ -116,6 +116,32 @@ public enum Replacements : long
     KeepRedMana = 1L << 56,
     /// <summary>"Whenever you tap a permanent for {C}, add an additional {C}."</summary>
     ExtraColorlessWhenTappedForColorless = 1L << 57,
+    /// <summary>"Whenever you tap a land for {C}, add an additional {C}."</summary>
+    ExtraColorlessWhenLandTappedForColorless = 1L << 44,
+    /// <summary>"The first time you flip one or more coins each turn, those coins come up heads and you win those flips."</summary>
+    FirstCoinFlipEachTurnWins = 1L << 45,
+    /// <summary>"If an opponent would mill one or more cards, they mill that many cards plus four instead."</summary>
+    OpponentsMillFourMore = 1L << 46,
+    /// <summary>"If a nontoken creature an opponent controls would die, instead exile it and you gain 2 life" (the card remembers it was exiled with this).</summary>
+    OpponentsNontokenCreaturesExiledGainTwoLife = 1L << 47,
+    /// <summary>"Damage isn't removed from this creature during cleanup steps."</summary>
+    DamageNotRemovedInCleanup = 1L << 48,
+    /// <summary>"All damage that would be dealt to you and other permanents you control is dealt to this creature instead."</summary>
+    RedirectYourDamageToSelf = 1L << 49,
+    /// <summary>"If a Wizard you control would deal damage to a permanent or player, it deals double that damage instead."</summary>
+    DoubleWizardDamage = 1L << 50,
+    /// <summary>"If one or more +1/+1 counters would be put on a creature you control, twice that many are put on it instead."</summary>
+    DoubleCreaturePlusOneCounters = 1L << 51,
+    /// <summary>"If one or more tokens would be created under your control, those tokens plus a 1/1 green Frog creature token are created instead."</summary>
+    ExtraFrogWithTokens = 1L << 58,
+    /// <summary>"If a land or Bird you control entering the battlefield causes a triggered ability of a permanent you control to trigger, it triggers an additional time."</summary>
+    ExtraTriggersFromLandsAndBirdsEntering = 1L << 59,
+    /// <summary>"You have protection from each of your opponents" (rule 702.16j).</summary>
+    YouHaveProtectionFromOpponents = 1L << 60,
+    /// <summary>"Lands you control enter untapped."</summary>
+    YourLandsEnterUntapped = 1L << 61,
+    /// <summary>"If a card or token would be put into your graveyard from anywhere, exile it instead."</summary>
+    ExileInsteadOfYourGraveyard = 1L << 62,
 }
 
 /// <summary>
@@ -421,6 +447,67 @@ public sealed partial record CardDefinition
 
     /// <summary>Replacement and rule-changing effects of this permanent while it is on the battlefield.</summary>
     public Replacements Replaces { get; init; }
+
+    /// <summary>Meld (rule 712.4, 701.42): the name of the card this one melds with, and the melded permanent's characteristics (its combined back face).</summary>
+    public string? MeldsWith { get; init; }
+    public CardDefinition? MeldResult { get; init; }
+
+    /// <summary>The combined back face of a meld pair: not a card of its own (it can't be put in a deck or opened in a booster).</summary>
+    public bool IsMeldResult { get; init; }
+
+    /// <summary>"If you would draw a card while your library has no cards in it, you win the game instead."</summary>
+    public bool WinsDrawingFromEmptyLibrary { get; init; }
+
+    /// <summary>"You may play N additional lands on each of your turns."</summary>
+    public int ExtraLandPlays { get; init; }
+
+    /// <summary>"Each opponent can cast spells only any time they could cast a sorcery."</summary>
+    public bool OpponentsCastAtSorcerySpeed { get; init; }
+
+    /// <summary>"If you cast a spell this way [from the top of your library], pay life equal to its mana value rather than pay its mana cost."</summary>
+    public bool LibraryTopSpellsForLife { get; init; }
+
+    /// <summary>"If you tap a permanent for mana, it produces three times as much of that mana instead."</summary>
+    public bool TripleManaFromPermanents { get; init; }
+
+    /// <summary>"Whenever you tap a nonland permanent for mana, add one mana of any type that permanent produced."</summary>
+    public bool ExtraManaFromNonlandPermanents { get; init; }
+
+    /// <summary>"If a creature attacking causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time."</summary>
+    public bool ExtraTriggersFromAttacking { get; init; }
+
+    /// <summary>"Overload {cost}" (rule 702.96): cast for this cost, the spell is <see cref="Overloaded"/> ("target" becomes "each").</summary>
+    public Mana.ManaCost? Overload { get; init; }
+    public Abilities.SpellAbility? Overloaded { get; init; }
+
+    /// <summary>Ninjutsu / commander ninjutsu cost (rule 702.49): put it onto the battlefield tapped and attacking by returning an unblocked attacker.</summary>
+    public Mana.ManaCost? Ninjutsu { get; init; }
+    public bool CommanderNinjutsu { get; init; }
+
+    /// <summary>"For each {B} in a cost, you may pay 2 life rather than pay that mana."</summary>
+    public bool PayLifeForBlackMana { get; init; }
+
+    /// <summary>"During your turn, you may play cards from your graveyard."</summary>
+    public bool PlayFromGraveyardOnYourTurn { get; init; }
+
+    /// <summary>"You may cast artifact spells from your graveyard by paying N life in addition to paying their other costs. If you cast a spell
+    /// this way, that artifact enters with a finality counter on it."</summary>
+    public int GraveyardArtifactsForLife { get; init; }
+
+    /// <summary>"Ward—Pay life equal to [this creature]'s power."</summary>
+    public bool WardLifeFromPower { get; init; }
+
+    /// <summary>"As this creature transforms into [this face], …" (a back face's own replacement effect, rule 614.1e): done as it transforms.</summary>
+    public IReadOnlyList<Abilities.Effect>? AsTransformsInto { get; init; }
+
+    /// <summary>"Kicker—Sacrifice an artifact or creature": a kicker cost that isn't mana (rule 702.33a).</summary>
+    public Abilities.ExtraCost? KickerExtra { get; init; }
+
+    /// <summary>"You may play lands and cast Bird spells from the top of your library": the cards on top its controller may play (rule 601.2a).</summary>
+    public Abilities.ObjectFilter? LibraryTopPlay { get; init; }
+
+    /// <summary>Only while this holds ("as long as this attacked this turn").</summary>
+    public Abilities.Condition? LibraryTopPlayIf { get; init; }
 
     /// <summary>"You may have this creature enter as a copy of any [filter] on the battlefield" (rule 707.2, 614.1c).</summary>
     public ObjectFilter? EntersAsCopyOf { get; init; }

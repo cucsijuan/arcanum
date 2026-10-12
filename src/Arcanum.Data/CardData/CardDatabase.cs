@@ -47,7 +47,8 @@ public sealed class CardDatabase : ICardDatabase
     public CardDatabase(IEnumerable<CardRecord> records, IReadOnlyDictionary<string, Scripts.CardScript>? scripts = null)
     {
         _byName = new Dictionary<string, CardEntry>(StringComparer.OrdinalIgnoreCase);
-        foreach (var record in records)
+        var all = records as IReadOnlyList<CardRecord> ?? records.ToList();
+        foreach (var record in all)
         {
             if (record.IsToken)
             {
@@ -59,10 +60,20 @@ public sealed class CardDatabase : ICardDatabase
             var (definition, support) = CardFactory.Create(record, scripts?.GetValueOrDefault(record.OracleId));
             _byName[record.Name] = new CardEntry(definition, support, record);
         }
+        // Meld pairs (rule 712.4): a card that melds knows the combined back face, which isn't a card of its own.
+        foreach (var record in all.Where(r => r.Layout == "meld" && scripts?.GetValueOrDefault(r.OracleId)?.MeldInto is not null).ToList())
+        {
+            var script = scripts![record.OracleId];
+            if (!_byName.TryGetValue(record.Name, out var melder) || !_byName.TryGetValue(script.MeldInto!, out var result)) continue;
+            var back = result.Definition with { IsMeldResult = true };
+            _byName[result.Record.Name] = result with { Definition = back };
+            _byName[record.Name] = melder with { Definition = melder.Definition with { MeldResult = back } };
+        }
         // A card with several faces whose name is its first face's (an adventurer card) is also found by that name.
         foreach (var entry in _byName.Values.Where(e => e.Name != e.Record.Name).ToList())
             _byName.TryAdd(entry.Name, entry);
-        _sorted = _byName.Values.Distinct().OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        // A melded permanent's combined face is found by name (to show it) but isn't a card to list, search, collect or build with.
+        _sorted = _byName.Values.Distinct().Where(e => !e.Definition.IsMeldResult).OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
         Sets = _sorted.SelectMany(e => e.Record.Printings)
             .GroupBy(p => p.Set, StringComparer.OrdinalIgnoreCase)
             .Select(g => new SetInfo(g.Key, g.First().SetName, g.Min(p => p.Released) ?? "", g.First().SetType, g.Count()))

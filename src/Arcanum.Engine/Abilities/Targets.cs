@@ -21,14 +21,18 @@ public enum TargetKind
     CreatureOrPlaneswalker,
     /// <summary>"Target player or planeswalker".</summary>
     PlayerOrPlaneswalker,
-    /// <summary>A spell or an activated/triggered ability on the stack.</summary>
+    /// <summary>A spell or an activated/triggered ability on the stack (a filter applies to the spells).</summary>
     SpellOrAbility,
+    /// <summary>An activated or triggered ability on the stack ("target activated or triggered ability you control").</summary>
+    Ability,
     /// <summary>"Target spell or nonland permanent": a spell on the stack or a permanent.</summary>
     SpellOrPermanent,
     /// <summary>A card in a graveyard ("target creature card from your graveyard": controller filter = owner).</summary>
     GraveyardCard,
     /// <summary>A card in exile ("target creature card exiled with [this]": controller filter = owner).</summary>
     ExiledCard,
+    /// <summary>A card in a graveyard or in exile ("target instant or sorcery card from your graveyard or exiled card with flashback you own").</summary>
+    GraveyardOrExiledCard,
 }
 
 /// <summary>Restriction on who controls the target ("target creature you control", "target opponent"...).</summary>
@@ -183,6 +187,12 @@ public enum SubjectKind
     OtherOpponents,
     /// <summary>The player or planeswalker the source is attacking ("the player or planeswalker it's attacking").</summary>
     AttackedBySource,
+    /// <summary>The defending player of the attack the source (or the trigger's creature) is in ("defending player").</summary>
+    DefendingPlayer,
+    /// <summary>Cards milled by this effect, matching <see cref="Subject.Filter"/> ("each creature card milled this way").</summary>
+    Milled,
+    /// <summary>Cards this effect put onto the battlefield ("they gain haste", "return those creatures").</summary>
+    EnteredThisWay,
 }
 
 public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filter = null)
@@ -192,6 +202,9 @@ public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filt
 
     /// <summary>For <see cref="SubjectKind.Each"/>: leaves out the chosen targets ("each other creature you control").</summary>
     public bool ExceptTargets { get; init; }
+
+    /// <summary>For <see cref="SubjectKind.Each"/>: not the objects chosen earlier in the effect ("creatures other than … and the chosen creature").</summary>
+    public bool ExceptChosen { get; init; }
 
     /// <summary>For <see cref="SubjectKind.Each"/>: only permanents attached to the target at <see cref="Index"/> ("all Equipment attached to that creature").</summary>
     public bool AttachedToTarget { get; init; }

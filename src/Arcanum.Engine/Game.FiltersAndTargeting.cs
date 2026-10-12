@@ -20,6 +20,10 @@ public sealed partial class Game
     private bool MatchesOriginsFilters(ObjectFilter filter, Card obj, int power, int toughness, Func<Keyword, bool> hasKeyword, PlayerId sourceController)
     {
         if (filter.WithoutKeywords is { Count: > 0 } without && without.Any(hasKeyword)) return false;
+        if (filter.NotSubtypes is { Count: > 0 } notSubtypes && notSubtypes.Any(obj.HasSubtype)) return false;
+        if (filter.InZone is { } zone && obj.Zone != zone) return false;
+        if (filter.HasFlashback && obj.Definition.Flashback is null && obj.Definition.FlashbackExtra is null
+            && !State.FlashbackGranted.Any(f => f.Card == obj.Id && f.Version == obj.Version)) return false;
         if (filter.PowerNotEqualToughness && power == toughness) return false;
         if (filter.NotOwnedByYou && obj.Owner == sourceController) return false;
         // "Each other creature": a different object from the one the trigger is about (the same card back as a new object counts, rule 400.7).

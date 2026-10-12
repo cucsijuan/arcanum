@@ -23,7 +23,8 @@ public static partial class CardFactory
         ["Mountain"] = ManaType.Red, ["Forest"] = ManaType.Green,
     };
 
-    private static readonly HashSet<string> SingleFaceLayouts = new(StringComparer.Ordinal) { "normal", "token", "saga" };
+    // A meld card is a card with one face; the combined back face is a record of its own (linked by CardDatabase).
+    private static readonly HashSet<string> SingleFaceLayouts = new(StringComparer.Ordinal) { "normal", "token", "saga", "meld" };
 
     /// <summary>
     /// Keyword actions and ability words the card source lists as keywords but that only label rules text a card
@@ -37,6 +38,9 @@ public static partial class CardFactory
         "Revolt", "Delirium", "Battalion", "Fateful hour", "Spell mastery", "Addendum", "Regenerate", "Triple", "Populate", "Exert",
         "Secret council", "Will of the council", "Council's dilemma", "Tempting offer", "Transform",
         "Lieutenant", "Enrage", "Celebration", "Pack tactics", "Imprint", "Living weapon", "Proliferate", "Discover", "Read ahead",
+        "Tiered", // the script's modes carry their additional costs (rule 702.183)
+        "Meld", // the script's "meld" effect, with "meldsWith" and "meldInto"
+        "Boast", "Spectacle", "Overload", "Revolt", "Eminence", "Commander ninjutsu", "Ninjutsu", // scripted (activation limits, alternative costs)
         "Renown", // its trigger and the renowned designation come from the script (rule 702.112)
         // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
         "Persist", "Undying", "Dethrone", "Hideaway", "Heal", "Aftermath",
@@ -48,8 +52,26 @@ public static partial class CardFactory
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
     /// <remarks>Includes keywords whose rules this factory derives from rules text (Equip, Enchant).</remarks>
     public static ISet<string> SupportedKeywords { get; } =
-        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward" }).Concat(ScriptedKeywords),
+        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select" }).Concat(ScriptedKeywords),
             StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Why <see cref="Create"/> finds the card unsupported (for tools): each failed requirement, by face.</summary>
+    public static IReadOnlyList<string> Explain(CardRecord record, Scripts.CardScript? script)
+    {
+        var reasons = new List<string>();
+        _reasons = reasons;
+        try { Create(record, script); }
+        finally { _reasons = null; }
+        return reasons;
+    }
+
+    [ThreadStatic] private static List<string>? _reasons;
+
+    private static bool Note(bool ok, CardRecord record, string what)
+    {
+        if (!ok) _reasons?.Add($"{record.Name}: {what}");
+        return ok;
+    }
 
     /// <param name="script">The card's ability script from the content module, if it has one.</param>
     public static (CardDefinition Definition, CardSupport Support) Create(CardRecord record, Scripts.CardScript? script = null)
@@ -99,12 +121,12 @@ public static partial class CardFactory
         // "*" power/toughness is fine when the script defines it (characteristic-defining ability).
         powerOk |= script?.PowerFrom is not null;
         toughnessOk |= script?.ToughnessFrom is not null;
-        bool supported = costOk && powerOk && toughnessOk
-                         && SingleFaceLayouts.Contains(record.Layout)
-                         && record.Keywords.All(k => SupportedKeywords.Contains(k) || IsCycling(k))
-                         && (script is not null || RulesTextIsCovered(record))
-                         && !MissesItsOwnProtection(record.OracleText, definition)
-                         && !MissesItsRenown(record, definition);
+        bool supported = Note(costOk, record, $"mana cost {record.ManaCost}") & Note(powerOk && toughnessOk, record, "power/toughness")
+                         & Note(SingleFaceLayouts.Contains(record.Layout), record, $"layout {record.Layout}")
+                         & record.Keywords.Aggregate(true, (ok, k) => Note(SupportedKeywords.Contains(k) || IsCycling(k) || IsLabel(record.OracleText.Replace(record.Name, "~"), k), record, $"keyword {k}") && ok)
+                         & Note(script is not null || RulesTextIsCovered(record), record, "needs a script")
+                         & Note(!MissesItsOwnProtection(record.OracleText, definition), record, "protection missing from the script")
+                         & Note(!MissesItsRenown(record, definition), record, "renown missing from the script");
         return (definition, supported ? CardSupport.Full : CardSupport.Unsupported);
     }
 
@@ -232,8 +254,9 @@ public static partial class CardFactory
         var text = ReminderText().Replace(record.OracleText, "");
         foreach (var rawLine in text.Split('\n'))
         {
-            var line = rawLine.Trim().TrimEnd('.');
+            var line = WithoutLabel(rawLine.Trim().TrimEnd('.'));
             if (line.Length == 0) continue;
+            if (line == "Job select") continue;
             if (TapForManaLine().IsMatch(line) || AnyColorManaLine().IsMatch(line)) continue;
             if (EntersTappedLine().IsMatch(line)) continue;
             if (KickerLine().IsMatch(line) || FlashbackLine().IsMatch(line) || WardLine().IsMatch(line) || line == "This spell can't be countered") continue;
@@ -318,7 +341,9 @@ public static partial class CardFactory
         bool entersTapped = false;
         foreach (var rawLine in ReminderText().Replace(oracleText, "").Split('\n'))
         {
-            var line = rawLine.Trim().TrimEnd('.');
+            var labelled = rawLine.Trim().TrimEnd('.');
+            var line = WithoutLabel(labelled);
+            if (line == "Job select") abilities.Add(JobSelect());
             var equip = EquipLine().Match(line);
             if (equip.Success)
             {
@@ -328,7 +353,7 @@ public static partial class CardFactory
                     SorcerySpeed = true,
                     Targets = new[] { new Engine.Abilities.TargetSpec(Engine.Abilities.TargetKind.Creature, Engine.Abilities.ControllerFilter.You) },
                     Effects = new Engine.Abilities.Effect[] { new Engine.Abilities.AttachSelf(Engine.Abilities.Subject.TargetAt(0)) },
-                    Text = line,
+                    Text = labelled,
                     IsEquip = true,
                 });
             }
@@ -345,6 +370,55 @@ public static partial class CardFactory
         }
         return (abilities, enchant, entersTapped);
     }
+
+    /// <summary>
+    /// Job select (rule 702.182): "When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this Equipment to it."
+    /// </summary>
+    private static Engine.Abilities.TriggeredAbility JobSelect() => new()
+    {
+        Trigger = Engine.Abilities.TriggerEvent.EntersBattlefield,
+        Effects = new Engine.Abilities.Effect[]
+        {
+            new Engine.Abilities.CreateTokens(HeroToken, 1, Engine.Abilities.Subject.You, false),
+            new Engine.Abilities.AttachSelf(new Engine.Abilities.Subject(Engine.Abilities.SubjectKind.Created)),
+        },
+        Text = "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)",
+    };
+
+    /// <summary>The 1/1 colorless Hero creature token job select creates.</summary>
+    public static CardDefinition HeroToken { get; } = new()
+    {
+        Name = "Hero", Types = CardType.Creature, Subtypes = new[] { "Hero" }, Power = 1, Toughness = 1, IsToken = true,
+    };
+
+    /// <summary>
+    /// A flavor word or ability word the card source lists as a keyword ("Gae Bolg — Equip {4}", "Wings of Light — Put …"): it only
+    /// names the ability it starts (rules 207.2c-d) and has no rules of its own. True when every line using it starts with it, before
+    /// " — ", directly or after a Saga's chapter numbers.
+    /// </summary>
+    private static bool IsLabel(string oracleText, string keyword)
+    {
+        var word = new Regex($@"(?<![\w']){Regex.Escape(keyword)}(?![\w'])");
+        var lines = ReminderText().Replace(oracleText, "").Split('\n').Where(l => word.IsMatch(l)).ToList();
+        return lines.Count > 0 && lines.All(l => LabelOf(l.Trim()) is { } label && label == keyword);
+    }
+
+    /// <summary>The flavor or ability word a line starts with ("Gae Bolg — Equip {4}", "I, II — Wings of Light — Put …"), if any.</summary>
+    private static string? LabelOf(string line)
+    {
+        var m = LabelledLine().Match(line);
+        return m.Success ? m.Groups["label"].Value : null;
+    }
+
+    /// <summary>The line without a leading flavor or ability word ("Gae Bolg — Equip {4}" is "Equip {4}"); chapter lines stay as they are.</summary>
+    private static string WithoutLabel(string line)
+    {
+        var m = LabelledLine().Match(line);
+        return m.Success && !m.Groups["chapters"].Success && !line.StartsWith('•') ? line[m.Length..] : line;
+    }
+
+    [GeneratedRegex(@"^(?<chapters>[IVX]+(?:, [IVX]+)* — )?(?:• )?(?<label>[^—•]+?) — (?=\S)")]
+    private static partial Regex LabelledLine();
 
     /// <summary>Cycling and typecycling keywords ("Cycling", "Mountaincycling", "Landcycling"): derived from their rules text.</summary>
     private static bool IsCycling(string keyword) => keyword.EndsWith("cycling", StringComparison.OrdinalIgnoreCase);

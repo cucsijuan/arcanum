@@ -71,6 +71,13 @@ public sealed partial class Game
         // modify that life gain (rule 616.1), which may need choices.
         var gained = lifelink ?? new Dictionary<PlayerId, int>();
         foreach (var part in final) ApplyDamage(part, gained);
+        // "Whenever [this] deals damage": once per damage event, with the total it dealt in it.
+        foreach (var bySource in final.GroupBy(p => p.Source.Id))
+        {
+            var source = bySource.First().Source;
+            Queue(source.Id, TriggerEvent.DealsDamage, source.Zone == Zone.Battlefield ? source.Controller : source.LastKnownInfo?.Controller ?? source.Controller,
+                new TriggerInfo(source.Id, source.Version, Amount: bySource.Sum(p => p.Amount)));
+        }
         if (lifelink is null)
             foreach (var (player, amount) in gained) await GainLifeAsync(player, amount);
         if (many) EndSimultaneous();
@@ -248,6 +255,15 @@ public sealed partial class Game
                 return n - moved;
             }));
         }
+        // "All damage that would be dealt to you and other permanents you control is dealt to this creature instead."
+        var victim = part.ToPlayer ?? part.ToCard!.Controller;
+        foreach (var sponge in State.PermanentsControlledBy(victim).Where(c => c.IsCreature && (c.Replaces & Replacements.RedirectYourDamageToSelf) != 0 && c.Id != part.ToCard?.Id))
+            Add(new DamageModifier($"sponge:{sponge.Id}", $"sponge:{sponge.Id}", $"Deal it to {sponge.Name} instead", n =>
+            {
+                if (sponge.Zone != Zone.Battlefield || !sponge.IsCreature) return n;
+                redirected.Add(new DamagePart(part.Source, sponge, null, n, part.Combat) { Applied = new HashSet<string>(applied) { $"sponge:{sponge.Id}" }, Unpreventable = part.Unpreventable });
+                return 0;
+            }));
         // "Prevent N of that damage" to you, and "that much damage plus N" (each instance once, rule 614.5).
         foreach (var extra in DamageToYouReductionsFor(part, preventable, notePrevented).Concat(DamageBonusesFor(part))) Add(extra);
         // Replacement effects that double or triple it.
@@ -269,6 +285,7 @@ public sealed partial class Game
             if (ShieldPrevents(shield, source, targetCard, targetPlayer)) return "a prevention effect";
         if (State.DamagePreventions.Any(d => d.Card == source.Id && d.Version == source.Version)) return "its damage is prevented";
         if (targetPlayer is { } protectedPlayer && State.GetPlayer(protectedPlayer).Protected) return "protection"; // protection from everything
+        if (targetPlayer is { } shieldedPlayer && PlayerProtectedFrom(shieldedPlayer, SourceController(source))) return "protection from opponents";
         if (targetCard is not null && ProtectedFrom(targetCard, source)) return "protection"; // 702.16e
         if (targetCard is not null && (targetCard.StaticDamagePrevention & (combat ? StaticDamagePrevention.Combat : StaticDamagePrevention.Noncombat)) != 0)
             return "a static ability";
@@ -326,6 +343,15 @@ public sealed partial class Game
             foreach (var _ in State.DamageTripled.Where(t => t.Player == controller && t.Turn == State.TurnNumber))
                 result.Add(($"triple:{controller.Value}:{i++}", "Triple it", 3));
         }
+        // "If a Wizard you control would deal damage to a permanent or player, it deals double that damage instead."
+        bool wizard = lki is not null ? lki.HasSubtype("Wizard") : source.HasSubtype("Wizard") && source.Zone == Zone.Battlefield;
+        if (wizard)
+            foreach (var c in State.PermanentsControlledBy(controller).Where(c => (c.Replaces & Replacements.DoubleWizardDamage) != 0))
+                result.Add(($"double:{c.Id}", $"Double it ({c.Name})", 2));
+        // "Until your next turn, if a source would deal damage to that player or a permanent that player controls, it deals double that damage instead."
+        int s = 0;
+        foreach (var stagger in State.DamageDoubledAgainst.Where(d => d.Victim == victim))
+            result.Add(($"stagger:{victim.Value}:{s++}", $"Double it ({State.GetCard(stagger.Source).Name})", 2));
         return result;
     }
 
@@ -374,6 +400,8 @@ public sealed partial class Game
         }
         Emit(new DamageDealt(source.Id, target.Id, null, amount, part.Combat));
         Queue(target.Id, TriggerEvent.DealtDamage, target.Controller, new TriggerInfo(target.Id, target.Version, Amount: amount)); // once for each source
+        foreach (var attached in State.Battlefield.Select(State.GetCard).Where(c => c.AttachedTo == target.Id).ToList())
+            Queue(attached.Id, TriggerEvent.AttachedDealtDamage, attached.Controller, new TriggerInfo(target.Id, target.Version, Amount: amount));
         if (!part.Combat)
         {
             // "Is dealt excess noncombat damage": more than lethal damage (rule 120.4a).

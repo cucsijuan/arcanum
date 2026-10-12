@@ -28,7 +28,7 @@ public class ManaTests
     public void RoundTripsToString() => Assert.Equal("{3}{R}{R}", ManaCost.Parse("{3}{R}{R}").ToString());
 
     [Theory]
-    [InlineData("{G/P}")]
+    [InlineData("{G/Q}")]
     [InlineData("{Q}")]
     [InlineData("2G")]
     public void RejectsUnsupportedSymbols(string text) => Assert.Throws<FormatException>(() => ManaCost.Parse(text));

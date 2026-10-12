@@ -9,6 +9,9 @@ public sealed record ManaUnit(ManaType Type, Core.CardId Source, Abilities.Objec
 {
     /// <summary>Produced by a snow source ({S} can be paid with it, rule 107.4h).</summary>
     public bool Snow { get; init; }
+
+    /// <summary>Besides the spells it may pay for, it may pay for equip abilities only (<see cref="Cards.ManaOption.EquipOnly"/>).</summary>
+    public bool EquipOnly { get; init; }
 }
 
 public sealed class ManaPool

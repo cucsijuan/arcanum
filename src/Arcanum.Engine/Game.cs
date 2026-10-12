@@ -149,6 +149,12 @@ public sealed partial class Game
                 break;
             case DamageDealt { TargetPlayer: { } hurtPlayer } dealt:
                 State.GetPlayer(hurtPlayer).DamageTakenThisTurn += dealt.Amount;
+                if (dealt.IsCombat)
+                {
+                    State.GetPlayer(hurtPlayer).CombatDamageTakenThisTurn += dealt.Amount;
+                    if (State.GetCard(dealt.Source) is { IsCreature: true } hitter && (hitter.Supertypes & Cards.Supertype.Legendary) != 0)
+                        State.GetPlayer(hurtPlayer).CombatDamagedByLegendaryThisTurn = true;
+                }
                 if (dealt.IsCombat && State.GetCard(dealt.Source).IsCreature) State.GetPlayer(hurtPlayer).CombatDamagedByNames.Add(State.GetCard(dealt.Source).Name);
                 break;
             case CardMoved { To: Zone.Battlefield } entered:

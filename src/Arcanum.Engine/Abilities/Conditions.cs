@@ -154,6 +154,33 @@ public sealed record HasRingBearer : Condition;
 /// <summary>"If a creature died under your control this turn" (at least that many).</summary>
 public sealed record YourCreaturesDied(int AtLeast) : Condition;
 
+/// <summary>"If a creature died under an opponent's control this turn."</summary>
+public sealed record OpponentsCreaturesDied(int AtLeast) : Condition;
+
+/// <summary>"Activate only during combat."</summary>
+public sealed record DuringCombat : Condition;
+
+/// <summary>"If you haven't added mana with this ability this turn."</summary>
+public sealed record AddedManaWithThisThisTurn : Condition;
+
+/// <summary>"If it's the first combat phase of the turn."</summary>
+public sealed record FirstCombatPhase : Condition;
+
+/// <summary>"Your first, second, or third turn of the game": it's your turn and you have taken at most this many turns.</summary>
+public sealed record YourTurnNumberAtMost(int Turns) : Condition;
+
+/// <summary>"A Vehicle crewed by [this] this turn": the object the trigger is about was crewed by the source this turn.</summary>
+public sealed record TriggeredCrewedBySource : Condition;
+
+/// <summary>"If a player was dealt 6 or more combat damage this turn."</summary>
+public sealed record PlayerDealtCombatDamage(int AtLeast) : Condition;
+
+/// <summary>"If an opponent was dealt combat damage by a legendary creature this turn."</summary>
+public sealed record OpponentDealtCombatDamageByLegendary : Condition;
+
+/// <summary>"If your life total is less than or equal to half your starting life total."</summary>
+public sealed record LifeAtMostHalfStarting : Condition;
+
 /// <summary>"If you sacrificed a Food this turn": you sacrificed at least that many permanents matching the filter.</summary>
 public sealed record SacrificedThisTurn(ObjectFilter Filter, int AtLeast = 1) : Condition;
 

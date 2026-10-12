@@ -157,6 +157,26 @@ public enum QuantityKind
     /// <summary>The power / toughness of the last creature card exiled with the source ("imprint").</summary>
     LastExiledCreaturePower,
     LastExiledCreatureToughness,
+    /// <summary>The total mana value of the permanents matching the filter ("the total mana value of other permanents you control").</summary>
+    ManaValueSum,
+    /// <summary>Permanents whose control this effect gave (or took) that are still on the battlefield ("if they do").</summary>
+    ControlGainedThisWay,
+    /// <summary>The mana value of the last card a reveal or look found ("you lose life equal to its mana value").</summary>
+    FoundManaValue,
+    /// <summary>Card types among the cards this effect discarded ("a card for each card type among cards discarded this way").</summary>
+    CardTypesAmongDiscarded,
+    /// <summary>Creatures that died this turn ("for each creature that died this turn").</summary>
+    CreaturesDiedThisTurn,
+    /// <summary>The result of this effect's die roll.</summary>
+    Rolled,
+    /// <summary>Opponents that were dealt combat damage this turn.</summary>
+    OpponentsDealtCombatDamage,
+    /// <summary>Counters this effect removed ("for each lore counter removed this way").</summary>
+    CountersRemovedThisWay,
+    /// <summary>Cards this effect found (put into a hand, revealed …) that match the filter ("if you put a Town card into your hand this way").</summary>
+    FoundMatching,
+    /// <summary>The total mana value of the cards this effect discarded ("loses life equal to the discarded card's mana value").</summary>
+    DiscardedManaValue,
 }
 
 /// <summary>

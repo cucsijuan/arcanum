@@ -100,7 +100,7 @@ public static class ManaPayment
         // others (one mana per activation, from any of their usable abilities) pay what is left with the pip solver.
         var multi = all.Where(c => UsableOptions(c, usable).Any(i => c.ManaOptions[i].Produces > 1)).ToList();
         var single = all.Except(multi)
-            .OrderBy(c => c.Definition.SacrificeForMana) // keep one-shot sources (Treasure) for last
+            .OrderBy(c => c.Definition.SacrificeForMana || c.ManaOptions.Any(o => o.ExileSelf)) // keep one-shot sources (Treasure) for last
             .ThenBy(c => SingleTypes(c, usable).Count)
             .ThenBy(c => c.Id.Value)
             .ToList();
@@ -170,9 +170,9 @@ public static class ManaPayment
     /// <summary>The mana one activation adds: one of each type for "one mana of each color" abilities.</summary>
     public static IEnumerable<ManaType> Produced(Card source, ManaTap tap) =>
         tap.Option < source.ManaOptions.Count && source.ManaOptions[tap.Option].OneOfEach
-            ? source.ManaOptions[tap.Option].Types
+            ? Enumerable.Repeat(source.ManaOptions[tap.Option].Types, source.ManaOptions[tap.Option].Times).SelectMany(t => t)
             : tap.Option < source.ManaOptions.Count && source.ManaOptions[tap.Option].Combination && tap.Combination is { } combination
-                ? combination
+                ? Enumerable.Repeat(combination, source.ManaOptions[tap.Option].Times).SelectMany(t => t)
                 : Enumerable.Repeat(tap.Type, AmountOf(source, tap));
 
     /// <summary>The mana one activation adds: for an ability that removes any number of counters, as many as the tap removes.</summary>

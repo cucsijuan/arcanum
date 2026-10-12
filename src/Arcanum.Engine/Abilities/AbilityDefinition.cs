@@ -15,6 +15,12 @@ public abstract record AbilityDefinition
     /// <summary>For an ability granted by another permanent ("Equipped creature has ..."): that permanent.</summary>
     public Core.CardId? GrantedBy { get; init; }
 
+    /// <summary>Eminence: a triggered ability that works from the command zone too.</summary>
+    public bool FromCommandZone { get; init; }
+
+    /// <summary>"This ability can't be copied."</summary>
+    public bool CantBeCopied { get; init; }
+
     /// <summary>
     /// For a triggered ability, an intervening "if" clause (rule 603.4): it triggers only if the condition holds,
     /// and does nothing on resolution unless it still holds. Null: unconditional.
@@ -48,6 +54,9 @@ public abstract record AbilityDefinition
     /// <summary>A rule tying the targets together.</summary>
     public TargetRule TargetRule { get; init; }
 
+    /// <summary>"Any number of target creature cards with total mana value 6 or less": the chosen targets' total mana value is at most this.</summary>
+    public int? TargetsTotalManaValueAtMost { get; init; }
+
     /// <summary>What this spell does when kicked, when that changes its targets ("instead any number of target creatures").</summary>
     public AbilityDefinition? WhenKicked { get; init; }
 }
@@ -69,7 +78,11 @@ public enum TargetRule
 }
 
 /// <summary>One mode of a modal spell or ability.</summary>
-public sealed record Mode(string Text, IReadOnlyList<TargetSpec> Targets, IReadOnlyList<Effect> Effects);
+public sealed record Mode(string Text, IReadOnlyList<TargetSpec> Targets, IReadOnlyList<Effect> Effects)
+{
+    /// <summary>Tiered (rule 702.183): the additional cost paid for casting the spell with this mode chosen.</summary>
+    public Mana.ManaCost? Cost { get; init; }
+}
 
 /// <summary>What an instant or sorcery does when it resolves.</summary>
 public sealed record SpellAbility : AbilityDefinition
@@ -94,6 +107,12 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
 
     /// <summary>"Exile this [permanent]" as a cost.</summary>
     public bool ExileSelf { get; init; }
+
+    /// <summary>"Discard X cards" as a cost: X is announced (rule 601.2b) and that many cards are discarded.</summary>
+    public bool DiscardX { get; init; }
+
+    /// <summary>Ninjutsu (rule 702.49): activated from the hand (or, for commander ninjutsu, the command zone) by returning an unblocked attacker you control to its owner's hand.</summary>
+    public bool Ninjutsu { get; init; }
 
     /// <summary>A loyalty ability's cost: +N / −N loyalty counters (null: not a loyalty ability, rule 606).</summary>
     public int? Loyalty { get; init; }
@@ -125,6 +144,9 @@ public sealed record ActivatedAbility : AbilityDefinition
 {
     public required AbilityCost Cost { get; init; }
 
+    /// <summary>"X can't be 0": the smallest X that can be announced.</summary>
+    public int MinX { get; init; }
+
     /// <summary>"Activate only as a sorcery."</summary>
     public bool SorcerySpeed { get; init; }
 
@@ -150,7 +172,11 @@ public sealed record ActivatedAbility : AbilityDefinition
 
 /// <summary>"[Spells matching the filter] you cast cost {N} less to cast" while the source is on the battlefield.</summary>
 /// <summary>"Activated abilities of Foods you control cost {1} less to activate" / "Equip abilities you activate cost {1} less" (generic mana only).</summary>
-public sealed record AbilityCostReduction(ObjectFilter Sources, int Amount, bool EquipOnly) : AbilityDefinition;
+public sealed record AbilityCostReduction(ObjectFilter Sources, int Amount, bool EquipOnly) : AbilityDefinition
+{
+    /// <summary>"Equip abilities you activate that target [this] cost {2} less": only when the ability targets the reducer itself.</summary>
+    public bool TargetingSelf { get; init; }
+}
 
 /// <summary>"[Spells matching the filter] cost {N} more to cast" (every player's, while the source is on the battlefield).</summary>
 public sealed record SpellCostIncrease(ObjectFilter Spells, int Amount) : AbilityDefinition;
@@ -267,6 +293,28 @@ public enum TriggerEvent
     BecomesBlocked,
     /// <summary>"Whenever you scry" (amount: cards looked at).</summary>
     YouScry,
+    /// <summary>"Whenever you surveil."</summary>
+    YouSurveil,
+    /// <summary>"When enchanted creature is dealt damage": once for each source dealing damage to the permanent this is attached to.</summary>
+    AttachedDealtDamage,
+    /// <summary>"Whenever an opponent gains control of a permanent from you": the permanent is "triggered", that opponent "triggeredPlayer".</summary>
+    OpponentGainsControlFromYou,
+    /// <summary>"Whenever this deals damage": once for each damage event it deals damage in, with the total dealt ("that much").</summary>
+    DealsDamage,
+    /// <summary>"When the chosen creature leaves the battlefield" (the creature this permanent remembers, <c>rememberChosen</c>).</summary>
+    ChosenCreatureLeaves,
+    /// <summary>"When the chosen player loses the game."</summary>
+    ChosenPlayerLoses,
+    /// <summary>"At the beginning of each of your postcombat main phases."</summary>
+    YourPostcombatMain,
+    /// <summary>"At the beginning of each of your main phases" (precombat and postcombat).</summary>
+    YourMainPhase,
+    /// <summary>"Whenever a [filter] card is put into a graveyard from anywhere other than the battlefield."</summary>
+    CardPutIntoGraveyardNotFromBattlefield,
+    /// <summary>"Whenever equipped creature attacks" (an Equipment's own ability): the creature is "triggered".</summary>
+    EquippedAttacks,
+    /// <summary>"Whenever equipped creature deals combat damage to a player" (an Equipment's own ability): amount, that player.</summary>
+    EquippedCombatDamageToPlayer,
     /// <summary>"Whenever one or more creatures deal combat damage to you".</summary>
     CombatDamageToYou,
     /// <summary>"Whenever the final chapter ability of a Saga you control resolves".</summary>
@@ -588,6 +636,15 @@ public sealed record ObjectFilter(
 
     /// <summary>A creature with the greatest power among creatures its controller controls ("a creature with the greatest power among creatures they control").</summary>
     public bool GreatestPowerAmongItsController { get; init; }
+
+    /// <summary>Is in this zone ("from your graveyard", "exiled card").</summary>
+    public State.Zone? InZone { get; init; }
+
+    /// <summary>Has flashback (printed or given by an effect).</summary>
+    public bool HasFlashback { get; init; }
+
+    /// <summary>Has none of these subtypes ("each creature that isn't a Kraken, Leviathan, Merfolk, Octopus, or Serpent").</summary>
+    public IReadOnlyList<string>? NotSubtypes { get; init; }
 
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
 

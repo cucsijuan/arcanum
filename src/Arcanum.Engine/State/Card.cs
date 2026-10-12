@@ -14,7 +14,8 @@ public sealed class Card
     public CardDefinition PrintedDefinition { get; }
 
     /// <summary>Its characteristics now: those of its Adventure while it is cast as one (rule 715.3), otherwise the printed card's.</summary>
-    public CardDefinition Definition => EffectCopy ?? CopiedDefinition ?? (Transformed && BackFaceDefinition is { } back ? back
+    public CardDefinition Definition => EffectCopy ?? CopiedDefinition ?? (MeldPartner is not null && PrintedDefinition.MeldResult is { } melded ? melded
+        : Transformed && BackFaceDefinition is { } back ? back
         : AsAdventure && PrintedDefinition.Adventure is { } adventure ? adventure
         : CastHalf is { } half && PrintedDefinition.SplitHalves is { } halves ? halves[half]
         : PrintedDefinition);
@@ -25,6 +26,15 @@ public sealed class Card
     /// up unless an effect puts it there transformed (712.14).
     /// </summary>
     public bool Transformed { get; internal set; }
+
+    /// <summary>
+    /// A melded permanent (rule 712.4): the other card it is represented by. The permanent has the combined back face (its definition's
+    /// <see cref="CardDefinition.MeldResult"/>); the other card is part of it and in no zone of its own until the permanent leaves.
+    /// </summary>
+    public Card? MeldPartner { get; internal set; }
+
+    /// <summary>For the other card of a melded permanent: that permanent.</summary>
+    public CardId? MeldedInto { get; internal set; }
 
     /// <summary>Times this object has transformed (rule 701.27f: an ability of it transforms it only if it hasn't since).</summary>
     public int TransformCount { get; internal set; }
@@ -42,7 +52,8 @@ public sealed class Card
     /// Its mana value (rule 202.3): with its back face up, that of its front face's mana cost (712.8e), or 0 for a copy of a
     /// back face (202.3b) — a double-faced token is one (707.8a). A spell's X is added where it is on the stack.
     /// </summary>
-    public int ManaValue => !IsCopy && Transformed && PrintedDefinition.BackFace is not null
+    public int ManaValue => !IsCopy && MeldPartner is { } partner ? PrintedDefinition.ManaCost.ManaValue + partner.PrintedDefinition.ManaCost.ManaValue // rule 712.8g
+        : !IsCopy && Transformed && PrintedDefinition.BackFace is not null
         ? (PrintedDefinition.IsToken ? 0 : PrintedDefinition.ManaCost.ManaValue)
         : Definition.ManaCost.ManaValue;
 
@@ -66,6 +77,9 @@ public sealed class Card
 
     /// <summary>The creature chosen as this permanent entered ("as this Aura enters, choose a creature"), card and version.</summary>
     public (CardId Card, int Version)? ChosenCreature { get; set; }
+
+    /// <summary>A player chosen by one of its abilities or as it transformed ("the chosen player").</summary>
+    public PlayerId? ChosenPlayer { get; set; }
 
     /// <summary>The copiable values the chosen creature last had on the battlefield (kept when it leaves, rule 608.2h).</summary>
     internal CardDefinition? ChosenCreatureValues { get; set; }
@@ -146,6 +160,9 @@ public sealed class Card
 
     /// <summary>Additional {C} its controller gets whenever this is tapped for {C} (set as continuous effects are worked out).</summary>
     internal int ExtraColorless { get; set; }
+
+    /// <summary>"If you tap a permanent for mana, it produces three times as much of that mana instead": 3 to the power of such effects.</summary>
+    internal int ManaMultiplier { get; set; } = 1;
 
     /// <summary>Exiled face down: only the players in <see cref="KnownTo"/> may look at it (rule 406.3).</summary>
     public bool FaceDown { get; set; }
@@ -280,6 +297,9 @@ public sealed class Card
     internal List<AbilityDefinition> GrantedAbilities { get; } = new();
     internal List<ManaOption> GrantedManaOptions { get; } = new();
 
+    /// <summary>How many times it has "if a creature dying causes a triggered ability of this creature or an emblem you own to trigger, …".</summary>
+    internal int DyingTriggerBonus { get; set; }
+
     /// <summary>
     /// Its timestamp as a permanent (rule 613.7d–e): given as it enters the battlefield and again when it becomes
     /// attached to something; 0 until the engine assigns one.
@@ -288,6 +308,9 @@ public sealed class Card
 
     /// <summary>What the card was like the last time it was on the battlefield (rule 608.2h, last known information).</summary>
     public LastKnown? LastKnownInfo { get; internal set; }
+
+    /// <summary>The permanent (object version) this was attached to until that permanent left the battlefield ("an Equipment that was attached to it").</summary>
+    public (CardId Card, int Version)? FormerHost { get; internal set; }
 
     /// <summary>Last known information of each object (version) this card was on the battlefield, by version.</summary>
     private readonly Dictionary<int, LastKnown> _lastKnownByVersion = new();
@@ -489,6 +512,10 @@ public sealed class Card
                             options.Add(new ManaOption(new[] { mana }));
             }
             options.AddRange(GrantedManaOptions);
+            if (ManaMultiplier > 1)
+                for (int i = 0; i < options.Count; i++)
+                    options[i] = options[i].OneOfEach || options[i].Combination ? options[i] with { Times = options[i].Times * ManaMultiplier }
+                        : options[i].RemovesCounters is not null ? options[i] : options[i] with { Amount = options[i].Amount * ManaMultiplier };
             // A triggered mana ability adding an additional {C} whenever it's tapped for {C} (rule 605.1b), part of the same activation here.
             if (ExtraColorless > 0)
                 for (int i = 0; i < options.Count; i++)
@@ -621,6 +648,7 @@ public sealed class Card
         CopyEndsAtCleanup = false;
         EffectCopy = null;
         ChosenCreature = null;
+        ChosenPlayer = null;
         ChosenCreatureValues = null;
         Transformed = false; // it leaves the battlefield and is front face up again (712.8a)
         TransformCount = 0;
@@ -656,6 +684,7 @@ public sealed class Card
         ChosenParity = null;
         CastFromGraveyard = false;
         ManaSpent = 0;
+        FormerHost = null;
         PaidWithTreasure = false;
         GiftPromised = false;
         GiftTo = null;

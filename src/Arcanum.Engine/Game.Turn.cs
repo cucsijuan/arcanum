@@ -10,6 +10,9 @@ public sealed partial class Game
     private bool _endTurnRequested;
     private int _extraCombats;
 
+    /// <summary>Additional end steps still to come after this one, and how many end steps this turn has had ("if it's the first end step of the turn").</summary>
+    private int _extraEndSteps, _endStepsThisTurn;
+
     private async Task RunTurnAsync(bool skipDraw)
     {
         State.TurnNumber++;
@@ -34,6 +37,8 @@ public sealed partial class Game
             player.PermanentLeftThisTurn = false;
             player.EnteredThisTurn.Clear();
             player.DamageTakenThisTurn = 0;
+            player.CombatDamageTakenThisTurn = 0;
+            player.CombatDamagedByLegendaryThisTurn = false;
             player.AttackedThisTurn = false;
             player.LifeGainedThisTurn = 0;
             player.LifeLostThisTurn = 0;
@@ -68,11 +73,14 @@ public sealed partial class Game
         State.FlashbackGranted.RemoveAll(p => p.UntilTurn < State.TurnNumber);
         State.PlayableFromExile.RemoveAll(p => p.UntilTurn < State.TurnNumber
                                                || (p.UntilEndOfNextTurnOf is { } who && State.LastTurnOf.TryGetValue(who, out var last) && last > p.MadeOnTurn));
+        State.DamageDoubledAgainst.RemoveAll(d => d.Until == active.Id); // "until your next turn"
         Emit(new TurnBegan(State.TurnNumber, active.Id));
 
         _skipCombatDamageSteps = false;
         _endTurnRequested = false;
         _extraCombats = 0;
+        _extraEndSteps = 0;
+        _endStepsThisTurn = 0;
         var order = StepExtensions.TurnOrder.ToList();
         for (int index = 0; index < order.Count; index++)
         {
@@ -100,7 +108,14 @@ public sealed partial class Game
                 _damagePass = DamagePass.Only;
                 continue;
             }
+            if (step == Step.End) _endStepsThisTurn++;
             await RunStepAsync(step);
+            // "There is an additional end step after this step" (rule 500.8).
+            if (step == Step.End && _extraEndSteps > 0 && !_endTurnRequested)
+            {
+                _extraEndSteps--;
+                index--;
+            }
         }
     }
 
@@ -221,7 +236,7 @@ public sealed partial class Game
         // Damage wears off and "until end of turn" effects end at the same time (rule 514.2).
         foreach (var permanent in State.Battlefield.Select(State.GetCard))
         {
-            permanent.Damage = 0;
+            if ((permanent.Replaces & Cards.Replacements.DamageNotRemovedInCleanup) == 0) permanent.Damage = 0;
             permanent.RegenerationShields = 0; // "the next time it would be destroyed this turn"
         }
         State.UntilEndOfTurn.Clear();

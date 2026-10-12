@@ -30,11 +30,16 @@ public sealed partial class Game
         ExileUncastEntering,
         /// <summary>The creature's own "if this creature would die, exile it instead".</summary>
         ExileInsteadOfDying,
+        /// <summary>A permanent with a finality counter that would be put into a graveyard from the battlefield is exiled instead (rule 122.1h).</summary>
+        Finality,
     }
 
     /// <summary>One replacement effect that would modify where a card goes (rule 614.1a).</summary>
     private readonly record struct ZoneReplacement(ZoneReplacementKind Kind, Card? By = null)
     {
+        /// <summary>The owner's own permanent exiles what would go to their graveyard ("if a card or token would be put into your graveyard").</summary>
+        public bool YoursToExile { get; init; }
+
         /// <summary>The affected player may decline it ("may put it into the command zone instead").</summary>
         public bool Optional => Kind == ZoneReplacementKind.CommandZone;
     }
@@ -61,15 +66,18 @@ public sealed partial class Game
             if (from == Zone.Battlefield && State.ExileIfDies.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileIfDies));
             if (from == Zone.Battlefield && card.IsCreature && (card.Replaces & Cards.Replacements.ExileInsteadOfDying) != 0)
                 list.Add(new(ZoneReplacementKind.ExileInsteadOfDying));
+            if (from == Zone.Battlefield && card.CounterCount(Abilities.CounterKind.Finality) > 0) list.Add(new(ZoneReplacementKind.Finality));
             if ((card.Replaces & Cards.Replacements.ShuffleIntoLibraryInsteadOfGraveyard) != 0) list.Add(new(ZoneReplacementKind.ShuffleIntoLibrary));
             if (discardedByOpponent && from == Zone.Hand && card.Definition.OntoBattlefieldIfOpponentMakesYouDiscard)
                 list.Add(new(ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard));
             if (from == Zone.Battlefield && card.IsCreature)
                 list.AddRange(State.Battlefield.Select(State.GetCard)
                     .Where(c => c.Controller != card.Controller && ((c.Replaces & Cards.Replacements.OpponentsCreaturesExiledInsteadOfDying) != 0
-                        || (!card.Definition.IsToken && (c.Replaces & Cards.Replacements.OpponentsNontokenCreaturesExiledInsteadOfDying) != 0)))
+                        || (!card.Definition.IsToken && (c.Replaces & (Cards.Replacements.OpponentsNontokenCreaturesExiledInsteadOfDying | Cards.Replacements.OpponentsNontokenCreaturesExiledGainTwoLife)) != 0)))
                     .Select(c => new ZoneReplacement(ZoneReplacementKind.ExiledByOpponentsPermanent, c)));
             if (State.ExileInsteadOfGraveyard.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileInsteadOfGraveyard));
+            if (State.PermanentsControlledBy(card.Owner).FirstOrDefault(c => (c.Replaces & Cards.Replacements.ExileInsteadOfYourGraveyard) != 0) is { } eld)
+                list.Add(new(ZoneReplacementKind.ExiledByOpponentsPermanent, eld) { YoursToExile = true });
             if ((card.Is(Cards.CardType.Instant) || card.Is(Cards.CardType.Sorcery))
                 && State.Battlefield.Any(b => (State.GetCard(b).Replaces & Cards.Replacements.ExileInstantsAndSorceries) != 0))
                 list.Add(new(ZoneReplacementKind.ExileInstantsAndSorceries));
@@ -99,12 +107,14 @@ public sealed partial class Game
         ZoneReplacementKind.ExileIfDies => "Exile it (it would die this turn)",
         ZoneReplacementKind.ExileIfLeaves => "Exile it instead (it would leave the battlefield)",
         ZoneReplacementKind.ShuffleIntoLibrary => $"Shuffle it into its owner's library ({card.Name})",
+        ZoneReplacementKind.ExiledByOpponentsPermanent when replacement.YoursToExile => $"Exile it ({replacement.By!.Name})",
         ZoneReplacementKind.ExiledByOpponentsPermanent => $"Exile it ({replacement.By!.Name}, {State.GetPlayer(replacement.By.Controller).Name})",
         ZoneReplacementKind.ExileInsteadOfGraveyard => "Exile it (the effect it was cast with)",
         ZoneReplacementKind.ExileInstantsAndSorceries => "Exile it (instants and sorceries are exiled)",
         ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard => $"Put it onto the battlefield ({card.Name}: an opponent made you discard it)",
         ZoneReplacementKind.ExileUncastEntering => "Exile it (it would enter the battlefield without being cast)",
         ZoneReplacementKind.ExileInsteadOfDying => $"Exile it ({card.Name} would die)",
+        ZoneReplacementKind.Finality => $"Exile it ({card.Name} has a finality counter)",
         _ => "Put it into the command zone",
     };
 
@@ -217,6 +227,7 @@ public sealed partial class Game
         // enters, so the counters are on it before it is announced, as in every other case.
         var ordered = await OrderEnterCountersAsync(move.Card, move.EnterCounters);
         foreach (var returning in FinishMove(move, ordered)) await MoveCardAsync(returning, Zone.Battlefield, controller: State.GetCard(returning).Owner);
+        await GainPendingLifeAsync();
     }
 
     /// <summary>
@@ -401,7 +412,7 @@ public sealed partial class Game
         {
             if (applied.Kind == ZoneReplacementKind.ExileInsteadOfGraveyard) State.ExileInsteadOfGraveyard.Remove((id, card.Version));
             // "If a creature an opponent controls would die, exile it instead. When you do, …"
-            if (applied is { Kind: ZoneReplacementKind.ExiledByOpponentsPermanent, By: { } replacer })
+            if (applied is { Kind: ZoneReplacementKind.ExiledByOpponentsPermanent, By: { } replacer, YoursToExile: false })
                 Queue(replacer.Id, Abilities.TriggerEvent.CreatureExiledInstead, replacer.Controller);
         }
 
@@ -410,6 +421,8 @@ public sealed partial class Game
         {
             case Zone.Battlefield:
                 card.LeftBattlefieldTurn = State.TurnNumber;
+                foreach (var watcher in State.Battlefield.Select(State.GetCard).Where(w => w.ChosenCreature is { } chosen && chosen.Card == id && chosen.Version == card.Version).ToList())
+                    Queue(watcher.Id, Abilities.TriggerEvent.ChosenCreatureLeaves, watcher.Controller, new TriggerInfo(id, card.Version, card.Controller));
                 card.WasAttacking = State.Combat?.FindAttack(id) is not null;
                 card.WasBlocking = State.Combat?.IsBlocking(id) == true;
                 State.Battlefield.Remove(id);
@@ -423,6 +436,8 @@ public sealed partial class Game
                 break;
         }
 
+        // A melded permanent leaving the battlefield: its other card goes to the same zone (rule 712.4c).
+        var meldPartnerLeaving = from == Zone.Battlefield && card.MeldPartner is { } leavingPartner ? leavingPartner : null;
         // A promised gift stays known to the permanent a spell becomes ("when it enters, they draw a card", rule 702.174).
         var giftTo = from == Zone.Stack && to == Zone.Battlefield && card.GiftPromised ? card.GiftTo : null;
         card.ResetStatus();
@@ -430,6 +445,16 @@ public sealed partial class Game
         card.GiftTo = giftTo;
         // A double-faced card enters front face up unless it's put onto the battlefield transformed (rule 712.14).
         card.Transformed = transformed && to == Zone.Battlefield && card.IsDoubleFaced;
+        card.MeldPartner = null;
+        if (to == Zone.Battlefield && _pendingMeld.Remove((id, card.Version - 1), out var meldWith))
+        {
+            // The other card becomes part of this permanent: it leaves its zone, in no zone of its own (rule 712.4a).
+            State.GetPlayer(meldWith.Owner).GetZone(meldWith.Zone).Remove(meldWith.Id);
+            meldWith.ResetStatus();
+            meldWith.Zone = Zone.Battlefield;
+            meldWith.MeldedInto = id;
+            card.MeldPartner = meldWith;
+        }
         if (to == Zone.Battlefield && _pendingCopies.Remove((id, card.Version - 1), out var copied))
         {
             // Whether the copy lasts until end of turn is the entering card's own rule, read before the copy took over.
@@ -445,6 +470,14 @@ public sealed partial class Game
         card.CastFromHand = castFromHand;
         card.WasCast = wasCast;
         card.Zone = to;
+        // "Instead exile it and you gain 2 life": the life is gained as part of the same event, and the card is "exiled with" that permanent.
+        foreach (var applied in plan.Applied)
+            if (applied is { Kind: ZoneReplacementKind.ExiledByOpponentsPermanent, By: { } gainer } && to == Zone.Exile
+                && (gainer.Replaces & Cards.Replacements.OpponentsNontokenCreaturesExiledGainTwoLife) != 0)
+            {
+                card.ExiledWith = (gainer.Id, gainer.Version);
+                _pendingLifeGains.Add((gainer.Controller, 2));
+            }
         card.FaceDown = faceDown && to == Zone.Exile;
         card.KnownTo.UnionWith(knewIt);
         NoteCommanderMove(card, to);
@@ -458,6 +491,8 @@ public sealed partial class Game
                 if (tapped || card.Definition.EntersTapped) card.Tapped = true;
                 if (card.Definition.EntersTappedUnless is { } unless && !Holds(unless, card.Controller, card)) card.Tapped = true;
                 if (card.IsCreature && OpponentsCreaturesEnterTapped(card.Controller)) card.Tapped = true;
+                // "Lands you control enter untapped" (it wins over "enters tapped": its controller applies it last, rule 616.1).
+                if (card.Is(Cards.CardType.Land) && Has(card.Controller, Cards.Replacements.YourLandsEnterUntapped)) card.Tapped = false;
                 // Counters it enters with (rule 122.6) are on it before it is announced as entered, so its enters triggers see them.
                 if (card.Definition.EntersWithCounters > 0
                     && (card.Definition.EntersWithCountersIf is not { } cond || Holds(cond, card.Controller, card)))
@@ -467,6 +502,7 @@ public sealed partial class Game
                         Eval(countFrom, new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
                 if (card.Definition.Loyalty is { } loyalty) enterCounters.Add((Abilities.CounterKind.Loyalty, loyalty)); // 306.5b
                 if (withCounters is not null) enterCounters.AddRange(withCounters.Where(c => c.Count > 0));
+                if (from == Zone.Stack && State.FinalityOnEnter.Remove((id, card.Version - 1))) enterCounters.Add((Abilities.CounterKind.Finality, 1));
                 // A Saga enters with a lore counter (714.3a); read ahead, with as many as the chosen chapter, and the chapters it skips don't
                 // trigger (702.155c).
                 if (card.Definition.FinalChapter > 0)
@@ -498,6 +534,7 @@ public sealed partial class Game
                 owner.GetZone(to).Add(id);
                 break;
         }
+        if (meldPartnerLeaving is not null) MovePartnerWithMeld(meldPartnerLeaving, to, toBottom);
         return new MoveInProgress(card, from, to, lastController, plan, enterCounters);
     }
 
@@ -564,6 +601,9 @@ public sealed partial class Game
             : State.Battlefield.Select(State.GetCard).FirstOrDefault(c => c.Controller != playerId && !applied.Contains(c.Id)
                 && (c.Replaces & Cards.Replacements.StealsOpponentsExtraDraws) != 0);
         var options = new List<(Card Card, string Label)>();
+        // "If you would draw a card while your library has no cards in it, you win the game instead."
+        var maniac = player.Library.Count == 0 ? State.PermanentsControlledBy(playerId).FirstOrDefault(c => c.HasTextAbilities && c.Definition.WinsDrawingFromEmptyLibrary && !applied.Contains(c.Id)) : null;
+        if (maniac is not null) options.Add((maniac, $"{maniac.Name}: win the game instead"));
         if (thief is not null) options.Add((thief, $"{thief.Name}: skip this draw ({State.GetPlayer(thief.Controller).Name} draws instead)"));
         options.AddRange(doublers.Select(d => (d, $"{d.Name}: draw two cards instead")));
         if (options.Count > 0)
@@ -574,6 +614,13 @@ public sealed partial class Game
             Require(pick >= 0 && pick < options.Count, "Choose one of the replacement effects.");
             var chosen = options[pick].Card;
             var nowApplied = new HashSet<CardId>(applied) { chosen.Id };
+            if (chosen == maniac)
+            {
+                if (!CantWin(playerId))
+                    foreach (var opponent in State.OpponentsOf(playerId).ToList())
+                        if (!CantLose(opponent)) Lose(opponent, $"{player.Name} won the game ({maniac.Name})");
+                return;
+            }
             if (chosen == thief)
             {
                 Emit(new Events.ChoiceMade(thief.Id, $"{player.Name} skips a draw"));

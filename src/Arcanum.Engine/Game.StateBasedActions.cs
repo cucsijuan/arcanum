@@ -96,7 +96,13 @@ public sealed partial class Game
             any = true;
         }
 
-        foreach (var card in unattach) card.AttachedTo = null;
+        foreach (var card in unattach)
+        {
+            // Unattached because what it was attached to left: remember that object ("an Equipment that was attached to it").
+            if (card.AttachedTo is { } formerHost && State.GetCard(formerHost) is { Zone: not Zone.Battlefield } gone)
+                card.FormerHost = (formerHost, gone.LastKnownInfo?.Version ?? gone.Version - 1);
+            card.AttachedTo = null;
+        }
         if (unattach.Count > 0) { RecomputeContinuousEffects(); any = true; }
 
         foreach (var survivor in permanents) survivor.DamagedByDeathtouch = false;

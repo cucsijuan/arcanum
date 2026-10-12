@@ -45,6 +45,15 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
     public Abilities.Quantity? SetPowerFrom { get; init; }
     public Abilities.Quantity? SetToughnessFrom { get; init; }
 
+    /// <summary>Ends once the permanent has no counter of this kind ("for as long as that land has a blight counter on it").</summary>
+    public Abilities.CounterKind? WhileCounter { get; init; }
+
+    /// <summary>It loses all land types (layer 4).</summary>
+    public bool LosesLandTypes { get; init; }
+
+    /// <summary>A mana ability it has from this effect (layer 6), as the mana types it can add.</summary>
+    public IReadOnlyList<Mana.ManaType>? GrantsMana { get; init; }
+
     /// <summary>Ends when this permanent (id, version) leaves the battlefield ("for as long as this Saga remains").</summary>
     public (CardId Card, int Version)? WhileSource { get; init; }
 
@@ -107,6 +116,12 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
     public PlayerId? UntilNextEndStepOf { get; init; }
     public bool MadeDuringEndStep { get; init; }
 
+    /// <summary>"For as long as you control [this]": the permanent (object) whose control keeps the permission.</summary>
+    public (CardId Card, int Version)? WhileControlling { get; init; }
+
+    /// <summary>"During any turn you put a lore counter on this Saga, you may play that card": only during turns that Saga (object) got one.</summary>
+    public (CardId Card, int Version)? LoreSource { get; init; }
+
     /// <summary>"You may cast" (not play): a land can't be played this way.</summary>
     public bool CastOnly { get; init; }
 
@@ -160,6 +175,9 @@ public sealed record DelayedTrigger(CardId Source, Abilities.TriggeredAbility Ab
 
     /// <summary>The source object (version) that created it: "this" in the delayed ability means only that object (rule 400.7).</summary>
     public int? SourceVersion { get; init; }
+
+    /// <summary>The object the delayed ability is about ("sacrifice that token").</summary>
+    public (CardId Card, int Version)? AboutCard { get; init; }
 }
 
 /// <summary>"Prevent all damage that would be dealt by" a permanent, while a source stays on the battlefield.</summary>
@@ -220,7 +238,25 @@ public sealed partial class GameState
     public List<PlayableFromExile> FlashbackGranted { get; } = new();
 
     /// <summary>"When you next cast an instant or sorcery spell this turn, copy that spell" (player, turn).</summary>
-    public List<(PlayerId Player, int Turn)> CopyNextInstantOrSorcery { get; } = new();
+    public List<(PlayerId Player, int Turn, int Copies)> CopyNextInstantOrSorcery { get; } = new();
+
+    /// <summary>"Until your next turn, … damage to that player or a permanent that player controls is doubled": the player, the effect's controller and its source.</summary>
+    public List<(PlayerId Victim, PlayerId Until, CardId Source)> DamageDoubledAgainst { get; } = new();
+
+    /// <summary>Creatures that crewed a Vehicle this turn ("a Vehicle crewed by [this] this turn").</summary>
+    public List<(CardId Vehicle, CardId Crewer, int Turn)> CrewedThisTurn { get; } = new();
+
+    /// <summary>Spells (object versions) that enter with a finality counter as they resolve ("that artifact enters with a finality counter on it").</summary>
+    public HashSet<(CardId Card, int Version)> FinalityOnEnter { get; } = new();
+
+    /// <summary>Lore counters put on a permanent (object version) during a turn: "during any turn you put a lore counter on this Saga".</summary>
+    public HashSet<(CardId Card, int Version, int Turn)> LoreCounterTurns { get; } = new();
+
+    /// <summary>"When you next cast a creature spell this turn, it gains haste / that creature enters with an additional +1/+1 counter."</summary>
+    public List<(PlayerId Player, int Turn, bool Haste, int Counters)> NextCreatureSpell { get; } = new();
+
+    /// <summary>"When you lose control of that Equipment this turn, if it's attached to a creature you control, unattach it": the permanent, the player, the turn and the delayed ability's source.</summary>
+    public List<(CardId Card, int Version, PlayerId Player, int Turn, CardId Source)> UnattachWhenControlLost { get; } = new();
 
     /// <summary>Emblems in the command zone (rule 114).</summary>
     public List<CardId> Emblems { get; } = new();
@@ -275,6 +311,9 @@ public sealed partial class GameState
 
     /// <summary>Players who can't cast spells during a given turn ("your opponents can't cast spells this turn").</summary>
     public List<(PlayerId Player, int Turn)> SpellsForbiddenFor { get; } = new();
+
+    /// <summary>"Your opponents can't cast noncreature spells this turn."</summary>
+    public List<(PlayerId Player, int Turn)> NoncreatureSpellsForbiddenFor { get; } = new();
 
     /// <summary>Delayed abilities that trigger at the beginning of the next upkeep.</summary>
     public List<DelayedTrigger> AtNextUpkeep { get; } = new();

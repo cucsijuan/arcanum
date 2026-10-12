@@ -74,7 +74,11 @@ public sealed record HandLookedAt(PlayerId Looker, PlayerId Player, IReadOnlyLis
 /// <summary><paramref name="Chooser"/> chose these cards from <paramref name="Player"/>'s hand (for that player to discard).</summary>
 public sealed record ChosenFromHand(PlayerId Chooser, PlayerId Player, IReadOnlyList<CardId> Cards) : GameEvent;
 public sealed record PermanentSacrificed(CardId Card) : GameEvent;
-public sealed record ControlChanged(CardId Card, PlayerId NewController) : GameEvent;
+public sealed record ControlChanged(CardId Card, PlayerId NewController) : GameEvent
+{
+    /// <summary>Who controlled it before.</summary>
+    public PlayerId? Previous { get; init; }
+}
 public sealed record CardDiscarded(PlayerId Player, CardId Card) : GameEvent;
 /// <summary>Scry (<paramref name="Scry"/> true) or surveil: <paramref name="Moved"/> of the <paramref name="Looked"/> cards left the top.</summary>
 public sealed record LookedAtTop(PlayerId Player, int Looked, int Moved, bool Scry) : GameEvent;

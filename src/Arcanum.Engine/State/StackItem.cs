@@ -76,6 +76,9 @@ public sealed record AbilityOnStack(CardId Source, AbilityDefinition Ability, Pl
     /// <summary>For an activated ability: its index among its source's abilities.</summary>
     public int? AbilityIndex { get; init; }
 
+    /// <summary>For ninjutsu: what the returned attacker was attacking (the ninja enters attacking it).</summary>
+    public (Core.PlayerId Defender, Core.CardId? Planeswalker)? NinjutsuAttack { get; init; }
+
     /// <summary>
     /// How many times its source had transformed when it was put on the stack (for a delayed ability: when it was created).
     /// An ability of a permanent transforms it only if it hasn't transformed since (rule 701.27f).
@@ -94,6 +97,12 @@ public sealed record TriggerInfo(CardId? Subject = null, int SubjectVersion = 0,
     /// attacked), the "defending player" once the creature is no longer attacking (rule 508.5).
     /// </summary>
     public PlayerId? Defender { get; init; }
+
+    /// <summary>For a reflexive ability: the cards the effect that created it found ("one of them").</summary>
+    public IReadOnlyList<CardId>? Found { get; init; }
+
+    /// <summary>For a cast trigger: the mana spent to cast the spell ("if at least four mana was spent to cast it"), as it was cast.</summary>
+    public int? SpellManaSpent { get; init; }
 
     /// <summary>For "whenever players finish voting": every vote cast, in order (voter, choice).</summary>
     public IReadOnlyList<(PlayerId Voter, string Choice)>? Votes { get; init; }

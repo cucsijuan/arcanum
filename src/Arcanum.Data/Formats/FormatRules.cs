@@ -98,6 +98,11 @@ public static class DeckValidator
                 issues.Add(new(IssueSeverity.Error, $"Unknown card: {name}.", name));
                 continue;
             }
+            if (entry.Definition.IsMeldResult)
+            {
+                issues.Add(new(IssueSeverity.Error, $"{name} is the melded half of two cards, not a card a deck can have (rule 712.4).", name));
+                continue;
+            }
             bool basic = (entry.Definition.Supertypes & Supertype.Basic) != 0;
             string status = format.Legality is { } key ? entry.Record.Legalities.GetValueOrDefault(key, "not_legal") : "legal";
             if (status is "banned" or "not_legal")
