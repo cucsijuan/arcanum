@@ -206,7 +206,17 @@ public sealed record PrizeSpec(int Place = 0, int Wins = -1, int Cash = 0, int B
 
 /// <param name="Deck">Module deck name.</param>
 /// <param name="Price">Price in cents; 0 uses the store's default.</param>
-public sealed record PreconSpec(string Deck, int Price = 0);
+public sealed record PreconSpec(string Deck, int Price = 0)
+{
+    /// <summary>More decks sold together with <see cref="Deck"/> as one product (a starter kit of two decks built to play each other).</summary>
+    public IReadOnlyList<string> With { get; init; } = Array.Empty<string>();
+
+    /// <summary>The product's name when it is more than one deck.</summary>
+    public string? Name { get; init; }
+
+    /// <summary>Every deck the product contains, <see cref="Deck"/> first.</summary>
+    public IEnumerable<string> AllDecks => With.Prepend(Deck);
+}
 
 /// <param name="Id">Stable id (kept in saves).</param>
 /// <param name="Name">Shown name.</param>

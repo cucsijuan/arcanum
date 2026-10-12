@@ -726,11 +726,11 @@ public static class CareerRules
     private static CareerResult Buy(CareerState state, BuyPrecon buy, CareerWorld world)
     {
         var precon = world.Precon(buy.Deck) ?? throw new CareerRuleException("The store doesn't sell that deck.");
-        var cards = DeckCards(world.Deck(precon.Deck), world);
+        var cards = precon.AllDecks.SelectMany(deck => DeckCards(world.Deck(deck), world)).ToList();
         int price = world.PreconPrice(precon);
         Pay(state, price);
         foreach (var card in cards) state.AddCard(CardKey.Of(card), 1);
-        state.Note(buy.Utc, $"Bought a preconstructed deck ({cards.Count} cards).");
+        state.Note(buy.Utc, precon.With.Count > 0 ? $"Bought {precon.Name ?? "a set of preconstructed decks"} ({cards.Count} cards)." : $"Bought a preconstructed deck ({cards.Count} cards).");
         return new CareerResult(cards, -price);
     }
 

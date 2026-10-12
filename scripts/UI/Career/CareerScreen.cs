@@ -1331,13 +1331,13 @@ public partial class CareerScreen : Control
         list.AddThemeConstantOverride("separation", 8);
         foreach (var precon in World.Content.Precons)
         {
-            var deck = World.Deck(precon.Deck);
+            var decks = precon.AllDecks.Select(d => (Name: d, Deck: World.Deck(d))).ToList();
             int price = World.PreconPrice(precon);
             var row = new HBoxContainer();
             row.AddThemeConstantOverride("separation", 12);
-            var name = CareerStyle.Text(DeckTitle(precon.Deck), 20);
+            var name = CareerStyle.Text(precon.Name ?? DeckTitle(precon.Deck), 20);
             name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-            name.TooltipText = DeckSummary(deck);
+            name.TooltipText = string.Join("\n\n", decks.Select(d => decks.Count > 1 ? $"{DeckTitle(d.Name)}\n{DeckSummary(d.Deck)}" : DeckSummary(d.Deck)));
             name.MouseFilter = MouseFilterEnum.Pass;
             row.AddChild(name);
             var buy = CareerStyle.Button($"Buy · {CareerRules.Money(price)}", () =>
@@ -1345,7 +1345,8 @@ public partial class CareerScreen : Control
                 Try(() =>
                 {
                     Career.Do(new BuyPrecon(Career.Now, precon.Deck));
-                    Career.Decks.Save(UniqueDeckName(DeckTitle(precon.Deck)), deck.Commander.Count > 0 ? CareerRules.Commander : "casual", deck);
+                    foreach (var (deckName, deck) in decks)
+                        Career.Decks.Save(UniqueDeckName(DeckTitle(deckName)), deck.Commander.Count > 0 ? CareerRules.Commander : "casual", deck);
                     MenuKit.Toast(this, "Added to your collection and your decks");
                 });
                 RefreshNote();
@@ -1571,7 +1572,9 @@ public partial class CareerScreen : Control
     private static string DeckTitle(string deck)
     {
         var parts = deck.Split('-', 2);
-        return parts.Length == 2 && World.Sets.ContainsKey(parts[0]) ? $"{World.SetName(parts[0])} ({DeckColors(World.Deck(deck))})" : deck;
+        if (parts.Length != 2 || !World.Sets.ContainsKey(parts[0])) return deck;
+        var kind = parts[1].StartsWith("starter-", StringComparison.OrdinalIgnoreCase) ? " Starter Kit" : "";
+        return $"{World.SetName(parts[0])}{kind} ({DeckColors(World.Deck(deck))})";
     }
 
     private static string DeckSummary(DeckList deck) =>
