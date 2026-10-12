@@ -251,7 +251,7 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink, ICloudSt
             done.TrySetResult(new OnlineIdentity(user.ToString(), name)); // signed in again before the sign-in expired
             return;
         }
-        if (!DeviceAccount) WatchExpiry(name);
+        WatchExpiry(name);
         var p2p = _platform!.GetP2PInterface();
         var requests = new AddNotifyPeerConnectionRequestOptions { LocalUserId = user, SocketId = _socket };
         p2p.AddNotifyPeerConnectionRequest(ref requests, null, (ref OnIncomingConnectionRequestInfo info) =>
@@ -269,29 +269,59 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink, ICloudSt
         done.TrySetResult(new OnlineIdentity(user.ToString(), name));
     }
 
-    /// <summary>Before the sign-in expires (Discord's tokens last a while; the online services' sign-in an hour), sign in again with a new token.</summary>
+    /// <summary>Before the sign-in expires (the online services' sign-in lasts an hour), sign in again (with a new Discord token).</summary>
     private void WatchExpiry(string name)
     {
         if (_expiryNotice != 0) return;
         var connect = _platform!.GetConnectInterface();
         var notify = new AddNotifyAuthExpirationOptions();
-        _expiryNotice = connect.AddNotifyAuthExpiration(ref notify, null, (ref AuthExpirationCallbackInfo _) => SignInAgain(name));
+        _signedInName = name;
+        _expiryNotice = connect.AddNotifyAuthExpiration(ref notify, null, (ref AuthExpirationCallbackInfo info) => { _ = SignInAgainAsync(); });
     }
 
-    private async void SignInAgain(string name)
+    private string _signedInName = "Player";
+
+    /// <summary>Signs in again with the same account; false when that isn't possible without the player.</summary>
+    private async Task<bool> SignInAgainAsync()
     {
         try
         {
-            if (await _discordToken(CancellationToken.None) is not { } token)
+            var again = new TaskCompletionSource<OnlineIdentity>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (DeviceAccount) _work.Enqueue(() => Login(_signedInName, ExternalCredentialType.DeviceidAccessToken, null, again));
+            else if (await _discordToken(CancellationToken.None) is { } token)
+                _work.Enqueue(() => Login(_signedInName, ExternalCredentialType.DiscordAccessToken, token, again));
+            else
             {
                 Log?.Invoke("Online services: the Discord sign-in is gone; signing in again needs the player.");
-                return;
+                return false;
             }
-            var again = new TaskCompletionSource<OnlineIdentity>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _work.Enqueue(() => Login(name, ExternalCredentialType.DiscordAccessToken, token, again));
             await again.Task;
+            return true;
         }
-        catch (Exception e) { Log?.Invoke($"Online services couldn't renew the sign-in: {e.Message}"); }
+        catch (Exception e)
+        {
+            Log?.Invoke($"Online services couldn't renew the sign-in: {e.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Runs a cloud-file operation; if the sign-in has expired meanwhile (the expiry notice can be missed, e.g. while the
+    /// computer sleeps), signs in again and tries once more.
+    /// </summary>
+    private async Task<T> WithSignIn<T>(Func<Task<T>> operation)
+    {
+        try { return await operation(); }
+        catch (EosFailure e) when (e.Result is Result.InvalidAuth or Result.AuthExpired or Result.InvalidUser)
+        {
+            if (!await SignInAgainAsync()) throw;
+            return await operation();
+        }
+    }
+
+    private sealed class EosFailure(string message, Result result) : InvalidOperationException(message)
+    {
+        public Result Result { get; } = result;
     }
 
     // ------------------------------------------------------------------ the player's files
@@ -300,7 +330,11 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink, ICloudSt
 
     private const uint Chunk = 64 * 1024;
 
-    public Task<byte[]?> ReadAsync(string name, CancellationToken cancel = default) => OnEos<byte[]?>(done =>
+    public Task<byte[]?> ReadAsync(string name, CancellationToken cancel = default) => WithSignIn(() => ReadOnceAsync(name, cancel));
+
+    public Task WriteAsync(string name, byte[] data, CancellationToken cancel = default) => WithSignIn(() => WriteOnceAsync(name, data, cancel));
+
+    private Task<byte[]?> ReadOnceAsync(string name, CancellationToken cancel) => OnEos<byte[]?>(done =>
     {
         if (!IsReady) { done.TrySetException(new InvalidOperationException("Cloud saves aren't available.")); return; }
         var data = new MemoryStream();
@@ -323,7 +357,7 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink, ICloudSt
         });
     });
 
-    public Task WriteAsync(string name, byte[] data, CancellationToken cancel = default) => OnEos<bool>(done =>
+    private Task<bool> WriteOnceAsync(string name, byte[] data, CancellationToken cancel) => OnEos<bool>(done =>
     {
         if (!IsReady) { done.TrySetException(new InvalidOperationException("Cloud saves aren't available.")); return; }
         int sent = 0;
@@ -349,7 +383,7 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink, ICloudSt
     });
 
     private static void Fail<T>(TaskCompletionSource<T> done, string what, Result result) =>
-        done.TrySetException(new InvalidOperationException($"Online services failed {what}: {result}."));
+        done.TrySetException(new EosFailure($"Online services failed {what}: {result}.", result));
 
     // ------------------------------------------------------------------ packets
 
