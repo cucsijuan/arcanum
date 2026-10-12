@@ -87,5 +87,6 @@ public partial class ZonePile : Control
         _label.Text = $"{_title} ({count}){note}";
         _top.Visible = topCard is not null;
         if (topCard is not null) _top.Setup(topCard, showCostPips: false);
+        _top.SetHighlight(CardHighlight.None);
     }
 }

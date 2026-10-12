@@ -604,6 +604,9 @@ public partial class GameBoard : Control
 
     private CardNode? FindCard(CardId id) => _areas.Select(a => a.FindCard(id)).FirstOrDefault(n => n is not null);
 
+    /// <summary>A card shown on top of a pile (a commander that can be cast from the command zone...).</summary>
+    private CardNode? PileCard(CardId id) => _areas.Select(a => a.PileCard(id)).FirstOrDefault(n => n is not null);
+
     private PlayerId _areasBottom;
 
     /// <summary>
@@ -922,7 +925,7 @@ public partial class GameBoard : Control
                 foreach (var action in p.Legal)
                 {
                     var id = action switch { PlayLand l => l.Card, CastSpell c => c.Card, ActivateAbility a => a.Source, _ => (CardId?)null };
-                    if (id is { } cardId) FindCard(cardId)?.SetHighlight(CardHighlight.Playable);
+                    if (id is { } cardId) (FindCard(cardId) ?? PileCard(cardId))?.SetHighlight(CardHighlight.Playable);
                 }
                 break;
             case TargetDecision t:

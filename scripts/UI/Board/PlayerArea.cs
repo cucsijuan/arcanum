@@ -202,6 +202,10 @@ public partial class PlayerArea : Control
     /// </summary>
     public CardNode? FindCard(CardId id) => _shownBy.TryGetValue(id, out var top) ? top : _cards.GetValueOrDefault(id);
 
+    /// <summary>The card shown on top of one of this player's piles (a commander in the command zone, the graveyard's top card...).</summary>
+    public CardNode? PileCard(CardId id) =>
+        new[] { _command, _command2, _graveyard, _exile, _library }.Select(p => p.TopCard).FirstOrDefault(n => n.Visible && n.View?.Id == id);
+
     /// <summary>Marks that make otherwise identical tokens differ for now (picked as an attacker, a target...); a different mark splits a stack.</summary>
     public Func<CardId, string?>? StackMark { get; set; }
 
