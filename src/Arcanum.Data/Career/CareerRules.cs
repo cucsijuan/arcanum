@@ -174,10 +174,14 @@ public static partial class CareerRules
     }
 
     /// <summary>Why a deck can't be played in a career match (cards not owned, not a legal casual or Commander deck); empty when it can.</summary>
-    public static List<string> DeckProblems(DeckList deck, CareerState state, CareerWorld world, bool commander = false)
+    public static List<string> DeckProblems(DeckList deck, CareerState state, CareerWorld world, bool commander = false) =>
+        DeckProblems(deck, state, world, commander ? world.CommanderFormat : FormatRules.Casual);
+
+    /// <summary>What keeps a career deck from being played in a format: cards the collection lacks, then the format's errors.</summary>
+    public static List<string> DeckProblems(DeckList deck, CareerState state, CareerWorld world, FormatRules format)
     {
         var problems = Missing(deck, state, world).Select(m => $"You have {m.Owned} of the {m.Needed} {m.Name} this deck uses.").ToList();
-        problems.AddRange(DeckValidator.Validate(deck, commander ? world.CommanderFormat : FormatRules.Casual, world.Cards)
+        problems.AddRange(DeckValidator.Validate(deck, format, world.Cards)
             .Where(i => i.Severity == IssueSeverity.Error).Select(i => i.Message));
         return problems;
     }

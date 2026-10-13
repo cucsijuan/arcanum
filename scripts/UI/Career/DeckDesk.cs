@@ -66,7 +66,15 @@ public partial class DeckDesk : Control
 
     private DeckList _deck = new();
     private bool _commander;
-    private readonly Button _kind = new() { FocusMode = FocusModeEnum.None };
+
+    // The deck's format: any constructed format of the module (casual by default); Commander decks have a commander column.
+    private string _formatId = CareerFormatCasual;
+    private const string CareerFormatCasual = "casual";
+    private readonly OptionButton _format = new() { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(220, 0), ClipText = true };
+    private List<FormatRules> _formats = new();
+
+    // Room on the mat for the deck's columns (set by the layout, so the columns never feed back into their own size).
+    private float _deckRoom;
     private DeckInfo? _info;
     private bool _dirty;
     private int _page;
@@ -76,8 +84,8 @@ public partial class DeckDesk : Control
     private readonly OptionButton _sets = new() { FocusMode = FocusModeEnum.None };
     private readonly HashSet<char> _colors = new();
 
-    private readonly LineEdit _name = new() { PlaceholderText = "Deck name", CustomMinimumSize = new Vector2(320, 0) };
-    private readonly OptionButton _decks = new() { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(300, 0) };
+    private readonly LineEdit _name = new() { PlaceholderText = "Deck name", CustomMinimumSize = new Vector2(200, 0) };
+    private readonly OptionButton _decks = new() { FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(280, 0), ClipText = true };
     private readonly GridContainer _grid = new();
     private readonly Label _pageInfo = CareerStyle.Text("", 18, new Color(1f, 0.95f, 0.85f));
     private readonly HBoxContainer _columns = new();
@@ -144,6 +152,18 @@ public partial class DeckDesk : Control
         else NewDeck();
         // Testing: ARCANUM_SUGGEST=1 shows the suggestions for the first deck's commander.
         if (OS.GetEnvironment("ARCANUM_SUGGEST") == "1") SetSuggesting(true);
+        // Testing: ARCANUM_DESK_FORMATS=commander,casual,... switches the first deck to those formats one after another.
+        if (OS.GetEnvironment("ARCANUM_DESK_FORMATS") is { Length: > 0 } switches)
+        {
+            double delay = 1;
+            foreach (var id in switches.Split(','))
+            {
+                int index = _formats.FindIndex(f => f.Id == id);
+                if (index < 0) continue;
+                GetTree().CreateTimer(delay).Timeout += () => { _format.Selected = index; _format.EmitSignal(OptionButton.SignalName.ItemSelected, index); };
+                delay += 0.5;
+            }
+        }
     }
 
     // ---------------------------------------------------------------- the desk
@@ -173,7 +193,7 @@ public partial class DeckDesk : Control
         _desk = new ArtScene(picture, Array.Empty<Hotspot>());
         _desk.BackRequested += Leave;
         AddChild(_desk);
-        _matArea = Hotspot.LoadArea(Kit + "desk.json", "mat", new Rect2(0.05f, 0.165f, 0.9f, 0.7f));
+        _matArea = Hotspot.LoadArea(Kit + "desk.json", "mat", new Rect2(0.035f, 0.15f, 0.93f, 0.73f));
         // The playmat is drawn over the desk at the size the file gives (larger than the one in the picture): a dark cloth on
         // the desk picture, a felt one without it.
         var cloth = picture is null
@@ -217,6 +237,7 @@ public partial class DeckDesk : Control
         width = Math.Max(60, Math.Min(width, height / 1.39f));
         _tile = new Vector2(width, width * 1.39f);
         _left.CustomMinimumSize = new Vector2(columns * width + (columns - 1) * 8, 0);
+        _deckRoom = inner.Size.X - _left.CustomMinimumSize.X - 28 - 20; // the gap, the scroll bar
         if (IsNodeReady()) Refresh();
     }
 
@@ -276,9 +297,13 @@ public partial class DeckDesk : Control
         _name.TextChanged += _ => Dirty();
         _name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         row.AddChild(_name);
-        _kind.Pressed += () =>
+        _formats = App.Instance.Formats.Where(f => !f.Limited).ToList();
+        if (_formats.Count == 0) _formats = new List<FormatRules> { FormatRules.Casual, Career.World!.CommanderFormat };
+        foreach (var format in _formats) _format.AddItem(format.Name + " deck");
+        _format.ItemSelected += i =>
         {
-            _commander = !_commander;
+            _formatId = _formats[(int)i].Id;
+            _commander = _formats[(int)i].Commander;
             if (!_commander && _deck.Commander.Count > 0)
             {
                 // The commanders go back into the deck.
@@ -288,8 +313,8 @@ public partial class DeckDesk : Control
             Dirty();
             Refresh();
         };
-        _kind.TooltipText = "A casual deck (60 cards or more) or a Commander deck (100 cards, one of each, led by a legendary creature)";
-        row.AddChild(_kind);
+        _format.TooltipText = "The deck's format: what it must follow to be played (Commander: 100 cards, one of each, led by a legendary creature)";
+        row.AddChild(_format);
         _suggestButton.AddThemeFontSizeOverride("font_size", 20);
         _suggestButton.Toggled += SetSuggesting;
         row.AddChild(_suggestButton);
@@ -521,9 +546,9 @@ public partial class DeckDesk : Control
 
     // ---------------------------------------------------------------- suggestions (commander statistics, decks like this one)
 
-    /// <summary>Career casual decks are looked up among community decks of any 60-card format.</summary>
-    private const string CasualFormat = "casual";
-    private const int CasualSize = 60;
+    /// <summary>A deck is looked up among the community decks of its format (a casual one among those of any 60-card format).</summary>
+    private string SuggestFormat => _formatId;
+    private int SuggestSize => FormatRulesOf(_formatId).MinDeckSize;
 
     // Decks like this one are looked for again on the next load (opening suggestions).
     private bool _refind;
@@ -562,10 +587,10 @@ public partial class DeckDesk : Control
     /// </summary>
     private bool CanSuggest => _pool is null && _pick is null && (_commander
         ? _deck.Commander.Count > 0 && CommanderInsightsSource.Available(App.Instance.Module)
-        : SimilarDecksSource.Available(App.Instance.Module, CasualFormat));
+        : SimilarDecksSource.Available(App.Instance.Module, SuggestFormat));
 
     /// <summary>What the suggestions are for: the commander, or casual decks (looked for again each time suggestions are opened).</summary>
-    private string SuggestKey() => _commander ? CommanderInsights.Slug(_deck.Commander.Select(e => e.Name)) : "similar:" + CasualFormat;
+    private string SuggestKey() => _commander ? CommanderInsights.Slug(_deck.Commander.Select(e => e.Name)) : "similar:" + SuggestFormat;
 
     /// <summary>Shows or hides the suggestions button as the deck changes, and reloads suggestions for a new commander.</summary>
     private void RefreshSuggestMode()
@@ -640,7 +665,7 @@ public partial class DeckDesk : Control
         _refind = false;
         var insights = commander
             ? await CommanderInsightsSource.PageAsync(module, slug, variant)
-            : await SimilarDecksSource.SuggestAsync(module, Cards, CasualFormat, CasualSize, _deck, variant, refind);
+            : await SimilarDecksSource.SuggestAsync(module, Cards, SuggestFormat, SuggestSize, _deck, variant, refind);
         if (_insightsKey != key || !IsInsideTree()) return; // the commander, deck kind or theme changed while loading
         _insights = insights;
         if (insights is null)
@@ -667,7 +692,7 @@ public partial class DeckDesk : Control
             {
                 Variant($"All decks like yours ({insights.Decks})", null);
                 var collection = Collection();
-                foreach (var (deck, owned) in SimilarDecksSource.LastFound(CasualFormat).Select(d => (d, OwnedShare(d.List, collection))).OrderByDescending(x => x.Item2))
+                foreach (var (deck, owned) in SimilarDecksSource.LastFound(SuggestFormat).Select(d => (d, OwnedShare(d.List, collection))).OrderByDescending(x => x.Item2))
                     Variant($"{deck.Found.Name} · {owned:P0} yours", deck.Found.Id.ToString());
             }
             _suggestVariant.Selected = 0;
@@ -792,7 +817,7 @@ public partial class DeckDesk : Control
             {
                 var average = commander
                     ? await CommanderInsightsSource.AverageDeckAsync(module, slug, variant)
-                    : SimilarDecksSource.Average(CasualFormat, variant, CasualSize);
+                    : SimilarDecksSource.Average(SuggestFormat, variant, SuggestSize);
                 if (!IsInsideTree() || SuggestKey() != slug) return;
                 if (average is null) MenuKit.Toast(this, commander ? "There is no average deck for this commander." : "There are no decks like yours yet.");
                 else UseAverageDeck(average);
@@ -891,12 +916,13 @@ public partial class DeckDesk : Control
     private void ShowDeck()
     {
         foreach (var child in _columns.GetChildren()) child.QueueFree();
-        _kind.Text = _commander ? "Commander deck" : "Casual deck";
+        if (_formats.Count > 0) _format.Selected = Math.Max(0, _formats.FindIndex(f => f.Id == _formatId));
+        float columnWidth = _tile.X * DeckScale();
         if (_commander)
         {
-            var box = new VBoxContainer();
+            var box = new VBoxContainer { CustomMinimumSize = new Vector2(columnWidth, 0) };
             box.AddThemeConstantOverride("separation", 2);
-            box.AddChild(CareerStyle.Text("Commander", 16, CareerStyle.Gold));
+            box.AddChild(ColumnTitle("Commander", CareerStyle.Gold, columnWidth));
             var size = _tile * DeckScale();
             foreach (var entry in _deck.Commander)
             {
@@ -909,7 +935,11 @@ public partial class DeckDesk : Control
                 box.AddChild(card);
             }
             if (_deck.Commander.Count == 0)
-                box.AddChild(CareerStyle.Text("Right-click a legendary\ncreature of yours", 14, new Color(1f, 0.95f, 0.85f, 0.7f)));
+            {
+                var hint = CareerStyle.Text("Right-click a legendary creature of yours", 14, new Color(1f, 0.95f, 0.85f, 0.7f), wrap: true);
+                hint.CustomMinimumSize = new Vector2(columnWidth, 0);
+                box.AddChild(hint);
+            }
             _columns.AddChild(box);
         }
         var cards = _deck.Main.SelectMany(e => Enumerable.Repeat(e, e.Count))
@@ -918,9 +948,9 @@ public partial class DeckDesk : Control
         for (int column = 0; column < ColumnNames.Length; column++)
         {
             var inColumn = cards.Where(c => ColumnOf(c.Def) == column).OrderBy(c => c.Def.ManaCost.ManaValue).ThenBy(c => c.Entry.Name).ToList();
-            var box = new VBoxContainer();
+            var box = new VBoxContainer { CustomMinimumSize = new Vector2(columnWidth, 0) };
             box.AddThemeConstantOverride("separation", 2);
-            box.AddChild(CareerStyle.Text($"{ColumnNames[column]}  ({inColumn.Count})", 16, new Color(1f, 0.95f, 0.85f, 0.85f)));
+            box.AddChild(ColumnTitle($"{ColumnNames[column]} ({inColumn.Count})", new Color(1f, 0.95f, 0.85f, 0.85f), columnWidth));
             // Cards overlap, each showing its title bar; the last one shows whole.
             float step = 26, small = DeckScale();
             var stack = new Control { CustomMinimumSize = new Vector2(_tile.X * small, inColumn.Count == 0 ? 0 : step * (inColumn.Count - 1) + _tile.Y * small) };
@@ -961,19 +991,37 @@ public partial class DeckDesk : Control
 
         int total = _deck.Main.Sum(e => e.Count) + _deck.Commander.Sum(e => e.Count);
         _count.Text = $"{total} cards";
-        var problems = _pool is not null ? _pool.Problems(_deck) : CareerRules.DeckProblems(_deck, Career.State, Career.World!, _commander)
+        var problems = _pool is not null ? _pool.Problems(_deck) : CareerRules.DeckProblems(_deck, Career.State, Career.World!, FormatRulesOf(_formatId))
             .Select(p => p.Replace(" this deck uses", "")).ToList();
         _problems.Text = problems.Count == 0 ? "Ready to play." : string.Join("\n", problems.Take(_suggesting ? 1 : _noteInfo.Visible ? 2 : 3)); // room for the note below
         _problems.AddThemeColorOverride("font_color", problems.Count == 0 ? CareerStyle.Good : CareerStyle.Bad);
     }
 
-    /// <summary>The deck's cards are drawn smaller so that its columns (seven, eight with the commander) fit the rest of the mat.</summary>
+    /// <summary>
+    /// The deck's cards are drawn smaller so that its columns (seven, eight with the commander) fit the room the layout
+    /// leaves beside the collection.
+    /// </summary>
     private float DeckScale()
     {
-        float room = _matBox.Size.X - _left.CustomMinimumSize.X - 28 - 20; // the gap, the scroll bar
         int columns = ColumnNames.Length + (_commander ? 1 : 0);
-        return Math.Clamp((room - (columns - 1) * 6) / columns / _tile.X, 0.4f, 0.85f);
+        return Math.Clamp((_deckRoom - (columns - 1) * 6) / columns / _tile.X, 0.3f, 0.85f);
     }
+
+    /// <summary>A deck column's title, cut to the column's width.</summary>
+    private static Label ColumnTitle(string text, Color color, float width)
+    {
+        var label = CareerStyle.Text(text, 16, color);
+        label.ClipText = true;
+        label.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        label.CustomMinimumSize = new Vector2(width, 0);
+        return label;
+    }
+
+    /// <summary>The rules a deck of the format follows in the career (the career's own casual and Commander rules for those).</summary>
+    private FormatRules FormatRulesOf(string id) =>
+        id == CareerRules.Commander ? Career.World!.CommanderFormat
+        : id == CareerFormatCasual ? FormatRules.Casual
+        : _formats.FirstOrDefault(f => f.Id == id) ?? FormatRules.Casual;
 
     private static int ColumnOf(CardDefinition d) => d.Is(CardType.Land) ? 6 : Math.Clamp(d.ManaCost.ManaValue - 1, 0, 5);
 
@@ -1002,7 +1050,9 @@ public partial class DeckDesk : Control
     private void Load(DeckInfo info)
     {
         (_deck, _) = Career.Decks.Load(info);
-        _commander = info.FormatId == CareerRules.Commander || _deck.Commander.Count > 0;
+        _formatId = _deck.Commander.Count > 0 ? CareerRules.Commander
+            : _formats.Any(f => f.Id == info.FormatId) || info.FormatId == CareerRules.Commander ? info.FormatId : CareerFormatCasual;
+        _commander = _formatId == CareerRules.Commander;
         _info = info;
         _name.Text = info.Name;
         _dirty = false;
@@ -1014,6 +1064,7 @@ public partial class DeckDesk : Control
     {
         _deck = new DeckList();
         _commander = false;
+        _formatId = CareerFormatCasual;
         _info = null;
         _name.Text = "New deck";
         _dirty = false;
@@ -1031,7 +1082,7 @@ public partial class DeckDesk : Control
             MenuKit.Toast(this, "Give the deck a name first.");
             return;
         }
-        _info = Career.Decks.Save(name, _commander ? CareerRules.Commander : "casual", _deck, _info);
+        _info = Career.Decks.Save(name, _formatId, _deck, _info);
         _dirty = false;
         RefreshSaved();
         MenuKit.Toast(this, $"Saved “{name}”");

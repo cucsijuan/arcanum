@@ -138,7 +138,10 @@ shows them and the pointer's position; Ctrl+click copies a point).
   `[x, y, w, h]` fractions of the whole board. A picture in `mats/<id>.jpg` or `.png` replaces a mat's print.
 - **Deck building:** the desk with the computer seen from above (`desk.jpg`, its playmat's area in `desk.json`): the
   deck's controls on the wood above the mat, the cards owned on the left of the mat, the deck on the right in columns
-  by mana value, basic lands (free) and the deck's state on the wood below. The owned cards are grouped by canonical
+  by mana value, basic lands (free) and the deck's state on the wood below. The format picker above the mat lists every
+  constructed format of the module (casual, standard, pioneer, modern, legacy, vintage, pauper, commander) and saves the
+  deck with that format's id. The deck's problems are checked against that format (casual and commander use the
+  career's own rules). The owned cards are grouped by canonical
   name (a two-faced card saved under either name counts once). Playmats will be changeable: a picture
   in `mats/` is drawn over the mat's area (`mats/default.jpg` for now).
 - **Commander suggestions:** on a Commander deck with its commander chosen, and a module with the commander statistics,
@@ -148,9 +151,9 @@ shows them and the pointer's position; Ctrl+click copies a point).
   the mat gives the decks behind the numbers and the average deck's card types beside the deck's. *Use average deck*
   replaces the main deck with the average deck using only owned copies (basic lands free) and lists the cards left out.
   Testing: `ARCANUM_SUGGEST=1` with `ARCANUM_OPEN=career` and `ARCANUM_CAREER_PAGE=decks` opens it for the first career deck.
-- **Casual deck suggestions:** on a casual deck (60 cards or more) and a module with the deck search source, the same
-  *Suggestions* button sits in the top row. The decks like it are looked for among community decks of any 60-card format
-  (up to 90 cards with the sideboard). The variant list shows each deck with the share of its cards the player owns
+- **Casual deck suggestions:** on a deck of any format other than Commander and a module with the deck search source,
+  the same *Suggestions* button sits in the top row. The decks like it are looked for among community decks of the
+  deck's format (a casual deck: any 60-card format, up to 90 cards with the sideboard). The variant list shows each deck with the share of its cards the player owns
   (`· 70% yours`), the decks with the most owned cards first. Cards and decks are marked and built as for a commander:
   cards not owned are dimmed and can't be added, and *Use average deck* or a chosen deck is built from the cards owned.
 - The art must stay generic: no recognizable toy, game or brand look-alikes (the store's wall is plain where a toy
