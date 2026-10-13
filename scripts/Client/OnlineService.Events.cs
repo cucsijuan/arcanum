@@ -95,7 +95,7 @@ public partial class OnlineService
         return new EventRules
         {
             Boosters = opened => LimitedService.BoosterSource(ev, opened, new Random(ev.Seed ^ 0x5eed)),
-            Option = LimitedService.Option,
+            Option = card => LimitedService.Option(card, LimitedService.RatingsFor(ev.Source)),
             AutoBuild = pool => LimitedService.AutoBuild(pool, ev.Source),
             CheckDeck = (deck, pool) => DeckValidator.ValidateLimited(deck, LimitedService.Format, pool, cards)
                 .FirstOrDefault(i => i.Severity == IssueSeverity.Error)?.Message,

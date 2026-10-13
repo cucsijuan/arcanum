@@ -19,7 +19,8 @@ public static class LimitedDeckBuilder
 
     private static readonly ManaType[] FiveColors = { ManaType.White, ManaType.Blue, ManaType.Black, ManaType.Red, ManaType.Green };
 
-    public static LimitedDeckChoice Build(IReadOnlyList<DraftOption> pool)
+    /// <summary>The best deck of the pool for a builder of this skill (0–1, see <see cref="CardRating.Value"/>).</summary>
+    public static LimitedDeckChoice Build(IReadOnlyList<DraftOption> pool, double skill = 1)
     {
         LimitedDeckChoice? best = null;
         double bestScore = double.MinValue;
@@ -27,18 +28,18 @@ public static class LimitedDeckBuilder
             for (int b = a + 1; b < FiveColors.Length; b++)
             {
                 var colors = new HashSet<ManaType> { FiveColors[a], FiveColors[b] };
-                var (choice, score) = BuildFor(pool, colors);
+                var (choice, score) = BuildFor(pool, colors, skill);
                 if (score > bestScore) { bestScore = score; best = choice; }
             }
         return best!;
     }
 
     /// <summary>The deck for one color pair and how good it looks.</summary>
-    public static (LimitedDeckChoice Choice, double Score) BuildFor(IReadOnlyList<DraftOption> pool, IReadOnlySet<ManaType> colors)
+    public static (LimitedDeckChoice Choice, double Score) BuildFor(IReadOnlyList<DraftOption> pool, IReadOnlySet<ManaType> colors, double skill = 1)
     {
         var spells = Enumerable.Range(0, pool.Count)
             .Where(i => !pool[i].Card.Is(CardType.Land) && CardRating.Castable(pool[i].Card, colors))
-            .Select(i => (Index: i, Rating: CardRating.Rate(pool[i].Card, pool[i].Rarity)))
+            .Select(i => (Index: i, Rating: CardRating.Value(pool[i], skill)))
             .OrderByDescending(x => x.Rating)
             .ToList();
 

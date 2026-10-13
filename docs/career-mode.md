@@ -108,6 +108,12 @@ hook: new content → new event.
 - **Rivals:** a few regulars keep their own small collection and improve their decks over the season (they "buy" cards
   too), so the local meta changes and beating a rival feels earned.
 - Strength comes from deck quality first (the bot is the same), plus bot settings as they become available.
+- **Drafting:** in a career draft the computer seats draft with a skill: regulars 0.4 to 0.9 by the tier it takes to meet
+  them (rivals +0.1), visitors 0.25. Skill sets how far they follow the module's draft statistics and how often they
+  misjudge a pick. Their colours and decks stay playable at any skill.
+- **Draft grades:** in career drafts the player sees each card's grade and in-hand win rate from the module's draft
+  statistics, with the credit line (`DraftRatingsForPlayers` in `CareerService.cs` switches this off; the computer
+  seats always use the statistics). A set without statistics shows no grades.
 
 ## Look
 
@@ -124,8 +130,16 @@ shows them and the pointer's position; Ctrl+click copies a point).
 - **The table:** `table.jpg` spans both seats in daily matches (top half behind the opponent, bottom half behind the player).
 - **Deck building:** the desk with the computer seen from above (`desk.jpg`, its playmat's area in `desk.json`): the
   deck's controls on the wood above the mat, the cards owned on the left of the mat, the deck on the right in columns
-  by mana value, basic lands (free) and the deck's state on the wood below. Playmats will be changeable: a picture
+  by mana value, basic lands (free) and the deck's state on the wood below. The owned cards are grouped by canonical
+  name (a two-faced card saved under either name counts once). Playmats will be changeable: a picture
   in `mats/` is drawn over the mat's area (`mats/default.jpg` for now).
+- **Commander suggestions:** on a Commander deck with its commander chosen, and a module with the commander statistics,
+  a *Suggestions* button sits in the top row. It swaps the filters for a group, sort, variant (all decks, budget,
+  expensive, a theme), *Only mine* and *Use average deck*. The mat shows every suggested card (basic lands left out),
+  each with its inclusion and synergy. Cards not owned are dimmed, marked *Not yours* and can't be added. The note below
+  the mat gives the decks behind the numbers and the average deck's card types beside the deck's. *Use average deck*
+  replaces the main deck with the average deck using only owned copies (basic lands free) and lists the cards left out.
+  Testing: `ARCANUM_SUGGEST=1` with `ARCANUM_OPEN=career` and `ARCANUM_CAREER_PAGE=decks` opens it for the first career deck.
 - The art must stay generic: no recognizable toy, game or brand look-alikes (the store's wall is plain where a toy
   look-alike was).
 

@@ -164,6 +164,15 @@ public sealed class ContentModule
         return sets;
     }
 
+    /// <summary>A set's draft statistics (ratings/&lt;set&gt;.json), or null when the module has none for it.</summary>
+    public Limited.DraftRatings? LoadDraftRatings(string set, List<string>? errors = null)
+    {
+        var file = Path.Combine(Directory, "ratings", set.ToLowerInvariant() + ".json");
+        if (!File.Exists(file)) return null;
+        try { return Limited.DraftRatings.Parse(File.ReadAllText(file)); }
+        catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException) { errors?.Add($"{Path.GetFileName(file)}: {e.Message}"); return null; }
+    }
+
     /// <summary>The career settings in career/career.json, or null when the module has no career.</summary>
     public Career.CareerContent? LoadCareer(List<string>? errors = null)
     {

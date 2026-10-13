@@ -136,11 +136,13 @@ public partial class EventScreen : Control
         var pack = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         pack.AddThemeConstantOverride("h_separation", 12);
         pack.AddThemeConstantOverride("v_separation", 12);
+        var ratings = DraftGrades.ForPlayer(Service);
         for (int i = 0; i < draft.Pack.Count; i++)
         {
             int index = i;
             var card = Tile(draft.Pack[i], pack);
             card.TooltipText = "Take this card";
+            if (ratings is not null) DraftGrades.Mark(card.GetParent<Control>(), card, ratings, draft.Pack[i].Name);
             card.Clicked += _ =>
             {
                 Service.Pick(index);
@@ -154,6 +156,7 @@ public partial class EventScreen : Control
         var list = (VBoxContainer)note.GetChild(0);
         list.AddChild(CareerStyle.Text($"Your picks ({draft.Picks.Count})", 24, CareerStyle.PaperEdge));
         list.AddChild(CareerStyle.Text("Click a card on the table to take it; the rest of the booster goes to the next player.", 17, CareerStyle.InkDim, wrap: true));
+        if (ratings is not null) list.AddChild(DraftGrades.Credit(ratings, CareerStyle.InkDim));
         var picks = new VBoxContainer();
         foreach (var card in draft.Picks.AsEnumerable().Reverse())
         {
@@ -183,7 +186,7 @@ public partial class EventScreen : Control
                 seat.Deck = deck;
                 Service.FinishBuilding();
                 App.Instance.GoTo(App.EventScene);
-            });
+            }) { Ratings = DraftGrades.ForPlayer(Service) };
         var note = Note(new Vector2(560, 0));
         note.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
         var box = (VBoxContainer)note.GetChild(0);
@@ -237,7 +240,7 @@ public partial class EventScreen : Control
                     DeckDesk.Building = new DeckDesk.PoolBuild(seat.Pool, seat.Deck!, deck => DeckValidator.ValidateLimited(deck, LimitedService.Format, seat.Pool, Cards)
                             .Where(i => i.Severity == IssueSeverity.Error).Select(i => i.Message).ToList(), () => Service.AutoBuild(seat.Pool),
                         deck => { seat.Deck = deck; Service.DeckEdited(); App.Instance.GoTo(App.EventScene); },
-                        deck => { seat.Deck = deck; Service.DeckEdited(); App.Instance.GoTo(App.EventScene); });
+                        deck => { seat.Deck = deck; Service.DeckEdited(); App.Instance.GoTo(App.EventScene); }) { Ratings = DraftGrades.ForPlayer(Service) };
                     App.Instance.GoTo(App.DeckDeskScene);
                 }, 20));
             actions.AddChild(CareerStyle.Button("Drop out", () => MenuKit.Modal(this, "Drop out?", "The event ends for you with your record so far, in last place.", null,

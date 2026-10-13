@@ -21,6 +21,17 @@ public static class CardRating
         return Math.Clamp(score, 0, 10);
     }
 
+    /// <summary>
+    /// A card's value to a bot of this skill (0–1): its own rating moved toward the community's by the skill and by how
+    /// much the community's number can be trusted.
+    /// </summary>
+    public static double Value(DraftOption option, double skill)
+    {
+        double own = Rate(option.Card, option.Rarity);
+        if (option.Community is not { } community) return own;
+        return own + (community - own) * Math.Clamp(skill, 0, 1) * Math.Clamp(option.Confidence, 0, 1);
+    }
+
     private static double LandValue(CardDefinition card)
     {
         if ((card.Supertypes & Supertype.Basic) != 0) return 0;

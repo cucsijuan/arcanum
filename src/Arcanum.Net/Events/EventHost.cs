@@ -267,7 +267,7 @@ public sealed class EventHost
     }
 
     private int ComputerPick(int seat) =>
-        DraftPicker.Pick(_draft!.PackFor(seat).Select(_rules.Option).ToList(), _draft.Picks[seat].Select(_rules.Option).ToList(), _random);
+        DraftPicker.Pick(_draft!.PackFor(seat).Select(_rules.Option).ToList(), _draft.Picks[seat].Select(_rules.Option).ToList(), _random, _ev.Seats[seat].Skill);
 
     private void PollDraft()
     {

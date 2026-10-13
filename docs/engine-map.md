@@ -71,7 +71,7 @@ Large groups of related vocabulary get their own partial files so the main switc
 
 ## Commander suggestions
 
-The deck builder can show the community statistics of the chosen commander. These are not rules and the engine never reads them.
+The deck builder and the career deck desk can show the community statistics of the chosen commander. These are not rules and the engine never reads them.
 
 | Piece | Where |
 |-------|-------|
@@ -79,7 +79,26 @@ The deck builder can show the community statistics of the chosen commander. Thes
 | Source URLs (`commanderInsights` in the module's `sources.json`), `CommanderInsightsUrl` | `Arcanum.Data/Modules/ContentModule.cs` |
 | Download, cache in `user://commander_insights`, offline fallback | `scripts/Client/CommanderInsightsSource.cs` |
 | Search / Suggestions switch, sections, sort, variants, average deck | `scripts/UI/Menu/DeckBuilder.cs` |
+| Career desk: Suggestions button, owned / not yours, average deck (owned copies only), collection grouped by canonical name | `scripts/UI/Career/DeckDesk.cs` |
 | Tests | `tests/Arcanum.Data.Tests/CommanderInsightsTests.cs` |
+
+## Draft statistics
+
+The module's draft statistics (`ratings/<set>.json`) give the computer drafters a community view of each card, and career
+drafts show it to the player as grades. The engine never reads them as rules. A set without the file drafts on the bots'
+own ratings only.
+
+| Piece | Where |
+|-------|-------|
+| Parsing the file, `Stats`, `Deviation`, `Score`, `Grade`, `MinGames` (500) | `Arcanum.Data/Limited/DraftRatings.cs` |
+| `LoadDraftRatings(set)` | `Arcanum.Data/Modules/ContentModule.cs` |
+| Opponent `Skill` per seat (0–1, saved as `skill`, `DefaultSkill` 0.6) | `Arcanum.Data/Limited/LimitedEvent.cs` |
+| Community value blended into the bot's own rating by skill × confidence (`DraftOption.Community`, `Confidence`) | `Arcanum.Bots/Limited/CardRating.cs`, `Arcanum.Bots/Limited/DraftPicker.cs` |
+| Misjudgment noise by skill, colour choice, deck build by skill | `Arcanum.Bots/Limited/DraftPicker.cs`, `Arcanum.Bots/Limited/LimitedDeckBuilder.cs` |
+| `RatingsFor`, `Ratings`, `Option`, `RatingsForPlayer` (player's "Build for me" uses them only then) | `scripts/Client/LimitedService.cs` |
+| Career opponent skill (`DraftSkill`, `VisitorSkill`), `DraftRatingsForPlayers` (the switch for players) | `scripts/Client/CareerService.cs` |
+| Grade strip, tooltip and credit line on cards | `scripts/UI/Career/DraftGrades.cs`, shown in `scripts/UI/Career/EventScreen.cs` and `scripts/UI/Career/DeckDesk.cs` |
+| Tests | `tests/Arcanum.Data.Tests/DraftRatingsTests.cs`, `tests/Arcanum.Engine.Tests/LimitedBotTests.cs` |
 
 ## Adding a mechanic
 

@@ -15,6 +15,12 @@ public sealed class EventSeat
     public required string Name { get; init; }
     public bool IsHuman { get; init; }
 
+    /// <summary>How well a computer player drafts and builds, 0–1 (see the draft bots).</summary>
+    public double Skill { get; init; } = DefaultSkill;
+
+    /// <summary>The skill of computer players that have none of their own (quick events, online seats).</summary>
+    public const double DefaultSkill = 0.6;
+
     /// <summary>Every card the player opened or drafted.</summary>
     public List<PoolCard> Pool { get; init; } = new();
 
@@ -145,6 +151,7 @@ public sealed class LimitedEvent
                 w.WriteStartObject();
                 w.WriteString("name", seat.Name);
                 w.WriteBoolean("human", seat.IsHuman);
+                if (!seat.IsHuman) w.WriteNumber("skill", seat.Skill);
                 WriteCards(w, "pool", seat.Pool);
                 if (seat.Deck is not null) w.WriteString("deck", seat.Deck.Export());
                 w.WriteEndObject();
@@ -207,6 +214,7 @@ public sealed class LimitedEvent
             {
                 Name = s.GetProperty("name").GetString()!,
                 IsHuman = s.GetProperty("human").GetBoolean(),
+                Skill = s.TryGetProperty("skill", out var skill) ? skill.GetDouble() : EventSeat.DefaultSkill,
                 Pool = ReadCards(s, "pool"),
                 Deck = s.TryGetProperty("deck", out var deck) ? DeckList.Parse(deck.GetString()!) : null,
             }).ToList(),

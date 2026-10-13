@@ -378,8 +378,14 @@ public sealed class CareerService
 
     private LimitedService? _events;
 
+    /// <summary>
+    /// Whether career players see the set's draft statistics (grades on the draft table and the desk, and "Build for me"
+    /// using them). Set to false to take them away from players; the computer players keep using them.
+    /// </summary>
+    public static readonly bool DraftRatingsForPlayers = true;
+
     /// <summary>The event entered, run like the Play screen's limited events but kept with the career and played on the store's table.</summary>
-    public LimitedService Events => _events ??= new LimitedService(Folder + "/event.json", App.EventScene, TableFor(CareerRules.DayOf(Now)));
+    public LimitedService Events => _events ??= new LimitedService(Folder + "/event.json", App.EventScene, TableFor(CareerRules.DayOf(Now)), DraftRatingsForPlayers);
 
     /// <summary>The calendar event entered, if any, with its running event (rebuilt from its seed when its file is gone).</summary>
     /// <summary>The calendar event entered, if any: a draft or constructed one with its running event (rebuilt from its seed when its file is gone), a Commander one without (see <see cref="Pod"/>).</summary>
@@ -402,6 +408,17 @@ public sealed class CareerService
         if (spec.Kind != CareerRules.Commander) Begin(spec, State.Event!);
     }
 
+    /// <summary>How well visitors draft: casual players.</summary>
+    private const double VisitorSkill = 0.25;
+
+    /// <summary>How well a regular drafts: better the higher the reputation tier it takes to meet them (0.4 to 0.9), rivals a bit more.</summary>
+    private double DraftSkill(OpponentSpec regular)
+    {
+        int tiers = World!.Content.Tiers.Count;
+        double skill = 0.4 + 0.5 * regular.Tier / Math.Max(1, tiers - 1);
+        return Math.Min(1, skill + (regular.Rival ? 0.1 : 0));
+    }
+
     private void Begin(EventSpec spec, EventEntry entry)
     {
         var world = World!;
@@ -414,10 +431,12 @@ public sealed class CareerService
         {
             DeckList? deck = null;
             string name;
+            double skill = VisitorSkill;
             if (i - 1 < regulars.Count)
             {
                 var regular = regulars[i - 1];
                 name = regular.Name;
+                skill = DraftSkill(regular);
                 if (spec.Kind == CareerRules.Constructed) deck = CareerRules.OpponentDeck(State, world, regular.Id, regular.Decks[random.Next(regular.Decks.Count)]);
             }
             else
@@ -427,7 +446,7 @@ public sealed class CareerService
                 if (spec.Kind == CareerRules.Constructed && world.Content.Precons.Count > 0)
                     deck = world.Deck(world.Content.Precons[random.Next(world.Content.Precons.Count)].Deck);
             }
-            seats.Add(new EventSeat { Name = name, Deck = deck });
+            seats.Add(new EventSeat { Name = name, Deck = deck, Skill = skill });
         }
         var ev = new LimitedEvent
         {

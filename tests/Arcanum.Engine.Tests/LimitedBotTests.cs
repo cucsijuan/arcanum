@@ -55,6 +55,51 @@ public class LimitedBotTests
         Assert.Contains(deck.PoolCards, i => pool[i].Card.Name == "Swamp Grove");
         Assert.Equal(4, deck.PoolCards.Count(i => pool[i].Card.Name.StartsWith("Doom")));
     }
+
+    [Fact]
+    public void SkilledBotsFollowTheCommunityAndWeakOnesTheirOwnRating()
+    {
+        // The bot rates the 3/3 higher, but the community's drafts say the 1/1 wins more.
+        var big = Creature("Big Bear", "{1}{G}", 3, 3) with { Community = 3, Confidence = 1 };
+        var small = Creature("Small Elf", "{1}{G}", 1, 1) with { Community = 9.5, Confidence = 1 };
+        Assert.True(CardRating.Rate(big.Card) > CardRating.Rate(small.Card));
+        Assert.Equal(CardRating.Rate(big.Card), CardRating.Value(big, 0));
+        Assert.Equal(9.5, CardRating.Value(small, 1), 6);
+        // Half trusted, half the way.
+        Assert.Equal((CardRating.Rate(small.Card) + 9.5) / 2, CardRating.Value(small with { Confidence = 0.5 }, 1), 6);
+
+        var pack = new[] { big, small };
+        Assert.Equal(1, DraftPicker.Pick(pack, Array.Empty<DraftOption>(), new Random(1), skill: 1));
+        // A bot without the statistics' knowledge (and steady enough here) keeps to its own rating.
+        int ownPicks = Enumerable.Range(0, 50).Count(seed => DraftPicker.Pick(pack, Array.Empty<DraftOption>(), new Random(seed), skill: 0) == 0);
+        Assert.True(ownPicks > 25, $"{ownPicks} of 50");
+    }
+
+    [Fact]
+    public void WeakBotsStillBuildPlayableDecksInTheirColors()
+    {
+        var random = new Random(3);
+        var pool = new List<DraftOption>();
+        var picks = new List<DraftOption>();
+        string[] colors = { "W", "U", "B", "R", "G" };
+        // A draft of 42 picks from random packs by the weakest bot.
+        for (int pick = 0; pick < 42; pick++)
+        {
+            var pack = Enumerable.Range(0, 8).Select(i =>
+            {
+                string c = colors[random.Next(5)];
+                return Creature($"{c} {pick}-{i}", "{1}{" + c + "}", 1 + random.Next(3), 1 + random.Next(3)) with { Community = random.Next(11), Confidence = 1 };
+            }).ToList();
+            picks.Add(pack[DraftPicker.Pick(pack, picks, random, skill: 0)]);
+        }
+        var favorite = DraftPicker.FavoriteColors(picks, 0);
+        Assert.Equal(2, favorite.Count);
+        Assert.True(picks.Skip(20).Count(p => CardRating.Castable(p.Card, favorite)) >= 15, "late picks stay in the bot's colors");
+
+        var deck = LimitedDeckBuilder.Build(picks, skill: 0);
+        Assert.Equal(40, deck.PoolCards.Count + deck.BasicLands.Values.Sum());
+        Assert.All(deck.PoolCards, i => Assert.True(CardRating.Castable(picks[i].Card, deck.Colors)));
+    }
 }
 
 /// <summary>How the computer player blocks.</summary>

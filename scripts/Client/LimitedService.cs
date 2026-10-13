@@ -26,11 +26,30 @@ public sealed class LimitedService : ILimitedSession
     /// <param name="savePath">Where the event is saved (the career keeps its events apart from the Play screen's).</param>
     /// <param name="returnScene">Where a game of the event goes back to.</param>
     /// <param name="table">A table picture for the event's games (see <see cref="MatchSetup.Table"/>).</param>
-    public LimitedService(string savePath = "user://limited/current.json", string returnScene = App.LimitedScene, string? table = null)
+    /// <param name="ratingsForPlayer">Whether the player may use the set's draft statistics (shown as grades, and in "Build for me").</param>
+    public LimitedService(string savePath = "user://limited/current.json", string returnScene = App.LimitedScene, string? table = null, bool ratingsForPlayer = false)
     {
         _savePath = savePath;
         _returnScene = returnScene;
         _table = table;
+        RatingsForPlayer = ratingsForPlayer;
+    }
+
+    /// <summary>Whether the player may use the set's draft statistics; the computer players always do.</summary>
+    public bool RatingsForPlayer { get; }
+
+    /// <summary>The draft statistics of the current event's set, when the module has them.</summary>
+    public DraftRatings? Ratings => RatingsFor(Current?.Source);
+
+    private static readonly Dictionary<string, DraftRatings?> RatingsCache = new();
+
+    /// <summary>The draft statistics of an event source's set (a cube has none), read once.</summary>
+    public static DraftRatings? RatingsFor(string? source)
+    {
+        if (source is null || !source.StartsWith("set:") || App.Instance.Module is not { } module) return null;
+        string set = source[4..];
+        if (!RatingsCache.TryGetValue(set, out var ratings)) RatingsCache[set] = ratings = module.LoadDraftRatings(set);
+        return ratings;
     }
 
     private string SavePath => ProjectSettings.GlobalizePath(_savePath);
@@ -261,8 +280,22 @@ public sealed class LimitedService : ILimitedSession
         return null;
     }
 
-    public static DraftOption Option(PoolCard card) =>
-        new(DeckList.TryResolve(Cards, card.ToEntry(), out var d) ? d : Cards.Find(card.Name)!.Definition, card.Rarity);
+    public static DraftOption Option(PoolCard card) => Option(card, null);
+
+    /// <summary>A card as the computer players judge it, with what the set's statistics say of it.</summary>
+    public static DraftOption Option(PoolCard card, DraftRatings? ratings)
+    {
+        var definition = DeckList.TryResolve(Cards, card.ToEntry(), out var d) ? d : Cards.Find(card.Name)!.Definition;
+        return ratings?.Score(card.Name) is var (score, confidence)
+            ? new DraftOption(definition, card.Rarity, score, confidence)
+            : new DraftOption(definition, card.Rarity);
+    }
+
+    private List<DraftOption> Options(IEnumerable<PoolCard> cards)
+    {
+        var ratings = Ratings;
+        return cards.Select(c => Option(c, ratings)).ToList();
+    }
 
     /// <summary>The person takes a card; the computer players pick at the same time, then the boosters move on.</summary>
     public void HumanPick(int index)
@@ -280,7 +313,7 @@ public sealed class LimitedService : ILimitedSession
     {
         var draft = Draft!;
         int human = Current!.HumanSeat;
-        return DraftPicker.Pick(draft.PackFor(human).Select(Option).ToList(), draft.Picks[human].Select(Option).ToList(), _random);
+        return DraftPicker.Pick(Options(draft.PackFor(human)), Options(draft.Picks[human]), _random, EventSeat.DefaultSkill);
     }
 
     private void BotPicks()
@@ -289,9 +322,7 @@ public sealed class LimitedService : ILimitedSession
         for (int seat = 0; seat < draft.Seats; seat++)
         {
             if (Current!.Seats[seat].IsHuman || draft.HasPicked(seat)) continue;
-            var pack = draft.PackFor(seat).Select(Option).ToList();
-            var picks = draft.Picks[seat].Select(Option).ToList();
-            draft.Pick(seat, DraftPicker.Pick(pack, picks, _random));
+            draft.Pick(seat, DraftPicker.Pick(Options(draft.PackFor(seat)), Options(draft.Picks[seat]), _random, Current.Seats[seat].Skill));
             if (draft.IsComplete) { FinishPools(); return; }
         }
     }
@@ -310,7 +341,7 @@ public sealed class LimitedService : ILimitedSession
             _draft = null;
             ev.Draft = null;
         }
-        foreach (var seat in ev.Seats.Where(s => !s.IsHuman)) seat.Deck = AutoBuild(seat.Pool);
+        foreach (var seat in ev.Seats.Where(s => !s.IsHuman)) seat.Deck = AutoBuild(seat.Pool, ev.Source, seat.Skill);
         ev.Stage = EventStage.Building;
     }
 
@@ -320,13 +351,17 @@ public sealed class LimitedService : ILimitedSession
     public static FormatRules Format => App.Instance.Formats.FirstOrDefault(f => f.Limited)
                                         ?? new FormatRules { Id = "limited", Name = "Limited", MinDeckSize = 40, MaxCopies = 99, Limited = true };
 
-    /// <summary>A 40-card deck built from a pool the way the computer players build theirs.</summary>
-    public DeckList AutoBuild(IReadOnlyList<PoolCard> pool) => AutoBuild(pool, Current?.Source);
+    /// <summary>The player's deck built from their pool ("Build for me"): with the set's statistics only when the player may use them.</summary>
+    public DeckList AutoBuild(IReadOnlyList<PoolCard> pool) => AutoBuild(pool, Current?.Source, RatingsForPlayer ? 1 : 0);
 
-    /// <summary>A 40-card deck built from a pool, with basic lands of the event's set (<paramref name="source"/>).</summary>
-    public static DeckList AutoBuild(IReadOnlyList<PoolCard> pool, string? source)
+    /// <summary>
+    /// A 40-card deck built from a pool by a builder of this skill (see the draft bots), with basic lands of the event's
+    /// set (<paramref name="source"/>).
+    /// </summary>
+    public static DeckList AutoBuild(IReadOnlyList<PoolCard> pool, string? source, double skill = EventSeat.DefaultSkill)
     {
-        var choice = LimitedDeckBuilder.Build(pool.Select(Option).ToList());
+        var ratings = RatingsFor(source);
+        var choice = LimitedDeckBuilder.Build(pool.Select(c => Option(c, ratings)).ToList(), skill);
         var deck = new DeckList();
         foreach (var index in choice.PoolCards)
         {

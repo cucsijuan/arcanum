@@ -168,7 +168,7 @@ public partial class CareerScreen : Control
                 App.Instance.GoTo(App.EventScene);
                 return true;
             case "enter" when CareerRules.EventsOn(World, CareerRules.DayOf(Career.Now)) is [var today, ..]:
-                Career.Enter(today, today.Kind == CareerRules.Draft ? CareerRules.PayBoosters : CareerRules.PayCash,
+                Career.Enter(today, today.Kind == CareerRules.Draft && today.EntryBoosters > 0 ? CareerRules.PayBoosters : CareerRules.PayCash,
                     today.Kind == CareerRules.Draft ? null : Career.Decks.Load(Career.Decks.List(null)
                         .First(d => (d.FormatId == CareerRules.Commander) == (today.Kind == CareerRules.Commander))).Deck);
                 App.Instance.GoTo(App.EventScene);
