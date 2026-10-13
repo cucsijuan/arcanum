@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Cuts a game release: asks for the version, sets it in project.godot, makes sure the release notes exist
 # (docs/releases/vX.Y.Z.md, opened in $EDITOR from the last notes when missing), commits, pushes, and pushes the tag
-# vX.Y.Z; GitHub Actions then exports Linux/Windows and publishes the release (.github/workflows/release.yml).
+# vX.Y.Z; GitHub Actions then exports Linux/Windows and publishes the release (.github/workflows/release.yml); last it
+# updates the wiki from docs/ (tools/wiki_sync.py).
 #
 # usage: tools/release.sh            (run from anywhere inside the repository)
 set -euo pipefail
@@ -65,3 +66,5 @@ run=$(gh run list --workflow release.yml -L 1 --json databaseId --jq '.[0].datab
 echo "Building the release…"
 gh run watch "$run" --exit-status -i 30 >/dev/null || die "release build failed: gh run view $run --log-failed"
 gh release view "$tag" --json url,assets --jq '.url, (.assets[].name)'
+# The wiki mirrors docs/ (the guide, the developer docs and the release notes).
+tools/wiki_sync.py --push || echo "warning: the wiki wasn't updated (rerun tools/wiki_sync.py --push)" >&2

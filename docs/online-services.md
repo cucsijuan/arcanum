@@ -44,7 +44,7 @@ the lobby was found on).
 
 | Our interface | EOS |
 |---|---|
-| `SignInAsync` | Connect interface, **Device ID** login: no Epic account; a device account is created on first use. |
+| `SignInAsync` | Connect interface, **Discord** login (`DiscordAccessToken`): the player signs in with Discord first (`Account`). A **Device ID** login (a device account) is used only behind the testing switch below. |
 | `ILobbyDirectory` | Lobby interface: the host owns a lobby in bucket `arcanum:<version>` with public attributes (our lobby id, host name, format, commander, seats, free seats, version, content, invite code, listed, event). The browser searches by bucket, content, listed and free seats; invite codes by the code attribute. |
 | `IRelayNetwork` | P2P interface, socket `ArcanumGame`, reliable ordered packets (NAT traversal, relays when needed). `PacketRelay` (in `Arcanum.Net`, tested without the SDK) carries our messages over them: several connections per peer, messages split into 1170-byte packets, open/accept/close. |
 
@@ -69,10 +69,11 @@ The release workflow does both from repository secrets: `EOS_SDK_TOKEN` (a token
 with local-network lobbies only.
 
 Testing on one computer: `ARCANUM_ONLINE_INTERNET_ONLY=1` leaves the local network out, `ARCANUM_EOS_NEW_DEVICE=1`
-makes a second instance sign in as a new device account, and `ARCANUM_EOS_LOG=1` shows the SDK's log.
+makes a second instance sign in as a new device account instead of with Discord (`ARCANUM_EOS_DEVICE=1` signs in with
+this computer's device account without making a new one), and `ARCANUM_EOS_LOG=1` shows the SDK's log.
 
 ## Not done yet
 
-- Accounts beyond a device identity (friends lists, presence, invites through a platform overlay).
+- Accounts beyond the Discord sign-in (friends lists, presence, invites through a platform overlay).
 - Matchmaking (a queue that fills a lobby automatically): the directory search is the basis for it.
 - A host's lobby stays listed until the service notices the host left when the game crashes (the service times it out).
