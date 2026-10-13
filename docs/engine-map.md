@@ -82,6 +82,21 @@ The deck builder and the career deck desk can show the community statistics of t
 | Career desk: Suggestions button, owned / not yours, average deck (owned copies only), collection grouped by canonical name | `scripts/UI/Career/DeckDesk.cs` |
 | Tests | `tests/Arcanum.Data.Tests/CommanderInsightsTests.cs` |
 
+## Deck suggestions for other formats
+
+The deck builder and the career deck desk can also show the cards of community decks like the player's, for a format the
+module's deck search covers (`deckSearch` in `sources.json`). Like the commander statistics, this is not rules and the
+engine never reads it.
+
+| Piece | Where |
+|-------|-------|
+| Parsing search and deck pages, key cards, color fit, suggestions in the `CommanderInsights` shape, average deck | `Arcanum.Data/Decks/SimilarDecks.cs` |
+| Source URLs and format ids (`deckSearch`, `DeckSearchSource`), `ModuleSources.DeckSearch` | `Arcanum.Data/Modules/ContentModule.cs` |
+| Finding similar decks, download, cache in `user://deck_search`, spaced requests, `SuggestAsync`, `Average`, `LastFound` | `scripts/Client/SimilarDecksSource.cs` |
+| Search / Suggestions switch for those formats | `scripts/UI/Menu/DeckBuilder.cs` |
+| Career desk: casual suggestions, share of owned cards per deck, average deck (owned copies only) | `scripts/UI/Career/DeckDesk.cs` |
+| Tests | `tests/Arcanum.Data.Tests/SimilarDecksTests.cs` |
+
 ## Draft statistics
 
 The module's draft statistics (`ratings/<set>.json`) give the computer drafters a community view of each card, and career

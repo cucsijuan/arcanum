@@ -148,6 +148,11 @@ shows them and the pointer's position; Ctrl+click copies a point).
   the mat gives the decks behind the numbers and the average deck's card types beside the deck's. *Use average deck*
   replaces the main deck with the average deck using only owned copies (basic lands free) and lists the cards left out.
   Testing: `ARCANUM_SUGGEST=1` with `ARCANUM_OPEN=career` and `ARCANUM_CAREER_PAGE=decks` opens it for the first career deck.
+- **Casual deck suggestions:** on a casual deck (60 cards or more) and a module with the deck search source, the same
+  *Suggestions* button sits in the top row. The decks like it are looked for among community decks of any 60-card format
+  (up to 90 cards with the sideboard). The variant list shows each deck with the share of its cards the player owns
+  (`· 70% yours`), the decks with the most owned cards first. Cards and decks are marked and built as for a commander:
+  cards not owned are dimmed and can't be added, and *Use average deck* or a chosen deck is built from the cards owned.
 - The art must stay generic: no recognizable toy, game or brand look-alikes (the store's wall is plain where a toy
   look-alike was).
 

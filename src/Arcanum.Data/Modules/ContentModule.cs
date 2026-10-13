@@ -35,11 +35,22 @@ public sealed record CardBackSource(string Id, string Name, string Url);
 /// </summary>
 public sealed record CommanderInsightSource(string PageTemplate, string AverageDeckTemplate, int CacheDays);
 
+/// <summary>
+/// Where the deck builder finds community decks like the player's, for formats other than Commander and limited
+/// (<see cref="Decks.SimilarDecks"/>): a search for decks of a format ({format}, the source's id for it from
+/// <paramref name="Formats"/>, by this game's format id) playing a card ({card}), the most viewed first; a search
+/// without a card for an empty deck; and a deck's page ({id}). <paramref name="MinIntervalMs"/> spaces the requests;
+/// downloads are kept for <paramref name="CacheDays"/> days.
+/// </summary>
+public sealed record DeckSearchSource(string SearchTemplate, string PopularTemplate, string DeckTemplate,
+    IReadOnlyDictionary<string, string> Formats, int CacheDays, int MinIntervalMs);
+
 /// <param name="Printings">Optional: without it cards have no set information and show their default picture.</param>
 /// <param name="CardBacks">Optional card back designs offered in the settings beside the built-in ones.</param>
 /// <param name="CommanderInsights">Optional: without it the deck builder offers no commander suggestions.</param>
+/// <param name="DeckSearch">Optional: without it the deck builder offers no suggestions for other formats.</param>
 public sealed record ModuleSources(string UserAgent, CardSource Cards, ImageSource Images, PrintingSource? Printings = null,
-    IReadOnlyList<CardBackSource>? CardBacks = null, CommanderInsightSource? CommanderInsights = null);
+    IReadOnlyList<CardBackSource>? CardBacks = null, CommanderInsightSource? CommanderInsights = null, DeckSearchSource? DeckSearch = null);
 
 /// <summary>
 /// A content module installed on disk: where card data and images come from, card scripts, formats and decks.
@@ -90,6 +101,14 @@ public sealed class ContentModule
             s.TryGetProperty("commanderInsights", out var insights)
                 ? new CommanderInsightSource(Required(insights, "pageTemplate"), Required(insights, "averageDeckTemplate"),
                     insights.TryGetProperty("cacheDays", out var days) ? days.GetInt32() : 7)
+                : null,
+            s.TryGetProperty("deckSearch", out var search)
+                ? new DeckSearchSource(Required(search, "searchTemplate"), Required(search, "popularTemplate"), Required(search, "deckTemplate"),
+                    search.TryGetProperty("formats", out var formats) && formats.ValueKind == JsonValueKind.Object
+                        ? formats.EnumerateObject().ToDictionary(f => f.Name, f => f.Value.GetString() ?? "")
+                        : new Dictionary<string, string>(),
+                    search.TryGetProperty("cacheDays", out var searchDays) ? searchDays.GetInt32() : 7,
+                    search.TryGetProperty("minIntervalMs", out var interval) ? interval.GetInt32() : 300)
                 : null);
 
         return new ContentModule(directory, manifest, sources);

@@ -291,7 +291,6 @@ public partial class DeckDesk : Control
         _kind.TooltipText = "A casual deck (60 cards or more) or a Commander deck (100 cards, one of each, led by a legendary creature)";
         row.AddChild(_kind);
         _suggestButton.AddThemeFontSizeOverride("font_size", 20);
-        _suggestButton.TooltipText = "The cards most played with your commander by the community's decks, marked as yours or not";
         _suggestButton.Toggled += SetSuggesting;
         row.AddChild(_suggestButton);
         row.AddChild(CareerStyle.Button("New", () => Confirm(NewDeck), 20));
@@ -520,7 +519,14 @@ public partial class DeckDesk : Control
         tile.AddChild(panel);
     }
 
-    // ---------------------------------------------------------------- commander suggestions
+    // ---------------------------------------------------------------- suggestions (commander statistics, decks like this one)
+
+    /// <summary>Career casual decks are looked up among community decks of any 60-card format.</summary>
+    private const string CasualFormat = "casual";
+    private const int CasualSize = 60;
+
+    // Decks like this one are looked for again on the next load (opening suggestions).
+    private bool _refind;
 
     private void BuildSuggestionBar()
     {
@@ -540,7 +546,7 @@ public partial class DeckDesk : Control
         _ownedOnly.TooltipText = "Show only the suggested cards you have";
         _ownedOnly.Toggled += _ => ShowSuggestions();
         var average = CareerStyle.Button("Use average deck", AskAverageDeck, 18);
-        average.TooltipText = "Replace the main deck with the average deck of this commander (and theme), with the cards you have";
+        average.TooltipText = "Replace the main deck with the average deck of the suggestions (or the deck chosen beside), with the cards you have";
         _suggestBar.AddChild(_suggestSection);
         _suggestBar.AddChild(_suggestSort);
         _suggestBar.AddChild(_suggestVariant);
@@ -550,16 +556,25 @@ public partial class DeckDesk : Control
 
     private static string Signed(double share) => (share >= 0 ? "+" : "−") + Math.Abs(share).ToString("P0");
 
-    /// <summary>Whether suggestions can be shown: a Commander deck with its commander and a module with the statistics source.</summary>
-    private bool CanSuggest => _pool is null && _pick is null && _commander && _deck.Commander.Count > 0
-                               && CommanderInsightsSource.Available(App.Instance.Module);
+    /// <summary>
+    /// Whether suggestions can be shown (not while building an event's deck or choosing a card): a Commander deck with its
+    /// commander and the module's commander statistics, or a casual deck and the module's deck search.
+    /// </summary>
+    private bool CanSuggest => _pool is null && _pick is null && (_commander
+        ? _deck.Commander.Count > 0 && CommanderInsightsSource.Available(App.Instance.Module)
+        : SimilarDecksSource.Available(App.Instance.Module, CasualFormat));
+
+    /// <summary>What the suggestions are for: the commander, or casual decks (looked for again each time suggestions are opened).</summary>
+    private string SuggestKey() => _commander ? CommanderInsights.Slug(_deck.Commander.Select(e => e.Name)) : "similar:" + CasualFormat;
 
     /// <summary>Shows or hides the suggestions button as the deck changes, and reloads suggestions for a new commander.</summary>
     private void RefreshSuggestMode()
     {
         _suggestButton.Visible = CanSuggest;
+        _suggestButton.TooltipText = _commander ? "The cards most played with your commander by the community's decks, marked as yours or not"
+            : "The cards played by the community's decks most like yours, marked as yours or not";
         if (!CanSuggest && _suggesting) SetSuggesting(false);
-        else if (_suggesting && CommanderSlug() != _insightsSlug) LoadInsights();
+        else if (_suggesting && SuggestKey() != _insightsSlug) LoadInsights();
         else if (_suggesting) RefreshSuggestInfo();
     }
 
@@ -570,7 +585,22 @@ public partial class DeckDesk : Control
         _filterControls.Visible = !_suggesting;
         _suggestBar.Visible = _suggesting;
         _noteInfo.Visible = _suggesting;
-        if (_suggesting) LoadInsights();
+        if (_suggesting)
+        {
+            _suggestSort.TooltipText = _commander
+                ? "Most played: share of the decks that could play the card that do · Highest synergy: played the most above other decks of its colors"
+                : "Most played: share of the decks like yours that play the card · Highest synergy: played more by the decks most like yours";
+            _suggestVariant.TooltipText = _commander ? "All the commander's decks, only budget or expensive ones, or one theme"
+                : "All the decks like yours, or one of them (the ones with the most of your cards first)";
+            if (!_commander)
+            {
+                // The deck may have changed since the decks like it were found.
+                _refind = true;
+                _insightsKey = null;
+                _insightsSlug = "";
+            }
+            LoadInsights();
+        }
         else
         {
             if (_insights is null) _insightsKey = null; // try again next time
@@ -578,15 +608,14 @@ public partial class DeckDesk : Control
         }
     }
 
-    private string CommanderSlug() => CommanderInsights.Slug(_deck.Commander.Select(e => e.Name));
-
     private string? SelectedVariant => _suggestVariant.Selected >= 0 && _suggestVariant.Selected < _variants.Count ? _variants[_suggestVariant.Selected] : null;
 
     /// <summary>Downloads (or reads from the cache) the statistics for the deck's commander and the chosen theme, then shows them.</summary>
     private async void LoadInsights()
     {
         if (App.Instance.Module is not { } module) return;
-        string slug = CommanderSlug();
+        string slug = SuggestKey();
+        bool commander = _commander;
         if (slug != _insightsSlug)
         {
             _variants.Clear();
@@ -604,27 +633,43 @@ public partial class DeckDesk : Control
         _insightsKey = key;
         _insights = null;
         _suggested = new();
-        _suggestNote = "Loading suggestions…";
+        _suggestNote = commander ? "Loading suggestions…" : "Looking for decks like yours…";
         _noteInfo.Text = "";
         ShowPage(0);
-        var insights = await CommanderInsightsSource.PageAsync(module, slug, variant);
-        if (_insightsKey != key || !IsInsideTree()) return; // the commander or theme changed while loading
+        bool refind = _refind;
+        _refind = false;
+        var insights = commander
+            ? await CommanderInsightsSource.PageAsync(module, slug, variant)
+            : await SimilarDecksSource.SuggestAsync(module, Cards, CasualFormat, CasualSize, _deck, variant, refind);
+        if (_insightsKey != key || !IsInsideTree()) return; // the commander, deck kind or theme changed while loading
         _insights = insights;
         if (insights is null)
         {
-            _suggestNote = "No suggestions for this commander";
-            _noteInfo.Text = "There are no community statistics for this commander (or they couldn't be downloaded).";
+            _suggestNote = commander ? "No suggestions for this commander" : "No decks like yours";
+            _noteInfo.Text = commander ? "There are no community statistics for this commander (or they couldn't be downloaded)."
+                : "No community decks like this one were found (or they couldn't be downloaded).";
             if (_suggesting) ShowPage(0);
             return;
         }
         if (_variants.Count == 0)
         {
-            // Themes come with the commander's own page; a theme's page lists the same ones.
+            // Themes come with the commander's own page; a theme's page lists the same ones. For a casual deck each deck
+            // like it is a "theme", the ones with the most of the player's cards first.
             void Variant(string label, string? value) { _variants.Add(value); _suggestVariant.AddItem(label); }
-            Variant($"All decks ({insights.Decks:N0})", null);
-            Variant("Budget", "budget");
-            Variant("Expensive", "expensive");
-            foreach (var theme in insights.Themes.Take(30)) Variant($"{theme.Name} ({theme.Decks:N0})", theme.Slug);
+            if (commander)
+            {
+                Variant($"All decks ({insights.Decks:N0})", null);
+                Variant("Budget", "budget");
+                Variant("Expensive", "expensive");
+                foreach (var theme in insights.Themes.Take(30)) Variant($"{theme.Name} ({theme.Decks:N0})", theme.Slug);
+            }
+            else
+            {
+                Variant($"All decks like yours ({insights.Decks})", null);
+                var collection = Collection();
+                foreach (var (deck, owned) in SimilarDecksSource.LastFound(CasualFormat).Select(d => (d, OwnedShare(d.List, collection))).OrderByDescending(x => x.Item2))
+                    Variant($"{deck.Found.Name} · {owned:P0} yours", deck.Found.Id.ToString());
+            }
             _suggestVariant.Selected = 0;
         }
         _suggestSection.Clear();
@@ -673,7 +718,9 @@ public partial class DeckDesk : Control
             var card = tile.GetChild<CardNode>(0);
             card.TooltipText = (owned is null ? "You don't have this card." : "Click to put a copy in the deck, right-click to take one out.")
                 + $"\nIn {stats.Inclusion:P0} of the decks that could play it ({stats.Decks:N0} of {stats.PotentialDecks:N0})."
-                + $"\nSynergy {Signed(stats.Synergy)}: how much more it is played with this commander than in other decks of its colors.";
+                + (_commander
+                    ? $"\nSynergy {Signed(stats.Synergy)}: how much more it is played with this commander than in other decks of its colors."
+                    : $"\nSynergy {Signed(stats.Synergy)}: how much more the decks most like yours play it.");
             card.Clicked += _ =>
             {
                 if (owned is null) MenuKit.Toast(this, $"You don't have {entry.Name}.");
@@ -698,8 +745,23 @@ public partial class DeckDesk : Control
         };
         var parts = types.Where(t => insights.AverageTypes.GetValueOrDefault(t.Key) > 0)
             .Select(t => $"{insights.AverageTypes[t.Key]} {t.Label} (yours {mine.GetValueOrDefault(t.Key)})");
-        _noteInfo.Text = $"From {insights.Decks:N0} community decks · % = decks that play it · synergy = above other decks of its colors\n"
-                            + "Average deck: " + string.Join(" · ", parts);
+        _noteInfo.Text = (_commander
+                             ? $"From {insights.Decks:N0} community decks · % = decks that play it · synergy = above other decks of its colors\n"
+                             : $"From {insights.Decks:N0} community deck{(insights.Decks == 1 ? "" : "s")} like yours · % = decks that play it · synergy = played more by the decks most like yours\n")
+                         + (insights.Decks == 1 ? "This deck: " : "Average deck: ") + string.Join(" · ", parts);
+    }
+
+    /// <summary>Share of a deck's main cards (basic lands aside, which are free) the player has copies for.</summary>
+    private double OwnedShare(DeckList deck, Dictionary<string, Owned> collection)
+    {
+        int total = 0, have = 0;
+        foreach (var line in deck.Main)
+        {
+            if (Career.World!.IsBasicLand(line.Name)) continue;
+            total += line.Count;
+            have += Math.Min(line.Count, collection.GetValueOrDefault(line.Name)?.Count ?? 0);
+        }
+        return total == 0 ? 1 : (double)have / total;
     }
 
     private static string TypeKey(CardDefinition d) => d switch
@@ -716,18 +778,23 @@ public partial class DeckDesk : Control
 
     private void AskAverageDeck()
     {
-        if (App.Instance.Module is not { } module || _deck.Commander.Count == 0) return;
-        string slug = CommanderSlug();
+        if (App.Instance.Module is not { } module || !CanSuggest) return;
+        string slug = SuggestKey();
         string? variant = SelectedVariant;
+        bool commander = _commander;
         string theme = variant is null ? "" : $" ({_suggestVariant.GetItemText(_suggestVariant.Selected)})";
-        MenuKit.Modal(this, "Use the average deck?",
-            $"The main deck becomes the average deck of this commander{theme}, with the cards you have; the ones you don't have are left out.", null,
+        MenuKit.Modal(this, commander || variant is null ? "Use the average deck?" : "Use this deck?",
+            commander ? $"The main deck becomes the average deck of this commander{theme}, with the cards you have; the ones you don't have are left out."
+            : variant is null ? "The main deck becomes the average of the decks like yours, with the cards you have; the ones you don't have are left out."
+            : $"The main deck becomes {_suggestVariant.GetItemText(_suggestVariant.Selected)}, with the cards you have; the ones you don't have are left out.", null,
             ("Keep my deck", () => { }),
             ("Use it", async () =>
             {
-                var average = await CommanderInsightsSource.AverageDeckAsync(module, slug, variant);
-                if (!IsInsideTree() || CommanderSlug() != slug) return;
-                if (average is null) MenuKit.Toast(this, "There is no average deck for this commander.");
+                var average = commander
+                    ? await CommanderInsightsSource.AverageDeckAsync(module, slug, variant)
+                    : SimilarDecksSource.Average(CasualFormat, variant, CasualSize);
+                if (!IsInsideTree() || SuggestKey() != slug) return;
+                if (average is null) MenuKit.Toast(this, commander ? "There is no average deck for this commander." : "There are no decks like yours yet.");
                 else UseAverageDeck(average);
             }));
     }

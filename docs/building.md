@@ -58,7 +58,7 @@ Environment variables useful while developing and testing:
 | `ARCANUM_AUTOPLAY=showcase:<Decision>` | Autoplay until the first decision of that type, then freeze (screenshots) |
 | `ARCANUM_TEST_UNDO=1` | With autoplay, undo now and then to exercise replay |
 | `ARCANUM_OPEN_DECK=<n>` | Deck builder opens the n-th deck |
-| `ARCANUM_SUGGEST=1` | With `ARCANUM_OPEN_DECK`: the deck builder opens on the commander suggestions (commander decks only); with `ARCANUM_OPEN=career ARCANUM_CAREER_PAGE=decks`, the career deck desk does, for the first career deck |
+| `ARCANUM_SUGGEST=1` | With `ARCANUM_OPEN_DECK`: the deck builder opens on the suggestions (commander decks, and decks in a format the module's deck search covers); with `ARCANUM_OPEN=career ARCANUM_CAREER_PAGE=decks`, the career deck desk does, for the first career deck |
 | `ARCANUM_OPEN=career` | The main menu opens the career at once; `ARCANUM_CAREER_PAGE=<page>` then opens a page (`decks`, `event`, `enter` enters today's first event, paying with boosters for a draft that takes them, else cash; the full list is in `CareerScreen.cs`) |
 | `ARCANUM_CAREER_TABLE=<n>` | Every career match and event is played at the store's n-th table (from 1) |
 | `ARCANUM_CAREER_MATS=<mine>,<theirs>` | Career matches show those playmat ids on the two seats (`none` for no playmat) |
