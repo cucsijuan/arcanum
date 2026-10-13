@@ -233,7 +233,27 @@ public class CareerTests
         Do(state, journal, world, new UsePlaymat(T0.AddMinutes(4), ""));
         Assert.Equal("", state.Playmat);
         Assert.Equal(CareerRules.OpponentPlaymat(world, "Ana"), CareerRules.OpponentPlaymat(world, "Ana"));
-        Assert.Contains(CareerRules.OpponentPlaymat(world, "Ana")!, world.Content.Playmats.Keys);
+    }
+
+    [Fact]
+    public void BetterOpponentsPlayOnBetterPlaymats()
+    {
+        var content = World().Content with
+        {
+            Playmats = new Dictionary<string, int> { ["a"] = 100, ["b"] = 200, ["c"] = 300, ["d"] = 400 },
+            Tiers = new[] { new TierSpec("Low", 0), new TierSpec("Mid", 10), new TierSpec("Top", 20) },
+        };
+        var names = Enumerable.Range(0, 200).Select(i => $"Player {i}").ToList();
+        content = content with { Opponents = names.Select(n => new OpponentSpec(n, n, Tier: 2)).ToList() };
+        var top = new CareerWorld(content, Database(), new[] { SetDefinition.Parse(SetJson) }, _ => null);
+        var low = new CareerWorld(content with { Opponents = Array.Empty<OpponentSpec>() }, Database(), new[] { SetDefinition.Parse(SetJson) }, _ => null);
+
+        // Visitors (and the lowest tier): often none, otherwise the cheaper half.
+        var visitors = names.Select(n => CareerRules.OpponentPlaymat(low, n)).ToList();
+        Assert.InRange(visitors.Count(m => m is null), 80, 160);
+        Assert.All(visitors.OfType<string>(), m => Assert.Contains(m, new[] { "a", "b" }));
+        // The top tier: always one, from the dearer half.
+        Assert.All(names.Select(n => CareerRules.OpponentPlaymat(top, n)), m => Assert.Contains(m, new[] { "c", "d" }));
     }
 
     [Fact]

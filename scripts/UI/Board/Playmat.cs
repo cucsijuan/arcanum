@@ -5,8 +5,8 @@ namespace Arcanum.UI.Board;
 
 /// <summary>
 /// Draws a playmat setting onto a shader surface plus an optional picture: built-in styles are procedural
-/// (grid colors or nebula); "custom:&lt;path&gt;" shows a user image from this device; <see cref="Clear"/> shows nothing
-/// (a career table under the area).
+/// (grid colors or nebula) or a picture from the interface art (<see cref="BoardStyle.PicturePlaymats"/>);
+/// "custom:&lt;path&gt;" shows a user image from this device; <see cref="Clear"/> shows nothing (a career table under the area).
 /// </summary>
 public static class Playmat
 {
@@ -15,12 +15,106 @@ public static class Playmat
     /// <summary>No playmat: what is under the area shows through (a career table).</summary>
     public const string Clear = "clear";
 
+    /// <summary>
+    /// Where a picture playmat's picture is cut when its area is wider than it (0 keeps the top, 0.5 the middle), unless
+    /// kit/mats/mats.json gives the playmat its own: a little above the middle, so the figures' heads stay and the
+    /// ground goes under the hand.
+    /// </summary>
+    public const float PictureFocus = 0.3f;
+
+    private static Dictionary<string, float>? _focus;
+
+    /// <summary>Where a picture playmat's picture is cut: its "focus" in kit/mats/mats.json, else <see cref="PictureFocus"/>.</summary>
+    public static float FocusOf(string id)
+    {
+        if (_focus is null)
+        {
+            _focus = new Dictionary<string, float>();
+            const string path = "res://ui-art/kit/mats/mats.json";
+            if (Godot.FileAccess.FileExists(path))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(Godot.FileAccess.GetFileAsString(path),
+                        new System.Text.Json.JsonDocumentOptions { CommentHandling = System.Text.Json.JsonCommentHandling.Skip, AllowTrailingCommas = true });
+                    if (doc.RootElement.TryGetProperty("focus", out var focus))
+                        foreach (var mat in focus.EnumerateObject()) _focus[mat.Name] = Math.Clamp(mat.Value.GetSingle(), 0f, 1f);
+                }
+                catch (Exception e) when (e is System.Text.Json.JsonException or InvalidOperationException or FormatException)
+                {
+                    GD.PushWarning($"{path}: {e.Message}");
+                }
+            }
+        }
+        return _focus.GetValueOrDefault(id, PictureFocus);
+    }
+
+    /// <summary>
+    /// Shows a texture filling a picture without stretching it, like <see cref="TextureRect.StretchModeEnum.KeepAspectCovered"/>,
+    /// but cut at <paramref name="focusY"/> (0 keeps the top, 0.5 the middle) when the picture's area is wider than the texture;
+    /// a narrower area is cut equally on both sides. Kept when the picture is resized.
+    /// </summary>
+    public static void Cover(TextureRect picture, Texture2D texture, float focusY)
+    {
+        picture.SetMeta(CoverSource, texture);
+        picture.SetMeta(CoverFocus, focusY);
+        picture.StretchMode = TextureRect.StretchModeEnum.Scale;
+        if (!picture.HasMeta(CoverHooked))
+        {
+            picture.SetMeta(CoverHooked, true);
+            picture.Resized += () => Fit(picture);
+        }
+        Fit(picture);
+    }
+
+    /// <summary>Takes a picture's texture away (and what <see cref="Cover"/> kept for it).</summary>
+    public static void Uncover(TextureRect picture)
+    {
+        picture.RemoveMeta(CoverSource);
+        picture.Texture = null;
+    }
+
+    private const string CoverSource = "playmat_cover", CoverFocus = "playmat_cover_focus", CoverHooked = "playmat_cover_hooked";
+
+    private static void Fit(TextureRect picture)
+    {
+        if (!picture.HasMeta(CoverSource) || picture.GetMeta(CoverSource).As<Texture2D>() is not { } texture) return;
+        var size = picture.Size;
+        var full = texture.GetSize();
+        if (size.X <= 0 || size.Y <= 0 || full.X <= 0 || full.Y <= 0)
+        {
+            picture.Texture = texture;
+            return;
+        }
+        Rect2 region;
+        if (size.X / size.Y > full.X / full.Y)
+        {
+            float height = full.X * size.Y / size.X;
+            region = new Rect2(0, (full.Y - height) * picture.GetMeta(CoverFocus).AsSingle(), full.X, height);
+        }
+        else
+        {
+            float width = full.Y * size.X / size.Y;
+            region = new Rect2((full.X - width) / 2, 0, width, full.Y);
+        }
+        if (picture.Texture is AtlasTexture atlas && atlas.Atlas == texture) atlas.Region = region;
+        else picture.Texture = new AtlasTexture { Atlas = texture, Region = region };
+    }
+
+    /// <summary>The picture of a picture playmat, or null (another playmat, or the interface art is missing).</summary>
+    public static string? Picture(string id)
+    {
+        if (!BoardStyle.PicturePlaymats.Contains(id)) return null;
+        var path = $"res://ui-art/kit/mats/{id}.jpg";
+        return ResourceLoader.Exists(path) ? path : null;
+    }
+
     public static void Apply(ColorRect surface, TextureRect picture, string id, int seed)
     {
         surface.Visible = id != Clear;
         _grid ??= GD.Load<Shader>("res://shaders/grid_playmat.gdshader");
         _nebula ??= GD.Load<Shader>("res://shaders/nebula_playmat.gdshader");
-        picture.Texture = null;
+        Uncover(picture);
         picture.Visible = false;
         picture.Modulate = new Color(1, 1, 1, 0.55f); // keep cards readable over busy art
         if (id.StartsWith("custom:"))
@@ -29,6 +123,15 @@ public static class Playmat
             if (image is not null && !image.IsEmpty())
             {
                 picture.Texture = ImageTexture.CreateFromImage(image);
+                picture.Visible = true;
+            }
+            id = "grid";
+        }
+        else if (BoardStyle.PicturePlaymats.Contains(id))
+        {
+            if (Picture(id) is { } path)
+            {
+                Cover(picture, GD.Load<Texture2D>(path), FocusOf(id));
                 picture.Visible = true;
             }
             id = "grid";
@@ -81,7 +184,8 @@ public partial class PlaymatSwatch : Control
 
 /// <summary>
 /// A playmat lying on a table picture (career tables): rounded corners, a shadow and an edge like the deck desk's mat,
-/// a built-in playmat's color (or the nebula) as its print. A picture in mats/&lt;id&gt;.jpg or .png replaces the print.
+/// a built-in playmat's color (or the nebula) as its print. A picture playmat's picture, or one in the career kit's
+/// mats/&lt;id&gt;.jpg or .png, replaces the print.
 /// </summary>
 public partial class TableMat : Control
 {
@@ -117,12 +221,19 @@ public partial class TableMat : Control
         Resized += () => (_print.Material as ShaderMaterial)?.SetShaderParameter("rect_size", Size);
     }
 
+    /// <summary>Whether the mat lies turned round (the far seat's, as across a table).</summary>
+    public bool Turned
+    {
+        get => _picture.FlipV;
+        set => _picture.FlipH = _picture.FlipV = value;
+    }
+
     /// <summary>Shows a built-in playmat (by id).</summary>
     public void SetStyle(string id)
     {
         if (id == _id) return;
         _id = id;
-        var colors = BoardStyle.PlaymatColors(id);
+        var colors = BoardStyle.PlaymatColors(BoardStyle.PicturePlaymats.Contains(id) ? "grid" : id);
         var cloth = new StyleBoxFlat { BgColor = colors?.Base ?? new Color(0.04f, 0.03f, 0.08f) };
         cloth.SetCornerRadiusAll(Radius);
         _body.AddThemeStyleboxOverride("panel", cloth);
@@ -132,8 +243,9 @@ public partial class TableMat : Control
         edge.SetCornerRadiusAll(Radius);
         _edge.AddThemeStyleboxOverride("panel", edge);
 
-        var picture = new[] { ".jpg", ".png" }.Select(ext => Kit + id + ext).FirstOrDefault(path => ResourceLoader.Exists(path));
-        _picture.Texture = picture is null ? null : GD.Load<Texture2D>(picture);
+        var picture = Playmat.Picture(id) ?? new[] { ".jpg", ".png" }.Select(ext => Kit + id + ext).FirstOrDefault(path => ResourceLoader.Exists(path));
+        if (picture is null) _picture.Texture = null;
+        else Playmat.Cover(_picture, GD.Load<Texture2D>(picture), Playmat.FocusOf(id));
         _picture.Visible = picture is not null;
         _print.Visible = picture is null && colors is null;
         if (_print.Visible)

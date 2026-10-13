@@ -21,6 +21,16 @@ To get it locally, run `tools/ui-art.sh` (it copies the kit from `../arcanum-ui-
 `ARCANUM_UI_ART`) and re-import the project. Without it the game runs and draws plain panels and buttons. Release
 builds clone the pack with the `EOS_SDK_TOKEN` secret, keep only the kit, and warn when that fails.
 
+The kit also holds the picture playmats, as `kit/mats/<id>.jpg` (locally `ui-art/kit/mats/<id>.jpg`). Without them the
+playmats show the grid. To add one: use a JPG about 3.5:1 (e.g. 3200×920 px) with the key art in the upper middle (about
+2100 px wide) and about 40 px free at the edges, no baked corners or transparency. A picture playmat fills its area without
+stretching. When the area is wider than the picture, the picture is cut a little above the middle (`Playmat.PictureFocus`
+= 0.3: 30% of the cut comes off the top, 70% off the bottom), so keep heads and key figures in the upper middle and expect
+the bottom to sit under the hand. Each playmat can have its own cut in `kit/mats/mats.json` (next to the pictures): `{"focus": {"<id>": 0.55}}`, from 0 (keeps the top) to 1 (keeps the bottom); 0.5 cuts both equally. A playmat not listed uses 0.3 (`Playmat.FocusOf` in `scripts/UI/Board/Playmat.cs`). Release exports include `ui-art/kit/mats/*.json`. The far seat's playmat (the top half, and the career table's top mat) lies turned round
+(rotated 180°), as across a table. Then put the file in the art pack,
+add the id and label to `BoardStyle.Playmats` and the id to `BoardStyle.PicturePlaymats` (`scripts/UI/Board/BoardStyle.cs`),
+and give it a price in the module's `career/career.json` (`playmats`).
+
 ## Desktop exports
 Create the presets once in Project → Export (they are stored in `export_presets.cfg`, which is not committed
 because it can contain signing credentials):

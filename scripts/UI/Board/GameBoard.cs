@@ -727,6 +727,7 @@ public partial class GameBoard : Control
             var rect = new Rect2(place.Position * Size, place.Size * Size);
             var mat = _tableMats[mine ? 1 : 0];
             if (_match.TableMats?.ElementAtOrDefault(i) is { } id) mat.SetStyle(id);
+            mat.Turned = !mine;
             mat.Visible = _match.TableMats?.ElementAtOrDefault(i) is not null;
             mat.Position = rect.Position;
             mat.Size = rect.Size;

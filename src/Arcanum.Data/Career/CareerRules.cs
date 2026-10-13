@@ -767,16 +767,33 @@ public static partial class CareerRules
     }
 
     /// <summary>
-    /// The playmat a regular or a visitor plays on: one of the store's, the same one every time (from their name).
-    /// Null when the store sells none.
+    /// The playmat a regular or a visitor plays on, the same one every time (from their name), or null for none. The
+    /// better the player, the better the playmat: a visitor or a regular of the lowest tier often plays without one and
+    /// otherwise on one of the cheaper half of the store's playmats; the higher a regular's tier (rivals a step above),
+    /// the less often without one and the dearer the playmat, up to the top tier always on one of the dearer half.
+    /// Null as well when the store sells none.
     /// </summary>
     public static string? OpponentPlaymat(CareerWorld world, string name)
     {
-        var playmats = world.Content.Playmats.Keys.Order(StringComparer.Ordinal).ToList();
+        var playmats = world.Content.Playmats.OrderBy(p => p.Value).ThenBy(p => p.Key, StringComparer.Ordinal).Select(p => p.Key).ToList();
         if (playmats.Count == 0) return null;
+        double level = OpponentLevel(world, name);
         uint hash = 2166136261;
         foreach (char c in name) hash = (hash ^ c) * 16777619;
-        return playmats[(int)(hash % (uint)playmats.Count)];
+        if ((hash >> 16) % 100 < (uint)Math.Round(NoPlaymatChance * 100 * (1 - level))) return null;
+        int window = (playmats.Count + 1) / 2, start = (int)Math.Round(level * (playmats.Count - window));
+        return playmats[start + (int)(hash % (uint)window)];
+    }
+
+    /// <summary>How often a visitor or a regular of the lowest tier plays without a playmat.</summary>
+    public const double NoPlaymatChance = 0.6;
+
+    /// <summary>How good a player is, from 0 (a visitor, a regular of the lowest tier) to 1 (the top tier); rivals a step above their tier.</summary>
+    private static double OpponentLevel(CareerWorld world, string name)
+    {
+        if (world.Content.Opponents.FirstOrDefault(o => o.Name == name) is not { } regular) return 0;
+        int steps = Math.Max(1, world.Content.Tiers.Count - 1);
+        return Math.Min(1, (regular.Tier + (regular.Rival ? 1 : 0)) / (double)steps);
     }
 
     private static CareerResult Open(CareerState state, OpenBooster open, CareerWorld world)

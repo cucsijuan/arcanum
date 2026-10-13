@@ -191,6 +191,8 @@ public partial class PlayerArea : Control
     /// <summary>Applies a playmat setting: a built-in style id, or "custom:&lt;image path&gt;".</summary>
     public void SetPlaymatStyle(string id)
     {
+        // The top half's playmat lies turned round, as across a table.
+        _playmat.FlipH = _playmat.FlipV = FacesDown;
         if (id == _playmatStyle) return;
         _playmatStyle = id;
         Playmat.Apply(_grid, _playmat, id, Player.Value);

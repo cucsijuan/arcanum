@@ -261,6 +261,17 @@ public static class BoardStyle
     public static readonly (string Id, string Label)[] Playmats =
     {
         ("grid", "Grid (default)"), ("slate", "Slate"), ("felt", "Green felt"), ("ocean", "Deep ocean"), ("crimson", "Crimson"), ("nebula", "Nebula"),
+        ("white-dragon", "White dragon"), ("blue-dragon", "Blue dragon"), ("black-dragon", "Black dragon"), ("red-dragon", "Red dragon"),
+        ("green-dragon", "Green dragon"), ("dark-lord", "Dark lord"), ("dwarves", "Dwarves"), ("elves", "Elves"), ("humans", "Humans"),
+        ("riders", "Riders"),
+    };
+
+    /// <summary>
+    /// Playmats printed with a picture: kit/mats/&lt;id&gt;.jpg in the interface art. Without the art they show the grid.
+    /// </summary>
+    public static readonly HashSet<string> PicturePlaymats = new()
+    {
+        "white-dragon", "blue-dragon", "black-dragon", "red-dragon", "green-dragon", "dark-lord", "dwarves", "elves", "humans", "riders",
     };
 
     /// <summary>Grid playmat colors for a built-in playmat, or null for the nebula shader.</summary>

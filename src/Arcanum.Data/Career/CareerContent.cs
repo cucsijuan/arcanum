@@ -21,12 +21,14 @@ public sealed record CareerContent
     public int PreconPrice { get; init; } = 2000;
 
     /// <summary>
-    /// The playmats the store sells, by id (the game's built-in playmats: grid, slate, felt, ocean, crimson, nebula), and
-    /// their prices. A career starts without one; the regulars and visitors each play on one of them.
+    /// The playmats the store sells, by id (the game's built-in playmats: grid, slate, felt, ocean, crimson, nebula and the
+    /// picture playmats), and their prices. A career starts without one; the regulars and visitors each play on one of them.
     /// </summary>
     public IReadOnlyDictionary<string, int> Playmats { get; init; } = new Dictionary<string, int>
     {
         ["grid"] = 1500, ["slate"] = 1500, ["felt"] = 1500, ["ocean"] = 1500, ["crimson"] = 1500, ["nebula"] = 1800,
+        ["white-dragon"] = 2000, ["blue-dragon"] = 2000, ["black-dragon"] = 2000, ["red-dragon"] = 2000, ["green-dragon"] = 2000,
+        ["dark-lord"] = 2000, ["dwarves"] = 2000, ["elves"] = 2000, ["humans"] = 2000, ["riders"] = 2000,
     };
 
     /// <summary>A traditional foil's value as a multiple of the card's.</summary>
