@@ -27,3 +27,7 @@ TestResults/
 
 # Interface art from a private pack (tools/ui-art.sh copies it here)
 /ui-art/
+
+# Local notes and editor settings
+/.Temp/
+/docs/.flint/
