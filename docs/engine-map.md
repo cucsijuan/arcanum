@@ -98,6 +98,7 @@ own ratings only.
 | `RatingsFor`, `Ratings`, `Option`, `RatingsForPlayer` (player's "Build for me" uses them only then) | `scripts/Client/LimitedService.cs` |
 | Career opponent skill (`DraftSkill`, `VisitorSkill`), `DraftRatingsForPlayers` (the switch for players) | `scripts/Client/CareerService.cs` |
 | Grade strip, tooltip and credit line on cards | `scripts/UI/Career/DraftGrades.cs`, shown in `scripts/UI/Career/EventScreen.cs` and `scripts/UI/Career/DeckDesk.cs` |
+| Career table mats (`TableMat` overlays, `ApplyPlaymats`, mat rects from the table's JSON) | `scripts/UI/Board/Playmat.cs`, `scripts/UI/Board/GameBoard.cs` |
 | Tests | `tests/Arcanum.Data.Tests/DraftRatingsTests.cs`, `tests/Arcanum.Engine.Tests/LimitedBotTests.cs` |
 
 ## Adding a mechanic

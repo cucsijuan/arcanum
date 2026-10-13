@@ -22,13 +22,17 @@ public sealed class LimitedService : ILimitedSession
 {
     private readonly string _savePath, _returnScene;
     private readonly string? _table;
+    private readonly Func<string, bool, string?>? _tableMat;
 
     /// <param name="savePath">Where the event is saved (the career keeps its events apart from the Play screen's).</param>
     /// <param name="returnScene">Where a game of the event goes back to.</param>
     /// <param name="table">A table picture for the event's games (see <see cref="MatchSetup.Table"/>).</param>
     /// <param name="ratingsForPlayer">Whether the player may use the set's draft statistics (shown as grades, and in "Build for me").</param>
-    public LimitedService(string savePath = "user://limited/current.json", string returnScene = App.LimitedScene, string? table = null, bool ratingsForPlayer = false)
+    /// <param name="tableMat">The playmat a player puts on the table, by their name and whether they are the person here (see <see cref="MatchSetup.TableMats"/>).</param>
+    public LimitedService(string savePath = "user://limited/current.json", string returnScene = App.LimitedScene, string? table = null, bool ratingsForPlayer = false,
+        Func<string, bool, string?>? tableMat = null)
     {
+        _tableMat = tableMat;
         _savePath = savePath;
         _returnScene = returnScene;
         _table = table;
@@ -466,6 +470,7 @@ public sealed class LimitedService : ILimitedSession
             Event = new EventHook(winner => RecordGame(match, winner is null ? null : winner == 0 ? human : opponent),
                 _returnScene, $"Round {ev.Rounds.Count} · game {game}"),
             Table = _table,
+            TableMats = _tableMat is null ? null : new[] { human, opponent }.Select(s => _tableMat(ev.Seats[s].Name, ev.Seats[s].IsHuman)).ToList(),
         };
     }
 

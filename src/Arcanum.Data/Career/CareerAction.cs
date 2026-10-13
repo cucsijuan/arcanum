@@ -28,6 +28,8 @@ namespace Arcanum.Data.Career;
 [JsonDerivedType(typeof(AnswerSaleOffer), "answerSale")]
 [JsonDerivedType(typeof(TakeDownSale), "takeDownSale")]
 [JsonDerivedType(typeof(CheckSales), "checkSales")]
+[JsonDerivedType(typeof(BuyPlaymat), "buyPlaymat")]
+[JsonDerivedType(typeof(UsePlaymat), "usePlaymat")]
 public abstract record CareerAction(DateTime Utc);
 
 /// <summary>A new career: its seed and the preconstructed deck chosen to start with.</summary>
@@ -92,3 +94,9 @@ public sealed record TakeDownSale(DateTime Utc, int Post) : CareerAction(Utc);
 
 /// <summary>Looks at the forum: the player's posts catch up with the days gone by (sold, offered, expired).</summary>
 public sealed record CheckSales(DateTime Utc) : CareerAction(Utc);
+
+/// <summary>Buys one of the store's playmats (its id); the player puts it on the table straight away.</summary>
+public sealed record BuyPlaymat(DateTime Utc, string Playmat) : CareerAction(Utc);
+
+/// <summary>Puts one of the player's playmats on the table, or none (an empty id).</summary>
+public sealed record UsePlaymat(DateTime Utc, string Playmat) : CareerAction(Utc);

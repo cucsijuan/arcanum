@@ -69,6 +69,8 @@ public static partial class CareerRules
                 AnswerSaleOffer answer => Answer(state, answer, world),
                 TakeDownSale down => TakeDown(state, down),
                 CheckSales => new CareerResult(Array.Empty<PoolCard>(), 0),
+                BuyPlaymat buy => Buy(state, buy, world),
+                UsePlaymat use => Use(state, use),
                 _ => throw new CareerRuleException($"Unknown career action {action.GetType().Name}."),
             };
         }
@@ -740,6 +742,37 @@ public static partial class CareerRules
         foreach (var card in cards) state.AddCard(CardKey.Of(card), 1);
         state.Note(buy.Utc, precon.With.Count > 0 ? $"Bought {precon.Name ?? "a set of preconstructed decks"} ({cards.Count} cards)." : $"Bought a preconstructed deck ({cards.Count} cards).");
         return new CareerResult(cards, -price);
+    }
+
+    private static CareerResult Buy(CareerState state, BuyPlaymat buy, CareerWorld world)
+    {
+        if (!world.Content.Playmats.TryGetValue(buy.Playmat, out int price)) throw new CareerRuleException("The store doesn't sell that playmat.");
+        if (state.Playmats.Contains(buy.Playmat)) throw new CareerRuleException("You already have that playmat.");
+        Pay(state, price);
+        state.Playmats.Add(buy.Playmat);
+        state.Playmat = buy.Playmat;
+        state.Note(buy.Utc, $"Bought a playmat for {Money(price)}.");
+        return new CareerResult(Array.Empty<PoolCard>(), -price);
+    }
+
+    private static CareerResult Use(CareerState state, UsePlaymat use)
+    {
+        if (use.Playmat.Length > 0 && !state.Playmats.Contains(use.Playmat)) throw new CareerRuleException("You don't have that playmat.");
+        state.Playmat = use.Playmat;
+        return new CareerResult(Array.Empty<PoolCard>(), 0);
+    }
+
+    /// <summary>
+    /// The playmat a regular or a visitor plays on: one of the store's, the same one every time (from their name).
+    /// Null when the store sells none.
+    /// </summary>
+    public static string? OpponentPlaymat(CareerWorld world, string name)
+    {
+        var playmats = world.Content.Playmats.Keys.Order(StringComparer.Ordinal).ToList();
+        if (playmats.Count == 0) return null;
+        uint hash = 2166136261;
+        foreach (char c in name) hash = (hash ^ c) * 16777619;
+        return playmats[(int)(hash % (uint)playmats.Count)];
     }
 
     private static CareerResult Open(CareerState state, OpenBooster open, CareerWorld world)

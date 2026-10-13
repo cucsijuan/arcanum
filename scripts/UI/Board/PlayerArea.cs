@@ -197,6 +197,12 @@ public partial class PlayerArea : Control
     }
 
     /// <summary>
+    /// Where the rows of cards go (at a career table, the player's playmat): from and to how far from the divider. By
+    /// default the rows start a little away from the divider and may reach the hand.
+    /// </summary>
+    public (float Start, float End)? FieldBand { get; set; }
+
+    /// <summary>
     /// The node that shows a card: its own, or the top of the stack of identical tokens it is part of
     /// (so highlights, arrows and effects aimed at any token of a stack land on what the player sees).
     /// </summary>
@@ -600,7 +606,7 @@ public partial class PlayerArea : Control
         var lands = Stacks(inRows.Where(c => BattlefieldLayout.RowOf(c) == BattlefieldRow.Lands));
         var blockerStacks = Stacks(blockers);
 
-        float creatureY = Compact ? 56 : 62;
+        float creatureY = FieldBand?.Start ?? (Compact ? 56 : 62);
         var rows = new List<IReadOnlyList<CardStack>> { creatures };
         if (others.Count > 0) rows.Add(others);
         if (lands.Count > 0) rows.Add(lands);
@@ -615,7 +621,7 @@ public partial class PlayerArea : Control
         float baseGap = Compact ? 14 : 22;
         int TitlesInGap(int g) => FacesDown ? Under(rows[g]) : Under(rows[g + 1]); // the gap between rows g and g + 1
         var gaps = Enumerable.Range(0, rows.Count - 1).Select(g => Math.Max(baseGap, TitlesInGap(g) * TitleStrip * Scale + 3)).ToList();
-        float room = Size.Y - Peek - HandPipsRoom - creatureY - FieldSize.Y * rows.Count;
+        float room = (FieldBand?.End ?? Size.Y - Peek - HandPipsRoom) - creatureY - FieldSize.Y * rows.Count;
         if (gaps.Count > 0 && Size.Y > 100 && gaps.Sum() > room)
         {
             float plain = Mathf.Max(36 - FieldSize.Y, Mathf.Min(baseGap, room / gaps.Count));

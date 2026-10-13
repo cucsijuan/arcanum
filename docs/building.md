@@ -47,7 +47,7 @@ Environment variables useful while developing and testing:
 |----------|--------|
 | `ARCANUM_SEED=<n>` | Reproducible first game |
 | `ARCANUM_VS_BOT=1` | The demo game's second player is the computer |
-| `ARCANUM_SANDBOX=1` | Demo game starts from the prepared sandbox board |
+| `ARCANUM_SANDBOX=1` | Demo game (and a career match) starts from the prepared sandbox board |
 | `ARCANUM_DECKS=<a>,<b>` | Demo game uses these module decks |
 | `ARCANUM_COMMANDER=1` | Demo game is a commander game with the module's commander decks |
 | `ARCANUM_COMMANDER_DECKS=<prefix>` | With `ARCANUM_COMMANDER`: use the module decks whose names start with the prefix |
@@ -60,6 +60,8 @@ Environment variables useful while developing and testing:
 | `ARCANUM_OPEN_DECK=<n>` | Deck builder opens the n-th deck |
 | `ARCANUM_SUGGEST=1` | With `ARCANUM_OPEN_DECK`: the deck builder opens on the commander suggestions (commander decks only); with `ARCANUM_OPEN=career ARCANUM_CAREER_PAGE=decks`, the career deck desk does, for the first career deck |
 | `ARCANUM_OPEN=career` | The main menu opens the career at once; `ARCANUM_CAREER_PAGE=<page>` then opens a page (`decks`, `event`, `enter` enters today's first event, paying with boosters for a draft that takes them, else cash; the full list is in `CareerScreen.cs`) |
+| `ARCANUM_CAREER_TABLE=<n>` | Every career match and event is played at the store's n-th table (from 1) |
+| `ARCANUM_CAREER_MATS=<mine>,<theirs>` | Career matches show those playmat ids on the two seats (`none` for no playmat) |
 | `ARCANUM_MODULE_PATH=<dir>` | Use a content module from this folder |
 | `ARCANUM_UPDATE_FROM=<version>` | The update check runs as if the game were that version (shows the update dialog; outside an exported build it offers the download page) |
 | `ARCANUM_OPEN=online` | The main menu opens the online screen at once (exported builds can't be given a scene) |

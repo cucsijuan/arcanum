@@ -213,6 +213,30 @@ public class CareerTests
     }
 
     [Fact]
+    public void PlaymatsAreBoughtOnceAndPutOnTheTable()
+    {
+        var (state, journal, world) = Started();
+        Assert.Equal("", state.Playmat);
+        Assert.Contains("Not enough cash", Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new BuyPlaymat(T0.AddMinutes(1), "felt"), world)).Message);
+        state.Cash = 5000;
+        Do(state, journal, world, new BuyPlaymat(T0.AddMinutes(1), "felt"));
+        Assert.Equal(3500, state.Cash);
+        Assert.Equal("felt", state.Playmat);
+        Do(state, journal, world, new BuyPlaymat(T0.AddMinutes(2), "nebula"));
+        Assert.Equal(1700, state.Cash);
+        Assert.Equal("nebula", state.Playmat);
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new BuyPlaymat(T0.AddMinutes(3), "felt"), world));
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new BuyPlaymat(T0.AddMinutes(3), "lace"), world));
+        Do(state, journal, world, new UsePlaymat(T0.AddMinutes(3), "felt"));
+        Assert.Equal("felt", state.Playmat);
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new UsePlaymat(T0.AddMinutes(4), "ocean"), world));
+        Do(state, journal, world, new UsePlaymat(T0.AddMinutes(4), ""));
+        Assert.Equal("", state.Playmat);
+        Assert.Equal(CareerRules.OpponentPlaymat(world, "Ana"), CareerRules.OpponentPlaymat(world, "Ana"));
+        Assert.Contains(CareerRules.OpponentPlaymat(world, "Ana")!, world.Content.Playmats.Keys);
+    }
+
+    [Fact]
     public void SellingPaysHalfTheValueAndNeedsTheCards()
     {
         var (state, journal, world) = Started();

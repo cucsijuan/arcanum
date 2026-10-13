@@ -44,6 +44,7 @@ public partial class CareerScreen : Control
         Hotspot.Rect("precons", "Preconstructed decks", 0.29f, 0.56f, 0.17f, 0.31f),
         Hotspot.Rect("counter", "Sell cards", 0.25f, 0.87f, 0.6f, 0.13f),
         Hotspot.Rect("offers", "Today's offers", 0.83f, 0.45f, 0.14f, 0.21f),
+        Hotspot.Rect("mats", "Playmats", 0.80f, 0.24f, 0.19f, 0.18f),
     };
 
     /// <summary>Set before coming back to this screen: what to show first ("store", or a website page).</summary>
@@ -1012,6 +1013,7 @@ public partial class CareerScreen : Control
             case "precons": OpenNote("Preconstructed decks", PreconsNote); break;
             case "counter": OpenNote("The counter", CounterNote); break;
             case "offers": OpenNote("Today's offers", OffersNote); break;
+            case "mats": OpenNote("Playmats", PlaymatsNote); break;
         }
     }
 
@@ -1253,6 +1255,50 @@ public partial class CareerScreen : Control
             }, 18, primary: true);
             buy.Disabled = State.Cash < price;
             row.AddChild(buy);
+            list.AddChild(row);
+        }
+        box.AddChild(Scrolled(list));
+    }
+
+    /// <summary>The store's playmats: buying one puts it on the table at the player's matches; the ones owned can be swapped.</summary>
+    private void PlaymatsNote(VBoxContainer box)
+    {
+        box.AddChild(CareerStyle.Text($"Your playmat goes on the table at your matches and events. You have {CareerRules.Money(State.Cash)}.", 20, CareerStyle.InkDim, wrap: true));
+        var list = new VBoxContainer();
+        list.AddThemeConstantOverride("separation", 8);
+        foreach (var (id, label) in BoardStyle.Playmats.Prepend(("", "No playmat")))
+        {
+            int price = World.Content.Playmats.GetValueOrDefault(id);
+            if (id.Length > 0 && price == 0) continue; // not sold here
+            bool owned = id.Length == 0 || State.Playmats.Contains(id), onTable = State.Playmat == id;
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 16);
+            var swatch = new Control { CustomMinimumSize = new Vector2(132, 66), MouseFilter = MouseFilterEnum.Ignore };
+            if (id.Length > 0)
+            {
+                var mat = new TableMat { AnchorLeft = 0, AnchorTop = 0, AnchorRight = 1, AnchorBottom = 1, OffsetLeft = 4, OffsetTop = 4, OffsetRight = -4, OffsetBottom = -6 };
+                mat.SetStyle(id);
+                swatch.AddChild(mat);
+            }
+            row.AddChild(swatch);
+            var name = CareerStyle.Text(label.Replace(" (default)", ""), 20);
+            name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            name.VerticalAlignment = VerticalAlignment.Center;
+            row.AddChild(name);
+            Button button;
+            if (onTable) (button = CareerStyle.Button("On the table", () => { }, 18)).Disabled = true;
+            else if (owned) button = CareerStyle.Button("Use", () => { Try(() => Career.Do(new UsePlaymat(Career.Now, id))); RefreshNote(); }, 18);
+            else
+            {
+                button = CareerStyle.Button($"Buy · {CareerRules.Money(price)}", () =>
+                {
+                    Try(() => { Career.Do(new BuyPlaymat(Career.Now, id)); MenuKit.Toast(this, "Your new playmat goes on the table"); });
+                    RefreshNote();
+                }, 18, primary: true);
+                button.Disabled = State.Cash < price;
+            }
+            button.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+            row.AddChild(button);
             list.AddChild(row);
         }
         box.AddChild(Scrolled(list));

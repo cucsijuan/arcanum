@@ -25,10 +25,13 @@ public sealed class CareerService
     /// <summary>The store's tables (the art that's there): a career match is played at one of them, an event at the day's.</summary>
     private static readonly string[] Tables = { TableImage, "res://ui-art/kit/career/table2.jpg" };
 
-    public static string? AnyTable(Random random) => Tables.Where(t => ResourceLoader.Exists(t)).ToList() is { Count: > 0 } tables ? tables[random.Next(tables.Count)] : null;
+    /// <summary>Testing: ARCANUM_CAREER_TABLE=&lt;n&gt; plays every match at the store's n-th table (from 1).</summary>
+    private static string? TestTable => int.TryParse(OS.GetEnvironment("ARCANUM_CAREER_TABLE"), out int n) && n >= 1 && n <= Tables.Length ? Tables[n - 1] : null;
+
+    public static string? AnyTable(Random random) => TestTable ?? (Tables.Where(t => ResourceLoader.Exists(t)).ToList() is { Count: > 0 } tables ? tables[random.Next(tables.Count)] : null);
 
     /// <summary>The table the store's events are played at on a day.</summary>
-    public static string? TableFor(DateOnly day) => Tables.Where(t => ResourceLoader.Exists(t)).ToList() is { Count: > 0 } tables ? tables[day.DayNumber % tables.Count] : null;
+    public static string? TableFor(DateOnly day) => TestTable ?? (Tables.Where(t => ResourceLoader.Exists(t)).ToList() is { Count: > 0 } tables ? tables[day.DayNumber % tables.Count] : null);
     public const string StoreImage = "res://ui-art/kit/career/store.jpg";
 
     private CareerSave? _save;
@@ -367,10 +370,16 @@ public sealed class CareerService
             RemoveOne(theirs, CardKey.Parse(pending.OpponentAnte).Name);
         }
         var title = pending.Kind switch { CareerRules.Practice => "Practice match", CareerRules.Ante => "Ante match", _ => "Daily match" };
-        return new MatchSetup(new[] { new GameSession.Seat(playerName, mine), new GameSession.Seat(opponent.Name, theirs, IsBot: true) }, 20)
+        // Testing: ARCANUM_SANDBOX=1 starts the match from the sandbox board.
+        return new MatchSetup(new[] { new GameSession.Seat(playerName, mine), new GameSession.Seat(opponent.Name, theirs, IsBot: true) }, 20,
+            Sandbox: OS.GetEnvironment("ARCANUM_SANDBOX") == "1")
         {
             Event = new EventHook(winner => Finish(winner == 0), App.CareerScene, title) { ReturnText = "Back home" },
             Table = AnyTable(Random.Shared),
+            // Testing: ARCANUM_CAREER_MATS=<mine>,<theirs> shows those playmats instead ("none" for none).
+            TableMats = OS.GetEnvironment("ARCANUM_CAREER_MATS").Split(',') is [var testMine, var testTheirs]
+                ? new[] { testMine, testTheirs }.Select(id => id == "none" ? null : id).ToList()
+                : new[] { PlayerMat, CareerRules.OpponentPlaymat(world, opponent.Name) },
         };
     }
 
@@ -385,7 +394,11 @@ public sealed class CareerService
     public static readonly bool DraftRatingsForPlayers = true;
 
     /// <summary>The event entered, run like the Play screen's limited events but kept with the career and played on the store's table.</summary>
-    public LimitedService Events => _events ??= new LimitedService(Folder + "/event.json", App.EventScene, TableFor(CareerRules.DayOf(Now)), DraftRatingsForPlayers);
+    public LimitedService Events => _events ??= new LimitedService(Folder + "/event.json", App.EventScene, TableFor(CareerRules.DayOf(Now)), DraftRatingsForPlayers,
+        (name, human) => human ? PlayerMat : CareerRules.OpponentPlaymat(World!, name));
+
+    /// <summary>The playmat the player puts on the table, or null for none.</summary>
+    private string? PlayerMat => _save?.State.Playmat is { Length: > 0 } id ? id : null;
 
     /// <summary>The calendar event entered, if any, with its running event (rebuilt from its seed when its file is gone).</summary>
     /// <summary>The calendar event entered, if any: a draft or constructed one with its running event (rebuilt from its seed when its file is gone), a Commander one without (see <see cref="Pod"/>).</summary>

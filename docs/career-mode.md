@@ -51,6 +51,9 @@ day starts (real day, UTC reset)
 - **Cash ($)** is the only currency. No real money anywhere, nothing purchasable outside the game.
 - **Boosters** from the content module's sets that have a booster definition; sets without one (companion/commander sets)
   are sold as their preconstructed decks. The store has a *featured set* each week (from the config).
+- **Playmats:** the store sells the game's built-in playmats (prices in the module's `career/career.json`, `playmats`).
+  A career starts without one. Buying a playmat puts it on the table at the player's matches and events; an owned one
+  can be swapped in or taken off. Each regular and visitor always plays on the same playmat, chosen from their name.
 - **Singles:** buy specific cards at their price (with a markup), sell at a lower price (buy/sell spread so flipping
   doesn't print money).
 - **Card prices:** derived in-game from rarity, set and in-game demand (how often the card shows up in winning decks of
@@ -125,9 +128,14 @@ shows them and the pointer's position; Ctrl+click copies a point).
   monitor growing from where it stands): daily matches, events, selling cards, unopened boosters and news, and signing
   up for a new career. The boxes of cards on the shelf open the decks; the stack on the desk opens "my cards".
 - **The store:** `store.jpg`. The booster rack, the preconstructed decks and the counter (selling cards) open paper
-  notes over the dimmed picture. Esc goes back home.
+  notes over the dimmed picture. The playmats on the shelf above the computer (hotspot `mats`) open a note listing
+  each mat with a preview, *Buy*, *Use* or *On the table*, and *No playmat*. Esc goes back home.
 - **Hotspots** glow along their outline under the pointer, show their name, and follow the arrow keys and Enter.
-- **The table:** `table.jpg` spans both seats in daily matches (top half behind the opponent, bottom half behind the player).
+- **The table:** `table.jpg` spans the whole board in daily matches, with the divider between the two seats a little
+  above the middle (so the player's three rows fit on the table above its front edge). Each seat's playmat lies on it
+  with rounded corners, a shadow and an edge, and that player's rows of cards are laid out on it (the player's mat may
+  reach over the divider). Where the mats lie comes from `matTop` and `matBottom` in the JSON next to the table picture:
+  `[x, y, w, h]` fractions of the whole board. A picture in `mats/<id>.jpg` or `.png` replaces a mat's print.
 - **Deck building:** the desk with the computer seen from above (`desk.jpg`, its playmat's area in `desk.json`): the
   deck's controls on the wood above the mat, the cards owned on the left of the mat, the deck on the right in columns
   by mana value, basic lands (free) and the deck's state on the wood below. The owned cards are grouped by canonical

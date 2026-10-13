@@ -15,6 +15,12 @@ public sealed record MatchSetup(IReadOnlyList<GameSession.Seat> Seats, int Start
 
     /// <summary>A picture of a table both players share (its top half behind the opponent, its bottom half behind this player), instead of the playmats.</summary>
     public string? Table { get; init; }
+
+    /// <summary>
+    /// At a <see cref="Table"/>, the playmat each seat puts on it (a built-in playmat id, or null for none). Where the mats
+    /// lie comes from the JSON file next to the table's picture ("matTop", "matBottom").
+    /// </summary>
+    public IReadOnlyList<string?>? TableMats { get; init; }
 }
 
 /// <param name="RecordWinner">Called once when the game ends, with the winning seat index (null for a draw).</param>

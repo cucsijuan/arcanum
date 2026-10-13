@@ -165,6 +165,10 @@ public sealed class CareerState
     public List<SalePost> Posts { get; set; } = new();
     public int NextPostId { get; set; } = 1;
 
+    /// <summary>The playmats bought (their ids), and the one the player puts on the table ("" for none).</summary>
+    public List<string> Playmats { get; set; } = new();
+    public string Playmat { get; set; } = "";
+
     public int Wins { get; set; }
     public int Losses { get; set; }
     public int Reputation { get; set; }

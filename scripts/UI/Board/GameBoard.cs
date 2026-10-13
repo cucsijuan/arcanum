@@ -25,6 +25,27 @@ public partial class GameBoard : Control
     private readonly List<PlayerLost> _lost = new();
     /// <summary>One area per player: seat 0 across the bottom half, opponents side by side across the top half.</summary>
     private readonly List<PlayerArea> _areas = new();
+
+    // A career table: its picture across the whole board and each seat's playmat on it, under the player areas.
+    private readonly TextureRect _tablePicture = new()
+    {
+        MouseFilter = MouseFilterEnum.Ignore, ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered, Visible = false,
+    };
+    private readonly TableMat[] _tableMats = { new() { Visible = false }, new() { Visible = false } };
+
+    /// <summary>
+    /// At a table the divider between the two halves sits higher, so that this player's three rows fit on the table's
+    /// surface above its front edge (the opponent's hand takes less room than this player's).
+    /// </summary>
+    private const float TableDivider = 0.463f;
+
+    /// <summary>The playmats' places at a table, as fractions of the board (overridable in the JSON next to the table's picture).</summary>
+    private static readonly Rect2 TableMatTop = new(0.035f, 0.059f, 0.73f, 0.378f), TableMatBottom = new(0.035f, 0.489f, 0.73f, 0.378f);
+
+    /// <summary>Space kept between a playmat's edge and the rows of cards on it.</summary>
+    private const float MatMargin = 8;
+
+    private bool AtTable => _match?.Table is not null && _areas.Count == 2;
     private readonly CardNode _preview = new();
 
     /// <summary>The card shown in the preview, whether it shows that card's other face (double-faced cards), and the hint saying so.</summary>
@@ -620,6 +641,9 @@ public partial class GameBoard : Control
         _areas.Clear();
         _areasBottom = Bottom;
         int opponents = count - 1;
+        float divider = _match?.Table is not null && count == 2 ? TableDivider : 0.5f;
+        _phaseBar.AnchorTop = _phaseBar.AnchorBottom = divider;
+        _stackView.AnchorTop = _stackView.AnchorBottom = divider;
         for (int i = 0; i < count; i++)
         {
             int place = (i - Bottom.Value + count) % count; // 0: bottom, then left to right on top
@@ -629,11 +653,11 @@ public partial class GameBoard : Control
             var area = new PlayerArea { Player = new PlayerId(i), Compact = count > 2 && place != 0, RightInset = place == opponents ? 64 : 0 };
             if (place == 0)
             {
-                area.AnchorTop = 0.5f; area.AnchorRight = 1; area.AnchorBottom = 1;
+                area.AnchorTop = divider; area.AnchorRight = 1; area.AnchorBottom = 1;
             }
             else
             {
-                area.AnchorLeft = (place - 1) / (float)opponents; area.AnchorRight = place / (float)opponents; area.AnchorBottom = 0.5f;
+                area.AnchorLeft = (place - 1) / (float)opponents; area.AnchorRight = place / (float)opponents; area.AnchorBottom = divider;
                 area.FacesDown = true;
             }
             area.CardClicked += OnCardClicked;
@@ -659,19 +683,64 @@ public partial class GameBoard : Control
         {
             var player = new PlayerId(i);
             var mine = player == Bottom;
-            if (_match?.Table is { } table && _areas.Count == 2)
+            if (AtTable)
             {
-                _areas[i].SetPlaymatStyle($"table:{(mine ? "bottom" : "top")}:{table}");
+                _areas[i].SetPlaymatStyle(Playmat.Clear); // the table shows through
                 continue;
             }
+            _areas[i].FieldBand = null;
             var chosen = mine ? null : _session.PlaymatOf(player) is { } id && BoardStyle.Playmats.Any(p => p.Id == id) ? id : null;
             _areas[i].SetPlaymatStyle(chosen ?? Settings.Current.Playmats.ElementAtOrDefault(mine ? 0 : 1) ?? "grid");
+        }
+    }
+
+    /// <summary>
+    /// A career table: its picture over the whole board, each seat's playmat on it, and each player's rows of cards laid
+    /// out on their playmat.
+    /// </summary>
+    private void LayoutTable()
+    {
+        _tablePicture.Visible = AtTable;
+        if (!AtTable)
+        {
+            foreach (var mat in _tableMats) mat.Visible = false;
+            return;
+        }
+        var table = _match!.Table!;
+        if (_tablePicture.GetParent() is null)
+        {
+            AddChild(_tablePicture);
+            _tablePicture.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+            foreach (var mat in _tableMats) AddChild(mat);
+            // Above the background, below the player areas.
+            MoveChild(_tablePicture, 1);
+            for (int m = 0; m < _tableMats.Length; m++) MoveChild(_tableMats[m], 2 + m);
+            Resized += LayoutTable;
+        }
+        if (_tablePicture.Texture is null && ResourceLoader.Exists(table)) _tablePicture.Texture = GD.Load<Texture2D>(table);
+        var json = System.IO.Path.ChangeExtension(table, ".json");
+        float height = Size.Y, divider = TableDivider * height;
+        for (int i = 0; i < _areas.Count; i++)
+        {
+            bool mine = new PlayerId(i) == Bottom;
+            var place = Arcanum.UI.Career.Hotspot.LoadArea(json, mine ? "matBottom" : "matTop", mine ? TableMatBottom : TableMatTop);
+            var rect = new Rect2(place.Position * Size, place.Size * Size);
+            var mat = _tableMats[mine ? 1 : 0];
+            if (_match.TableMats?.ElementAtOrDefault(i) is { } id) mat.SetStyle(id);
+            mat.Visible = _match.TableMats?.ElementAtOrDefault(i) is not null;
+            mat.Position = rect.Position;
+            mat.Size = rect.Size;
+            // The rows go on the playmat (measured from the divider, as the area lays them out), whether or not there is one.
+            _areas[i].FieldBand = mine
+                ? (rect.Position.Y + MatMargin - divider, rect.End.Y - MatMargin - divider)
+                : (divider - rect.End.Y + MatMargin, divider - rect.Position.Y - MatMargin);
         }
     }
 
     private void Refresh()
     {
         ApplyPlaymats(); // an opponent's playmat can become known after the table was laid out
+        LayoutTable();
         var decision = _session.CurrentDecision;
         if (decision is not null && !ReferenceEquals(decision, _lastDecision))
         {
