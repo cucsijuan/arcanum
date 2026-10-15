@@ -389,7 +389,24 @@ public partial class GameBoard : Control
         UpdateLogBadge();
         _gameOver.Visible = false;
         _lastDecision = null;
+        _sessionStart = DateTimeOffset.UtcNow;
         _session.Start();
+    }
+
+    private DateTimeOffset _sessionStart = DateTimeOffset.UtcNow;
+
+    /// <summary>The player's Discord activity: which game, its turn, how many at the table and since when.</summary>
+    private void ShowPresence(GameView view)
+    {
+        var lobby = _online is not null ? App.Instance.Online.Lobby?.State : null;
+        bool commander = lobby?.Commander ?? _match?.Commander ?? view.Players.Any(p => p.Command.Count > 0);
+        string kind = commander ? "Commander game" : "Game";
+        string details = _match?.Event is { } hook ? hook.Title
+            : _online is not null ? (lobby?.Event is not null ? "Online event" : $"Online {kind.ToLowerInvariant()}")
+            : _match?.Seats.Any(s => s.IsBot) == true || lobby?.Seats.Any(s => s.Kind == LobbySeatKind.Computer) == true ? $"{kind} vs computer"
+            : kind;
+        string state = view.TurnNumber == 0 ? "Mulligan" : $"Turn {view.TurnNumber}";
+        Presence.Show(new Arcanum.Net.Services.DiscordActivity(details, state, _sessionStart, view.Players.Count, view.Players.Count));
     }
 
     /// <summary>Test-mode undo: rebuild the game up to the last decision a person made and ask it again.</summary>
@@ -802,6 +819,7 @@ public partial class GameBoard : Control
         }
         _turnNumber.Text = Math.Max(1, view.TurnNumber).ToString();
         _stepLabel.Text = view.TurnNumber == 0 ? "Mulligan" : EventLogFormatter.StepName(view.Step);
+        ShowPresence(view);
         _phaseBar.SetCurrentStep(view.TurnNumber == 0 ? null : view.Step);
         _phaseBar.SetActivePlayer(view.TurnNumber == 0 ? null : view.Players[view.ActivePlayer.Value].Name, view.ActivePlayer == Bottom,
             BoardStyle.PlayerColor(view.ActivePlayer.Value));

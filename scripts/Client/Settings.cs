@@ -33,6 +33,8 @@ public sealed class SettingsData
     public int DecisionSeconds { get; set; }
     public bool ConfirmManaPayment { get; set; } = true;
     public bool RevealHandsInHotseat { get; set; } = true;
+    /// <summary>Show on the player's Discord profile what they are doing in the game (when the Discord app runs).</summary>
+    public bool DiscordActivity { get; set; } = true;
 
     // Gameplay
     /// <summary>Animation speed multiplier: 0.5 = slower, 2 = faster.</summary>

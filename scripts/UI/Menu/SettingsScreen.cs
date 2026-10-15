@@ -178,6 +178,9 @@ public partial class SettingsScreen : Control
         box.AddChild(Row("Discord account", DiscordAccount(),
             "Sign in with Discord to play on the internet: your online identity (and later your career) follows your Discord account to any computer. " +
             "The game only learns your Discord user id and name."));
+        box.AddChild(Switch("Show activity on Discord", S.DiscordActivity, v => S.DiscordActivity = v,
+            "While the Discord app is open on this computer, your Discord profile shows what you are doing: the screen you are on, " +
+            "or the kind of game, its turn and how many players are at the table. Works without signing in."));
         var limits = new[] { (0, "No limit"), (30, "30 seconds"), (60, "1 minute"), (120, "2 minutes"), (300, "5 minutes") };
         box.AddChild(Row("Time per decision", SettingsKit.Choice(limits.Select(l => l.Item2).ToList(), Math.Max(0, Array.FindIndex(limits, l => l.Item1 == S.DecisionSeconds)),
             i => { S.DecisionSeconds = limits[i].Item1; Settings.Save(); }),

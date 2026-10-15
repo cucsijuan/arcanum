@@ -204,6 +204,7 @@ public partial class OnlineScreen : Control
     private void Rebuild()
     {
         if (!IsInsideTree()) return;
+        Presence.ShowScreen(App.OnlineScene); // who has joined the lobby
         foreach (var child in _root.GetChildren()) child.QueueFree();
         if (Online.Lobby is { } lobby) BuildLobby(lobby);
         else BuildStart();

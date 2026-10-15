@@ -19,6 +19,10 @@ The first time you go online over the internet, the game asks:
 You can sign in or out later in **Settings**, under **Gameplay**, in the **Online** section, in the **Discord account**
 row. The game only learns your Discord user id and name.
 
+If the Discord app is open on this computer, your Discord profile can also show what you are doing in Arcanum, such as
+the lobby you are in or the game's turn. This needs no sign-in. Turn it off with **Show activity on Discord**, in the same
+**Online** section of the settings.
+
 ## The online screen
 
 From the main menu, choose **Online**. It has two choices:

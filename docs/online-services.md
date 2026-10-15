@@ -72,8 +72,24 @@ Testing on one computer: `ARCANUM_ONLINE_INTERNET_ONLY=1` leaves the local netwo
 makes a second instance sign in as a new device account instead of with Discord (`ARCANUM_EOS_DEVICE=1` signs in with
 this computer's device account without making a new one), and `ARCANUM_EOS_LOG=1` shows the SDK's log.
 
+## Discord activity
+
+Not an online service: it shows on the player's Discord profile what they are doing ("rich presence"), and needs no sign-in.
+
+- `src/Arcanum.Net/Services/DiscordPresence.cs` talks to the Discord app running on the same computer through its local
+  socket: a Unix socket `discord-ipc-0` to `discord-ipc-9` in `XDG_RUNTIME_DIR`, `TMPDIR`, `TMP`, `TEMP` or `/tmp`, also
+  inside the Flatpak (`app/com.discordapp.Discord`) and Snap (`snap.discord`) folders; a named pipe on Windows. Frames are an
+  opcode, a little-endian int32 length and JSON: a handshake, then `SET_ACTIVITY`. The work runs on a background task; when
+  Discord is not running it retries every 20 seconds, and an activity already shown is not sent again.
+- `scripts/Client/Presence.cs` decides what is shown. Each screen sets it as it opens (`ShowScreen`, from the scene change in
+  `App`): the menus, choosing a game, building a deck, a draft or sealed event, the online lobby (with its party size), the
+  career screens. The game board sets its own activity (`GameBoard.ShowPresence`): the kind of game, `Mulligan` or `Turn N`,
+  the number of players and the time since the game started. The picture is the repository's `icon.png`, by URL.
+- The setting is `SettingsData.DiscordActivity` (default on), shown as **Show activity on Discord** in Settings, Online.
+  Turning it off clears the activity at once.
+
 ## Not done yet
 
-- Accounts beyond the Discord sign-in (friends lists, presence, invites through a platform overlay).
+- Accounts beyond the Discord sign-in (friends lists, invites through a platform overlay).
 - Matchmaking (a queue that fills a lobby automatically): the directory search is the basis for it.
 - A host's lobby stays listed until the service notices the host left when the game crashes (the service times it out).

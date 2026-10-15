@@ -85,6 +85,8 @@ public partial class App : Node
         if (Arcanum.UI.UiArt.Theme() is { } theme) GetTree().Root.Theme = theme;
         AddChild(Content);
         AddChild(Online);
+        GetTree().SceneChanged += () => Presence.ShowScreen(GetTree().CurrentScene?.SceneFilePath ?? "");
+        if (GetTree().CurrentScene is { } first) Presence.ShowScreen(first.SceneFilePath);
         // ARCANUM_SHOT=<file.png>[,seconds]: saves a picture of the screen after a while (default 8 s) and quits (screenshots).
         // ARCANUM_SHOT_POINTER=x,y moves the pointer there a moment before (to show what hovering does).
         if (OS.GetEnvironment("ARCANUM_SHOT") is { Length: > 0 } shot)
@@ -132,6 +134,8 @@ public partial class App : Node
             _contentReady.TrySetResult(false);
         }
     }
+
+    public override void _ExitTree() => Presence.Stop();
 
     public FormatRules FormatById(string id) => Formats.FirstOrDefault(f => f.Id == id) ?? Formats[0];
 
