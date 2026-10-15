@@ -9,7 +9,9 @@ public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLif
     /// <summary>"As this enters, each opponent reveals their hand. You choose the name of a nonland card revealed this way."</summary>
     OpponentsRevealHandsThenNonlandName,
     /// <summary>"As this enters, choose Khans or Dragons": one of <see cref="CardDefinition.EnterOptions"/>.</summary>
-    Option }
+    Option,
+    /// <summary>"As this enters, choose a number."</summary>
+    Number }
 
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]
@@ -293,6 +295,21 @@ public sealed partial record CardDefinition
     /// <summary>Dash (702.109): cast for this cost, it gains haste and returns to its owner's hand at the next end step.</summary>
     public ManaCost? Dash { get; init; }
 
+    /// <summary>
+    /// Blitz (702.152): cast for this cost (and <see cref="BlitzExtra"/>), it has haste and "when this is put into a graveyard from the
+    /// battlefield, draw a card", and is sacrificed at the beginning of the next end step.
+    /// </summary>
+    public ManaCost? Blitz { get; init; }
+
+    /// <summary>The non-mana part of the blitz cost ("Blitz—{2}{R}{R}, Discard a card").</summary>
+    public Abilities.ExtraCost? BlitzExtra { get; init; }
+
+    /// <summary>"You may cast this card from your graveyard using its blitz ability."</summary>
+    public bool BlitzFromGraveyard { get; init; }
+
+    /// <summary>Foretell (702.143): the cost of casting it from exile on a later turn after it was foretold. Read from "Foretell {cost}".</summary>
+    public ManaCost? Foretell { get; init; }
+
     /// <summary>Splice onto instant or sorcery (702.47): revealed from the hand and paid as such a spell is cast, adding this card's effects.</summary>
     public ManaCost? Splice { get; init; }
 
@@ -326,8 +343,17 @@ public sealed partial record CardDefinition
     /// <summary>Escalate (rule 702.120): this cost is paid once for each mode chosen beyond the first.</summary>
     public ManaCost? Escalate { get; init; }
 
+    /// <summary>A non-mana escalate cost ("Escalate—Tap an untapped creature you control"), paid once for each mode beyond the first.</summary>
+    public Abilities.ExtraCost? EscalateExtra { get; init; }
+
+    /// <summary>The card has escalate (a mana or a non-mana cost).</summary>
+    public bool HasEscalate => Escalate is not null || EscalateExtra is not null;
+
     /// <summary>Improvise (rule 702.126): untapped artifacts can be tapped to pay for {1} each of its generic mana.</summary>
     public bool Improvise { get; init; }
+
+    /// <summary>Convoke (rule 702.51): each creature tapped while paying pays for {1} or one mana of its color. Read from the keyword.</summary>
+    public bool Convoke => Keywords.Any(k => k.Equals("Convoke", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Its <see cref="AttackTax"/> is only on attacking its controller, not their planeswalkers ("creatures can't attack you unless …").</summary>
     public bool AttackTaxPlayerOnly { get; init; }
@@ -340,6 +366,9 @@ public sealed partial record CardDefinition
 
     /// <summary>"You may cast creature spells [matching this] from the top of your library."</summary>
     public ObjectFilter? LibraryTopCastFilter { get; init; }
+
+    /// <summary>Only while this holds ("as long as this Equipment is attached to a creature, you may cast creature spells from the top of your library").</summary>
+    public Abilities.Condition? LibraryTopCastIf { get; init; }
 
     /// <summary>"If you cast a creature spell this way, it gains haste until end of turn."</summary>
     public bool LibraryTopCastHaste { get; init; }
@@ -463,6 +492,21 @@ public sealed partial record CardDefinition
 
     /// <summary>"Each opponent can cast spells only any time they could cast a sorcery."</summary>
     public bool OpponentsCastAtSorcerySpeed { get; init; }
+
+    /// <summary>
+    /// "As this enters, remove all counters from any number of [filter]. It enters with X +1/+1 counters on it, where X is twice the number of
+    /// counters removed this way."
+    /// </summary>
+    public Abilities.ObjectFilter? EntersRemovingCountersFrom { get; init; }
+
+    /// <summary>"If one or more +1/+1 counters would be put on a creature you control, that many plus one +1/+1 counters are put on it instead."</summary>
+    public bool CreaturePlusOneCountersPlusOne { get; init; }
+
+    /// <summary>"Once during each of your turns, you may cast a [filter] spell from your graveyard" (and its riders).</summary>
+    public GraveyardCastOncePerTurn? GraveyardCastOncePerTurn { get; init; }
+
+    /// <summary>"As long as this Equipment is attached to a creature, your opponents can't cast spells during your turn."</summary>
+    public bool OpponentsCantCastDuringYourTurnWhileAttached { get; init; }
 
     /// <summary>"If you cast a spell this way [from the top of your library], pay life equal to its mana value rather than pay its mana cost."</summary>
     public bool LibraryTopSpellsForLife { get; init; }
@@ -613,3 +657,10 @@ public sealed partial record CardDefinition
     /// <summary>Engine-supported keywords among <see cref="Keywords"/>.</summary>
     public IReadOnlySet<Keyword> KeywordAbilities => _parsedKeywords ??= Cards.Keywords.ParseAll(Keywords);
 }
+
+/// <summary>
+/// "Once during each of your turns, you may cast a [filter] spell from your graveyard" — with <see cref="NotFromBattlefieldThisTurn"/>: "from among
+/// cards in your graveyard that were put there from anywhere other than the battlefield this turn"; with <see cref="EntersTapped"/>: "if you cast a
+/// spell this way, that [permanent] enters tapped". Each permanent with it gives its own permission.
+/// </summary>
+public sealed record GraveyardCastOncePerTurn(Abilities.ObjectFilter Filter, bool NotFromBattlefieldThisTurn, bool EntersTapped);

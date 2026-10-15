@@ -39,6 +39,10 @@ public sealed partial class Game
             player.DamageTakenThisTurn = 0;
             player.CombatDamageTakenThisTurn = 0;
             player.CombatDamagedByLegendaryThisTurn = false;
+            player.CombatDamageSourcesThisTurn.Clear();
+            player.CombatDamagedByDragonThisTurn = false;
+            player.CardLeftGraveyardThisTurn = false;
+            player.PutCounterOnCreatureThisTurn = false;
             player.AttackedThisTurn = false;
             player.LifeGainedThisTurn = 0;
             player.LifeLostThisTurn = 0;
@@ -57,6 +61,7 @@ public sealed partial class Game
         active.TurnsTaken++;
         State.Goads.RemoveAll(g => g.Goader == active.Id); // "until your next turn"
         State.LastingEffects.RemoveAll(e => e.UntilTurnOf == active.Id);
+        State.AttackTaxesUntilNextTurn.RemoveAll(t => t.Protected == active.Id);
         active.Protected = false; // "protection from everything until your next turn"
         foreach (var card in State.Cards.Values)
         {

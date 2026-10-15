@@ -152,6 +152,30 @@ public enum QuantityKind
     GreatestCommanderManaValueAnywhere,
     /// <summary>The creatures attacking this combat that the player the trigger is about controls ("attacks with two or more creatures").</summary>
     TriggeredPlayerAttackers,
+    /// <summary>Opponents the controller attacked with a creature this combat (melee, rule 702.121a).</summary>
+    OpponentsAttackedThisCombat,
+    /// <summary><see cref="Quantity.Parts"/>[0] minus [1] ("the difference"; an effect does nothing with a result below one).</summary>
+    Difference,
+    /// <summary>Colors among permanents the controller controls (W, U, B, R, G: 0 to 5).</summary>
+    ColorsAmongYourPermanents,
+    /// <summary>Different kinds of counters on the source ("for each kind of counter on it").</summary>
+    CounterKindsOnSource,
+    /// <summary>The total mana value of the cards this spell or ability exiled ("that card's mana value").</summary>
+    ExiledManaValue,
+    /// <summary>Players who lost life this turn.</summary>
+    PlayersWhoLostLifeThisTurn,
+    /// <summary>"The greatest power among creatures you controlled as you cast this spell".</summary>
+    GreatestPowerAsCast,
+    /// <summary>The number of counters of every kind on the object the trigger is about, as it last existed on the battlefield ("that number").</summary>
+    TriggeredCounterCount,
+    /// <summary>The total mana value of the permanents sacrificed by this spell or ability (as they last existed).</summary>
+    SacrificedManaValue,
+    /// <summary>Permanents matching the filter that entered the battlefield under your control this turn (and are still those objects there).</summary>
+    EnteredThisTurnCount,
+    /// <summary>Opponents who control a permanent matching the filter ("opponents who control a creature with power 4 or greater").</summary>
+    OpponentsControlling,
+    /// <summary>Opponents dealt combat damage this turn by the source (as this object) or by a Dragon.</summary>
+    OpponentsCombatDamagedBySourceOrDragon,
     /// <summary>How far the discovered card's mana value is below the N it was discovered for (none without a discovered card).</summary>
     DiscoverShortfall,
     /// <summary>The power / toughness of the last creature card exiled with the source ("imprint").</summary>
@@ -200,6 +224,15 @@ public sealed record Quantity(int Value, QuantityKind Kind = QuantityKind.Fixed,
 
     /// <summary>For <see cref="QuantityKind.GraveyardCount"/>: the graveyards of the controller's opponents ("in your opponents' graveyards").</summary>
     public bool OfOpponents { get; init; }
+
+    /// <summary>With <see cref="QuantityKind.GraveyardCount"/>: the graveyard of the source's controller ("your graveyard" inside "each opponent …").</summary>
+    public bool OfSourceController { get; init; }
+
+    /// <summary>With <see cref="QuantityKind.CountersAmong"/>: counters of every kind ("the number of counters among creatures you control").</summary>
+    public bool AnyCounterKind { get; init; }
+
+    /// <summary>With <see cref="QuantityKind.PermanentCount"/>: permanents controlled by the controller of the permanent the source is attached to.</summary>
+    public bool ControlledByAttachedController { get; init; }
 
     /// <summary>For <see cref="QuantityKind.OpponentsWithMore"/>: what is compared ("life", "creatures", "lands", "cards").</summary>
     public string? Measure { get; init; }

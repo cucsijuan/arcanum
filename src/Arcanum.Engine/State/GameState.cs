@@ -102,6 +102,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
     /// <summary>Cast by paying life equal to its mana value rather than its mana cost.</summary>
     public bool PayLife { get; init; }
 
+    /// <summary>"Until you exile another card with [this]": the permission ends when this object exiles another card this way.</summary>
+    public (CardId Source, int Version)? UntilAnotherFrom { get; init; }
+
     /// <summary>Playable only while this holds for the player.</summary>
     public Abilities.Condition? While { get; init; }
 
@@ -125,7 +128,7 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
     /// <summary>"You may cast" (not play): a land can't be played this way.</summary>
     public bool CastOnly { get; init; }
 
-    /// <summary>"You may play a card exiled with [this]": playing one of the group ends the others' permission.</summary>
+    /// <summary>"You may play a card exiled with [this]" / "a spell from among those cards": playing one of the group ends the others' permission (0: none).</summary>
     public int Group { get; init; }
 
     /// <summary>"When you play a card this way": the source and its ability that triggers then.</summary>
@@ -248,6 +251,18 @@ public sealed partial class GameState
 
     /// <summary>Spells (object versions) that enter with a finality counter as they resolve ("that artifact enters with a finality counter on it").</summary>
     public HashSet<(CardId Card, int Version)> FinalityOnEnter { get; } = new();
+
+    /// <summary>Spells (as these objects on the stack) whose permanent enters tapped ("if you cast a spell this way, that artifact enters tapped").</summary>
+    public HashSet<(CardId Card, int Version)> EntersTappedFromStack { get; } = new();
+
+    /// <summary>"When that creature dies this turn, …": delayed triggers watching one creature (as that object) for the rest of the turn.</summary>
+    public List<(CardId Card, int Version, int Turn, CardId Source, PlayerId Controller, Abilities.TriggeredAbility Ability)> WhenDiesThisTurn { get; } = new();
+
+    /// <summary>Attack taxes on attacking a player until that player's next turn.</summary>
+    public List<(PlayerId Protected, Mana.ManaCost Tax)> AttackTaxesUntilNextTurn { get; } = new();
+
+    /// <summary>"Once during each of your turns, you may cast … from your graveyard": the permanents (as these objects) whose permission was used, by turn.</summary>
+    public HashSet<(CardId Source, int Version, int Turn)> GraveyardCastsUsed { get; } = new();
 
     /// <summary>Lore counters put on a permanent (object version) during a turn: "during any turn you put a lore counter on this Saga".</summary>
     public HashSet<(CardId Card, int Version, int Turn)> LoreCounterTurns { get; } = new();

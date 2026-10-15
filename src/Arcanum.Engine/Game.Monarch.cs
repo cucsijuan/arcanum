@@ -3,6 +3,7 @@ using Arcanum.Engine.Abilities;
 using Arcanum.Engine.Cards;
 using Arcanum.Engine.Core;
 using Arcanum.Engine.Events;
+using Arcanum.Engine.Players;
 using Arcanum.Engine.State;
 
 namespace Arcanum.Engine;
@@ -105,9 +106,24 @@ public sealed partial class Game
     /// Regeneration (701.19): if the permanent has a regeneration shield, the destruction is replaced: it's tapped, all damage is
     /// removed from it and it's removed from combat. Returns true if that happened.
     /// </summary>
-    private bool Regenerated(Card card, bool canBeRegenerated = true)
+    /// <summary>
+    /// Whether a destruction of <paramref name="card"/> is replaced: a regeneration shield is used (701.19), or, when an effect destroys it
+    /// (<paramref name="byEffect"/>), a shield counter is removed instead (rule 122.1c). When both could apply, its controller chooses which (616.1).
+    /// </summary>
+    private async Task<bool> SurvivesDestructionAsync(Card card, bool canBeRegenerated = true, bool byEffect = true)
     {
-        if (!canBeRegenerated || card.RegenerationShields <= 0 || card.Zone != Zone.Battlefield) return false;
+        if (card.Zone != Zone.Battlefield) return false;
+        bool shield = byEffect && card.CounterCount(CounterKind.Shield) > 0, regenerate = canBeRegenerated && card.RegenerationShields > 0;
+        if (shield && regenerate)
+            shield = await ControllerOf(card.Controller).ChooseOptionAsync(ViewFor(card.Controller), new OptionRequest($"{card.Name} would be destroyed: which applies?",
+                card.Id, new[] { "Remove a shield counter", "Regenerate" }, OptionKind.Other)) == 0;
+        if (shield)
+        {
+            RemoveCountersFrom(card, CounterKind.Shield, 1);
+            Emit(new ChoiceMade(card.Id, "a shield counter was removed instead"));
+            return true;
+        }
+        if (!regenerate) return false;
         card.RegenerationShields--;
         card.Damage = 0;
         card.DamagedByDeathtouch = false;

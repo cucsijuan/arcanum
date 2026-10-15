@@ -102,6 +102,16 @@ public sealed class Player
     public int CombatDamageTakenThisTurn { get; set; }
     public bool CombatDamagedByLegendaryThisTurn { get; set; }
 
+    /// <summary>The objects that dealt combat damage to this player this turn, and whether a Dragon did.</summary>
+    public HashSet<(CardId Card, int Version)> CombatDamageSourcesThisTurn { get; } = new();
+    public bool CombatDamagedByDragonThisTurn { get; set; }
+
+    /// <summary>A card left this player's graveyard this turn.</summary>
+    public bool CardLeftGraveyardThisTurn { get; set; }
+
+    /// <summary>This player put a counter on a creature this turn.</summary>
+    public bool PutCounterOnCreatureThisTurn { get; set; }
+
     /// <summary>Names of creatures that dealt combat damage to this player this game.</summary>
     public HashSet<string> CombatDamagedByNames { get; } = new();
 

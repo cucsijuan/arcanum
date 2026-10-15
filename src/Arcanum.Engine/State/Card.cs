@@ -134,6 +134,18 @@ public sealed class Card
     /// <summary>As a spell: cast from a graveyard (for "if this spell was cast from a graveyard").</summary>
     public bool CastFromGraveyard { get; set; }
 
+    /// <summary>As a permanent: the spell it was had been cast from a graveyard.</summary>
+    public bool EnteredCastFromGraveyard { get; set; }
+
+    /// <summary>As a spell: the greatest power among creatures its controller controlled as it was cast.</summary>
+    public int GreatestPowerAsCast { get; set; }
+
+    /// <summary>As a spell: cast from exile ("if this spell was cast from exile").</summary>
+    public bool CastFromExile { get; set; }
+
+    /// <summary>The turn this card was foretold (exiled face down from its owner's hand, rule 702.143a); -1 when it wasn't, as this object.</summary>
+    public int ForetoldTurn { get; set; } = -1;
+
     /// <summary>As a spell: the mana spent to cast it.</summary>
     public int ManaSpent { get; set; }
 
@@ -154,6 +166,9 @@ public sealed class Card
 
     /// <summary>The named option chosen as it entered ("Khans or Dragons").</summary>
     public string? ChosenOption { get; set; }
+
+    /// <summary>The number chosen as it entered ("as this enters, choose a number").</summary>
+    public int? ChosenNumber { get; set; }
 
     /// <summary>The chapter a read ahead Saga started on: chapters before it don't trigger (rule 702.155c).</summary>
     public int ReadAheadChapter { get; set; }
@@ -573,6 +588,18 @@ public sealed class Card
     /// <summary>Renowned (rule 702.112b): stays until it leaves the battlefield.</summary>
     public bool Renowned { get; set; }
 
+    /// <summary>Monstrous (rule 701.37b): stays until it leaves the battlefield.</summary>
+    public bool Monstrous { get; set; }
+
+    /// <summary>The turn a counter was last put on it, as this object (-1: never).</summary>
+    public int CounterPutTurn { get; set; } = -1;
+
+    /// <summary>Its blitz cost was paid (rule 702.152a): as a permanent, until it leaves the battlefield.</summary>
+    public bool Blitzed { get; set; }
+
+    /// <summary>As a spell: the creatures tapped to pay for it with convoke (rule 702.51c), as the objects they were.</summary>
+    public List<(CardId Card, int Version)> Convokers { get; set; } = new();
+
     /// <summary>Exerted: the turn it was exerted, and whether it skips its controller's next untap step (rule 701.39).</summary>
     public int ExertedTurn { get; set; } = -1;
     public bool SkipsNextUntap { get; set; }
@@ -620,6 +647,7 @@ public sealed class Card
                 CopiableValues = !IsCopy && IsDoubleFaced ? PrintedDefinition : Definition,
                 CopiableBackFaceUp = !IsCopy && IsDoubleFaced && Transformed,
                 Renowned = Renowned,
+                Blitzed = Blitzed,
                 HasTextAbilities = HasTextAbilities,
             };
             _lastKnownByVersion[Version] = LastKnownInfo;
@@ -661,6 +689,9 @@ public sealed class Card
         TimesKicked = 0;
         SquadPaid = 0;
         Renowned = false;
+        Monstrous = false;
+        Blitzed = false;
+        CounterPutTurn = -1;
         Suspended = false;
         ExertedTurn = -1;
         SkipsNextUntap = false;
@@ -682,7 +713,10 @@ public sealed class Card
         CastHalf = null;
         OnAdventure = false;
         ChosenParity = null;
+        ChosenNumber = null;
         CastFromGraveyard = false;
+        CastFromExile = false;
+        ForetoldTurn = -1;
         ManaSpent = 0;
         FormerHost = null;
         PaidWithTreasure = false;
@@ -720,6 +754,9 @@ public sealed record LastKnown(int Power, int Toughness, Core.PlayerId Controlle
 
     /// <summary>It was renowned (rule 702.112b).</summary>
     public bool Renowned { get; init; }
+
+    /// <summary>Its blitz cost had been paid (rule 702.152a).</summary>
+    public bool Blitzed { get; init; }
 
     /// <summary>It had the abilities of its rules text (it hadn't lost them, <see cref="Card.HasTextAbilities"/>).</summary>
     public bool HasTextAbilities { get; init; } = true;

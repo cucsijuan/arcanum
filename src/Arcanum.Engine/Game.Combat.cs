@@ -74,6 +74,7 @@ public sealed partial class Game
             {
                 var attacker = State.GetCard(d.Attacker);
                 combat.Declared.Add((attacker.Id, attacker.Version));
+                if (d.Planeswalker is null) combat.PlayersAttacked.Add((attacker.Controller, d.Defender));
                 if (!attacker.Has(Keyword.Vigilance))
                 {
                     Tap(attacker);
@@ -161,6 +162,9 @@ public sealed partial class Game
         foreach (var c in State.PermanentsControlledBy(defender))
             if (c.Definition.AttackTax is { } tax && c.HasTextAbilities && (c.Definition.AttackTaxIf is not { } cond || Holds(cond, defender, c))
                 && !(planeswalker is not null && c.Definition.AttackTaxPlayerOnly)) total = total.Plus(tax);
+        // "Until your next turn, creatures can't attack you unless their controller pays {2} for each of those creatures" (the player only).
+        if (planeswalker is null)
+            foreach (var temporary in State.AttackTaxesUntilNextTurn.Where(t => t.Protected == defender)) total = total.Plus(temporary.Tax);
         return total.ManaValue > 0 ? total : null;
     }
 
@@ -196,6 +200,7 @@ public sealed partial class Game
         && !(attacker.Has(Keyword.NonbasicLandwalk) && State.PermanentsControlledBy(blocker.Controller).Any(c => c.Is(CardType.Land) && (c.Supertypes & Supertype.Basic) == 0))
         && !(IsRingBearer(attacker, 1) && blocker.Power > attacker.Power) // the Ring, level 1
         && !(attacker.Has(Keyword.Skulk) && blocker.Power > attacker.Power) // skulk (702.118)
+        && !(attacker.Has(Keyword.Intimidate) && !blocker.Is(CardType.Artifact) && !blocker.Colors.Intersect(attacker.Colors).Any()) // intimidate (702.13b)
         && !(attacker.Definition.CantBeBlockedBy is { } restriction && attacker.HasTextAbilities
              && Matches(restriction with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, attacker, attacker.Controller))
         // "Can't be blocked by creatures with power 2 or less" / "can't be blocked except by Spirits" from an effect.
@@ -305,6 +310,7 @@ public sealed partial class Game
                 foreach (var aura in State.Battlefield.Select(State.GetCard).Where(e => e.AttachedTo == blocker).ToList())
                     Queue(aura.Id, Abilities.TriggerEvent.AttachedBlocks, aura.Controller, new TriggerInfo(blocker, State.GetCard(blocker).Version, State.GetCard(blocker).Controller));
         }
+        QueueUnblockedByOpponent(combat);
     }
 
     private bool CombatHasFirstStrike() =>

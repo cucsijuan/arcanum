@@ -60,7 +60,7 @@ public sealed partial class Game
             if (card.Is(CardType.Planeswalker) && card.CounterCount(Abilities.CounterKind.Loyalty) <= 0) toGraveyard.Add(card);
             // 704.5f: toughness 0 or less (even if indestructible); 704.5g, 704.5h: lethal damage or deathtouch damage.
             if (card.IsCreature && card.Toughness <= 0) died.Add(card);
-            else if (card.IsCreature && !card.Has(Keyword.Indestructible) && (card.Damage >= card.Toughness || card.DamagedByDeathtouch) && !Regenerated(card))
+            else if (card.IsCreature && !card.Has(Keyword.Indestructible) && (card.Damage >= card.Toughness || card.DamagedByDeathtouch) && !await SurvivesDestructionAsync(card, byEffect: false))
                 died.Add(card); // lethal damage destroys it (704.5g–h); a regeneration shield replaces that
         }
 

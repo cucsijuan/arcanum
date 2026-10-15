@@ -60,7 +60,11 @@ public sealed record ExileTop(Quantity Count, Subject Who) : HeroesEffect
 /// "When you next cast a creature spell this turn, it gains haste until end of turn" / "that creature enters with an additional +1/+1
 /// counter on it": applied to the next creature spell its controller casts this turn.
 /// </summary>
-public sealed record NextCreatureSpell(bool Haste, int Counters) : HeroesEffect;
+public sealed record NextCreatureSpell(bool Haste, int Counters) : HeroesEffect
+{
+    /// <summary>Only the next creature spell of this creature type ("when you next cast a Bird creature spell this turn"): one additional +1/+1 counter.</summary>
+    public string? Type { get; init; }
+}
 
 /// <summary>
 /// "Each player exiles the top card of their library. Until end of turn, you may play the card you own exiled this way and each other card

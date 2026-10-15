@@ -22,8 +22,14 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
     /// <summary>Crew N: tap untapped creatures you control with total power N or greater (rule 702.122).</summary>
     public int CrewPower { get; init; }
 
-    /// <summary>Remove N counters from among creatures you control.</summary>
+    /// <summary>Remove N counters from among creatures you control (or, with <see cref="RemoveCountersFrom"/>, among those permanents).</summary>
     public int RemoveCountersFromYourCreatures { get; init; }
+
+    /// <summary>The permanents you control the counters are removed from ("remove a counter from a nonland permanent you control").</summary>
+    public ObjectFilter? RemoveCountersFrom { get; init; }
+
+    /// <summary>"Mill N cards" as a cost (it can't be paid with fewer cards in the library, rule 701.13b).</summary>
+    public int Mill { get; init; }
 
     /// <summary>The discarded cards must match this ("discard a legendary card with the same name as …").</summary>
     public ObjectFilter? DiscardFilter { get; init; }

@@ -26,6 +26,10 @@ public sealed partial class Game
                 player.CoinFlipTurn = State.TurnNumber;
                 bool won = (first && Has(ctx.Controller, Replacements.FirstCoinFlipEachTurnWins)) || Rng.Next(2) == 0;
                 Emit(new ChoiceMade(ctx.Source.Id, won ? $"{player.Name} won the coin flip" : $"{player.Name} lost the coin flip"));
+                if (won)
+                    foreach (var (observer, abilities) in Observers().Where(o => o.Card.Controller == ctx.Controller))
+                        foreach (var ability in abilities.Where(a => a.Trigger == TriggerEvent.YouWinCoinFlip))
+                            AddPending(observer.Id, ability, observer.Controller, new TriggerInfo(Player: ctx.Controller));
                 await ApplyAllAsync(won ? flip.Won : flip.Lost, ctx);
                 break;
             }
@@ -302,6 +306,9 @@ public sealed partial class Game
                 break;
             case RevealOnePerCardType rt:
                 await RevealOnePerCardTypeAsync(rt.Count, ctx);
+                break;
+            case NextCreatureSpell { Type: { } type }:
+                State.NextCreatureSpellBonus.Add((ctx.Controller, type, State.TurnNumber));
                 break;
             case NextCreatureSpell next:
                 State.NextCreatureSpell.Add((ctx.Controller, State.TurnNumber, next.Haste, next.Counters));

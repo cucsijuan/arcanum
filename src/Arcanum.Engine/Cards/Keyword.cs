@@ -86,6 +86,17 @@ public enum Keyword
     CanBlockAdditional,
     /// <summary>"This creature can block only creatures with flying" (a blocking restriction, rule 509.1b).</summary>
     CanBlockOnlyFlyers,
+    /// <summary>Can't be blocked except by artifact creatures and/or creatures that share a color with it (rule 702.13).</summary>
+    Intimidate,
+    /// <summary>"Whenever this creature attacks, it gets +1/+1 until end of turn for each opponent you attacked with a creature this combat" (rule 702.121).</summary>
+    Melee,
+    /// <summary>
+    /// "Whenever a creature you control enters, if that creature's power and/or toughness is greater than this creature's, put a +1/+1
+    /// counter on this creature" (rule 702.100).
+    /// </summary>
+    Evolve,
+    /// <summary>"Whenever this creature attacks with another creature with greater power, put a +1/+1 counter on this creature" (rule 702.149).</summary>
+    Training,
 }
 
 public static class Keywords

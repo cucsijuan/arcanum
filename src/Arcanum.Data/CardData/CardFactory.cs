@@ -42,6 +42,8 @@ public static partial class CardFactory
         "Meld", // the script's "meld" effect, with "meldsWith" and "meldInto"
         "Boast", "Spectacle", "Overload", "Revolt", "Eminence", "Commander ninjutsu", "Ninjutsu", // scripted (activation limits, alternative costs)
         "Renown", // its trigger and the renowned designation come from the script (rule 702.112)
+        "Support", "Adapt", "Monstrosity", "Explore", "Connive", // keyword actions: the script's effects (targets for support)
+        "Blitz", // the script's "blitz" cost (with "blitzExtra", "blitzFromGraveyard")
         // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
         "Persist", "Undying", "Dethrone", "Hideaway", "Heal", "Aftermath",
         "Devour", "Multikicker", "Replicate", "Escalate", "Improvise", "Myriad", "Squad", "Dash", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
@@ -52,7 +54,7 @@ public static partial class CardFactory
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
     /// <remarks>Includes keywords whose rules this factory derives from rules text (Equip, Enchant).</remarks>
     public static ISet<string> SupportedKeywords { get; } =
-        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select" }).Concat(ScriptedKeywords),
+        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell" }).Concat(ScriptedKeywords),
             StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Why <see cref="Create"/> finds the card unsupported (for tools): each failed requirement, by face.</summary>
@@ -112,6 +114,7 @@ public static partial class CardFactory
             EntersWithCounters = script?.EntersWithCounters ?? 0,
             Kicker = derived.Kicker,
             Flashback = derived.Flashback,
+            Foretell = ForetellCost(record.OracleText),
             WardMana = derived.WardMana,
             WardLife = derived.WardLife,
             CantBeCountered = derived.CantBeCountered,
@@ -261,6 +264,7 @@ public static partial class CardFactory
             if (EntersTappedLine().IsMatch(line)) continue;
             if (KickerLine().IsMatch(line) || FlashbackLine().IsMatch(line) || WardLine().IsMatch(line) || line == "This spell can't be countered") continue;
             if (CyclingLine().IsMatch(line)) continue;
+            if (UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line)) continue;
             if (CommanderPairingLine().IsMatch(line)) continue;
             // A keyword line: "Flying" or "Flying, trample".
             if (line.Split(',').Select(k => k.Trim()).All(k => record.Keywords.Contains(k, StringComparer.OrdinalIgnoreCase) || WardLine().IsMatch(k))) continue;
@@ -358,6 +362,8 @@ public static partial class CardFactory
                 });
             }
             if (CyclingAbility(line) is { } cycling) abilities.Add(cycling);
+            if (UnearthAbility(line) is { } unearth) abilities.Add(unearth);
+            if (ForetellLine().Match(line) is { Success: true }) abilities.Add(ForetellAbility);
             if (PartnerWithAbility(line) is { } partnerWith) abilities.Add(partnerWith);
             var enchantMatch = EnchantLine().Match(line);
             if (enchantMatch.Success)
@@ -443,6 +449,46 @@ public static partial class CardFactory
             effect = new Engine.Abilities.SearchLibrary(filter, 1, Engine.State.Zone.Hand) { Reveal = true };
         }
         return new Engine.Abilities.ActivatedAbility { Cost = cost, Effects = new[] { effect }, Text = line };
+    }
+
+    /// <summary>"Foretell [cost]": the cost of casting the card from exile on a later turn after foretelling it.</summary>
+    private static ManaCost? ForetellCost(string oracleText) =>
+        ReminderText().Replace(oracleText, "").Split('\n').Select(l => ForetellLine().Match(WithoutLabel(l.Trim().TrimEnd('.'))))
+            .FirstOrDefault(m => m.Success) is { } m ? ManaCost.Parse(m.Groups[1].Value) : null;
+
+    /// <summary>
+    /// Foretelling (rule 702.143a): "During your turn, you may pay {2} and exile this card from your hand face down" — a special action,
+    /// any time its owner has priority during their turn.
+    /// </summary>
+    private static readonly Engine.Abilities.ActivatedAbility ForetellAbility = new()
+    {
+        Cost = new Engine.Abilities.AbilityCost(ManaCost.Parse("{2}")) { FromHand = true, ExileFaceDown = true },
+        SpecialAction = true,
+        ActivationCondition = new Engine.Abilities.YourTurn(),
+        Effects = Array.Empty<Engine.Abilities.Effect>(),
+        Text = "Foretell: pay {2} and exile this card from your hand face down.",
+    };
+
+    /// <summary>
+    /// "Unearth [cost]" (rule 702.84a): "[Cost]: Return this card from your graveyard to the battlefield. It gains haste. Exile it at the
+    /// beginning of the next end step. If it would leave the battlefield, exile it instead of putting it anywhere else. Activate only as a
+    /// sorcery."
+    /// </summary>
+    private static Engine.Abilities.ActivatedAbility? UnearthAbility(string line)
+    {
+        var m = UnearthLine().Match(line);
+        if (!m.Success) return null;
+        return new Engine.Abilities.ActivatedAbility
+        {
+            Cost = new Engine.Abilities.AbilityCost(ManaCost.Parse(m.Groups[1].Value)) { FromGraveyard = true },
+            SorcerySpeed = true,
+            Effects = new Engine.Abilities.Effect[]
+            {
+                new Engine.Abilities.PutOntoBattlefield(Engine.Abilities.Subject.Self) { ExileIfLeaves = true, AddKeywords = new[] { Engine.Cards.Keyword.Haste } },
+                new Engine.Abilities.AtNextEndStepAbout(Engine.Abilities.Subject.Self, new Engine.Abilities.Effect[] { new Engine.Abilities.ExileIt(Engine.Abilities.Subject.Triggered) }),
+            },
+            Text = line,
+        };
     }
 
     /// <summary>
@@ -560,6 +606,12 @@ public static partial class CardFactory
 
     [GeneratedRegex(@"^Kicker ((\{[0-9WUBRGC]+\})+)$")]
     private static partial Regex KickerLine();
+
+    [GeneratedRegex(@"^Foretell ((\{[0-9WUBRGC]+\})+)$")]
+    private static partial Regex ForetellLine();
+
+    [GeneratedRegex(@"^Unearth ((\{[0-9WUBRGC]+\})+)$")]
+    private static partial Regex UnearthLine();
 
     [GeneratedRegex(@"^Flashback ((\{[0-9WUBRGC]+\})+)$")]
     private static partial Regex FlashbackLine();

@@ -25,6 +25,12 @@ public sealed class CombatState
     /// <summary>Every creature declared as an attacker this combat, as the object it was (it "attacked" even if it left combat since).</summary>
     public List<(CardId Card, int Version)> Declared { get; } = new();
 
+    /// <summary>
+    /// Players attacked this combat, with the controller of a creature that attacked them (attacking a planeswalker isn't attacking
+    /// its controller): melee counts "each opponent you attacked with a creature this combat" (rule 702.121a).
+    /// </summary>
+    public HashSet<(PlayerId Attacker, PlayerId Defender)> PlayersAttacked { get; } = new();
+
     public AttackInfo? FindAttack(CardId attacker) => Attacks.Find(a => a.Attacker == attacker);
 
     public bool IsBlocking(CardId blocker) => Attacks.Exists(a => a.Blockers.Contains(blocker));

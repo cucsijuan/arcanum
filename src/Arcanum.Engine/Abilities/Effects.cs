@@ -106,7 +106,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
-    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point }
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect
@@ -185,6 +185,9 @@ public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool 
 /// </summary>
 public sealed record SearchLibrary(ObjectFilter Filter, int Count, State.Zone To, bool Tapped = false) : Effect
 {
+    /// <summary>"If [condition], you may put that card onto the battlefield tapped. If you don't, put it into your hand": decided once it's found.</summary>
+    public Condition? MayBattlefieldIf { get; init; }
+
     /// <summary>Up to this many instead of <see cref="Count"/> ("that many basic land cards").</summary>
     public Quantity? CountFrom { get; init; }
 
@@ -443,6 +446,12 @@ public sealed record BounceAll(ObjectFilter Filter, Subject? RelativeTo = null) 
 /// <summary>"You may [pay a cost]. If you do, [effects]."</summary>
 public sealed record MayPay(string Prompt, Mana.ManaCost? Mana, ExtraCost? Extra, IReadOnlyList<Effect> Effects) : Effect
 {
+    /// <summary>With <see cref="LifeFrom"/>: X may be 0 and paying 0 life still does the effects ("create a token and put X counters on it").</summary>
+    public bool PayZero { get; init; }
+
+    /// <summary>"Do this only once each turn": not offered again this turn once paid.</summary>
+    public bool OncePerTurn { get; init; }
+
     /// <summary>"You may sacrifice a Food or pay {2}{W}": the player pays one of these instead.</summary>
     public IReadOnlyList<CostOption>? Options { get; init; }
 
@@ -559,6 +568,9 @@ public sealed record ExileTopPlayable(int Count, bool ChooseOne = true, bool Unt
 {
     /// <summary>"You may play that card for as long as you control [this]."</summary>
     public bool WhileYouControlSource { get; init; }
+
+    /// <summary>"You may play that card until you exile another card with [this]".</summary>
+    public bool UntilAnotherExiled { get; init; }
 
     /// <summary>"Mana of any type can be spent to cast those spells."</summary>
     public bool AnyManaType { get; init; }
@@ -737,7 +749,11 @@ public sealed record CopySpell(Subject What, Quantity Count) : Effect
 }
 
 /// <summary>Add one mana of any color (the controller chooses).</summary>
-public sealed record AddManaOfAnyColor(int Count = 1) : Effect;
+public sealed record AddManaOfAnyColor(int Count = 1) : Effect
+{
+    /// <summary>The player who adds the mana (and chooses its color): "target player adds one mana of any color". Default: you.</summary>
+    public Subject? Who { get; init; }
+}
 
 /// <summary>Put cards exiled by this permanent ("with it") into their owners' hands.</summary>
 public sealed record ReturnExiledWithThis : Effect
@@ -759,6 +775,9 @@ public sealed record GrantFlashback(Subject What) : Effect;
 /// <summary>"You may cast the target card from your graveyard this turn."</summary>
 public sealed record PlayableFromGraveyardThisTurn(Subject What) : Effect
 {
+    /// <summary>"You may cast a spell from among those cards": one of them only (casting one ends the permission for the others).</summary>
+    public bool OneOnly { get; init; }
+
     /// <summary>"If that spell would be put into your graveyard, exile it instead": a spell cast with this permission gets that replacement.</summary>
     public bool ExileInstead { get; init; }
 }
@@ -777,7 +796,11 @@ public sealed record AtPlayersNextEndStep(Subject Whose, TriggeredAbility Abilit
 public sealed record MoveCounterOfEachMissingKind(Subject From, Subject To) : Effect;
 
 /// <summary>"Move one or more counters from [from] onto [to]. If you do, [then]".</summary>
-public sealed record MoveChosenCounters(Subject From, Subject To, IReadOnlyList<Effect> Then) : Effect;
+public sealed record MoveChosenCounters(Subject From, Subject To, IReadOnlyList<Effect> Then) : Effect
+{
+    /// <summary>"Move a counter": exactly one counter (of a kind the player chooses), when there is one.</summary>
+    public bool Single { get; init; }
+}
 
 /// <summary>"Remove it from combat" (rule 506.4).</summary>
 public sealed record RemoveFromCombat(Subject What) : Effect;
@@ -817,6 +840,9 @@ public sealed record ReflexiveTrigger(TriggeredAbility Ability, Condition? If = 
 
     /// <summary>The reflexive ability knows the cards the effect found ("you may attach one of them").</summary>
     public bool CarryFound { get; init; }
+
+    /// <summary>The cards this spell or ability exiled go with the reflexive ability ("target creature card exiled this way": filter "amongFound").</summary>
+    public bool CarryExiled { get; init; }
 }
 
 /// <summary>
@@ -1016,8 +1042,14 @@ public sealed record TapAnyNumber(ObjectFilter Filter) : Effect;
 /// <summary>An opponent chooses: <paramref name="IfYes"/> when they agree to <paramref name="Prompt"/>, otherwise <paramref name="IfNo"/>.</summary>
 public sealed record OpponentChooses(string Prompt, IReadOnlyList<Effect> IfYes, IReadOnlyList<Effect> IfNo) : Effect;
 
-/// <summary>Exile the target card, copy it, and you may cast the copy without paying its mana cost.</summary>
-public sealed record CastCopyOfExiled(Subject What) : Effect;
+/// <summary>
+/// Exile the target card, copy it, and you may cast the copy without paying its mana cost — or, with <see cref="Cost"/>, "by paying [cost]
+/// rather than paying its mana cost".
+/// </summary>
+public sealed record CastCopyOfExiled(Subject What) : Effect
+{
+    public Mana.ManaCost? Cost { get; init; }
+}
 
 /// <summary>"Choose a player with the most life or tied for most life. [Subject] can't be blocked by creatures that player controls this turn."</summary>
 public sealed record UnblockableByMostLifePlayer(Subject What) : Effect;
@@ -1099,7 +1131,11 @@ public sealed record ExileTopFaceDown(Subject Whose) : Effect;
 public sealed record PlayOneExiledWithThisFree : Effect;
 
 /// <summary>"Put those counters on [this]": the counters the object a trigger is about had as it left the battlefield.</summary>
-public sealed record TakeCountersOfTriggered : Effect;
+public sealed record TakeCountersOfTriggered : Effect
+{
+    /// <summary>The permanent the counters go on instead of the source ("put those counters on target permanent you control").</summary>
+    public Subject? Onto { get; init; }
+}
 
 /// <summary>"Move all counters from [this] onto [target]".</summary>
 public sealed record MoveAllCounters(Subject From, Subject To) : Effect;
@@ -1149,6 +1185,12 @@ public sealed record ChooseAnOpponent : Effect;
 /// <summary>"[Chooser] chooses a [filter]": the chosen objects are "the chosen [objects]" for the effects after it.</summary>
 public sealed record ChooseObjects(Subject Chooser, ObjectFilter Filter, bool Optional = false) : Effect
 {
+    /// <summary>"For each opponent, choose [a permanent] that player controls": one choice for each opponent, among what they control.</summary>
+    public bool PerOpponent { get; init; }
+
+    /// <summary>How many each chooser chooses ("each of up to two Soldiers you control": 2 with <see cref="Optional"/>).</summary>
+    public int Count { get; init; } = 1;
+
     /// <summary>Choose among these only ("put a stun counter on one of them": the targets).</summary>
     public Subject? Among { get; init; }
 }

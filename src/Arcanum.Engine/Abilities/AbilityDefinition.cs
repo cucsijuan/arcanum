@@ -48,6 +48,9 @@ public abstract record AbilityDefinition
     /// <summary>"You may choose the same mode more than once."</summary>
     public bool ModesMayRepeat { get; init; }
 
+    /// <summary>"Choose one at random": the mode is picked at random among those that can be chosen (rule 700.2).</summary>
+    public bool RandomMode { get; init; }
+
     /// <summary>One more mode may be chosen if this holds as it is cast ("if you control a Wizard, you may choose two instead").</summary>
     public Condition? ExtraModeIf { get; init; }
 
@@ -133,6 +136,9 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>Activated from the hand by discarding this card (cycling, rule 702.29).</summary>
     public bool FromHand { get; init; }
 
+    /// <summary>With <see cref="FromHand"/>: exiling this card from the hand face down is part of the cost instead (foretell, rule 702.143a).</summary>
+    public bool ExileFaceDown { get; init; }
+
     /// <summary>{S} symbols: each paid with one mana from a snow source (rule 107.4h).</summary>
     public int SnowMana { get; init; }
 
@@ -149,6 +155,9 @@ public sealed record ActivatedAbility : AbilityDefinition
 
     /// <summary>"Activate only as a sorcery."</summary>
     public bool SorcerySpeed { get; init; }
+
+    /// <summary>A special action (rule 116), not an activated ability: done at once when the costs are paid, without using the stack.</summary>
+    public bool SpecialAction { get; init; }
 
     /// <summary>"Activate only once each turn."</summary>
     public bool OncePerTurn { get; init; }
@@ -189,6 +198,9 @@ public sealed record SpellCostReduction(ObjectFilter Spells, int Amount) : Abili
     /// <summary>Only the first such spell each turn ("the first creature spell you cast each turn").</summary>
     public bool FirstOfTurn { get; init; }
 
+    /// <summary>Only the Nth spell its controller casts each turn ("the second spell you cast each turn costs {2} less"), counting every spell.</summary>
+    public int? NthOfTurn { get; init; }
+
     /// <summary>Those spells can also be cast as though they had flash.</summary>
     public bool GrantsFlash { get; init; }
 }
@@ -223,6 +235,15 @@ public enum TriggerEvent
     YouGainLife,
     /// <summary>"Whenever you cast a [noncreature / instant or sorcery / ...] spell" — matched against the filter.</summary>
     YouCastSpell,
+    /// <summary>"Whenever you cast or copy an instant or sorcery spell" (magecraft): your spells as they're cast and the copies you make.</summary>
+    YouCastOrCopySpell,
+    /// <summary>"Whenever you win a coin flip".</summary>
+    YouWinCoinFlip,
+    /// <summary>
+    /// "Whenever one or more creatures an opponent controls attack you and aren't blocked": once blockers are declared, once for each
+    /// opponent with an unblocked creature attacking you (not your planeswalkers); <c>"triggeredPlayer"</c> is that opponent.
+    /// </summary>
+    AttackedUnblockedByOpponent,
     /// <summary>"At the beginning of combat on your turn".</summary>
     YourBeginCombat,
     /// <summary>"Whenever you attack" (one or more creatures you control attack).</summary>
@@ -442,6 +463,9 @@ public sealed record TriggeredAbility : AbilityDefinition
     /// <summary>For <see cref="TriggerEvent.CountersPlaced"/>: only counters put on the source itself.</summary>
     public bool OnSelf { get; init; }
 
+    /// <summary>For <see cref="TriggerEvent.CountersPlaced"/>: once for each counter ("whenever a +1/+1 counter is put on …"), not once per event.</summary>
+    public bool PerCounter { get; init; }
+
     /// <summary>"This ability triggers only once each turn."</summary>
     public bool OncePerTurn { get; init; }
 
@@ -572,6 +596,9 @@ public sealed record ObjectFilter(
     /// <summary>A spell cast from a graveyard / a permanent that entered from a graveyard.</summary>
     public bool FromGraveyard { get; init; }
 
+    /// <summary>A permanent that entered from a graveyard or was cast from a graveyard.</summary>
+    public bool EnteredOrCastFromGraveyard { get; init; }
+
     /// <summary>A spell cast from its owner's hand.</summary>
     public bool CastFromHand { get; init; }
 
@@ -620,6 +647,24 @@ public sealed record ObjectFilter(
     /// <summary>Owned by a player other than the ability's controller ("a permanent owned by another player").</summary>
     public bool NotOwnedByYou { get; init; }
 
+    /// <summary>Owned by the ability's controller ("your commander": a commander you own, whoever controls it).</summary>
+    public bool OwnedByYou { get; init; }
+
+    /// <summary>Controlled by an opponent of this player (a filter fixed when an effect is created: "creatures your opponents control").</summary>
+    public Core.PlayerId? OpponentOf { get; init; }
+
+    /// <summary>One of the cards a reflexive ability carries ("target creature card exiled this way").</summary>
+    public bool AmongFound { get; init; }
+
+    /// <summary>A permanent that entered the battlefield this turn ("target commander that entered this turn").</summary>
+    public bool EnteredThisTurn { get; init; }
+
+    /// <summary>Attacked this turn ("a creature … that attacked this turn").</summary>
+    public bool AttackedThisTurn { get; init; }
+
+    /// <summary>Modified (rule 700.9): it has a counter on it, or is equipped, or is enchanted by an Aura its controller controls.</summary>
+    public bool Modified { get; init; }
+
     /// <summary>Not the object the trigger is about ("for each other creature you control" than the attacking one).</summary>
     public bool NotTriggered { get; init; }
 
@@ -636,6 +681,9 @@ public sealed record ObjectFilter(
 
     /// <summary>A creature with the greatest power among creatures its controller controls ("a creature with the greatest power among creatures they control").</summary>
     public bool GreatestPowerAmongItsController { get; init; }
+
+    /// <summary>A creature with the greatest mana value among creatures its controller controls.</summary>
+    public bool GreatestManaValueAmongItsController { get; init; }
 
     /// <summary>Is in this zone ("from your graveyard", "exiled card").</summary>
     public State.Zone? InZone { get; init; }

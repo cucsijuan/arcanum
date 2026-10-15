@@ -27,6 +27,8 @@ public enum TargetKind
     Ability,
     /// <summary>"Target spell or nonland permanent": a spell on the stack or a permanent.</summary>
     SpellOrPermanent,
+    /// <summary>"Target spell, nonland permanent, or card in a graveyard" (the filter applies to the spells and permanents; any graveyard card).</summary>
+    SpellPermanentOrGraveyardCard,
     /// <summary>A card in a graveyard ("target creature card from your graveyard": controller filter = owner).</summary>
     GraveyardCard,
     /// <summary>A card in exile ("target creature card exiled with [this]": controller filter = owner).</summary>
@@ -140,6 +142,12 @@ public enum SubjectKind
     FixedPlayer,
     /// <summary>In a granted ability: the controller of the spell or ability that granted it (bound when granted).</summary>
     Granter,
+    /// <summary>The opponents who discarded their hand this way ("each opponent who discarded their hand this way").</summary>
+    OpponentsWhoDiscardedHand,
+    /// <summary>Every object a "one or more" trigger is about, as the objects they are now ("one of them").</summary>
+    Batch,
+    /// <summary>The controller of the source ("your graveyard" inside "each opponent …", where "you" is that opponent).</summary>
+    SourceController,
     /// <summary>In a granted ability: the permanent that grants it.</summary>
     GranterPermanent,
     /// <summary>The Army this spell or ability amassed ("the amassed Army").</summary>
@@ -156,6 +164,8 @@ public enum SubjectKind
     AttackersOfTriggered,
     /// <summary>Every attacking creature.</summary>
     Attackers,
+    /// <summary>The creatures that convoked this spell (rule 702.51c), each as the object it was when tapped.</summary>
+    Convokers,
     /// <summary>The player chosen by the last "choose an opponent" of this spell or ability; and that player with you.</summary>
     ChosenPlayer,
     YouAndChosenPlayer,

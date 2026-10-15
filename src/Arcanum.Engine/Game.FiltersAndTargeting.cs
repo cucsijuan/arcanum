@@ -26,6 +26,12 @@ public sealed partial class Game
             && !State.FlashbackGranted.Any(f => f.Card == obj.Id && f.Version == obj.Version)) return false;
         if (filter.PowerNotEqualToughness && power == toughness) return false;
         if (filter.NotOwnedByYou && obj.Owner == sourceController) return false;
+        if (filter.OwnedByYou && obj.Owner != sourceController) return false;
+        if (filter.AttackedThisTurn && obj.AttacksThisTurn == 0) return false;
+        if (filter.AmongFound && !(_triggeredFound?.Contains(obj.Id) ?? false)) return false;
+        if (filter.EnteredThisTurn && !(obj.Zone == Zone.Battlefield && obj.ZoneChangedTurn == State.TurnNumber)) return false;
+        if (filter.OpponentOf is { } fixedPlayer && !State.OpponentsOf(fixedPlayer).Contains(obj.Controller)) return false;
+        if (filter.Modified && !IsModified(obj)) return false;
         // "Each other creature": a different object from the one the trigger is about (the same card back as a new object counts, rule 400.7).
         if (filter.NotTriggered && _triggeredSubject is { } about && obj.Id == about && obj.Version == _triggeredSubjectVersion) return false;
         if (filter.MaxManaValueX && (_announcedX < 0 || ManaValueOf(obj) > _announcedX)) return false;

@@ -229,6 +229,15 @@ public sealed partial class Game
             if (part.ToPlayer is { } player && State.OpponentsOf(player).Contains(SourceController(source)))
                 foreach (var seraph in State.PermanentsControlledBy(player).Where(c => (c.Replaces & Replacements.PreventOneDamageFromOpponentsSources) != 0))
                     Add(new DamageModifier("prevent1", $"prevent1:{seraph.Id}", $"Prevent 1 of it ({seraph.Name})", n => { notePrevented(Math.Min(1, n)); return n - 1; }) { PlainPrevention = true });
+            // A shield counter (rule 122.1c): "If damage would be dealt to this permanent, prevent that damage and remove a shield counter from it."
+            if (part.ToCard is { } shielded && shielded.CounterCount(CounterKind.Shield) > 0)
+                Add(new DamageModifier("shield", $"shield:{shielded.Id}", $"Prevent it and remove a shield counter ({shielded.Name})", n =>
+                {
+                    if (shielded.CounterCount(CounterKind.Shield) <= 0) return n;
+                    notePrevented(n);
+                    RemoveCountersFrom(shielded, CounterKind.Shield, 1);
+                    return 0;
+                }) { PlainPrevention = true });
             // "If damage would be dealt to this creature, prevent that damage and remove that many +1/+1 counters from it."
             if (part.ToCard is { } hydra && (hydra.Replaces & Replacements.PreventDamageRemoveCounters) != 0)
                 Add(new DamageModifier("removeCounters", $"removeCounters:{hydra.Id}", $"Prevent it and remove that many +1/+1 counters ({hydra.Name})", n =>

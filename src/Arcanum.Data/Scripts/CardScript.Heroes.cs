@@ -27,7 +27,10 @@ public static partial class CardScriptParser
                 PlayableDuringLoreTurns = e.TryGetProperty("playableDuringLoreTurns", out var pdl) && pdl.GetBoolean(),
             };
         if (e.TryGetProperty("nextCreatureSpell", out var ncs))
-            return new NextCreatureSpell(ncs.TryGetProperty("haste", out var nh) && nh.GetBoolean(), ncs.TryGetProperty("counters", out var nc) ? nc.GetInt32() : 0);
+            return new NextCreatureSpell(ncs.TryGetProperty("haste", out var nh) && nh.GetBoolean(), ncs.TryGetProperty("counters", out var nc) ? nc.GetInt32() : 0)
+            {
+                Type = ncs.TryGetProperty("type", out var nt) ? nt.GetString() : null,
+            };
         if (e.TryGetProperty("eachExilesTopPlayLesser", out _)) return new EachExilesTopPlayLesser();
         if (e.TryGetProperty("removeCounterFromAnyNumber", out var rca))
             return new RemoveCounterFromAnyNumber(ParseFilter(rca, ControllerFilter.You), ParseCounterKind(e.TryGetProperty("kind", out var rck) ? rck.GetString() : null));

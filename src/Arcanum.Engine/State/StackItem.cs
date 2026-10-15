@@ -31,6 +31,9 @@ public abstract record StackItem(PlayerId Controller, IReadOnlyList<ChosenTarget
     /// <summary>Cards discarded to pay its costs (for "if the discarded card was a creature card").</summary>
     public IReadOnlyList<CardId> DiscardedForCost { get; init; } = Array.Empty<CardId>();
 
+    /// <summary>Cards exiled from a graveyard to pay its costs ("the exiled cards").</summary>
+    public IReadOnlyList<CardId> ExiledForCost { get; init; } = Array.Empty<CardId>();
+
     /// <summary>The card the spell is, or the source of the ability.</summary>
     public abstract CardId SourceCard { get; }
 }
@@ -57,6 +60,9 @@ public sealed record SpellOnStack(CardId Card, PlayerId Controller, IReadOnlyLis
 
     /// <summary>Cast for its dash cost (rule 702.109).</summary>
     public bool Dashed { get; init; }
+
+    /// <summary>Its blitz cost was paid (rule 702.152); a copy copies that (707.10).</summary>
+    public bool Blitzed { get; init; }
 }
 
 public sealed record AbilityOnStack(CardId Source, AbilityDefinition Ability, PlayerId Controller, IReadOnlyList<ChosenTarget> ChosenTargets)
@@ -97,6 +103,9 @@ public sealed record TriggerInfo(CardId? Subject = null, int SubjectVersion = 0,
     /// attacked), the "defending player" once the creature is no longer attacking (rule 508.5).
     /// </summary>
     public PlayerId? Defender { get; init; }
+
+    /// <summary>For a "one or more" (batched) trigger: every object of the event, as the objects they are now ("one of them").</summary>
+    public List<(CardId Card, int Version)>? Batch { get; init; }
 
     /// <summary>For a reflexive ability: the cards the effect that created it found ("one of them").</summary>
     public IReadOnlyList<CardId>? Found { get; init; }

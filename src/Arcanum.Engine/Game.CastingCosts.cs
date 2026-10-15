@@ -17,7 +17,7 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>What a spell is cast for (rule 118.9): its mana cost or one alternative cost.</summary>
-    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload }
+    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold }
 
     /// <summary>
     /// One way to pay for casting a card: the cost it's cast for (its mana cost, or the flashback or miracle cost it's being
@@ -42,6 +42,8 @@ public sealed partial class Game
         public ManaCost? Tier { get; init; }
         /// <summary>Artifacts tapped for improvise (rule 702.126): kept out of the mana payment.</summary>
         public IReadOnlyCollection<CardId> Improvised { get; init; } = Array.Empty<CardId>();
+        /// <summary>Creatures tapped for convoke (rule 702.51): kept out of the mana payment.</summary>
+        public IReadOnlyCollection<CardId> Convoked { get; init; } = Array.Empty<CardId>();
         public IReadOnlyList<Card> Spliced { get; init; } = Array.Empty<Card>();
         public bool Conspire { get; init; }
         public int X { get; init; }
@@ -62,6 +64,8 @@ public sealed partial class Game
             return life;
         }
         if (_miracleCost.TryGetValue(card.Id, out var miracle)) return new() { new(CastingWayKind.ManaCost, miracle) };
+        // A foretold card: cast on a later turn for its foretell cost (702.143a), unless something else lets it be cast from exile.
+        if (Foretold(card) && !PlayableExile(caster).Contains(card.Id)) return new() { new(CastingWayKind.Foretold, card.Definition.Foretell!) };
         if (card.Zone == Zone.Graveyard && card.Definition.Flashback is { } flashback && !State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version))
         {
             if (card.Definition.FlashbackReduction is { } reduction)
@@ -70,6 +74,13 @@ public sealed partial class Game
         }
         var ways = new List<CastingWay> { new(CastingWayKind.ManaCost, card.Definition.ManaCost) };
         if (card.Zone == Zone.Hand && card.Definition.Dash is { } dash) ways.Add(new(CastingWayKind.Dash, dash)); // 702.109a
+        if (card.Definition.Blitz is { } blitz && (card.Zone == Zone.Hand || BlitzFromGraveyard(card)))
+        {
+            // 702.152a; "you may cast this card from your graveyard using its blitz ability": only that way, unless something else allows it.
+            if (card.Zone == Zone.Graveyard && !GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0)
+                return new() { new(CastingWayKind.Blitz, blitz) };
+            ways.Add(new(CastingWayKind.Blitz, blitz));
+        }
         if (card.Definition.Overload is { } overload) ways.Add(new(CastingWayKind.Overload, overload)); // 702.96a
         if (card.Definition.AlternativeCost is { } alt && (alt.If is null || Holds(alt.If, caster, card))) ways.Add(new(CastingWayKind.Alternative, alt.Cost));
         if (card.Zone == Zone.Hand && Has(caster, Replacements.CastFromHandFree)) ways.Add(new(CastingWayKind.WithoutPaying, ManaCost.Zero));
@@ -92,7 +103,8 @@ public sealed partial class Game
         for (int i = 0; i < c.KickCount; i++) cost = cost.Plus(card.Definition.Multikicker!);
         for (int i = 0; i < c.ReplicateCount; i++) cost = cost.Plus(card.Definition.Replicate!);
         for (int i = 0; i < c.SquadCount; i++) cost = cost.Plus(card.Definition.Squad!);
-        for (int i = 0; i < c.EscalatedModes; i++) cost = cost.Plus(card.Definition.Escalate!);
+        if (card.Definition.Escalate is { } escalate)
+            for (int i = 0; i < c.EscalatedModes; i++) cost = cost.Plus(escalate);
         if (c.Tier is { } tier) cost = cost.Plus(tier);
         foreach (var other in c.Spliced) cost = cost.Plus(other.Definition.Splice!);
         foreach (var taxer in State.Battlefield.Select(State.GetCard))
@@ -132,6 +144,14 @@ public sealed partial class Game
         var costs = new List<ExtraCost?> { card.Definition.AdditionalCost, c.Option?.Extra, c.Kicked ? card.Definition.KickerExtra : null };
         if (card.Zone == Zone.Graveyard) costs.Add(GraveyardCost(card));
         if (c.Way.Kind == CastingWayKind.Alternative) costs.Add(card.Definition.AlternativeCost?.Extra);
+        if (c.Way.Kind == CastingWayKind.Blitz) costs.Add(card.Definition.BlitzExtra);
+        // A non-mana escalate cost, once for each mode beyond the first (702.120a).
+        if (card.Definition.EscalateExtra is { } escalate && c.EscalatedModes > 0)
+            costs.Add(escalate with
+            {
+                Discard = escalate.Discard * c.EscalatedModes, SacrificeCount = escalate.SacrificeCount * c.EscalatedModes,
+                PayLife = escalate.PayLife * c.EscalatedModes, TapCount = escalate.TapCount * c.EscalatedModes,
+            });
         if (IsFlashbackCast(card))
         {
             costs.Add(card.Definition.FlashbackExtra);
@@ -155,6 +175,7 @@ public sealed partial class Game
         if (graveyard < 0) return false;
         if (c.Conspire && ConspireCandidates(card, caster).Count < 2) return false;
         if (card.Definition.Delve) total = total.MinusGeneric(graveyard); // 702.66a
+        if (card.Definition.Convoke && total.ManaValue > 0) return CanPayWithConvoke(card, caster, c, total);
         if (card.Definition.Improvise && total.Generic > 0)
         {
             // 702.126a: each artifact tapped this way pays for {1}; try the artifacts that don't make mana first.
@@ -263,6 +284,7 @@ public sealed partial class Game
             if (candidates.Count - manaCreatures.Count < 2) reserved.UnionWith(manaCreatures.Select(s => s.Id));
         }
         reserved.UnionWith(c.Improvised);
+        reserved.UnionWith(c.Convoked);
         return reserved.Count == 0 ? usable : (source, o) => !reserved.Contains(source.Id) && usable(source, o);
     }
 
@@ -275,6 +297,7 @@ public sealed partial class Game
             var question = ways[1].Kind switch
             {
                 CastingWayKind.Dash => $"Cast {card.Name} for its dash cost {ways[1].Mana}?",
+                CastingWayKind.Blitz => $"Cast {card.Name} for its blitz cost {BlitzCostText(card)}?",
                 CastingWayKind.Overload => $"Cast {card.Name} for its overload cost {ways[1].Mana}?",
                 CastingWayKind.WithoutPaying => card.Definition.ManaCost.XCount > 0 ? $"Cast {card.Name} without paying its mana cost (X = 0)?" : $"Cast {card.Name} without paying its mana cost?",
                 _ => $"Pay {ways[1].Mana} instead of the mana cost?",
@@ -285,6 +308,8 @@ public sealed partial class Game
         {
             CastingWayKind.ManaCost => $"Pay its mana cost {w.Mana}",
             CastingWayKind.Dash => $"Dash {w.Mana}",
+            CastingWayKind.Blitz => $"Blitz {BlitzCostText(card)}",
+            CastingWayKind.Foretold => $"Foretell cost {w.Mana}",
             CastingWayKind.Overload => $"Overload {w.Mana}",
             CastingWayKind.WithoutPaying => "Without paying its mana cost",
             _ => $"Pay {w.Mana} instead of the mana cost",

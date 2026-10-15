@@ -440,7 +440,9 @@ public sealed partial class Game
         var meldPartnerLeaving = from == Zone.Battlefield && card.MeldPartner is { } leavingPartner ? leavingPartner : null;
         // A promised gift stays known to the permanent a spell becomes ("when it enters, they draw a card", rule 702.174).
         var giftTo = from == Zone.Stack && to == Zone.Battlefield && card.GiftPromised ? card.GiftTo : null;
+        bool castFromGraveyard = from == Zone.Stack && to == Zone.Battlefield && card.CastFromGraveyard;
         card.ResetStatus();
+        card.EnteredCastFromGraveyard = castFromGraveyard;
         card.GiftPromised = giftTo is not null;
         card.GiftTo = giftTo;
         // A double-faced card enters front face up unless it's put onto the battlefield transformed (rule 712.14).
@@ -488,7 +490,7 @@ public sealed partial class Game
                 card.BaseController = card.Controller;
                 card.AttachedTo = attachTo;
                 // Replacement effects that modify how the permanent enters (rule 614.1c).
-                if (tapped || card.Definition.EntersTapped) card.Tapped = true;
+                if (tapped || card.Definition.EntersTapped || (from == Zone.Stack && State.EntersTappedFromStack.Remove((id, card.Version - 1)))) card.Tapped = true;
                 if (card.Definition.EntersTappedUnless is { } unless && !Holds(unless, card.Controller, card)) card.Tapped = true;
                 if (card.IsCreature && OpponentsCreaturesEnterTapped(card.Controller)) card.Tapped = true;
                 // "Lands you control enter untapped" (it wins over "enters tapped": its controller applies it last, rule 616.1).
@@ -521,7 +523,8 @@ public sealed partial class Game
                 }
                 State.Battlefield.Add(id);
                 if (card.IsCreature && ExtraEnterCounters(card) is var extraCounters and > 0) enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, extraCounters));
-                if (card.Definition.ChooseOnEnter != Cards.EnterChoice.None || card.Definition.Devour > 0) State.PendingEnterChoices.Add((id, card.Version));
+                if (card.Definition.ChooseOnEnter != Cards.EnterChoice.None || card.Definition.Devour > 0 || card.Definition.EntersRemovingCountersFrom is not null)
+                    State.PendingEnterChoices.Add((id, card.Version));
                 break;
             case Zone.Stack:
                 card.Controller = controller ?? card.Owner;

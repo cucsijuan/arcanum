@@ -154,6 +154,9 @@ public sealed partial class Game
                     State.GetPlayer(hurtPlayer).CombatDamageTakenThisTurn += dealt.Amount;
                     if (State.GetCard(dealt.Source) is { IsCreature: true } hitter && (hitter.Supertypes & Cards.Supertype.Legendary) != 0)
                         State.GetPlayer(hurtPlayer).CombatDamagedByLegendaryThisTurn = true;
+                    var damager = State.GetCard(dealt.Source);
+                    State.GetPlayer(hurtPlayer).CombatDamageSourcesThisTurn.Add((damager.Id, damager.Version));
+                    if (damager.HasSubtype("Dragon")) State.GetPlayer(hurtPlayer).CombatDamagedByDragonThisTurn = true;
                 }
                 if (dealt.IsCombat && State.GetCard(dealt.Source).IsCreature) State.GetPlayer(hurtPlayer).CombatDamagedByNames.Add(State.GetCard(dealt.Source).Name);
                 break;
@@ -162,6 +165,14 @@ public sealed partial class Game
                 break;
             case CardMoved { From: Zone.Battlefield } left:
                 State.GetPlayer(left.LastController).PermanentLeftThisTurn = true;
+                break;
+            case CardMoved { From: Zone.Graveyard } fromGraveyard:
+                State.GetPlayer(fromGraveyard.Owner).CardLeftGraveyardThisTurn = true;
+                break;
+            case CountersPlaced { Count: > 0 } placed:
+                var counted = State.GetCard(placed.Card);
+                counted.CounterPutTurn = State.TurnNumber;
+                if (placed.By is { } placer && counted.IsCreature) State.GetPlayer(placer).PutCounterOnCreatureThisTurn = true;
                 break;
             case PermanentSacrificed ps:
                 State.PermanentsSacrificedThisTurn++;
