@@ -227,6 +227,32 @@ public class AbilityTests
     }
 
     [Fact]
+    public async Task TriggerWithNoLegalTargetsIsRemovedAndSaidSo()
+    {
+        // The martyr's dies trigger needs a creature its controller's opponent controls; P0 has none.
+        var martyr = Creature("Martyr", 1, 1) with
+        {
+            Abilities = new AbilityDefinition[]
+            {
+                new TriggeredAbility
+                {
+                    Trigger = TriggerEvent.Dies, Text = "When this creature dies, it deals 1 damage to target creature an opponent controls.",
+                    Targets = new[] { new TargetSpec(TargetKind.Creature, ControllerFilter.Opponent) },
+                    Effects = new Effect[] { new DealDamage(1, Subject.TargetAt(0)) },
+                },
+            },
+        };
+        var s = WithCaster(r => r.Legal[0].First(t => t.Card is not null));
+        s.Lands(P0, 1);
+        s.InHand(P0, Bolt);
+        var victim = s.Add(P1, martyr);
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(victim).Zone);
+        Assert.Contains(s.Game.Log, e => e is TriggerRemovedNoTargets r && r.Source == victim && r.Controller == P1);
+        Assert.DoesNotContain(s.Game.Log, e => e is AbilityTriggered t && t.Source == victim);
+    }
+
+    [Fact]
     public async Task ActivatedTapAbilityPingsAndUsesTheStack()
     {
         var pinger = Creature("Pinger", 1, 1) with

@@ -185,10 +185,12 @@ public sealed partial class DeckList
         return CardData.CardDatabase.WithTokenArt(card, token =>
         {
             var kind = CardData.CardDatabase.TokenKind(token);
-            if (!_tokenPicks.TryGetValue(kind, out var pick))
+            // Tokens of one kind with different keyword abilities (a flying and a plain 1/1 Insect) look different.
+            var pickKey = $"{kind}|{string.Join(",", token.KeywordAbilities.Order())}";
+            if (!_tokenPicks.TryGetValue(pickKey, out var pick))
             {
                 var chosen = TokenArt.TryGetValue(kind, out var list) && list.Count > 0 ? list : cards.TokenArts(token).Select(a => a.Id).ToList();
-                _tokenPicks[kind] = pick = chosen.Count > 0 ? chosen[Random.Shared.Next(chosen.Count)] : null;
+                _tokenPicks[pickKey] = pick = chosen.Count > 0 ? chosen[Random.Shared.Next(chosen.Count)] : null;
             }
             return pick;
         });

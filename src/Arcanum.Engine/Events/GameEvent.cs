@@ -41,6 +41,8 @@ public sealed record AbilityTriggered(PlayerId Controller, CardId Source, string
 public sealed record AbilityResolved(CardId Source, string Text) : GameEvent;
 /// <summary>A spell or ability whose targets all became illegal does nothing (rule 608.2b).</summary>
 public sealed record FizzledOnResolution(CardId Source) : GameEvent;
+/// <summary>A triggered ability with no legal targets is removed from the stack instead of being put on it (rule 603.3d).</summary>
+public sealed record TriggerRemovedNoTargets(PlayerId Controller, CardId Source, string Text) : GameEvent;
 public sealed record SpellCountered(CardId Card) : GameEvent;
 /// <param name="By">The player whose spell, ability or cost put them (null: not known).</param>
 /// <summary>Counters were removed from a permanent.</summary>

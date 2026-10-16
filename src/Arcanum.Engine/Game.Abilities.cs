@@ -6089,7 +6089,11 @@ public sealed partial class Game
                 _triggeredSubjectVersion = trigger.Info?.SubjectVersion ?? 0;
                 _triggeredDefender = trigger.Info?.Defender;
                 _triggeredFound = trigger.Info?.Found;
-                if (!HasLegalTargets(trigger.Ability, player, trigger.Source)) continue;
+                if (!HasLegalTargets(trigger.Ability, player, trigger.Source))
+                {
+                    Emit(new TriggerRemovedNoTargets(player, trigger.Source, trigger.Ability.Text));
+                    continue;
+                }
                 // Miracle: revealing the card is optional; the ability triggers only if it's revealed (702.94a).
                 if (ReferenceEquals(trigger.Ability, MiracleTrigger))
                 {

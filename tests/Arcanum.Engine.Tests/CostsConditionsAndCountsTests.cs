@@ -211,6 +211,22 @@ public partial class ScriptedVocabularyTests
     }
 
     [Fact]
+    public async Task ASacrificeCostCanBeBackedOutOfBeforeAnythingIsPaid()
+    {
+        var s = new Scenario();
+        var bear = s.Add(P0, Scenario.Creature("Bear", 2, 2));
+        s.Add(P0, Activated("Altar", """[{ "gainLife": 1 }]""", "sacrifice:creature"));
+        Acting(s);
+        CardChoiceRequest? asked = null;
+        s.Attacker.Choose = (_, request) => { asked = request; return Array.Empty<CardId>(); }; // the player cancels
+        await s.RunUntilTurn();
+        Assert.True(asked is { CanCancel: true, Purpose: CardChoicePurpose.Sacrifice });
+        Assert.Equal(Zone.Battlefield, s.Card(bear).Zone);
+        Assert.Equal(20, LifeOf(s, P0));
+        Assert.DoesNotContain(s.Game.Log, e => e is Events.AbilityActivated);
+    }
+
+    [Fact]
     public async Task OnlyNontokenCreaturesAreExiledInsteadOfDying()
     {
         var s = new Scenario();

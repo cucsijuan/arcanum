@@ -211,15 +211,16 @@ public sealed class CardDatabase : ICardDatabase
     // ---------------------------------------------------------------- token pictures
 
     /// <summary>
-    /// Every picture a token can be shown with: the printings of the tokens of its name with its power, toughness and
-    /// colors (or, when none matches, of the token printing it already shows), oldest first.
+    /// Every picture a token can be shown with: the printings of the tokens of its name with its power, toughness,
+    /// colors and keyword abilities (or, when none matches, of the token printing it already shows), oldest first.
     /// </summary>
     public IReadOnlyList<TokenArt> TokenArts(CardDefinition token)
     {
         if (!_tokensByName.TryGetValue(token.Name, out var named)) return Array.Empty<TokenArt>();
         var colors = token.ColorList.OrderBy(c => c).ToList();
         bool Same(CardRecord r) => r.Power == token.Power?.ToString() && r.Toughness == token.Toughness?.ToString()
-                                   && r.Colors.OrderBy(c => c).SequenceEqual(colors);
+                                   && r.Colors.OrderBy(c => c).SequenceEqual(colors)
+                                   && Engine.Cards.Keywords.ParseAll(r.Keywords).SetEquals(token.KeywordAbilities);
         var matching = named.Where(Same).ToList();
         if (matching.Count == 0) matching = named.Where(r => r.DefaultPrintingId == token.ImageKey || r.Printings.Any(p => p.Id == token.ImageKey)).ToList();
         return matching

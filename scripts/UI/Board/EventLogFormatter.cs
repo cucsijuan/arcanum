@@ -34,6 +34,7 @@ public static class EventLogFormatter
             AbilityActivated a => $"{P(a.Player)} activates {C(a.Source)}: {a.Text}",
             AbilityTriggered t => $"{C(t.Source)} triggers: {t.Text}",
             FizzledOnResolution f => $"{C(f.Source)} does nothing (no legal targets).",
+            TriggerRemovedNoTargets r => $"{C(r.Source)} triggers but has no legal targets: {r.Text}",
             SpellCountered c => $"{C(c.Card)} is countered.",
             TokenCreated t => $"{P(t.Controller)} creates a {C(t.Card)} token.",
             PermanentDestroyed d when !IsCreature(d.Card) => $"{C(d.Card)} is destroyed.",

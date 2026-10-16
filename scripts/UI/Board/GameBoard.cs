@@ -91,6 +91,7 @@ public partial class GameBoard : Control
     private readonly List<ManaTap> _staged = new();  // sources picked for an unconfirmed payment
     private ManaSourceOption? _comboSource;          // a source whose mana combination is being chosen
     private CardId? _abilityChoiceSource;              // permanent with several abilities waiting for a choice
+    private (PriorityDecision Decision, PlayerAction Action, string Name)? _legendConfirm; // a second legendary permanent waiting for "cast anyway"
     private readonly List<Arcanum.Engine.Abilities.Target> _chosenTargets = new(); // targets picked so far
     private readonly VBoxContainer _actionExtra = new();
     private readonly Dictionary<CardId, int> _damageSplit = new(); // blocker -> damage, for an unconfirmed assignment
@@ -640,6 +641,39 @@ public partial class GameBoard : Control
 
     private PlayerArea AreaOf(PlayerId player) => _areas[player.Value];
 
+    private readonly Dictionary<Control, MouseFilterEnum> _phaseBarFilters = new();
+
+    /// <summary>
+    /// A raised permanent whose attached cards reach under the phase bar: the bar steps behind them and lets the mouse
+    /// through, so they can be seen and pointed at; it comes back once the permanent is put back.
+    /// </summary>
+    private void OnGroupLifted(IReadOnlyList<CardNode>? group)
+    {
+        if (group is not null)
+        {
+            var bar = _phaseBar.GetGlobalRect();
+            if (_phaseBarFilters.Count > 0 || !group.Any(n => IsInstanceValid(n) && n.GetGlobalRect().Intersects(bar))) return;
+            void Pass(Control c)
+            {
+                _phaseBarFilters[c] = c.MouseFilter;
+                c.MouseFilter = MouseFilterEnum.Ignore;
+                foreach (var child in c.GetChildren().OfType<Control>()) Pass(child);
+            }
+            Pass(_phaseBar);
+            _phaseBar.ZIndex = 0;
+            return;
+        }
+        // Later, after the mouse has moved on: pointing from the permanent to a card under it raises the group again.
+        Callable.From(() =>
+        {
+            if (_phaseBarFilters.Count == 0 || _areas.Any(a => a.HasLiftedGroup)) return;
+            foreach (var (control, filter) in _phaseBarFilters)
+                if (IsInstanceValid(control)) control.MouseFilter = filter;
+            _phaseBarFilters.Clear();
+            _phaseBar.ZIndex = BoardStyle.Z.PhaseBar;
+        }).CallDeferred();
+    }
+
     private CardNode? FindCard(CardId id) => _areas.Select(a => a.FindCard(id)).FirstOrDefault(n => n is not null);
 
     /// <summary>A card shown on top of a pile (a commander that can be cast from the command zone...).</summary>
@@ -683,6 +717,7 @@ public partial class GameBoard : Control
             area.PlayerClicked += OnPlayerClicked;
             area.CardHoverStarted += ShowPreview;
             area.CardHoverEnded += HidePreview;
+            area.GroupLiftChanged += OnGroupLifted;
             AddChild(area);
             MoveChild(area, 1 + i); // above the background, below arrows and overlays
             _areas.Add(area);
@@ -783,6 +818,7 @@ public partial class GameBoard : Control
             _pendingGroup.Clear();
             ClosePicker();
             _abilityChoiceSource = null;
+            _legendConfirm = null;
             _chosenTargets.Clear();
             _chosenModes.Clear();
             _number = decision is ChooseNumberDecision nd ? nd.Request.Max : 0;
@@ -1154,6 +1190,26 @@ public partial class GameBoard : Control
         _arrows.SetArrows(arrows);
     }
 
+    /// <summary>
+    /// Takes an action at priority. Casting a legendary permanent with the name of one the player already controls first
+    /// asks "cast it anyway?": the legend rule (704.5j) would make them keep only one.
+    /// </summary>
+    private void Choose(PriorityDecision p, PlayerAction action)
+    {
+        var view = _session.ViewFor(p.Player);
+        static bool Legendary(CardView c) => (c.Supertypes & Arcanum.Engine.Cards.Supertype.Legendary) != 0;
+        if (action is CastSpell { Adventure: false, Half: null } cast && view.FindCard(cast.Card) is { } card && Legendary(card)
+            && Arcanum.Engine.Cards.CardTypeExtensions.IsPermanent(card.Types)
+            && view.Battlefield.Any(c => c.Controller == p.Player && c.Name == card.Name && Legendary(c)))
+        {
+            _legendConfirm = (p, action, card.Name);
+            _abilityChoiceSource = null;
+            Refresh();
+            return;
+        }
+        p.Answer(action);
+    }
+
     private Control? TargetControl(Arcanum.Engine.Abilities.Target target) =>
         target.Card is { } c ? FindCard(c) : target.Player is { } p ? AreaOf(p).LifeBox : null;
 
@@ -1174,6 +1230,12 @@ public partial class GameBoard : Control
                 AddButton("Keep", () => m.Answer(true), primary: true);
                 break;
 
+            case PriorityDecision p when _legendConfirm is { } legend && legend.Decision == p:
+                _prompt.Text = $"{who}: you already control {legend.Name}. With two, you keep one and the other goes to the graveyard. Cast it anyway?";
+                AddButton("Cancel", () => { _legendConfirm = null; Refresh(); });
+                AddButton("Cast anyway", () => { _legendConfirm = null; p.Answer(legend.Action); }, primary: true);
+                break;
+
             case PriorityDecision p when _abilityChoiceSource is { } source:
             {
                 var card = view.FindCard(source);
@@ -1191,7 +1253,7 @@ public partial class GameBoard : Control
                         ActivateAbility a when card is not null && a.Index < card.AbilityTexts.Count => Shorten(card.AbilityTexts[a.Index]),
                         _ => "Activate",
                     };
-                    AddButton(label, () => p.Answer(option));
+                    AddButton(label, () => Choose(p, option));
                 }
                 break;
             }
@@ -1422,7 +1484,7 @@ public partial class GameBoard : Control
                             => (a.Source, $"{g.Name}: {Shorten(a.Index < g.AbilityTexts.Count ? g.AbilityTexts[a.Index] : "activate")}"),
                         _ => (default(CardId?), ""),
                     };
-                    if (id is not null) AddChoiceButton(label, () => p.Answer(action));
+                    if (id is not null) AddChoiceButton(label, () => Choose(p, action));
                 }
                 // Only the active player ends the turn; during someone else's turn the player can only pass priority.
                 if (view.ActivePlayer == decision.Player)
@@ -1529,6 +1591,8 @@ public partial class GameBoard : Control
             case ChooseCardsDecision c:
             {
                 _prompt.Text = $"{who}: {c.Request.Prompt}";
+                // A cost chosen before anything is paid: backing out cancels the spell or ability.
+                if (c.Request.CanCancel) AddButton("Cancel", () => c.Answer(Array.Empty<CardId>()));
                 var done = AddButton(ChoiceConfirmText(_selected.Count, c.Request), () => c.Answer(_selected.ToList()), primary: true);
                 done.Disabled = _selected.Count < c.Request.Min || _selected.Count > c.Request.Max;
                 break;
@@ -1724,7 +1788,7 @@ public partial class GameBoard : Control
                 _drag = null;
                 drag.Node.IsDragging = false;
                 bool cancelled = drag.Dragging && drag.Area.IsOverHand(release.GlobalPosition);
-                if (!cancelled && !drag.Decision.IsAnswered) drag.Decision.Answer(drag.Action);
+                if (!cancelled && !drag.Decision.IsAnswered) Choose(drag.Decision, drag.Action);
                 else Refresh(); // dropped back onto the hand: snap into place
                 break;
         }
@@ -2024,7 +2088,7 @@ public partial class GameBoard : Control
                     _drag = new DragState { Node = node, Area = area, Start = GetGlobalMousePosition(), Decision = p, Action = options[0] };
                     return;
                 }
-                if (options.Count == 1) { p.Answer(options[0]); return; }
+                if (options.Count == 1) { Choose(p, options[0]); return; }
                 if (options.Count > 1) _abilityChoiceSource = id; // several options (a card and its Adventure, cycling, abilities) open a chooser
                 break;
             }
@@ -2289,6 +2353,13 @@ public partial class GameBoard : Control
             case AbilityTriggered t when _session.Announces(t.Controller):
                 AnnounceStackObject(ev, t.Controller, t.Source, "\u2014 triggered:", t.Text);
                 break;
+            case TriggerRemovedNoTargets r:
+                _announcer.Enqueue(new($"{(r.Controller == Bottom ? "Your" : $"{PlayerName(r.Controller)}'s")} {ev.Name(r.Source)} triggers, but there are no legal targets\n{r.Text}",
+                    ViewOf(ev, r.Source), 2.5));
+                break;
+            case FizzledOnResolution f:
+                _announcer.Enqueue(new($"{ev.Name(f.Source)} does nothing: its targets are no longer legal", ViewOf(ev, f.Source), 2));
+                break;
             case AttackerDeclared a when ev.Card(a.Attacker) is { } attacker && _session.Announces(attacker.Controller):
                 _pendingAttacks.Add(ev);
                 QueueCombatFlush();
@@ -2397,7 +2468,12 @@ public partial class GameBoard : Control
             case DamageDealt { IsCombat: true } combat:
                 QueueStrike(ev, combat); // shown blow by blow
                 break;
+            // A permanent dealing damage outside combat (a triggered or activated ability) strikes at what it hits too.
+            case DamageDealt d when ViewOf(ev, d.Source) is { Zone: Arcanum.Engine.State.Zone.Battlefield } && FindCard(d.Source) is not null:
+                QueueStrike(ev, d);
+                break;
             case DamageDealt { TargetCard: { } card } d when FindCard(card) is { } node:
+                Burst(node.GetGlobalTransform() * (node.Size / 2));
                 SpawnFloatingText($"-{d.Amount}", node.GetGlobalTransform() * (node.Size / 2), BoardStyle.Attacking);
                 break;
             case LifeChanged { NewLife: var now, OldLife: var before } l when now > before:
@@ -2405,6 +2481,7 @@ public partial class GameBoard : Control
                 break;
             case DamageDealt { TargetPlayer: { } player } d:
                 var area = AreaOf(player);
+                Burst(area.LifeGlobalCenter);
                 // Beside the counter and rising only a little, so it stays on screen for the top player too.
                 SpawnFloatingText($"-{d.Amount}", area.LifeGlobalCenter + new Vector2(0, 62), BoardStyle.Attacking, rise: 30);
                 area.FlashLife(BoardStyle.Attacking);

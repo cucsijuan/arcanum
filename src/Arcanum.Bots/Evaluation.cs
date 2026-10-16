@@ -45,7 +45,7 @@ public static class Evaluation
     public static bool TargetIsHarmed(AbilityDefinition ability, int index)
     {
         bool harmful = false, helpful = false;
-        foreach (var effect in ability.Effects)
+        foreach (var effect in Unwrapped(ability.Effects))
         {
             if (!RefersToTarget(effect, index)) continue;
             if (IsHarmful(effect)) harmful = true; else helpful = true;
@@ -74,6 +74,29 @@ public static class Evaluation
         || aura.Abilities.OfType<TriggeredAbility>().SelectMany(t => t.Effects)
             .Any(e => (IsHarmful(e) || e is RemoveAllCounters or GainControl) && SubjectOf(e) is { Kind: SubjectKind.Attached });
 
+    /// <summary>The effects with those inside "you may …" and "if …" ones (they are applied to the same targets).</summary>
+    public static IEnumerable<Effect> Unwrapped(IEnumerable<Effect> effects)
+    {
+        foreach (var effect in effects)
+        {
+            var inner = effect switch
+            {
+                MayDo m => m.Effects, MayPay m => m.Effects, MayPayX m => m.Effects,
+                IfThen i => i.Else is { } e ? i.Then.Concat(e) : i.Then,
+                _ => null,
+            };
+            if (inner is null) yield return effect;
+            else foreach (var e in Unwrapped(inner)) yield return e;
+        }
+    }
+
+    /// <summary>
+    /// How much a permanent is worth to the player who controls it: a creature by <see cref="CreatureValue"/>, anything
+    /// else by its mana value and abilities (more when it's attached to a creature, like an Equipment or Aura).
+    /// </summary>
+    public static double PermanentValue(CardView c) =>
+        c.Power is not null ? CreatureValue(c) : ManaValue(c.ManaCost) + c.AbilityTexts.Count + (c.AttachedTo is not null ? 2 : 0) - (c.IsToken ? 1 : 0);
+
     public static bool RefersToTarget(Effect effect, int index) =>
         effect is DealDamageDivided or DealDamageDividedEvenly // among all the targets
         || SubjectOf(effect) is { Kind: SubjectKind.Target } s && s.Index == index
@@ -88,9 +111,14 @@ public static class Evaluation
         RemoveAllCounters r => r.What, GainControl g => g.What, DestroyOneAtRandom d => d.Among, Discard d => d.Who, _ => null,
     };
 
-    /// <summary>Damage an ability deals to target <paramref name="index"/>, if any.</summary>
-    public static int DamageTo(AbilityDefinition ability, int index) =>
-        ability.Effects.OfType<DealDamage>().Where(d => d.To.Kind == SubjectKind.Target && d.To.Index == index).Sum(d => d.Amount.Estimate);
+    /// <summary>Damage an ability deals to target <paramref name="index"/>, if any (<paramref name="x"/>: the X it would have, when known).</summary>
+    public static int DamageTo(AbilityDefinition ability, int index, int? x = null) =>
+        Unwrapped(ability.Effects).OfType<DealDamage>().Where(d => d.To.Kind == SubjectKind.Target && d.To.Index == index)
+            .Sum(d => d.Amount.Kind == QuantityKind.X && x is { } value ? value * d.Amount.Multiplier : d.Amount.Estimate);
+
+    /// <summary>Whether an ability deals damage to target <paramref name="index"/>.</summary>
+    public static bool DamagesTarget(AbilityDefinition ability, int index) =>
+        Unwrapped(ability.Effects).OfType<DealDamage>().Any(d => d.To.Kind == SubjectKind.Target && d.To.Index == index);
 
     public static int ManaValue(string? cost)
     {

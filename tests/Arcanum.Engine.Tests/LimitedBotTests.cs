@@ -181,4 +181,20 @@ public class BotBlockingTests
         Assert.NotNull(chosen);
         Assert.Empty(chosen!);
     }
+
+    [Fact]
+    public async Task ItDoesntDoubleBlockAFirstStrikerThatKillsTheBlockerThatThreatensIt()
+    {
+        // A 2/2 first striker blocked by a 1/1 and a 2/2 kills the 2/2 first and survives the 1/1: no block is worth it.
+        var s = new Scenario();
+        s.Add(Scenario.P0, Creature("Duelist", 2, 2, Cards.Keyword.FirstStrike));
+        s.Add(Scenario.P1, Creature("Squire", 1, 1));
+        s.Add(Scenario.P1, Creature("Bear", 2, 2));
+        s.Attacker.Attack = (_, attackers, defenders) => attackers.Select(a => new Players.AttackDeclaration(a, defenders[0])).ToList();
+        IReadOnlyList<Players.BlockDeclaration>? blocks = null;
+        s.Defender.Block = (view, _, _) => blocks = Arcanum.Bots.BotController.PlanBlocks(view, s.Defender.LastBlockRequest!);
+        await s.RunUntilTurn();
+        Assert.NotNull(blocks);
+        Assert.Empty(blocks!);
+    }
 }
