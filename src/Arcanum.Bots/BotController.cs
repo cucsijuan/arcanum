@@ -127,8 +127,27 @@ public sealed class BotController : IPlayerController
     private static string ColorLetter(string color) => color switch { "Blue" => "U", _ => color[..1] };
 
     /// <summary>Use everything available for X; a loyalty cost of −X keeps the planeswalker alive.</summary>
-    public Task<int> ChooseNumberAsync(GameView view, NumberRequest request) =>
-        Task.FromResult(request.Prompt.Contains("loyalty counters", StringComparison.Ordinal) ? Math.Max(request.Min, request.Max - 1) : request.Max);
+    public Task<int> ChooseNumberAsync(GameView view, NumberRequest request)
+    {
+        int chosen = request.Prompt.Contains("loyalty counters", StringComparison.Ordinal) ? Math.Max(request.Min, request.Max - 1) : request.Max;
+        if (request.Source is { } source) _announcedX[source] = chosen; // X is announced before targets (rule 601.2b)
+        return Task.FromResult(chosen);
+    }
+
+    /// <summary>The X the spell or ability being judged or targeted has, when known (null: planned as a rough 2).</summary>
+    private int? _x;
+
+    /// <summary>The last number each source announced (its X), for choosing its targets.</summary>
+    private readonly Dictionary<CardId, int> _announcedX = new();
+
+    /// <summary>The largest X a spell with this cost could have now: our untapped lands and floating mana, less the rest of the cost.</summary>
+    private int AffordableX(GameView view, string cost)
+    {
+        int xs = 0;
+        for (int i = cost.IndexOf("{X}", StringComparison.Ordinal); i >= 0; i = cost.IndexOf("{X}", i + 3, StringComparison.Ordinal)) xs++;
+        int mana = view.Battlefield.Count(c => c.Controller == _me && !c.Tapped && (c.Types & CardType.Land) != 0) + view.Self.ManaPoolTotal;
+        return Math.Max(0, (mana - (ManaValue(cost) - xs)) / Math.Max(1, xs)); // ManaValue counts each {X} as 1
+    }
 
     public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request)
     {
@@ -274,7 +293,9 @@ public sealed class BotController : IPlayerController
             double score = 0;
             if (rules.Spell is { } spell)
             {
+                _x = card.ManaCost?.Contains("{X}") == true ? AffordableX(view, card.ManaCost) : null;
                 score = SpellScore(view, spell);
+                _x = null;
                 // Tricks (pump our own creature) are for combat, not the main phase.
                 if (spell.Effects.All(e => !IsHarmful(e)) && spell.Targets.Count > 0) score = 0;
                 // An Adventure is worth a little more: the card can still be cast from exile afterwards.
@@ -334,11 +355,12 @@ public sealed class BotController : IPlayerController
             return best.Value - cost;
         }
         if (!TargetIsHarmed(spell, 0)) return spell.Effects.OfType<DrawCards>().Sum(d => 1.5 * d.Count.Estimate);
+        if (DamagesTarget(spell, 0) && DamageTo(spell, 0, _x) <= 0) return 0; // an X of 0 does nothing
         var target = BestHarmTarget(view, spell, 0, LegalHarmTargets(view, spell.Targets[0]));
         if (target is null) return 0;
         if (target.Value.Player is { } facePlayer)
         {
-            int damage = DamageTo(spell, 0);
+            int damage = DamageTo(spell, 0, _x);
             return damage >= view.Players[facePlayer.Value].Life ? 100 : 0; // burn to the face only to finish a player
         }
         return view.FindCard(target.Value.Card!.Value) is { } victim ? 1 + CreatureValue(victim) : 0;
@@ -501,6 +523,13 @@ public sealed class BotController : IPlayerController
     public Task<IReadOnlyList<Target>?> ChooseTargetsAsync(GameView view, TargetRequest request)
     {
         var ability = FindAbility(view, request);
+        _x = _announcedX.TryGetValue(request.Source, out var announced) ? announced : null;
+        try { return Task.FromResult(ChooseTargets(view, request, ability)); }
+        finally { _x = null; }
+    }
+
+    private IReadOnlyList<Target>? ChooseTargets(GameView view, TargetRequest request, AbilityDefinition? ability)
+    {
         var chosen = new List<Target>();
         int specIndex(int i) => Math.Min(i, request.Specs.Count - 1);
         for (int i = 0; ; i++)
@@ -522,14 +551,16 @@ public sealed class BotController : IPlayerController
             }
             if (real.Count == 0)
             {
-                if (allowed.Count == 0) return Task.FromResult<IReadOnlyList<Target>?>(request.CanCancel ? null : chosen.Append(request.LegalAt(i)[0]).ToList());
+                if (allowed.Count == 0) return request.CanCancel ? null : chosen.Append(request.LegalAt(i)[0]).ToList();
                 chosen.Add(Target.None);
                 continue;
             }
             Target pick;
             if (ability is not null && TargetIsHarmed(ability, specIndex(i)))
             {
-                pick = BestHarmTarget(view, ability, specIndex(i), real) ?? real[0];
+                // Only our own things to aim it at: the one we'd miss least (a "you may" effect is then declined).
+                pick = BestHarmTarget(view, ability, specIndex(i), real)
+                       ?? real.OrderBy(t => t.Card is { } c && view.FindCard(c) is { } own ? PermanentValue(own) : double.MaxValue).First();
             }
             else
             {
@@ -540,7 +571,8 @@ public sealed class BotController : IPlayerController
             if (!request.IsAllowed(i, pick, chosen)) pick = real[0];
             chosen.Add(pick);
         }
-        return Task.FromResult<IReadOnlyList<Target>?>(chosen);
+        if (ability is not null) _lastTargets[request.Source] = (ability, chosen);
+        return chosen;
     }
 
     private AbilityDefinition? FindAbility(GameView view, TargetRequest request)
@@ -594,7 +626,7 @@ public sealed class BotController : IPlayerController
     private Target? BestHarmTarget(GameView view, AbilityDefinition ability, int index, IEnumerable<Target> legal)
     {
         var options = legal.ToList();
-        int damage = DamageTo(ability, index);
+        int damage = DamageTo(ability, index, _x);
         var creatures = options
             .Where(t => t.Card is { } c && view.FindCard(c) is { } card && card.Controller != _me)
             .Select(t => (Target: t, Card: view.FindCard(t.Card!.Value)!))
@@ -614,7 +646,7 @@ public sealed class BotController : IPlayerController
             if (face.Player is not null) return face;
             return killable.Card is not null ? killable.Target : null;
         }
-        var best = creatures.OrderByDescending(x => Weight(x.Card)).FirstOrDefault();
+        var best = creatures.OrderByDescending(x => x.Card.Power is null ? PermanentValue(x.Card) : Weight(x.Card)).FirstOrDefault();
         if (best.Card is not null) return best.Target;
         var opponent = options.FirstOrDefault(t => t.Player is { } pl && pl != _me);
         return opponent.Player is not null ? opponent : null;
@@ -759,14 +791,13 @@ public sealed class BotController : IPlayerController
                 if (killsAttacker && !dies) return false;                                         // bad trade for us
                 if (killsAttacker && dies && CreatureValue(attacker) > CreatureValue(b) + 1) return false; // we'd lose more
             }
-        // Two blockers that kill it while it takes down at most one of them, worth clearly less.
+        // Two blockers that kill it while losing clearly less than it is worth.
         for (int i = 0; i < able.Count; i++)
             for (int j = i + 1; j < able.Count; j++)
             {
                 var pair = new[] { able[i], able[j] };
                 if (!Kills(attacker, pair)) continue;
-                double lost = pair.Where(b => Dies(b, attacker)).Select(CreatureValue).DefaultIfEmpty(0).Max();
-                if (lost + 1 < CreatureValue(attacker)) return false;
+                if (MostLost(attacker, pair) + 1 < CreatureValue(attacker)) return false;
             }
         return true;
     }
@@ -810,23 +841,48 @@ public sealed class BotController : IPlayerController
         by.Count == 0 ? a.Power ?? 0
         : Has(a, "Trample") ? Math.Max(0, (a.Power ?? 0) - by.Sum(b => Has(a, "Deathtouch") ? 1 : Math.Max(0, RemainingToughness(b)))) : 0;
 
-    /// <summary>Whether these blockers together destroy the attacker (a first striker kills what it can before they hit back).</summary>
+    /// <summary>
+    /// Whether these blockers together destroy the attacker. A first striker kills blockers before they hit back, and it
+    /// picks which ones: the blockers kill it only if every way it can spend its first-strike damage leaves enough of them.
+    /// </summary>
     private static bool Kills(CardView a, IReadOnlyList<CardView> by)
     {
-        var hitting = by.ToList();
-        if (Has(a, "First strike") || Has(a, "Double strike"))
-        {
-            int strike = a.Power ?? 0;
-            foreach (var b in by.Where(b => !Has(b, "First strike") && !Has(b, "Double strike")).OrderBy(RemainingToughness))
-            {
-                int need = Has(a, "Deathtouch") ? 1 : RemainingToughness(b);
-                if (strike < need) break;
-                strike -= need;
-                hitting.Remove(b);
-            }
-        }
         if (Has(a, "Indestructible")) return false;
-        return hitting.Any(b => Has(b, "Deathtouch") && (b.Power ?? 0) > 0) || hitting.Sum(b => b.Power ?? 0) >= RemainingToughness(a);
+        bool HitBack(IEnumerable<CardView> hitting) =>
+            hitting.Any(b => Has(b, "Deathtouch") && (b.Power ?? 0) > 0) || hitting.Sum(b => b.Power ?? 0) >= RemainingToughness(a);
+        if (!Has(a, "First strike") && !Has(a, "Double strike")) return HitBack(by);
+        var exposed = by.Where(b => !Has(b, "First strike") && !Has(b, "Double strike")).ToList();
+        return KillableSets(a, exposed, a.Power ?? 0).All(killed => HitBack(by.Except(killed)));
+    }
+
+    /// <summary>Damage the attacker must assign to a blocker to destroy it (none can if it's indestructible).</summary>
+    private static int LethalNeed(CardView a, CardView b) =>
+        Has(b, "Indestructible") ? int.MaxValue : Has(a, "Deathtouch") && (a.Power ?? 0) > 0 ? 1 : Math.Max(0, RemainingToughness(b));
+
+    /// <summary>Every set of these blockers that <paramref name="damage"/> points of the attacker's damage can destroy (the empty set too).</summary>
+    private static IEnumerable<List<CardView>> KillableSets(CardView a, IReadOnlyList<CardView> blockers, int damage)
+    {
+        var list = blockers.Take(10).ToList();
+        for (int mask = 0; mask < 1 << list.Count; mask++)
+        {
+            var set = list.Where((_, i) => (mask & (1 << i)) != 0).ToList();
+            if (set.Sum(b => (long)LethalNeed(a, b)) <= damage) yield return set;
+        }
+    }
+
+    /// <summary>
+    /// What a group of blockers loses: the most valuable set the attacker can destroy with its damage (twice its power
+    /// with double strike); nothing if first-striking blockers destroy it before it deals damage.
+    /// </summary>
+    private static double MostLost(CardView a, IReadOnlyList<CardView> by)
+    {
+        bool attackerFirst = Has(a, "First strike") || Has(a, "Double strike");
+        var firstStrikers = by.Where(b => Has(b, "First strike") || Has(b, "Double strike")).ToList();
+        if (!attackerFirst && !Has(a, "Indestructible") && firstStrikers.Count > 0
+            && (firstStrikers.Any(b => Has(b, "Deathtouch") && (b.Power ?? 0) > 0) || firstStrikers.Sum(b => b.Power ?? 0) >= RemainingToughness(a)))
+            return 0;
+        int damage = (a.Power ?? 0) * (Has(a, "Double strike") ? 2 : 1);
+        return KillableSets(a, by, damage).Select(set => set.Sum(CreatureValue)).DefaultIfEmpty(0).Max();
     }
 
     /// <summary>Whether a blocker dies to the attacker's damage.</summary>
@@ -917,8 +973,8 @@ public sealed class BotController : IPlayerController
                     {
                         var pair = new[] { able[i], able[j] };
                         if (!Kills(a, pair)) continue;
-                        // The attacker kills at most one of them (it assigns its damage); count the one we'd lose.
-                        double lost = pair.Where(b => Dies(b, a)).Select(CreatureValue).DefaultIfEmpty(0).Max();
+                        // The attacker spends its damage on what it can destroy; count the most we'd lose.
+                        double lost = MostLost(a, pair);
                         if (lost < CreatureValue(a) && lost < bestCost) { bestCost = lost; bestPair = (able[i], able[j]); }
                     }
                 if (bestPair is { } p2) Assign(a, new[] { p2.Item1, p2.Item2 });
@@ -927,8 +983,38 @@ public sealed class BotController : IPlayerController
         return assigned;
     }
 
-    /// <summary>Always takes the commander back to the command zone; no other yes/no choices exist yet.</summary>
-    public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) => Task.FromResult(true);
+    /// <summary>
+    /// Says yes (the commander goes back to the command zone, optional effects are done), except to a "you may" effect
+    /// that would hurt our own permanent or us: one we had to target because nothing else was legal.
+    /// </summary>
+    public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) =>
+        Task.FromResult(!(request.Card is { } source && HurtsOwnTarget(view, source, request.Prompt)));
+
+    /// <summary>The targets last chosen for each source's ability, to judge its "you may" choice as it resolves.</summary>
+    private readonly Dictionary<CardId, (AbilityDefinition Ability, IReadOnlyList<Target> Targets)> _lastTargets = new();
+
+    private bool HurtsOwnTarget(GameView view, CardId source, string prompt)
+    {
+        if (!_lastTargets.TryGetValue(source, out var last)) return false;
+        var may = MayEffects(last.Ability.Effects).FirstOrDefault(m => m.Prompt == prompt);
+        if (may is null) return false;
+        for (int i = 0; i < last.Targets.Count; i++)
+        {
+            var t = last.Targets[i];
+            bool ours = t.Player == _me || (t.Card is { } c && view.FindCard(c) is { } card && card.Controller == _me);
+            if (ours && Unwrapped(may.Effects).Any(e => RefersToTarget(e, i) && IsHarmful(e))) return true;
+        }
+        return false;
+    }
+
+    private static IEnumerable<MayDo> MayEffects(IEnumerable<Effect> effects)
+    {
+        foreach (var effect in effects)
+        {
+            if (effect is MayDo m) { yield return m; foreach (var inner in MayEffects(m.Effects)) yield return inner; }
+            else if (effect is IfThen i) foreach (var inner in MayEffects(i.Else is { } e ? i.Then.Concat(e) : i.Then)) yield return inner;
+        }
+    }
 
     public Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) =>
         Task.FromResult(request.Suggested);

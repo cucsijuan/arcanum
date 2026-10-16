@@ -82,6 +82,8 @@ public partial class PlayerArea : Control
     public event Action<CardNode>? CardClicked;
     public event Action<CardNode>? CardHoverStarted;
     public event Action<CardNode>? CardHoverEnded;
+    /// <summary>A permanent with cards attached or held under it was raised to show them (its cards), or put back (null).</summary>
+    public event Action<IReadOnlyList<CardNode>?>? GroupLiftChanged;
 
     /// <summary>This player's graveyard or exile pile was clicked (to see every card in it).</summary>
     public event Action<PlayerId, Zone>? ZoneClicked;
@@ -684,7 +686,11 @@ public partial class PlayerArea : Control
     private void LayoutUnder(IReadOnlyList<CardView> attached, IReadOnlyList<CardView> held)
     {
         _groups.Clear();
-        _liftedGroup = null; // the layout just set every depth again
+        if (_liftedGroup is not null)
+        {
+            _liftedGroup = null; // the layout just set every depth again
+            GroupLiftChanged?.Invoke(null);
+        }
         var under = attached.Select(c => (Card: c, Host: c.AttachedTo!.Value)).Concat(held.Select(c => (Card: c, Host: c.HeldUnder!.Value)));
         foreach (var group in under.GroupBy(x => x.Host))
         {
@@ -710,6 +716,9 @@ public partial class PlayerArea : Control
     /// <summary>A permanent and the cards under it, by each of them.</summary>
     private readonly Dictionary<CardNode, List<CardNode>> _groups = new();
     private List<CardNode>? _liftedGroup;
+
+    /// <summary>Whether a permanent is raised right now to show the cards attached to it or held under it.</summary>
+    public bool HasLiftedGroup => _liftedGroup is not null;
     private readonly List<int> _liftedDepths = new();
     private CardNode? _hoveredInGroup;
 
@@ -733,14 +742,17 @@ public partial class PlayerArea : Control
         _liftedDepths.Clear();
         _liftedDepths.AddRange(group.Select(n => n.ZIndex));
         for (int i = 0; i < group.Count; i++) group[i].ZIndex = LiftedZ - i;
+        GroupLiftChanged?.Invoke(group);
     }
 
     private void DropGroup()
     {
+        bool wasLifted = _liftedGroup is not null;
         if (_liftedGroup is { } group)
             for (int i = 0; i < group.Count; i++)
                 if (IsInstanceValid(group[i])) group[i].ZIndex = _liftedDepths[i];
         _liftedGroup = null;
+        if (wasLifted) GroupLiftChanged?.Invoke(null);
         _hoveredInGroup = null;
         SortByDrawOrder();
     }

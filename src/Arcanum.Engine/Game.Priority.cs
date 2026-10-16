@@ -805,6 +805,11 @@ public sealed partial class Game
         var cost = TotalCastingCost(card, player.Id, choices, targets);
         if (!CanPayCastingCost(card, player.Id, choices, cost)) return false; // the targets chosen don't allow what was announced
         var nonMana = NonManaCastingCosts(card, choices);
+        // What the additional costs will sacrifice, discard, ...: chosen first, while backing out still changes nothing.
+        var extraPicks = new List<ExtraPicks>();
+        foreach (var extra in nonMana)
+            if (await ChooseExtraAsync(player.Id, extra, cardId) is { } picked) extraPicks.Add(picked);
+            else return false;
         // 601.2g-h: paying. Delve (702.66): each card exiled from the graveyard while casting pays for {1}.
         List<CardId> delved = new();
         if (card.Definition.Delve && cost.Generic > 0)
@@ -867,9 +872,9 @@ public sealed partial class Game
         // What the additional costs sacrificed or discarded stays known to the spell ("the sacrificed creature's power").
         var costSacrificed = new List<CardId>();
         var costDiscarded = new List<CardId>();
-        foreach (var extra in nonMana)
+        foreach (var (extra, picked) in nonMana.Zip(extraPicks))
         {
-            costSacrificed.AddRange(await PayExtraAsync(player.Id, extra, cardId));
+            costSacrificed.AddRange(await PayExtraAsync(player.Id, extra, cardId, picks: picked));
             if (extra.Discard > 0) costDiscarded.AddRange(_lastDiscardedForCost);
         }
         if (card.Definition.PayXLife && x > 0) ChangeLife(player.Id, -x);
@@ -1051,6 +1056,9 @@ public sealed partial class Game
             Require(x >= ability.MinX && x <= max, $"X must be between {ability.MinX} and {max}.");
         }
         cost = cost.WithX(x);
+        var extraCost = ability.Cost.DiscardX && x > 0 ? (ability.Cost.Extra ?? new ExtraCost()) with { Discard = x } : ability.Cost.Extra;
+        // What the cost will sacrifice, discard, ...: chosen first, while backing out still changes nothing.
+        if (await ChooseExtraAsync(player.Id, extraCost, source.Id) is not { } extraPicks) return false;
 
         // {S}: one mana from a snow source each, paid first (from snow mana in the pool, or by tapping a snow source now).
         for (int s = 0; s < ability.Cost.SnowMana; s++)
@@ -1085,7 +1093,7 @@ public sealed partial class Game
             await MoveCardAsync(returned.Attacker, Zone.Hand);
         }
         _lastDiscardedForCost.Clear();
-        var sacrificed = await PayExtraAsync(player.Id, ability.Cost.DiscardX && x > 0 ? (ability.Cost.Extra ?? new ExtraCost()) with { Discard = x } : ability.Cost.Extra, source.Id);
+        var sacrificed = await PayExtraAsync(player.Id, extraCost, source.Id, picks: extraPicks);
         if (ability.OncePerTurn) source.ActivatedThisTurn.Add(action.Index);
         if (ability.OnlyOnce) source.ActivatedEver.Add(action.Index);
         if (ability.Cost.AddCounters > 0)
@@ -1233,19 +1241,106 @@ public sealed partial class Game
         return State.PermanentsControlledBy(player).Where(c => Matches(any, c, player, sourceCard, player) && CanBeSacrificedBy(c, player)).ToList();
     }
 
-    private async Task<IReadOnlyList<CardId>> PayExtraAsync(PlayerId playerId, ExtraCost? extra, CardId source, PlayerId? causedBy = null)
+    /// <summary>The cards an additional cost's choices name (exile, tap, discard, return, sacrifice), chosen before anything is paid.</summary>
+    private sealed record ExtraPicks(IReadOnlyDictionary<ExtraChoice, IReadOnlyList<CardId>> Chosen);
+
+    private enum ExtraChoice { Exile, Tap, Discard, Return, Sacrifice }
+
+    /// <summary>
+    /// The question an additional cost asks for one kind of choice, with the check an answer must pass; null when the
+    /// cost has no such choice (or nothing to choose between).
+    /// </summary>
+    private (CardChoiceRequest Request, Func<IReadOnlyList<CardId>, bool> Valid, string Error)? ExtraChoiceFor(PlayerId playerId, ExtraCost extra, CardId source, ExtraChoice kind)
+    {
+        var player = State.GetPlayer(playerId);
+        List<CardView> Views(IEnumerable<CardId> ids, bool reveal = false) => ids.Select(id => ViewBuilder.Card(State, id, playerId, reveal)).ToList();
+        static bool Distinct(IReadOnlyList<CardId> ids) => ids.Distinct().Count() == ids.Count;
+        switch (kind)
+        {
+            case ExtraChoice.Exile when extra.ExileFromGraveyard > 0:
+            {
+                var cards = ExilableFromGraveyard(player, extra, source);
+                return (new CardChoiceRequest($"Exile {extra.ExileFromGraveyard} cards from your graveyard", source, Views(cards),
+                        extra.ExileFromGraveyard, extra.ExileFromGraveyard, CardChoicePurpose.Sacrifice),
+                    c => c.Count == extra.ExileFromGraveyard && Distinct(c) && c.All(cards.Contains), "Exile cards from your graveyard.");
+            }
+            case ExtraChoice.Tap when extra.TapCreatures is not null || extra.CrewPower > 0:
+            {
+                var candidates = TapCandidates(playerId, extra.TapCreatures ?? new ObjectFilter(CardType.Creature, Other: true), source);
+                int min = extra.CrewPower > 0 ? 1 : extra.TapCount;
+                var prompt = extra.CrewPower > 0 ? $"Crew {extra.CrewPower}: tap creatures with total power {extra.CrewPower} or more" : $"Tap {extra.TapCount} to pay the cost";
+                return (new CardChoiceRequest(prompt, source, Views(candidates.Select(c => c.Id)), min, extra.CrewPower > 0 ? candidates.Count : extra.TapCount, CardChoicePurpose.Sacrifice),
+                    c => c.All(id => candidates.Any(x => x.Id == id)) && Distinct(c)
+                         && (extra.CrewPower > 0 ? c.Sum(id => State.GetCard(id).Power) >= extra.CrewPower : c.Count == extra.TapCount),
+                    "Not enough to pay the cost.");
+            }
+            case ExtraChoice.Discard when extra.Discard > 0:
+            {
+                var hand = player.Hand.Where(id => id != source && DiscardableFor(extra, id, playerId, source)).ToList();
+                return (new CardChoiceRequest($"Discard {extra.Discard} to pay the cost", source, Views(hand), extra.Discard, extra.Discard, CardChoicePurpose.Discard),
+                    c => c.Count == extra.Discard && Distinct(c) && c.All(hand.Contains), "Discard from your hand.");
+            }
+            case ExtraChoice.Return when extra.ReturnToHand is { } toReturn:
+            {
+                var returnable = ReturnCandidates(playerId, toReturn, source);
+                if (returnable.Count == 1) return null; // nothing to choose: that one goes back
+                return (new CardChoiceRequest("Return a permanent to its owner's hand to pay the cost", source, Views(returnable.Select(c => c.Id)), 1, 1, CardChoicePurpose.ToHand),
+                    c => c.Count == 1 && returnable.Any(x => x.Id == c[0]), "Return one of the listed permanents.");
+            }
+            case ExtraChoice.Sacrifice when extra.Sacrifice is { } filter:
+            {
+                var candidates = SacrificeCandidates(playerId, filter, source);
+                return (new CardChoiceRequest($"Sacrifice {extra.SacrificeCount} to pay the cost", source, Views(candidates.Select(c => c.Id)),
+                        extra.SacrificeCount, extra.SacrificeCount, CardChoicePurpose.Sacrifice),
+                    c => c.Count == extra.SacrificeCount && Distinct(c) && c.All(id => candidates.Any(x => x.Id == id)), "Sacrifice one of the listed permanents.");
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Asks now, before any cost is paid, which cards an additional cost will exile, tap, discard, return or sacrifice
+    /// (rule 601.2h lets the costs be paid in any order), so the player can still back out of the spell or ability with
+    /// nothing changed. Null if they backed out.
+    /// </summary>
+    private async Task<ExtraPicks?> ChooseExtraAsync(PlayerId playerId, ExtraCost? extra, CardId source)
+    {
+        var chosen = new Dictionary<ExtraChoice, IReadOnlyList<CardId>>();
+        if (extra is null) return new ExtraPicks(chosen);
+        foreach (var kind in Enum.GetValues<ExtraChoice>())
+        {
+            if (ExtraChoiceFor(playerId, extra, source, kind) is not { } choice) continue;
+            var answer = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId), choice.Request with { CanCancel = true });
+            if (answer.Count == 0 && choice.Request.Min > 0)
+            {
+                _playerCancels++;
+                return null;
+            }
+            Require(choice.Valid(answer), choice.Error);
+            chosen[kind] = answer;
+        }
+        return new ExtraPicks(chosen);
+    }
+
+    /// <summary>
+    /// Pays an additional cost. The cards chosen in advance (<paramref name="picks"/>) are used when still allowed;
+    /// otherwise (paying mana used one of them) the player chooses again.
+    /// </summary>
+    private async Task<IReadOnlyList<CardId>> PayExtraAsync(PlayerId playerId, ExtraCost? extra, CardId source, PlayerId? causedBy = null, ExtraPicks? picks = null)
     {
         if (extra is null) return Array.Empty<CardId>();
         var player = State.GetPlayer(playerId);
+        async Task<IReadOnlyList<CardId>> Choose(ExtraChoice kind)
+        {
+            var choice = ExtraChoiceFor(playerId, extra, source, kind)!.Value;
+            if (picks?.Chosen.TryGetValue(kind, out var pre) == true && choice.Valid(pre)) return pre;
+            var answer = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId), choice.Request);
+            Require(choice.Valid(answer), choice.Error);
+            return answer;
+        }
         if (LifeToPay(extra, playerId) is > 0 and var lifePaid) ChangeLife(playerId, -lifePaid);
         if (extra.ExileFromGraveyard > 0)
-        {
-            var cards = ExilableFromGraveyard(player, extra, source);
-            var exiled = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId), new CardChoiceRequest($"Exile {extra.ExileFromGraveyard} cards from your graveyard", source,
-                cards.Select(id => ViewBuilder.Card(State, id, playerId)).ToList(), extra.ExileFromGraveyard, extra.ExileFromGraveyard, CardChoicePurpose.Sacrifice));
-            Require(exiled.Count == extra.ExileFromGraveyard && exiled.Distinct().Count() == exiled.Count && exiled.All(cards.Contains), "Exile cards from your graveyard.");
-            foreach (var id in exiled) await MoveCardAsync(id, Zone.Exile);
-        }
+            foreach (var id in await Choose(ExtraChoice.Exile)) await MoveCardAsync(id, Zone.Exile);
         if (extra.ReturnExiledWithSource is { } returnFilter)
         {
             var exiled = ExiledWith(State.GetCard(source), returnFilter).ToList();
@@ -1254,22 +1349,12 @@ public sealed partial class Game
             Require(pick.Count == 1 && exiled.Any(c => c.Id == pick[0]), "Choose one of the exiled cards.");
             await MoveCardAsync(pick[0], Zone.Graveyard);
         }
-        if (extra.TapCreatures is { } tapFilter || extra.CrewPower > 0)
-        {
-            var candidates = TapCandidates(playerId, extra.TapCreatures ?? new ObjectFilter(CardType.Creature, Other: true), source);
-            int min = extra.CrewPower > 0 ? 1 : extra.TapCount;
-            var options = candidates.Select(c => ViewBuilder.Card(State, c.Id, playerId)).ToList();
-            var prompt = extra.CrewPower > 0 ? $"Crew {extra.CrewPower}: tap creatures with total power {extra.CrewPower} or more" : $"Tap {extra.TapCount} to pay the cost";
-            var chosen = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId),
-                new CardChoiceRequest(prompt, source, options, min, extra.CrewPower > 0 ? candidates.Count : extra.TapCount, CardChoicePurpose.Sacrifice));
-            Require(chosen.All(id => candidates.Any(c => c.Id == id)) && chosen.Distinct().Count() == chosen.Count, "Tap among the listed creatures.");
-            Require(extra.CrewPower > 0 ? chosen.Sum(id => State.GetCard(id).Power) >= extra.CrewPower : chosen.Count == extra.TapCount, "Not enough to pay the cost.");
-            foreach (var id in chosen)
+        if (extra.TapCreatures is not null || extra.CrewPower > 0)
+            foreach (var id in await Choose(ExtraChoice.Tap))
             {
                 Tap(State.GetCard(id));
                 if (extra.CrewPower > 0) State.CrewedThisTurn.Add((source, id, State.TurnNumber));
             }
-        }
         if (extra.RemoveCountersFromYourCreatures > 0)
         {
             // The player picks each counter to remove (a creature, then the kind when it has several).
@@ -1296,31 +1381,20 @@ public sealed partial class Game
         _lastDiscardedForCost.Clear();
         if (extra.Discard > 0)
         {
-            var hand = player.Hand.Where(id => id != source && DiscardableFor(extra, id, playerId, source)).ToList();
-            var options = hand.Select(id => ViewBuilder.Card(State, id, playerId)).ToList();
-            var chosen = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId),
-                new CardChoiceRequest($"Discard {extra.Discard} to pay the cost", source, options, extra.Discard, extra.Discard, CardChoicePurpose.Discard));
-            Require(chosen.Count == extra.Discard && chosen.Distinct().Count() == chosen.Count && chosen.All(hand.Contains), "Discard from your hand.");
+            var chosen = await Choose(ExtraChoice.Discard);
             foreach (var id in chosen) await DiscardCardAsync(playerId, id, causedBy);
             _lastDiscardedForCost.AddRange(chosen);
         }
         if (extra.ReturnToHand is { } toReturn)
         {
             var returnable = ReturnCandidates(playerId, toReturn, source);
-            var pick = returnable.Count == 1 ? new List<CardId> { returnable[0].Id } : (await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId),
-                new CardChoiceRequest("Return a permanent to its owner's hand to pay the cost", source, returnable.Select(c => ViewBuilder.Card(State, c.Id, playerId)).ToList(),
-                    1, 1, CardChoicePurpose.ToHand))).ToList();
+            var pick = returnable.Count == 1 ? new List<CardId> { returnable[0].Id } : (await Choose(ExtraChoice.Return)).ToList();
             Require(pick.Count == 1 && returnable.Any(c => c.Id == pick[0]), "Return one of the listed permanents.");
             await MoveCardAsync(pick[0], Zone.Hand);
         }
-        if (extra.Sacrifice is { } filter)
+        if (extra.Sacrifice is not null)
         {
-            var candidates = SacrificeCandidates(playerId, filter, source);
-            var options = candidates.Select(c => ViewBuilder.Card(State, c.Id, playerId)).ToList();
-            var chosen = await ControllerOf(playerId).ChooseCardsAsync(ViewFor(playerId),
-                new CardChoiceRequest($"Sacrifice {extra.SacrificeCount} to pay the cost", source, options, extra.SacrificeCount, extra.SacrificeCount, CardChoicePurpose.Sacrifice));
-            Require(chosen.Count == extra.SacrificeCount && chosen.Distinct().Count() == chosen.Count && chosen.All(id => candidates.Any(c => c.Id == id)),
-                "Sacrifice one of the listed permanents.");
+            var chosen = await Choose(ExtraChoice.Sacrifice);
             foreach (var id in chosen) await SacrificePermanentAsync(id);
             return chosen;
         }

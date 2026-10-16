@@ -32,4 +32,11 @@ public enum CardChoicePurpose
 /// chooser even when they come from a hidden zone (the top of their library, for example).
 /// </summary>
 public sealed record CardChoiceRequest(
-    string Prompt, CardId? Source, IReadOnlyList<CardView> Options, int Min, int Max, CardChoicePurpose Purpose);
+    string Prompt, CardId? Source, IReadOnlyList<CardView> Options, int Min, int Max, CardChoicePurpose Purpose)
+{
+    /// <summary>
+    /// The player may back out of what they're doing instead (a cost chosen before anything is paid): an empty answer
+    /// when <see cref="Min"/> is above zero cancels the spell or ability.
+    /// </summary>
+    public bool CanCancel { get; init; }
+}

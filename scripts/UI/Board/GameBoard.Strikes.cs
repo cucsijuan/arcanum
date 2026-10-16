@@ -7,8 +7,8 @@ using Godot;
 namespace Arcanum.UI.Board;
 
 /// <summary>
-/// Combat damage, one blow at a time: each card dealing combat damage rises, lunges at what it damages (a creature, a
-/// planeswalker or a player's life), lands with a burst of light and the damage dealt, and goes back to its place,
+/// Combat damage (and damage a permanent's ability deals), one blow at a time: each card dealing it rises, lunges at
+/// what it damages (a creature, a planeswalker or a player's life), lands with a burst of light and the damage dealt, and goes back to its place,
 /// so the player taking it can follow what each card does. A copy of the card makes the trip (the card itself is
 /// hidden meanwhile), so a creature that dies of the damage still strikes.
 /// </summary>
@@ -23,7 +23,7 @@ public partial class GameBoard
     private const double BetweenCreatures = 0.5;
     private bool _strikesQueued, _striking;
 
-    /// <summary>The blows of a combat damage step arrive together; they are played once all are in, in order.</summary>
+    /// <summary>The blows of a combat damage step (or of one ability) arrive together; they are played once all are in, in order.</summary>
     private void QueueStrike(EventView ev, DamageDealt damage)
     {
         var source = FindCard(damage.Source);

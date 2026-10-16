@@ -165,6 +165,85 @@ public class BotTests
         Assert.Equal(Zone.Battlefield, game.State.GetCard(small).Zone);
     }
 
+    private static readonly CardDefinition Naturalist = Scenario.Creature("Naturalist", 4, 4) with
+    {
+        ManaCost = ManaCost.Parse("{G}"),
+        Abilities = new AbilityDefinition[]
+        {
+            new TriggeredAbility
+            {
+                Trigger = TriggerEvent.EntersBattlefield, Text = "When this creature enters, you may destroy target artifact.",
+                Targets = new[] { new TargetSpec(TargetKind.Artifact) },
+                Effects = new Effect[] { new MayDo("Destroy target artifact?", new Effect[] { new Destroy(Subject.TargetAt(0)) }) },
+            },
+        },
+    };
+
+    private static readonly CardDefinition Trinket = new() { Name = "Trinket", Types = CardType.Artifact, ManaCost = ManaCost.Parse("{2}") };
+
+    /// <summary>A "you may destroy target artifact" goes at the opponent's artifact; with only its own to target, the bot declines.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OptionalRemovalSparesTheBotsOwnPermanents(bool opponentHasOne)
+    {
+        var bot = new BotController(Scenario.P0) { AlwaysKeep = true };
+        var passive = new TestController { Act = (_, _) => PassPriority.Instance, Attack = (_, _, _) => Array.Empty<AttackDeclaration>() };
+        var game = new Game(new GameConfig { Seed = 1, StartingPlayer = Scenario.P0 }, new[]
+        {
+            new PlayerSetup("Bot", bot, Decks.Of((GenericCards.Forest, 20))),
+            new PlayerSetup("Defender", passive, Decks.Of((GenericCards.Forest, 20))),
+        });
+        bot.UseCardRules(id => game.State.Cards.TryGetValue(id, out var c) ? c.Definition : null);
+        game.SetupPermanent(Scenario.P0, GenericCards.Forest);
+        game.SetupInHand(Scenario.P0, Naturalist);
+        var own = game.SetupPermanent(Scenario.P0, Trinket);
+        CardId? theirs = opponentHasOne ? game.SetupPermanent(Scenario.P1, Trinket) : null;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        game.EventRaised += e => { if (e is TurnBegan { TurnNumber: 2 }) cts.Cancel(); };
+        try { await game.RunAsync(cts.Token); } catch (OperationCanceledException) { }
+
+        Assert.Contains(game.Log, e => e is AbilityTriggered);
+        Assert.Equal(Zone.Battlefield, game.State.GetCard(own).Zone);
+        if (theirs is { } t) Assert.Equal(Zone.Graveyard, game.State.GetCard(t).Zone);
+    }
+
+    private static readonly CardDefinition Blast = new()
+    {
+        Name = "Blast", Types = CardType.Sorcery, ManaCost = ManaCost.Parse("{X}{R}"),
+        Spell = new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Creature) }, Effects = new Effect[] { new DealDamage(Quantity.X, Subject.TargetAt(0)) } },
+    };
+
+    /// <summary>An X damage spell is cast only with an X that kills something: never with X = 0, and at a creature that X kills.</summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    public async Task XDamageSpellsWaitForAnXThatKills(int mountains)
+    {
+        var bot = new BotController(Scenario.P0) { AlwaysKeep = true };
+        var passive = new TestController { Act = (_, _) => PassPriority.Instance, Attack = (_, _, _) => Array.Empty<AttackDeclaration>() };
+        var game = new Game(new GameConfig { Seed = 1, StartingPlayer = Scenario.P0 }, new[]
+        {
+            new PlayerSetup("Bot", bot, Decks.Of((GenericCards.Mountain, 20))),
+            new PlayerSetup("Defender", passive, Decks.Of((GenericCards.Forest, 20))),
+        });
+        bot.UseCardRules(id => game.State.Cards.TryGetValue(id, out var c) ? c.Definition : null);
+        for (int i = 0; i < mountains; i++) game.SetupPermanent(Scenario.P0, GenericCards.Mountain);
+        var blast = game.SetupInHand(Scenario.P0, Blast);
+        var bear = game.SetupPermanent(Scenario.P1, Scenario.Creature("Bear", 2, 2));
+        var giant = game.SetupPermanent(Scenario.P1, Scenario.Creature("Giant", 3, 3, Keyword.Flying));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        game.EventRaised += e => { if (e is TurnBegan { TurnNumber: 2 }) cts.Cancel(); };
+        try { await game.RunAsync(cts.Token); } catch (OperationCanceledException) { }
+
+        if (mountains == 1)
+        {
+            Assert.Equal(Zone.Hand, game.State.GetCard(blast).Zone);
+            Assert.Equal(Zone.Battlefield, game.State.GetCard(bear).Zone);
+        }
+        else Assert.Equal(Zone.Graveyard, game.State.GetCard(giant).Zone); // X = 3 kills the more valuable flier
+    }
+
     private static readonly CardDefinition Tinkerer = Scenario.Creature("Tinkerer", 1, 4) with
     {
         Abilities = new AbilityDefinition[]

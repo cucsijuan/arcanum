@@ -385,6 +385,7 @@ internal sealed class Seat : IPlayerController
     public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request) =>
         Ask(new CardsQuestion(request), (IReadOnlyList<CardId> chosen) =>
         {
+            if (request.CanCancel && chosen is { Count: 0 }) return null; // backing out of the spell or ability
             if (chosen is null || chosen.Count < request.Min || chosen.Count > request.Max)
                 return request.Min == request.Max ? $"Choose {request.Min}." : $"Choose from {request.Min} to {request.Max}.";
             return Distinct(chosen) ?? (chosen.All(id => request.Options.Any(o => o.Id == id)) ? null : "Choose among the cards shown.");

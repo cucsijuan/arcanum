@@ -15,6 +15,8 @@ public class PrintingTests
         {"oracle_id":"o-2","name":"Hive Keeper","layout":"normal","mana_cost":"{2}{G}","type_line":"Creature — Insect","oracle_text":"When this creature enters, create a 1/1 green Insect creature token.","power":"1","toughness":"1","colors":["G"],"all_parts":[{"component":"token","id":"t-old","name":"Insect","type_line":"Token Creature — Insect"}]}
         {"oracle_id":"o-tok","id":"t-old","name":"Insect","layout":"token","type_line":"Token Creature — Insect","oracle_text":"","power":"1","toughness":"1","colors":["G"]}
         {"oracle_id":"o-tok2","id":"t-big","name":"Insect","layout":"token","type_line":"Token Creature — Insect","oracle_text":"","power":"3","toughness":"3","colors":["G"]}
+        {"oracle_id":"o-tok3","id":"t-fly","name":"Insect","layout":"token","type_line":"Token Creature — Insect","oracle_text":"Flying","power":"1","toughness":"1","colors":["G"],"keywords":["Flying"]}
+        {"oracle_id":"o-4","id":"p-hatch","name":"Late Hatcher","layout":"normal","mana_cost":"{1}{G}","type_line":"Sorcery","oracle_text":"At the beginning of the next upkeep, create a 1/1 green Insect creature token with flying.","colors":["G"],"all_parts":[{"component":"token","id":"t-fly","name":"Insect","type_line":"Token Creature — Insect"}]}
         {"oracle_id":"o-3","id":"p-boat","name":"Drafted Skiff","layout":"normal","mana_cost":"{2}{U}","type_line":"Artifact","oracle_text":"Whenever you attack, recruit.","colors":["U"],"all_parts":[{"component":"token","id":"t-soldier","name":"Human Soldier","type_line":"Token Creature — Human Soldier"}]}
         """;
 
@@ -33,6 +35,8 @@ public class PrintingTests
 
     private const string HiveScript = """{ "abilities": [ { "trigger": "enters", "effects": [ { "tokens": 1, "token": { "name": "Insect", "types": "Creature — Insect", "power": 1, "toughness": 1, "colors": ["G"] } } ] } ] }""";
 
+    private const string HatcherScript = """{ "spell": { "effects": [ { "atNextUpkeep": { "effects": [ { "tokens": 1, "token": { "name": "Insect", "types": "Creature — Insect", "power": 1, "toughness": 1, "colors": ["G"], "keywords": ["Flying"] } } ], "text": "Create a 1/1 green Insect creature token with flying." } } ] } }""";
+
     private static Stream Text(string s) => new MemoryStream(Encoding.UTF8.GetBytes(s));
 
     private static CardDatabase Database()
@@ -46,6 +50,7 @@ public class PrintingTests
         return new CardDatabase(OracleJsonl.ReadCompact(ms), new Dictionary<string, CardScript>
         {
             ["o-2"] = CardScriptParser.Parse(HiveScript),
+            ["o-4"] = CardScriptParser.Parse(HatcherScript),
             ["o-3"] = CardScriptParser.Parse("""{ "abilities": [ { "trigger": "youAttack", "effects": [ { "recruit": true } ] } ] }"""),
         });
     }
@@ -100,6 +105,19 @@ public class PrintingTests
         // The 3/3 Insect is another kind; replicas aren't pictures of the token.
         Assert.Equal(new[] { "t-old", "t-new" }, db.TokenArts(insect).Select(a => a.Id));
         Assert.Empty(db.Search(new CardQuery { Text = "Insect" }).Where(e => e.Record.IsToken));
+    }
+
+    [Fact]
+    public void ATokenMadeLaterHasItsPictureAndKeywordsTellPicturesApart()
+    {
+        var db = Database();
+        // The token is made by a delayed trigger ("at the beginning of the next upkeep"): it still gets its picture.
+        var insect = CardDatabase.TokensMadeBy(db.Find("Late Hatcher")!.Definition).Single();
+        Assert.Equal("t-fly", insect.ImageKey);
+        // A flying 1/1 Insect is only shown by flying Insect pictures, never by the plain ones of the same size and color.
+        Assert.Equal(new[] { "t-fly" }, db.TokenArts(insect).Select(a => a.Id));
+        var plain = DeckList.Parse("1 Hive Keeper\n1 Late Hatcher").Resolve(db).Cards;
+        Assert.Equal("t-fly", CardDatabase.TokensMadeBy(plain.Single(c => c.Name == "Late Hatcher")).Single().ImageKey);
     }
 
     [Fact]
