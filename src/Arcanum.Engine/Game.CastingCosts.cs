@@ -109,7 +109,9 @@ public sealed partial class Game
         foreach (var other in c.Spliced) cost = cost.Plus(other.Definition.Splice!);
         foreach (var taxer in State.Battlefield.Select(State.GetCard))
             foreach (var increase in taxer.Abilities.OfType<SpellCostIncrease>())
-                if (Matches(increase.Spells with { Controller = ControllerFilter.Any }, card, caster, taxer, taxer.Controller)) cost = cost.PlusGeneric(increase.Amount);
+                // "Spells your opponents cast cost {1} more": only an opponent of the taxer's controller pays it.
+                if (Matches(increase.Spells with { Controller = ControllerFilter.Any }, card, caster, taxer, taxer.Controller)
+                    && (increase.Spells.Controller != ControllerFilter.Opponent || State.OpponentsOf(taxer.Controller).Contains(caster))) cost = cost.PlusGeneric(increase.Amount);
         // "Costs {1} more for each target beyond the first": before targets are chosen, as if it had one.
         if (card.Definition.ExtraTargetCost > 0 && targets is not null)
             cost = cost.PlusGeneric(card.Definition.ExtraTargetCost * Math.Max(0, targets.Count(t => !t.Target.IsNone) - 1));

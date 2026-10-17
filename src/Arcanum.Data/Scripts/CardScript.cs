@@ -1397,7 +1397,7 @@ public static partial class CardScriptParser
         bool tap = false, sacrifice = false, fromGraveyard = false;
         int discard = 0, life = 0, removeCounters = 0;
         var removeKind = CounterKind.PlusOnePlusOne;
-        bool exileSelf = false, returnToHand = false, tapGranter = false, lifeFromCommanderColors = false, ninjutsu = false, discardX = false;
+        bool exileSelf = false, returnToHand = false, tapGranter = false, lifeFromCommanderColors = false, ninjutsu = false, discardX = false, discardThis = false;
         ObjectFilter? returnPermanent = null;
         int? loyalty = null;
         bool loyaltyX = false;
@@ -1419,6 +1419,7 @@ public static partial class CardScriptParser
             else if (lower == "exilefromgraveyard") { sacrifice = true; fromGraveyard = true; }
             else if (lower == "fromgraveyard") fromGraveyard = true;
             else if (lower == "discard") discard = 1;
+            else if (lower == "discardthis") discardThis = true; // "Discard this card": activated from the hand
             else if (lower == "discard:x") discardX = true;
             else if (lower.StartsWith("discard:")) discard = int.Parse(lower[8..]);
             else if (lower == "life:commandercolors") lifeFromCommanderColors = true;
@@ -1499,7 +1500,7 @@ public static partial class CardScriptParser
         return new AbilityCost(mana, tap, sacrifice)
         {
             Extra = extra, FromGraveyard = fromGraveyard, RemoveCounters = removeCounters, RemoveCounterKind = removeKind, ExileSelf = exileSelf, Ninjutsu = ninjutsu, DiscardX = discardX,
-            Loyalty = loyalty, LoyaltyX = loyaltyX,
+            Loyalty = loyalty, LoyaltyX = loyaltyX, FromHand = discardThis,
             AddCounters = addCounters, AddCounterKind = addKind, ReturnSelfToHand = returnToHand, TapGranter = tapGranter, SnowMana = snow,
         };
     }
@@ -2058,6 +2059,11 @@ public static partial class CardScriptParser
             Keywords = t.TryGetProperty("keywords", out var k) ? k.EnumerateArray().Select(x => x.GetString()!).ToList() : Array.Empty<string>(),
             Colors = t.TryGetProperty("colors", out var c) ? c.EnumerateArray().Select(x => x.GetString()!).ToList() : Array.Empty<string>(),
             Abilities = abilities,
+            // A land token with a basic land type has that type's mana ability (rule 305.6): a "Forest Tentacle land creature token" taps for {G}.
+            TapForMana = types.HasFlag(CardType.Land)
+                ? subtypes.Select(s => s switch { "Plains" => (ManaType?)ManaType.White, "Island" => ManaType.Blue, "Swamp" => ManaType.Black, "Mountain" => ManaType.Red, "Forest" => ManaType.Green, _ => null })
+                    .OfType<ManaType>().Distinct().ToList()
+                : Array.Empty<ManaType>(),
             OracleText = t.TryGetProperty("text", out var text) ? text.GetString() ?? "" : "",
             IsToken = true,
             // "This token's power and toughness are each equal to …": a characteristic-defining ability (rule 604.3).
