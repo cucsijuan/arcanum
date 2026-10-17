@@ -32,6 +32,8 @@ public partial class GameBoard : Control
         MouseFilter = MouseFilterEnum.Ignore, ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered, Visible = false,
     };
     private readonly TableMat[] _tableMats = { new() { Visible = false }, new() { Visible = false } };
+    private readonly TournamentMat _tournamentMat = new() { Visible = false };
+    private readonly BroadcastOverlay _broadcast = new() { Visible = false };
 
     /// <summary>
     /// At a table the divider between the two halves sits higher, so that this player's three rows fit on the table's
@@ -391,6 +393,9 @@ public partial class GameBoard : Control
         _gameOver.Visible = false;
         _lastDecision = null;
         _sessionStart = DateTimeOffset.UtcNow;
+        _broadcast.Visible = false;
+        if (session is GameSession local && _match?.Broadcast is { } broadcast)
+            _broadcast.Show(broadcast, () => local.Game.State.TurnNumber, () => local.Game.TimeCalledAt, () => local.Game.CallTime());
         _session.Start();
     }
 
@@ -481,6 +486,11 @@ public partial class GameBoard : Control
         _phaseBar.GrowVertical = GrowDirection.End;
         _phaseBar.ZIndex = BoardStyle.Z.PhaseBar;
         AddChild(_phaseBar);
+
+        // A tournament's broadcast overlay: the round's clock and the players' plates.
+        _broadcast.SetAnchorsPreset(LayoutPreset.FullRect);
+        _broadcast.ZIndex = BoardStyle.Z.PhaseBar;
+        AddChild(_broadcast);
 
         // Stack: right of center, clear of the zone piles.
         // In the local player's half (left, under the phase bar): same place for any number of players.
@@ -649,6 +659,15 @@ public partial class GameBoard : Control
     /// </summary>
     private void OnGroupLifted(IReadOnlyList<CardNode>? group)
     {
+        // The broadcast overlay's panels go under a lifted card over them, like the phase bar.
+        if (group is not null && _broadcast.Visible
+            && _broadcast.Panels.Any(p => group.Any(n => IsInstanceValid(n) && n.GetGlobalRect().Intersects(p.GetGlobalRect()))))
+            _broadcast.ZIndex = 0;
+        else if (group is null)
+            Callable.From(() =>
+            {
+                if (!_areas.Any(a => a.HasLiftedGroup)) _broadcast.ZIndex = BoardStyle.Z.PhaseBar;
+            }).CallDeferred();
         if (group is not null)
         {
             var bar = _phaseBar.GetGlobalRect();
@@ -756,6 +775,7 @@ public partial class GameBoard : Control
         if (!AtTable)
         {
             foreach (var mat in _tableMats) mat.Visible = false;
+            _tournamentMat.Visible = false;
             return;
         }
         var table = _match!.Table!;
@@ -764,14 +784,18 @@ public partial class GameBoard : Control
             AddChild(_tablePicture);
             _tablePicture.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
             foreach (var mat in _tableMats) AddChild(mat);
+            AddChild(_tournamentMat);
             // Above the background, below the player areas.
             MoveChild(_tablePicture, 1);
             for (int m = 0; m < _tableMats.Length; m++) MoveChild(_tableMats[m], 2 + m);
+            MoveChild(_tournamentMat, 2 + _tableMats.Length);
             Resized += LayoutTable;
         }
         if (_tablePicture.Texture is null && ResourceLoader.Exists(table)) _tablePicture.Texture = GD.Load<Texture2D>(table);
         var json = System.IO.Path.ChangeExtension(table, ".json");
         float height = Size.Y, divider = TableDivider * height;
+        var shared = _match.TournamentMat;
+        var span = new Rect2();
         for (int i = 0; i < _areas.Count; i++)
         {
             bool mine = new PlayerId(i) == Bottom;
@@ -780,14 +804,28 @@ public partial class GameBoard : Control
             var mat = _tableMats[mine ? 1 : 0];
             if (_match.TableMats?.ElementAtOrDefault(i) is { } id) mat.SetStyle(id);
             mat.Turned = !mine;
-            mat.Visible = _match.TableMats?.ElementAtOrDefault(i) is not null;
+            mat.Visible = shared is null && _match.TableMats?.ElementAtOrDefault(i) is not null;
             mat.Position = rect.Position;
             mat.Size = rect.Size;
+            span = i == 0 ? rect : span.Merge(rect);
             // The rows go on the playmat (measured from the divider, as the area lays them out), whether or not there is one.
             _areas[i].FieldBand = mine
                 ? (rect.Position.Y + MatMargin - divider, rect.End.Y - MatMargin - divider)
                 : (divider - rect.End.Y + MatMargin, divider - rect.Position.Y - MatMargin);
         }
+        // A big tournament: one mat under both players' playmat places, its band on the line between them.
+        _tournamentMat.Visible = shared is not null;
+        // The overlay's clock sits on the line between the players, at the right of the mats.
+        _broadcast.Place(divider, shared is null ? span.End.X : 0);
+        if (shared is null) return;
+        // The whole table top, where the table's picture says (the rows stay where the playmats would be).
+        if (Arcanum.UI.Career.Hotspot.LoadArea(json, "tournamentMat", new Rect2()) is { Size.X: > 0 } whole)
+            span = new Rect2(whole.Position * Size, whole.Size * Size);
+        _tournamentMat.Position = span.Position;
+        _tournamentMat.Size = span.Size;
+        _tournamentMat.SetName(shared);
+        _tournamentMat.SetLine(divider - span.Position.Y);
+        _broadcast.Place(divider, span.End.X);
     }
 
     private void Refresh()
@@ -2379,6 +2417,12 @@ public partial class GameBoard : Control
         {
             case TurnBegan t:
                 AnnounceTurn(t);
+                if (_session is GameSession { Game.TimeCalledAt: { } called } && t.TurnNumber > called)
+                    _announcer.Enqueue(new($"Additional turn {t.TurnNumber - called} of {Arcanum.Engine.Game.AdditionalTurns}", null, 1.5));
+                break;
+            case TimeCalled tc:
+                _announcer.Enqueue(new($"Time! The round is over.\nThis turn is turn 0, then {tc.AdditionalTurns} more turns; if nobody has won by then, the game is a draw.", null, 3.5));
+                Hold(3.5);
                 break;
             case HandLookedAt l when _session.Announces(l.Looker):
                 AnnounceHandLook(l.Looker, l.Player);

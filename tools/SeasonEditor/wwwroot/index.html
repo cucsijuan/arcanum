@@ -333,7 +333,7 @@ function describeChange(c) {
 
 function newEvent(when) {
   return { id: "special-" + Date.now().toString(36), name: "Special event", when, kind: "draft", set: "featured", players: 8, rounds: 3, bestOf: 1,
-    days: 1, months: [], playersMax: 0, topCut: 0, cutAfter: 0, cutPoints: 0, invitational: false,
+    days: 1, months: [], playersMax: 0, topCut: 0, cutAfter: 0, cutPoints: 0, invitational: false, tournamentMat: false, roundMinutes: 0,
     entry: 1500, entryBoosters: 0, entryTokens: 0, minTier: 0, online: null, format: "", prizes: [{ place: 0, wins: 2, cash: 0, boosters: 3, tokens: 0, reputation: 2, qualifies: "", minPlayers: 0 }, { place: 0, wins: 0, cash: 0, boosters: 0, tokens: 0, reputation: 1, qualifies: "", minPlayers: 0 }], decks: [] };
 }
 
@@ -439,6 +439,9 @@ function drawEvent(c, e, k, started) {
   box.append(field("Reputation", choice(C.tiers.map((t, n) => [String(n), t + (n === 0 ? " (anyone)" : " and up")]), String(e.minTier), v => e.minTier = Number(v), lock)));
   box.append(field("Invitational", el("input", { type: "checkbox", checked: !!e.invitational, disabled: started, onchange: ev => { e.invitational = ev.target.checked; changed(); } }),
     "only players invited by a prize's \"qualifies\" may enter"));
+  if (e.kind !== "commander") box.append(field("Tournament mat", el("input", { type: "checkbox", checked: !!e.tournamentMat, disabled: started, onchange: ev => { e.tournamentMat = ev.target.checked; changed(); } }),
+    "the big tournaments' table, one mat for both players with the event's name"));
+  if (e.kind !== "commander") box.append(field("Round minutes", number(e.roundMinutes ?? 0, v => e.roundMinutes = v, { ...lock, min: 0 }), "Swiss rounds' time limit; 0: untimed (the playoff is untimed)"));
   if (e.kind === "commander") {
     const decks = el("select", { multiple: true, size: 6, style: "flex:1", disabled: started, onchange: ev => { e.decks = [...ev.target.selectedOptions].map(o => o.value); changed(); } },
       C.decks.map(d => el("option", { value: d, selected: e.decks.includes(d) }, d)));

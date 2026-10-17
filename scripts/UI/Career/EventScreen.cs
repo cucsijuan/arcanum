@@ -42,7 +42,7 @@ public partial class EventScreen : Control
             Callable.From(() => App.Instance.GoTo(App.CareerScene)).CallDeferred();
             return;
         }
-        _table = new ArtScene(CareerService.TableFor(CareerRules.DayOf(Career.Now)) is { } table ? GD.Load<Texture2D>(table) : null, Array.Empty<Hotspot>());
+        _table = new ArtScene(Career.EventTable(Career.CurrentEvent()?.Spec) is { } table ? GD.Load<Texture2D>(table) : null, Array.Empty<Hotspot>());
         _table.BackRequested += Leave;
         AddChild(_table);
         var top = new HBoxContainer { AnchorRight = 1, OffsetLeft = 20, OffsetTop = 18, OffsetRight = -20 };
@@ -114,6 +114,8 @@ public partial class EventScreen : Control
             ShowPod(spec, entry);
             return;
         }
+        // The round's time ran out between games: the match is over with the games played.
+        if (Service.EndIfTimeUp()) MenuKit.Toast(this, "Time! The round is over: no new game begins, and the match ends with the games played.");
         switch (ev.Stage)
         {
             case EventStage.Drafting: ShowDraft(spec, entry); break;
@@ -240,6 +242,23 @@ public partial class EventScreen : Control
                 box.AddChild(CareerStyle.Text($"{ev.Seats.Count} players. You can go home and come back: the rounds run until the end of {last:dddd, MMMM d} (UTC). "
                     + "A round not played by then is lost and you are dropped.", 17, CareerStyle.InkDim, wrap: true));
             }
+            if (ev.Deadline(match) is { } deadline)
+            {
+                var clock = CareerStyle.Text("", 20, CareerStyle.Ink);
+                void Tick()
+                {
+                    var left = deadline - DateTime.UtcNow;
+                    clock.Text = left > TimeSpan.Zero ? $"Round time left: {(int)left.TotalMinutes:00}:{left.Seconds:00}" : "Time!";
+                    if (left <= TimeSpan.Zero && IsInstanceValid(this)) Callable.From(Show).CallDeferred();
+                }
+                Tick();
+                var timer = new Godot.Timer { WaitTime = 1, Autostart = true };
+                timer.Timeout += Tick;
+                clock.AddChild(timer);
+                box.AddChild(clock);
+            }
+            else if (ev.RoundMinutes > 0 && !ev.IsPlayoff(ev.Rounds.Count - 1))
+                box.AddChild(CareerStyle.Text($"Rounds are {ev.RoundMinutes} minutes: the clock starts with your first game.", 17, CareerStyle.InkDim, wrap: true));
             var actions = new HBoxContainer();
             actions.AddThemeConstantOverride("separation", 12);
             actions.AddChild(CareerStyle.Button($"Play game {match.WinsA + match.WinsB + match.Draws + 1}", Service.PlayNext, 24, primary: true));

@@ -38,6 +38,9 @@ public sealed class EventMatch
     public int Draws { get; set; }
     public bool Done { get; set; }
 
+    /// <summary>When the match's first game began (UTC): its round's clock runs from then (see <see cref="LimitedEvent.RoundMinutes"/>).</summary>
+    public DateTime? Started { get; set; }
+
     public bool Involves(int seat) => SeatA == seat || SeatB == seat;
 
     public int? Opponent(int seat) => SeatA == seat ? SeatB : SeatB == seat ? SeatA : null;
@@ -74,6 +77,12 @@ public sealed class LimitedEvent
     public int CutAfter { get; init; }
     public int CutPoints { get; init; }
 
+    /// <summary>
+    /// The Swiss rounds' time limit in minutes (0: untimed; playoff rounds are always untimed). Once it is up no new game
+    /// begins, and a game in progress ends after the end-of-match procedure's additional turns.
+    /// </summary>
+    public int RoundMinutes { get; init; }
+
     public List<EventSeat> Seats { get; init; } = new();
     public EventStage Stage { get; set; }
     public DraftSnapshot? Draft { get; set; }
@@ -108,6 +117,26 @@ public sealed class LimitedEvent
 
     /// <summary>Match points in the Swiss rounds (3 a win or a bye, 1 a draw), as pairings and standings use them.</summary>
     public int Points(int seat) => SwissMatches(seat).Sum(m => Won(m, seat) ? 3 : Drew(m, seat) ? 1 : 0);
+
+    /// <summary>When a match's time is up (UTC), or null for an untimed one or one not begun.</summary>
+    public DateTime? Deadline(EventMatch match) =>
+        RoundMinutes > 0 && match.Started is { } started && !IsPlayoff(Rounds.FindIndex(r => r.Contains(match))) ? started.AddMinutes(RoundMinutes) : null;
+
+    /// <summary>Whether a match's time is up at <paramref name="now"/>.</summary>
+    public bool TimeUp(EventMatch match, DateTime now) => Deadline(match) is { } deadline && now >= deadline;
+
+    /// <summary>The match's time is up between games: no new game begins, the match ends with the games played.</summary>
+    public void EndOnTime(EventMatch match) => match.Done = true;
+
+    /// <summary>
+    /// Records one game of a match; the match ends when a player has enough wins (or no games are left), or when its
+    /// time is up (<paramref name="timeUp"/>: no new game begins).
+    /// </summary>
+    public void RecordGame(EventMatch match, int? winnerSeat, bool timeUp)
+    {
+        RecordGame(match, winnerSeat);
+        if (timeUp && !IsPlayoff(Rounds.FindIndex(r => r.Contains(match)))) match.Done = true;
+    }
 
     /// <summary>Records one game of a match; the match ends when a player has enough wins (or no games are left).</summary>
     public void RecordGame(EventMatch match, int? winnerSeat)
@@ -272,6 +301,7 @@ public sealed class LimitedEvent
             w.WriteNumber("roundsTotal", RoundsTotal);
             w.WriteNumber("seed", Seed);
             if (TopCut > 0) w.WriteNumber("topCut", TopCut);
+            if (RoundMinutes > 0) w.WriteNumber("roundMinutes", RoundMinutes);
             if (CutAfter > 0)
             {
                 w.WriteNumber("cutAfter", CutAfter);
@@ -324,6 +354,7 @@ public sealed class LimitedEvent
                     w.WriteNumber("winsB", m.WinsB);
                     w.WriteNumber("draws", m.Draws);
                     w.WriteBoolean("done", m.Done);
+                    if (m.Started is { } started) w.WriteString("started", started.ToString("O"));
                     w.WriteEndObject();
                 }
                 w.WriteEndArray();
@@ -349,6 +380,7 @@ public sealed class LimitedEvent
             RoundsTotal = e.GetProperty("roundsTotal").GetInt32(),
             Seed = e.GetProperty("seed").GetInt32(),
             TopCut = e.TryGetProperty("topCut", out var topCut) ? topCut.GetInt32() : 0,
+            RoundMinutes = e.TryGetProperty("roundMinutes", out var roundMinutes) ? roundMinutes.GetInt32() : 0,
             CutAfter = e.TryGetProperty("cutAfter", out var cutAfter) ? cutAfter.GetInt32() : 0,
             CutPoints = e.TryGetProperty("cutPoints", out var cutPoints) ? cutPoints.GetInt32() : 0,
             Dropped = e.TryGetProperty("dropped", out var dropped) ? new SortedSet<int>(dropped.EnumerateArray().Select(x => x.GetInt32())) : new(),
@@ -369,6 +401,8 @@ public sealed class LimitedEvent
                 WinsB = m.GetProperty("winsB").GetInt32(),
                 Draws = m.GetProperty("draws").GetInt32(),
                 Done = m.GetProperty("done").GetBoolean(),
+                Started = m.TryGetProperty("started", out var started)
+                    ? DateTime.Parse(started.GetString()!, null, System.Globalization.DateTimeStyles.RoundtripKind) : null,
             }).ToList()).ToList(),
         };
         if (e.TryGetProperty("draft", out var d))

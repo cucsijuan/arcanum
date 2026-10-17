@@ -142,10 +142,10 @@ public class LimitedTests
         Assert.Equal(1, back.Rounds[0][0].WinsB);
     }
 
-    private static LimitedEvent SealedEvent(int seats, int bestOf = 1, int rounds = 3, int topCut = 0, int cutAfter = 0, int cutPoints = 0) => new()
+    private static LimitedEvent SealedEvent(int seats, int bestOf = 1, int rounds = 3, int topCut = 0, int cutAfter = 0, int cutPoints = 0, int roundMinutes = 0) => new()
     {
         Mode = LimitedMode.Sealed, Source = "constructed:x", BestOf = bestOf, RoundsTotal = rounds, Seed = 5,
-        TopCut = topCut, CutAfter = cutAfter, CutPoints = cutPoints,
+        TopCut = topCut, CutAfter = cutAfter, CutPoints = cutPoints, RoundMinutes = roundMinutes,
         Seats = Enumerable.Range(0, seats).Select(i => new EventSeat { Name = $"P{i}" }).ToList(),
     };
 
@@ -285,6 +285,104 @@ public class LimitedTests
         Assert.Equal(2, back.CutAfter);
         Assert.Equal(6, back.CutPoints);
         Assert.Equal(new[] { 3 }, back.Dropped);
+    }
+
+    [Fact]
+    public void ASwissMatchesDeadlineIsItsStartPlusTheRoundTime()
+    {
+        var ev = SealedEvent(2, roundMinutes: 50);
+        var match = ev.PairNextRound(new Random(1)).Single();
+        Assert.Null(ev.Deadline(match)); // not begun
+        var started = new DateTime(2026, 10, 18, 12, 0, 0, DateTimeKind.Utc);
+        match.Started = started;
+        Assert.Equal(started.AddMinutes(50), ev.Deadline(match));
+        Assert.False(ev.TimeUp(match, started.AddMinutes(49)));
+        Assert.True(ev.TimeUp(match, started.AddMinutes(50)));
+    }
+
+    [Fact]
+    public void AnUntimedEventHasNoDeadline()
+    {
+        var ev = SealedEvent(2);
+        var match = ev.PairNextRound(new Random(1)).Single();
+        match.Started = new DateTime(2026, 10, 18, 12, 0, 0, DateTimeKind.Utc);
+        Assert.Null(ev.Deadline(match));
+        Assert.False(ev.TimeUp(match, match.Started!.Value.AddDays(1)));
+    }
+
+    [Fact]
+    public void APlayoffMatchHasNoDeadline()
+    {
+        var ev = SealedEvent(2, bestOf: 3, rounds: 1, topCut: 2, roundMinutes: 50);
+        var random = new Random(1);
+        PlayRound(ev, ev.PairNextRound(random));
+        var match = ev.PairNextRound(random).Single();
+        match.Started = new DateTime(2026, 10, 18, 12, 0, 0, DateTimeKind.Utc);
+        Assert.Null(ev.Deadline(match));
+        Assert.False(ev.TimeUp(match, match.Started!.Value.AddDays(1)));
+    }
+
+    [Fact]
+    public void ATimeUpSwissMatchEndsAfterOneGame()
+    {
+        var ev = SealedEvent(2, bestOf: 3, roundMinutes: 50);
+        var match = ev.PairNextRound(new Random(1)).Single();
+        ev.RecordGame(match, match.SeatA, timeUp: true);
+        Assert.True(match.Done);
+        Assert.Equal(1, match.WinsA);
+        Assert.Equal(3, ev.Points(match.SeatA));
+        Assert.Equal(0, ev.Points(match.SeatB!.Value));
+    }
+
+    [Fact]
+    public void ATimeUpSwissMatchWithADrawnGameIsADraw()
+    {
+        var ev = SealedEvent(2, bestOf: 3, roundMinutes: 50);
+        var match = ev.PairNextRound(new Random(1)).Single();
+        ev.RecordGame(match, null, timeUp: true);
+        Assert.True(match.Done);
+        Assert.Equal(1, ev.Points(match.SeatA));
+        Assert.Equal(1, ev.Points(match.SeatB!.Value));
+    }
+
+    [Fact]
+    public void ATimeUpPlayoffMatchPlaysOn()
+    {
+        var ev = SealedEvent(2, bestOf: 3, rounds: 1, topCut: 2, roundMinutes: 50);
+        var random = new Random(1);
+        PlayRound(ev, ev.PairNextRound(random));
+        var match = ev.PairNextRound(random).Single();
+        ev.RecordGame(match, match.SeatA, timeUp: true);
+        Assert.False(match.Done);
+        Assert.Equal(1, match.WinsA);
+        ev.RecordGame(match, match.SeatA);
+        Assert.True(match.Done);
+        Assert.Equal(2, match.WinsA);
+    }
+
+    [Fact]
+    public void EndOnTimeMarksAMatchDone()
+    {
+        var ev = SealedEvent(2, bestOf: 3, roundMinutes: 50);
+        var match = ev.PairNextRound(new Random(1)).Single();
+        ev.RecordGame(match, match.SeatA);
+        ev.EndOnTime(match);
+        Assert.True(match.Done);
+        Assert.Equal(1, match.WinsA);
+    }
+
+    [Fact]
+    public void RoundTimeAndMatchStartSaveAndLoad()
+    {
+        var ev = SealedEvent(2, bestOf: 3, roundMinutes: 50);
+        var match = ev.PairNextRound(new Random(1)).Single();
+        var started = new DateTime(2026, 10, 18, 12, 30, 15, DateTimeKind.Utc);
+        match.Started = started;
+        var back = LimitedEvent.FromJson(ev.ToJson());
+        Assert.Equal(50, back.RoundMinutes);
+        Assert.Equal<DateTime?>(started, back.Rounds[0][0].Started);
+        Assert.Equal(DateTimeKind.Utc, back.Rounds[0][0].Started!.Value.Kind);
+        Assert.Equal(ev.ToJson(), back.ToJson());
     }
 
     private const string Cards = """

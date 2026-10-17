@@ -92,8 +92,10 @@ Every event is defined by data (built-in default schedule in the content module,
 | `rounds`, `bestOf`, `podSize` | Swiss rounds, Bo1/Bo3, Commander pod of 4. `rounds: 0`: rounds by attendance (2 for up to 4 players, 3 up to 8, 4 up to 16, 5 up to 32, 6 up to 64, 7 up to 128, 8 up to 226, 9 up to 409, 10 beyond) |
 | `players`, `playersMax` | attendance: a number drawn from the run's seed between `players` and `playersMax` |
 | `topCut` | a single-elimination playoff of the top N of the Swiss standings (seeded 1v8, 4v5, 2v7, 3v6) |
+| `roundMinutes` | the Swiss rounds' time limit in minutes (0 or absent: untimed); the playoff is always untimed (see *Round time* in *Circuit*) |
 | `cutAfter`, `cutPoints` | a cut by record after that many rounds (day 1): only players with `cutPoints` or more play on |
 | `invitational` | only players invited by a prize's `qualifies` enter; entering uses up the invitation |
+| `tournamentMat` | the games are played at the big tournaments' table, on one mat for both players with the event's name on its crest (see *Look*) |
 
 An event's format decides which decks it takes. Entering checks the player's deck against it (`CareerRules.Enter`, and
 the same check when a journal is replayed). The computer players bring module decks legal in the format, any of their
@@ -155,6 +157,23 @@ shows them and the pointer's position; Ctrl+click copies a point).
   reach over the divider). Where the mats lie comes from `matTop` and `matBottom` in the JSON next to the table picture:
   `[x, y, w, h]` fractions of the whole board. A picture playmat shows its picture (from the interface art, see
   [building.md](building.md)); otherwise a picture in `kit/career/mats/<id>.jpg` or `.png` replaces a mat's print.
+- **The tournament table:** an event with `tournamentMat` (the regional championship) is played at `regional-table.jpg`,
+  the big tournaments' hall, on one mat for both players instead of each seat's playmat. The mat covers the whole table
+  top (area `tournamentMat` in `regional-table.json`, `[x, y, w, h]` fractions): dark grey with a stitched edge, and a
+  band across the line between the two players (outside in: black, white, black, then red, the same on both sides). Its
+  crest in the middle is the shield picture (`kit/career/tournament-shield.png`) with the event's name in front, the
+  first word above and the rest below, in Bebas Neue (OFL, `fonts/bebas-neue`), white with a black outline. The crest is
+  drawn at runtime, so any event name fits. The event screen shows this table too. The table an event is played at comes
+  from `CareerService.EventTable`; the board draws the mat from `MatchSetup.TournamentMat` (`TournamentMat.cs`).
+- **The broadcast overlay:** on the games of an event with `roundMinutes` or `tournamentMat` (`BroadcastOverlay.cs`). A
+  clock tab sits on the line between the two players, at the right edge of the mat, with the event's name above it. The
+  tab shows the round's name ("Round 3", or "Quarterfinals" in the playoff) and the time left (mm:ss). After time is
+  called it shows "T0/5" to "T5/5" (the additional turn in progress), and "Untimed" in the playoff. Each player has a
+  plate: the opponent's at the top left, the player's at the bottom left. A plate has a red stripe, the name, the
+  record in the event before this match, and a dot for each win the match needs, filled for each game won. The
+  overlay is set in Bebas Neue and the mat's colours. When a lifted card is over the overlay's panels, the overlay
+  goes under it (as with the phase bar). The overlay calls time on the game when the round's deadline passes. Its
+  data comes from `MatchSetup.Broadcast` (`RoundBroadcast`, `BroadcastPlate`).
 - **Deck building:** the desk with the computer seen from above (`desk.jpg`, its playmat's area in `desk.json`): the
   deck's controls on the wood above the mat, the cards owned on the left of the mat, the deck on the right in columns
   by mana value, basic lands (free) and the deck's state on the wood below. The format picker above the mat lists every
@@ -374,17 +393,20 @@ Entry fees and prizes for the qualifier and the championship are set in the modu
 - Runs the first weekend of every month, Friday to Sunday (a run of three days). The player enters on any day of the
   run and plays its rounds over those days. Entering is once per run.
 - Attendance is 16 to 64 players, drawn from the run's seed. Swiss rounds by attendance (`rounds: 0`), best of three,
-  then a top 8 single-elimination playoff.
+  then a top 8 single-elimination playoff. Each Swiss round is timed (50 minutes; see *Round time*).
 - The winner is invited to the regional championship. The finalist is invited too when 33 or more players took part.
   Invitations are listed in the forum's pinned post.
 
 ### Regional championship
 
 - Offline only, against computer players, for now.
+- Played at the big tournaments' table (`tournamentMat`): one tournament mat for both players, with the event's name on
+  its crest (see *Look*).
 - Runs the third weekend of March, June, September and December, Saturday and Sunday (a run of two days).
 - By invitation only (`invitational`): only players with an invitation from the qualifier enter, and entering uses it up.
 - Attendance is 128 to 256 players. 14 Swiss rounds, best of three. After round 8 on day 1, only players with 18 points
-  (6-2) or better play on. Then a top 8 single-elimination playoff.
+  (6-2) or better play on. Then a top 8 single-elimination playoff. Each Swiss round is timed (50 minutes; see
+  *Round time*).
 - Prizes are cash, boosters and reputation. No one qualifies for the international tournament yet, since that event
   doesn't exist yet.
 - **Online (design):** two fixed time slots (for example one for Europe and Africa, one for the Americas), each with a
@@ -392,6 +414,18 @@ Entry fees and prizes for the qualifier and the championship are set in the modu
   next day in the same slot, for the players who make the cut.
 - **Online qualification (design):** offline grants less qualification than online. For example, only the champion
   qualifies offline, against the top finishers online. The online event stays worth playing.
+
+### Round time
+
+- The qualifier and the championship have a 50-minute limit on each Swiss round (`roundMinutes`). The playoff is untimed.
+- A match's clock starts when its first game begins. It runs in real time, also between games and while the player is
+  away from the event. The event screen shows the time left.
+- Once time is up, no new game begins and the match ends with the games played. A game that ends after the deadline is
+  the match's last game. A match between games ends when the event screen sees that time is up
+  (`LimitedService.EndIfTimeUp`). Then the event goes on.
+- If time runs out during a game, the end-of-match procedure starts (the game's `CallTime`). The turn in progress is
+  turn 0, then 5 additional turns follow (extra turns count among them). A game not over after them is a draw. The
+  board announces "Time!" and each additional turn. The match then ends with the games played, and the event goes on.
 
 ### Multi-day runs
 
@@ -453,7 +487,7 @@ Entry fees and prizes for the qualifier and the championship are set in the modu
 | C3 | **Offline calendar** (done, in testing): weekly events from the module's default schedule (draft night, commander night, Saturday tournament, monthly championship) against bots, prizes and qualification tokens, in-game card prices reacting to results | a full in-game month has a shape |
 | C4 | **Accounts and remote config:** Discord sign-in (replacing Device ID) and account linking screen; Title Storage season file, server time, cached config, cloud save; developer tool to validate a season file before publishing | changing the season file changes next week's events without a release |
 | C5 | **Online events:** career service (profile sync and signing, online prizes), check-in windows, pairing, bot fill, PvE option at reduced prizes, result confirmation, leaderboards and rank | two players meet in a scheduled draft night online |
-| C6 | **The circuit** (in progress): offline regional qualifier and offline regional championship done, see *Circuit*. Next: the event's look (official playmat and table, broadcast-style overlay). To do: the online regional championship (slots, check-in; needs C5), the international tournament, PvP-only events, season standings and end-of-season rewards; constructed big events once the dedicated server exists | a season can be won |
+| C6 | **The circuit** (in progress): offline regional qualifier and offline regional championship done, see *Circuit*. The official table, tournament mat, broadcast overlay and round clock are done. To do: the online regional championship (slots, check-in; needs C5), the international tournament, PvP-only events, season standings and end-of-season rewards; constructed big events once the dedicated server exists | a season can be won |
 
 C1–C3 are fully useful without any online part, so the mode can ship early as an offline career.
 

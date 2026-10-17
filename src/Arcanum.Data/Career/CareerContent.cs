@@ -318,6 +318,12 @@ public sealed record EventSpec(string Id, string Name, string When, string Kind,
 
     /// <summary>Only the players qualified for this run of it may enter (prizes with <see cref="PrizeSpec.Qualifies"/> its id qualify them).</summary>
     public bool Invitational { get; init; }
+
+    /// <summary>Played at the big tournaments' table, on one mat for both players with the event's name on its crest (no playmats of their own).</summary>
+    public bool TournamentMat { get; init; }
+
+    /// <summary>The Swiss rounds' time limit in minutes (0: untimed); the playoff is untimed. See <see cref="Limited.LimitedEvent.RoundMinutes"/>.</summary>
+    public int RoundMinutes { get; init; }
 }
 
 /// <summary>

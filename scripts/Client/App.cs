@@ -21,7 +21,23 @@ public sealed record MatchSetup(IReadOnlyList<GameSession.Seat> Seats, int Start
     /// lie comes from the JSON file next to the table's picture ("matTop", "matBottom").
     /// </summary>
     public IReadOnlyList<string?>? TableMats { get; init; }
+
+    /// <summary>At a <see cref="Table"/>, a big tournament's mat for both players with this event's name on its crest, instead of <see cref="TableMats"/>.</summary>
+    public string? TournamentMat { get; init; }
+
+    /// <summary>A tournament's broadcast overlay on the board: the round's clock and the players' plates.</summary>
+    public RoundBroadcast? Broadcast { get; init; }
 }
+
+/// <summary>A player's plate on a tournament's overlay: name, record in the event before this match, games won in it.</summary>
+public sealed record BroadcastPlate(string Name, string Record, int Games);
+
+/// <param name="Event">The event's name.</param>
+/// <param name="Round">"Round 3", "Quarterfinals"…</param>
+/// <param name="Deadline">When the round's time is up (UTC); null: untimed.</param>
+/// <param name="Plates">One per seat, in seat order.</param>
+/// <param name="BestOf">Games in the match (the plates show the wins it takes).</param>
+public sealed record RoundBroadcast(string Event, string Round, DateTime? Deadline, IReadOnlyList<BroadcastPlate> Plates, int BestOf);
 
 /// <param name="RecordWinner">Called once when the game ends, with the winning seat index (null for a draw).</param>
 /// <param name="ReturnScene">Where "Back to event" goes.</param>

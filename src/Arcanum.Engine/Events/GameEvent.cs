@@ -93,3 +93,10 @@ public sealed record MonarchChanged(PlayerId Player) : GameEvent;
 
 public sealed record PlayerLost(PlayerId Player, string Reason) : GameEvent;
 public sealed record GameEnded(PlayerId? Winner) : GameEvent;
+
+/// <summary>
+/// A tournament round's time ran out during the game (the end-of-match procedure): the turn in progress (turn
+/// <see cref="TurnNumber"/>, "turn 0") is finished, then <see cref="AdditionalTurns"/> more turns are played; a game
+/// not over by then is a draw.
+/// </summary>
+public sealed record TimeCalled(int TurnNumber, int AdditionalTurns) : GameEvent;

@@ -217,6 +217,76 @@ public class GameFlowTests
         Assert.All(opponent.Hand, c => { Assert.True(c.IsHidden); Assert.Null(c.Name); });
         Assert.All(seen.Self.Hand, c => Assert.False(c.IsHidden));
     }
+
+    [Fact]
+    public async Task CallingTimeDrawsTheGameFiveTurnsLater()
+    {
+        // Nobody attacks, so nobody can lose in the additional turns.
+        var passive = new TestController { Attack = (_, _, _) => new List<AttackDeclaration>() };
+        var game = Decks.NewGame(3, (Decks.ForestCubs, passive), (Decks.ForestCubs, passive));
+        game.EventRaised += e => { if (e is TurnBegan { TurnNumber: 3 }) game.CallTime(); };
+        await game.RunWithTimeout();
+
+        Assert.Equal<int?>(3, game.TimeCalledAt);
+        var called = Assert.Single(game.Log.OfType<TimeCalled>());
+        Assert.Equal(3, called.TurnNumber);
+        Assert.Equal(5, called.AdditionalTurns);
+        // Turn 3 is turn 0; turns 4 to 8 are the additional turns, and the game is a draw at the end of turn 8.
+        Assert.Equal(Enumerable.Range(1, 8), game.Log.OfType<TurnBegan>().Select(t => t.TurnNumber));
+        Assert.Equal(8, game.State.TurnNumber);
+        Assert.True(game.State.IsGameOver);
+        Assert.Null(game.State.Winner);
+        Assert.Null(Assert.Single(game.Log.OfType<GameEnded>()).Winner);
+        Assert.Empty(game.Log.OfType<PlayerLost>());
+    }
+
+    [Fact]
+    public async Task CallingTimeTwiceKeepsTheFirstCall()
+    {
+        var passive = new TestController { Attack = (_, _, _) => new List<AttackDeclaration>() };
+        var game = Decks.NewGame(3, (Decks.ForestCubs, passive), (Decks.ForestCubs, passive));
+        game.EventRaised += e => { if (e is TurnBegan t && t.TurnNumber is 3 or 5) game.CallTime(); };
+        await game.RunWithTimeout();
+
+        Assert.Equal<int?>(3, game.TimeCalledAt);
+        var called = Assert.Single(game.Log.OfType<TimeCalled>());
+        Assert.Equal(3, called.TurnNumber);
+        Assert.Equal(8, game.State.TurnNumber);
+        Assert.True(game.State.IsGameOver);
+        Assert.Null(game.State.Winner);
+    }
+
+    [Fact]
+    public async Task APlayerWhoLosesInTheAdditionalTurnsLosesNormally()
+    {
+        // Player A draws from an empty library on turn 3, which is one of the additional turns after time is called on turn 1.
+        var tinyDeck = Decks.Of((GenericCards.Forest, 7));
+        var game = new Game(new GameConfig { Seed = 2, StartingPlayer = new Core.PlayerId(0) }, new[]
+        {
+            new PlayerSetup("A", new TestController(), tinyDeck),
+            new PlayerSetup("B", new TestController(), Decks.ForestCubs),
+        });
+        int turn = 0;
+        int? lostOnTurn = null;
+        game.EventRaised += e =>
+        {
+            switch (e)
+            {
+                case TurnBegan t:
+                    turn = t.TurnNumber;
+                    if (turn == 1) game.CallTime();
+                    break;
+                case PlayerLost: lostOnTurn = turn; break;
+            }
+        };
+        await game.RunWithTimeout();
+
+        Assert.Equal<int?>(3, lostOnTurn);
+        Assert.Equal(new Core.PlayerId(0), Assert.Single(game.Log.OfType<PlayerLost>()).Player);
+        Assert.Equal(new Core.PlayerId(1), game.State.Winner);
+        Assert.Single(game.Log.OfType<TimeCalled>());
+        Assert.NotNull(Assert.Single(game.Log.OfType<GameEnded>()).Winner);
+    }
 }
 
 public class LosingTests

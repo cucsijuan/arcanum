@@ -253,7 +253,32 @@ public sealed partial class Game
             }
             await RunTurnAsync(skipDraw: firstTurn && (Config.StartingPlayerSkipsDraw ?? !IsMultiplayer));
             firstTurn = false;
+            // The end-of-match procedure: after the additional turns, a game nobody has won is a draw.
+            if (!State.IsGameOver && TimeCalledAt is { } called && State.TurnNumber >= called + AdditionalTurns)
+            {
+                State.IsGameOver = true;
+                State.Winner = null;
+                Emit(new GameEnded(null));
+            }
         }
+    }
+
+    /// <summary>The additional turns of the end-of-match procedure after the turn in progress when time is called (two-player games).</summary>
+    public const int AdditionalTurns = 5;
+
+    /// <summary>The turn in progress when the round's time ran out (see <see cref="CallTime"/>), or null.</summary>
+    public int? TimeCalledAt { get; private set; }
+
+    /// <summary>
+    /// The tournament round's time is up: the turn in progress is turn 0, then <see cref="AdditionalTurns"/> more turns
+    /// (extra turns count among them); a game not over after them is a draw. Called once; <paramref name="turn"/> replays
+    /// a call made at that turn (an undone game played again).
+    /// </summary>
+    public void CallTime(int? turn = null)
+    {
+        if (TimeCalledAt is not null || State.IsGameOver) return;
+        TimeCalledAt = turn ?? Math.Max(1, State.TurnNumber);
+        Emit(new TimeCalled(TimeCalledAt.Value, AdditionalTurns));
     }
 
     /// <summary>

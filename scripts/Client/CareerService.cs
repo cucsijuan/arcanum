@@ -394,8 +394,20 @@ public sealed class CareerService
     public static readonly bool DraftRatingsForPlayers = true;
 
     /// <summary>The event entered, run like the Play screen's limited events but kept with the career and played on the store's table.</summary>
-    public LimitedService Events => _events ??= new LimitedService(Folder + "/event.json", App.EventScene, TableFor(CareerRules.DayOf(Now)), DraftRatingsForPlayers,
-        (name, human) => human ? PlayerMat : CareerRules.OpponentPlaymat(World!, name));
+    public LimitedService Events => _events ??= new LimitedService(Folder + "/event.json", App.EventScene, () => EventTable(EnteredEvent), DraftRatingsForPlayers,
+        (name, human) => human ? PlayerMat : CareerRules.OpponentPlaymat(World!, name),
+        () => EnteredEvent is { TournamentMat: true } e ? e.Name : null,
+        () => EnteredEvent is { RoundMinutes: > 0 } or { TournamentMat: true } ? EnteredEvent!.Name : null);
+
+    /// <summary>The event entered, if any (without loading or setting up its running event).</summary>
+    private EventSpec? EnteredEvent => HasCareer && State.Event is { } entry ? World!.Event(entry.Id, entry.Day) : null;
+
+    /// <summary>The big tournaments' table, where events played on a tournament mat are played.</summary>
+    public const string TournamentTable = "res://ui-art/kit/career/regional-table.jpg";
+
+    /// <summary>The table an event is played at: the big tournaments' for one on a tournament mat, otherwise the day's.</summary>
+    public string? EventTable(EventSpec? spec) =>
+        spec is { TournamentMat: true } && TestTable is null && ResourceLoader.Exists(TournamentTable) ? TournamentTable : TableFor(CareerRules.DayOf(Now));
 
     /// <summary>The playmat the player puts on the table, or null for none.</summary>
     private string? PlayerMat => _save?.State.Playmat is { Length: > 0 } id ? id : null;
@@ -490,7 +502,7 @@ public sealed class CareerService
             Mode = spec.Kind == CareerRules.Draft ? LimitedMode.Draft : LimitedMode.Sealed,
             Source = spec.Kind == CareerRules.Draft ? "set:" + entry.Set : "constructed:" + spec.Id,
             BestOf = spec.BestOf, Seed = (int)(entry.Seed & 0x7FFFFFFF), RoundsTotal = CareerRules.SwissRounds(spec, players), Seats = seats,
-            TopCut = CareerRules.PlayoffRounds(spec, players) > 0 ? spec.TopCut : 0, CutAfter = spec.CutAfter, CutPoints = spec.CutPoints,
+            TopCut = CareerRules.PlayoffRounds(spec, players) > 0 ? spec.TopCut : 0, CutAfter = spec.CutAfter, CutPoints = spec.CutPoints, RoundMinutes = spec.RoundMinutes,
             BoostersPerPlayer = spec.Kind == CareerRules.Draft ? world.Sets[entry.Set].BoostersPerPlayer : 0,
         };
         Events.Begin(ev, random);

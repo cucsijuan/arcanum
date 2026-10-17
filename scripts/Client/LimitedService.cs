@@ -21,21 +21,27 @@ public sealed record LimitedSource(string Id, string Name, bool IsCube, int Boos
 public sealed class LimitedService : ILimitedSession
 {
     private readonly string _savePath, _returnScene;
-    private readonly string? _table;
+    private readonly Func<string?> _table;
+    private readonly Func<string?> _tournamentMat;
+    private readonly Func<string?> _broadcast;
     private readonly Func<string, bool, string?>? _tableMat;
 
     /// <param name="savePath">Where the event is saved (the career keeps its events apart from the Play screen's).</param>
     /// <param name="returnScene">Where a game of the event goes back to.</param>
-    /// <param name="table">A table picture for the event's games (see <see cref="MatchSetup.Table"/>).</param>
+    /// <param name="table">A table picture for the event's games (see <see cref="MatchSetup.Table"/>), asked for each game.</param>
+    /// <param name="broadcast">The event's name when its games show a tournament's broadcast overlay (see <see cref="MatchSetup.Broadcast"/>), asked for each game.</param>
+    /// <param name="tournamentMat">The event's name when its games are played on a big tournament's mat (see <see cref="MatchSetup.TournamentMat"/>), asked for each game.</param>
     /// <param name="ratingsForPlayer">Whether the player may use the set's draft statistics (shown as grades, and in "Build for me").</param>
     /// <param name="tableMat">The playmat a player puts on the table, by their name and whether they are the person here (see <see cref="MatchSetup.TableMats"/>).</param>
-    public LimitedService(string savePath = "user://limited/current.json", string returnScene = App.LimitedScene, string? table = null, bool ratingsForPlayer = false,
-        Func<string, bool, string?>? tableMat = null)
+    public LimitedService(string savePath = "user://limited/current.json", string returnScene = App.LimitedScene, Func<string?>? table = null, bool ratingsForPlayer = false,
+        Func<string, bool, string?>? tableMat = null, Func<string?>? tournamentMat = null, Func<string?>? broadcast = null)
     {
+        _broadcast = broadcast ?? (() => null);
         _tableMat = tableMat;
         _savePath = savePath;
         _returnScene = returnScene;
-        _table = table;
+        _table = table ?? (() => null);
+        _tournamentMat = tournamentMat ?? (() => null);
         RatingsForPlayer = ratingsForPlayer;
     }
 
@@ -482,19 +488,73 @@ public sealed class LimitedService : ILimitedSession
             return new GameSession.Seat(ev.Seats[s].Name, deck, IsBot: !ev.Seats[s].IsHuman);
         }).ToList();
         int game = match.WinsA + match.WinsB + match.Draws + 1;
+        // The round's clock runs from the match's first game.
+        if (match.Started is null)
+        {
+            match.Started = DateTime.UtcNow;
+            Save();
+        }
+        int round = ev.Rounds.FindIndex(r => r.Contains(match));
+        BroadcastPlate Plate(int seat)
+        {
+            var (w, l, d) = RecordBefore(ev, seat, match);
+            return new BroadcastPlate(ev.Seats[seat].Name, d > 0 ? $"{w}-{l}-{d}" : $"{w}-{l}", match.WinsOf(seat));
+        }
         return new MatchSetup(seats, 20)
         {
             Event = new EventHook(winner => RecordGame(match, winner is null ? null : winner == 0 ? human : opponent),
                 _returnScene, $"Round {ev.Rounds.Count} · game {game}"),
-            Table = _table,
+            Table = _table(),
             TableMats = _tableMat is null ? null : new[] { human, opponent }.Select(s => _tableMat(ev.Seats[s].Name, ev.Seats[s].IsHuman)).ToList(),
+            TournamentMat = _tournamentMat(),
+            Broadcast = _broadcast() is { } name
+                ? new RoundBroadcast(name, RoundName(ev, round), ev.Deadline(match), new[] { Plate(human), Plate(opponent) }, ev.BestOf)
+                : null,
         };
+    }
+
+    /// <summary>A round's name: "Round 3", or the playoff's quarterfinals, semifinals and final.</summary>
+    public static string RoundName(LimitedEvent ev, int round)
+    {
+        if (!ev.IsPlayoff(round)) return $"Round {round + 1}";
+        return (ev.PlayoffRounds - (round - ev.RoundsTotal)) switch
+        {
+            1 => "Final", 2 => "Semifinals", 3 => "Quarterfinals", var n => $"Top {1 << n}",
+        };
+    }
+
+    /// <summary>A seat's record in the matches before <paramref name="current"/> (byes are wins).</summary>
+    private static (int Wins, int Losses, int Draws) RecordBefore(LimitedEvent ev, int seat, EventMatch current)
+    {
+        int wins = 0, losses = 0, draws = 0;
+        foreach (var m in ev.Rounds.SelectMany(r => r).Where(m => m != current && m.Done && m.Involves(seat)))
+        {
+            if (m.SeatB is null) { wins++; continue; }
+            int mine = m.WinsOf(seat), theirs = m.WinsOf(m.Opponent(seat)!.Value);
+            if (mine > theirs) wins++;
+            else if (mine < theirs) losses++;
+            else draws++;
+        }
+        return (wins, losses, draws);
+    }
+
+    /// <summary>
+    /// The person's match whose time ran out between games: no new game begins and it ends with the games played (then
+    /// the event goes on). Returns whether it did.
+    /// </summary>
+    public bool EndIfTimeUp()
+    {
+        if (Current is not { Stage: EventStage.Playing } ev || ev.CurrentMatch is not { } match || !ev.TimeUp(match, DateTime.UtcNow)) return false;
+        ev.EndOnTime(match);
+        if (ev.Rounds[^1].All(m => m.Done)) NextRound();
+        Save();
+        return true;
     }
 
     private void RecordGame(EventMatch match, int? winnerSeat)
     {
         var ev = Current!;
-        ev.RecordGame(match, winnerSeat);
+        ev.RecordGame(match, winnerSeat, ev.TimeUp(match, DateTime.UtcNow));
         if (match.Done) NextRound();
         Save();
     }
