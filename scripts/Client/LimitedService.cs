@@ -164,6 +164,7 @@ public sealed class LimitedService : ILimitedSession
         _random = random;
         Current = ev;
         _draft = null;
+        _strength.Clear();
         if (ev.Seats.All(s => s.Deck is not null)) StartPlaying();
         else if (ev.Mode == LimitedMode.Draft)
         {
@@ -225,6 +226,7 @@ public sealed class LimitedService : ILimitedSession
 
     public void Abandon()
     {
+        _strength.Clear();
         Current = null;
         _draft = null;
         if (File.Exists(SavePath)) File.Delete(SavePath);
@@ -425,7 +427,7 @@ public sealed class LimitedService : ILimitedSession
     private void NextRound()
     {
         var ev = Current!;
-        if (ev.Rounds.Count >= ev.RoundsTotal)
+        if (ev.Complete)
         {
             ev.Stage = EventStage.Finished;
             return;
@@ -442,7 +444,22 @@ public sealed class LimitedService : ILimitedSession
         if (ev.CurrentMatch is null) NextRound();
     }
 
-    private double DeckStrength(EventSeat seat) => DeckStrength(seat.Deck);
+    /// <summary>
+    /// The person leaves the event (drops, or its days are over): their match in progress is conceded and the others
+    /// play the event out without them. They keep their place in the final standings.
+    /// </summary>
+    public void DropOut()
+    {
+        var ev = Current!;
+        if (ev.Stage != EventStage.Playing) return;
+        ev.Drop(ev.HumanSeat);
+        if (ev.Rounds.LastOrDefault()?.All(m => m.Done) ?? true) NextRound();
+        Save();
+    }
+
+    private readonly Dictionary<EventSeat, double> _strength = new();
+
+    private double DeckStrength(EventSeat seat) => _strength.TryGetValue(seat, out var s) ? s : _strength[seat] = DeckStrength(seat.Deck);
 
     /// <summary>How strong a deck is (to settle matches between computer players without playing them).</summary>
     public static double DeckStrength(DeckList? deck)

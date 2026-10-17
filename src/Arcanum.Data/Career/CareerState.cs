@@ -86,7 +86,11 @@ public sealed class SalePost
 }
 
 /// <summary>An event entered: which, on what day, its seed (its boosters and pairings), the set drafted or the deck played.</summary>
-public sealed record EventEntry(string Id, DateOnly Day, ulong Seed, string Set = "", string Deck = "");
+/// <param name="Day">The day it was entered; <see cref="Start"/> is the day its run started (an event of several days).</param>
+public sealed record EventEntry(string Id, DateOnly Day, ulong Seed, string Set = "", string Deck = "")
+{
+    public DateOnly Start { get; init; } = Day;
+}
 
 /// <summary>Something that happened in the career, newest last (shown on the hub).</summary>
 public sealed record CareerNote(DateTime Utc, string Text);
@@ -152,6 +156,15 @@ public sealed class CareerState
 
     /// <summary>Qualification tokens won (some events take them as entry).</summary>
     public int Tokens { get; set; }
+
+    /// <summary>Invitations won: an invitational event's id → the day number its qualifying run starts.</summary>
+    public SortedDictionary<string, int> Qualified
+    {
+        get => _qualified;
+        set => _qualified = new(value, StringComparer.Ordinal);
+    }
+
+    private SortedDictionary<string, int> _qualified = new(StringComparer.Ordinal);
 
     /// <summary>The store's offers taken, as "day number:offer index".</summary>
     public List<string> OffersTaken { get; set; } = new();

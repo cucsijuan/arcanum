@@ -227,7 +227,7 @@ public partial class CareerScreen
         for (int i = 0; i < 7; i++)
         {
             var day = today.AddDays(i);
-            var events = CareerRules.EventsOn(World, day);
+            var events = CareerRules.EventsOn(World, day).Where(e => i == 0 || CareerRules.Happens(e, day)).ToList();
             if (events.Count == 0) continue;
             body.AddChild(CareerStyle.Text(i == 0 ? $"Today, {day:dddd MMMM d}" : $"{day:dddd, MMMM d}", 22, CareerStyle.TitleBar));
             foreach (var e in events)
@@ -237,6 +237,9 @@ public partial class CareerScreen
             }
         }
         body.AddChild(CareerStyle.Text($"Your qualification tokens: {State.Tokens}", 16, CareerStyle.InkDim));
+        foreach (var (id, start) in State.Qualified)
+            if (DateOnly.FromDayNumber(start) is var day && day >= today && World.Event(id, day) is { } invited)
+                body.AddChild(CareerStyle.Text($"You're qualified for {invited.Name}, {day:dddd, MMMM d}.", 16, CareerStyle.Good));
     }
 
     private static Control Bullet(string text, int level, int size, Color color)
@@ -260,16 +263,26 @@ public partial class CareerScreen
             CareerRules.Commander => "Format: Commander (bring your Commander deck)",
             _ => "Format: constructed (bring your deck)",
         };
-        yield return e.Kind == CareerRules.Commander ? $"Pods of {e.Players}, {e.Rounds} games" : $"{e.Players} players, {e.Rounds} rounds{(e.BestOf > 1 ? $", best of {e.BestOf}" : "")}";
+        var start = CareerRules.Start(e, day) ?? day;
+        if (e.Days > 1) yield return $"From {start:dddd, MMMM d} to {CareerRules.LastDay(e, start):dddd, MMMM d}: play the rounds on any of these days";
+        var players = e.PlayersMax > e.Players ? $"{e.Players}–{e.PlayersMax} players" : $"{e.Players} players";
+        var rounds = e.Rounds > 0 ? $"{e.Rounds} Swiss rounds" : "Swiss rounds by attendance";
+        yield return e.Kind == CareerRules.Commander ? $"Pods of {e.Players}, {e.Rounds} games"
+            : $"{players}, {rounds}{(e.BestOf > 1 ? $", best of {e.BestOf}" : "")}"
+              + (e.CutAfter > 0 ? $", a cut to {e.CutPoints} points after round {e.CutAfter}" : "") + (e.TopCut > 0 ? $", then a top {e.TopCut}" : "");
+        if (e.Invitational) yield return "By invitation: only qualified players may enter";
         var entry = new List<string> { CareerRules.Money(e.Entry) };
         if (e.EntryBoosters > 0) entry.Add($"{e.EntryBoosters} boosters of the set");
         if (e.EntryTokens > 0) entry.Add($"{e.EntryTokens} qualification token{(e.EntryTokens == 1 ? "" : "s")}");
         yield return "Entry: " + string.Join(" or ", entry);
-        var prizes = CareerRules.PrizesOf(e).Select(p => (p.Wins >= 0 ? $"{p.Wins} wins" : p.Place switch { 0 => "everyone else", 1 => "1st", _ => $"top {p.Place}" }) + ": "
+        var prizes = CareerRules.PrizesOf(e).Select(p => (p.Wins >= 0 ? $"{p.Wins} wins" : p.Place switch { 0 => "everyone else", 1 => "1st", _ => $"top {p.Place}" })
+            + (p.MinPlayers > 0 ? $" (with {p.MinPlayers}+ players)" : "") + ": "
             + string.Join(", ", new[]
             {
                 p.Cash > 0 ? CareerRules.Money(p.Cash) : null, p.Boosters > 0 ? $"{p.Boosters} booster{(p.Boosters == 1 ? "" : "s")}" : null,
-                p.Tokens > 0 ? $"{p.Tokens} token{(p.Tokens == 1 ? "" : "s")}" : null, p.Reputation > 0 ? $"{p.Reputation} reputation" : null,
+                p.Tokens > 0 ? $"{p.Tokens} token{(p.Tokens == 1 ? "" : "s")}" : null,
+                p.Qualifies.Length > 0 ? $"an invitation to {World.Event(p.Qualifies, day)?.Name ?? p.Qualifies}" : null,
+                p.Reputation > 0 ? $"{p.Reputation} reputation" : null,
             }.OfType<string>())).ToList();
         if (prizes.Count > 0) yield return "Prizes: " + string.Join(" · ", prizes);
         if (e.MinTier > 0) yield return $"For {World.Content.Tiers[Math.Min(e.MinTier, World.Content.Tiers.Count - 1)].Name}s and up";
@@ -280,7 +293,7 @@ public partial class CareerScreen
     private void EventPost(VBoxContainer body, EventSpec e)
     {
         var today = CareerRules.DayOf(Career.Now);
-        body.AddChild(CareerStyle.Text($"{e.Name} is on today! Here are the details:", 20, CareerStyle.Ink, wrap: true));
+        body.AddChild(CareerStyle.Text(e.Days > 1 && CareerRules.Start(e, today) != today ? $"{e.Name} is on! Here are the details:" : $"{e.Name} is on today! Here are the details:", 20, CareerStyle.Ink, wrap: true));
         foreach (var detail in EventDetails(e, today)) body.AddChild(Bullet(detail, 0, 18, CareerStyle.Ink));
         if (Career.CurrentEvent() is var (current, _, _))
         {
@@ -288,7 +301,12 @@ public partial class CareerScreen
             body.AddChild(CareerStyle.Button("Go to the event", () => App.Instance.GoTo(App.EventScene), 20, primary: true));
             return;
         }
-        if (CareerRules.Played(State, e, today)) { body.AddChild(CareerStyle.Text("You played it today.", 19, CareerStyle.Good)); return; }
+        if (CareerRules.Played(State, e, today)) { body.AddChild(CareerStyle.Text(e.Days > 1 ? "You played it." : "You played it today.", 19, CareerStyle.Good)); return; }
+        if (e.Invitational && !CareerRules.IsQualified(State, e, today))
+        {
+            body.AddChild(CareerStyle.Text("It's by invitation, and you aren't qualified for it.", 19, CareerStyle.Bad, wrap: true));
+            return;
+        }
         if (e.Online is { PvpOnly: true }) { body.AddChild(CareerStyle.Text("It's played online only.", 19, CareerStyle.InkDim)); return; }
         if (CareerRules.Tier(State, World) < e.MinTier) { body.AddChild(CareerStyle.Text("Your reputation isn't high enough yet.", 19, CareerStyle.Bad)); return; }
 

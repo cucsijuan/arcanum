@@ -519,6 +519,95 @@ public class CareerTests
         Assert.Equal(("draft", wednesday), CareerRules.Upcoming(world, new DateOnly(2026, 10, 12)).Select(x => (x.Event.Id, x.Day)).First());
     }
 
+    private const string MonthlySeason = """
+        { "schemaVersion": 1, "changes": [ { "from": "2026-10-12", "events": [
+            { "id": "monthly", "name": "Monthly draft", "when": "firstFriday", "kind": "draft", "days": 3, "entry": 100 } ] } ] }
+        """;
+
+    private const string QualifierSeason = """
+        { "schemaVersion": 1, "changes": [ { "from": "2026-10-12", "events": [
+            { "id": "qual", "name": "Qualifier", "when": "firstFriday", "kind": "constructed", "days": 3, "players": 16, "rounds": 0,
+              "topCut": 8, "bestOf": 3, "entry": 100, "prizes": [{ "place": 1, "cash": 1000, "qualifies": "champ" }] },
+            { "id": "champ", "name": "Championship", "when": "2026-11-21", "kind": "constructed", "players": 16, "rounds": 4, "entry": 100, "invitational": true } ] } ] }
+        """;
+
+    [Fact]
+    public void WeekdaysOfTheMonthAndMonthsDecideWhenAnEventHappens()
+    {
+        var firstFriday = new EventSpec("ff", "First Friday", "firstFriday", CareerRules.Constructed);
+        Assert.True(CareerRules.Happens(firstFriday, new DateOnly(2026, 11, 6)));
+        Assert.False(CareerRules.Happens(firstFriday, new DateOnly(2026, 11, 13)));
+        var thirdSaturday = new EventSpec("ts", "Third Saturday", "thirdSaturday", CareerRules.Constructed) { Months = new[] { 3, 6, 9, 12 } };
+        Assert.True(CareerRules.Happens(thirdSaturday, new DateOnly(2026, 12, 19)));
+        Assert.False(CareerRules.Happens(thirdSaturday, new DateOnly(2026, 11, 21))); // a third Saturday, but not in its months
+        var lastSunday = new EventSpec("ls", "Last Sunday", "lastSunday", CareerRules.Constructed);
+        Assert.True(CareerRules.Happens(lastSunday, new DateOnly(2026, 10, 25)));
+    }
+
+    [Fact]
+    public void AMonthlyEventRunsItsDaysFromItsStart()
+    {
+        var monthly = new EventSpec("monthly", "Monthly draft", "firstFriday", CareerRules.Draft) { Days = 3 };
+        var friday = new DateOnly(2026, 11, 6);
+        Assert.Equal(friday, CareerRules.Start(monthly, friday));
+        Assert.Equal(friday, CareerRules.Start(monthly, friday.AddDays(2)));
+        Assert.Null(CareerRules.Start(monthly, friday.AddDays(3)));
+        Assert.Equal(friday.AddDays(2), CareerRules.LastDay(monthly, friday));
+        var world = World(season: MonthlySeason);
+        foreach (var day in new[] { 6, 7, 8 }) Assert.Contains(CareerRules.EventsOn(world, new DateOnly(2026, 11, day)), e => e.Id == "monthly");
+        Assert.DoesNotContain(CareerRules.EventsOn(world, new DateOnly(2026, 11, 9)), e => e.Id == "monthly");
+    }
+
+    [Fact]
+    public void SwissRoundsAndAttendanceFollowTheNumberOfPlayers()
+    {
+        var recommended = new EventSpec("r", "Recommended", "daily", CareerRules.Draft, Rounds: 0);
+        Assert.Equal(new[] { 4, 5, 6, 7 }, new[] { 16, 17, 64, 65 }.Select(p => CareerRules.SwissRounds(recommended, p)));
+        var spread = new EventSpec("s", "Spread", "daily", CareerRules.Constructed, Players: 16) { PlayersMax = 24 };
+        var seeds = Enumerable.Range(0, 100).Select(i => (ulong)i * 1_000_003UL).ToList();
+        var attendance = seeds.Select(seed => CareerRules.Attendance(spread, seed)).ToList();
+        Assert.All(attendance, a => Assert.InRange(a, 16, 24));
+        Assert.True(attendance.Distinct().Count() > 1);
+        var fixedSize = new EventSpec("f", "Fixed", "daily", CareerRules.Constructed, Players: 16);
+        Assert.All(seeds, seed => Assert.Equal(16, CareerRules.Attendance(fixedSize, seed)));
+    }
+
+    [Fact]
+    public void AQualifierInvitesItsWinnerToTheInvitationalRunAfterIt()
+    {
+        var world = World(season: QualifierSeason);
+        var champ = new EnterEvent(new DateTime(2026, 11, 21, 10, 0, 0, DateTimeKind.Utc), "champ", CareerRules.PayCash, Sixty);
+        // Without the qualification the invitational run can't be entered.
+        var outsider = new CareerState();
+        CareerRules.Apply(outsider, new StartCareer(T0, 42, "sixty"), world);
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(outsider, champ, world));
+
+        var state = new CareerState();
+        var journal = new List<CareerAction> { new StartCareer(T0, 42, "sixty") };
+        CareerRules.Apply(state, journal[0], world);
+        // The qualifier runs Friday to Sunday: entered on its second day, once a run.
+        var saturday = new DateTime(2026, 11, 7, 10, 0, 0, DateTimeKind.Utc);
+        Do(state, journal, world, new EnterEvent(saturday, "qual", CareerRules.PayCash, Sixty));
+        Do(state, journal, world, new FinishEvent(saturday.AddHours(3), 3, 1, 0, 1));
+        Assert.Equal(new DateOnly(2026, 11, 21).DayNumber, state.Qualified["champ"]);
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(saturday.AddDays(1), "qual", CareerRules.PayCash, Sixty), world));
+
+        Do(state, journal, world, champ);
+        Assert.False(state.Qualified.ContainsKey("champ"));
+    }
+
+    [Fact]
+    public void APrizeForAPlaceCanNeedAMinimumNumberOfPlayers()
+    {
+        var big = new EventSpec("big", "Big event", "daily", CareerRules.Constructed, Players: 40, Prizes: new[]
+        {
+            new PrizeSpec(Place: 2, Cash: 5000) { MinPlayers = 33 },
+            new PrizeSpec(Place: 2, Cash: 1000),
+        });
+        Assert.Equal(5000, CareerRules.PrizeFor(big, 2, 2, players: 40)!.Cash);
+        Assert.Equal(1000, CareerRules.PrizeFor(big, 2, 2, players: 20)!.Cash);
+    }
+
     [Fact]
     public void ADraftNightIsEnteredOnceAndItsCardsAndPrizesAreKept()
     {

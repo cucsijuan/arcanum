@@ -270,12 +270,13 @@ public sealed record ChallengeSpec(string Id, string Text, string Kind, int Coun
 /// <summary>An event on the store's calendar.</summary>
 /// <param name="Id">Stable id (kept in saves).</param>
 /// <param name="Name">Shown name.</param>
-/// <param name="When">"daily", a day of the week ("Wednesday"), or "lastSunday" (the last Sunday of the month); UTC days.</param>
+/// <param name="When">"daily", a day of the week ("Wednesday"), a weekday of the month ("firstFriday", "thirdSaturday",
+/// "lastSunday"…) or a date ("2026-10-24"); UTC days. The day the event starts (see <see cref="EventSpec.Days"/>).</param>
 /// <param name="Kind">draft, constructed (a career deck, casual rules) or commander (a career Commander deck; pods of
 /// <see cref="Players"/> play <see cref="Rounds"/> games, prizes by games won).</param>
 /// <param name="Set">Draft: the set code, or "featured" for the week's featured set.</param>
-/// <param name="Players">Seats, filled with computer players.</param>
-/// <param name="Rounds">Swiss rounds.</param>
+/// <param name="Players">Seats, filled with computer players (the fewest, with <see cref="EventSpec.PlayersMax"/>).</param>
+/// <param name="Rounds">Swiss rounds; 0: as many as the attendance calls for (see <see cref="CareerRules.SwissRounds"/>).</param>
 /// <param name="BestOf">Games per match.</param>
 /// <param name="Entry">Entry fee in cents.</param>
 /// <param name="EntryBoosters">Draft: may enter with this many boosters of the event's set instead (0: no).</param>
@@ -298,6 +299,25 @@ public sealed record EventSpec(string Id, string Name, string When, string Kind,
     /// Commander events always use the Commander format.
     /// </summary>
     public string Format { get; init; } = "";
+
+    /// <summary>The months it is held in (1–12); empty: every month.</summary>
+    public IReadOnlyList<int> Months { get; init; } = Array.Empty<int>();
+
+    /// <summary>How many days it runs from the day it starts: a player enters on any of them and plays its rounds over them; the rounds not played by then are lost (the player is dropped).</summary>
+    public int Days { get; init; } = 1;
+
+    /// <summary>The attendance is drawn between <see cref="Players"/> and this (0: always <see cref="Players"/>).</summary>
+    public int PlayersMax { get; init; }
+
+    /// <summary>The top of the Swiss standings that plays a single-elimination playoff (8: a top 8); 0: none.</summary>
+    public int TopCut { get; init; }
+
+    /// <summary>A cut by record after this many Swiss rounds (day 1): only the players with at least <see cref="CutPoints"/> match points play on. 0: none.</summary>
+    public int CutAfter { get; init; }
+    public int CutPoints { get; init; }
+
+    /// <summary>Only the players qualified for this run of it may enter (prizes with <see cref="PrizeSpec.Qualifies"/> its id qualify them).</summary>
+    public bool Invitational { get; init; }
 }
 
 /// <summary>
@@ -321,7 +341,14 @@ public sealed record OnlineSpec
 }
 
 /// <summary>A prize for a place (1 = first; <see cref="Place"/> covers places up to it) or for a number of match wins.</summary>
-public sealed record PrizeSpec(int Place = 0, int Wins = -1, int Cash = 0, int Boosters = 0, int Tokens = 0, int Reputation = 0);
+public sealed record PrizeSpec(int Place = 0, int Wins = -1, int Cash = 0, int Boosters = 0, int Tokens = 0, int Reputation = 0)
+{
+    /// <summary>The id of an event this prize qualifies the player for: its next run after this one.</summary>
+    public string Qualifies { get; init; } = "";
+
+    /// <summary>Only when the event had at least this many players (the next prize that fits applies otherwise).</summary>
+    public int MinPlayers { get; init; }
+}
 
 /// <param name="Deck">Module deck name.</param>
 /// <param name="Price">Price in cents; 0 uses the store's default.</param>

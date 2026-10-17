@@ -62,13 +62,25 @@ public sealed class LimitedEvent
     public int CubeBoosterSize { get; init; } = 15;
     public int BoostersPerPlayer { get; init; } = 3;
     public int BestOf { get; init; } = 1;
+
+    /// <summary>Swiss rounds (the playoff rounds of a <see cref="TopCut"/> come after them).</summary>
     public int RoundsTotal { get; init; } = 3;
     public int Seed { get; init; }
+
+    /// <summary>How many of the Swiss standings play the single-elimination playoff (8: a top 8); 0: none.</summary>
+    public int TopCut { get; init; }
+
+    /// <summary>A cut by record after this many Swiss rounds (the end of day 1): seats with fewer than <see cref="CutPoints"/> match points are out. 0: none.</summary>
+    public int CutAfter { get; init; }
+    public int CutPoints { get; init; }
 
     public List<EventSeat> Seats { get; init; } = new();
     public EventStage Stage { get; set; }
     public DraftSnapshot? Draft { get; set; }
     public List<List<EventMatch>> Rounds { get; init; } = new();
+
+    /// <summary>Seats no longer paired: dropped, or out at the cut by record. They keep their place in the standings.</summary>
+    public SortedSet<int> Dropped { get; init; } = new();
 
     public int HumanSeat => Seats.FindIndex(s => s.IsHuman);
 
@@ -78,9 +90,24 @@ public sealed class LimitedEvent
     /// <summary>Wins needed to take a match.</summary>
     public int WinsNeeded => BestOf / 2 + 1;
 
-    /// <summary>Match points (3 a win, 1 a draw), as Swiss pairings and standings use them.</summary>
-    public int Points(int seat) => Rounds.SelectMany(r => r).Where(m => m.Done && m.Involves(seat)).Sum(m =>
-        m.SeatB is null ? 3 : m.WinsOf(seat) > m.WinsOf(m.Opponent(seat)!.Value) ? 3 : m.WinsOf(seat) == m.WinsOf(m.Opponent(seat)!.Value) ? 1 : 0);
+    /// <summary>The playoff's rounds (3 for a top 8).</summary>
+    public int PlayoffRounds => TopCut < 2 ? 0 : (int)Math.Round(Math.Log2(TopCut));
+
+    /// <summary>Whether a round (0-based) is a playoff round.</summary>
+    public bool IsPlayoff(int round) => round >= RoundsTotal;
+
+    /// <summary>Every round, Swiss and playoff, has been paired and played.</summary>
+    public bool Complete => Rounds.Count >= RoundsTotal && Rounds.All(r => r.All(m => m.Done))
+                            && (Rounds.Count >= RoundsTotal + PlayoffRounds || Rounds.Count == RoundsTotal && PlayoffSeeds().Count < 2);
+
+    private IEnumerable<EventMatch> SwissMatches(int seat) => Rounds.Take(RoundsTotal).SelectMany(r => r).Where(m => m.Done && m.Involves(seat));
+
+    private static bool Won(EventMatch m, int seat) => m.SeatB is null || m.WinsOf(seat) > m.WinsOf(m.Opponent(seat)!.Value);
+
+    private static bool Drew(EventMatch m, int seat) => m.SeatB is not null && m.WinsOf(seat) == m.WinsOf(m.Opponent(seat)!.Value);
+
+    /// <summary>Match points in the Swiss rounds (3 a win or a bye, 1 a draw), as pairings and standings use them.</summary>
+    public int Points(int seat) => SwissMatches(seat).Sum(m => Won(m, seat) ? 3 : Drew(m, seat) ? 1 : 0);
 
     /// <summary>Records one game of a match; the match ends when a player has enough wins (or no games are left).</summary>
     public void RecordGame(EventMatch match, int? winnerSeat)
@@ -89,43 +116,143 @@ public sealed class LimitedEvent
         else if (winnerSeat == match.SeatB) match.WinsB++;
         else match.Draws++;
         int played = match.WinsA + match.WinsB + match.Draws;
-        if (match.WinsA >= WinsNeeded || match.WinsB >= WinsNeeded || played >= BestOf) match.Done = true;
+        bool decided = match.WinsA >= WinsNeeded || match.WinsB >= WinsNeeded || played >= BestOf;
+        // A playoff match can't end in a draw: the players play on until one of them wins a game.
+        if (decided && (match.WinsA != match.WinsB || !IsPlayoff(Rounds.FindIndex(r => r.Contains(match))))) match.Done = true;
     }
 
     /// <summary>
-    /// Pairs the next Swiss round: seats sorted by points (ties at random), each paired with the highest-placed
-    /// seat it hasn't played yet; an odd seat out gets a bye.
+    /// A seat leaves the event (drops, or doesn't show up): its unfinished match is conceded (its opponent wins it) and
+    /// it isn't paired again. It keeps its place in the standings.
+    /// </summary>
+    public void Drop(int seat)
+    {
+        Dropped.Add(seat);
+        if (Rounds.LastOrDefault()?.FirstOrDefault(m => m.Involves(seat) && !m.Done) is not { } match) return;
+        if (match.SeatB is not null)
+        {
+            if (match.SeatA == seat) match.WinsB = Math.Max(match.WinsB, WinsNeeded);
+            else match.WinsA = Math.Max(match.WinsA, WinsNeeded);
+        }
+        match.Done = true;
+    }
+
+    /// <summary>
+    /// Pairs the next round. Swiss: seats sorted by points (ties at random), each paired with the highest-placed seat it
+    /// hasn't played yet; with an odd number, the lowest-placed seat that hasn't had a bye gets one. After the Swiss
+    /// rounds, the playoff: the top of the standings seeded 1 against 8, 4 against 5, 2 against 7, 3 against 6, then the
+    /// winners of each pair of matches.
     /// </summary>
     public List<EventMatch> PairNextRound(Random random)
     {
-        var order = Enumerable.Range(0, Seats.Count).OrderByDescending(Points).ThenBy(_ => random.Next()).ToList();
-        bool Played(int a, int b) => Rounds.SelectMany(r => r).Any(m => m.Involves(a) && m.Opponent(a) == b);
+        if (Rounds.Count >= RoundsTotal) return PairPlayoffRound();
+        if (CutAfter > 0 && Rounds.Count == CutAfter)
+            foreach (var seat in Enumerable.Range(0, Seats.Count).Where(s => Points(s) < CutPoints)) Dropped.Add(seat);
+        var opponents = Enumerable.Range(0, Seats.Count).Select(_ => new HashSet<int?>()).ToList();
+        foreach (var m in Rounds.SelectMany(r => r))
+        {
+            opponents[m.SeatA].Add(m.SeatB);
+            if (m.SeatB is { } b) opponents[b].Add(m.SeatA);
+        }
+        var points = Enumerable.Range(0, Seats.Count).Select(Points).ToList();
+        var left = Enumerable.Range(0, Seats.Count).Where(s => !Dropped.Contains(s))
+            .OrderByDescending(s => points[s]).ThenBy(_ => random.Next()).ToList();
         var round = new List<EventMatch>();
-        var left = order.ToList();
+        int? bye = null;
+        if (left.Count % 2 == 1)
+        {
+            bye = left.LastOrDefault(s => !opponents[s].Contains(null), left[^1]);
+            left.Remove(bye.Value);
+        }
         while (left.Count > 1)
         {
             int a = left[0];
-            int b = left.Skip(1).FirstOrDefault(x => !Played(a, x), left[1]);
+            int b = left.Skip(1).FirstOrDefault(x => !opponents[a].Contains(x), left[1]);
             left.Remove(a);
             left.Remove(b);
             round.Add(new EventMatch { SeatA = a, SeatB = b });
         }
-        if (left.Count == 1) round.Add(new EventMatch { SeatA = left[0], SeatB = null, Done = true });
+        if (bye is { } byeSeat) round.Add(new EventMatch { SeatA = byeSeat, SeatB = null, Done = true });
         Rounds.Add(round);
         return round;
     }
 
-    /// <summary>Seats ordered by points, then by game win percentage.</summary>
-    public List<int> Standings() => Enumerable.Range(0, Seats.Count)
-        .OrderByDescending(Points)
-        .ThenByDescending(s => GameWinRate(s))
-        .ToList();
-
-    private double GameWinRate(int seat)
+    /// <summary>The seats of the playoff in bracket order (1, 8, 4, 5, 2, 7, 3, 6 for a top 8): the top of the Swiss standings.</summary>
+    public List<int> PlayoffSeeds()
     {
-        var matches = Rounds.SelectMany(r => r).Where(m => m.Done && m.SeatB is not null && m.Involves(seat)).ToList();
-        int games = matches.Sum(m => m.WinsA + m.WinsB + m.Draws);
-        return games == 0 ? 0 : (double)matches.Sum(m => m.WinsOf(seat)) / games;
+        if (TopCut < 2) return new List<int>();
+        var swiss = SwissStandings().Where(s => !Dropped.Contains(s)).Take(TopCut).ToList();
+        if (swiss.Count < TopCut) return new List<int>();
+        var order = new List<int> { 1 };
+        while (order.Count < TopCut) order = order.SelectMany(s => new[] { s, 2 * order.Count + 1 - s }).ToList();
+        return order.Select(s => swiss[s - 1]).ToList();
+    }
+
+    private List<EventMatch> PairPlayoffRound()
+    {
+        var round = new List<EventMatch>();
+        if (Rounds.Count == RoundsTotal)
+        {
+            var seeds = PlayoffSeeds();
+            for (int i = 0; i + 1 < seeds.Count; i += 2) round.Add(new EventMatch { SeatA = seeds[i], SeatB = seeds[i + 1] });
+        }
+        else
+        {
+            var winners = Rounds[^1].Select(m => Won(m, m.SeatA) ? m.SeatA : m.SeatB!.Value).ToList();
+            for (int i = 0; i + 1 < winners.Count; i += 2) round.Add(new EventMatch { SeatA = winners[i], SeatB = winners[i + 1] });
+        }
+        Rounds.Add(round);
+        return round;
+    }
+
+    /// <summary>
+    /// The final order: the playoff's players by how far they went (the champion first; those out in the same round by
+    /// their Swiss place), then everyone else by the Swiss standings.
+    /// </summary>
+    public List<int> Standings()
+    {
+        var swiss = SwissStandings();
+        if (Rounds.Count <= RoundsTotal) return swiss;
+        var reached = new Dictionary<int, int>(); // seat → playoff rounds won (+1 for the champion's last)
+        for (int r = RoundsTotal; r < Rounds.Count; r++)
+            foreach (var m in Rounds[r])
+            {
+                reached[m.SeatA] = r - RoundsTotal + (m.Done && Won(m, m.SeatA) ? 1 : 0);
+                reached[m.SeatB!.Value] = r - RoundsTotal + (m.Done && Won(m, m.SeatB.Value) ? 1 : 0);
+            }
+        var rank = swiss.Select((s, i) => (s, i)).ToDictionary(x => x.s, x => x.i);
+        return reached.Keys.OrderByDescending(s => reached[s]).ThenBy(s => rank[s])
+            .Concat(swiss.Where(s => !reached.ContainsKey(s))).ToList();
+    }
+
+    /// <summary>
+    /// The Swiss standings: match points, then the opponents' match-win percentage, the game-win percentage and the
+    /// opponents' game-win percentage (each percentage at least 33%, byes not counted as opponents; a bye is a 2-0 win).
+    /// </summary>
+    public List<int> SwissStandings()
+    {
+        int n = Seats.Count;
+        var mwp = new double[n];
+        var gwp = new double[n];
+        var opponents = new List<int>[n];
+        for (int s = 0; s < n; s++)
+        {
+            var matches = SwissMatches(s).ToList();
+            opponents[s] = matches.Where(m => m.SeatB is not null).Select(m => m.Opponent(s)!.Value).ToList();
+            mwp[s] = matches.Count == 0 ? 1 / 3.0 : Math.Max(1 / 3.0, Points(s) / (3.0 * matches.Count));
+            int games = matches.Sum(m => m.SeatB is null ? 2 : m.WinsA + m.WinsB + m.Draws);
+            int gamePoints = matches.Sum(m => m.SeatB is null ? 6 : 3 * m.WinsOf(s) + m.Draws);
+            gwp[s] = games == 0 ? 1 / 3.0 : Math.Max(1 / 3.0, gamePoints / (3.0 * games));
+        }
+        double Average(List<int> seats, double[] of) => seats.Count == 0 ? 0 : seats.Average(o => of[o]);
+        var points = Enumerable.Range(0, n).Select(Points).ToList();
+        return Enumerable.Range(0, n)
+            .OrderByDescending(s => points[s])
+            .ThenByDescending(s => Average(opponents[s], mwp))
+            .ThenByDescending(s => gwp[s])
+            .ThenByDescending(s => Average(opponents[s], gwp))
+            .ThenBy(s => s)
+            .ToList();
     }
 
     // ---------------------------------------------------------------- saving
@@ -144,6 +271,18 @@ public sealed class LimitedEvent
             w.WriteNumber("bestOf", BestOf);
             w.WriteNumber("roundsTotal", RoundsTotal);
             w.WriteNumber("seed", Seed);
+            if (TopCut > 0) w.WriteNumber("topCut", TopCut);
+            if (CutAfter > 0)
+            {
+                w.WriteNumber("cutAfter", CutAfter);
+                w.WriteNumber("cutPoints", CutPoints);
+            }
+            if (Dropped.Count > 0)
+            {
+                w.WriteStartArray("dropped");
+                foreach (var seat in Dropped) w.WriteNumberValue(seat);
+                w.WriteEndArray();
+            }
             w.WriteString("stage", Stage.ToString());
             w.WriteStartArray("seats");
             foreach (var seat in Seats)
@@ -209,6 +348,10 @@ public sealed class LimitedEvent
             BestOf = e.GetProperty("bestOf").GetInt32(),
             RoundsTotal = e.GetProperty("roundsTotal").GetInt32(),
             Seed = e.GetProperty("seed").GetInt32(),
+            TopCut = e.TryGetProperty("topCut", out var topCut) ? topCut.GetInt32() : 0,
+            CutAfter = e.TryGetProperty("cutAfter", out var cutAfter) ? cutAfter.GetInt32() : 0,
+            CutPoints = e.TryGetProperty("cutPoints", out var cutPoints) ? cutPoints.GetInt32() : 0,
+            Dropped = e.TryGetProperty("dropped", out var dropped) ? new SortedSet<int>(dropped.EnumerateArray().Select(x => x.GetInt32())) : new(),
             Stage = Enum.Parse<EventStage>(e.GetProperty("stage").GetString()!),
             Seats = e.GetProperty("seats").EnumerateArray().Select(s => new EventSeat
             {

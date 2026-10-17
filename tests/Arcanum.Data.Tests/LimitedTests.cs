@@ -142,6 +142,151 @@ public class LimitedTests
         Assert.Equal(1, back.Rounds[0][0].WinsB);
     }
 
+    private static LimitedEvent SealedEvent(int seats, int bestOf = 1, int rounds = 3, int topCut = 0, int cutAfter = 0, int cutPoints = 0) => new()
+    {
+        Mode = LimitedMode.Sealed, Source = "constructed:x", BestOf = bestOf, RoundsTotal = rounds, Seed = 5,
+        TopCut = topCut, CutAfter = cutAfter, CutPoints = cutPoints,
+        Seats = Enumerable.Range(0, seats).Select(i => new EventSeat { Name = $"P{i}" }).ToList(),
+    };
+
+    /// <summary>Plays every game of the matches: the lower seat wins each game.</summary>
+    private static void PlayRound(LimitedEvent ev, IEnumerable<EventMatch> round)
+    {
+        foreach (var m in round)
+            while (!m.Done) ev.RecordGame(m, Math.Min(m.SeatA, m.SeatB ?? m.SeatA));
+    }
+
+    private static int Winner(EventMatch m) => m.WinsA > m.WinsB ? m.SeatA : m.SeatB!.Value;
+
+    private static int Loser(EventMatch m) => m.WinsA > m.WinsB ? m.SeatB!.Value : m.SeatA;
+
+    private static EventMatch FinishedMatch(int a, int b, int winsA, int winsB) => new() { SeatA = a, SeatB = b, WinsA = winsA, WinsB = winsB, Done = true };
+
+    [Fact]
+    public void ATopCutPlaysSingleEliminationFromTheSwissStandings()
+    {
+        var ev = SealedEvent(16, bestOf: 3, rounds: 4, topCut: 8);
+        var random = new Random(7);
+        for (int r = 0; r < 4; r++) PlayRound(ev, ev.PairNextRound(random));
+        var swiss = ev.SwissStandings();
+        var quarters = ev.PairNextRound(random);
+        // Seeds 1 against 8, 4 against 5, 2 against 7 and 3 against 6 of the Swiss standings.
+        Assert.Equal(new[] { (swiss[0], swiss[7]), (swiss[3], swiss[4]), (swiss[1], swiss[6]), (swiss[2], swiss[5]) },
+            quarters.Select(m => (m.SeatA, m.SeatB!.Value)));
+        Assert.False(ev.Complete);
+        PlayRound(ev, quarters);
+        var semis = ev.PairNextRound(random);
+        // The winners of matches 0 and 1 meet, then those of 2 and 3.
+        Assert.Equal(new[] { (Winner(quarters[0]), Winner(quarters[1])), (Winner(quarters[2]), Winner(quarters[3])) },
+            semis.Select(m => (m.SeatA, m.SeatB!.Value)));
+        PlayRound(ev, semis);
+        var final = ev.PairNextRound(random).Single();
+        Assert.Equal((Winner(semis[0]), Winner(semis[1])), (final.SeatA, final.SeatB!.Value));
+        Assert.False(ev.Complete);
+        PlayRound(ev, new[] { final });
+        Assert.True(ev.Complete);
+        var standings = ev.Standings();
+        Assert.Equal(Winner(final), standings[0]);
+        Assert.Equal<int?>(final.Opponent(standings[0]), standings[1]);
+        // The semifinal losers take third and fourth, in Swiss order.
+        Assert.Equal(semis.Select(Loser).OrderBy(s => swiss.IndexOf(s)), standings.Skip(2).Take(2));
+    }
+
+    [Fact]
+    public void APlayoffMatchPlaysOnAfterADrawnGame()
+    {
+        var ev = SealedEvent(2, bestOf: 3, rounds: 1, topCut: 2);
+        var random = new Random(1);
+        PlayRound(ev, ev.PairNextRound(random));
+        var match = ev.PairNextRound(random).Single();
+        ev.RecordGame(match, match.SeatA);
+        ev.RecordGame(match, match.SeatB);
+        ev.RecordGame(match, null);
+        Assert.False(match.Done); // 1-1 with a draw: the players go on
+        ev.RecordGame(match, match.SeatA);
+        Assert.True(match.Done);
+        Assert.Equal(2, match.WinsA);
+    }
+
+    [Fact]
+    public void ASwissMatchEndsAfterItsGamesEvenWithADraw()
+    {
+        var ev = SealedEvent(2, bestOf: 3);
+        var match = ev.PairNextRound(new Random(1)).Single();
+        ev.RecordGame(match, match.SeatA);
+        ev.RecordGame(match, match.SeatB);
+        ev.RecordGame(match, null);
+        Assert.True(match.Done);
+        Assert.Equal(1, ev.Points(match.SeatA));
+    }
+
+    [Fact]
+    public void AnOddNumberOfSeatsGivesEachSeatAtMostOneBye()
+    {
+        var ev = SealedEvent(5);
+        var random = new Random(3);
+        var first = ev.PairNextRound(random);
+        var bye = Assert.Single(first, m => m.SeatB is null).SeatA;
+        Assert.Equal(3, ev.Points(bye)); // a bye is a win
+        PlayRound(ev, first);
+        for (int r = 1; r < 3; r++) PlayRound(ev, ev.PairNextRound(random));
+        var byes = ev.Rounds.SelectMany(r => r).Where(m => m.SeatB is null).Select(m => m.SeatA).ToList();
+        Assert.Equal(3, byes.Count);
+        Assert.Equal(byes.Count, byes.Distinct().Count());
+    }
+
+    [Fact]
+    public void ASeatBelowTheCutPointsIsOutAfterTheCut()
+    {
+        var ev = SealedEvent(8, rounds: 3, cutAfter: 2, cutPoints: 6);
+        var random = new Random(5);
+        for (int r = 0; r < 2; r++) PlayRound(ev, ev.PairNextRound(random));
+        var low = Enumerable.Range(0, 8).Where(s => ev.Points(s) < 6).ToList();
+        var round = ev.PairNextRound(random);
+        Assert.Equal(low, ev.Dropped);
+        Assert.Single(round);
+        foreach (var seat in low) Assert.DoesNotContain(round, m => m.Involves(seat));
+        Assert.Equal(8, ev.Standings().Count); // they keep their place
+    }
+
+    [Fact]
+    public void ADroppedSeatConcedesItsMatchAndIsNotPairedAgain()
+    {
+        var ev = SealedEvent(8, bestOf: 3);
+        var random = new Random(2);
+        var match = ev.PairNextRound(random).First(m => m.Involves(3));
+        ev.Drop(3);
+        Assert.True(match.Done);
+        Assert.Equal(ev.WinsNeeded, match.WinsOf(match.Opponent(3)!.Value));
+        var next = ev.PairNextRound(random);
+        Assert.DoesNotContain(next, m => m.Involves(3));
+        Assert.Contains(3, ev.Standings());
+    }
+
+    [Fact]
+    public void EqualPointsAreOrderedByTheOpponentsMatchWins()
+    {
+        // Seats 3 and 2 each win one match and lose one (3 points each). Seat 3 played seat 2 (a 50% match record) and seat 0
+        // (100%): an average of 75%. Seat 2 played seat 3 (50%) and seat 1, which lost both matches (raised to 33%): 42%.
+        // Seat 3 ranks above seat 2, though seat 2 has the lower number.
+        var ev = SealedEvent(4, rounds: 2);
+        ev.Rounds.Add(new List<EventMatch> { FinishedMatch(0, 1, 1, 0), FinishedMatch(3, 2, 1, 0) });
+        ev.Rounds.Add(new List<EventMatch> { FinishedMatch(0, 3, 1, 0), FinishedMatch(2, 1, 1, 0) });
+        Assert.Equal(new[] { 0, 3, 2, 1 }, ev.SwissStandings());
+    }
+
+    [Fact]
+    public void TopCutCutAndDropsSaveAndLoad()
+    {
+        var ev = SealedEvent(8, bestOf: 3, topCut: 8, cutAfter: 2, cutPoints: 6);
+        ev.Dropped.Add(3);
+        var back = LimitedEvent.FromJson(ev.ToJson());
+        Assert.Equal(8, back.TopCut);
+        Assert.Equal(2, back.CutAfter);
+        Assert.Equal(6, back.CutPoints);
+        Assert.Equal(new[] { 3 }, back.Dropped);
+    }
+
     private const string Cards = """
         {"oracle_id":"o-1","name":"Glade Cub","layout":"normal","mana_cost":"{1}{G}","type_line":"Creature — Bear","oracle_text":"","power":"2","toughness":"2","colors":["G"]}
         {"oracle_id":"o-2","name":"Forest","layout":"normal","mana_cost":"","type_line":"Basic Land — Forest","oracle_text":"({T}: Add {G}.)"}

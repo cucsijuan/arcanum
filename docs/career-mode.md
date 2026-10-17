@@ -79,15 +79,21 @@ Every event is defined by data (built-in default schedule in the content module,
 | Field | Example |
 |---|---|
 | `id`, `name` | `draft-night`, "Draft night" |
-| `when` | weekly on Wednesday 18:00–24:00 UTC; monthly last Sunday; or a date range |
+| `when` | weekly on Wednesday 18:00–24:00 UTC; a weekday of the month (`firstFriday`, `secondX`, `thirdSaturday`, `fourthX`, `lastSunday`); or a date |
+| `months` | limits the event to those months (numbers) |
+| `days` | the run's length in days from its `when` day (default 1) |
 | `kind` | constructed (format id), commander pod, draft, sealed, prerelease |
 | `format` | constructed events: a module format id (`standard`, `modern`…); empty: any cards (casual). Commander events use the Commander format |
 | `set` | set code for limited events / featured set |
 | `entry` | cash, boosters, or a qualification token |
-| `prizes` | by place or by record (3-0, 2-1…): cash, boosters, promo, qualification token, rank points, reputation |
+| `prizes` | by place or by record (3-0, 2-1…): cash, boosters, promo, qualification token, rank points, reputation; `minPlayers` (only with that attendance); `qualifies` (an event id: invites the player to that event's next run) |
 | `minTier` | reputation tier required |
 | `modes` | `pve`, `pvp`, or both; `pveRewardScale` (e.g. 0.5) |
-| `rounds`, `bestOf`, `podSize` | Swiss rounds, Bo1/Bo3, Commander pod of 4 |
+| `rounds`, `bestOf`, `podSize` | Swiss rounds, Bo1/Bo3, Commander pod of 4. `rounds: 0`: rounds by attendance (2 for up to 4 players, 3 up to 8, 4 up to 16, 5 up to 32, 6 up to 64, 7 up to 128, 8 up to 226, 9 up to 409, 10 beyond) |
+| `players`, `playersMax` | attendance: a number drawn from the run's seed between `players` and `playersMax` |
+| `topCut` | a single-elimination playoff of the top N of the Swiss standings (seeded 1v8, 4v5, 2v7, 3v6) |
+| `cutAfter`, `cutPoints` | a cut by record after that many rounds (day 1): only players with `cutPoints` or more play on |
+| `invitational` | only players invited by a prize's `qualifies` enter; entering uses up the invitation |
 
 An event's format decides which decks it takes. Entering checks the player's deck against it (`CareerRules.Enter`, and
 the same check when a journal is replayed). The computer players bring module decks legal in the format, any of their
@@ -102,9 +108,9 @@ Default week (illustrative):
 | Friday | Commander night | $5 | 4-player pods, social reputation |
 | Saturday | Weekly tournament | $20 | constructed, Swiss, rank points |
 | Last Sunday | Monthly championship | $25 | local, any cards, open to any reputation, no qualification; first place $150 and 5 boosters; earns the money for the regional qualifier |
-| Seasonal | Regional qualifier | entry fee (`career/career.json`) | offline only, several days; qualifies for the regional championship (design, C6, see *Circuit*) |
-| Seasonal | Regional championship | entry fee (`career/career.json`) | online slots or offline, two days; qualifies for the international tournament (design, C6, see *Circuit*) |
-| Seasonal | International tournament | qualification token | PvP only (config) |
+| First weekend, monthly (Friday to Sunday) | Regional qualifier | entry fee (`career/career.json`) | offline, three days; the winner (and the finalist with 33 or more players) is invited to the regional championship; see *Circuit* |
+| Third weekend of March, June, September, December (Saturday and Sunday) | Regional championship | entry fee (`career/career.json`) | by invitation; offline, two days; 14 Swiss rounds with a cut after round 8; online slots are design (C6, see *Circuit*) |
+| Seasonal | International tournament | qualification token | PvP only (config); not built yet (C6) |
 
 Offline, events are always PvE. An event with `online` (start times UTC, check-in minutes, `pvpOnly`, `offlineScale`)
 is also played online at those times (empty seats get computer players); unless it's PvP only, it can be played
@@ -351,40 +357,58 @@ online games need a host (*Decisions to take*, 2).
 Decided for the circuit (design): the circuit's regional qualifiers and regional championships use the real formats,
 constructed included, instead of option 2. The risk is accepted for now; see *Circuit*, *Formats*.
 
-## Circuit: qualifying events (design, C6)
+## Circuit: qualifying events (C6)
 
-Design only, not implemented. Part of milestone C6. It builds on C4 (remote config) and C5 (online events). The
-qualification chain:
+Part implemented: the offline regional qualifier and the offline regional championship. The online championship (time
+slots, check-in) and the international tournament are design, not built yet. The qualification chain:
 
 ```
 regional qualifier → regional championship → international tournament
 ```
 
-Entry fees and prizes for the qualifier and the championship are set in the module's `career/career.json`. No prices
-are fixed here.
+Entry fees and prizes for the qualifier and the championship are set in the module's `career/career.json`.
 
 ### Regional qualifier
 
 - Offline only, against computer players.
-- Shape as in real life: one day at a store, Swiss rounds of best-of-three matches, usually a top 8 single-elimination
-  cut. The number of rounds follows the simulated attendance: about 4 rounds for 16 players, 5 for 32, 6 for 64.
-- Too long for one sitting, so it runs in a window of several days (for example Friday to Sunday). The event's state is
-  kept between rounds in the career folder (`event.json`), so the player plays rounds on different days.
-- The winner, or the top finishers depending on the size, qualify for the regional championship.
-- Open: what happens to rounds not played when the window closes (a loss, or a drop).
+- Runs the first weekend of every month, Friday to Sunday (a run of three days). The player enters on any day of the
+  run and plays its rounds over those days. Entering is once per run.
+- Attendance is 16 to 64 players, drawn from the run's seed. Swiss rounds by attendance (`rounds: 0`), best of three,
+  then a top 8 single-elimination playoff.
+- The winner is invited to the regional championship. The finalist is invited too when 33 or more players took part.
+  Invitations are listed in the forum's pinned post.
 
 ### Regional championship
 
-- Shape as in real life: two days (sometimes a third for the top 8). About 14–15 Swiss rounds, about 8 on day 1 and the
-  rest on day 2. Often a cut after day 1 by record, then a top 8.
-- The top finishers qualify for the international tournament.
-- **Online:** two fixed time slots (for example one for Europe and Africa, one for the Americas), each with a 30-minute
-  check-in before its start. Empty seats get computer players, as in *Scheduled online events*. Day 2 is the next day in
-  the same slot, for the players who make the cut.
-- **Offline:** when nobody is online, or the player prefers, it is played against computer players over a multi-day
-  window, like the qualifier.
-- Offline grants less qualification than online. For example, only the champion qualifies offline, against the top
-  finishers online. The online event stays worth playing.
+- Offline only, against computer players, for now.
+- Runs the third weekend of March, June, September and December, Saturday and Sunday (a run of two days).
+- By invitation only (`invitational`): only players with an invitation from the qualifier enter, and entering uses it up.
+- Attendance is 128 to 256 players. 14 Swiss rounds, best of three. After round 8 on day 1, only players with 18 points
+  (6-2) or better play on. Then a top 8 single-elimination playoff.
+- Prizes are cash, boosters and reputation. No one qualifies for the international tournament yet, since that event
+  doesn't exist yet.
+- **Online (design):** two fixed time slots (for example one for Europe and Africa, one for the Americas), each with a
+  30-minute check-in before its start. Empty seats get computer players, as in *Scheduled online events*. Day 2 is the
+  next day in the same slot, for the players who make the cut.
+- **Online qualification (design):** offline grants less qualification than online. For example, only the champion
+  qualifies offline, against the top finishers online. The online event stays worth playing.
+
+### Multi-day runs
+
+- A run starts on its `when` day and lasts `days` days (UTC). The state of the run is kept in the career folder
+  (`event.json`), so the player plays rounds on different days.
+- When the last day is over and a round wasn't played, that round is lost: the player's match in progress is conceded
+  and the player is dropped. The others play the event out. This applies only to events of more than one day.
+- Dropping out with the "Drop out" button works the same way: the match in progress is conceded, and the player keeps
+  their place in the final standings instead of the last place.
+
+### Standings
+
+- Swiss standings use match points, then opponents' match-win %, game-win % and opponents' game-win %. Each of these is
+  at least 33%. A bye is a 2-0 win and isn't counted as an opponent. Byes go to the lowest-placed player without one.
+- Final places: by how far each player went in the playoff. Players out in the same round are ordered by their Swiss
+  place. Everyone else is ordered by the Swiss standings.
+- A playoff match can't end in a draw: games continue until someone wins.
 
 ### Formats
 
@@ -429,7 +453,7 @@ are fixed here.
 | C3 | **Offline calendar** (done, in testing): weekly events from the module's default schedule (draft night, commander night, Saturday tournament, monthly championship) against bots, prizes and qualification tokens, in-game card prices reacting to results | a full in-game month has a shape |
 | C4 | **Accounts and remote config:** Discord sign-in (replacing Device ID) and account linking screen; Title Storage season file, server time, cached config, cloud save; developer tool to validate a season file before publishing | changing the season file changes next week's events without a release |
 | C5 | **Online events:** career service (profile sync and signing, online prizes), check-in windows, pairing, bot fill, PvE option at reduced prizes, result confirmation, leaderboards and rank | two players meet in a scheduled draft night online |
-| C6 | **The circuit** (design, not implemented): regional qualifier (offline) → regional championship (online slots or offline) → international tournament, see *Circuit*; PvP-only events, season standings and end-of-season rewards; constructed big events once the dedicated server exists | a season can be won |
+| C6 | **The circuit** (in progress): offline regional qualifier and offline regional championship done, see *Circuit*. Next: the event's look (official playmat and table, broadcast-style overlay). To do: the online regional championship (slots, check-in; needs C5), the international tournament, PvP-only events, season standings and end-of-season rewards; constructed big events once the dedicated server exists | a season can be won |
 
 C1–C3 are fully useful without any online part, so the mode can ship early as an offline career.
 

@@ -143,7 +143,7 @@ public partial class CareerScreen : Control
     /// <summary>
     /// Testing: ARCANUM_CAREER_START=&lt;starting deck&gt; starts a career when there is none; ARCANUM_CAREER_PAGE=&lt;page&gt; opens
     /// store, boosters, precons, counter, a website page (Matches, Practice, Challenges, Events, Market, Cards), opening
-    /// (the first unopened booster), decks (the deck builder), collection (the cards on the desk), daily or ante (plays one), enter (today's first event), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck), surge:&lt;set&gt; (opens collector boosters until a surge foil comes), chat or chat2 (the ante chat), thread:&lt;id prefix&gt; (a forum thread: pinned, event:, ante:, practice:).
+    /// (the first unopened booster), decks (the deck builder), collection (the cards on the desk), daily or ante (plays one), enter or enter:&lt;id&gt; (today's first event, or that one), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck), surge:&lt;set&gt; (opens collector boosters until a surge foil comes), chat or chat2 (the ante chat), thread:&lt;id prefix&gt; (a forum thread: pinned, event:, ante:, practice:).
     /// </summary>
     private bool RunTestHooks()
     {
@@ -169,7 +169,8 @@ public partial class CareerScreen : Control
             case "event" when Career.CurrentEvent() is not null:
                 App.Instance.GoTo(App.EventScene);
                 return true;
-            case "enter" when CareerRules.EventsOn(World, CareerRules.DayOf(Career.Now)) is [var today, ..]:
+            case var enter when (enter == "enter" || enter.StartsWith("enter:"))
+                                && CareerRules.EventsOn(World, CareerRules.DayOf(Career.Now)).FirstOrDefault(e => enter == "enter" || e.Id == enter[6..]) is { } today:
                 Career.Enter(today, today.Kind == CareerRules.Draft && today.EntryBoosters > 0 ? CareerRules.PayBoosters : CareerRules.PayCash,
                     today.Kind == CareerRules.Draft ? null : Career.Decks.Load(Career.Decks.List(null)
                         .First(d => (d.FormatId == CareerRules.Commander) == (today.Kind == CareerRules.Commander))).Deck);

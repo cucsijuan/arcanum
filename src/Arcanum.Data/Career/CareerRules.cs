@@ -558,16 +558,71 @@ public static partial class CareerRules
     public const string Draft = "draft", Constructed = "constructed", Commander = "commander";
     public const string PayCash = "cash", PayBoosters = "boosters", PayTokens = "tokens";
 
-    /// <summary>The store's events on a day (UTC).</summary>
+    /// <summary>The store's events open on a day (UTC): starting that day, or running from an earlier one.</summary>
     public static IReadOnlyList<EventSpec> EventsOn(CareerWorld world, DateOnly day) =>
-        world.Events(day).Where(e => Happens(e, day)).ToList();
+        world.Events(day).Where(e => Start(e, day) is not null).ToList();
 
-    /// <summary>Whether an event happens on a day: its "when" is "daily", a day of the week, "lastSunday" or a date (2026-10-24).</summary>
-    public static bool Happens(EventSpec e, DateOnly day) =>
-        e.When.Equals("daily", StringComparison.OrdinalIgnoreCase) ? true
-        : e.When.Equals("lastSunday", StringComparison.OrdinalIgnoreCase) ? day.DayOfWeek == DayOfWeek.Sunday && day.AddDays(7).Month != day.Month
-        : DateOnly.TryParseExact(e.When, "yyyy-MM-dd", out var date) ? day == date
-        : Enum.TryParse<DayOfWeek>(e.When, true, out var weekday) && day.DayOfWeek == weekday;
+    private static readonly string[] Ordinals = { "first", "second", "third", "fourth" };
+
+    /// <summary>
+    /// Whether an event starts on a day: its "when" is "daily", a day of the week, a weekday of the month ("firstFriday",
+    /// "thirdSaturday", "lastSunday") or a date (2026-10-24); and the month is one of its months.
+    /// </summary>
+    public static bool Happens(EventSpec e, DateOnly day)
+    {
+        if (e.Months.Count > 0 && !e.Months.Contains(day.Month)) return false;
+        var when = e.When;
+        if (when.Equals("daily", StringComparison.OrdinalIgnoreCase)) return true;
+        if (DateOnly.TryParseExact(when, "yyyy-MM-dd", out var date)) return day == date;
+        if (Enum.TryParse<DayOfWeek>(when, true, out var weekday)) return day.DayOfWeek == weekday;
+        if (when.StartsWith("last", StringComparison.OrdinalIgnoreCase) && Enum.TryParse(when[4..], true, out weekday))
+            return day.DayOfWeek == weekday && day.AddDays(7).Month != day.Month;
+        for (int n = 0; n < Ordinals.Length; n++)
+            if (when.StartsWith(Ordinals[n], StringComparison.OrdinalIgnoreCase) && Enum.TryParse(when[Ordinals[n].Length..], true, out weekday))
+                return day.DayOfWeek == weekday && (day.Day - 1) / 7 == n;
+        return false;
+    }
+
+    /// <summary>The day the run of an event open on <paramref name="day"/> started (it runs <see cref="EventSpec.Days"/> days), or null when none is open.</summary>
+    public static DateOnly? Start(EventSpec e, DateOnly day)
+    {
+        for (int i = 0; i < Math.Max(1, e.Days); i++)
+            if (Happens(e, day.AddDays(-i))) return day.AddDays(-i);
+        return null;
+    }
+
+    /// <summary>The last day of the run that started on <paramref name="start"/>.</summary>
+    public static DateOnly LastDay(EventSpec e, DateOnly start) => start.AddDays(Math.Max(1, e.Days) - 1);
+
+    /// <summary>The next day an event starts after <paramref name="after"/> (within a year), or null.</summary>
+    public static DateOnly? NextStart(CareerWorld world, string id, DateOnly after)
+    {
+        for (int i = 1; i <= 366; i++)
+        {
+            var day = after.AddDays(i);
+            if (world.Event(id, day) is { } e && Happens(e, day)) return day;
+        }
+        return null;
+    }
+
+    /// <summary>How many players an event's run has: between its players and its most, drawn from the run's seed.</summary>
+    public static int Attendance(EventSpec e, ulong seed) =>
+        e.PlayersMax <= e.Players ? e.Players : e.Players + (int)(seed % (ulong)(e.PlayersMax - e.Players + 1));
+
+    /// <summary>
+    /// The Swiss rounds of an event with this many players: its own number, or the recommended number for the
+    /// attendance (4 rounds for 9–16 players, 5 for up to 32, 6 for up to 64, 7 for up to 128, 8 for up to 226, 9 for up
+    /// to 409, 10 beyond; 3 for 8 or fewer, 2 for 4 or fewer).
+    /// </summary>
+    public static int SwissRounds(EventSpec e, int players) =>
+        e.Rounds > 0 ? e.Rounds : players switch
+        {
+            <= 4 => 2, <= 8 => 3, <= 16 => 4, <= 32 => 5, <= 64 => 6, <= 128 => 7, <= 226 => 8, <= 409 => 9, _ => 10,
+        };
+
+    /// <summary>The playoff's rounds (3 for a top 8), when the attendance is large enough for it.</summary>
+    public static int PlayoffRounds(EventSpec e, int players) =>
+        e.TopCut >= 2 && players >= e.TopCut ? (int)Math.Round(Math.Log2(e.TopCut)) : 0;
 
     /// <summary>The events coming up after <paramref name="from"/> (within 40 days), each with the next day it happens, soonest first.</summary>
     public static IReadOnlyList<(EventSpec Event, DateOnly Day)> Upcoming(CareerWorld world, DateOnly from)
@@ -585,12 +640,19 @@ public static partial class CareerRules
     public static string EventSet(CareerWorld world, EventSpec e, DateOnly day) =>
         (e.Set.Equals("featured", StringComparison.OrdinalIgnoreCase) ? world.FeaturedSet(day) : e.Set).ToLowerInvariant();
 
-    public static bool Played(CareerState state, EventSpec e, DateOnly day) => state.EventsPlayed.Contains($"{day.DayNumber}:{e.Id}");
+    /// <summary>Whether the player already played the run of an event open on a day.</summary>
+    public static bool Played(CareerState state, EventSpec e, DateOnly day) =>
+        state.EventsPlayed.Contains($"{(Start(e, day) ?? day).DayNumber}:{e.Id}");
+
+    /// <summary>Whether the player is qualified for the run of an invitational event open on (or starting) a day.</summary>
+    public static bool IsQualified(CareerState state, EventSpec e, DateOnly day) =>
+        state.Qualified.TryGetValue(e.Id, out var start) && start == (Start(e, day) ?? day).DayNumber;
 
     /// <summary>What the player wins with a record and a place: the first prize that fits.</summary>
     /// <param name="online">Played online (an online event played against the computer pays its offline share).</param>
-    public static PrizeSpec? PrizeFor(EventSpec e, int wins, int place, bool online = false) =>
-        PrizesOf(e, online).FirstOrDefault(p => p.Wins >= 0 ? wins >= p.Wins : p.Place == 0 || place <= p.Place);
+    /// <param name="players">The run's attendance (prizes for at least so many players).</param>
+    public static PrizeSpec? PrizeFor(EventSpec e, int wins, int place, bool online = false, int players = int.MaxValue) =>
+        PrizesOf(e, online).FirstOrDefault(p => players >= p.MinPlayers && (p.Wins >= 0 ? wins >= p.Wins : p.Place == 0 || place <= p.Place));
 
     /// <summary>An event's prizes: an online event's version against the computer pays its share (counts rounded down).</summary>
     public static IReadOnlyList<PrizeSpec> PrizesOf(EventSpec e, bool online = false) =>
@@ -607,10 +669,11 @@ public static partial class CareerRules
         if (state.Event is not null) throw new CareerRuleException("You are already in an event.");
         if (state.Pending is not null) throw new CareerRuleException("Finish your match first.");
         var e = world.Event(enter.Event, state.Day) ?? throw new CareerRuleException("There is no such event.");
-        if (!Happens(e, state.Day)) throw new CareerRuleException($"{e.Name} isn't today.");
+        if (Start(e, state.Day) is not { } start) throw new CareerRuleException($"{e.Name} isn't today.");
         if (e.Online is { PvpOnly: true }) throw new CareerRuleException($"{e.Name} is played online only.");
         if (Played(state, e, state.Day)) throw new CareerRuleException($"You already played {e.Name} today.");
         if (Tier(state, world) < e.MinTier) throw new CareerRuleException($"{e.Name} needs a {world.Content.Tiers[Math.Min(e.MinTier, world.Content.Tiers.Count - 1)].Name}'s reputation.");
+        if (e.Invitational && !IsQualified(state, e, state.Day)) throw new CareerRuleException($"{e.Name} is by invitation: you aren't qualified for it.");
         string deck = "";
         if (e.Kind is Constructed or Commander)
         {
@@ -633,9 +696,10 @@ public static partial class CareerRules
                 break;
             default: throw new CareerRuleException("That's no way to pay this entry.");
         }
-        var seed = (ulong)CareerRandom.For(state.Seed, "event:" + e.Id, state.Day.DayNumber).NextInt64();
-        state.Event = new EventEntry(e.Id, state.Day, seed, set, deck);
-        state.EventsPlayed.Add($"{state.Day.DayNumber}:{e.Id}");
+        var seed = (ulong)CareerRandom.For(state.Seed, "event:" + e.Id, start.DayNumber).NextInt64();
+        state.Event = new EventEntry(e.Id, state.Day, seed, set, deck) { Start = start };
+        state.EventsPlayed.Add($"{start.DayNumber}:{e.Id}");
+        if (e.Invitational) state.Qualified.Remove(e.Id);
         if (state.EventsPlayed.Count > 100) state.EventsPlayed.RemoveAt(0);
         state.Note(enter.Utc, $"Entered {e.Name}.");
         return new CareerResult(Array.Empty<PoolCard>(), enter.Pay == PayCash ? -e.Entry : 0);
@@ -645,7 +709,9 @@ public static partial class CareerRules
     {
         var entry = state.Event ?? throw new CareerRuleException("You aren't in an event.");
         var e = world.Event(entry.Id, entry.Day) ?? throw new CareerRuleException("There is no such event.");
-        if (finish.Wins + finish.Losses + finish.Draws > e.Rounds || finish.Place < 1 || finish.Place > e.Players)
+        int players = e.Kind == Commander ? e.Players : Attendance(e, entry.Seed);
+        int rounds = e.Kind == Commander ? e.Rounds : SwissRounds(e, players) + PlayoffRounds(e, players);
+        if (finish.Wins + finish.Losses + finish.Draws > rounds || finish.Place < 1 || finish.Place > players)
             throw new CareerRuleException("That result can't be.");
         var pool = new List<PoolCard>();
         if (e.Kind == Draft)
@@ -670,7 +736,7 @@ public static partial class CareerRules
         // "Play N daily drafts": once for each time the event is played through.
         foreach (var challenge in WeekChallenges(state, world, state.Day).Where(c => c.Kind == "playEvent" && c.Event == e.Id))
             AdvanceChallenge(state, world, finish.Utc, challenge);
-        var prize = PrizeFor(e, finish.Wins, finish.Place);
+        var prize = PrizeFor(e, finish.Wins, finish.Place, players: players);
         var won = new List<string>();
         if (prize is not null)
         {
@@ -682,6 +748,13 @@ public static partial class CareerRules
             if (prize.Cash > 0) won.Add(Money(prize.Cash));
             if (prize.Boosters > 0) won.Add($"{prize.Boosters} {world.SetName(set)} booster{(prize.Boosters == 1 ? "" : "s")}");
             if (prize.Tokens > 0) won.Add($"{prize.Tokens} qualification token{(prize.Tokens == 1 ? "" : "s")}");
+            // An invitation to the next run of the event it qualifies for (after this run's last day).
+            if (prize.Qualifies.Length > 0 && NextStart(world, prize.Qualifies, LastDay(e, entry.Start)) is { } next
+                && world.Event(prize.Qualifies, next) is { } target)
+            {
+                state.Qualified[prize.Qualifies] = next.DayNumber;
+                won.Add($"an invitation to {target.Name} ({next:MMMM d})");
+            }
         }
         state.Note(finish.Utc, $"{e.Name}: {Ordinal(finish.Place)} of {e.Players}, {finish.Wins}-{finish.Losses}{(finish.Draws > 0 ? $"-{finish.Draws}" : "")}"
             + (won.Count > 0 ? $"; won {string.Join(", ", won)}." : "."));

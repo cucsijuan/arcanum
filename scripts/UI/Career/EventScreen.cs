@@ -205,7 +205,7 @@ public partial class EventScreen : Control
     {
         int me = ev.HumanSeat;
         bool finished = ev.Stage == EventStage.Finished;
-        _title.Text = finished ? $"{spec.Name} · final standings" : $"{spec.Name} · round {ev.Rounds.Count} of {ev.RoundsTotal}";
+        _title.Text = finished ? $"{spec.Name} · final standings" : $"{spec.Name} · {RoundName(ev, ev.Rounds.Count - 1)}";
         var body = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         body.AddThemeConstantOverride("separation", 24);
         _content.AddChild(body);
@@ -219,7 +219,11 @@ public partial class EventScreen : Control
         {
             int place = ev.Standings().IndexOf(me) + 1;
             box.AddChild(CareerStyle.Text($"You finished {CareerRules.Ordinal(place)} of {ev.Seats.Count}, {wins}-{losses}{(draws > 0 ? $"-{draws}" : "")}.", 30, CareerStyle.PaperEdge));
-            var prize = CareerRules.PrizeFor(spec, wins, place);
+            if (MissedCut(ev, me))
+                box.AddChild(CareerStyle.Text($"You missed the cut after round {ev.CutAfter} ({ev.CutPoints} points were needed to play on).", 20, CareerStyle.InkDim, wrap: true));
+            else if (ev.Dropped.Contains(me))
+                box.AddChild(CareerStyle.Text("You dropped from the event; the others played it out.", 20, CareerStyle.InkDim, wrap: true));
+            var prize = CareerRules.PrizeFor(spec, wins, place, players: ev.Seats.Count);
             box.AddChild(CareerStyle.Text(PrizeText(prize, spec) + (spec.Kind == CareerRules.Draft ? " You keep the cards you drafted." : ""), 22, CareerStyle.Ink, wrap: true));
             var collect = CareerStyle.Button("Collect and go home", Collect, 24, primary: true);
             collect.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
@@ -230,6 +234,12 @@ public partial class EventScreen : Control
             int opponent = match.Opponent(me)!.Value;
             box.AddChild(CareerStyle.Text($"Your match: {ev.Seats[opponent].Name}", 30, CareerStyle.PaperEdge));
             box.AddChild(CareerStyle.Text($"Games {match.WinsOf(me)}-{match.WinsOf(opponent)}{(ev.BestOf > 1 ? $" · best of {ev.BestOf}" : "")} · your record {wins}-{losses}{(draws > 0 ? $"-{draws}" : "")}", 20, CareerStyle.InkDim));
+            if (spec.Days > 1)
+            {
+                var last = CareerRules.LastDay(spec, Career.State.Event!.Start);
+                box.AddChild(CareerStyle.Text($"{ev.Seats.Count} players. You can go home and come back: the rounds run until the end of {last:dddd, MMMM d} (UTC). "
+                    + "A round not played by then is lost and you are dropped.", 17, CareerStyle.InkDim, wrap: true));
+            }
             var actions = new HBoxContainer();
             actions.AddThemeConstantOverride("separation", 12);
             actions.AddChild(CareerStyle.Button($"Play game {match.WinsA + match.WinsB + match.Draws + 1}", Service.PlayNext, 24, primary: true));
@@ -243,7 +253,7 @@ public partial class EventScreen : Control
                         deck => { seat.Deck = deck; Service.DeckEdited(); App.Instance.GoTo(App.EventScene); }) { Ratings = DraftGrades.ForPlayer(Service) };
                     App.Instance.GoTo(App.DeckDeskScene);
                 }, 20));
-            actions.AddChild(CareerStyle.Button("Drop out", () => MenuKit.Modal(this, "Drop out?", "The event ends for you with your record so far, in last place.", null,
+            actions.AddChild(CareerStyle.Button("Drop out", () => MenuKit.Modal(this, "Drop out?", "You concede this match and leave the event. The others play it out, and you keep your place in the final standings.", null,
                 ("Keep playing", () => { }), ("Drop", () =>
                 {
                     Career.FinishEvent(drop: true);
@@ -253,12 +263,15 @@ public partial class EventScreen : Control
         }
         else box.AddChild(CareerStyle.Text("Waiting for the round's other matches…", 22, CareerStyle.Ink));
 
-        // The rounds so far.
+        // The rounds so far (in a big event, the player's own matches and the playoff's).
         var rounds = new VBoxContainer();
+        bool big = ev.Seats.Count > 16;
         for (int r = ev.Rounds.Count - 1; r >= 0; r--)
         {
-            rounds.AddChild(CareerStyle.Text($"Round {r + 1}", 19, CareerStyle.PaperEdge));
-            foreach (var m in ev.Rounds[r])
+            var shown = ev.Rounds[r].Where(m => !big || ev.IsPlayoff(r) || m.Involves(me)).ToList();
+            if (shown.Count == 0) continue;
+            rounds.AddChild(CareerStyle.Text(RoundName(ev, r), 19, CareerStyle.PaperEdge));
+            foreach (var m in shown)
             {
                 var text = m.SeatB is not { } b ? $"{ev.Seats[m.SeatA].Name} has a bye" : $"{ev.Seats[m.SeatA].Name} {m.WinsA}-{m.WinsB} {ev.Seats[b].Name}{(m.Done ? "" : " (playing)")}";
                 rounds.AddChild(CareerStyle.Text(text, 17, m.Involves(me) ? CareerStyle.Ink : CareerStyle.InkDim));
@@ -273,18 +286,41 @@ public partial class EventScreen : Control
         standings.SizeFlagsVertical = SizeFlags.ShrinkBegin;
         var table = (VBoxContainer)standings.GetChild(0);
         table.AddChild(CareerStyle.Text("Standings", 26, CareerStyle.PaperEdge));
-        int rank = 1;
-        foreach (var s in ev.Standings())
+        // The top of the standings, and the player's own place below it when it is further down.
+        var order = ev.Standings();
+        int myRank = order.IndexOf(me);
+        for (int rank = 0; rank < order.Count; rank++)
         {
+            if (rank >= 16 && rank != myRank) continue;
+            if (rank >= 16 && rank == myRank) table.AddChild(CareerStyle.Text("…", 19, CareerStyle.InkDim));
+            int s = order[rank];
             var row = new HBoxContainer();
-            var name = CareerStyle.Text($"{rank++}. {ev.Seats[s].Name}", 19, s == me ? CareerStyle.Good : CareerStyle.Ink);
+            var name = CareerStyle.Text($"{rank + 1}. {ev.Seats[s].Name}", 19, s == me ? CareerStyle.Good : ev.Dropped.Contains(s) ? CareerStyle.InkDim : CareerStyle.Ink);
             name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             row.AddChild(name);
             row.AddChild(CareerStyle.Text($"{ev.Points(s)} pts", 19, CareerStyle.InkDim));
             table.AddChild(row);
         }
+        if (ev.CutAfter > 0 && ev.Rounds.Count <= ev.CutAfter)
+            table.AddChild(CareerStyle.Text($"After round {ev.CutAfter}, only players with {ev.CutPoints} points or more play on.", 16, CareerStyle.InkDim, wrap: true));
+        if (ev.TopCut > 0 && ev.Rounds.Count <= ev.RoundsTotal)
+            table.AddChild(CareerStyle.Text($"After round {ev.RoundsTotal}, the top {ev.TopCut} play a single-elimination playoff.", 16, CareerStyle.InkDim, wrap: true));
         body.AddChild(standings);
     }
+
+    /// <summary>A round's name: "Round 3 of 6", or the playoff's quarterfinals, semifinals and final.</summary>
+    private static string RoundName(LimitedEvent ev, int round)
+    {
+        if (!ev.IsPlayoff(round)) return $"Round {round + 1} of {ev.RoundsTotal}";
+        return (ev.PlayoffRounds - (round - ev.RoundsTotal)) switch
+        {
+            1 => "Final", 2 => "Semifinals", 3 => "Quarterfinals", var n => $"Top {1 << n}",
+        };
+    }
+
+    private static bool MissedCut(LimitedEvent ev, int seat) =>
+        ev.CutAfter > 0 && ev.Dropped.Contains(seat) && ev.Rounds.Count > ev.CutAfter && ev.Points(seat) < ev.CutPoints
+        && !ev.Rounds.Skip(ev.CutAfter).Any(r => r.Any(m => m.Involves(seat)));
 
     private void Collect()
     {
@@ -364,6 +400,7 @@ public partial class EventScreen : Control
         if (prize.Cash > 0) parts.Add(CareerRules.Money(prize.Cash));
         if (prize.Boosters > 0) parts.Add($"{prize.Boosters} booster{(prize.Boosters == 1 ? "" : "s")}");
         if (prize.Tokens > 0) parts.Add($"{prize.Tokens} qualification token{(prize.Tokens == 1 ? "" : "s")}");
+        if (prize.Qualifies.Length > 0) parts.Add($"an invitation to {Career.World!.Event(prize.Qualifies, CareerRules.DayOf(Career.Now))?.Name ?? prize.Qualifies}");
         if (prize.Reputation > 0) parts.Add($"{prize.Reputation} reputation");
         return parts.Count == 0 ? "No prize this time." : $"Your prize: {string.Join(", ", parts)}.";
     }

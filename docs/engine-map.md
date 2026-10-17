@@ -70,6 +70,8 @@ Large groups of related vocabulary get their own partial files so the main switc
 | Commander rules | `Game.Commander.cs` |
 | Per-card and per-game state | `State/Card.cs`, `State/Player.cs`, `State/GameState.cs`, `State/StackItem.cs` |
 | Events the UI and log see | `Events/GameEvent.cs` |
+| Tournament rounds, Swiss standings and tiebreakers, playoffs, drops (career and limited events) | `Arcanum.Data/Limited/LimitedEvent.cs` |
+| Career calendar: `when`, `months`, multi-day runs, attendance, `invitational` and invitations | `Arcanum.Data/Career/CareerRules.cs` (calendar section) |
 
 ## Commander suggestions
 

@@ -408,6 +408,9 @@ public sealed class CareerService
         if (spec.Kind == CareerRules.Commander) return (spec, entry, null);
         Events.Load();
         if (Events.Current is null) Begin(spec, entry);
+        // An event of several days is over when its last day is: the rounds left unplayed are lost (the player is dropped).
+        if (spec.Days > 1 && CareerRules.DayOf(Now) > CareerRules.LastDay(spec, entry.Start) && Events.Current!.Stage == EventStage.Playing)
+            Events.DropOut();
         return (spec, entry, Events.Current!);
     }
 
@@ -439,6 +442,10 @@ public sealed class CareerService
         // The regulars come first (in a random order), then visitors.
         var regulars = world.Content.Opponents.OrderBy(_ => random.Next()).ToList();
         var visitors = world.Content.Visitors.OrderBy(_ => random.Next()).ToList();
+        // A big event's crowd: more visitors, the first names of some with the family names of others.
+        var names = world.Content.Visitors.Select(v => v.Split(' ', 2)).Where(p => p.Length == 2).ToList();
+        visitors.AddRange(names.SelectMany(a => names.Where(b => b != a).Select(b => $"{a[0]} {b[1]}"))
+            .Except(world.Content.Visitors).Distinct().OrderBy(_ => random.Next()).ToList());
         var seats = new List<EventSeat> { new() { Name = Settings.PlayerName, IsHuman = true, Deck = spec.Kind == CareerRules.Constructed ? DeckList.Parse(entry.Deck) : null } };
         // The computer players bring decks legal in the event's format (any of theirs when none is).
         var format = spec.Kind == CareerRules.Constructed ? world.FormatOf(spec) : null;
@@ -449,7 +456,8 @@ public sealed class CareerService
             return legal.Count > 0 ? legal : names.ToList();
         }
         var preconDecks = Legal(world.Content.Precons.Select(p => p.Deck).ToList());
-        for (int i = 1; i < spec.Players; i++)
+        int players = CareerRules.Attendance(spec, entry.Seed);
+        for (int i = 1; i < players; i++)
         {
             DeckList? deck = null;
             string name;
@@ -481,7 +489,8 @@ public sealed class CareerService
         {
             Mode = spec.Kind == CareerRules.Draft ? LimitedMode.Draft : LimitedMode.Sealed,
             Source = spec.Kind == CareerRules.Draft ? "set:" + entry.Set : "constructed:" + spec.Id,
-            BestOf = spec.BestOf, Seed = (int)(entry.Seed & 0x7FFFFFFF), RoundsTotal = spec.Rounds, Seats = seats,
+            BestOf = spec.BestOf, Seed = (int)(entry.Seed & 0x7FFFFFFF), RoundsTotal = CareerRules.SwissRounds(spec, players), Seats = seats,
+            TopCut = CareerRules.PlayoffRounds(spec, players) > 0 ? spec.TopCut : 0, CutAfter = spec.CutAfter, CutPoints = spec.CutPoints,
             BoostersPerPlayer = spec.Kind == CareerRules.Draft ? world.Sets[entry.Set].BoostersPerPlayer : 0,
         };
         Events.Begin(ev, random);
@@ -519,8 +528,10 @@ public sealed class CareerService
             _pod = null;
             return podResult;
         }
+        // Dropping concedes the match in progress; the others play the event out and the player keeps their place.
+        if (drop) Events.DropOut();
         var (wins, losses, draws) = Record(ev);
-        int place = drop || ev.Stage != EventStage.Finished ? spec.Players : ev.Standings().IndexOf(ev.HumanSeat) + 1;
+        int place = ev.Stage != EventStage.Finished ? ev.Seats.Count : ev.Standings().IndexOf(ev.HumanSeat) + 1;
         var pool = spec.Kind == CareerRules.Draft
             ? (ev.Stage == EventStage.Drafting ? Events.Draft?.Picks[ev.HumanSeat] ?? new List<Arcanum.Data.Limited.PoolCard>() : ev.Seats[ev.HumanSeat].Pool)
                 .Select(c => CardKey.Of(c).ToString()).ToList()
@@ -558,7 +569,8 @@ public sealed class CareerService
         _pod = new CommanderPod();
         _pod.Names.Add(Settings.PlayerName);
         _pod.Decks.Add("");
-        for (int i = 1; i < spec.Players; i++)
+        int players = CareerRules.Attendance(spec, entry.Seed);
+        for (int i = 1; i < players; i++)
         {
             _pod.Names.Add(i - 1 < regulars.Count ? regulars[i - 1].Name : $"Visitor {i}");
             _pod.Decks.Add(decks.Count == 0 ? "" : decks[(i - 1) % decks.Count]);

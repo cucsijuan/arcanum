@@ -65,6 +65,7 @@
   table.prizes { border-collapse: collapse; width: 100%; font-size: 12px; }
   table.prizes td, table.prizes th { padding: 2px 3px; text-align: left; }
   table.prizes input[type=number] { width: 64px; }
+  table.prizes input[type=text] { width: 110px; }
   .checks { display: flex; flex-wrap: wrap; gap: 4px 12px; }
   .hint { color: var(--dim); font-size: 12px; }
   .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
@@ -332,7 +333,8 @@ function describeChange(c) {
 
 function newEvent(when) {
   return { id: "special-" + Date.now().toString(36), name: "Special event", when, kind: "draft", set: "featured", players: 8, rounds: 3, bestOf: 1,
-    entry: 1500, entryBoosters: 0, entryTokens: 0, minTier: 0, online: null, format: "", prizes: [{ place: 0, wins: 2, cash: 0, boosters: 3, tokens: 0, reputation: 2 }, { place: 0, wins: 0, cash: 0, boosters: 0, tokens: 0, reputation: 1 }], decks: [] };
+    days: 1, months: [], playersMax: 0, topCut: 0, cutAfter: 0, cutPoints: 0, invitational: false,
+    entry: 1500, entryBoosters: 0, entryTokens: 0, minTier: 0, online: null, format: "", prizes: [{ place: 0, wins: 2, cash: 0, boosters: 3, tokens: 0, reputation: 2, qualifies: "", minPlayers: 0 }, { place: 0, wins: 0, cash: 0, boosters: 0, tokens: 0, reputation: 1, qualifies: "", minPlayers: 0 }], decks: [] };
 }
 
 function addChange(from, until, withEvent) {
@@ -412,9 +414,12 @@ function drawEvent(c, e, k, started) {
     started ? null : el("button", { class: "small danger", onclick: () => { c.events.splice(k, 1); rerender(); } }, "Remove")));
   box.append(field("Name", text(e.name, v => { if (!replaces && e.id.startsWith("special-")) e.id = "special-" + slug(v); e.name = v; }, { ...lock, style: "flex:1" })));
   box.append(field("Id", text(e.id, v => e.id = v, { ...lock, disabled: started || replaces }), replaces ? "same id: replaces the store's event" : "kept in saves; don't reuse"));
-  box.append(field("When", choice([["daily", "Every day"], ...WEEKDAYS.map(d => [d, "Every " + d]), ["lastSunday", "Last Sunday of the month"], ["date", "On a date"]],
+  const ordinals = ["first", "second", "third", "fourth", "last"];
+  box.append(field("When", choice([["daily", "Every day"], ...WEEKDAYS.map(d => [d, "Every " + d]), ...ordinals.flatMap(o => WEEKDAYS.map(d => [o + d, `The ${o} ${d} of the month`])), ["date", "On a date"]],
     isDate ? "date" : e.when, v => e.when = v === "date" ? (c.until === c.from ? c.from : addDays(today(), 1)) : v, lock),
     isDate ? date(e.when, v => e.when = v || c.from, { ...lock, min: c.from, max: c.until || "" }) : null));
+  box.append(field("Days", number(e.days, v => e.days = v, { ...lock, min: 1 }), "how many days it runs from its start"));
+  box.append(field("Months", text((e.months ?? []).join(", "), v => e.months = v.split(",").map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 12), { ...lock, placeholder: "1, 2, 3" }), "empty: every month"));
   box.append(field("Kind", choice(Object.entries(KINDS), e.kind, v => { e.kind = v; if (v !== "constructed") e.format = ""; }, lock)));
   if (e.kind === "constructed")
     box.append(field("Format", choice([["", "Any cards (casual)"], ...C.formats.map(f => [f.id, f.name])], e.format || "", v => e.format = v, lock),
@@ -422,12 +427,18 @@ function drawEvent(c, e, k, started) {
   if (e.kind === "draft")
     box.append(field("Set", choice([["featured", "The week's featured set"], ...C.sets.map(s => [s.code, s.name])], e.set, v => e.set = v, lock)));
   box.append(field("Players", number(e.players, v => e.players = v, { ...lock, min: 2 }), null));
-  box.append(field("Rounds", number(e.rounds, v => e.rounds = v, { ...lock, min: 1 })));
+  if (e.kind !== "commander") box.append(field("Players max", number(e.playersMax, v => e.playersMax = v, { ...lock, min: 0 }), "attendance drawn between players and this; 0: always players"));
+  box.append(field("Rounds", number(e.rounds, v => e.rounds = v, { ...lock, min: 0 }), "0: by attendance"));
   if (e.kind !== "commander") box.append(field("Best of", choice([["1", "1 game"], ["3", "3 games"]], String(e.bestOf), v => e.bestOf = Number(v), lock)));
+  if (e.kind !== "commander") box.append(field("Top cut", number(e.topCut, v => e.topCut = v, { ...lock, min: 0 }), "single-elimination playoff of the top N (8); 0: none"));
+  if (e.kind !== "commander") box.append(field("Cut after", number(e.cutAfter, v => e.cutAfter = v, { ...lock, min: 0 }), "cut by record after this many rounds: only players with these points play on"));
+  if (e.kind !== "commander") box.append(field("Cut points", number(e.cutPoints, v => e.cutPoints = v, { ...lock, min: 0 })));
   box.append(field("Entry", dollars(e.entry, v => e.entry = v ?? 0, lock)));
   if (e.kind === "draft") box.append(field("Or boosters", number(e.entryBoosters, v => e.entryBoosters = v, { ...lock, min: 0 }), "0: no"));
   box.append(field("Or tokens", number(e.entryTokens, v => e.entryTokens = v, { ...lock, min: 0 }), "qualification tokens; 0: no"));
   box.append(field("Reputation", choice(C.tiers.map((t, n) => [String(n), t + (n === 0 ? " (anyone)" : " and up")]), String(e.minTier), v => e.minTier = Number(v), lock)));
+  box.append(field("Invitational", el("input", { type: "checkbox", checked: !!e.invitational, disabled: started, onchange: ev => { e.invitational = ev.target.checked; changed(); } }),
+    "only players invited by a prize's \"qualifies\" may enter"));
   if (e.kind === "commander") {
     const decks = el("select", { multiple: true, size: 6, style: "flex:1", disabled: started, onchange: ev => { e.decks = [...ev.target.selectedOptions].map(o => o.value); changed(); } },
       C.decks.map(d => el("option", { value: d, selected: e.decks.includes(d) }, d)));
@@ -475,7 +486,7 @@ function drawOnline(e, started) {
 
 function drawPrizes(e, started) {
   const lock = started ? { disabled: true } : {};
-  const table = el("table", { class: "prizes" }, el("tr", {}, ["For", "", "Cash", "Boosters", "Tokens", "Rep.", ""].map(h => el("th", {}, h))));
+  const table = el("table", { class: "prizes" }, el("tr", {}, ["For", "", "Cash", "Boosters", "Tokens", "Rep.", "Qualifies", "Min players", ""].map(h => el("th", {}, h))));
   e.prizes.forEach((p, n) => {
     const type = p.wins >= 0 ? "wins" : p.place > 0 ? "place" : "all";
     table.append(el("tr", {},
@@ -487,10 +498,12 @@ function drawPrizes(e, started) {
       el("td", {}, number(p.boosters, v => p.boosters = v, { ...lock, min: 0 })),
       el("td", {}, number(p.tokens, v => p.tokens = v, { ...lock, min: 0 })),
       el("td", {}, number(p.reputation, v => p.reputation = v, { ...lock, min: 0 })),
+      el("td", {}, text(p.qualifies ?? "", v => p.qualifies = v, { ...lock, placeholder: "event id" })),
+      el("td", {}, number(p.minPlayers, v => p.minPlayers = v, { ...lock, min: 0 })),
       el("td", {}, started ? "" : el("button", { class: "small danger", onclick: () => { e.prizes.splice(n, 1); rerender(); } }, "×"))));
   });
   const wrap = el("div", {}, el("div", { class: "hint" }, "Prizes: the first row that fits the player's result is theirs."), table);
-  if (!started) wrap.append(el("button", { class: "small", onclick: () => { e.prizes.push({ place: 0, wins: -1, cash: 0, boosters: 0, tokens: 0, reputation: 1 }); rerender(); } }, "+ Prize"));
+  if (!started) wrap.append(el("button", { class: "small", onclick: () => { e.prizes.push({ place: 0, wins: -1, cash: 0, boosters: 0, tokens: 0, reputation: 1, qualifies: "", minPlayers: 0 }); rerender(); } }, "+ Prize"));
   return wrap;
 }
 
