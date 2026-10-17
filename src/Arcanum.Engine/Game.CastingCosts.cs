@@ -176,7 +176,7 @@ public sealed partial class Game
         if (c.Conspire && ConspireCandidates(card, caster).Count < 2) return false;
         if (card.Definition.Delve) total = total.MinusGeneric(graveyard); // 702.66a
         if (card.Definition.Convoke && total.ManaValue > 0) return CanPayWithConvoke(card, caster, c, total);
-        if (card.Definition.Improvise && total.Generic > 0)
+        if (HasImprovise(card, caster) && total.Generic > 0)
         {
             // 702.126a: each artifact tapped this way pays for {1}; try the artifacts that don't make mana first.
             var artifacts = ImproviseCandidates(card, caster);
@@ -233,6 +233,25 @@ public sealed partial class Game
         TimingAllowsIgnoringRestrictions(card, caster, sorcerySpeed);
 
     private bool TimingAllowsIgnoringRestrictions(Card card, PlayerId caster, bool sorcerySpeed) =>
+        TimingAllowsExceptFlashByTargets(card, caster, sorcerySpeed) || FlashByTargetsPossible(card, caster);
+
+    /// <summary>
+    /// "You may cast this spell as though it had flash if it targets a [filter]": some legal target of its single target requirement matches the filter,
+    /// so it can be cast now (its target must then be one that does, see <see cref="NeedsFlashFromTargets"/>).
+    /// </summary>
+    private bool FlashByTargetsPossible(Card card, PlayerId caster) =>
+        card.Definition.FlashIfTargets is { } wanted && CastingTargets(card.Definition) is { Targets.Count: 1 } ability
+        && LegalTargets(ability.Targets[0], caster, card.Id).Any(t => FlashTargetMatches(wanted, t, card, caster));
+
+    private bool FlashTargetMatches(ObjectFilter wanted, Abilities.Target t, Card card, PlayerId caster) =>
+        t.Card is { } id && State.GetCard(id) is { Zone: Zone.Battlefield } target && Matches(wanted with { Controller = ControllerFilter.Any }, target, target.Controller, card, caster)
+        && (wanted.Controller != ControllerFilter.You || target.Controller == caster);
+
+    /// <summary>Casting the spell now is allowed only because of "as though it had flash if it targets …": its target has to be one that matches.</summary>
+    private bool NeedsFlashFromTargets(Card card, PlayerId caster, bool sorcerySpeed) =>
+        card.Definition.FlashIfTargets is not null && !TimingAllowsExceptFlashByTargets(card, caster, sorcerySpeed);
+
+    private bool TimingAllowsExceptFlashByTargets(Card card, PlayerId caster, bool sorcerySpeed) =>
         card.Is(CardType.Instant) || card.Definition.KeywordAbilities.Contains(Keyword.Flash) || sorcerySpeed
         || Has(caster, Replacements.YourSpellsHaveFlash)
         || (card.Definition.FlashIf is { } flashIf && Holds(flashIf, caster, card))

@@ -337,6 +337,12 @@ public sealed partial class Game
     /// </summary>
     private void QueueBecameTarget(StackItem item, IEnumerable<CardId> targeted)
     {
+        // "Whenever one or more creatures you control become the target of an activated ability": once for each such ability and each player whose creatures it targets.
+        if (item is AbilityOnStack { AbilityIndex: not null })
+            foreach (var group in targeted.Distinct().Select(State.GetCard).Where(c => c.Zone == Zone.Battlefield && c.IsCreature).GroupBy(c => c.Controller).ToList())
+                foreach (var (observer, abilities) in Observers().Where(o => o.Card.Controller == group.Key).ToList())
+                    foreach (var ability in abilities.Where(a => a.Trigger == TriggerEvent.CreaturesYouControlTargetedByActivatedAbility))
+                        AddPending(observer.Id, ability, observer.Controller, new TriggerInfo(group.First().Id, group.First().Version, item.Controller));
         foreach (var aimed in targeted.Distinct().Select(State.GetCard).Where(c => c.Zone == Zone.Battlefield).ToList())
         {
             Queue(aimed.Id, TriggerEvent.BecomesTarget, aimed.Controller, new TriggerInfo(aimed.Id, aimed.Version, item.Controller));
@@ -1423,8 +1429,9 @@ public sealed partial class Game
                     if (revealedHit is { } free && HasLegalTargets(CastingTargets(State.GetCard(free).Definition), ctx.Controller, free)
                         && await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast {State.GetCard(free).Name} without paying its mana cost?", free)))
                     {
-                        await CastNowWithoutPayingAsync(State.GetPlayer(ctx.Controller), free);
+                        await CastNowWithoutPayingAsync(State.GetPlayer(ctx.Controller), free, hasteAndSacrifice: ru.CreatureHasteAndSacrifice && State.GetCard(free).IsCreature);
                     }
+                    if (ru.RestStaysExiled) break; // "the rest stay exiled"
                     var leftover = exiled.Where(id => State.GetCard(id).Zone == Zone.Exile).ToList();
                     Rng.Shuffle(leftover);
                     foreach (var id in leftover) await MoveCardAsync(id, Zone.Library, toBottom: true);
@@ -1917,6 +1924,8 @@ public sealed partial class Game
                 // The player who would gain control is an illegal target now: nobody gains control (rule 608.2b).
                 if (chosen is not { } newController) break;
                 if (g.WhileYouControlSource && (!SourceOnBattlefield(ctx) || ctx.Source.Controller != newController)) break; // already over
+                PlayerId? whileMonarch = g.WhileTriggeredPlayerIsMonarch ? ctx.Trigger?.Player : null;
+                if (g.WhileTriggeredPlayerIsMonarch && (whileMonarch is null || State.Monarch != whileMonarch)) break; // already over
                 long stamp = NewTimestamp();
                 ctx.Results.ControlGained.AddRange(CardsFor(g.What, ctx).Select(c => c.Id));
                 foreach (var card in CardsFor(g.What, ctx).ToList())
@@ -1926,6 +1935,7 @@ public sealed partial class Game
                         UntilEndOfNextTurnOf = g.UntilEndOfYourNextTurn ? ctx.Controller : null,
                         MadeOnTurn = State.TurnNumber,
                         WhileSource = g.WhileYouControlSource ? (ctx.Source.Id, ctx.Source.Version) : null,
+                        WhileMonarch = whileMonarch,
                     });
                 RecomputeContinuousEffects();
             }
@@ -3184,7 +3194,8 @@ public sealed partial class Game
                 break;
             case PreventDamageThisTurn { To: { } shielded } pdt:
                 foreach (var card in CardsFor(shielded, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
-                    State.PreventionShields.Add(new PreventionShield(State.TurnNumber, pdt.CombatOnly) { ToObject = (card.Id, card.Version) });
+                    State.PreventionShields.Add(new PreventionShield(State.TurnNumber, pdt.CombatOnly)
+                        { ToObject = (card.Id, card.Version), CountersInstead = pdt.CountersInstead, Controller = ctx.Controller, SourceCard = ctx.Source.Id, Id = NewTimestamp() });
                 break;
             case AttacksSourceNextTurn asn:
                 AddAttackSourceRequirements(asn, ctx);
@@ -3196,6 +3207,10 @@ public sealed partial class Game
                 else State.PreventionShields.Add(new PreventionShield(State.TurnNumber, pdt.CombatOnly)
                 {
                     SourceFilter = pdt.Sources, FilterController = ctx.Controller, ToPlayer = pdt.ToYou ? ctx.Controller : null, ToCreaturesOf = pdt.ToYourCreatures ? ctx.Controller : null,
+                    SourceOpponentsOf = pdt.SourcesOfOpponents ? ctx.Controller : null, Controller = ctx.Controller, SourceCard = ctx.Source.Id, Id = NewTimestamp(),
+                    WhenCreatureDamagePrevented = pdt.WhenCreatureDamagePrevented is { } prevented
+                        ? new TriggeredAbility { Trigger = TriggerEvent.Reflexive, Effects = prevented, Text = pdt.WhenPreventedText ?? "Whenever damage from a creature is prevented this way" }
+                        : null,
                 });
                 break;
             case TripleDamageThisTurn:
@@ -4125,7 +4140,7 @@ public sealed partial class Game
 
     /// <summary>Whether a player can sacrifice the permanent ("this artifact can't be sacrificed", "you can't sacrifice those creatures this turn").</summary>
     private bool CanBeSacrificedBy(Card card, PlayerId player) =>
-        !(card.Definition.CantBeSacrificed && card.HasTextAbilities)
+        !(card.Definition.CantBeSacrificed && card.HasTextAbilities) && !card.StaticCantBeSacrificed
         && !State.CantSacrificeThisTurn.Any(r => r.Card == card.Id && r.Version == card.Version && r.Player == player && r.Turn == State.TurnNumber);
 
     private async Task SacrificePermanentAsync(CardId id)
@@ -4198,7 +4213,7 @@ public sealed partial class Game
         // A look that takes nothing ("look at the top four, then put them back in any order") only orders them.
         if (eligible.Count > 0 && look.Take > 0)
         {
-            var purpose = look.TakeTo == Zone.Battlefield ? CardChoicePurpose.ToBattlefield : CardChoicePurpose.ToHand;
+            var purpose = look.TakeTo == Zone.Battlefield ? CardChoicePurpose.ToBattlefield : CardChoicePurpose.ToHand; // exiled cards are chosen the same way as cards taken into hand
             var request = new CardChoiceRequest($"Look at the top {top.Count}: choose {(look.Required ? "" : "up to ")}{look.Take}", source.Id,
                 options.Where(o => eligible.Contains(o.Id)).ToList(), look.Required ? Math.Min(look.Take, eligible.Count) : 0, Math.Min(look.Take, eligible.Count), purpose);
             chosen = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), request);
@@ -4250,6 +4265,12 @@ public sealed partial class Game
         }
         if (!look.RestToGraveyard) PlacedInUnseenOrder(rest, look.RestOrder == RestOrder.Chosen ? who : null);
         Emit(new LookedAtTop(who, top.Count, top.Count - chosen.Count, Scry: !look.RestToGraveyard));
+        // "You may cast the exiled card without paying its mana cost."
+        if (look.CastTakenFree)
+            foreach (var id in chosen.Where(c => State.GetCard(c).Zone == Zone.Exile).ToList())
+                if (HasLegalTargets(CastingTargets(State.GetCard(id).Definition), who, id)
+                    && await ControllerOf(who).ChooseYesNoAsync(ViewFor(who), new YesNoRequest($"Cast {State.GetCard(id).Name} without paying its mana cost?", id)))
+                    await CastNowWithoutPayingAsync(player, id);
     }
 
     /// <summary>Removes a spell from the stack to its owner's graveyard (exile if it was cast with flashback).</summary>
@@ -4786,7 +4807,7 @@ public sealed partial class Game
                                             || (e.WhileSource is { } ws && (SourceGone(ws.Card, ws.Version)
                                                 || (e.WhileControlledBy is { } holder && State.GetCard(ws.Card).Controller != holder))));
         // Control effects end with their object; "for as long as you control …" ones once that stops, for good.
-        State.ControlEffects.RemoveAll(e => SourceGone(e.Card, e.Version)
+        State.ControlEffects.RemoveAll(e => SourceGone(e.Card, e.Version) || (e.WhileMonarch is { } monarchHolder && State.Monarch != monarchHolder)
                                             || (e.WhileSource is { } src && (SourceGone(src.Card, src.Version) || State.GetCard(src.Card).Controller != e.NewController)));
         var controllersBefore = battlefield.ToDictionary(c => c.Id, c => c.Controller);
         State.DamagePreventions.RemoveAll(d => SourceGone(d.Card, d.Version) || SourceGone(d.Source, d.SourceVersion));
@@ -5136,7 +5157,7 @@ public sealed partial class Game
             foreach (var (source, ability) in statics(a => a.LosesAllAbilities || a.Keywords is { Count: > 0 } || a.GrantedKeywords.Count > 0
                                                            || a.GrantsAbilities is not null || a.GrantsMana is not null || a.GrantsWard is not null
                                                            || a.GrantsGraveyardAbilities is not null || a.CantAttackYou || a.Goads || a.ProtectionFromRingBearers
-                                                           || a.LosesKeywords is not null || a.PreventsDamage != StaticDamagePrevention.None || a.CantActivateAbilities
+                                                           || a.LosesKeywords is not null || a.PreventsDamage != StaticDamagePrevention.None || a.CantActivateAbilities || a.CantBeSacrificed
                                                            || a.GrantsCantBeBlockedBy is not null || a.GrantsDyingTriggerBonus))
                 foreach (var affected in affectedBy(source, ability).ToList())
                     changes.Add((source.Timestamp, affected, card =>
@@ -5147,6 +5168,7 @@ public sealed partial class Game
                         if (ability.LosesKeywords is { } loses) { card.LostKeywords.UnionWith(loses); card.GrantedKeywords.ExceptWith(loses); }
                         card.StaticDamagePrevention |= ability.PreventsDamage;
                         if (ability.CantActivateAbilities) card.AbilitiesCantBeActivated = true;
+                        if (ability.CantBeSacrificed) card.StaticCantBeSacrificed = true;
                         if (ability.GrantsAbilities is { } granted) card.GrantedAbilities.AddRange(granted.Select(g => g with { GrantedBy = source.Id }));
                         if (ability.GrantsMana is { } mana) card.GrantedManaOptions.Add(new ManaOption(mana, ability.GrantsManaAmount));
                         if (ability.GrantsDyingTriggerBonus) card.DyingTriggerBonus++;
@@ -5162,7 +5184,7 @@ public sealed partial class Game
                                 .SelectMany(c => c.Definition.Abilities.OfType<ActivatedAbility>().Where(a => !a.Cost.FromGraveyard && !a.Cost.FromHand))
                                 .Select(a => a with { GrantedBy = source.Id }));
                     }));
-            foreach (var effect in effects.Where(e => e.LosesAbilities || e.Keywords.Count > 0 || e.Abilities is not null || e.LoseKeywords is not null || e.CantAttackOwner
+            foreach (var effect in effects.Where(e => e.LosesAbilities || e.Keywords.Count > 0 || e.Abilities is not null || e.LoseKeywords is not null || e.CantAttackOwner || e.CantAttackPlayerAndPlaneswalkers is not null
                                                       || e.GrantsMana is not null))
                 changes.Add((effect.Timestamp, State.GetCard(effect.Card), card =>
                 {
@@ -5173,6 +5195,7 @@ public sealed partial class Game
                     if (effect.LoseKeywords is { } lost) { card.LostKeywords.UnionWith(lost); card.GrantedKeywords.ExceptWith(lost); }
                     if (effect.Abilities is { } abilities) card.GrantedAbilities.AddRange(abilities);
                     if (effect.CantAttackOwner) card.CantAttackOwner = true;
+                    if (effect.CantAttackPlayerAndPlaneswalkers is { } barred) card.CantAttackPlayersAndPlaneswalkers.Add(barred);
                 }));
 
             foreach (var card in battlefield)
@@ -5188,12 +5211,14 @@ public sealed partial class Game
                 card.BlockRestrictions.Clear();
                 card.CantAttackPlayers.Clear();
                 card.CantAttackOwner = false;
+                card.CantAttackPlayersAndPlaneswalkers.Clear();
                 card.StaticGoaders.Clear();
                 card.ProtectedFromRingBearers = false;
                 card.ProtectedFromPlayers.Clear();
                 card.ProtectionFromTypes = 0;
                 card.StaticDamagePrevention = StaticDamagePrevention.None;
                 card.AbilitiesCantBeActivated = false;
+                card.StaticCantBeSacrificed = false;
             }
             foreach (var effect in effects.Where(e => e.UnblockableBy is not null)) State.GetCard(effect.Card).UnblockableBy.Add(effect.UnblockableBy!.Value);
             foreach (var effect in effects.Where(e => e.CantBeBlockedBy is not null)) State.GetCard(effect.Card).BlockRestrictions.Add(effect.CantBeBlockedBy!);
@@ -5367,6 +5392,10 @@ public sealed partial class Game
             case LifeChanged l when l.NewLife > l.OldLife:
                 foreach (var card in State.PermanentsControlledBy(l.Player).ToList())
                     Queue(card.Id, TriggerEvent.YouGainLife, l.Player, new TriggerInfo(Player: l.Player, Amount: l.NewLife - l.OldLife));
+                break;
+            case MonarchChanged mc:
+                foreach (var card in State.Battlefield.Select(State.GetCard).ToList())
+                    if (card.Controller != mc.Player) Queue(card.Id, TriggerEvent.OpponentBecomesMonarch, card.Controller, new TriggerInfo(Player: mc.Player));
                 break;
             case LifeChanged l when l.NewLife < l.OldLife:
                 foreach (var card in State.Battlefield.Select(State.GetCard).ToList())

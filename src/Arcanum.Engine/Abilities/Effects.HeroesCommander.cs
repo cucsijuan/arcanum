@@ -44,7 +44,17 @@ public sealed record CastReboundedFree : HeroesCommanderEffect;
 /// "[Player] chooses up to N [filter] they control, then sacrifices the rest": each player chooses in turn order, then all of them sacrifice
 /// at the same time (rule 101.4).
 /// </summary>
-public sealed record SacrificeAllBut(ObjectFilter Filter, int Keep, Subject Who) : HeroesCommanderEffect;
+public sealed record SacrificeAllBut(ObjectFilter Filter, int Keep, Subject Who) : HeroesCommanderEffect
+{
+    /// <summary>"Each player puts a vow counter on a creature they control and sacrifices the rest": the player must keep as many as they can (up to <c>Keep</c>), not fewer.</summary>
+    public bool Exactly { get; init; }
+
+    /// <summary>A counter put on each permanent kept this way.</summary>
+    public CounterKind? PutCounter { get; init; }
+
+    /// <summary>"Each of those creatures can't attack you or planeswalkers you control for as long as it has a [counter] on it": the effect's controller; needs <see cref="PutCounter"/>.</summary>
+    public bool KeptCantAttackYouWhileCounter { get; init; }
+}
 
 /// <summary>
 /// "An opponent chooses one of the exiled cards. You put that card on the bottom of your library and return the other to the battlefield
@@ -121,5 +131,14 @@ public sealed record ExileRandomFromOpponentsGraveyards : HeroesCommanderEffect;
 /// </summary>
 public sealed record CastExiledFreeAnyNumber(bool OwnersLoseLife) : HeroesCommanderEffect;
 
+/// <summary>
+/// "Becomes a copy of [target] until end of turn, except its name is [ExceptName]": lasts until cleanup (rule 707).
+/// </summary>
+public sealed record BecomeCopy(Subject What, Subject Target, string? ExceptName = null) : HeroesCommanderEffect;
+
 /// <summary>"If this spell was cast from exile" (foretold cards, rule 702.143).</summary>
 public sealed record WasCastFromExile : Condition;
+
+/// <summary>"Nonartifact spells you cast have improvise" (rule 702.126): while the source is on the battlefield, spells its controller casts that match
+/// <paramref name="Spells"/> have improvise, as if they printed it.</summary>
+public sealed record SpellsHaveImprovise(ObjectFilter Spells) : AbilityDefinition;

@@ -249,6 +249,9 @@ public sealed record GainControl(Subject What, bool UntilEndOfTurn = false, Subj
 
     /// <summary>"Until the end of your next turn".</summary>
     public bool UntilEndOfYourNextTurn { get; init; }
+
+    /// <summary>"For as long as they're the monarch": the player the trigger is about; nothing happens if they aren't the monarch as this resolves.</summary>
+    public bool WhileTriggeredPlayerIsMonarch { get; init; }
 }
 
 /// <summary>
@@ -385,6 +388,9 @@ public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, St
 
     /// <summary>"Put one of them into your hand" (no "may"): exactly <see cref="Take"/> cards are taken, as many as there are matching ones.</summary>
     public bool Required { get; init; }
+
+    /// <summary>With the cards taken exiled: "You may cast the exiled card without paying its mana cost" (after the rest went to the bottom).</summary>
+    public bool CastTakenFree { get; init; }
 }
 
 /// <summary>"[Player] reveals their hand; you choose a [filter] card from it; they discard it."</summary>
@@ -696,6 +702,12 @@ public sealed record RevealUntil(ObjectFilter Filter, State.Zone To) : Effect
 
     /// <summary>"The player puts that card onto the battlefield": under the revealing player's control (not the ability's controller's).</summary>
     public bool RevealerPuts { get; init; }
+
+    /// <summary>With <see cref="CastFree"/>: the other exiled cards stay in exile (instead of going to the bottom of the library).</summary>
+    public bool RestStaysExiled { get; init; }
+
+    /// <summary>With <see cref="CastFree"/>: "If you cast a creature spell this way, it gains haste and 'At the beginning of the end step, sacrifice this creature.'"</summary>
+    public bool CreatureHasteAndSacrifice { get; init; }
 }
 
 /// <summary>
@@ -1079,6 +1091,24 @@ public sealed record PreventDamageThisTurn(bool CombatOnly, Subject? DealtBy = n
 
     /// <summary>"Prevent all damage that would be dealt to [it] this turn": only damage to these objects (each as the object it is now).</summary>
     public Subject? To { get; init; }
+
+    /// <summary>
+    /// With <see cref="To"/>: "If damage would be dealt to that creature this turn, prevent that damage and put that many +1/+1 counters on it" (a prevention
+    /// that is a replacement effect: the counters are put as the damage is prevented).
+    /// </summary>
+    public bool CountersInstead { get; init; }
+
+    /// <summary>Only damage dealt by sources an opponent of the effect's controller controls ("by sources your opponents control").</summary>
+    public bool SourcesOfOpponents { get; init; }
+
+    /// <summary>
+    /// "Whenever damage from a creature is prevented this way, [effects]": a delayed triggered ability for the rest of the turn, about the creature that
+    /// would have dealt the damage ("triggered").
+    /// </summary>
+    public IReadOnlyList<Effect>? WhenCreatureDamagePrevented { get; init; }
+
+    /// <summary>The rules text of <see cref="WhenCreatureDamagePrevented"/>.</summary>
+    public string? WhenPreventedText { get; init; }
 }
 
 /// <summary>

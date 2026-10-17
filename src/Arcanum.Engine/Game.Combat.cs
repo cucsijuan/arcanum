@@ -149,6 +149,7 @@ public sealed partial class Game
     /// player: "can't attack unless defending player controls an Island".
     /// </summary>
     private bool AttackForbiddenWithPlaneswalkers(Card attacker, PlayerId defender) =>
+        attacker.CantAttackPlayersAndPlaneswalkers.Contains(defender) ||
         attacker.Definition.CantAttackUnlessDefenderControls is { } needed && attacker.HasTextAbilities
         && !State.PermanentsControlledBy(defender).Any(p => Matches(needed with { Controller = Abilities.ControllerFilter.Any }, p, defender, attacker, attacker.Controller));
 

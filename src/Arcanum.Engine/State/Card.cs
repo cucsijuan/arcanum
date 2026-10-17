@@ -280,6 +280,12 @@ public sealed class Card
     /// <summary>It has "This creature can't attack its owner".</summary>
     internal bool CantAttackOwner { get; set; }
 
+    /// <summary>A static ability of another permanent says it can't be sacrificed (recomputed with continuous effects).</summary>
+    internal bool StaticCantBeSacrificed { get; set; }
+
+    /// <summary>Players this creature can't attack, nor planeswalkers they control.</summary>
+    internal HashSet<Core.PlayerId> CantAttackPlayersAndPlaneswalkers { get; } = new();
+
     /// <summary>Its supertypes now.</summary>
     public Supertype Supertypes => Definition.Supertypes | GrantedSupertypes;
     internal HashSet<string> GrantedSubtypes { get; } = new(StringComparer.OrdinalIgnoreCase);

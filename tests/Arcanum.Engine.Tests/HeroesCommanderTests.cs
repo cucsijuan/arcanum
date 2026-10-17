@@ -1311,4 +1311,447 @@ public class HeroesCommanderTests
         await s.RunUntilTurn();
         Assert.Equal(24, s.Game.State.GetPlayer(P0).Life);
     }
+
+    // ------------------------------------------------------------------ improvise given to the spells you cast (702.126)
+
+    [Fact]
+    public async Task NonartifactSpellsYouCastHaveImprovise()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 2);
+        s.Add(P0, Make("Gallery", "Artifact", """{ "abilities": [{ "spellsHaveImprovise": { "not": ["artifact"] }, "text": "Nonartifact spells you cast have improvise." }] }"""));
+        var a = s.Add(P0, Make("Cog", "Artifact", "{}", "{1}"));
+        var b = s.Add(P0, Make("Gear", "Artifact", "{}", "{1}"));
+        var ox = s.InHand(P0, Make("Heavy Ox", "Creature — Ox", "{}", "{4}", "3/3"));
+        s.Attacker.Choose = (_, request) => request.Options.Take(request.Max).Select(c => c.Id).ToList();
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Attacker.Act = (view, legal) => legal.OfType<CastSpell>().FirstOrDefault(c => view.FindCard(c.Card)?.Name == "Heavy Ox") as PlayerAction ?? PassPriority.Instance;
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(ox).Zone);
+        Assert.True(s.Card(a).Tapped && s.Card(b).Tapped);
+    }
+
+    [Fact]
+    public async Task ArtifactSpellsDontGetImproviseFromTheGallery()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 2);
+        s.Add(P0, Make("Gallery", "Artifact", """{ "abilities": [{ "spellsHaveImprovise": { "not": ["artifact"] }, "text": "Nonartifact spells you cast have improvise." }] }"""));
+        s.Add(P0, Make("Cog", "Artifact", "{}", "{1}"));
+        s.Add(P0, Make("Gear", "Artifact", "{}", "{1}"));
+        var spell = s.InHand(P0, Make("Heavy Idol", "Artifact", "{}", "{4}"));
+        bool offered = false;
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Attacker.Act = (_, legal) => { offered |= legal.OfType<CastSpell>().Any(c => c.Card == spell); return PassPriority.Instance; };
+        await s.RunUntilTurn();
+        Assert.False(offered);
+    }
+
+    // ------------------------------------------------------------------ vow counters: keep one, sacrifice the rest, can't attack you
+
+    private const string VowSpell = """{ "spell": { "effects": [{ "sacrificeAllBut": 1, "filter": { "types": ["creature"] }, "who": "everyone", "exactly": true, "putCounter": "vow", "keptCantAttackYou": true }] } }""";
+
+    [Fact]
+    public async Task EachPlayerKeepsOneCreatureWithAVowCounterAndSacrificesTheRest()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 5);
+        var mine = new[] { s.Add(P0, Creature("Squire", 1, 1)), s.Add(P0, Creature("Knight", 2, 2)) };
+        var theirs = new[] { s.Add(P1, Creature("Raider", 3, 3)), s.Add(P1, Creature("Brute", 4, 4)) };
+        s.InHand(P0, Make("Binding Oath", "Sorcery", VowSpell, "{5}"));
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Attacker.Act = (view, legal) => legal.OfType<CastSpell>().FirstOrDefault(c => view.FindCard(c.Card)?.Name == "Binding Oath") as PlayerAction ?? PassPriority.Instance;
+        await s.RunUntilTurn();
+        Assert.Equal(1, mine.Count(id => s.Card(id).Zone == Zone.Battlefield));
+        Assert.Equal(1, theirs.Count(id => s.Card(id).Zone == Zone.Battlefield));
+        Assert.All(mine.Concat(theirs).Where(id => s.Card(id).Zone == Zone.Battlefield), id => Assert.Equal(1, s.Card(id).CounterCount(CounterKind.Vow)));
+    }
+
+    [Fact]
+    public async Task AVowCreatureCantAttackTheSpellsControllerButCanAttackOthers()
+    {
+        var (game, players) = ThreePlayers();
+        var oath = game.SetupInHand(P0, Make("Binding Oath", "Sorcery", VowSpell, "{0}"));
+        var raider = game.SetupPermanent(P1, Creature("Raider", 3, 3));
+        players[0].Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        players[0].Act = (view, legal) => legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == oath) as PlayerAction ?? PassPriority.Instance;
+        players[1].Attack = (_, attackers, ds) => new[] { new AttackDeclaration(raider, P2) };
+        await Run(game, 3);
+        Assert.Equal(1, game.State.GetCard(raider).CounterCount(CounterKind.Vow));
+        Assert.Equal(20, game.State.GetPlayer(P0).Life);
+        Assert.Equal(17, game.State.GetPlayer(P2).Life); // it can still attack the others
+    }
+
+    [Fact]
+    public async Task AVowCreatureIsRefusedAnAttackOnTheSpellsController()
+    {
+        var (game, players) = ThreePlayers();
+        var oath = game.SetupInHand(P0, Make("Binding Oath", "Sorcery", VowSpell, "{0}"));
+        var raider = game.SetupPermanent(P1, Creature("Raider", 3, 3));
+        players[0].Act = (view, legal) => legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == oath) as PlayerAction ?? PassPriority.Instance;
+        players[1].Attack = (_, _, _) => new[] { new AttackDeclaration(raider, P0) };
+        await Assert.ThrowsAnyAsync<Exception>(() => Run(game, 3));
+    }
+
+    // ------------------------------------------------------------------ exile until a card, cast it free, the rest stay exiled; a creature gains haste and a sacrifice
+
+    [Fact]
+    public async Task ExiledCardsStayExiledAndACreatureCastThisWayIsSacrificedAtTheEnd()
+    {
+        var s = new Scenario();
+        s.Add(P0, Make("Scribe", "Creature — Human", """{ "abilities": [{ "cost": "{T}", "sorcery": true, "targets": ["opponent"], "effects": [{ "revealUntil": { "types": ["instant", "sorcery", "creature"] }, "from": "target", "castFree": true, "rest": "exile", "creatureHasteAndSacrifice": true }], "text": "x" }] }""", "{1}", "1/1"));
+        var first = s.Game.SetupInLibrary(P1, Make("Spare Idol", "Artifact", "{}", "{1}"));
+        var second = s.Game.SetupInLibrary(P1, Make("Spare Relic", "Artifact", "{}", "{1}"));
+        var hit = s.Game.SetupInLibrary(P1, Make("Hired Brute", "Creature — Human", "{}", "{2}", "3/3"));
+        ActivateTimes(s, "Scribe", 1, () => s.Restack(P1, first, second, hit));
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Exile, s.Card(first).Zone);
+        Assert.Equal(Zone.Exile, s.Card(second).Zone);
+        Assert.Equal(Zone.Graveyard, s.Card(hit).Zone); // cast free, entered, sacrificed at the end step
+    }
+
+    // ------------------------------------------------------------------ modified creatures: a counter, base power and toughness, a sacrifice cost
+
+    private const string FallenHeroScript = """
+        { "abilities": [
+          { "trigger": "attacks", "targets": ["creature"], "effects": [
+              { "may": "Put a cell counter on target creature?", "effects": [{ "counters": 1, "what": "target", "kind": "cell" }] },
+              { "become": { "each": { "types": ["creature"], "controller": "you", "modified": true } }, "power": 7, "toughness": 5 }],
+            "text": "x" },
+          { "cost": "{0}, sacrificeAny:creature, fromGraveyard", "sacrificeFilter": { "types": ["creature"], "modified": true }, "effects": [{ "reanimate": "self", "tapped": true }], "text": "y" }] }
+        """;
+
+    [Fact]
+    public async Task ModifiedCreaturesBecomeSevenFiveAfterTheCounterIsPut()
+    {
+        var s = new Scenario();
+        var hero = s.Add(P0, Make("Fallen Blade", "Creature — Human", FallenHeroScript, "{1}", "3/3"));
+        var plain = s.Add(P0, Creature("Plain Squire", 1, 1));
+        var marked = s.Add(P0, Creature("Marked Squire", 1, 1));
+        s.Card(marked).Counters[CounterKind.PlusOnePlusOne] = 1;
+        s.Attacker.Attack = (_, attackers, defenders) => attackers.Where(a => a == hero).Select(a => new AttackDeclaration(a, defenders[0])).ToList();
+        s.Attacker.Targets = (_, _) => new[] { Target.Of(plain) };
+        s.Defender.Block = (_, _, _) => Array.Empty<BlockDeclaration>();
+        bool checkedMidTurn = false;
+        s.Attacker.Act = (_, _) =>
+        {
+            if (!checkedMidTurn && s.Game.State.Step == Step.DeclareBlockers)
+            {
+                checkedMidTurn = true;
+                Assert.Equal(1, s.Card(plain).CounterCount(CounterKind.Cell));
+                Assert.Equal(7, s.Card(plain).Power); Assert.Equal(5, s.Card(plain).Toughness); // modified by the counter it just got
+                Assert.Equal(8, s.Card(marked).Power); // base 7/5 and its +1/+1 counter
+                Assert.Equal(3, s.Card(hero).Power); // not modified: unchanged
+            }
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.True(checkedMidTurn);
+    }
+
+    [Fact]
+    public async Task ASacrificeCostThatNeedsAModifiedCreatureIsRefusedWithoutOne()
+    {
+        var s = new Scenario();
+        var hero = s.InHand(P0, Make("Fallen Blade", "Creature — Human", FallenHeroScript, "{1}", "3/3"));
+        ToGraveyard(s, hero);
+        s.Add(P0, Creature("Plain Squire", 1, 1));
+        bool offered = false;
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Attacker.Act = (_, legal) => { offered |= legal.OfType<ActivateAbility>().Any(a => a.Source == hero); return PassPriority.Instance; };
+        await s.RunUntilTurn();
+        Assert.False(offered);
+    }
+
+    [Fact]
+    public async Task SacrificingAModifiedCreatureReturnsTheCardFromTheGraveyardTapped()
+    {
+        var s = new Scenario();
+        var hero = s.InHand(P0, Make("Fallen Blade", "Creature — Human", FallenHeroScript, "{1}", "3/3"));
+        ToGraveyard(s, hero);
+        var marked = s.Add(P0, Creature("Marked Squire", 1, 1));
+        s.Card(marked).Counters[CounterKind.PlusOnePlusOne] = 1;
+        s.Add(P0, Creature("Plain Squire", 1, 1));
+        s.Attacker.Choose = (_, request) => request.Options.Take(request.Min).Select(o => o.Id).ToList();
+        ActivateTimes(s, "Fallen Blade", 1);
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(hero).Zone);
+        Assert.True(s.Card(hero).Tapped);
+        Assert.Equal(Zone.Graveyard, s.Card(marked).Zone);
+    }
+
+    // ------------------------------------------------------------------ "whenever an opponent becomes the monarch": control for as long as they are
+
+    [Fact]
+    public async Task ControlOfACreatureLastsOnlyWhileThatOpponentIsTheMonarch()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 0);
+        var keeper = s.InHand(P0, Make("Court Thief", "Creature — Human Knight", """
+            { "abilities": [
+              { "trigger": "enters", "targets": ["opponent"], "effects": [{ "becomeMonarch": "target" }], "text": "a" },
+              { "trigger": "opponentBecomesMonarch", "targets": [{ "kind": "creature", "controller": "opponent", "controlledByTriggeredPlayer": true }],
+                "effects": [{ "gainControl": "target", "whileTriggeredPlayerIsMonarch": true }], "text": "b" },
+              { "static": { "affects": "creatures:you", "filter": { "notOwnedByYou": true }, "pump": [2, 2], "cantBeSacrificed": true }, "text": "c" }] }
+            """, "{0}", "3/4"));
+        var brute = s.Add(P0, Creature("Brute", 2, 2));
+        s.Add(P0, Make("Altar", "Artifact", """{ "abilities": [{ "cost": "{0}", "effects": [{ "sacrifice": 1, "filter": { "types": ["creature"] }, "who": "you" }], "text": "d" }] }""", "{0}"));
+        var victim = s.Add(P1, Creature("Victim", 2, 2));
+        var fodder = s.Add(P0, Creature("Fodder", 1, 1));
+        var offeredToSacrifice = new List<CardId>();
+        s.Attacker.Choose = (_, request) => { offeredToSacrifice.AddRange(request.Options.Select(o => o.Id)); return request.Options.Where(o => o.Id == fodder).Select(o => o.Id).ToList(); };
+        s.Attacker.Attack = (_, attackers, defenders) => attackers.Where(a => a == brute).Select(a => new AttackDeclaration(a, defenders[0])).ToList();
+        bool seenStolen = false;
+        s.Attacker.Act = (view, legal) =>
+        {
+            if (legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == keeper) is { } cast) return cast;
+            if (s.Game.State.Step == Step.BeginCombat && !seenStolen)
+            {
+                seenStolen = true;
+                Assert.Equal(P0, s.Card(victim).Controller);
+                Assert.Equal(4, s.Card(victim).Power); // +2/+2 for a creature its controller doesn't own
+                if (legal.OfType<ActivateAbility>().FirstOrDefault(a => s.Card(a.Source).Name == "Altar") is { } altar) return altar;
+            }
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.True(seenStolen);
+        Assert.Equal(P0, s.Game.State.Monarch);
+        Assert.Equal(P1, s.Card(victim).Controller); // P0 became the monarch by combat damage, so control ended
+        Assert.DoesNotContain(victim, offeredToSacrifice);
+        Assert.Contains(brute, offeredToSacrifice);
+        Assert.Equal(2, s.Card(victim).Power);
+    }
+
+    // ------------------------------------------------------------------ prevention that puts counters / prevention with a trigger
+
+    [Fact]
+    public async Task DamageToTheChosenCreatureIsPreventedAndBecomesCounters()
+    {
+        var s = new Scenario();
+        s.Add(P0, Make("Pinger", "Artifact", """{ "abilities": [{ "cost": "{0}", "targets": ["creature"], "effects": [{ "damage": 3, "to": "target" }], "text": "p" }] }"""));
+        var hero = s.Add(P0, Creature("Hero", 1, 1));
+        s.InHand(P0, Make("Warded Guard", "Creature — Human", """{ "abilities": [{ "trigger": "enters", "targets": ["creature:you"], "effects": [{ "preventDamage": true, "to": "target", "putCounters": true }], "text": "w" }] }""", "{0}", "1/1"));
+        s.Attacker.Targets = (_, _) => new[] { Target.Of(hero) };
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        bool pinged = false;
+        s.Attacker.Act = (view, legal) =>
+        {
+            if (legal.OfType<CastSpell>().FirstOrDefault(c => view.FindCard(c.Card)?.Name == "Warded Guard") is { } cast) return cast;
+            if (!pinged && s.Game.State.Stack.Count == 0 && s.Game.State.Battlefield.Any(id => s.Card(id).Name == "Warded Guard") && legal.OfType<ActivateAbility>().FirstOrDefault(a => s.Card(a.Source).Name == "Pinger") is { } ping) { pinged = true; return ping; }
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.True(pinged);
+        Assert.Equal(3, s.Card(hero).CounterCount(CounterKind.PlusOnePlusOne));
+        Assert.Equal(0, s.Card(hero).Damage);
+        Assert.Equal(Zone.Battlefield, s.Card(hero).Zone);
+    }
+
+    [Fact]
+    public async Task DamageFromAnOpponentsCreatureIsPreventedAndYourCommanderRetaliates()
+    {
+        var leader = Make("Rally Leader", "Legendary Creature — Human", "{}", "{0}", "5/5");
+        var players = new[] { new TestController { Attack = (_, _, _) => Array.Empty<AttackDeclaration>() }, new TestController { Attack = (_, _, _) => Array.Empty<AttackDeclaration>() } };
+        var game = new Game(new GameConfig { Seed = 1, StartingPlayer = P0, Commander = new CommanderRules() }, new[]
+        {
+            new PlayerSetup("A", players[0], Decks.Of((GenericCards.Forest, 30)), new[] { leader }),
+            new PlayerSetup("B", players[1], Decks.Of((GenericCards.Forest, 30))),
+        });
+        var zapper = game.SetupPermanent(P1, Make("Zapper", "Creature — Wizard", """{ "abilities": [{ "cost": "{0}", "targets": ["player"], "effects": [{ "damage": 2, "to": "target" }], "text": "z" }] }""", "{0}", "2/2"));
+        var oath = game.SetupInHand(P0, Make("Sovereign Oath", "Instant", """
+            { "spell": { "effects": [{ "preventDamage": "toYou", "fromOpponents": true,
+              "whenCreatureDamagePrevented": [{ "eachDealsDamageEqualToPower": { "each": { "types": ["creature"], "controller": "you", "commander": true } }, "to": "triggered" }] }] } }
+            """, "{0}"));
+        players[0].Act = (view, legal) =>
+            legal.OfType<CastSpell>().FirstOrDefault(c => view.FindCard(c.Card)?.Name == "Rally Leader") as PlayerAction
+            ?? legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == oath) as PlayerAction ?? PassPriority.Instance;
+        bool zapped = false;
+        players[1].Targets = (_, _) => new[] { Target.Of(P0) };
+        players[1].Act = (view, legal) =>
+        {
+            if (!zapped && game.State.Stack.Count == 0 && game.State.Battlefield.Any(id => game.State.GetCard(id).Name == "Rally Leader") && game.State.Cards.Values.Any(c => c.Id == oath && c.Zone == Zone.Graveyard)
+                && legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == zapper) is { } zap) { zapped = true; return zap; }
+            return PassPriority.Instance;
+        };
+        await Run(game, 2);
+        Assert.True(zapped);
+        Assert.Equal(20, game.State.GetPlayer(P0).Life); // the damage was prevented
+        Assert.Equal(Zone.Graveyard, game.State.GetCard(zapper).Zone); // the commander dealt 5 damage to it
+    }
+
+    // ------------------------------------------------------------------ a blocked creature, a granted trigger that looks at the top cards and casts one free
+
+    private const string BlockedFlameScript = """
+        { "spell": { "targets": [{ "kind": "creature", "controller": "you", "filter": { "blocked": true } }], "effects": [
+            { "pump": ["X", 0], "what": "target", "keywords": ["Trample"] },
+            { "become": "target", "abilities": [{ "trigger": "combatDamageToPlayer", "effects": [
+                { "lookAtTop": "triggerAmount", "filter": { "not": ["land"] }, "take": 1, "to": "exile", "castFree": true, "restAnyOrder": false }],
+              "text": "Whenever this creature deals combat damage to a player, look at that many cards from the top of your library." }] }] } }
+        """;
+
+    [Fact]
+    public async Task ABlockedCreatureTramplesOverAndCastsACardFromTheTopOfTheLibrary()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 4);
+        var raider = s.Add(P0, Creature("Raider", 2, 2));
+        var wall = s.Add(P1, Creature("Wall", 0, 1));
+        s.InHand(P0, Make("Blazing Parry", "Instant", BlockedFlameScript, "{X}{R}{R}"));
+        var land = s.Game.SetupInLibrary(P0, GenericCards.Forest);
+        var boon = s.Game.SetupInLibrary(P0, Make("Quick Boon", "Instant", """{ "spell": { "effects": [{ "gainLife": 5 }] } }""", "{3}"));
+        var rest = s.Game.SetupInLibrary(P0, GenericCards.Forest);
+        s.Attacker.Attack = (_, attackers, defenders) => attackers.Where(a => a == raider).Select(a => new AttackDeclaration(a, defenders[0])).ToList();
+        s.Defender.Block = (_, blockers, attackers) => blockers.Select(b => new BlockDeclaration(b, attackers[0])).ToList();
+        bool restacked = false;
+        s.Attacker.Choose = (_, request) => request.Options.Take(request.Max).Select(o => o.Id).ToList();
+        s.Attacker.Act = (view, legal) =>
+        {
+            if (!restacked) { restacked = true; s.Restack(P0, boon, rest, land); }
+            if (s.Game.State.Step == Step.DeclareBlockers && legal.OfType<CastSpell>().FirstOrDefault(c => view.FindCard(c.Card)?.Name == "Blazing Parry") is { } cast) return cast;
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(wall).Zone);
+        Assert.Equal(17, s.Game.State.GetPlayer(P1).Life); // 4 power, 1 to the wall, 3 trampled over
+        Assert.Equal(Zone.Graveyard, s.Card(boon).Zone); // exiled, then cast free
+        Assert.Equal(25, s.Game.State.GetPlayer(P0).Life);
+        Assert.Equal(Zone.Library, s.Card(rest).Zone); // not taken: on the bottom
+    }
+
+    [Fact]
+    public async Task OnlyABlockedCreatureCanBeTargetedByTheParry()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 4);
+        var raider = s.Add(P0, Creature("Raider", 2, 2));
+        var spell = s.InHand(P0, Make("Blazing Parry", "Instant", BlockedFlameScript, "{X}{R}{R}"));
+        bool offered = false;
+        s.Attacker.Attack = (_, attackers, defenders) => attackers.Where(a => a == raider).Select(a => new AttackDeclaration(a, defenders[0])).ToList();
+        s.Attacker.Act = (_, legal) => { offered |= legal.OfType<CastSpell>().Any(c => c.Card == spell); return PassPriority.Instance; };
+        await s.RunUntilTurn();
+        Assert.False(offered); // nothing is blocked
+    }
+
+    // ------------------------------------------------------------------ "cast as though it had flash if it targets a permanent you control"
+
+    private const string MirrorRite = """{ "flashIfTargets": { "controller": "you" }, "spell": { "targets": ["permanent"], "effects": [{ "copy": "target" }] } }""";
+
+    [Fact]
+    public async Task ASorceryCanBeCastAtInstantSpeedOnlyTargetingYourOwnPermanent()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 4);
+        var mine = s.Add(P0, Creature("Statue", 1, 1));
+        var theirs = s.Add(P1, Creature("Idol", 2, 2));
+        var rite = s.InHand(P0, Make("Mirror Rite", "Sorcery", MirrorRite, "{4}"));
+        var seen = new List<CardId>();
+        s.Attacker.Targets = (_, request) => { seen.AddRange(request.LegalAt(0).Select(t => t.Card!.Value)); return new[] { Target.Of(mine) }; };
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        bool casting = false;
+        s.Attacker.Act = (view, legal) =>
+        {
+            if (s.Game.State.Step == Step.BeginCombat && !casting && legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == rite) is { } cast) { casting = true; return cast; }
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.True(casting);
+        Assert.Contains(mine, seen);
+        Assert.DoesNotContain(theirs, seen); // only a permanent you control gives the flash
+        Assert.Equal(2, s.Game.State.Battlefield.Count(id => s.Card(id).Name == "Statue"));
+    }
+
+    [Fact]
+    public async Task ASorceryWithFlashByTargetsIsNotOfferedAtInstantSpeedWithoutAPermanentOfYours()
+    {
+        var s = new Scenario();
+        // no permanent of yours (not even a land) to target
+
+        s.Add(P1, Creature("Idol", 2, 2));
+        var rite = s.InHand(P0, Make("Mirror Rite", "Sorcery", MirrorRite, "{0}"));
+        bool offeredInCombat = false;
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Attacker.Act = (_, legal) => { offeredInCombat |= s.Game.State.Step == Step.BeginCombat && legal.OfType<CastSpell>().Any(c => c.Card == rite); return PassPriority.Instance; };
+        await s.RunUntilTurn();
+        Assert.False(offeredInCombat);
+    }
+
+    // ------------------------------------------------------------------ the first ability that targets your creature costs less; creatures targeted by an activated ability draw a card
+
+    [Fact]
+    public async Task TheFirstAbilityTargetingYourCreatureCostsLessAndTheTargetingDrawsOnlyOncePerTurn()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 2);
+        s.Add(P0, Make("Lab Chief", "Creature — Human", """
+            { "abilities": [
+              { "abilityCost": { "firstTargetingYourCreatureOnYourTurn": true, "amount": 2 }, "text": "a" },
+              { "trigger": "creaturesTargetedByActivatedAbility", "oncePerTurn": true, "effects": [{ "draw": 1 }], "text": "b" }] }
+            """, "{1}", "1/1"));
+        var hero = s.Add(P0, Creature("Hero", 1, 1));
+        s.Add(P0, Make("Pump Rig", "Artifact", """{ "abilities": [{ "cost": "{2}", "targets": ["creature:you"], "effects": [{ "pump": [1, 1], "what": "target" }], "text": "c" }] }"""));
+        s.Attacker.Targets = (_, _) => new[] { Target.Of(hero) };
+        int libraryBefore = -1, activations = 0, powerInCombat = -1;
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Attacker.Act = (view, legal) =>
+        {
+            if (powerInCombat < 0 && s.Game.State.Step == Step.BeginCombat) powerInCombat = s.Card(hero).Power;
+            if (libraryBefore < 0 && s.Game.State.Step == Step.PrecombatMain) libraryBefore = s.Game.State.GetPlayer(P0).Library.Count;
+            if (s.Game.State.Step == Step.PrecombatMain && s.Game.State.Stack.Count == 0 && activations < 4
+                && legal.OfType<ActivateAbility>().FirstOrDefault(a => s.Card(a.Source).Name == "Pump Rig") is { } rig) { activations++; return rig; }
+            return PassPriority.Instance;
+        };
+        int libraryAfter = -1;
+        s.Game.EventRaised += e => { if (e is TurnBegan { TurnNumber: 2 }) libraryAfter = s.Game.State.GetPlayer(P0).Library.Count; };
+        await s.RunUntilTurn();
+        Assert.Equal(2, activations); // 2 lands pay for the second ({2}); the first was free; no third
+        Assert.Equal(1 + 2, powerInCombat);
+        Assert.Equal(libraryBefore - 1, libraryAfter); // one card, however many abilities targeted the creature
+    }
+
+    // ------------------------------------------------------------------ become copy of target creature at beginning of combat keeping its name, both buffed and attack
+
+    [Fact]
+    public async Task MimicBecomesCopyOfTargetAtBeginningOfCombatAndBothGetBuffAndAttack()
+    {
+        var s = new Scenario();
+        var bear = s.Add(P0, Creature("Grizzly", 3, 3, Keyword.Trample));
+        var mimic = s.Add(P0, Make("Mimic", "Creature — Human", """
+            { "abilities": [{
+              "trigger": "beginCombat", "may": true,
+              "targets": [{ "kind": "creature", "controller": "you", "other": true }],
+              "effects": [
+                { "becomeCopy": "self", "target": "target", "exceptName": "Mimic" },
+                { "pump": [2, 0], "what": "self", "keywords": ["Haste", "AttacksEachCombat"] },
+                { "pump": [2, 0], "what": "target", "keywords": ["Haste", "AttacksEachCombat"] }
+              ],
+              "text": "At the beginning of combat..."
+            }] }
+            """, "{3}{R}", "2/2"));
+        s.Attacker.Targets = (_, _) => new[] { Target.Of(bear) };
+        s.Attacker.Attack = (_, attackers, defenders) => attackers.Select(a => new AttackDeclaration(a, defenders[0])).ToArray();
+        int mimicPower = -1;
+        bool mimicTrample = false;
+        string mimicName = "";
+        int bearPower = -1;
+        s.Attacker.Act = (view, legal) =>
+        {
+            if (s.Game.State.Step == Step.BeginCombat)
+            {
+                mimicPower = s.Card(mimic).Power;
+                mimicTrample = s.Card(mimic).Has(Keyword.Trample);
+                mimicName = s.Card(mimic).Name;
+                bearPower = s.Card(bear).Power;
+            }
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(3 + 2, mimicPower);
+        Assert.True(mimicTrample);
+        Assert.Equal("Mimic", mimicName);
+        Assert.Equal(3 + 2, bearPower);
+        // After turn ends at cleanup, copy effect ends and Mimic reverts to its base power 2/2
+        Assert.Equal(2, s.Card(mimic).Power);
+    }
 }
+

@@ -32,6 +32,7 @@ public sealed partial class Game
         if (filter.EnteredThisTurn && !(obj.Zone == Zone.Battlefield && obj.ZoneChangedTurn == State.TurnNumber)) return false;
         if (filter.OpponentOf is { } fixedPlayer && !State.OpponentsOf(fixedPlayer).Contains(obj.Controller)) return false;
         if (filter.Modified && !IsModified(obj)) return false;
+        if (filter.Blocked && State.Combat?.FindAttack(obj.Id) is not { IsBlocked: true }) return false;
         // "Each other creature": a different object from the one the trigger is about (the same card back as a new object counts, rule 400.7).
         if (filter.NotTriggered && _triggeredSubject is { } about && obj.Id == about && obj.Version == _triggeredSubjectVersion) return false;
         if (filter.MaxManaValueX && (_announcedX < 0 || ManaValueOf(obj) > _announcedX)) return false;

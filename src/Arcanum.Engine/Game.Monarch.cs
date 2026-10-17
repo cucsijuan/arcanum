@@ -51,10 +51,11 @@ public sealed partial class Game
     /// <summary>A player becomes the monarch; cards exiled until an opponent of their exiler does come back (rule 724.3).</summary>
     private void BecomeMonarch(PlayerId player)
     {
-        if (State.GetPlayer(player).HasLost) return;
+        if (State.GetPlayer(player).HasLost || State.Monarch == player) return; // a player who already is the monarch doesn't become it again
         State.Monarch = player;
         MonarchSource();
         Emit(new MonarchChanged(player));
+        RecomputeContinuousEffects(); // control that lasts "for as long as they're the monarch" ends with it
         var returning = State.ExiledUntilOpponentIsMonarch.Where(e => e.Controller != player).ToList();
         ReturnFromMonarchExile(returning);
     }

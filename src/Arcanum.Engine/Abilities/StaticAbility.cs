@@ -144,6 +144,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
 
     /// <summary>"Its activated abilities can't be activated" (mana abilities included).</summary>
     public bool CantActivateAbilities { get; init; }
+
+    /// <summary>"Can't be sacrificed": the affected permanents can't be sacrificed (by any player or effect).</summary>
+    public bool CantBeSacrificed { get; init; }
 }
 
 /// <summary>Attach the source Aura/Equipment to a permanent ("Equip {2}").</summary>

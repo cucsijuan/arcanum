@@ -44,6 +44,20 @@ public sealed partial class Game
             || TriggeredToughnessOf(entered, about.SubjectVersion) > TriggeredToughnessOf(ctx.Source, version);
     }
 
+    /// <summary>Improvise (702.126): printed on the spell, or given to it by a permanent its caster controls ("nonartifact spells you cast have improvise").</summary>
+    private bool HasImprovise(Card card, PlayerId caster) =>
+        card.Definition.Improvise
+        || State.PermanentsControlledBy(caster).Any(p => p.HasTextAbilities && p.Abilities.OfType<SpellsHaveImprovise>().Any(g =>
+            Matches(g.Spells with { Controller = ControllerFilter.Any }, card, caster, p, caster)));
+
+    /// <summary>"At the beginning of the end step, sacrifice this creature." (granted to a creature cast with a free-cast effect).</summary>
+    private static readonly TriggeredAbility SacrificeThisCreatureAtEndStep = new()
+    {
+        Trigger = TriggerEvent.EachEndStep,
+        Effects = new Effect[] { new SacrificeIt(Subject.Self) },
+        Text = "At the beginning of the end step, sacrifice this creature.",
+    };
+
     private async Task ApplyHeroesCommanderAsync(HeroesCommanderEffect effect, EffectContext ctx)
     {
         switch (effect)
@@ -92,17 +106,32 @@ public sealed partial class Game
             case SacrificeAllBut sab:
             {
                 var doomed = new List<Card>();
+                var kept = new List<Card>();
                 foreach (var player in State.ApnapOrder().Where(PlayersFor(sab.Who, ctx).ToList().Contains).ToList())
                 {
                     var theirs = State.PermanentsControlledBy(player)
                         .Where(c => Matches(sab.Filter with { Controller = ControllerFilter.Any }, c, c.Controller, ctx.Source, ctx.Controller)).ToList();
                     if (theirs.Count == 0) continue;
                     int most = Math.Min(sab.Keep, theirs.Count);
+                    int least = sab.Exactly ? most : 0;
                     var keep = await ControllerOf(player).ChooseCardsAsync(ViewFor(player), new CardChoiceRequest(
-                        $"{ctx.Source.Name}: choose up to {sab.Keep} to keep; you sacrifice the rest", ctx.Source.Id,
-                        theirs.Select(c => ViewBuilder.Card(State, c.Id, player)).ToList(), 0, most, CardChoicePurpose.Keep));
-                    Require(keep.Count <= most && keep.Distinct().Count() == keep.Count && keep.All(id => theirs.Any(c => c.Id == id)), "Choose permanents you control.");
+                        sab.Exactly ? $"{ctx.Source.Name}: choose {most} to keep; you sacrifice the rest" : $"{ctx.Source.Name}: choose up to {sab.Keep} to keep; you sacrifice the rest", ctx.Source.Id,
+                        theirs.Select(c => ViewBuilder.Card(State, c.Id, player)).ToList(), least, most, CardChoicePurpose.Keep));
+                    Require(keep.Count >= least && keep.Count <= most && keep.Distinct().Count() == keep.Count && keep.All(id => theirs.Any(c => c.Id == id)), "Choose permanents you control.");
                     doomed.AddRange(theirs.Where(c => !keep.Contains(c.Id)));
+                    kept.AddRange(theirs.Where(c => keep.Contains(c.Id)));
+                }
+                if (sab.PutCounter is { } keptCounter)
+                {
+                    long stamp = NewTimestamp();
+                    foreach (var card in kept.Where(c => c.Zone == Zone.Battlefield))
+                    {
+                        PutCounters(card, keptCounter, 1, ctx.Controller);
+                        if (sab.KeptCantAttackYouWhileCounter)
+                            State.LastingEffects.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, Array.Empty<Keyword>())
+                                { CantAttackPlayerAndPlaneswalkers = ctx.Controller, WhileCounter = keptCounter, Timestamp = stamp });
+                    }
+                    RecomputeContinuousEffects();
                 }
                 BeginSimultaneous();
                 foreach (var card in doomed.Where(c => c.Zone == Zone.Battlefield))
@@ -271,6 +300,18 @@ public sealed partial class Game
                 if (!HasLegalTargets(CastingTargets(card.Definition), owner.Id, card.Id)
                     || !await ControllerOf(owner.Id).ChooseYesNoAsync(ViewFor(owner.Id), new YesNoRequest($"Rebound: cast {card.Name} without paying its mana cost?", card.Id))) break;
                 await CastNowWithoutPayingAsync(owner, card.Id);
+                break;
+            }
+            case BecomeCopy becomeCopy:
+            {
+                var target = CardsFor(becomeCopy.Target, ctx).FirstOrDefault(c => c.Zone == Zone.Battlefield);
+                if (target is null) break;
+                var copiable = target.Definition;
+                foreach (var card in CardsFor(becomeCopy.What, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
+                {
+                    card.CopiedDefinition = copiable with { Name = becomeCopy.ExceptName ?? copiable.Name };
+                    card.CopyEndsAtCleanup = true;
+                }
                 break;
             }
             default:

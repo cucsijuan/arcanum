@@ -41,6 +41,9 @@ public sealed class Player
     /// <summary>Equip abilities activated this turn.</summary>
     public int EquipsThisTurn { get; set; }
 
+    /// <summary>Abilities activated this turn (their own turn) that targeted a creature they control (for "the first … costs less").</summary>
+    public int OwnCreatureAbilityActivationsThisTurn { get; set; }
+
     /// <summary>The first card of this turn's draw step has been drawn.</summary>
     public bool DrewInDrawStep { get; set; }
 

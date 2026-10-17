@@ -34,7 +34,15 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("distributeCountersFromSelf", out var dcs)) return new DistributeSourceCounters(ParseCounterKind(dcs.GetString()));
         if (e.TryGetProperty("sacrificeAllBut", out var sab))
             return new SacrificeAllBut(e.TryGetProperty("filter", out var sabf) ? ParseFilter(sabf, ControllerFilter.Any) : ObjectFilter.Anything, sab.GetInt32(),
-                e.TryGetProperty("who", out var sabw) ? ParseSubject(sabw) : Subject.You);
+                e.TryGetProperty("who", out var sabw) ? ParseSubject(sabw) : Subject.You)
+            {
+                Exactly = e.TryGetProperty("exactly", out var sabx) && sabx.GetBoolean(),
+                PutCounter = e.TryGetProperty("putCounter", out var sabc) ? ParseCounterKind(sabc.GetString()) : null,
+                KeptCantAttackYouWhileCounter = e.TryGetProperty("keptCantAttackYou", out var sabk) && sabk.GetBoolean(),
+            };
+        if (e.TryGetProperty("becomeCopy", out var bc))
+            return new BecomeCopy(ParseSubject(bc.GetString()), e.TryGetProperty("target", out var bct) ? ParseSubject(bct.GetString()) : Subject.TargetAt(0),
+                e.TryGetProperty("exceptName", out var bcn) ? bcn.GetString() : null);
         return null;
     }
 

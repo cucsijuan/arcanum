@@ -72,6 +72,9 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
     /// <summary>Protection from these card types (layer 6).</summary>
     public Cards.CardType ProtectionFromTypes { get; init; }
 
+    /// <summary>It can't attack this player or planeswalkers they control (layer 6).</summary>
+    public PlayerId? CantAttackPlayerAndPlaneswalkers { get; init; }
+
     /// <summary>"Can't be blocked by [filter] creatures" (layer 6): blockers matching it can't block the creature.</summary>
     public Abilities.ObjectFilter? CantBeBlockedBy { get; init; }
 }
@@ -91,6 +94,9 @@ public sealed record ControlEffect(CardId Card, int Version, PlayerId NewControl
 
     /// <summary>"For as long as you control [source]".</summary>
     public (CardId Card, int Version)? WhileSource { get; init; }
+
+    /// <summary>"For as long as they're the monarch": ends once this player isn't the monarch.</summary>
+    public PlayerId? WhileMonarch { get; init; }
 }
 
 /// <summary>A card exiled until a source leaves the battlefield.</summary>
@@ -153,6 +159,22 @@ public sealed record PreventionShield(int Turn, bool CombatOnly)
 
     /// <summary>"… and creatures you control": also damage to creatures this player controls when it would be dealt.</summary>
     public PlayerId? ToCreaturesOf { get; init; }
+
+    /// <summary>Identifies the shield among the others (a replacement option is applied once per damage part).</summary>
+    public long Id { get; init; }
+
+    /// <summary>The player whose effect it is, and the card it came from (for the trigger below).</summary>
+    public PlayerId Controller { get; init; }
+    public CardId? SourceCard { get; init; }
+
+    /// <summary>"Prevent that damage and put that many +1/+1 counters on it" (<see cref="ToObject"/> is the creature).</summary>
+    public bool CountersInstead { get; init; }
+
+    /// <summary>Only damage from sources an opponent of this player controls.</summary>
+    public PlayerId? SourceOpponentsOf { get; init; }
+
+    /// <summary>"Whenever damage from a creature is prevented this way, …": triggers (about the creature) each time this shield prevents such damage.</summary>
+    public Abilities.TriggeredAbility? WhenCreatureDamagePrevented { get; init; }
 }
 
 /// <summary>
@@ -341,6 +363,9 @@ public sealed partial class GameState
 
     /// <summary>Cast creature spells (card, version on the stack) that enter with additional +1/+1 counters.</summary>
     public Dictionary<(CardId Card, int Version), int> ExtraCountersOnEnter { get; } = new();
+
+    /// <summary>Creature spells on the stack that gain haste and a sacrifice at the beginning of the end step as they enter ("it gains haste and 'At the beginning of the end step, sacrifice this creature'").</summary>
+    public HashSet<(CardId Card, int Version)> HasteAndSacrificeOnEnter { get; } = new();
 
     /// <summary>Delayed abilities waiting for a given player's next end step (and the turn they were made, so it's a later one).</summary>
     public List<(DelayedTrigger Trigger, PlayerId Whose, int MadeOnTurn, bool MadeDuringEndStep)> AtPlayersNextEndStep { get; } = new();

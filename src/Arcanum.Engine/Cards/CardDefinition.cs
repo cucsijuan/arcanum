@@ -598,6 +598,9 @@ public sealed partial record CardDefinition
     /// <summary>"You may cast this spell as though it had flash if [condition]."</summary>
     public Condition? FlashIf { get; init; }
 
+    /// <summary>"You may cast this spell as though it had flash if it targets a [filter]" (one target requirement): it can be cast at instant speed only with such a target.</summary>
+    public ObjectFilter? FlashIfTargets { get; init; }
+
     /// <summary>"Creatures can't attack you unless their controller pays [cost] for each of those creatures" (while <see cref="AttackTaxIf"/> holds).</summary>
     public ManaCost? AttackTax { get; init; }
     public Condition? AttackTaxIf { get; init; }

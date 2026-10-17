@@ -185,6 +185,12 @@ public sealed record AbilityCostReduction(ObjectFilter Sources, int Amount, bool
 {
     /// <summary>"Equip abilities you activate that target [this] cost {2} less": only when the ability targets the reducer itself.</summary>
     public bool TargetingSelf { get; init; }
+
+    /// <summary>
+    /// "The first activated ability you activate during your turn that targets a creature you control costs {N} less": it must target a creature its
+    /// activator controls, on their turn, and be the first such activation that turn.
+    /// </summary>
+    public bool FirstTargetingYourCreatureOnYourTurn { get; init; }
 }
 
 /// <summary>"[Spells matching the filter] cost {N} more to cast" (every player's, while the source is on the battlefield).</summary>
@@ -254,6 +260,10 @@ public enum TriggerEvent
     CreatureAttacks,
     /// <summary>"Whenever an opponent loses life".</summary>
     OpponentLosesLife,
+    /// <summary>"Whenever an opponent becomes the monarch" (rule 724): <c>"triggeredPlayer"</c> is that opponent. A player who already is the monarch doesn't become it again.</summary>
+    OpponentBecomesMonarch,
+    /// <summary>"Whenever one or more creatures you control become the target of an activated ability": once for each such ability put on the stack; <c>"triggeredPlayer"</c> is its controller.</summary>
+    CreaturesYouControlTargetedByActivatedAbility,
     /// <summary>"Whenever you draw a card" (with <see cref="TriggeredAbility.NthOfTurn"/>: "your second card each turn").</summary>
     YouDrawCard,
     /// <summary>"Whenever a [filter] creature deals combat damage to a player".</summary>
@@ -664,6 +674,9 @@ public sealed record ObjectFilter(
 
     /// <summary>Modified (rule 700.9): it has a counter on it, or is equipped, or is enchanted by an Aura its controller controls.</summary>
     public bool Modified { get; init; }
+
+    /// <summary>A blocked creature: an attacking creature a creature blocked this combat (it stays blocked if the blockers leave combat, rule 509.1h).</summary>
+    public bool Blocked { get; init; }
 
     /// <summary>Not the object the trigger is about ("for each other creature you control" than the attacking one).</summary>
     public bool NotTriggered { get; init; }

@@ -53,6 +53,7 @@ public sealed partial class Game
             player.ExtraLandsThisTurn = 0;
             player.AttackersThisTurn = 0;
             player.EquipsThisTurn = 0;
+            player.OwnCreatureAbilityActivationsThisTurn = 0;
             player.DrewInDrawStep = false;
             player.GraveyardTypesUsedThisTurn = 0;
         }

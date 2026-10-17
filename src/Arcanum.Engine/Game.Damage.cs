@@ -223,8 +223,24 @@ public sealed partial class Game
         bool preventable = State.DamageCantBePreventedTurn != State.TurnNumber && !part.Unpreventable; // "damage can't be prevented (this turn)"
         if (preventable)
         {
-            if (PreventsAll(source, part.ToCard, part.ToPlayer, part.Combat) is { } reason)
-                Add(new DamageModifier("preventAll", $"preventAll:{RecipientKey(part)}", $"Prevent all of it ({reason})", n => { notePrevented(n); return 0; }) { PlainPrevention = true });
+            if (PreventsAll(source, part.ToCard, part.ToPlayer, part.Combat, out var preventing) is { } reason)
+                Add(new DamageModifier("preventAll", $"preventAll:{RecipientKey(part)}", $"Prevent all of it ({reason})", n =>
+                {
+                    notePrevented(n);
+                    // "Whenever damage from a creature is prevented this way, …"
+                    if (preventing?.WhenCreatureDamagePrevented is { } whenPrevented && preventing.SourceCard is { } shieldCard && WasCreature(source))
+                        AddPending(shieldCard, whenPrevented, preventing.Controller, new TriggerInfo(source.Id, source.Version, preventing.Controller));
+                    return 0;
+                }) { PlainPrevention = true });
+            // "If damage would be dealt to that creature this turn, prevent that damage and put that many +1/+1 counters on it."
+            foreach (var shield in State.PreventionShields.Where(s => s.CountersInstead && s.Turn == State.TurnNumber && (part.Combat || !s.CombatOnly)))
+                if (part.ToCard is { } counted && ShieldPrevents(shield, source, part.ToCard, part.ToPlayer))
+                    Add(new DamageModifier("preventCounters", $"preventCounters:{shield.Id}", $"Prevent it and put that many +1/+1 counters on {counted.Name}", n =>
+                    {
+                        notePrevented(n);
+                        if (counted.Zone == Zone.Battlefield) PutCounters(counted, CounterKind.PlusOnePlusOne, n, shield.Controller);
+                        return 0;
+                    }));
             // "If a source an opponent controls would deal damage to you, prevent 1 of that damage."
             if (part.ToPlayer is { } player && State.OpponentsOf(player).Contains(SourceController(source)))
                 foreach (var seraph in State.PermanentsControlledBy(player).Where(c => (c.Replaces & Replacements.PreventOneDamageFromOpponentsSources) != 0))
@@ -288,10 +304,11 @@ public sealed partial class Game
         source.Zone is not (Zone.Battlefield or Zone.Stack) && source.ZoneChangedTurn == State.TurnNumber && source.LastKnownInfo is { } lki ? lki.Controller : source.Controller;
 
     /// <summary>A prevention effect that prevents all of this damage, described for players; null if none applies (rule 615).</summary>
-    private string? PreventsAll(Card source, Card? targetCard, PlayerId? targetPlayer, bool combat)
+    private string? PreventsAll(Card source, Card? targetCard, PlayerId? targetPlayer, bool combat, out PreventionShield? preventing)
     {
-        foreach (var shield in State.PreventionShields.Where(s => s.Turn == State.TurnNumber && (combat || !s.CombatOnly)))
-            if (ShieldPrevents(shield, source, targetCard, targetPlayer)) return "a prevention effect";
+        preventing = null;
+        foreach (var shield in State.PreventionShields.Where(s => s.Turn == State.TurnNumber && !s.CountersInstead && (combat || !s.CombatOnly)))
+            if (ShieldPrevents(shield, source, targetCard, targetPlayer)) { preventing = shield; return "a prevention effect"; }
         if (State.DamagePreventions.Any(d => d.Card == source.Id && d.Version == source.Version)) return "its damage is prevented";
         if (targetPlayer is { } protectedPlayer && State.GetPlayer(protectedPlayer).Protected) return "protection"; // protection from everything
         if (targetPlayer is { } shieldedPlayer && PlayerProtectedFrom(shieldedPlayer, SourceController(source))) return "protection from opponents";
@@ -320,6 +337,7 @@ public sealed partial class Game
     private bool ShieldPrevents(PreventionShield shield, Card source, Card? targetCard, PlayerId? targetPlayer)
     {
         if (shield.DealtBy is { } by && !(by.Card == source.Id && by.Version == source.Version)) return false;
+        if (shield.SourceOpponentsOf is { } opponentsOf && !State.OpponentsOf(opponentsOf).Contains(SourceController(source))) return false;
         if (shield.ToObject is { } to && !(targetCard is not null && targetCard.Id == to.Card && targetCard.Version == to.Version)) return false;
         if (shield.SourceFilter is { } f && !Matches(f with { Controller = ControllerFilter.Any }, source, source.Controller, null, shield.FilterController)) return false;
         if (shield.ToPlayer is not null || shield.ToCreaturesOf is not null)

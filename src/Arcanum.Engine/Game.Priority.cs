@@ -580,6 +580,7 @@ public sealed partial class Game
         foreach (var reducer in State.PermanentsControlledBy(player))
             foreach (var r in reducer.Abilities.OfType<AbilityCostReduction>())
                 if ((!r.EquipOnly || ability.IsEquip) && Matches(r.Sources with { Controller = ControllerFilter.Any }, source, source.Controller, reducer, player)
+                    && (!r.FirstTargetingYourCreatureOnYourTurn || FirstTargetingOwnCreatureApplies(source, ability, player, targets))
                     && (!r.TargetingSelf || (targets is not null ? targets.Any(t => t.Target.Card == reducer.Id)
                         : ability.Targets.Any(spec => LegalTargets(spec, player, source.Id).Any(t => t.Card == reducer.Id)))))
                     cost = cost.MinusGeneric(r.Amount);
@@ -594,6 +595,17 @@ public sealed partial class Game
             : ability.Targets.SelectMany(spec => LegalTargets(spec, player, source.Id)).Select(t => t.Card).OfType<CardId>();
         return cost.MinusGeneric(hosts.Select(State.GetCard).Select(h => h.HasTextAbilities ? h.Definition.EquipDiscount : 0).DefaultIfEmpty(0).Max());
     }
+
+    /// <summary>
+    /// "The first activated ability you activate during your turn that targets a creature you control": it's their turn, no earlier activation this turn
+    /// targeted one of their creatures, and this one does (before targets are chosen: some legal target is such a creature).
+    /// </summary>
+    private bool FirstTargetingOwnCreatureApplies(Card source, ActivatedAbility ability, PlayerId player, IReadOnlyList<ChosenTarget>? targets) =>
+        State.ActivePlayer == player && State.GetPlayer(player).OwnCreatureAbilityActivationsThisTurn == 0
+        && (targets is not null ? targets.Any(t => IsCreatureOf(t.Target, player))
+            : ability.Targets.Any(spec => LegalTargets(spec, player, source.Id).Any(t => IsCreatureOf(t, player))));
+
+    private bool IsCreatureOf(Abilities.Target t, PlayerId player) => t.Card is { } id && State.GetCard(id) is { Zone: Zone.Battlefield, IsCreature: true } c && c.Controller == player;
 
     /// <summary>Times a player backed out of something they were doing (a target, mode or mana payment request answered with nothing).</summary>
     private int _playerCancels;
@@ -809,6 +821,12 @@ public sealed partial class Game
         Func<Abilities.Target, bool>? affordable = ability is { Targets.Count: 1 } && card.Definition.SelfCostReduction?.IfTargets is not null
             ? t => CanPayToCast(card, player.Id, choices, new[] { new ChosenTarget(t, VersionOf(t)) })
             : null;
+        // "As though it had flash if it targets …": cast at a time only that allows, its target has to be one that does.
+        if (withPriority && ability is { Targets.Count: 1 } && card.Definition.FlashIfTargets is { } flashTarget && NeedsFlashFromTargets(card, player.Id, sorceryTiming))
+        {
+            var before = affordable;
+            affordable = t => FlashTargetMatches(flashTarget, t, card, player.Id) && (before?.Invoke(t) ?? true);
+        }
         IReadOnlyList<ChosenTarget>? targets;
         // "Costs {1} more for each target beyond the first": no more targets than can be paid for.
         int? maxTargets = null;
@@ -853,7 +871,7 @@ public sealed partial class Game
             }
         }
         // Improvise (702.126): each artifact tapped while paying pays for {1}.
-        if (card.Definition.Improvise && cost.Generic > 0)
+        if (HasImprovise(card, player.Id) && cost.Generic > 0)
         {
             var artifacts = ImproviseCandidates(card, player.Id);
             int most = Math.Min(cost.Generic, artifacts.Count);
@@ -946,6 +964,7 @@ public sealed partial class Game
             State.NextCreatureSpellBonus.Remove(b);
             State.ExtraCountersOnEnter[(card.Id, card.Version)] = State.ExtraCountersOnEnter.GetValueOrDefault((card.Id, card.Version)) + 1;
         }
+        if (_hasteAndSacrificeCasts.Contains(cardId) && card.Zone == Zone.Stack) State.HasteAndSacrificeOnEnter.Add((card.Id, card.Version));
         card.AsAdventure = asAdventure;
         card.CastHalf = castHalf;
         card.CastFromGraveyard = fromGraveyard;
@@ -1065,6 +1084,10 @@ public sealed partial class Game
             ? t => Payable(player.Id, ActivationCost(source, ability, player.Id, new[] { new ChosenTarget(t, VersionOf(t)) }).WithX(0), exclude,
                 UsableFor(source, isAbility: true, isEquip: true))
             : null;
+        // A reduction that depends on what the ability targets ("the first ability that targets a creature you control"): only targets that make it payable.
+        if (affordable is null && ability is { Targets.Count: 1 } && ability.Cost.Mana.ManaValue > 0
+            && State.PermanentsControlledBy(player.Id).Any(r => r.Abilities.OfType<AbilityCostReduction>().Any(a => a.FirstTargetingYourCreatureOnYourTurn)))
+            affordable = t => Payable(player.Id, ActivationCost(source, ability, player.Id, new[] { new ChosenTarget(t, VersionOf(t)) }).WithX(0), exclude, AbilityManaUsable(source, ability, player.Id));
         var targets = await ChooseTargetsAsync(player.Id, ability, source.Id, ability.Text, canCancel: true, affordable);
         _announcedX = -1;
         if (targets is null) return false;
@@ -1115,6 +1138,7 @@ public sealed partial class Game
                 AddPending(source.Id, cycled, player.Id, new TriggerInfo(source.Id, source.Version, player.Id, x));
         }
         if (ability.IsEquip) player.EquipsThisTurn++;
+        if (State.ActivePlayer == player.Id && targets.Any(t => IsCreatureOf(t.Target, player.Id))) player.OwnCreatureAbilityActivationsThisTurn++;
         (PlayerId Defender, CardId? Planeswalker)? ninjaAttack = null;
         if (ability.Cost.Ninjutsu)
         {
@@ -1646,14 +1670,18 @@ public sealed partial class Game
     /// <summary>Cards being cast "without paying their mana cost" from the hand right now.</summary>
     private readonly HashSet<CardId> _castFree = new();
 
+    /// <summary>Spells being cast now that, as creatures, gain haste and "At the beginning of the end step, sacrifice this creature" (the cast is the one in progress).</summary>
+    private readonly HashSet<CardId> _hasteAndSacrificeCasts = new();
+
     /// <summary>
     /// Casts a card without paying its mana cost as part of an effect that's resolving (rule 608.2g): the permission
     /// lasts only for this cast, so a cast that's backed out of or can't be completed leaves nothing behind.
     /// <paramref name="hasteOnEnter"/> is a rider that applies only if the spell is actually cast.
     /// </summary>
-    private async Task<bool> CastNowWithoutPayingAsync(Player player, CardId cardId, bool hasteOnEnter = false)
+    private async Task<bool> CastNowWithoutPayingAsync(Player player, CardId cardId, bool hasteOnEnter = false, bool hasteAndSacrifice = false)
     {
         var card = State.GetCard(cardId);
+        if (hasteAndSacrifice) _hasteAndSacrificeCasts.Add(cardId);
         bool hadHaste = card.HasteOnEnter;
         if (hasteOnEnter) card.HasteOnEnter = true;
         _castFree.Add(cardId);
@@ -1662,6 +1690,7 @@ public sealed partial class Game
         finally
         {
             _castFree.Remove(cardId);
+            _hasteAndSacrificeCasts.Remove(cardId);
             if (!cast) card.HasteOnEnter = hadHaste;
         }
         return cast;
@@ -1772,6 +1801,9 @@ public sealed partial class Game
                 if (card.Zone == Zone.Battlefield && spell.Blitzed) Blitzed(card, spell.Controller);
                 if (card.Zone == Zone.Battlefield && hasteOnEnter)
                     State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });
+                if (card.Zone == Zone.Battlefield && State.HasteAndSacrificeOnEnter.Remove((spell.Card, castVersion)))
+                    State.LastingEffects.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste })
+                        { Timestamp = NewTimestamp(), Abilities = new AbilityDefinition[] { SacrificeThisCreatureAtEndStep } });
                 if (card.Zone == Zone.Battlefield) card.CastX = spell.X;
                 if (card.Zone == Zone.Battlefield && State.ExtraCountersOnEnter.Remove((spell.Card, castVersion), out var extraCounters))
                     PutCounters(card, CounterKind.PlusOnePlusOne, extraCounters, spell.Controller);
