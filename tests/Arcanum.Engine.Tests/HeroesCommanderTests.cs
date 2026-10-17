@@ -2029,4 +2029,34 @@ public class HeroesCommanderTests
         Assert.Equal(5 - 2, s.Card(walker).CounterCount(CounterKind.Loyalty));
         Assert.Equal(20, s.Game.State.GetPlayer(P1).Life);
     }
+
+    // ------------------------------------------------------------------ tiered: castable only if a mode with legal targets can be paid for
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task ATieredSpellIsOfferedOnlyWhenAModeWithLegalTargetsCanBePaid(bool tappedCreature, bool offered)
+    {
+        var s = new Scenario();
+        s.Lands(P0, 2);
+        var limit = s.InHand(P0, Make("Limit", "Instant", """
+            { "spell": { "modes": [
+              { "text": "{0}: destroy target tapped creature", "cost": "{0}", "targets": [{ "kind": "creature", "filter": { "tapped": true } }], "effects": [{ "destroy": "target" }] },
+              { "text": "{1}: destroy any number of tapped creatures", "cost": "{1}", "targets": [{ "kind": "creature", "filter": { "tapped": true }, "anyNumber": true }], "effects": [{ "destroy": "eachTarget" }] },
+              { "text": "{4}: destroy all tapped creatures", "cost": "{4}", "effects": [{ "destroy": { "each": { "types": ["creature"], "tapped": true } } }] }
+            ] } }
+            """, "{2}", oracle: "Tiered", keywords: "Tiered"));
+        var bear = s.Add(P1, Creature("Bear", 2, 2));
+        if (tappedCreature) s.Card(bear).Tapped = true;
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        bool? seen = null;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (s.Game.State.Step == Step.PrecombatMain && seen is null) seen = legal.Contains(new CastSpell(limit));
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn(2);
+        Assert.Equal(offered, seen);
+        Assert.Empty(s.Game.FailedActions);
+    }
 }

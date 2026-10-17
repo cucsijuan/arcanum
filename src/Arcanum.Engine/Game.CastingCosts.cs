@@ -217,15 +217,20 @@ public sealed partial class Game
     {
         var options = card.Definition.AdditionalCostOptions is { Count: > 0 } listed ? listed.Select(o => (CostOption?)o).ToList() : new List<CostOption?> { null };
         return CastingWays(card, caster)
-            .SelectMany(way => options.Select(o => new CastingChoices(way) { Option = o, FlashExtra = flashExtra, Tier = CheapestTier(card) }))
+            .SelectMany(way => options.Select(o => new CastingChoices(way) { Option = o, FlashExtra = flashExtra, Tier = CheapestTier(card, caster) }))
             .Where(c => CanPayToCast(card, caster, c)).ToList();
     }
 
-    /// <summary>A tiered spell (702.183) is cast with one mode and its cost: the cheapest one, for "can it be cast at all".</summary>
-    private static ManaCost? CheapestTier(Card card) =>
-        CastingTargets(card.Definition)?.Modes is { } modes && modes.Any(m => m.Cost is not null)
-            ? modes.Select(m => m.Cost ?? ManaCost.Zero).MinBy(m => m.ManaValue)
-            : null;
+    /// <summary>
+    /// A tiered spell (702.183) is cast with one mode and its cost: for "can it be cast at all", the cheapest mode that could be chosen, one
+    /// with legal targets for its requirements (601.2c). Paying for a cheaper mode that has none doesn't make the spell castable.
+    /// </summary>
+    private ManaCost? CheapestTier(Card card, PlayerId caster)
+    {
+        if (CastingTargets(card.Definition)?.Modes is not { } modes || !modes.Any(m => m.Cost is not null)) return null;
+        var choosable = modes.Where(m => m.Targets.All(spec => IsUpTo(spec) || LegalTargets(spec, caster, card.Id).Any())).ToList();
+        return (choosable.Count > 0 ? choosable : modes).Select(m => m.Cost ?? ManaCost.Zero).MinBy(m => m.ManaValue);
+    }
 
     /// <summary>Whether the card may be cast now without paying extra for flash: an instant, flash, or a permission to cast it as though it had flash.</summary>
     private bool TimingAllows(Card card, PlayerId caster, bool sorcerySpeed) =>

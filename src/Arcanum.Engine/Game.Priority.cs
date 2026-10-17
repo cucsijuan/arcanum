@@ -298,7 +298,7 @@ public sealed partial class Game
             .Concat(OtherCastableCards(playerId))
             .Concat(State.GraveyardCastRights.Any(r => r.Player == playerId && r.Turn == State.TurnNumber)
                 ? player.Graveyard.Where(id => HasGraveyardCastRight(State.GetCard(id))) : Array.Empty<CardId>())
-            .Distinct();
+            .Distinct().ToList(); // listed first: checking a card may look at its permissions without them (OnlyAsAdventure)
         foreach (var card in castable.Select(State.GetCard))
         {
             if (card.Is(CardType.Land))
@@ -505,9 +505,10 @@ public sealed partial class Game
         if (card.Zone != Zone.Graveyard) return false;
         var adventureOnly = State.PlayableFromGraveyard.Where(p => p.AdventureOnly && p.Card == card.Id && p.Version == card.Version).ToList();
         if (adventureOnly.Count == 0) return false;
-        foreach (var p in adventureOnly) State.PlayableFromGraveyard.Remove(p);
+        var saved = State.PlayableFromGraveyard.ToList();
+        State.PlayableFromGraveyard.RemoveAll(adventureOnly.Contains);
         try { return !CanCast(card, player, sorcerySpeed); }
-        finally { State.PlayableFromGraveyard.AddRange(adventureOnly); }
+        finally { State.PlayableFromGraveyard.Clear(); State.PlayableFromGraveyard.AddRange(saved); } // in their order
     }
 
     /// <summary>Exiled cards <paramref name="player"/> may currently play.</summary>
