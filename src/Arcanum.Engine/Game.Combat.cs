@@ -196,6 +196,7 @@ public sealed partial class Game
         && (!blocker.Has(Keyword.CanBlockOnlyFlyers) || attacker.Has(Keyword.Flying)) // "can block only creatures with flying"
         && attacker.Has(Keyword.Shadow) == blocker.Has(Keyword.Shadow) // shadow (702.28b)
         && !attacker.UnblockableBy.Contains(blocker.Controller)
+        && !(State.Combat?.Unblockable.Contains((attacker.Id, attacker.Version)) ?? false)
         && !State.CantBlockThisTurn.Any(r => r.Turn == State.TurnNumber && Matches(r.Filter with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, null, r.Controller))
         && !Landwalks.Any(w => attacker.Has(w.Keyword) && State.PermanentsControlledBy(blocker.Controller).Any(c => c.Is(CardType.Land) && c.HasSubtype(w.Land)))
         && !(attacker.Has(Keyword.NonbasicLandwalk) && State.PermanentsControlledBy(blocker.Controller).Any(c => c.Is(CardType.Land) && (c.Supertypes & Supertype.Basic) == 0))

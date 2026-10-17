@@ -969,3 +969,102 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   `OpponentsNontokenCreaturesExiledGainTwoLife`, `DamageNotRemovedInCleanup`, `RedirectYourDamageToSelf`, `DoubleWizardDamage`,
   `DoubleCreaturePlusOneCounters`, `ExtraFrogWithTokens`, `ExtraTriggersFromLandsAndBirdsEntering`, `YouHaveProtectionFromOpponents`,
   `YourLandsEnterUntapped`, `ExileInsteadOfYourGraveyard`.
+
+## Commander decks of the heroes set
+
+- **Keywords** (from the card's keyword line; no script key): `Intimidate` (rule 702.13: can't be blocked except by artifact
+  creatures and/or creatures that share a color with it), `Melee` (702.121: +1/+1 until end of turn for each opponent attacked
+  this combat), `Evolve` (702.100: a built-in trigger with its intervening "if"), `Training` (702.149), `Convoke` (702.51: each
+  tapped creature pays {1} or one mana of its color), `Unearth [cost]` (702.84a), `Rebound` (702.88a: the delayed cast from exile
+  without paying its mana cost), `Foretell {cost}` (702.143: the cost to cast it from exile on a later turn).
+- **Blitz** (rule 702.152): `"blitz": cost` (the mana part), `"blitzExtra": cost` (the non-mana part), `"blitzFromGraveyard": true`
+  (may be cast from the graveyard using blitz). The keyword gives haste, a draw when it dies and a sacrifice at the next end step.
+- **Keyword actions**: `"adapt": N` (701.46a: N +1/+1 counters if it has none) and `"monstrosity": N` (701.37a: N counters, and it
+  stays monstrous until it leaves the battlefield); both take `"what"` (default: the source). `"explore": subject` (701.44a: a land
+  goes to hand; otherwise a +1/+1 counter, and the card may go to the graveyard). `"connive": subject` (701.50a: draw, then discard;
+  a nonland discard puts a +1/+1 counter). `Support N` is a keyword action whose counters and targets are ordinary script effects.
+- **Shield counters** (kind `shield`, rule 122.1c): damage dealt to the permanent is prevented and one shield counter is removed. A
+  destroy effect removes one instead; when that and regeneration both apply, the controller chooses.
+- **Effects**:
+  - `"sacrificeAllBut": N` with `"filter"`, `"who"` (default `you`), `"exactly": true` (keep as many as they can, up to N, not fewer),
+    `"putCounter": kind` (a counter on each kept permanent) and `"keptCantAttackYou": true` (with `putCounter`: the kept permanents
+    can't attack you or your planeswalkers while they have it). Each player chooses in turn order, then all sacrifice at once (101.4).
+  - `"opponentSplitsExiled": true`: an opponent chooses one of the cards exiled with the cost; you put it on the bottom of your
+    library and return the others tapped. Only cards still in exile are chosen or returned.
+  - `"opponentsChooseFromYourGraveyard": filter`: starting with the next opponent in turn order, each opponent chooses one matching
+    card in your graveyard that hasn't been chosen; those return to the battlefield under your control.
+  - `"exileRandomFromOpponentsGraveyards": true`: exile a random card from each opponent's graveyard.
+  - `"castExiledFreeAnyNumber": true` with `"ownersLoseLife": true`: cast any number of the exiled cards without paying their mana
+    costs; with `ownersLoseLife`, each owner loses life equal to the mana value of their card cast this way.
+  - `"chooseOneOf": subject`: the player chooses one of the objects in the subject ("return one of them").
+  - `"exileWithSameNameTokens": subject`: exile the target and all tokens its controller has with the same name (one event).
+  - `"putExiledWithThis": filter` with `"counterKinds": [kinds]`: put one matching card exiled with this object onto the battlefield
+    under your control, with those counters.
+  - `"whenDiesThisTurn": subject` with `"effects": […]` and `"text"`: a delayed trigger about that object (rule 603.7). The default
+    text is "When that creature dies this turn".
+  - `"attackTaxUntilYourNextTurn": "{cost}"`: creatures can't attack you unless their controller pays the cost for each.
+  - `"distributeCountersFromSelf": kind`: move any number of those counters, one creature at a time, onto other creatures.
+  - `"becomeCopy": subject` with `"target"` (default: the first target), `"exceptName"`, `"lasting": true`, `"keywords": […]`
+    and `"keepThisAbility": true`. Without `"lasting"` the copy lasts until cleanup. `"lasting"` gives no duration ("you may have
+    this become a copy of that creature"); a later lasting copy overrides an earlier until-end-of-turn one. An until-end-of-turn
+    copy over a lasting copy restores the lasting copy at cleanup. `"keywords"` and `"keepThisAbility"` are exceptions to the copy
+    ("… and it has vigilance and this ability"), part of its copiable values (707.9b).
+  - `"exileOneFromEachGraveyard": filter`: the controller chooses one matching card in each graveyard that has one; they are
+    exiled together, linked to this object.
+  - `"warpStrike": "self"`: exile it. At the beginning of its owner's next declare attackers step it returns under the owner's
+    control, tapped and attacking (the owner chooses the player it attacks), and it can't be blocked that combat. A creature put
+    onto the battlefield attacking doesn't skip the blocker and damage steps unless no creature was declared as an attacker or put
+    there attacking (508.8).
+  - `"adventureFromGraveyardUntilYourNextTurn": subject` (on a dies trigger): the card may be cast from its owner's graveyard only as
+    its Adventure, until the end of its owner's next turn.
+  - `"playExiledWithThisThisTurn": true` with `"costLess": N`: until end of turn the controller may play the cards exiled with this
+    object, including cards exiled later that turn (607.2a). Spells cast this way cost {N} less.
+  - `castExiledNow` takes `"oneOf": filter` (the caster picks one of the matching cards exiled with it that can be cast, or none)
+    and `"anyMana": true` (mana of any type can be spent to cast it).
+  - `exileTopFaceDown` takes `"optional": true`: look at the top card of your library; you may exile it face down. The player decides
+    after looking, and can still look at it in exile.
+  - `"moveCounters"` takes `"count": 1` (in the move, exactly one counter of a kind the player chooses, when there is one).
+  - `"choose"` takes `"perOpponent": true` (one choice for each opponent, among what that player controls).
+  - `mayPay` takes `"payZero": true` (with `lifeFrom`: X may be 0, and paying 0 life still does the effects).
+  - `exileTopPlayable` takes `"untilAnotherExiled": true` ("you may play that card until you exile another card with this").
+  - Modes: `"randomMode": true` on an ability or spell with `modes` (choose one at random, rule 700.2).
+- **Subjects**: `exiledWithThis` (cards in exile that the source object exiled, rule 607.2a), `sourceController` (the controller of
+  the source, e.g. "your graveyard" inside "each opponent …"), `convokers` (the creatures that convoked the spell, 702.51c),
+  `opponentsWhoDiscardedHand` (the opponents who discarded their hand this way).
+- **Quantities**: strings `colorsAmongYourPermanents` (0 to 5), `counterKindsOnSelf` (kinds of counters on the source),
+  `playersWhoLostLifeThisTurn`, `greatestPowerAsCast` (the greatest power among your creatures as you cast the spell),
+  `triggeredCounterCount` (counters of every kind on the object the trigger is about, as it last was on the battlefield),
+  `sacrificedManaValue` (total mana value of the permanents sacrificed this way), `opponentsCombatDamagedBySelfOrDragon` (opponents
+  dealt combat damage this turn by the source or by a Dragon). Objects: `{ "manaValue": "exiled" }` (total mana value of the cards
+  exiled this way), `{ "opponentsControlling": filter }`, `{ "diff": [a, b] }` (a minus b).
+- **Conditions**: `castFromExile` (this spell was cast from exile, 702.143), `triggeredControllerHasMoreLands` (that player controls
+  more lands than you), `youPutCounterOnCreatureThisTurn`, `counterPutOnSelfThisTurn` (a counter was put on this object this turn),
+  `cardLeftYourGraveyardThisTurn`, `youLostLifeThisTurn`, `{ "playerLostLife": N }` (a player lost N or more life this turn),
+  `fullParty` (rule 700.8), `attackersMatchChosenNumber` (the creatures attacking the player the trigger is about have power or
+  toughness equal to the number chosen as it entered), `attachedToCreature` (the source is attached to a creature),
+  `creatureBlocking` (a creature is blocking), `triggeredPlayerIsActive`, `{ "opponentGraveyard": N }` (an opponent has N or more
+  cards in their graveyard), `{ "blockedAttackingYourOpponent": N }` (the attacker attacks one of your opponents or their
+  planeswalker and is blocked by at least N creatures).
+- **Triggers**: `youPlayLand` (whenever you play a land, rule 305.1: playing it, not putting it onto the battlefield; with `"filter"`
+  `"fromExile": true`), `castOrCopy` (you cast or copy a spell matching the filter), `attackedUnblockedByOpponent` (once for each
+  opponent with an unblocked creature attacking you; `"triggeredPlayer"` is that opponent), `youWinCoinFlip`,
+  `opponentBecomesMonarch` (`"triggeredPlayer"` is that opponent), `creaturesTargetedByActivatedAbility` (once for each such
+  ability; `"triggeredPlayer"` is its controller), and `countersPlaced` with `"perCounter": true` (once for each counter).
+- **Filters**: `fromExile` (a spell cast from exile, or a permanent or land that entered from exile), `enteredOrCastFromGraveyard`,
+  `enteredThisTurn` (a permanent that entered the battlefield this turn), `ownedByYou` (owned by the controller of the ability,
+  whoever controls it), `amongFound` (one of the cards a reflexive ability carries, e.g. "target creature card exiled this way"),
+  `modified` (rule 700.9: it has a counter on it, is equipped, or is enchanted by an Aura its controller controls), `blocked` (an
+  attacking creature that a creature blocked this combat), `greatestManaValueAmongTheirs` (the creature with the greatest mana value
+  among the creatures its controller controls).
+- **Static abilities**: `"filter"` (a filter, see above) narrows the affected objects, e.g.
+  `{ "static": { "affects": "creatures:you", "filter": { "token": true }, "pump": [1, 1] } }` ("creature tokens you control get +1/+1").
+- **Card-wide and costs**: `"flashIfTargets": filter` (cast as though it had flash only if it targets a matching object);
+  `"escalateExtra": cost` (a non-mana escalate cost, paid once for each mode beyond the first); `"castFromLibraryTopIf": condition`
+  (cast creature spells from the top of your library while it holds); `"opponentsCantCastDuringYourTurnWhileAttached": true`;
+  `"creaturePlusOneCountersPlusOne": true` (+1/+1 counters put on your creatures: one more than they would be);
+  `"entersRemovingCountersFrom": filter` (as it enters, remove all counters from any number of matching permanents; it enters with
+  twice that many +1/+1 counters); `"graveyardCastOncePerTurn": { "filter", "notFromBattlefieldThisTurn", "entersTapped" }` (once during each of your turns
+  you may cast a matching spell from your graveyard; `notFromBattlefieldThisTurn` limits it to cards put there from anywhere
+  other than the battlefield this turn; `entersTapped` makes a permanent cast this way enter tapped);
+  `spellCost` takes `"nth": N` (only the Nth spell you cast each turn); `{ "spellsHaveImprovise": filter }` (ability: matching spells
+  you cast have improvise while this is on the battlefield, 702.126).

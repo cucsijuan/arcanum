@@ -49,7 +49,11 @@ public static partial class CardScriptParser
             return new ThisSpellOntoBattlefieldTransformed(tsb.ValueKind == JsonValueKind.String ? ParseCounterKind(tsb.GetString()) : null);
         if (e.TryGetProperty("unattachAtNextEndStep", out _)) return new UnattachAtNextEndStep();
         if (e.TryGetProperty("castExiledNow", out var cen))
-            return new CastExiledNow(ParseSubject(cen), e.TryGetProperty("else", out var cel) ? EffectList(cel) : Array.Empty<Effect>());
+            return new CastExiledNow(ParseSubject(cen), e.TryGetProperty("else", out var cel) ? EffectList(cel) : Array.Empty<Effect>())
+            {
+                OneOf = e.TryGetProperty("oneOf", out var ceo) ? ParseFilter(ceo, ControllerFilter.Any) : null,
+                AnyMana = e.TryGetProperty("anyMana", out var cea) && cea.GetBoolean(),
+            };
         if (e.TryGetProperty("playableThisTurn", out var ptt))
             return new PlayableThisTurn(ParseSubject(ptt), e.TryGetProperty("anyMana", out var pam) && pam.GetBoolean());
         if (e.TryGetProperty("meld", out _)) return new Meld();

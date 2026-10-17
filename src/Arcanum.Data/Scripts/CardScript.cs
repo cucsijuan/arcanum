@@ -817,6 +817,7 @@ public static partial class CardScriptParser
         "chosen" => new Subject(SubjectKind.Chosen),
         "chosenPlayer" => new Subject(SubjectKind.ChosenPlayer),
         "exiled" => new Subject(SubjectKind.ExiledThisWay),
+        "exiledWithThis" => new Subject(SubjectKind.ExiledWithSource),
         "lastControlled" => new Subject(SubjectKind.ControlGainedThisWay),
         "opponentsDamagedBySameName" => new Subject(SubjectKind.OpponentsDamagedBySameName),
         "youAndChosenPlayer" => new Subject(SubjectKind.YouAndChosenPlayer),
@@ -869,6 +870,7 @@ public static partial class CardScriptParser
         "creatureDies" => TriggerEvent.CreatureDies,
         "gainLife" => TriggerEvent.YouGainLife,
         "castSpell" => TriggerEvent.YouCastSpell,
+        "youPlayLand" => TriggerEvent.YouPlayLand,
         "castOrCopy" => TriggerEvent.YouCastOrCopySpell,
         "attackedUnblockedByOpponent" => TriggerEvent.AttackedUnblockedByOpponent,
         "youWinCoinFlip" => TriggerEvent.YouWinCoinFlip,
@@ -1055,6 +1057,7 @@ public static partial class CardScriptParser
             EnteredOrCastFromGraveyard = Bool(f, "enteredOrCastFromGraveyard"),
             HasXInCost = Bool(f, "hasX"),
             CastFromHand = Bool(f, "castFromHand"),
+            FromExile = Bool(f, "fromExile"),
             ExiledWithSource = Bool(f, "exiledWithSource"),
             ManaValueIsX = Bool(f, "manaValueIsX"),
             SharesCreatureTypeWithTriggered = Bool(f, "sharesCreatureTypeWithTriggered"),
@@ -1907,7 +1910,7 @@ public static partial class CardScriptParser
         if (Value("cantAttackPlayerThisTurn") is { } capt) return new CantAttackPlayerThisTurn(capt);
         if (Value("cantSacrificeThisTurn") is { } cstt) return new CantSacrificeThisTurn(cstt);
         if (Value("protectionFromOpponents") is { } pfo) return new ProtectionFromOpponents(pfo);
-        if (Value("exileTopFaceDown") is { } etfd) return new ExileTopFaceDown(etfd);
+        if (Value("exileTopFaceDown") is { } etfd) return new ExileTopFaceDown(etfd) { Optional = Flag("optional") };
         if (Flag("playOneExiledFree")) return new PlayOneExiledWithThisFree();
         if (Flag("takeCountersOfTriggered")) return new TakeCountersOfTriggered { Onto = e.TryGetProperty("onto", out var tco) ? ParseSubject(tco) : null };
         if (e.TryGetProperty("moveAllCounters", out var mac)) return new MoveAllCounters(ParseSubject(mac.GetProperty("from")), ParseSubject(mac.GetProperty("to")));

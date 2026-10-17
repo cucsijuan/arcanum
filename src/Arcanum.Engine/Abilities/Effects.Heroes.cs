@@ -94,7 +94,14 @@ public sealed record ThisSpellOntoBattlefieldTransformed(CounterKind? WithCounte
 public sealed record Unattach(Subject What) : HeroesEffect;
 
 /// <summary>"You may cast it [the exiled card]. If you don't, [else]": cast now while this resolves, paying its costs (rule 608.2g).</summary>
-public sealed record CastExiledNow(Subject What, IReadOnlyList<Effect> Else) : HeroesEffect;
+public sealed record CastExiledNow(Subject What, IReadOnlyList<Effect> Else) : HeroesEffect
+{
+    /// <summary>"You may cast [a filter card] exiled with this": one of them, chosen by the caster.</summary>
+    public ObjectFilter? OneOf { get; init; }
+
+    /// <summary>"… and mana of any type can be spent to cast that spell".</summary>
+    public bool AnyMana { get; init; }
+}
 
 /// <summary>"You may play [the exiled card] this turn[, and mana of any type can be spent to cast it]."</summary>
 public sealed record PlayableThisTurn(Subject What, bool AnyMana) : HeroesEffect;

@@ -1753,5 +1753,251 @@ public class HeroesCommanderTests
         // After turn ends at cleanup, copy effect ends and Mimic reverts to its base power 2/2
         Assert.Equal(2, s.Card(mimic).Power);
     }
-}
 
+    // ------------------------------------------------------------------ become a copy for good, keeping its name, vigilance and the ability
+
+    [Fact]
+    public async Task GuardianBecomesALastingCopyKeepingItsNameVigilanceAndThisAbility()
+    {
+        var s = new Scenario();
+        var ogre = s.Add(P1, Creature("Ogre", 4, 5, Keyword.Trample));
+        var guardian = s.Add(P0, Make("Guardian", "Legendary Creature — Cat Warrior", """
+            { "abilities": [{
+              "trigger": "beginCombat",
+              "targets": ["creature:opponent"],
+              "effects": [
+                { "counters": 1, "what": "self" },
+                { "tap": "target" },
+                { "may": "Become a copy?", "effects": [
+                  { "becomeCopy": "self", "target": "target", "exceptName": "Guardian", "lasting": true, "keywords": ["Vigilance"], "keepThisAbility": true }
+                ] }
+              ],
+              "text": "At the beginning of combat on your turn..."
+            }] }
+            """, "{2}{G}{U}", "3/3", "Vigilance", "Vigilance"));
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        var seen = new List<(int Power, bool Trample, bool Vigilance, string Name, bool OgreTapped)>();
+        s.Attacker.Act = (_, _) =>
+        {
+            if (s.Game.State.Step == Step.BeginCombat && s.Game.State.ActivePlayer == P0 && s.Game.State.Stack.Count == 0 && seen.Count < s.Game.State.TurnNumber / 2 + 1)
+            {
+                var g = s.Card(guardian);
+                seen.Add((g.Power, g.Has(Keyword.Trample), g.Has(Keyword.Vigilance), g.Name, s.Card(ogre).Tapped));
+            }
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn(4);
+        Assert.Equal(2, seen.Count);
+        Assert.Equal((4 + 1, true, true, "Guardian", true), seen[0]);
+        // Still a copy on its next turn, and the kept ability triggered again (one instance: the ogre doesn't have it).
+        Assert.Equal((4 + 2, true, true, "Guardian", true), seen[1]);
+        Assert.Single(s.Card(guardian).Definition.Abilities);
+    }
+
+    // ------------------------------------------------------------------ exile face down, then play the cards exiled with it this turn for {2} less
+
+    [Fact]
+    public async Task SeerPlaysCardsItExiledFaceDownForTwoLessAndGainsLifeForEach()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        var seer = s.Add(P0, Make("Seer", "Legendary Creature — Elf Advisor", """
+            { "abilities": [
+              { "trigger": "youPlayLand", "filter": { "fromExile": true }, "effects": [{ "gainLife": 2 }], "text": "Whenever you play a land from exile..." },
+              { "trigger": "castSpell", "filter": { "fromExile": true }, "effects": [{ "gainLife": 2 }], "text": "...or cast a spell from exile, you gain 2 life." },
+              { "cost": "{T}", "effects": [{ "exileTopFaceDown": "you", "optional": true }], "text": "{T}: Look at the top card..." },
+              { "cost": "{T}", "effects": [{ "playExiledWithThisThisTurn": true, "costLess": 2 }], "text": "{T}: Until end of turn, you may play cards exiled with..." }
+            ] }
+            """, "{W}{U}", "1/3"));
+        var ogre = s.InHand(P0, Make("Ogre", "Creature — Ogre", "{}", "{4}", "4/4"));
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        bool restacked = false;
+        var activatedOn = new HashSet<int>();
+        CardId? exiledLand = null;
+        s.Attacker.Act = (_, legal) =>
+        {
+            var state = s.Game.State;
+            if (!restacked) { restacked = true; s.Restack(P0, ogre); }
+            if (state.ActivePlayer != P0 || !state.Step.IsMain()) return PassPriority.Instance;
+            var mine = legal.OfType<ActivateAbility>().Where(a => a.Source == seer).OrderBy(a => a.Index).ToList();
+            if (state.TurnNumber < 5 && mine.Count > 0 && activatedOn.Add(state.TurnNumber)) return mine[0];
+            if (state.TurnNumber == 5)
+            {
+                if (mine.Count > 0 && activatedOn.Add(5)) return mine[^1];
+                if (legal.OfType<PlayLand>().FirstOrDefault(l => s.Card(l.Card).Zone == Zone.Exile) is { } fromExile) { exiledLand = fromExile.Card; return fromExile; }
+                if (legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == ogre) is { } cast) return cast;
+            }
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn(6);
+        Assert.Equal(Zone.Battlefield, s.Card(ogre).Zone); // {4} less {2}: the mountain and the land played from exile
+        Assert.NotNull(exiledLand);
+        Assert.Equal(Zone.Battlefield, s.Card(exiledLand!.Value).Zone);
+        Assert.Equal(20 + 2 + 2, s.Game.State.GetPlayer(P0).Life);
+    }
+
+    // ------------------------------------------------------------------ exile from each graveyard, later cast one of them with mana of any type
+
+    [Fact]
+    public async Task SummonExilesFromEachGraveyardThenCastsOneWithItsRedManaOfAnyType()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 4);
+        s.InHand(P0, Make("Drake Summon", "Enchantment Creature — Saga Drake", """
+            { "abilities": [
+              { "trigger": "chapter", "chapters": [1], "effects": [{ "exileOneFromEachGraveyard": { "types": ["instant", "sorcery"] } }] },
+              { "trigger": "chapter", "chapters": [2, 3, 4], "effects": [
+                { "addMana": "{R}", "times": { "counters": "lore" } },
+                { "castExiledNow": "exiledWithThis", "oneOf": { "types": ["instant", "sorcery"] }, "anyMana": true }
+              ] }
+            ] }
+            """, "{3}{R}", "3/3"));
+        var insight = s.InHand(P1, Make("Insight", "Instant", """{ "spell": { "effects": [{ "gainLife": 7 }] } }""", "{1}{U}"));
+        bool moved = false;
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Attacker.Choose = (_, request) => request.Options.Select(o => o.Id).Take(request.Max).ToList();
+        var greedy = s.Attacker.Act;
+        s.Attacker.Act = (view, legal) =>
+        {
+            if (!moved)
+            {
+                moved = true;
+                var defender = s.Game.State.GetPlayer(P1);
+                defender.Hand.Remove(insight);
+                s.Card(insight).Zone = Zone.Graveyard;
+                defender.Graveyard.Add(insight);
+            }
+            return greedy(view, legal);
+        };
+        await s.RunUntilTurn(4);
+        Assert.Equal(20 + 7, s.Game.State.GetPlayer(P0).Life); // {1}{U} paid with {R}{R}
+        Assert.Equal(Zone.Graveyard, s.Card(insight).Zone);
+        Assert.Contains(insight, s.Game.State.GetPlayer(P1).Graveyard);
+    }
+
+    // ------------------------------------------------------------------ chapter: "whenever you cast a noncreature spell this turn, copy a non-Saga token"
+
+    [Fact]
+    public async Task KingSummonCopiesANonSagaTokenForEachNoncreatureSpellThatTurn()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 5);
+        var saga = s.InHand(P0, Make("King Summon", "Enchantment Creature — Saga Moogle", """
+            { "abilities": [
+              { "trigger": "chapter", "chapters": [1], "effects": [{ "tokens": 2, "token": { "name": "Moogle", "types": "Creature — Moogle", "power": 1, "toughness": 2, "colors": ["W"], "keywords": ["Lifelink"] } }] },
+              { "trigger": "chapter", "chapters": [2, 3], "effects": [{ "emblem": "King Summon", "untilEndOfTurn": true, "abilities": [
+                { "trigger": "castSpell", "filter": { "not": ["creature"] }, "effects": [
+                  { "choose": { "token": true, "notSubtype": "Saga", "controller": "you" } }, { "copy": "chosen" }
+                ], "text": "Whenever you cast a noncreature spell this turn..." }] }] },
+              { "trigger": "chapter", "chapters": [4], "effects": [{ "counters": 2, "what": { "each": { "subtype": "Moogle", "controller": "you", "other": true } } }] }
+            ] }
+            """, "{5}", "4/4"));
+        var spark = s.InHand(P0, Make("Spark", "Instant", """{ "spell": { "effects": [{ "gainLife": 1 }] } }""", "{R}"));
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Attacker.Act = (_, legal) =>
+        {
+            var state = s.Game.State;
+            if (state.ActivePlayer != P0 || !state.Step.IsMain() || state.Stack.Count > 0) return PassPriority.Instance;
+            if (state.TurnNumber == 1 && legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == saga) is { } castSaga) return castSaga;
+            if (state.TurnNumber == 3 && legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == spark) is { } castSpark) return castSpark;
+            return PassPriority.Instance;
+        };
+        int Moogles() => s.Game.State.Battlefield.Count(id => s.Card(id).Name == "Moogle" && s.Card(id).Definition.IsToken);
+        await s.RunUntilTurn(2);
+        Assert.Equal(2, Moogles());
+        await s.RunUntilTurn(4);
+        Assert.Equal(3, Moogles()); // one copy for the noncreature spell cast that turn
+    }
+
+    // ------------------------------------------------------------------ warp-strike: back tapped and attacking at the next declare attackers step, unblockable
+
+    [Fact]
+    public async Task WarpStrikeReturnsAttackingUnblockableAndItsEnteringDuringCombatAttachesEquipment()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 3);
+        var blade = s.Add(P0, Make("Blade", "Artifact — Equipment", "{}", "{1}"));
+        var prince = s.Add(P0, Make("Prince", "Legendary Creature — Human Noble", """
+            { "abilities": [
+              { "trigger": "creatureEnters", "filter": { "types": ["creature"], "controller": "you" }, "when": "duringCombat",
+                "targets": [{ "kind": "artifact", "controller": "you", "filter": { "subtype": "Equipment" } }, "creature:you"],
+                "effects": [{ "may": "Attach?", "effects": [{ "attach": "target", "to": "target2" }] }], "text": "Whenever a creature you control enters during combat..." },
+              { "cost": "{3}", "effects": [{ "warpStrike": "self" }], "text": "Warp-strike {3}" }
+            ] }
+            """, "{W}{U}{B}", "2/3"));
+        s.Add(P1, Creature("Wall", 0, 5));
+        bool warped = false;
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!warped && s.Game.State.Step == Step.PrecombatMain && legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == prince) is { } warp)
+            {
+                warped = true;
+                return warp;
+            }
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn(2);
+        Assert.True(warped);
+        Assert.Equal(Zone.Battlefield, s.Card(prince).Zone);
+        Assert.True(s.Card(prince).Tapped);
+        Assert.Equal(20 - 2, s.Game.State.GetPlayer(P1).Life); // the blockers and damage steps happened though nothing was declared
+        Assert.Equal(prince, s.Card(blade).AttachedTo);
+        // It couldn't be blocked: the defender, with an untapped creature, wasn't offered a block on it (or any block at all).
+        var request = s.Defender.LastBlockRequest;
+        Assert.True(request is null || !request.CanBlock.Any(pair => pair.Key == prince || pair.Value.Contains(prince)));
+    }
+
+    // ------------------------------------------------------------------ "when this dies, you may cast it from your graveyard as an Adventure until the end of your next turn"
+
+    private static (Scenario S, CardId Gentleman) DyingGentleman()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 2);
+        var rise = Make("Rise", "Instant — Adventure", """{ "spell": { "effects": [{ "tokens": 1, "token": { "name": "Zombie", "types": "Creature — Zombie", "colors": ["B"], "power": 2, "toughness": 2 } }] } }""", "{2}");
+        var gentleman = s.Add(P0, Make("Gentleman", "Legendary Creature — Human Detective", """
+            { "abilities": [
+              { "static": { "affects": "creatures:you", "filter": { "token": true }, "pump": [1, 1] }, "text": "Creature tokens you control get +1/+1." },
+              { "trigger": "dies", "effects": [{ "adventureFromGraveyardUntilYourNextTurn": "self" }], "text": "When this dies, you may cast it from your graveyard as an Adventure..." }
+            ] }
+            """, "{1}{W}", "2/2") with { Adventure = rise });
+        s.InHand(P0, Make("Doom", "Instant", """{ "spell": { "targets": ["creature"], "effects": [{ "destroy": "target" }] } }""", "{0}"));
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        return (s, gentleman);
+    }
+
+    [Fact]
+    public async Task ADeadAdventurerIsCastableOnlyAsItsAdventureUntilTheEndOfItsOwnersNextTurn()
+    {
+        var (s, gentleman) = DyingGentleman();
+        var offered = new Dictionary<int, (bool Adventure, bool Card)>();
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (legal.OfType<CastSpell>().FirstOrDefault(c => s.Card(c.Card).Name == "Doom") is { } doom) return doom;
+            if (s.Game.State.ActivePlayer == P0 && s.Game.State.Step == Step.PostcombatMain)
+                offered[s.Game.State.TurnNumber] = (legal.Contains(new CastSpell(gentleman, Adventure: true)), legal.Contains(new CastSpell(gentleman)));
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn(6);
+        Assert.Equal(Zone.Graveyard, s.Card(gentleman).Zone);
+        Assert.Equal((true, false), offered[1]);
+        Assert.Equal((true, false), offered[3]); // through the end of its owner's next turn
+        Assert.Equal((false, false), offered[5]);
+    }
+
+    [Fact]
+    public async Task ADeadAdventurerCastAsItsAdventureGoesOnAnAdventure()
+    {
+        var (s, gentleman) = DyingGentleman();
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (legal.OfType<CastSpell>().FirstOrDefault(c => s.Card(c.Card).Name == "Doom") is { } doom) return doom;
+            if (legal.Contains(new CastSpell(gentleman, Adventure: true))) return new CastSpell(gentleman, Adventure: true);
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn(2);
+        Assert.Equal(Zone.Exile, s.Card(gentleman).Zone);
+        Assert.True(s.Card(gentleman).OnAdventure);
+        Assert.Single(s.Game.State.Battlefield, id => s.Card(id).Name == "Zombie");
+    }
+}

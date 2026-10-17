@@ -132,9 +132,37 @@ public sealed record ExileRandomFromOpponentsGraveyards : HeroesCommanderEffect;
 public sealed record CastExiledFreeAnyNumber(bool OwnersLoseLife) : HeroesCommanderEffect;
 
 /// <summary>
-/// "Becomes a copy of [target] until end of turn, except its name is [ExceptName]": lasts until cleanup (rule 707).
+/// "Becomes a copy of [target] until end of turn, except its name is [ExceptName]": lasts until cleanup (rule 707). With <see cref="Lasting"/>
+/// it has no duration ("you may have this become a copy of that creature"); <see cref="Keywords"/> and <see cref="KeepThisAbility"/> are the
+/// other exceptions ("… and it has vigilance and this ability"), part of its copiable values (rule 707.9b).
 /// </summary>
-public sealed record BecomeCopy(Subject What, Subject Target, string? ExceptName = null) : HeroesCommanderEffect;
+public sealed record BecomeCopy(Subject What, Subject Target, string? ExceptName = null) : HeroesCommanderEffect
+{
+    public bool Lasting { get; init; }
+    public IReadOnlyList<string> Keywords { get; init; } = Array.Empty<string>();
+    public bool KeepThisAbility { get; init; }
+}
+
+/// <summary>
+/// "Exile a [filter] card from each graveyard": the controller chooses one in each graveyard that has one, and they're exiled together, with this object
+/// (linked, rule 607).
+/// </summary>
+public sealed record ExileOneFromEachGraveyard(ObjectFilter Filter) : HeroesCommanderEffect;
+
+/// <summary>
+/// Warp-strike: "Exile [this]. Return it to the battlefield under its owner's control tapped and attacking at the beginning of that player's next
+/// declare attackers step. It can't be blocked that combat."
+/// </summary>
+public sealed record WarpStrike(Subject What) : HeroesCommanderEffect;
+
+/// <summary>The delayed part of <see cref="WarpStrike"/>: the card the ability is about returns tapped and attacking, unblockable that combat.</summary>
+public sealed record ReturnTappedAttackingUnblockable : HeroesCommanderEffect;
+
+/// <summary>"You may cast it from your graveyard as an Adventure until the end of your next turn" (about the card that died, rule 400.7).</summary>
+public sealed record AdventureFromGraveyardUntilYourNextTurn(Subject What) : HeroesCommanderEffect;
+
+/// <summary>"Until end of turn, you may play cards exiled with [this]. Spells you cast this way cost {N} less to cast" (<see cref="ExiledWithPlayRight"/>).</summary>
+public sealed record PlayExiledWithThisThisTurn(int CostLess) : HeroesCommanderEffect;
 
 /// <summary>"If this spell was cast from exile" (foretold cards, rule 702.143).</summary>
 public sealed record WasCastFromExile : Condition;

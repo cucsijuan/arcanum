@@ -40,9 +40,20 @@ public static partial class CardScriptParser
                 PutCounter = e.TryGetProperty("putCounter", out var sabc) ? ParseCounterKind(sabc.GetString()) : null,
                 KeptCantAttackYouWhileCounter = e.TryGetProperty("keptCantAttackYou", out var sabk) && sabk.GetBoolean(),
             };
+        if (e.TryGetProperty("adventureFromGraveyardUntilYourNextTurn", out var afg)) return new AdventureFromGraveyardUntilYourNextTurn(ParseSubject(afg.GetString()));
+        if (e.TryGetProperty("warpStrike", out var ws)) return new WarpStrike(ParseSubject(ws.GetString()));
+        if (e.TryGetProperty("exileOneFromEachGraveyard", out var eoeg))
+            return new ExileOneFromEachGraveyard(ParseFilter(eoeg, ControllerFilter.Any));
+        if (e.TryGetProperty("playExiledWithThisThisTurn", out var pewt) && pewt.GetBoolean())
+            return new PlayExiledWithThisThisTurn(e.TryGetProperty("costLess", out var pewc) ? pewc.GetInt32() : 0);
         if (e.TryGetProperty("becomeCopy", out var bc))
             return new BecomeCopy(ParseSubject(bc.GetString()), e.TryGetProperty("target", out var bct) ? ParseSubject(bct.GetString()) : Subject.TargetAt(0),
-                e.TryGetProperty("exceptName", out var bcn) ? bcn.GetString() : null);
+                e.TryGetProperty("exceptName", out var bcn) ? bcn.GetString() : null)
+            {
+                Lasting = e.TryGetProperty("lasting", out var bcl) && bcl.GetBoolean(),
+                Keywords = e.TryGetProperty("keywords", out var bck) ? bck.EnumerateArray().Select(k => k.GetString()!).ToList() : Array.Empty<string>(),
+                KeepThisAbility = e.TryGetProperty("keepThisAbility", out var bca) && bca.GetBoolean(),
+            };
         return null;
     }
 

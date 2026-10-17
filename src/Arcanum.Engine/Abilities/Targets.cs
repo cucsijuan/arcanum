@@ -175,6 +175,8 @@ public enum SubjectKind
     OpponentsDamagedBySameName,
     /// <summary>Cards this spell or ability exiled ("the exiled card").</summary>
     ExiledThisWay,
+    /// <summary>Cards in exile exiled with the source object ("an instant or sorcery card exiled with this Saga", rule 607.2a).</summary>
+    ExiledWithSource,
     /// <summary>The objects chosen by the last "chooses" of this spell or ability.</summary>
     Chosen,
     /// <summary>"The player to your right": the previous living player in turn order (turn order goes to the left).</summary>

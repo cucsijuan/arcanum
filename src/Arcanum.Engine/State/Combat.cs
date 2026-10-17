@@ -3,6 +3,18 @@ using Arcanum.Engine.Core;
 
 namespace Arcanum.Engine.State;
 
+/// <summary>The attacks of a combat; remembers whether any creature was ever declared or put onto the battlefield attacking (rule 508.8).</summary>
+public sealed class AttackList : List<AttackInfo>
+{
+    public bool AnyEver { get; private set; }
+
+    public new void Add(AttackInfo attack)
+    {
+        AnyEver = true;
+        base.Add(attack);
+    }
+}
+
 public sealed class AttackInfo
 {
     public required CardId Attacker { get; init; }
@@ -20,7 +32,10 @@ public sealed class AttackInfo
 
 public sealed class CombatState
 {
-    public List<AttackInfo> Attacks { get; } = new();
+    public AttackList Attacks { get; } = new();
+
+    /// <summary>Attacking creatures (objects) that "can't be blocked that combat".</summary>
+    public HashSet<(CardId Card, int Version)> Unblockable { get; } = new();
 
     /// <summary>Every creature declared as an attacker this combat, as the object it was (it "attacked" even if it left combat since).</summary>
     public List<(CardId Card, int Version)> Declared { get; } = new();

@@ -344,15 +344,36 @@ public sealed partial class Game
             {
                 var player = State.GetPlayer(ctx.Controller);
                 bool cast = false;
-                foreach (var card in (ce.What.Kind == SubjectKind.ExiledThisWay ? ctx.Results.Exiled.Select(State.GetCard) : CardsFor(ce.What, ctx))
-                             .Where(c => c.Zone == Zone.Exile && !c.Is(CardType.Land)).ToList())
+                var exiled = (ce.What.Kind == SubjectKind.ExiledThisWay ? ctx.Results.Exiled.Select(State.GetCard) : CardsFor(ce.What, ctx))
+                    .Where(c => c.Zone == Zone.Exile && !c.Is(CardType.Land)).ToList();
+                if (ce.OneOf is { } oneOf)
                 {
-                    var permission = new PlayableFromExile(card.Id, card.Version, ctx.Controller, State.TurnNumber) { CastOnly = true };
+                    // "You may cast an instant or sorcery card exiled with this": the caster picks one of those that can be cast.
+                    var castable = exiled.Where(c => Matches(oneOf, c, c.Owner, ctx.Source, ctx.Controller) && CastableWith(c, ce.AnyMana)).ToList();
+                    exiled.Clear();
+                    if (castable.Count > 0)
+                    {
+                        var pick = await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller), new CardChoiceRequest($"{ctx.Source.Name}: you may cast one of these",
+                            ctx.Source.Id, castable.Select(c => ViewBuilder.Card(State, c.Id, ctx.Controller)).ToList(), 0, 1, CardChoicePurpose.Keep));
+                        Require(pick.Count <= 1 && pick.All(id => castable.Any(c => c.Id == id)), "Choose one of the listed cards.");
+                        exiled.AddRange(pick.Select(State.GetCard));
+                    }
+                }
+                bool CastableWith(Card card, bool anyMana)
+                {
+                    var check = new PlayableFromExile(card.Id, card.Version, ctx.Controller, State.TurnNumber) { CastOnly = true, AnyManaType = anyMana };
+                    State.PlayableFromExile.Add(check);
+                    try { return CanBeCast(card, ctx.Controller, flashExtra: false); }
+                    finally { State.PlayableFromExile.Remove(check); }
+                }
+                foreach (var card in exiled)
+                {
+                    var permission = new PlayableFromExile(card.Id, card.Version, ctx.Controller, State.TurnNumber) { CastOnly = true, AnyManaType = ce.AnyMana };
                     State.PlayableFromExile.Add(permission);
                     try
                     {
                         if (CanBeCast(card, ctx.Controller, flashExtra: false)
-                            && await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast {card.Name}?", card.Id)))
+                            && (ce.OneOf is not null || await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast {card.Name}?", card.Id))))
                             cast = await CastSpellAsync(player, card.Id);
                     }
                     finally { State.PlayableFromExile.Remove(permission); }

@@ -241,6 +241,10 @@ public enum TriggerEvent
     YouGainLife,
     /// <summary>"Whenever you cast a [noncreature / instant or sorcery / ...] spell" — matched against the filter.</summary>
     YouCastSpell,
+    /// <summary>"Whenever you play a land [from exile]" (rule 305.1: playing it, not putting it onto the battlefield) — matched against the filter.</summary>
+    YouPlayLand,
+    /// <summary>A delayed ability: "at the beginning of that player's next declare attackers step".</summary>
+    NextDeclareAttackers,
     /// <summary>"Whenever you cast or copy an instant or sorcery spell" (magecraft): your spells as they're cast and the copies you make.</summary>
     YouCastOrCopySpell,
     /// <summary>"Whenever you win a coin flip".</summary>
@@ -612,6 +616,9 @@ public sealed record ObjectFilter(
     /// <summary>A spell cast from its owner's hand.</summary>
     public bool CastFromHand { get; init; }
 
+    /// <summary>A spell cast from exile / a land played (or permanent put) onto the battlefield from exile.</summary>
+    public bool FromExile { get; init; }
+
     /// <summary>A spell with {X} in its mana cost.</summary>
     public bool HasXInCost { get; init; }
 
@@ -656,9 +663,6 @@ public sealed record ObjectFilter(
 
     /// <summary>Owned by a player other than the ability's controller ("a permanent owned by another player").</summary>
     public bool NotOwnedByYou { get; init; }
-
-    /// <summary>Owned by the ability's controller ("your commander": a commander you own, whoever controls it).</summary>
-    public bool OwnedByYou { get; init; }
 
     /// <summary>Controlled by an opponent of this player (a filter fixed when an effect is created: "creatures your opponents control").</summary>
     public Core.PlayerId? OpponentOf { get; init; }

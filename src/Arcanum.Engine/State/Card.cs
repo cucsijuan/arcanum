@@ -66,6 +66,9 @@ public sealed class Card
     /// <summary>Its <see cref="CopiedDefinition"/> lasts until end of turn ("become a copy of any creature on the battlefield until end of turn").</summary>
     internal bool CopyEndsAtCleanup { get; set; }
 
+    /// <summary>The copiable values an earlier, lasting copy effect gave it, back in force once an "until end of turn" one ends.</summary>
+    internal CardDefinition? CopiedBeforeEndOfTurn { get; set; }
+
     /// <summary>
     /// The copiable values a continuous copy effect gives it ("enchanted creature is a copy of the chosen creature", layer 1, rule 613.1a):
     /// worked out again whenever continuous effects are, so it lasts as long as the effect does.
@@ -680,6 +683,7 @@ public sealed class Card
         LosesTextAbilities = false;
         CopiedDefinition = null;
         CopyEndsAtCleanup = false;
+        CopiedBeforeEndOfTurn = null;
         EffectCopy = null;
         ChosenCreature = null;
         ChosenPlayer = null;

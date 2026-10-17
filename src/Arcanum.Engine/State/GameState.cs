@@ -102,6 +102,12 @@ public sealed record ControlEffect(CardId Card, int Version, PlayerId NewControl
 /// <summary>A card exiled until a source leaves the battlefield.</summary>
 public sealed record LinkedExile(CardId Source, int SourceVersion, CardId Exiled, int ExiledVersion);
 
+/// <summary>
+/// "Until end of turn, you may play cards exiled with [this]. Spells you cast this way cost {N} less to cast": every card exiled with that
+/// object (rule 607.2a), including ones it exiles later that turn.
+/// </summary>
+public sealed record ExiledWithPlayRight(CardId Source, int SourceVersion, PlayerId Player, int Turn, int CostLess);
+
 /// <summary>A card in exile <paramref name="Player"/> may play until turn <paramref name="UntilTurn"/> ends (free when <paramref name="WithoutPaying"/>).</summary>
 public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player, int UntilTurn, bool WithoutPaying = false)
 {
@@ -142,6 +148,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
 
     /// <summary>A spell cast with this permission is exiled instead of being put into a graveyard.</summary>
     public bool ExileInstead { get; init; }
+
+    /// <summary>"You may cast it from your graveyard as an Adventure": only as its Adventure (rule 715.3).</summary>
+    public bool AdventureOnly { get; init; }
 }
 
 /// <summary>
@@ -258,6 +267,9 @@ public sealed partial class GameState
     /// <summary>Cards in exile their controller may play for a while (until <c>UntilTurn</c> ends).</summary>
     public List<PlayableFromExile> PlayableFromExile { get; } = new();
 
+    /// <summary>"Until end of turn, you may play cards exiled with [this]" permissions.</summary>
+    public List<ExiledWithPlayRight> ExiledWithPlayRights { get; } = new();
+
     /// <summary>Cards in graveyards that can be cast this turn (flashback granted, or cast from the graveyard).</summary>
     public List<PlayableFromExile> PlayableFromGraveyard { get; } = new();
     public List<PlayableFromExile> FlashbackGranted { get; } = new();
@@ -354,6 +366,9 @@ public sealed partial class GameState
 
     /// <summary>Delayed abilities that trigger at the beginning of the next upkeep.</summary>
     public List<DelayedTrigger> AtNextUpkeep { get; } = new();
+
+    /// <summary>Delayed abilities "at the beginning of that player's next declare attackers step", with that player.</summary>
+    public List<(DelayedTrigger Trigger, PlayerId Whose)> AtNextDeclareAttackers { get; } = new();
 
     /// <summary>"At the beginning of the next end step, exile that token unless …": per token made.</summary>
     public List<(CardId Source, PlayerId Controller, CardId Token, int TokenVersion, IReadOnlyList<Abilities.Effect> Effects, Abilities.Condition? Unless, int? SourceTransforms)> AtNextEndStepEffects { get; } = new();

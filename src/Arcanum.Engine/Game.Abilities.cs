@@ -467,7 +467,7 @@ public sealed partial class Game
         int x = item.X != 0 || ability is not TriggeredAbility { Trigger: TriggerEvent.EntersBattlefield } ? item.X : source.CastX;
         var context = new EffectContext(item.Controller, source, item.Targets, legal, x, item.Kicked)
         {
-            Trigger = (item as AbilityOnStack)?.Trigger, GrantedBy = ability.GrantedBy, SourceVersion = (item as AbilityOnStack)?.SourceVersion,
+            Trigger = (item as AbilityOnStack)?.Trigger, GrantedBy = ability.GrantedBy, Ability = item is AbilityOnStack ? ability : null, SourceVersion = (item as AbilityOnStack)?.SourceVersion,
             SourceLeftVersion = (item as AbilityOnStack)?.SourceVersion is { } sv ? LeftBattlefieldVersion(ability, source, sv) : null,
             SourceTransforms = (item as AbilityOnStack)?.SourceTransforms,
             Division = item.Division, ActivatedIndex = (item as AbilityOnStack)?.AbilityIndex, Ninja = (item as AbilityOnStack)?.NinjutsuAttack,
@@ -523,6 +523,9 @@ public sealed partial class Game
     {
         /// <summary>How damage or counters were divided among the targets as it was cast or put on the stack (by target index).</summary>
         public IReadOnlyList<int>? Division { get; init; }
+
+        /// <summary>The ability resolving ("this ability").</summary>
+        public AbilityDefinition? Ability { get; init; }
 
         /// <summary>For an activated ability: its index among its source's abilities.</summary>
         public int? ActivatedIndex { get; init; }
@@ -644,6 +647,8 @@ public sealed partial class Game
         SubjectKind.RingBearer when RingBearerOf(ctx.Controller) is { } bearer => new[] { bearer },
         SubjectKind.ControlGainedThisWay => ctx.Results.ControlGained.Select(State.GetCard).Where(c => c.Zone == Zone.Battlefield).ToList(),
         SubjectKind.ExiledThisWay => ctx.Results.Exiled.Select(State.GetCard).Where(c => c.Zone == Zone.Exile).ToList(),
+        SubjectKind.ExiledWithSource => State.Cards.Values.Where(c => c.Zone == Zone.Exile && c.ExiledWith == (ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version))
+            .OrderBy(c => c.ExiledWithOrder).ToList(),
         SubjectKind.Chosen => ctx.Results.Chosen.Select(State.GetCard).Where(c => c.Zone == Zone.Battlefield).ToList(),
         SubjectKind.AttackersOfTriggered when State.Combat is { } fight && ctx.Trigger?.Player is { } defender
             => fight.Attacks.Where(x => x.Defender == defender && x.Planeswalker == ctx.Trigger.Subject).Select(x => State.GetCard(x.Attacker)).ToList(),
@@ -3244,9 +3249,12 @@ public sealed partial class Game
                     if (State.GetPlayer(whose).Library.Count == 0) continue;
                     var topCard = State.GetPlayer(whose).Library[0];
                     Look(ctx.Controller, new[] { topCard });
+                    if (etf.Optional && !await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller),
+                            new YesNoRequest($"Exile {State.GetCard(topCard).Name} face down?", topCard))) continue;
                     await MoveCardAsync(topCard, Zone.Exile, faceDown: true);
                     var hidden = State.GetCard(topCard);
                     if (hidden.Zone != Zone.Exile) continue;
+                    Look(ctx.Controller, new[] { topCard });
                     hidden.ExiledWith = (ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version);
                 }
                 break;
@@ -4631,8 +4639,8 @@ public sealed partial class Game
     /// <summary>The player a creature put onto the battlefield attacking attacks: its controller chooses among those being attacked (rule 508.4).</summary>
     private async Task<PlayerId> AttackedPlayerFor(Card creature, EffectContext ctx)
     {
-        var defending = State.Combat?.Attacks.Select(a => a.Defender).Distinct().ToList() ?? new List<PlayerId>();
-        if (defending.Count == 0) defending = State.OpponentsOf(creature.Controller).ToList();
+        // 508.4: its controller chooses a player it could attack, whoever the other attackers attack.
+        var defending = State.OpponentsOf(creature.Controller).ToList();
         return defending.Count == 1 ? defending[0]
             : await ChooseOpponentAsync(creature.Controller, ctx.Source, $"Choose the player {creature.Name} attacks", defending) ?? defending[0];
     }
@@ -4710,6 +4718,7 @@ public sealed partial class Game
         if (filter.FromGraveyard && !(obj.Zone == Zone.Stack ? obj.CastFromGraveyard : obj.EnteredFrom == Zone.Graveyard)) return false;
         if (filter.EnteredOrCastFromGraveyard && !(obj.EnteredFrom == Zone.Graveyard || obj.EnteredCastFromGraveyard)) return false;
         if (filter.CastFromHand && !obj.CastFromHand) return false;
+        if (filter.FromExile && !(obj.Zone == Zone.Stack ? obj.CastFromExile : obj.EnteredFrom == Zone.Exile)) return false;
         if (filter.HasXInCost && obj.Definition.ManaCost.XCount == 0) return false;
         if (filter.ExiledWithSource && (source is null || obj.Zone != Zone.Exile || obj.ExiledWith is not { } with || with.Source != source.Id || with.Version != source.Version)) return false;
         if (filter.ManaValueIsX && obj.ManaValue != _announcedX) return false;
@@ -5506,6 +5515,15 @@ public sealed partial class Game
                         AddPending(observer.Id, watching, observer.Controller, new TriggerInfo(artifact.Id, artifact.Version, tfm.Player));
                 break;
             }
+            case LandPlayed played:
+            {
+                var land = State.GetCard(played.Card);
+                foreach (var (observer, abilities) in Observers().Where(o => o.Card.Controller == played.Player))
+                    foreach (var watching in abilities.Where(a => a.Trigger == TriggerEvent.YouPlayLand
+                                                                  && Matches((a.Filter ?? new ObjectFilter()) with { Controller = ControllerFilter.Any }, land, land.Controller, observer, observer.Controller)))
+                        AddPending(observer.Id, watching, observer.Controller, new TriggerInfo(land.Id, land.Version, played.Player));
+                break;
+            }
             case PermanentTapped t when State.GetCard(t.Card).Zone == Zone.Battlefield:
                 Queue(t.Card, TriggerEvent.BecomesTapped, State.GetCard(t.Card).Controller);
                 break;
@@ -5556,6 +5574,14 @@ public sealed partial class Game
                     foreach (var ability in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.FromGraveyard && a.Trigger == TriggerEvent.YourBeginCombat))
                         AddPending(card.Id, ability, s.ActivePlayer);
                 foreach (var card in State.Battlefield.Select(State.GetCard).ToList()) Queue(card.Id, TriggerEvent.EachBeginCombat, card.Controller, new TriggerInfo(Player: s.ActivePlayer));
+                break;
+            case StepBegan { Step: Step.DeclareAttackers } declare:
+                foreach (var (delayed, _) in State.AtNextDeclareAttackers.Where(d => d.Whose == declare.ActivePlayer).ToList())
+                {
+                    State.AtNextDeclareAttackers.RemoveAll(d => d.Trigger == delayed);
+                    _pendingTriggers.Add(new PendingTrigger(delayed.Source, delayed.Ability, delayed.Controller,
+                        new TriggerInfo(delayed.AboutCard?.Card, delayed.AboutCard?.Version ?? 0, delayed.About, delayed.Amount)));
+                }
                 break;
             case StepBegan { Step: Step.EndCombat } endCombat:
                 foreach (var card in State.Battlefield.Select(State.GetCard).ToList()) Queue(card.Id, TriggerEvent.EndOfCombat, card.Controller, new TriggerInfo(Player: endCombat.ActivePlayer));

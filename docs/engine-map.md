@@ -43,7 +43,9 @@ Game content (scripts, sets, decks) lives in the content module repository, not 
 
 Large groups of related vocabulary get their own partial files so the main switch stays readable: e.g. `CardScript.Heroes.cs`
 (`ParseHeroesEffect` / `ParseHeroesQuantity`, tried first by `ParseEffect` / `ParseQuantity`), `Effects.Heroes.cs` (the records) and
-`Game.Heroes.cs` (`ApplyHeroesAsync`, `EvalHeroes`). Follow that pattern for a new group.
+`Game.Heroes.cs` (`ApplyHeroesAsync`, `EvalHeroes`). The commander decks of the heroes set use the same split: `CardScript.HeroesCommander.cs` (`ParseHeroesCommanderEffect`,
+`ParseHeroesCommanderQuantity`), `Effects.HeroesCommander.cs` and `Game.HeroesCommander.cs` (`ApplyHeroesCommanderAsync`,
+`EvalHeroesCommander`). Follow that pattern for a new group.
 
 `Replacements` is a `long` flag set and is full; new card-wide rules are `bool` (or value) properties on `CardDefinition`, parsed in
 `CardScript` and merged in its `Merge`.

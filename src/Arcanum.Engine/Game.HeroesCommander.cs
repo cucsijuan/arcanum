@@ -302,15 +302,81 @@ public sealed partial class Game
                 await CastNowWithoutPayingAsync(owner, card.Id);
                 break;
             }
+            case ExileOneFromEachGraveyard eachGraveyard:
+            {
+                var picked = new List<CardId>();
+                foreach (var whose in State.ApnapOrder().ToList())
+                {
+                    var options = State.GetPlayer(whose).Graveyard.Select(State.GetCard)
+                        .Where(c => Matches(eachGraveyard.Filter with { Controller = ControllerFilter.Any }, c, whose, ctx.Source, ctx.Controller)).ToList();
+                    if (options.Count == 0) continue;
+                    var pick = await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller), new CardChoiceRequest(
+                        $"{ctx.Source.Name}: exile one from {State.GetPlayer(whose).Name}'s graveyard", ctx.Source.Id,
+                        options.Select(c => ViewBuilder.Card(State, c.Id, ctx.Controller)).ToList(), 1, 1, CardChoicePurpose.Keep));
+                    Require(pick.Count == 1 && options.Any(c => c.Id == pick[0]), "Choose one of the listed cards.");
+                    picked.Add(pick[0]);
+                }
+                BeginSimultaneous();
+                foreach (var id in picked)
+                {
+                    await MoveCardAsync(id, Zone.Exile);
+                    var card = State.GetCard(id);
+                    if (card.Zone != Zone.Exile) continue;
+                    card.ExiledWith = (ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version);
+                    ctx.Results.Exiled.Add(id);
+                }
+                EndSimultaneous();
+                break;
+            }
+            case WarpStrike warp:
+                foreach (var card in CardsFor(warp.What, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
+                {
+                    await MoveCardAsync(card.Id, Zone.Exile);
+                    if (card.Zone != Zone.Exile) continue; // a token ceased to exist
+                    State.AtNextDeclareAttackers.Add((new DelayedTrigger(card.Id, WarpStrikeReturn, card.Owner, 0) { AboutCard = (card.Id, card.Version) }, card.Owner));
+                }
+                break;
+            case ReturnTappedAttackingUnblockable:
+            {
+                // Still the card that was exiled (rule 400.7).
+                var card = ctx.Source;
+                if (card.Zone != Zone.Exile || ctx.Trigger?.Subject != card.Id || ctx.Trigger.SubjectVersion != card.Version) break;
+                await MoveCardAsync(card.Id, Zone.Battlefield, controller: card.Owner, tapped: true);
+                if (card.Zone != Zone.Battlefield || !card.IsCreature || State.Combat is not { } combat) break;
+                combat.Attacks.Add(new AttackInfo { Attacker = card.Id, Defender = await AttackedPlayerFor(card, ctx) });
+                combat.Unblockable.Add((card.Id, card.Version));
+                break;
+            }
+            case AdventureFromGraveyardUntilYourNextTurn adventure:
+                // "It": the card that died, still that object in the graveyard (rule 400.7).
+                foreach (var card in (adventure.What.Kind == SubjectKind.Self ? (SourceIn(ctx, Zone.Graveyard) ? new[] { ctx.Source } : Array.Empty<Card>()) : CardsFor(adventure.What, ctx))
+                             .Where(c => c.Zone == Zone.Graveyard && c.Owner == ctx.Controller).ToList())
+                    State.PlayableFromGraveyard.Add(new PlayableFromExile(card.Id, card.Version, ctx.Controller, int.MaxValue)
+                    {
+                        AdventureOnly = true, UntilEndOfNextTurnOf = ctx.Controller, MadeOnTurn = State.TurnNumber,
+                    });
+                break;
+            case PlayExiledWithThisThisTurn playExiled:
+                State.ExiledWithPlayRights.Add(new ExiledWithPlayRight(ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version, ctx.Controller, State.TurnNumber, playExiled.CostLess));
+                break;
             case BecomeCopy becomeCopy:
             {
                 var target = CardsFor(becomeCopy.Target, ctx).FirstOrDefault(c => c.Zone == Zone.Battlefield);
                 if (target is null) break;
                 var copiable = target.Definition;
+                copiable = copiable with
+                {
+                    Name = becomeCopy.ExceptName ?? copiable.Name,
+                    Keywords = copiable.Keywords.Concat(becomeCopy.Keywords.Where(k => !copiable.Keywords.Contains(k))).ToList(),
+                    Abilities = becomeCopy.KeepThisAbility && ctx.Ability is { } self ? copiable.Abilities.Append(self).ToList() : copiable.Abilities,
+                };
                 foreach (var card in CardsFor(becomeCopy.What, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
                 {
-                    card.CopiedDefinition = copiable with { Name = becomeCopy.ExceptName ?? copiable.Name };
-                    card.CopyEndsAtCleanup = true;
+                    // A lasting copy effect with a later timestamp overrides an "until end of turn" one for good (rule 613.7).
+                    if (becomeCopy.Lasting) card.CopiedBeforeEndOfTurn = null;
+                    else if (!card.CopyEndsAtCleanup) card.CopiedBeforeEndOfTurn = card.CopiedDefinition;
+                    card.CopiedDefinition = copiable;
+                    card.CopyEndsAtCleanup = !becomeCopy.Lasting;
                 }
                 break;
             }
@@ -488,6 +554,13 @@ public sealed partial class Game
     }
 
     // ------------------------------------------------------------------ rebound (702.88)
+
+    private static readonly TriggeredAbility WarpStrikeReturn = new()
+    {
+        Trigger = TriggerEvent.NextDeclareAttackers,
+        Effects = new Effect[] { new ReturnTappedAttackingUnblockable() },
+        Text = "Warp-strike: return it to the battlefield tapped and attacking. It can't be blocked this combat.",
+    };
 
     private static readonly TriggeredAbility ReboundUpkeep = new()
     {

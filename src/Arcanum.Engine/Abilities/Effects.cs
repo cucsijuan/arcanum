@@ -1155,7 +1155,11 @@ public sealed record Transform(Subject What) : Effect;
 public sealed record ProtectionFromOpponents(Subject What) : Effect;
 
 /// <summary>"Look at the top card of each opponent's library and exile those cards face down" (linked to this permanent; its controller may look at them).</summary>
-public sealed record ExileTopFaceDown(Subject Whose) : Effect;
+public sealed record ExileTopFaceDown(Subject Whose) : Effect
+{
+    /// <summary>"Look at the top card of your library. You may exile it face down": the player chooses after looking.</summary>
+    public bool Optional { get; init; }
+}
 
 /// <summary>"Until end of turn, you may play a card exiled with [this] without paying its mana cost" (one of them).</summary>
 public sealed record PlayOneExiledWithThisFree : Effect;

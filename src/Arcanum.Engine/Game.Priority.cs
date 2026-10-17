@@ -304,7 +304,8 @@ public sealed partial class Game
             if (card.Is(CardType.Land))
             {
                 if (card.Zone is Zone.Hand or Zone.Exile or Zone.Graveyard or Zone.Library && sorcerySpeed && player.LandsPlayedThisTurn < LandsAllowed(playerId)
-                    && !(card.Zone == Zone.Exile && State.PlayableFromExile.Where(p => p.Card == card.Id && p.Version == card.Version && p.Player == playerId).All(p => p.CastOnly)
+                    && !(card.Zone == Zone.Exile && ExiledWithPlayRightFor(card, playerId) is null
+                         && State.PlayableFromExile.Where(p => p.Card == card.Id && p.Version == card.Version && p.Player == playerId).All(p => p.CastOnly)
                          && !card.OnAdventure))
                     actions.Add(new PlayLand(card.Id));
             }
@@ -321,7 +322,7 @@ public sealed partial class Game
                     if (halfCastable) actions.Add(new CastSpell(card.Id, Half: h));
                 }
             }
-            else if (CanCast(card, playerId, sorcerySpeed)) actions.Add(new CastSpell(card.Id));
+            else if (CanCast(card, playerId, sorcerySpeed) && !OnlyAsAdventure(card, playerId, sorcerySpeed)) actions.Add(new CastSpell(card.Id));
             // An adventurer card can be cast as its Adventure wherever it could be cast (rule 715.3), except from exile after an adventure.
             if (card.PrintedDefinition.Adventure is not null && !card.OnAdventure && card.Zone != Zone.Command)
             {
@@ -489,14 +490,35 @@ public sealed partial class Game
         && State.GraveyardCastRights.Any(r => r.Player == card.Owner && r.Turn == State.TurnNumber
                                               && Matches(r.Filter with { Controller = ControllerFilter.Any }, card, card.Owner, null, r.Player));
 
+    /// <summary>The "you may play cards exiled with [this] this turn" permission that lets <paramref name="player"/> play this exiled card, if any.</summary>
+    private ExiledWithPlayRight? ExiledWithPlayRightFor(Card card, PlayerId player) =>
+        card.Zone == Zone.Exile && card.ExiledWith is { } with
+            ? State.ExiledWithPlayRights.FirstOrDefault(r => r.Player == player && r.Turn == State.TurnNumber && r.Source == with.Source && r.SourceVersion == with.Version)
+            : null;
+
+    /// <summary>
+    /// A card in a graveyard that only a "cast it as an Adventure" permission lets <paramref name="player"/> cast from there: it can't be cast as
+    /// the card itself.
+    /// </summary>
+    private bool OnlyAsAdventure(Card card, PlayerId player, bool sorcerySpeed)
+    {
+        if (card.Zone != Zone.Graveyard) return false;
+        var adventureOnly = State.PlayableFromGraveyard.Where(p => p.AdventureOnly && p.Card == card.Id && p.Version == card.Version).ToList();
+        if (adventureOnly.Count == 0) return false;
+        foreach (var p in adventureOnly) State.PlayableFromGraveyard.Remove(p);
+        try { return !CanCast(card, player, sorcerySpeed); }
+        finally { State.PlayableFromGraveyard.AddRange(adventureOnly); }
+    }
+
     /// <summary>Exiled cards <paramref name="player"/> may currently play.</summary>
     private IEnumerable<CardId> PlayableExile(PlayerId player) =>
+        State.Cards.Values.Where(c => State.ExiledWithPlayRights.Count > 0 && ExiledWithPlayRightFor(c, player) is not null).Select(c => c.Id).Concat(
         State.PlayableFromExile.Where(p => p.Player == player && p.UntilTurn >= State.TurnNumber
                                            && State.GetCard(p.Card) is { Zone: Zone.Exile } c && c.Version == p.Version
                                            && (p.While is not { } condition || Holds(condition, player, null))
                                            && (p.LoreSource is not { } lore || State.LoreCounterTurns.Contains((lore.Card, lore.Version, State.TurnNumber)))
                                            && (p.WhileControlling is not { } held || State.GetCard(held.Card) is { Zone: Zone.Battlefield } holder && holder.Version == held.Version && holder.Controller == player))
-            .Select(p => p.Card).Distinct().ToList();
+            .Select(p => p.Card)).Distinct().ToList();
 
     private bool CanActivate(Card source, ActivatedAbility ability, int index, PlayerId player, bool sorcerySpeed)
     {
@@ -1724,6 +1746,7 @@ public sealed partial class Game
                 total += self.Amount;
         }
         if (card.Definition.Undaunted) total += State.OpponentsOf(caster).Count(); // "costs {1} less to cast for each opponent"
+        if (ExiledWithPlayRightFor(card, caster) is { } exiledWithRight) total += exiledWithRight.CostLess; // "spells you cast this way cost {2} less"
         foreach (var permanent in State.PermanentsControlledBy(caster))
             foreach (var reduction in permanent.Abilities.OfType<SpellCostReduction>())
                 if (ReductionApplies(reduction, permanent, card, caster))

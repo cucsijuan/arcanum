@@ -75,10 +75,15 @@ public sealed partial class Game
             card.CombatDamagedPlayers.Clear();
             card.AttacksThisTurn = 0;
         }
-        State.PlayableFromGraveyard.RemoveAll(p => p.UntilTurn < State.TurnNumber);
+        State.PlayableFromGraveyard.RemoveAll(p => p.UntilTurn < State.TurnNumber
+                                                   || (p.UntilEndOfNextTurnOf is { } owner && State.LastTurnOf.TryGetValue(owner, out var ownerLast) && ownerLast > p.MadeOnTurn
+                                                       && ownerLast != State.TurnNumber));
         State.FlashbackGranted.RemoveAll(p => p.UntilTurn < State.TurnNumber);
+        State.ExiledWithPlayRights.RemoveAll(r => r.Turn < State.TurnNumber);
         State.PlayableFromExile.RemoveAll(p => p.UntilTurn < State.TurnNumber
-                                               || (p.UntilEndOfNextTurnOf is { } who && State.LastTurnOf.TryGetValue(who, out var last) && last > p.MadeOnTurn));
+                                               || (p.UntilEndOfNextTurnOf is { } who && State.LastTurnOf.TryGetValue(who, out var last) && last > p.MadeOnTurn
+                                                   // that player's next turn has ended (not the one starting now)
+                                                   && last != State.TurnNumber));
         State.DamageDoubledAgainst.RemoveAll(d => d.Until == active.Id); // "until your next turn"
         Emit(new TurnBegan(State.TurnNumber, active.Id));
 
@@ -102,7 +107,8 @@ public sealed partial class Game
                 continue;
             }
             if (step == Step.Draw && skipDraw) continue;
-            if (_skipCombatDamageSteps && step is Step.DeclareBlockers or Step.CombatDamage) continue;
+            // 508.8: skipped when no creature was declared as an attacker or put onto the battlefield attacking.
+            if (_skipCombatDamageSteps && step is Step.DeclareBlockers or Step.CombatDamage && State.Combat?.Attacks.AnyEver != true) continue;
             if (step == Step.CombatDamage && CombatHasFirstStrike())
             {
                 // First or double strike: an extra combat damage step before the regular one (rule 510.4).
@@ -249,7 +255,8 @@ public sealed partial class Game
         // "Become a copy of … until end of turn" as it entered.
         foreach (var permanent in State.Battlefield.Select(State.GetCard).Where(c => c.CopyEndsAtCleanup))
         {
-            permanent.CopiedDefinition = null;
+            permanent.CopiedDefinition = permanent.CopiedBeforeEndOfTurn;
+            permanent.CopiedBeforeEndOfTurn = null;
             permanent.CopyEndsAtCleanup = false;
         }
         // "Until end of turn" and "until the end of your next turn" control effects end now.
