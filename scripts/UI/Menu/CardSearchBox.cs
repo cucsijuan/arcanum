@@ -22,17 +22,19 @@ public static class CardSearchBox
         "  !\"exact name\" · -t:creature  not · t:elf or t:goblin · (a or b) · o:/regex/ · order:mv direction:desc";
 
     /// <summary>Reads the search in the box and shows its warnings on it.</summary>
-    public static CardFilter Read(LineEdit box, CardDatabase cards)
+    /// <param name="extra">The screen's own terms (a career's prices and copies), explained in the tooltip too.</param>
+    public static CardFilter Read(LineEdit box, CardDatabase cards, SearchTerms? extra = null)
     {
-        var filter = cards.Filter(box.Text);
-        Show(box, filter);
+        var filter = cards.Filter(box.Text, extra);
+        Show(box, filter, extra);
         return filter;
     }
 
     /// <summary>Shows a search's warnings on its box (in the tooltip, the text turning amber), or just the help.</summary>
-    public static void Show(LineEdit box, CardFilter filter)
+    public static void Show(LineEdit box, CardFilter filter, SearchTerms? extra = null)
     {
-        box.TooltipText = filter.Warnings.Count == 0 ? Help : string.Join("\n", filter.Warnings) + "\n\n" + Help;
+        var help = extra is null ? Help : Help + "\n" + extra.Help;
+        box.TooltipText = filter.Warnings.Count == 0 ? help : string.Join("\n", filter.Warnings) + "\n\n" + help;
         if (filter.Warnings.Count > 0) box.AddThemeColorOverride("font_color", new Color(1f, 0.75f, 0.3f));
         else box.RemoveThemeColorOverride("font_color");
     }

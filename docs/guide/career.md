@@ -8,9 +8,9 @@ content module (see [Getting started](getting-started.md)).
 
 Choose **Career** from the main menu. The first page asks you to **Join the store's league**. Choose the starter deck
 you want to begin with, then confirm. A new member gets starting cash and some boosters of this week's featured set.
-The boosters wait for you under **My cards**.
+The boosters wait for you under **My log** on the store's website.
 
-**End this career** (at the bottom of **My cards**) deletes your cards, your cash and your career decks for good. The save
+**End this career** (at the bottom of **My log**) deletes your cards, your cash and your career decks for good. The save
 is kept as a backup file in the career's folder.
 
 ## The room
@@ -20,9 +20,9 @@ to the main menu.
 
 | Spot | What it opens |
 |------|---------------|
-| The computer | The store's website: daily matches, the forum, challenges and your cards |
+| The computer | The store's website: daily matches, the forum, challenges and your log |
 | The desk | Your decks (see [The deck desk](#the-deck-desk)) |
-| The stack on the desk | **My cards**: your collection, unopened boosters and **End this career** |
+| The stack on the desk | **My cards**: your collection, on the desk (see [My cards](#my-cards)) |
 | The door | The store |
 
 ## The store's website
@@ -32,7 +32,7 @@ The computer opens the store's website over the room. Its pages are:
 - **Daily matches**: today's match and your record.
 - **Forum**: the store's events, match offers and buy and sell board.
 - **Challenges**: this week's goals and what each pays.
-- **My cards**: your collection.
+- **My log**: your unopened boosters, the news and **End this career**.
 
 ## Daily matches
 
@@ -73,7 +73,8 @@ Walk through the door to the store. Its spots are:
   or open the ones you already have.
 - **Preconstructed decks**: buy a ready deck. Its cards go into your collection, and the deck into your decks.
 - **Sell cards** (the counter): sell cards to the store, at less than the store's price, or buy today's singles. The
-  singles case changes every day and each single has its own price.
+  singles case changes every day and each single has its own price. **Sell extras** sells every copy beyond the fourth
+  of each card, or beyond what your decks use, after you confirm.
 - **Today's offers**: the regulars' offers for the day. Each one is a **Buy** or a **Trade**: a card to buy, or a card you
   give for one you want. Once taken, an offer is marked **Taken**.
 - **Playmats**: buy a playmat, use one you own, or take it off the table. See [Playmats](#playmats).
@@ -89,12 +90,13 @@ is. Visitors and the lowest tier often play with none.
 
 ## My cards
 
-**My cards** is your collection. It has:
+**My cards** is your collection, shown on the desk. Each printing you own shows its copies (×N) and what it goes for
+today. Use the search box to narrow it, as in the deck builder. The pager line shows how much is collected:
+printings owned out of the printings of the chosen set (or of all the sets), and cards by name.
 
-- A filter for the cards you own.
-- Your unopened boosters, with **Open one** for each kind. Opened cards go into your collection.
-- **Sell extras**: sells every copy beyond the fourth of each card, or beyond what your decks use, after you confirm.
-- **End this career** at the bottom.
+- **Hide cards in my decks**: counts only the copies no deck uses, and hides the printings with none left over.
+- **Scenes (N)**: for a set with scenes, shows one scene at a time, its cards edge to edge. Cards you don't own are grey.
+- Right-click an owned card to sell it on the forum. This opens a new sale post with that card chosen.
 
 Cards are marked when they are a foil, a special art, a collector art or a surge foil, as printed.
 

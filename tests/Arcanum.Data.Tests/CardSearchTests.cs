@@ -96,6 +96,26 @@ public class CardSearchTests
     }
 
     [Fact]
+    public void AScreensOwnNumberTermsLookAtTheItemSearched()
+    {
+        var terms = new SearchTerms(new Dictionary<string, Func<CardEntry, Printing?, object?, double?>>
+        {
+            ["usd"] = (_, _, item) => item is (double price, int) ? price : null,
+            ["qty"] = (_, _, item) => item is (double, int copies) ? copies : null,
+        }, "help");
+        var cub = Db.Find("Glade Cub")!;
+        var filter = Db.Filter("usd>=1.5 qty<3", terms);
+
+        Assert.Empty(filter.Warnings);
+        Assert.True(filter.Matches(cub, null, null, (2.0, 2)));
+        Assert.False(filter.Matches(cub, null, null, (1.0, 2)));
+        Assert.False(filter.Matches(cub, null, null, (2.0, 3)));
+        Assert.True(filter.Matches(cub, null, null, "no values")); // a term without a value finds the card
+        Assert.Single(Db.Filter("usd>=1.5").Warnings); // without the screen's terms, there are no prices
+        Assert.Single(Db.Filter("qty>=abc", terms).Warnings);
+    }
+
+    [Fact]
     public void UnknownOrUnavailableTermsAreIgnoredWithAWarning()
     {
         var filter = Db.Filter("t:bear a:someone frob:x");

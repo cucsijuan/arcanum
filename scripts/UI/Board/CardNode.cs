@@ -233,6 +233,15 @@ public partial class CardNode : Control
         set { _foilAt = value; ((ShaderMaterial)_face.Material).SetShaderParameter("foil_at", value); }
     }
 
+    /// <summary>The picture drawn in greys (a card the player doesn't have, in a collection).</summary>
+    public bool Greyed
+    {
+        get => _greyed;
+        set { _greyed = value; ((ShaderMaterial)_face.Material).SetShaderParameter("grey", value ? 1f : 0f); }
+    }
+
+    private bool _greyed;
+
     /// <summary>How much the foil shines (0–1): it fades in while the pointer is on the card.</summary>
     public float FoilShine
     {

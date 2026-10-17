@@ -143,7 +143,7 @@ public partial class CareerScreen : Control
     /// <summary>
     /// Testing: ARCANUM_CAREER_START=&lt;starting deck&gt; starts a career when there is none; ARCANUM_CAREER_PAGE=&lt;page&gt; opens
     /// store, boosters, precons, counter, a website page (Matches, Practice, Challenges, Events, Market, Cards), opening
-    /// (the first unopened booster), decks (the deck builder), daily or ante (plays one), enter (today's first event), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck), surge:&lt;set&gt; (opens collector boosters until a surge foil comes), chat or chat2 (the ante chat), thread:&lt;id prefix&gt; (a forum thread: pinned, event:, ante:, practice:).
+    /// (the first unopened booster), decks (the deck builder), collection (the cards on the desk), daily or ante (plays one), enter (today's first event), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck), surge:&lt;set&gt; (opens collector boosters until a surge foil comes), chat or chat2 (the ante chat), thread:&lt;id prefix&gt; (a forum thread: pinned, event:, ante:, practice:).
     /// </summary>
     private bool RunTestHooks()
     {
@@ -153,6 +153,7 @@ public partial class CareerScreen : Control
         switch (test.ToLowerInvariant())
         {
             case "decks": OpenDeckBuilder(); return true;
+            case "collection": OpenCollection(); return true;
             case "daily" when Career.Decks.List(null) is [var first, ..]:
                 var testDeck = Career.Decks.Load(first).Deck;
                 Career.Do(new StartDaily(Career.Now, _reward, testDeck.Export()));
@@ -307,12 +308,33 @@ public partial class CareerScreen : Control
         {
             case "computer": OpenWeb(_webPage); break;
             case "decks": OpenDeckBuilder(); break;
-            case "collection": OpenWeb(WebPage.Cards); break;
+            case "collection": OpenCollection(); break;
             case "door": GoTo(Place.Store); break;
         }
     }
 
     private static void OpenDeckBuilder() => App.Instance.GoTo(App.DeckDeskScene);
+
+    /// <summary>
+    /// The collection on the desk: every card owned (basic lands aside) with its copies and what it goes for, how much
+    /// of each set is collected and its scenes; a card's menu posts it for sale on the forum.
+    /// </summary>
+    private static void OpenCollection()
+    {
+        DeckDesk.Picking = new DeckDesk.CardPick("My cards", Stakes(),
+            card => CareerRules.Money(CareerMarket.Price(State, World, card, Today)),
+            _ => { }, () => App.Instance.GoTo(App.CareerScene), NotInDecks()) { Browse = true, SellOnForum = SellOnForum };
+        App.Instance.GoTo(App.DeckDeskScene);
+    }
+
+    /// <summary>Opens the forum's new sale post with this card chosen.</summary>
+    private static void SellOnForum(CardKey card)
+    {
+        _saleCard = card;
+        _forumThread = "newpost";
+        OpenOn = nameof(WebPage.Forum);
+        App.Instance.GoTo(App.CareerScene);
+    }
 
     // ---------------------------------------------------------------- the website
 
@@ -467,7 +489,7 @@ public partial class CareerScreen : Control
         nav.AddThemeConstantOverride("separation", 18);
         // Selling moved: to the store at its counter, to other players on the forum.
         var current = _webPage is WebPage.Practice or WebPage.Events or WebPage.Chat or WebPage.Market ? WebPage.Forum : _webPage;
-        foreach (var (p, text) in new[] { (WebPage.Matches, "Daily matches"), (WebPage.Forum, World.Content.Forum.Name), (WebPage.Challenges, "Challenges"), (WebPage.Cards, "My cards") })
+        foreach (var (p, text) in new[] { (WebPage.Matches, "Daily matches"), (WebPage.Forum, World.Content.Forum.Name), (WebPage.Challenges, "Challenges"), (WebPage.Cards, "My log") })
         {
             var link = CareerStyle.LinkButton(text, p == current);
             link.Pressed += () => { _webPage = p; _forumThread = null; ShowWebPage(); };
@@ -512,7 +534,7 @@ public partial class CareerScreen : Control
                 {
                     Career.Start(deck, title);
                     _webPage = WebPage.Cards;
-                    MenuKit.Toast(this, "Welcome! Your boosters are waiting on the “My cards” page.");
+                    MenuKit.Toast(this, "Welcome! Your boosters are waiting on the “My log” page.");
                 }))), 18);
             button.TooltipText = DeckSummary(World.Deck(deck));
             flow.AddChild(button);
@@ -784,8 +806,7 @@ public partial class CareerScreen : Control
                 OpenOn = nameof(WebPage.Chat);
                 App.Instance.GoTo(App.CareerScene);
             },
-            Career.Decks.List(null).SelectMany(d => Career.Decks.Load(d).Deck is var list ? list.Main.Concat(list.Commander).Concat(list.Sideboard) : Enumerable.Empty<DeckEntry>())
-                .Select(e => e.Name).ToHashSet(StringComparer.OrdinalIgnoreCase));
+            NotInDecks());
         App.Instance.GoTo(App.DeckDeskScene);
     }
 
@@ -1419,14 +1440,27 @@ public partial class CareerScreen : Control
     /// Copies beyond the fourth of each card, or beyond what a deck uses when that's more (by name, keeping the printings
     /// decks use, then the most valuable); basic lands left out.
     /// </summary>
-    private static List<(CardKey Card, int Count)> Extras()
+    private static List<(CardKey Card, int Count)> Extras() => Beyond(used => Math.Max(4, used), sellable: true);
+
+    /// <summary>
+    /// The copies of each printing no deck uses (<see cref="CardKey"/> text: copies), counted as <see cref="Extras"/> does
+    /// with nothing kept beyond what the decks use; basic lands left out.
+    /// </summary>
+    internal static Dictionary<string, int> NotInDecks() => Beyond(used => used, sellable: false).ToDictionary(e => e.Card.ToString(), e => e.Count);
+
+    /// <summary>
+    /// Copies beyond what is kept of each card (<paramref name="keepOf"/>: from the most any deck uses), keeping first the
+    /// printings decks use, then the most valuable; basic lands left out, and cards the counter doesn't buy when only
+    /// <paramref name="sellable"/> ones count.
+    /// </summary>
+    private static List<(CardKey Card, int Count)> Beyond(Func<int, int> keepOf, bool sellable)
     {
         var extras = new List<(CardKey, int)>();
         var uses = DeckUses();
         foreach (var group in State.Cards.GroupBy(c => c.Card.Name, StringComparer.OrdinalIgnoreCase))
         {
-            if (World.IsBasicLand(group.Key) || group.All(c => SellPrice(c.Card) == 0)) continue;
-            int keep = Math.Max(4, uses.Select(d => d.Names.GetValueOrDefault(group.Key)).DefaultIfEmpty().Max());
+            if (World.IsBasicLand(group.Key) || sellable && group.All(c => SellPrice(c.Card) == 0)) continue;
+            int keep = keepOf(uses.Select(d => d.Names.GetValueOrDefault(group.Key)).DefaultIfEmpty().Max());
             foreach (var (card, count) in group.OrderByDescending(c => uses.Any(d => d.Printings.ContainsKey(c.Card.ToString()))).ThenByDescending(c => World.Value(c.Card)))
             {
                 int kept = Math.Min(keep, count);

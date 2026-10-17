@@ -14,9 +14,10 @@ namespace Arcanum.Data.CardData;
 public static class CardSearch
 {
     /// <summary>Reads a search; <paramref name="findSet"/> gives set release dates (<c>date&gt;fdn</c>).</summary>
-    public static CardFilter Parse(string text, Func<string, SetInfo?>? findSet = null)
+    /// <param name="extra">Number terms a screen adds (a career's prices and copies), by keyword.</param>
+    public static CardFilter Parse(string text, Func<string, SetInfo?>? findSet = null, SearchTerms? extra = null)
     {
-        var parser = new Parser(Lex(text ?? ""), findSet);
+        var parser = new Parser(Lex(text ?? ""), findSet, extra);
         var root = parser.ParseAll();
         return new CardFilter(root, parser.Warnings, parser.Order, parser.Descending);
     }
@@ -72,7 +73,7 @@ public static class CardSearch
 
     // ---------------------------------------------------------------- parsing
 
-    private sealed class Parser(List<Token> tokens, Func<string, SetInfo?>? findSet)
+    private sealed class Parser(List<Token> tokens, Func<string, SetInfo?>? findSet, SearchTerms? extra)
     {
         private int _at;
         public List<string> Warnings { get; } = new();
@@ -165,6 +166,12 @@ public static class CardSearch
         {
             string value = Unquote(raw);
             string lower = value.ToLowerInvariant();
+            if (extra?.Numbers.GetValueOrDefault(key) is { } number)
+            {
+                if (!double.TryParse(value.TrimStart('$'), NumberStyles.Float, CultureInfo.InvariantCulture, out double wanted))
+                    throw new SearchError($"\"{value}\" isn't a number.");
+                return new Is(c => number(c.Entry, c.Printing, c.Item) is not { } have || Compare(have, op, wanted), printing: true);
+            }
             switch (key)
             {
                 case "c" or "color" or "colour":
@@ -620,7 +627,8 @@ public static class CardSearch
     // ---------------------------------------------------------------- the tree
 
     /// <summary>What a term looks at: the card, and the printing (when the search is about one copy or one printing).</summary>
-    internal sealed record Context(CardEntry Entry, Printing? Printing, bool? Foil);
+    /// <param name="Item">What the screen searches, for its own terms (<see cref="SearchTerms"/>).</param>
+    internal sealed record Context(CardEntry Entry, Printing? Printing, bool? Foil, object? Item = null);
 
     internal abstract record Node
     {
@@ -654,6 +662,13 @@ public static class CardSearch
         public override bool UsesPrinting => Options.Any(t => t.UsesPrinting);
     }
 }
+
+/// <summary>
+/// Number terms a screen adds to the search language (<c>usd&gt;=2</c>, <c>qty&gt;1</c>): each keyword's value for a card,
+/// its printing (null when unknown) and the item the screen searches (null: no value, the term finds the card).
+/// </summary>
+/// <param name="Help">The terms explained, a line for the search box's tooltip.</param>
+public sealed record SearchTerms(IReadOnlyDictionary<string, Func<CardEntry, Printing?, object?, double?>> Numbers, string Help);
 
 /// <summary>A search read by <see cref="CardSearch.Parse"/>: which cards it finds, how to sort them and what was ignored.</summary>
 public sealed class CardFilter
@@ -690,6 +705,13 @@ public sealed class CardFilter
     /// <summary>Whether a copy of the card (by set code and collector number, foil or not) is found.</summary>
     public bool Matches(CardEntry entry, string set, string number, bool foil) =>
         Matches(entry, set.Length > 0 ? entry.Record.FindPrinting(set, number.Length > 0 ? number : null) : null, foil);
+
+    /// <summary>
+    /// Whether the search finds this printing of the card (foil or not, or either when null) and the screen's item, which
+    /// the screen's own terms (<see cref="SearchTerms"/>) look at.
+    /// </summary>
+    public bool Matches(CardEntry entry, Printing? printing, bool? foil, object item) =>
+        _root.Eval(new CardSearch.Context(entry, printing, foil, item));
 
     /// <summary>The cards in the order asked for (as they come when none was).</summary>
     public IEnumerable<CardEntry> Sort(IEnumerable<CardEntry> cards)

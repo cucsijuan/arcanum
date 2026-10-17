@@ -60,6 +60,19 @@ public sealed record BoosterSpec(string Name, string Description, IReadOnlyDicti
 }
 
 /// <summary>
+/// A scene: cards of a set whose art joins edge to edge into one picture, laid out in rows.
+/// </summary>
+/// <param name="Columns">Cards across the picture.</param>
+/// <param name="Cells">
+/// Each place in the picture, row by row from the top left: the collector numbers of the set that fill it (the same art
+/// may be printed under several numbers, as a surge foil for one).
+/// </param>
+public sealed record SceneSpec(string Name, int Columns, IReadOnlyList<IReadOnlyList<string>> Cells)
+{
+    public int Rows => (Cells.Count + Columns - 1) / Columns;
+}
+
+/// <summary>
 /// A card set described by a content module's sets/*.json: its cards, how its boosters are made and how many
 /// boosters limited events use.
 /// </summary>
@@ -95,6 +108,9 @@ public sealed record SetDefinition
     /// <summary>The sealed ends of <see cref="PackImage"/> as fractions of its height: top, then bottom.</summary>
     public (double Top, double Bottom) PackImageSeals { get; init; } = (0.07, 0.06);
 
+    /// <summary>The set's scenes (cards whose art joins into one picture), as the collection shows them.</summary>
+    public IReadOnlyList<SceneSpec> Scenes { get; init; } = Array.Empty<SceneSpec>();
+
     public static SetDefinition Parse(string json)
     {
         using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
@@ -114,7 +130,24 @@ public sealed record SetDefinition
             SealedBoosters = limited.ValueKind == JsonValueKind.Object && limited.TryGetProperty("sealedBoosters", out var sb) ? sb.GetInt32() : 6,
             PackImage = Pack(e) is { } p && p.TryGetProperty("image", out var image) && image.ValueKind == JsonValueKind.String ? image.GetString() : null,
             PackImageSeals = Seals(Pack(e)) ?? (0.07, 0.06),
+            Scenes = e.TryGetProperty("scenes", out var scenes) && scenes.ValueKind == JsonValueKind.Array
+                ? scenes.EnumerateArray().Select(ParseScene).ToList()
+                : Array.Empty<SceneSpec>(),
         };
+    }
+
+    private static SceneSpec ParseScene(JsonElement scene)
+    {
+        var name = Str(scene, "name") ?? throw new FormatException("A scene needs a \"name\".");
+        if (!scene.TryGetProperty("cards", out var cards) || cards.ValueKind != JsonValueKind.Array || cards.GetArrayLength() == 0)
+            throw new FormatException($"Scene '{name}' needs its \"cards\".");
+        var cells = cards.EnumerateArray().Select(c => (IReadOnlyList<string>)(c.ValueKind == JsonValueKind.Array
+            ? c.EnumerateArray().Select(n => n.GetString() ?? "").ToList()
+            : new List<string> { c.GetString() ?? "" })).ToList();
+        int columns = scene.TryGetProperty("columns", out var col) ? col.GetInt32() : cells.Count;
+        if (columns < 1 || cells.Any(c => c.Count == 0 || c.Any(n => n.Length == 0)))
+            throw new FormatException($"Scene '{name}' needs \"columns\" and a collector number in each place.");
+        return new SceneSpec(name, columns, cells);
     }
 
     private static JsonElement? Pack(JsonElement set) =>

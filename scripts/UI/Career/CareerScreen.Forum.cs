@@ -654,8 +654,7 @@ public partial class CareerScreen
             card => CareerRules.Money(CareerMarket.Price(State, World, card, day)),
             card => { _saleCard = card; Back(); },
             Back,
-            Career.Decks.List(null).SelectMany(d => Career.Decks.Load(d).Deck is var list ? list.Main.Concat(list.Commander).Concat(list.Sideboard) : Enumerable.Empty<DeckEntry>())
-                .Select(e => e.Name).ToHashSet(StringComparer.OrdinalIgnoreCase));
+            NotInDecks());
         App.Instance.GoTo(App.DeckDeskScene);
     }
 }

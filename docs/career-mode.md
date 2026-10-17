@@ -135,8 +135,10 @@ The art is in the private art pack under `kit/career/`, each picture with a `.js
 shows them and the pointer's position; Ctrl+click copies a point).
 
 - **The room (home):** `room.jpg`. The computer opens the store's website, drawn crisp over the dimmed room (an old
-  monitor growing from where it stands): daily matches, events, selling cards, unopened boosters and news, and signing
-  up for a new career. The boxes of cards on the shelf open the decks; the stack on the desk opens "my cards".
+  monitor growing from where it stands): daily matches, events, the forum's buy and sell board, the "my log" page (unopened
+  boosters, news), and signing up for a new career. The boxes of cards on the shelf open the decks; the stack on the desk
+  opens "my cards", the collection in the desk's collection mode (every owned printing with its copies and price, scenes,
+  and right-click to sell on the forum).
 - **The store:** `store.jpg`. The booster rack, the preconstructed decks and the counter (selling cards) open paper
   notes over the dimmed picture. The playmats on the shelf above the computer (hotspot `mats`) open a note listing
   each mat with a preview, *Buy*, *Use* or *On the table*, and *No playmat*. Esc goes back home.

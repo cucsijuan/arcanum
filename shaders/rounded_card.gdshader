@@ -15,6 +15,8 @@ uniform float foil = 0.0;
 uniform vec2 foil_at = vec2(0.5);
 // A surge foil (1) or not (0).
 uniform float surge = 0.0;
+// Drawn in greys, darker (1), as a card the player doesn't have; or in color (0).
+uniform float grey = 0.0;
 
 vec3 hsl(float hue, float s, float l) {
 	vec3 k = mod(vec3(0.0, 8.0, 4.0) + hue / 30.0, 12.0);
@@ -103,6 +105,10 @@ void fragment() {
 		// The foil's color shows through the ink: light areas take the streak's color, dark ones get a colored sheen.
 		vec3 tinted = clamp(tex.rgb * (0.35 + 1.0 * rainbow) + rainbow * 0.18, 0.0, 1.0);
 		tex.rgb = mix(tex.rgb, tinted, m);
+	}
+	if (grey > 0.0) {
+		float l = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
+		tex.rgb = mix(tex.rgb, vec3(l * 0.75), grey);
 	}
 	vec2 p = UV * rect_size;
 	vec2 q = abs(p - rect_size * 0.5) - (rect_size * 0.5 - vec2(radius));

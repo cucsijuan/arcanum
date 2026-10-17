@@ -118,6 +118,35 @@ own ratings only.
 | Career table mats (`TableMat` overlays, picture playmats via `Playmat.Picture`, `ApplyPlaymats`, mat rects from the table's JSON) | `scripts/UI/Board/Playmat.cs`, `scripts/UI/Board/GameBoard.cs` |
 | Tests | `tests/Arcanum.Data.Tests/DraftRatingsTests.cs`, `tests/Arcanum.Engine.Tests/LimitedBotTests.cs` |
 
+## Card search
+
+The search language (keywords, `or`, parentheses, `-`, sorting) is read once into a `CardFilter`, which every card box uses.
+A screen can add its own number terms: a `SearchTerms` maps a keyword to a value for the card, its printing and the item the
+screen searches.
+
+| Piece | Where |
+|-------|-------|
+| Parsing, keywords, `CardFilter.Matches`, `Sort`, warnings | `Arcanum.Data/CardData/CardSearch.cs` |
+| `CardDatabase.Filter(text, extra)` | `Arcanum.Data/CardData/CardDatabase.cs` |
+| Search box: reads the filter, warnings in the tooltip and the amber text, help line from `SearchTerms.Help` | `scripts/UI/Menu/CardSearchBox.cs` |
+| Career desk terms (`usd`, `price`, `p`; `qty`, `copies`, `owned`: copies not in decks while the toggle is on) | `scripts/UI/Career/DeckDesk.cs` (`CareerTerms`) |
+| Tests | `tests/Arcanum.Data.Tests/CardSearchTests.cs` |
+
+## Set scenes
+
+A set file may list its scenes: cards whose art joins edge to edge into one picture. `SetDefinition.Parse` reads the
+`scenes` array into `SetDefinition.Scenes` (`SceneSpec`: name, columns, and the collector numbers of each place, row by row
+from the top left). A cell may hold several numbers when one art is printed under more than one number. The career
+collection shows one scene at a time; cards not owned are drawn grey (`CardNode.Greyed`, the `grey` uniform of
+`shaders/rounded_card.gdshader`).
+
+| Piece | Where |
+|-------|-------|
+| `scenes` in the set file, `SceneSpec`, `ParseScene` | `Arcanum.Data/Limited/SetDefinition.cs` |
+| Scene picker, grid, grey cards (`Scenes (N)` toggle) | `scripts/UI/Career/DeckDesk.cs` |
+| Greyed card | `scripts/UI/Board/CardNode.cs`, `shaders/rounded_card.gdshader` |
+| Tests | `tests/Arcanum.Data.Tests/SetPackTests.cs` |
+
 ## Adding a mechanic
 
 1. Read the rule in the comprehensive rules and decide the exact behaviour, choices and UI it implies (no approximations).

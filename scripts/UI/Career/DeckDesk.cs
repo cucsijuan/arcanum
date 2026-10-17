@@ -40,18 +40,34 @@ public partial class DeckDesk : Control
     private PoolBuild? _pool;
 
     /// <summary>
-    /// Choosing one card on the mat instead of building (an ante's stake): the cards to choose from, the tag each card
-    /// shows (its price), and what happens when one is picked or the player goes back.
+    /// Choosing one card on the mat instead of building (an ante's stake, a card to sell), or looking through the
+    /// collection: the cards (printings) on offer, the tag each card shows at its foot (its price), and what happens when
+    /// one is picked or the player goes back. Each card shows the copies owned.
     /// </summary>
-    /// <param name="InDecks">The names of the cards in the player's decks: a filter then hides them.</param>
+    /// <param name="Free">The copies of each printing (<see cref="CardKey"/> text) no deck uses: a toggle then counts only those, hiding the rest.</param>
     public sealed record CardPick(string Title, IReadOnlyList<CardKey> Cards, Func<CardKey, string> Tag, Action<CardKey> Picked, Action Cancelled,
-        IReadOnlySet<string>? InDecks = null);
+        IReadOnlyDictionary<string, int>? Free = null)
+    {
+        /// <summary>Looking through the collection: nothing is picked; it shows how much of each set is collected, and its scenes.</summary>
+        public bool Browse { get; init; }
+
+        /// <summary>A card's menu (right-click) offers to post it for sale on the forum, when set.</summary>
+        public Action<CardKey>? SellOnForum { get; init; }
+    }
 
     /// <summary>Set before opening the desk to pick a card; null builds a deck.</summary>
     public static CardPick? Picking { get; set; }
 
     private CardPick? _pick;
     private bool _hideInDecks;
+
+    // The collection's scenes: shown on the mat instead of the cards, one at a time.
+    private readonly Button _scenesButton = new() { Text = "Scenes", ToggleMode = true, FocusMode = FocusModeEnum.None, Visible = false };
+    private readonly Control _scene = new() { Visible = false, MouseFilter = MouseFilterEnum.Ignore };
+    private readonly Label _sceneTitle = CareerStyle.Text("", 20, new Color(1f, 0.95f, 0.85f));
+    private bool _showingScenes;
+    private Rect2 _inner;
+    private readonly Label _collected = CareerStyle.Text("", 18, new Color(1f, 0.95f, 0.85f));
 
     /// <summary>Cards across the collection's part of the mat: all of it when picking a card.</summary>
     private int GridColumns => _pick is null ? 6 : 10;
@@ -144,7 +160,10 @@ public partial class DeckDesk : Control
         }
         if (_pick is not null)
         {
-            ShowPage(0);
+            // Testing: ARCANUM_COLLECTION_SET=<set code> chooses a set, ARCANUM_COLLECTION_SCENE=<n> shows its nth scene.
+            if (OS.GetEnvironment("ARCANUM_COLLECTION_SET") is { Length: > 0 } testSet) _set = testSet.ToUpperInvariant();
+            if (int.TryParse(OS.GetEnvironment("ARCANUM_COLLECTION_SCENE"), out int testScene)) _showingScenes = true;
+            ShowPage(testScene > 0 ? testScene - 1 : 0);
             return;
         }
         RefreshSaved();
@@ -226,6 +245,7 @@ public partial class DeckDesk : Control
         _top.Position = new Vector2(mat.Position.X, 14);
         _top.Size = new Vector2(mat.Size.X, Math.Max(0, mat.Position.Y - 28));
         var inner = mat.Grow(-22);
+        _inner = inner;
         _matBox.Position = inner.Position;
         _matBox.Size = inner.Size;
         _bottom.Position = new Vector2(mat.Position.X, mat.End.Y + 14);
@@ -250,13 +270,14 @@ public partial class DeckDesk : Control
         // Above the mat: leave, the deck chosen, its name, saving; then the filters.
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 10);
-        var back = CareerStyle.Button(_pick is not null ? "< Back" : _pool is null ? "< Room" : "< Event", Leave, 20);
-        back.TooltipText = _pick is not null ? "Back without choosing (Esc)" : _pool is null ? "Back to your room (Esc)" : "Back to the event, keeping this deck (Esc)";
+        bool picking = _pick is { Browse: false };
+        var back = CareerStyle.Button(picking ? "< Back" : _pool is null ? "< Room" : "< Event", Leave, 20);
+        back.TooltipText = picking ? "Back without choosing (Esc)" : _pool is null ? "Back to your room (Esc)" : "Back to the event, keeping this deck (Esc)";
         row.AddChild(back);
         if (_pick is { } pick)
         {
             row.AddChild(CareerStyle.Text(pick.Title, 22, new Color(1f, 0.95f, 0.85f)));
-            if (pick.InDecks is not null)
+            if (pick.Free is not null)
             {
                 row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
                 var deckOnly = new CheckButton { Text = "Hide cards in my decks", FocusMode = FocusModeEnum.None };
@@ -339,8 +360,8 @@ public partial class DeckDesk : Control
             filters.AddChild(_suggestBar);
         }
         var search = new LineEdit { Text = _search, PlaceholderText = CardSearchBox.Placeholder, CustomMinimumSize = new Vector2(380, 0) };
-        CardSearchBox.Read(search, Cards);
-        search.TextChanged += text => { _search = text; CardSearchBox.Read(search, Cards); ShowPage(0); };
+        CardSearchBox.Read(search, Cards, Terms);
+        search.TextChanged += text => { _search = text; CardSearchBox.Read(search, Cards, Terms); ShowPage(0); };
         _filterControls.AddChild(search);
         foreach (char color in "WUBRGC")
         {
@@ -362,6 +383,13 @@ public partial class DeckDesk : Control
         // Sets: those of the cards on offer (filled once they are known).
         _sets.ItemSelected += i => { _set = i == 0 ? null : _sets.GetItemMetadata((int)i).AsString(); ShowPage(0); };
         _filterControls.AddChild(_sets);
+        if (_pick?.Browse == true)
+        {
+            _scenesButton.AddThemeFontSizeOverride("font_size", 20);
+            _scenesButton.TooltipText = "The set's scenes: cards whose art joins into one picture, the ones you don't have in grey";
+            _scenesButton.Toggled += on => { _showingScenes = on; ShowPage(0); };
+            _filterControls.AddChild(_scenesButton);
+        }
         filters.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
         filters.AddChild(_count);
         _top.AddChild(filters);
@@ -374,11 +402,18 @@ public partial class DeckDesk : Control
         _grid.AddThemeConstantOverride("h_separation", 8);
         _grid.AddThemeConstantOverride("v_separation", 8);
         _left.AddChild(_grid);
+        _scene.AddChild(_sceneTitle);
+        _left.AddChild(_scene);
         var pager = new HBoxContainer();
         pager.AddThemeConstantOverride("separation", 12);
         pager.AddChild(CareerStyle.Button("<", () => ShowPage(_page - 1), 20));
         pager.AddChild(_pageInfo);
         pager.AddChild(CareerStyle.Button(">", () => ShowPage(_page + 1), 20));
+        if (_pick?.Browse == true)
+        {
+            pager.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+            pager.AddChild(_collected);
+        }
         _left.AddChild(pager);
         _columns.AddThemeConstantOverride("separation", 6);
         _deckScroll.AddChild(_columns);
@@ -411,18 +446,47 @@ public partial class DeckDesk : Control
 
     private sealed record Owned(CardEntry Card, DeckEntry Printing, int Count);
 
+    /// <summary>What the career's own search terms look at: a copy (its printing), and the copies counted (null: not counted).</summary>
+    private sealed record SearchItem(CardKey Key, int? Copies);
+
+    /// <summary>The career's search terms (not an event's pool): what a card goes for, the copies owned.</summary>
+    private SearchTerms? Terms => _pool is not null ? null : _terms ??= CareerTerms();
+    private SearchTerms? _terms;
+
+    private static SearchTerms CareerTerms()
+    {
+        var now = CareerRules.DayOf(Career.Now);
+        var day = now > Career.State.Day ? now : Career.State.Day;
+        double? Price(CardEntry _, Printing? __, object? item) =>
+            item is SearchItem s ? CareerMarket.Price(Career.State, Career.World!, s.Key, day) / 100.0 : null;
+        double? Copies(CardEntry _, Printing? __, object? item) => item is SearchItem { Copies: { } n } ? n : null;
+        var numbers = new Dictionary<string, Func<CardEntry, Printing?, object?, double?>>
+        {
+            ["usd"] = Price, ["price"] = Price, ["p"] = Price, ["qty"] = Copies, ["copies"] = Copies, ["owned"] = Copies,
+        };
+        return new SearchTerms(numbers, "  usd>=2 (or price:, p:)  what the card goes for · qty>=2 (or copies:, owned:)  copies you have (not in decks, with that toggle)");
+    }
+
+    /// <summary>Whether the search finds a copy of the card, with the copies counted for it.</summary>
+    private static bool Found(CardFilter filter, CardKey k, int copies) =>
+        Cards.Find(k.Name) is { } entry && filter.Matches(entry, k.Set.Length > 0 ? entry.Record.FindPrinting(k.Set, k.Number.Length > 0 ? k.Number : null) : null,
+            k.Foil, new SearchItem(k, copies));
+
+    /// <summary>The copies of a printing counted when picking: all of them, or those no deck uses (the toggle).</summary>
+    private int Copies(CardKey k) => _hideInDecks && _pick?.Free is { } free ? free.GetValueOrDefault(k.ToString()) : Career.State.Owned(k);
+
     /// <summary>The cards owned that pass the filters, one per name (with the printing owned most), by mana value.</summary>
     private List<Owned> OwnedCards()
     {
-        var filter = Cards.Filter(_search);
-        bool Found(CardKey k) => _search.Length == 0 || Cards.Find(k.Name) is { } entry && filter.Matches(entry, k.Set, k.Number, k.Foil);
+        var filter = Cards.Filter(_search, Terms);
         if (_pick is not null)
-            return _pick.Cards.Where(k => Cards.Find(k.Name) is not null && InSet(k) && Found(k) && (!_hideInDecks || _pick.InDecks?.Contains(k.Name) != true))
-                .Select(k => new Owned(Cards.Find(k.Name)!, k.ToEntry(), Career.State.Owned(k)))
+            return _pick.Cards.Select(k => (Key: k, Count: Copies(k)))
+                .Where(x => x.Count > 0 && Cards.Find(x.Key.Name) is not null && InSet(x.Key) && (_search.Length == 0 || Found(filter, x.Key, x.Count)))
+                .Select(x => new Owned(Cards.Find(x.Key.Name)!, x.Key.ToEntry(), x.Count))
                 .Where(Passes).OrderBy(o => o.Card.ManaValue).ThenBy(o => o.Card.Name).ToList();
         var cards = (_pool is not null
             ? _pool.Pool.Select(c => (Card: CardKey.Of(c), Count: 1))
-            : Career.State.Cards).Where(c => InSet(c.Card) && Found(c.Card));
+            : Career.State.Cards).Where(c => InSet(c.Card) && (_search.Length == 0 || Found(filter, c.Card, _pool is null ? Career.State.OwnedByName(c.Card.Name) : c.Count)));
         return ByName(cards).Where(Passes).OrderBy(o => o.Card.Definition.Is(CardType.Land)).ThenBy(o => o.Card.ManaValue).ThenBy(o => o.Card.Name).ToList();
     }
 
@@ -439,7 +503,7 @@ public partial class DeckDesk : Control
 
     private bool InSet(CardKey card) => _set is null || card.Set.Equals(_set, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The set filter's choices: every set the cards on offer come from, by name.</summary>
+    /// <summary>The set filter's choices: every set the cards on offer come from (and every set of the module, looking through the collection), by name.</summary>
     private void FillSets()
     {
         var keys = _pick is not null ? _pick.Cards
@@ -447,7 +511,9 @@ public partial class DeckDesk : Control
             : Career.State.Cards.Select(c => c.Card).ToList();
         _sets.Clear();
         _sets.AddItem("All sets");
-        foreach (var code in keys.Select(k => k.Set.ToUpperInvariant()).Where(c => c.Length > 0).Distinct().OrderBy(c => Career.World!.SetName(c.ToLowerInvariant())))
+        var codes = keys.Select(k => k.Set);
+        if (_pick?.Browse == true) codes = codes.Concat(Career.World!.Sets.Keys);
+        foreach (var code in codes.Select(c => c.ToUpperInvariant()).Where(c => c.Length > 0).Distinct().OrderBy(c => Career.World!.SetName(c.ToLowerInvariant())))
         {
             _sets.AddItem(Cards.FindSet(code)?.Name ?? Career.World!.SetName(code.ToLowerInvariant()));
             _sets.SetItemMetadata(_sets.ItemCount - 1, code);
@@ -457,9 +523,10 @@ public partial class DeckDesk : Control
         if (selected == 0) _set = null;
     }
 
-    private bool Passes(Owned owned)
+    private bool Passes(Owned owned) => Passes(owned.Card.Definition);
+
+    private bool Passes(CardDefinition d)
     {
-        var d = owned.Card.Definition;
         if (TypeFilters[_type].Type != CardType.None && !d.Is(TypeFilters[_type].Type)) return false;
         if (_colors.Count == 0) return true;
         var colors = ColorsOf(d);
@@ -490,6 +557,22 @@ public partial class DeckDesk : Control
             ShowSuggestionPage(page);
             return;
         }
+        if (_pick?.Browse == true)
+        {
+            var scenes = SetScenes();
+            _scenesButton.Visible = scenes.Count > 0;
+            _scenesButton.Text = $"Scenes ({scenes.Count})";
+            if (scenes.Count == 0) _showingScenes = false;
+            _scenesButton.SetPressedNoSignal(_showingScenes);
+            _grid.Visible = !_showingScenes;
+            _scene.Visible = _showingScenes;
+            _collected.Text = Collected();
+            if (_showingScenes)
+            {
+                ShowScene(page, scenes);
+                return;
+            }
+        }
         var cards = OwnedCards();
         int pageSize = GridColumns * Rows;
         int pages = TurnTo(page, cards.Count);
@@ -499,10 +582,16 @@ public partial class DeckDesk : Control
             {
                 var key = CardKey.Of(owned.Printing);
                 var pickTile = Tile(Definition(owned.Printing), false);
-                Badge(pickTile, pick.Tag(key), false);
+                Badge(pickTile, $"×{owned.Count}", false);
+                DraftGrades.Strip(pickTile, pick.Tag(key), Colors.White);
                 var pickCard = pickTile.GetChild<CardNode>(0);
-                pickCard.TooltipText = "Choose this card";
-                pickCard.Clicked += _ => pick.Picked(key);
+                string copies = $"You have {owned.Count}{(_hideInDecks ? " not in your decks" : "")}; it goes for {pick.Tag(key)}.";
+                if (pick.Browse) CollectionCard(pickCard, key, copies);
+                else
+                {
+                    pickCard.TooltipText = $"Choose this card\n{copies}";
+                    pickCard.Clicked += _ => pick.Picked(key);
+                }
                 _grid.AddChild(pickTile);
                 continue;
             }
@@ -521,6 +610,105 @@ public partial class DeckDesk : Control
             _grid.AddChild(tile);
         }
         _pageInfo.Text = cards.Count == 0 ? "No cards match" : $"{cards.Count} cards · page {_page + 1} of {pages}";
+    }
+
+    /// <summary>A card of the collection being looked through: its copies, and its menu (right-click) to sell it.</summary>
+    private void CollectionCard(CardNode card, CardKey key, string copies)
+    {
+        if (_pick?.SellOnForum is not { } sell)
+        {
+            card.TooltipText = copies;
+            return;
+        }
+        card.TooltipText = copies + "\nRight-click to sell it on the forum.";
+        card.RightClicked += _ =>
+        {
+            var menu = new PopupMenu();
+            menu.AddThemeFontSizeOverride("font_size", 20);
+            menu.AddItem("Sell it on the forum…", 0);
+            menu.IdPressed += _ => Callable.From(() => sell(key)).CallDeferred();
+            menu.PopupHide += () => menu.QueueFree();
+            AddChild(menu);
+            menu.Popup(new Rect2I((Vector2I)GetViewport().GetMousePosition(), Vector2I.Zero));
+        };
+    }
+
+    // ---------------------------------------------------------------- how much is collected, and scenes
+
+    /// <summary>The sets the collection counts against: the one chosen, or every set of the module.</summary>
+    private IEnumerable<string> CollectedSets() => _set is not null ? new[] { _set } : Career.World!.Sets.Keys;
+
+    /// <summary>
+    /// How much is collected: the printings owned (any copy, foil or not) of the printings of the sets counted (basic lands
+    /// aside), and by card name; the search and filters narrow both, except the copies term.
+    /// </summary>
+    private string Collected()
+    {
+        var filter = Cards.Filter(_search, Terms);
+        var owned = Career.State.Cards.Where(c => c.Count > 0).Select(c => $"{c.Card.Set}|{c.Card.Number}".ToUpperInvariant()).ToHashSet();
+        int printings = 0, have = 0;
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var namesHave = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var set in CollectedSets())
+            foreach (var (entry, printing) in Cards.PrintingsIn(set))
+            {
+                if (Career.World!.IsBasicLand(entry.Name) || !Passes(entry.Definition)) continue;
+                var key = new CardKey(entry.Name, printing.Set.ToUpperInvariant(), printing.CollectorNumber);
+                if (_search.Length > 0 && !filter.Matches(entry, printing, null, new SearchItem(key, null))) continue;
+                printings++;
+                names.Add(entry.Name);
+                if (!owned.Contains($"{key.Set}|{key.Number}".ToUpperInvariant())) continue;
+                have++;
+                namesHave.Add(entry.Name);
+            }
+        string of = _set is null ? "" : $" of {Career.World!.SetName(_set.ToLowerInvariant())}";
+        return printings == 0 ? "" : $"Collected{of}: {have}/{printings} printings ({(double)have / printings:P0}) · {namesHave.Count}/{names.Count} cards";
+    }
+
+    /// <summary>The scenes of the set chosen (none without one).</summary>
+    private IReadOnlyList<SceneSpec> SetScenes() =>
+        _set is not null && Career.World!.Sets.TryGetValue(_set, out var set) ? set.Scenes : Array.Empty<SceneSpec>();
+
+    /// <summary>
+    /// A scene on the mat: its cards edge to edge as the picture they make, those the player has in color and the rest in
+    /// grey; the pager goes through the set's scenes.
+    /// </summary>
+    private void ShowScene(int page, IReadOnlyList<SceneSpec> scenes)
+    {
+        _page = Math.Clamp(page, 0, scenes.Count - 1);
+        foreach (var child in _scene.GetChildren()) if (child != _sceneTitle) child.QueueFree();
+        var scene = scenes[_page];
+        string set = _set!;
+        var byNumber = Cards.PrintingsIn(set).GroupBy(x => x.Printing.CollectorNumber).ToDictionary(g => g.Key, g => g.First().Card.Name);
+        var copies = Career.State.Cards.Where(c => c.Count > 0 && c.Card.Set.Equals(set, StringComparison.OrdinalIgnoreCase)).ToList();
+        float titleHeight = 34;
+        float room = _inner.Size.Y - 52 - titleHeight;
+        float width = Math.Min(_inner.Size.X / scene.Columns, room / scene.Rows / 1.39f);
+        var size = new Vector2(width, width * 1.39f);
+        _scene.CustomMinimumSize = new Vector2(_inner.Size.X, titleHeight + size.Y * scene.Rows);
+        float left = (_inner.Size.X - size.X * scene.Columns) / 2;
+        int collected = 0;
+        for (int i = 0; i < scene.Cells.Count; i++)
+        {
+            var numbers = scene.Cells[i];
+            // The copy shown: one the player has (the first place's number first), else the place's first printing.
+            var mine = numbers.SelectMany(n => copies.Where(c => c.Card.Number == n)).Select(c => (CardKey?)c.Card).FirstOrDefault();
+            string? name = mine?.Name ?? numbers.Select(n => byNumber.GetValueOrDefault(n)).FirstOrDefault(n => n is not null);
+            if (name is null) continue;
+            var key = mine ?? new CardKey(name, set, numbers[0]);
+            int count = numbers.Sum(n => copies.Where(c => c.Card.Number == n).Sum(c => c.Count));
+            if (count > 0) collected++;
+            var card = new CardNode { Size = size, Position = new Vector2(left + i % scene.Columns * size.X, titleHeight + i / scene.Columns * size.Y) };
+            card.Setup(ViewOf(Definition(key.ToEntry())), showCostPips: false);
+            card.Greyed = count == 0;
+            card.HoverStarted += c => ShowPreview(c, c);
+            card.HoverEnded += _ => HidePreview();
+            if (count == 0) card.TooltipText = $"{name}: you don't have it yet.";
+            else CollectionCard(card, key, $"{name}: you have {count}.");
+            _scene.AddChild(card);
+        }
+        _sceneTitle.Text = $"{scene.Name}: {collected} of {scene.Cells.Count} cards";
+        _pageInfo.Text = $"Scene {_page + 1} of {scenes.Count}";
     }
 
     private Control Tile(CardDefinition definition, bool used)

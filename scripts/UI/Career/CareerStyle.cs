@@ -73,6 +73,10 @@ public static class CareerStyle
         theme.SetStylebox("hover", "PopupMenu", Box(Link with { A = 0.25f }));
         theme.SetColor("font_hover_color", "PopupMenu", Ink);
         theme.SetStylebox("panel", "PanelContainer", Box(Colors.Transparent));
+        // Tooltips: ink on light paper (a Label's dark ink would otherwise sit on the engine's dark tooltip).
+        theme.SetStylebox("panel", "TooltipPanel", Box(new Color("fbf5e6"), PaperEdge, 2, 4, 8));
+        theme.SetColor("font_color", "TooltipLabel", Ink);
+        theme.SetFontSize("font_size", "TooltipLabel", 18);
         return theme;
     }
 

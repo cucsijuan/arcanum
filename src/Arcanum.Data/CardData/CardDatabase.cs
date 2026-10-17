@@ -178,7 +178,7 @@ public sealed class CardDatabase : ICardDatabase
     public IEnumerable<CardDefinition> All => _sorted.Select(e => e.Definition);
 
     /// <summary>Reads a search in the card search language, with this database's sets for release dates.</summary>
-    public CardFilter Filter(string text) => CardSearch.Parse(text, FindSet);
+    public CardFilter Filter(string text, SearchTerms? extra = null) => CardSearch.Parse(text, FindSet, extra);
 
     public IEnumerable<CardEntry> Search(CardQuery query)
     {

@@ -45,4 +45,23 @@ public class SetPackTests
 
         Assert.Equal((0.3, 0.0), set.PackImageSeals);
     }
+
+    [Fact]
+    public void ScenesAreReadRowByRowWithEveryNumberOfAPlace()
+    {
+        var set = SetDefinition.Parse("""{"code":"abc","name":"Sample","scenes":[{"name":"The View","columns":2,"cards":["10","11",["12","40"],"13"]}]}""");
+
+        var scene = Assert.Single(set.Scenes);
+        Assert.Equal("The View", scene.Name);
+        Assert.Equal(2, scene.Rows);
+        Assert.Equal(new[] { "12", "40" }, scene.Cells[2]);
+        Assert.Equal(new[] { "13" }, scene.Cells[3]);
+        Assert.Empty(SetDefinition.Parse("""{"code":"abc","name":"Sample"}""").Scenes);
+    }
+
+    [Theory]
+    [InlineData("""{"code":"abc","name":"Sample","scenes":[{"columns":2,"cards":["1","2"]}]}""")]
+    [InlineData("""{"code":"abc","name":"Sample","scenes":[{"name":"X","columns":2,"cards":[]}]}""")]
+    [InlineData("""{"code":"abc","name":"Sample","scenes":[{"name":"X","columns":0,"cards":["1"]}]}""")]
+    public void AMalformedSceneIsAnError(string json) => Assert.Throws<FormatException>(() => SetDefinition.Parse(json));
 }
