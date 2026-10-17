@@ -126,10 +126,18 @@ public sealed class BotController : IPlayerController
 
     private static string ColorLetter(string color) => color switch { "Blue" => "U", _ => color[..1] };
 
-    /// <summary>Use everything available for X; a loyalty cost of −X keeps the planeswalker alive.</summary>
+    /// <summary>
+    /// Use everything available for X; a loyalty cost of −X keeps the planeswalker alive; X paid in life is the X planned when
+    /// the spell was chosen, and never all our life.
+    /// </summary>
     public Task<int> ChooseNumberAsync(GameView view, NumberRequest request)
     {
         int chosen = request.Prompt.Contains("loyalty counters", StringComparison.Ordinal) ? Math.Max(request.Min, request.Max - 1) : request.Max;
+        if (request.Prompt.Contains("pay X life", StringComparison.Ordinal))
+        {
+            int planned = request.Source is { } planFor && _plannedLifeX.Remove(planFor, out int x) ? x : 0;
+            chosen = Math.Max(request.Min, Math.Min(Math.Min(planned, request.Max), view.Self.Life - 1));
+        }
         if (request.Source is { } source) _announcedX[source] = chosen; // X is announced before targets (rule 601.2b)
         return Task.FromResult(chosen);
     }
@@ -139,6 +147,28 @@ public sealed class BotController : IPlayerController
 
     /// <summary>The last number each source announced (its X), for choosing its targets.</summary>
     private readonly Dictionary<CardId, int> _announcedX = new();
+
+    /// <summary>The X planned for a spell whose X is paid in life ("pay X life"), from when it was chosen to cast.</summary>
+    private readonly Dictionary<CardId, int> _plannedLifeX = new();
+
+    /// <summary>
+    /// The best X to pay in life for a spell, and its score less the life: the smallest X that does the most good, keeping at
+    /// least a quarter of our life (and 6) in hand. 0 when no X is worth it.
+    /// </summary>
+    private (double Score, int X) BestLifeX(GameView view, AbilityDefinition spell)
+    {
+        int life = view.Self.Life;
+        int most = life - Math.Max(6, life / 4);
+        (double Score, int X) best = (0, 0);
+        for (int x = 1; x <= most; x++)
+        {
+            _x = x;
+            double score = SpellScore(view, spell) - 0.2 * x;
+            if (score > best.Score) best = (score, x);
+        }
+        _x = null;
+        return best.Score >= 2 ? best : (0, 0);
+    }
 
     /// <summary>The largest X a spell with this cost could have now: our untapped lands and floating mana, less the rest of the cost.</summary>
     private int AffordableX(GameView view, string cost)
@@ -291,7 +321,12 @@ public sealed class BotController : IPlayerController
             var card = view.FindCard(cast.Card);
             if (rules is null || card is null) continue;
             double score = 0;
-            if (rules.Spell is { } spell)
+            if (rules is { Spell: { } lifeSpell, PayXLife: true })
+            {
+                (score, int x) = BestLifeX(view, lifeSpell);
+                _plannedLifeX[card.Id] = x;
+            }
+            else if (rules.Spell is { } spell)
             {
                 _x = card.ManaCost?.Contains("{X}") == true ? AffordableX(view, card.ManaCost) : null;
                 score = SpellScore(view, spell);
@@ -315,11 +350,27 @@ public sealed class BotController : IPlayerController
     /// <summary>Net value of an effect hitting every permanent matching the filter: theirs minus ours.</summary>
     private double EachValue(GameView view, ObjectFilter filter)
     {
-        bool Hit(CardView c) => (filter.Types == 0 || (c.Types & filter.Types) != 0)
-                                && (filter.Controller == ControllerFilter.Any || (filter.Controller == ControllerFilter.Opponent) == (c.Controller != _me));
-        var hit = view.Battlefield.Where(Hit).ToList();
+        var hit = view.Battlefield.Where(c => Hits(filter, c)).ToList();
         return hit.Where(c => c.Controller != _me).Sum(CreatureValue) - hit.Where(c => c.Controller == _me).Sum(CreatureValue) - 1;
     }
+
+    private bool Hits(ObjectFilter filter, CardView c) =>
+        (filter.Types == 0 || (c.Types & filter.Types) != 0)
+        && (filter.Controller == ControllerFilter.Any || (filter.Controller == ControllerFilter.Opponent) == (c.Controller != _me));
+
+    /// <summary>
+    /// Net value of a sweeper that kills the creatures matching the filter for which <paramref name="dies"/> holds: the
+    /// opponents' creatures it kills less ours, which weigh more (and our commander most), so only a lopsided sweep pays.
+    /// </summary>
+    private double EachKillValue(GameView view, ObjectFilter filter, Func<CardView, bool> dies)
+    {
+        var killed = view.Battlefield.Where(c => (c.Types & CardType.Creature) != 0 && Hits(filter, c) && dies(c)).ToList();
+        return killed.Where(c => c.Controller != _me).Sum(CreatureValue)
+               - killed.Where(c => c.Controller == _me).Sum(c => 1.5 * CreatureValue(c) + (c.IsCommander ? 6 : 0)) - 1;
+    }
+
+    /// <summary>A quantity's value with the X being judged.</summary>
+    private int Amount(Quantity q) => q.Kind == QuantityKind.X && _x is { } x ? x * q.Multiplier : q.Estimate;
 
     /// <summary>Value of casting a non-permanent spell now: removal against the best target, card draw, face damage.</summary>
     private double SpellScore(GameView view, AbilityDefinition spell)
@@ -339,8 +390,10 @@ public sealed class BotController : IPlayerController
                     LoseLife { Who.Kind: SubjectKind.You } => -1,
                     SearchLibrary => 1.5,
                     Destroy { What.Kind: SubjectKind.Each } d => EachValue(view, d.What.Filter!),
-                    DealDamage { To.Kind: SubjectKind.Each } d => EachValue(view, d.To.Filter! with { MaxPower = null }),
-                    PumpUntilEndOfTurn { What.Kind: SubjectKind.Each } p when IsHarmful(p) => EachValue(view, p.What.Filter!),
+                    DealDamage { To.Kind: SubjectKind.Each } d => EachKillValue(view, d.To.Filter!,
+                        c => !Has(c, "Indestructible") && Amount(d.Amount) >= RemainingToughness(c)),
+                    PumpUntilEndOfTurn { What.Kind: SubjectKind.Each } p when IsHarmful(p) => EachKillValue(view, p.What.Filter!,
+                        c => (c.Toughness ?? 0) + Amount(p.Toughness) is var t && (t <= 0 || t <= c.Damage && !Has(c, "Indestructible"))),
                     PumpUntilEndOfTurn { What.Kind: SubjectKind.Each } => 0.5,
                     _ => 0.2,
                 };

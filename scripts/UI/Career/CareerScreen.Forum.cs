@@ -31,8 +31,8 @@ public partial class CareerScreen
 
     private void ForumPage(VBoxContainer page)
     {
-        // The player's posts catch up with the days gone by (sold, offered, expired) as the forum opens.
-        if (State.Posts.Any(p => p.Status == SaleStatus.Open && p.Checked < CareerRules.DayOf(Career.Now)))
+        // The player's posts catch up with the time gone by (sold, offered, expired) as the forum opens.
+        if (State.Posts.Any(p => CareerRules.SaleCheckDue(p, Career.Now)))
             Try(() => Career.Do(new CheckSales(Career.Now)));
         var threads = ForumThreads();
         if (_forumThread is { } id && threads.FirstOrDefault(t => t.Id == id) is { } open)
@@ -542,7 +542,7 @@ public partial class CareerScreen
     {
         var market = World.Content.Market;
         var day = CareerRules.DayOf(Career.Now);
-        body.AddChild(CareerStyle.Text($"Posts stay up {market.PostDays} days. Each day a post may sell, get a lower offer, or nothing; the closer the price to what the card goes for, the sooner it sells.", 17, CareerStyle.InkDim, wrap: true));
+        body.AddChild(CareerStyle.Text($"Posts stay up {market.PostDays} days. Twice a day (midnight and midday, UTC) a post may sell, get a lower offer, or nothing; the closer the price to what the card goes for, the sooner it sells.", 17, CareerStyle.InkDim, wrap: true));
         foreach (var post in State.Posts.AsEnumerable().Reverse())
         {
             var card = CardKey.Parse(post.Card);

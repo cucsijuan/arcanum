@@ -17,6 +17,7 @@ public partial class ZoneViewer : PanelContainer
     private readonly Label _title = BoardStyle.MakeTitle("", 18, BoardStyle.Text);
     private readonly Label _hint = BoardStyle.MakeLabel("", 13, BoardStyle.TextDim);
     private readonly HFlowContainer _grid = new();
+    private readonly Button _close = BoardStyle.MakeButton("Close", 14);
 
     public event Action<CardNode>? CardClicked;
     public event Action<CardNode>? CardHoverStarted;
@@ -41,9 +42,8 @@ public partial class ZoneViewer : PanelContainer
         header.AddThemeConstantOverride("separation", 12);
         _title.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         header.AddChild(_title);
-        var close = BoardStyle.MakeButton("Close", 14);
-        close.Pressed += Close;
-        header.AddChild(close);
+        _close.Pressed += Close;
+        header.AddChild(_close);
         box.AddChild(header);
         box.AddChild(_hint);
 
@@ -78,9 +78,12 @@ public partial class ZoneViewer : PanelContainer
     }
 
     /// <param name="usable">Cards that do something when clicked now (highlighted).</param>
-    public void Refresh(GameView view, Func<CardId, bool> usable)
+    /// <param name="selected">Cards already chosen in the current choice.</param>
+    /// <param name="closeText">The close button's text ("Back" while picking among several piles).</param>
+    public void Refresh(GameView view, Func<CardId, bool> usable, Func<CardId, bool> selected, string closeText = "Close")
     {
         if (!Visible) return;
+        _close.Text = closeText;
         var owner = view.Players[Player.Value];
         var cards = (Zone == Zone.Graveyard ? owner.Graveyard : owner.Exile).Reverse().ToList(); // most recent first
         _title.Text = $"{(Zone == Zone.Graveyard ? "Graveyard" : "Exile")} of {owner.Name} ({cards.Count})";
@@ -94,7 +97,7 @@ public partial class ZoneViewer : PanelContainer
         {
             var node = new CardNode { CustomMinimumSize = CardSize, Size = CardSize };
             node.Setup(view1, showCostPips: false);
-            node.SetHighlight(usable(view1.Id) ? CardHighlight.Playable : CardHighlight.None);
+            node.SetHighlight(selected(view1.Id) ? CardHighlight.Selected : usable(view1.Id) ? CardHighlight.Playable : CardHighlight.None);
             node.Clicked += n => CardClicked?.Invoke(n);
             node.HoverStarted += n => CardHoverStarted?.Invoke(n);
             node.HoverEnded += n => CardHoverEnded?.Invoke(n);

@@ -845,6 +845,23 @@ public class CareerTests
         Assert.Equal(post.Status, replayed.Posts.Single().Status);
     }
 
+    /// <summary>A post's luck is looked at twice a day: at midday after a morning post, then again at midnight.</summary>
+    [Fact]
+    public void PostsAreCheckedAtMiddayAndAtMidnight()
+    {
+        var (state, journal, world) = Trading();
+        var card = state.Cards.First(c => c.Card.Name == "Card 16").Card;
+        Do(state, journal, world, new PostSale(T0.AddMinutes(1), card.ToString(), CareerMarket.Price(state, world, card, state.Day)));
+        var post = state.Posts.Single();
+        Assert.False(CareerRules.SaleCheckDue(post, T0.AddHours(1))); // still the morning
+        var midday = T0.Date.AddHours(12.5);
+        Assert.True(CareerRules.SaleCheckDue(post, midday));
+        Do(state, journal, world, new CheckSales(midday));
+        Assert.True(post.Status != SaleStatus.Open || (post.Checked == state.Day && post.CheckedMidday));
+        Assert.False(CareerRules.SaleCheckDue(post, midday.AddHours(11)));
+        Assert.Equal(post.Status == SaleStatus.Open, CareerRules.SaleCheckDue(post, T0.Date.AddDays(1)));
+    }
+
     [Fact]
     public void ATakenDownPostGivesTheCardBack()
     {

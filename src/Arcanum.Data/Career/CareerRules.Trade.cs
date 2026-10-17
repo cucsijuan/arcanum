@@ -205,7 +205,7 @@ public static partial class CareerRules
         if (state.Posts.Count(p => p.Status is SaleStatus.Open or SaleStatus.Offered) >= world.Content.Market.PostsMax)
             throw new CareerRuleException($"You can have {world.Content.Market.PostsMax} posts up at once.");
         state.AddCard(card, -1);
-        state.Posts.Add(new SalePost { Id = state.NextPostId++, Card = card.ToString(), Ask = post.Ask, Day = state.Day, Checked = state.Day });
+        state.Posts.Add(new SalePost { Id = state.NextPostId++, Card = card.ToString(), Ask = post.Ask, Day = state.Day, Checked = state.Day, CheckedMidday = post.Utc.Hour >= 12 });
         state.Note(post.Utc, $"Posted {card.Name} for sale at {Money(post.Ask)}.");
         return new CareerResult(Array.Empty<PoolCard>(), 0);
     }
@@ -240,10 +240,20 @@ public static partial class CareerRules
         return new CareerResult(Array.Empty<PoolCard>(), 0);
     }
 
+    /// <summary>A post's looks at its luck: twice a day, at midnight and at midday (UTC), numbered in order.</summary>
+    private static long SaleCheck(DateOnly day, bool midday) => day.DayNumber * 2L + (midday ? 1 : 0);
+
+    private static long SaleCheck(DateTime utc) => SaleCheck(DayOf(utc), utc.Hour >= 12);
+
+    /// <summary>Whether an open post has a look at its luck due by then.</summary>
+    public static bool SaleCheckDue(SalePost post, DateTime utc) =>
+        post.Status == SaleStatus.Open && SaleCheck(post.Checked, post.CheckedMidday) < SaleCheck(utc);
+
     /// <summary>
-    /// The player's open posts catch up with each day gone by since last looked at: each day a post may sell (more likely
-    /// the closer its price is to the card's price, never above the cap), or get a lower offer (then it waits for the
-    /// player's answer); after <see cref="MarketSpec.PostDays"/> days it comes down and the card comes back.
+    /// The player's open posts catch up with each look at their luck since the last one, twice a day: each time a post may
+    /// sell (more likely the closer its price is to the card's price, never above the cap), or get a lower offer (then it
+    /// waits for the player's answer), with the day's chances shared between both looks; after
+    /// <see cref="MarketSpec.PostDays"/> days it comes down (at midnight) and the card comes back.
     /// </summary>
     private static void ResolveSales(CareerState state, CareerWorld world, DateTime utc)
     {
@@ -260,19 +270,24 @@ public static partial class CareerRules
         foreach (var post in state.Posts.Where(p => p.Status == SaleStatus.Open))
         {
             var card = CardKey.Parse(post.Card);
-            for (var day = post.Checked.AddDays(1); day <= state.Day; day = day.AddDays(1))
+            for (long check = SaleCheck(post.Checked, post.CheckedMidday) + 1; check <= SaleCheck(utc); check++)
             {
-                post.Checked = day;
-                if (day.DayNumber - post.Day.DayNumber > market.PostDays)
+                var day = DateOnly.FromDayNumber((int)(check / 2));
+                bool midday = check % 2 == 1;
+                (post.Checked, post.CheckedMidday) = (day, midday);
+                if (!midday && day.DayNumber - post.Day.DayNumber > market.PostDays)
                 {
                     state.AddCard(card, 1);
                     post.Status = SaleStatus.Expired;
                     state.Note(utc, $"Your post for {card.Name} expired: the card is back in your collection.");
                     break;
                 }
-                var random = CareerRandom.For(state.Seed, "sale", post.Id, day.DayNumber);
+                var random = midday ? CareerRandom.For(state.Seed, "sale", post.Id, day.DayNumber, 1) : CareerRandom.For(state.Seed, "sale", post.Id, day.DayNumber);
                 double roll = random.NextDouble();
-                double chance = SaleChance(state, world, card, post.Ask, day);
+                // The day's chances of something happening, shared so that two looks give the same odds over the day.
+                double daily = SaleChance(state, world, card, post.Ask, day), happens = Math.Min(1, daily + market.OfferChance);
+                double share = happens <= 0 ? 0 : (1 - Math.Sqrt(1 - happens)) / happens;
+                double chance = daily * share, offerChance = market.OfferChance * share;
                 if (roll < chance)
                 {
                     state.Cash += post.Ask;
@@ -280,7 +295,7 @@ public static partial class CareerRules
                     state.Note(utc, $"Sold {card.Name} on the forum for {Money(post.Ask)}.");
                     break;
                 }
-                if (roll < chance + market.OfferChance)
+                if (roll < chance + offerChance)
                 {
                     post.Offer = Math.Max(1, (int)Math.Round(post.Ask * (market.OfferMin + random.NextDouble() * (market.OfferMax - market.OfferMin))));
                     post.Status = SaleStatus.Offered;

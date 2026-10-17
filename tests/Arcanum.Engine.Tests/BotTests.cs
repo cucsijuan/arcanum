@@ -244,6 +244,55 @@ public class BotTests
         else Assert.Equal(Zone.Graveyard, game.State.GetCard(giant).Zone); // X = 3 kills the more valuable flier
     }
 
+    private static readonly CardDefinition LifeTide = new()
+    {
+        Name = "Life Tide", Types = CardType.Sorcery, ManaCost = ManaCost.Parse("{2}{B}"), PayXLife = true,
+        Spell = new SpellAbility
+        {
+            Effects = new Effect[] { new PumpUntilEndOfTurn(new Quantity(0, QuantityKind.X, Multiplier: -1), new Quantity(0, QuantityKind.X, Multiplier: -1), Subject.Each(new ObjectFilter(CardType.Creature, Controller: ControllerFilter.Any))) },
+        },
+    };
+
+    /// <summary>
+    /// "Pay X life, all creatures get -X/-X": cast only for a lopsided sweep, with the smallest X that kills the opponent's
+    /// creatures and spares the bot's own; never with life it can't spare.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PayXLifeSweepersAreCastOnlyWhenTheyFavorTheBot(bool opponentHasCreatures)
+    {
+        var bot = new BotController(Scenario.P0) { AlwaysKeep = true };
+        var passive = new TestController { Act = (_, _) => PassPriority.Instance, Attack = (_, _, _) => Array.Empty<AttackDeclaration>() };
+        var game = new Game(new GameConfig { Seed = 1, StartingPlayer = Scenario.P0, StartingLife = 40 }, new[]
+        {
+            new PlayerSetup("Bot", bot, Decks.Of((GenericCards.Forest, 20))),
+            new PlayerSetup("Defender", passive, Decks.Of((GenericCards.Forest, 20))),
+        });
+        bot.UseCardRules(id => game.State.Cards.TryGetValue(id, out var c) ? c.Definition : null);
+        for (int i = 0; i < 3; i++) game.SetupPermanent(Scenario.P0, GenericCards.Swamp);
+        var tide = game.SetupInHand(Scenario.P0, LifeTide);
+        var ours = game.SetupPermanent(Scenario.P0, Scenario.Creature("Colossus", 6, 7));
+        var theirs = opponentHasCreatures
+            ? new[] { game.SetupPermanent(Scenario.P1, Scenario.Creature("Bear", 2, 2)), game.SetupPermanent(Scenario.P1, Scenario.Creature("Giant", 4, 4, Keyword.Flying)) }
+            : Array.Empty<CardId>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        game.EventRaised += e => { if (e is TurnBegan { TurnNumber: 2 }) cts.Cancel(); };
+        try { await game.RunAsync(cts.Token); } catch (OperationCanceledException) { }
+
+        Assert.Equal(Zone.Battlefield, game.State.GetCard(ours).Zone);
+        if (opponentHasCreatures)
+        {
+            Assert.All(theirs, c => Assert.Equal(Zone.Graveyard, game.State.GetCard(c).Zone));
+            Assert.Equal(36, game.State.GetPlayer(Scenario.P0).Life); // X = 4, the least that kills both
+        }
+        else
+        {
+            Assert.Equal(Zone.Hand, game.State.GetCard(tide).Zone);
+            Assert.Equal(40, game.State.GetPlayer(Scenario.P0).Life);
+        }
+    }
+
     private static readonly CardDefinition Tinkerer = Scenario.Creature("Tinkerer", 1, 4) with
     {
         Abilities = new AbilityDefinition[]

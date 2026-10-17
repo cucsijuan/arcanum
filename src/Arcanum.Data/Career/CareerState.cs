@@ -75,6 +75,9 @@ public sealed class SalePost
 
     /// <summary>The last day the post's luck was looked at (the day it went up, at first).</summary>
     public DateOnly Checked { get; set; }
+
+    /// <summary>Whether that day's midday look was the last one too (or the post went up after midday).</summary>
+    public bool CheckedMidday { get; set; }
     public SaleStatus Status { get; set; }
 
     /// <summary>A buyer's lower offer waiting for an answer (cents), or the price it sold for.</summary>

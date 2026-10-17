@@ -884,7 +884,9 @@ public partial class GameBoard : Control
         }
 
         ApplyHighlights(view, decision);
-        _zoneViewer.Refresh(view, id => UsableNow(decision, id));
+        _zoneViewer.Refresh(view, id => UsableNow(decision, id),
+            id => decision is ChooseCardsDecision ? _selected.Contains(id) : _chosenTargets.Any(t => t.Card == id),
+            ChoicePiles(decision).Count > 1 ? "Back" : "Close");
         UpdateArrows(view, decision);
         BuildActionPanel(view, decision);
         UpdateMulliganView(decision);
@@ -1272,6 +1274,8 @@ public partial class GameBoard : Control
                 _prompt.Text = more
                     ? $"{who}: choose any number of {spec.Describe()} for {source} ({_chosenTargets.Count - (t.Request.Specs.Count - 1)} chosen)"
                     : $"{who}: choose {(spec.Optional ? "up to one " : "")}{spec.Describe()} for {source}";
+                if (ChoicePiles(t).Count > 1 && !_zoneViewer.Visible) _prompt.Text += "\nChoose where to look:";
+                AddPileButtons(t);
                 if (t.Request.CanCancel) AddButton("Cancel", () => t.Answer(null));
                 if (_chosenTargets.Count > 0) AddButton("Back", () => { _chosenTargets.RemoveAt(_chosenTargets.Count - 1); Refresh(); });
                 if (more)
@@ -1591,6 +1595,8 @@ public partial class GameBoard : Control
             case ChooseCardsDecision c:
             {
                 _prompt.Text = $"{who}: {c.Request.Prompt}";
+                if (ChoicePiles(c).Count > 1 && !_zoneViewer.Visible) _prompt.Text += "\nChoose where to look:";
+                AddPileButtons(c);
                 // A cost chosen before anything is paid: backing out cancels the spell or ability.
                 if (c.Request.CanCancel) AddButton("Cancel", () => c.Answer(Array.Empty<CardId>()));
                 var done = AddButton(ChoiceConfirmText(_selected.Count, c.Request), () => c.Answer(_selected.ToList()), primary: true);
@@ -2271,13 +2277,19 @@ public partial class GameBoard : Control
     /// </summary>
     private void UpdateMulliganView(Decision? decision)
     {
-        if (decision is TargetDecision td && _chosenTargets.Count < td.Request.Specs.Count
-            && td.Request.Specs[_chosenTargets.Count].Kind == Arcanum.Engine.Abilities.TargetKind.GraveyardCard)
+        if (ChoicePiles(decision) is { Count: > 0 } piles)
         {
-            // Cards in graveyards aren't on the board: show the legal ones large to pick from.
-            var options = td.Request.Legal[_chosenTargets.Count].Where(t => t.Card is not null)
-                .Select(t => ViewBuilderCard(t.Card!.Value, decision.Player)).ToList();
-            _mulligan.ShowHand(options, $"Choose {td.Request.Specs[_chosenTargets.Count].Describe()}", new HashSet<CardId>(), selectable: true);
+            // Cards in graveyards or exile are picked in the zone viewer; a single pile opens at once (once per pick, so it
+            // can be closed and opened again from its button).
+            _mulligan.HideHand();
+            var pick = (decision!, _chosenTargets.Count);
+            if (piles.Count == 1 && !Equals(_pileOpenedFor, pick))
+            {
+                _pileOpenedFor = pick;
+                var (owner, zone, _) = piles[0];
+                if (!(_zoneViewer.Visible && _zoneViewer.Player == owner && _zoneViewer.Zone == zone))
+                    Callable.From(() => OpenZone(owner, zone)).CallDeferred();
+            }
             return;
         }
         if (decision is ChooseCardsDecision choice)
@@ -2305,8 +2317,42 @@ public partial class GameBoard : Control
         _mulligan.ShowHand(view.Players[decision.Player.Value].Hand, title, _selected, selectable: bottom);
     }
 
-    private CardView ViewBuilderCard(CardId id, PlayerId viewer) =>
-        _session.ViewFor(viewer).FindCard(id) ?? new CardView { Id = id, Owner = viewer, Controller = viewer, Zone = Arcanum.Engine.State.Zone.Graveyard, IsHidden = true };
+    /// <summary>The pick the single pile was last opened for, so it opens by itself only once.</summary>
+    private (Decision, int)? _pileOpenedFor;
+
+    /// <summary>
+    /// The graveyards and exiles holding cards the current decision can pick (owner, zone, how many), in seat order: a target
+    /// that can be a card there, or a card choice made only among such cards. They're picked in the zone viewer, a pile at a time.
+    /// </summary>
+    private List<(PlayerId Owner, Arcanum.Engine.State.Zone Zone, int Count)> ChoicePiles(Decision? decision)
+    {
+        if (decision is null) return new();
+        var view = _session.ViewFor(decision.Player);
+        IEnumerable<CardView> cards = decision switch
+        {
+            TargetDecision t when t.Request.CanAddMore(_chosenTargets.Count) => t.Request.LegalAt(_chosenTargets.Count)
+                .Where(o => o.Card is not null && t.Request.IsAllowed(_chosenTargets.Count, o, _chosenTargets))
+                .Select(o => view.FindCard(o.Card!.Value)).OfType<CardView>(),
+            ChooseCardsDecision c when c.Request.Options.All(InPile) => c.Request.Options,
+            _ => Enumerable.Empty<CardView>(),
+        };
+        return cards.Where(InPile).GroupBy(c => (c.Owner, c.Zone)).OrderBy(g => g.Key.Owner.Value).ThenBy(g => g.Key.Zone)
+            .Select(g => (g.Key.Owner, g.Key.Zone, g.Count())).ToList();
+
+        static bool InPile(CardView c) => c.Zone is Arcanum.Engine.State.Zone.Graveyard or Arcanum.Engine.State.Zone.Exile;
+    }
+
+    /// <summary>A button for each graveyard or exile with cards to pick: it opens that pile in the zone viewer.</summary>
+    private void AddPileButtons(Decision decision)
+    {
+        foreach (var (owner, zone, count) in ChoicePiles(decision))
+        {
+            bool open = _zoneViewer.Visible && _zoneViewer.Player == owner && _zoneViewer.Zone == zone;
+            var whose = owner == decision.Player ? "Your" : $"{PlayerName(owner)}'s";
+            var text = $"{(open ? "\u25b8 " : "")}{whose} {(zone == Arcanum.Engine.State.Zone.Graveyard ? "graveyard" : "exile")} ({count} to choose from)";
+            AddChoiceButton(text, () => { if (!open) OpenZone(owner, zone); });
+        }
+    }
 
     private string PlayerName(PlayerId player) => _session.ViewFor(Bottom).Players[player.Value].Name;
 
@@ -2463,6 +2509,8 @@ public partial class GameBoard : Control
     private void PlayEffect(EventView ev)
     {
         Announce(ev);
+        var damaged = _damagedPlayer; // damage to a player is followed at once by the life it loses
+        _damagedPlayer = ev.Event is DamageDealt { TargetPlayer: { } hit } ? hit : null;
         switch (ev.Event)
         {
             case DamageDealt { IsCombat: true } combat:
@@ -2479,6 +2527,13 @@ public partial class GameBoard : Control
             case LifeChanged { NewLife: var now, OldLife: var before } l when now > before:
                 SpawnFloatingText($"+{now - before}", AreaOf(l.Player).LifeGlobalCenter + new Vector2(0, 62), new Color("6fd08c"), rise: 30);
                 break;
+            // Life lost without damage ("each opponent loses 1 life"); the loss from damage was already shown with the damage.
+            case LifeChanged { NewLife: var now, OldLife: var before } l when now < before:
+                if (damaged == l.Player) break;
+                var losing = AreaOf(l.Player);
+                SpawnFloatingText($"-{before - now}", losing.LifeGlobalCenter + new Vector2(0, 62), BoardStyle.Attacking, rise: 30);
+                losing.FlashLife(BoardStyle.Attacking);
+                break;
             case DamageDealt { TargetPlayer: { } player } d:
                 var area = AreaOf(player);
                 Burst(area.LifeGlobalCenter);
@@ -2488,6 +2543,9 @@ public partial class GameBoard : Control
                 break;
         }
     }
+
+    /// <summary>The player the last event dealt damage to: the life change that follows is shown with the damage.</summary>
+    private PlayerId? _damagedPlayer;
 
     private void SpawnFloatingText(string text, Vector2 globalCenter, Color color, float rise = 60)
     {
