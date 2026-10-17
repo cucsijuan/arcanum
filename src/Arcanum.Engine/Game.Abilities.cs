@@ -969,7 +969,7 @@ public sealed partial class Game
                 {
                     ctx.Results.Created.Add(made);
                     if (tc.Attacking && State.Combat is { } copyCombat)
-                        copyCombat.Attacks.Add(new AttackInfo { Attacker = made, Defender = await AttackedPlayerFor(State.GetCard(made), ctx) });
+                        copyCombat.Attacks.Add(await AttackFor(State.GetCard(made), ctx));
                     if (tc.ExileAtEndOfCombat) State.ExileAtEndOfCombat.Add((made, State.GetCard(made).Version));
                     if (tc.SacrificeAtYourNextEndStep)
                         State.AtPlayersNextEndStep.Add((new DelayedTrigger(ctx.Source.Id, SacrificeThatToken, ctx.Controller, 0) { AboutCard = (made, State.GetCard(made).Version) },
@@ -2420,7 +2420,7 @@ public sealed partial class Game
                     var entered = State.GetCard(id);
                     if (entered.Zone != Zone.Battlefield) continue;
                     if ((ph.Attacking || tappedAttacking) && State.Combat is { } combat && entered.IsCreature)
-                        combat.Attacks.Add(new AttackInfo { Attacker = id, Defender = await AttackedPlayerFor(entered, ctx) });
+                        combat.Attacks.Add(await AttackFor(entered, ctx));
                 }
                 EndEnteringTogether();
                 break;
@@ -3160,7 +3160,7 @@ public sealed partial class Game
                         if (t.Attacking && !t.AttackingChosenDefender && State.Combat is { } combat && ctx.Trigger?.Subject is { } attackerId && combat.FindAttack(attackerId) is { } attack)
                             combat.Attacks.Add(new AttackInfo { Attacker = token, Defender = attack.Defender, Planeswalker = attack.Planeswalker });
                         else if (t.Attacking && State.Combat is { } openCombat)
-                            openCombat.Attacks.Add(new AttackInfo { Attacker = token, Defender = await AttackedPlayerFor(State.GetCard(token), ctx) });
+                            openCombat.Attacks.Add(await AttackFor(State.GetCard(token), ctx));
                         if (t.SacrificeAtEndOfCombat) State.SacrificeAtEndOfCombat.Add((token, State.GetCard(token).Version));
                         if (t.HasteUntilEndOfTurn)
                             State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(token, State.GetCard(token).Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });
@@ -4235,7 +4235,7 @@ public sealed partial class Game
             await MoveCardAsync(id, look.TakeTo, controller: who, tapped: look.Tapped || look.Attacking);
             // "Tapped and attacking": its controller chooses which player it attacks (rule 508.4).
             if (look.Attacking && look.TakeTo == Zone.Battlefield && State.GetCard(id) is { Zone: Zone.Battlefield, IsCreature: true } entered && State.Combat is { } lookCombat)
-                lookCombat.Attacks.Add(new AttackInfo { Attacker = id, Defender = await AttackedPlayerFor(entered, new EffectContext(who, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>())) });
+                lookCombat.Attacks.Add(await AttackFor(entered, new EffectContext(who, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>())));
             if (State.GetCard(id).Zone == look.TakeTo) results?.Found.Add(id);
         }
         EndEnteringTogether();
@@ -4637,12 +4637,24 @@ public sealed partial class Game
     private static bool IsCreatureType(string subtype) => !NonCreatureSubtypes.Contains(subtype) || subtype == "Army";
 
     /// <summary>The player a creature put onto the battlefield attacking attacks: its controller chooses among those being attacked (rule 508.4).</summary>
-    private async Task<PlayerId> AttackedPlayerFor(Card creature, EffectContext ctx)
+    /// <summary>
+    /// A creature put onto the battlefield attacking (rule 508.4): its controller chooses an opponent or a planeswalker an opponent controls
+    /// for it to attack, whoever the other attackers attack. It was never declared as an attacker.
+    /// </summary>
+    private async Task<AttackInfo> AttackFor(Card creature, EffectContext ctx)
     {
-        // 508.4: its controller chooses a player it could attack, whoever the other attackers attack.
-        var defending = State.OpponentsOf(creature.Controller).ToList();
-        return defending.Count == 1 ? defending[0]
-            : await ChooseOpponentAsync(creature.Controller, ctx.Source, $"Choose the player {creature.Name} attacks", defending) ?? defending[0];
+        var options = State.OpponentsOf(creature.Controller).Select(p => (Player: p, Planeswalker: (CardId?)null, Label: State.GetPlayer(p).Name))
+            .Concat(State.OpponentsOf(creature.Controller).SelectMany(p => State.PermanentsControlledBy(p).Where(c => c.Is(CardType.Planeswalker))
+                .Select(w => (Player: p, Planeswalker: (CardId?)w.Id, Label: $"{w.Name} ({State.GetPlayer(p).Name})"))))
+            .ToList();
+        int pick = 0;
+        if (options.Count > 1)
+        {
+            pick = await ControllerOf(creature.Controller).ChooseOptionAsync(ViewFor(creature.Controller),
+                new OptionRequest($"Choose what {creature.Name} attacks", creature.Id, options.Select(o => o.Label).ToList(), OptionKind.Other));
+            Require(pick >= 0 && pick < options.Count, "Choose one of the listed players or planeswalkers.");
+        }
+        return new AttackInfo { Attacker = creature.Id, Defender = options[pick].Player, Planeswalker = options[pick].Planeswalker };
     }
 
     /// <summary>Whether that object is legendary (as it last existed if it left the battlefield).</summary>

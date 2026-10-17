@@ -343,10 +343,12 @@ Existing effects take more options: `counter` (`"unlessPays": "{4}"`, `"exilePer
 (`"count"` as a quantity, `"split": true` for one onto the battlefield tapped and the rest into the hand), `reanimate`
 and `reanimateAll` (`"attachTo"`, `"setTypes"`, `"setSubtypes"`, `"abilities"`), `lookAtTop` (`"tapped"`,
 `"rest": "shuffle"`), `exileTopPlayable` (a quantity, `"of": "target"`, `"payLife"`, `"forever"`, `"faceDown"`,
-`"while"`), `revealUntil` (`"battlefieldIf": filter`), `copy` (`"notLegendary"`), `become` (`"powerFrom"`,
+`"while"`), `revealUntil` (`"battlefieldIf": filter`; with `"castFree"`, `"creatureHasteAndSacrifice": true`: if you cast a creature
+spell this way, it gains haste and "At the beginning of the end step, sacrifice this creature."), `copy` (`"notLegendary"`), `become` (`"powerFrom"`,
 `"toughnessFrom"`, `"continuous"`, `"whileSource"`), `pump` (`"whileSource"`), `returnExiledWithThis` and
 `searchExileWithThis` (`"count"`), `emblem` (`"untilEndOfTurn"`), and `whenYouDo` (`"about"`: what "that creature" is,
-`"amount"`: worked out as the reflexive ability is created).
+`"amount"`: worked out as the reflexive ability is created), `"carryExiled": true` (the cards this spell or ability exiled go with the
+reflexive ability, so its target can use the filter `amongFound`: "target creature card exiled this way").
 
 Subjects also: `created`, `found` (cards found by a search), `amassed`, `{ "discarded": filter }`,
 `{ "each": filter, "controlledBy": "target" }`, `{ "each": filter, "exceptTargets": true }`.
@@ -412,7 +414,8 @@ Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYo
 
 ## Mana abilities with choices and costs, linked abilities
 
-- `extraMana` entries also take `"combination": true` ("add two mana in any combination of …": the player chooses
+- `extraMana` entries also take `"oneOfEach": true` (one mana of each of its `types` at once, instead of `amount` mana of one type)
+  and `"combination": true` ("add two mana in any combination of …": the player chooses
   each mana; the payment screen offers the combinations), `"lifeCost": 1` ("{T}, Pay 1 life: Add …") and `"rider"`
   (a mana rider for that ability only, e.g. `LegendaryUncounterable`).
 - `{ "exile": "target", "linked": true }` with a `"leaves"` trigger doing `{ "returnLinkedExiled": true }`: the
@@ -554,8 +557,10 @@ amount: X), `exerted`. Cycling costs may include `{X}`. `"modesRepeat": true` ("
 `copyEachYouControl`, `opponentsExileGreatestPower` (with `"damageIf"`), `copyIfOpponentsTopSharesType`, `suspendWhenResolves`,
 `bounceSameManaValue`, `atNextEndStepAbout`, `destroyPowerAbove`, `exileFromGraveyardChosen` (then subject `exiled`),
 `returnFromGraveyardAll`, `thisSpellToLibraryBottom`, `exileThisSpell`. Options: `castFromGraveyard` takes `"of"`, `"free"`,
-`"maxManaValue"`, `"card"` and `"fromMilled"` (a spell cast this way is exiled instead of going to a graveyard); `search` takes
-`"shareLandType"` and `"withExiled"`; `returnFromGraveyard` takes `"differentManaValues"` and `"anyGraveyard"`; `revealUntil` takes
+`"maxManaValue"`, `"card"`, `"fromMilled"` (only among the cards milled this way) and `"anyMana"` (mana of any type can be spent to cast it); an instant or
+sorcery cast with `castFromGraveyard` is exiled instead of going to a graveyard; `search` takes `"shareLandType"`, `"withExiled"` and
+`"mayBattlefieldIf": condition` (decided once the card is found: if the condition holds, you may put that card onto the battlefield
+tapped; if you don't, it goes into your hand); `returnFromGraveyard` takes `"differentManaValues"` and `"anyGraveyard"`; `revealUntil` takes
 `"attachTo"`; `reanimate` takes `"counterKinds"`; `may` takes `"else"`; `atNextUpkeep` takes `"yours"` and `"player"`; `mayPayX`
 takes `"max"`; `piles` takes `"revealed"`; `exileTopPlayable` takes `"anyMana"` and several libraries; `tokens` takes `"size"` (an X/X
 token); copies take `"exileAtEndOfCombat"`; `exileUntilLeaves` takes `"castable"`.
@@ -580,7 +585,12 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   several do, the affected player (or the affected permanent's controller) chooses their order (rule 616.1), and each applies once.
 - **Prevention**: `preventDamage` with no qualifier prevents all (combat, with `"combatOnly": true`) damage this turn (Fog); qualifiers
   combine: `"dealtBy"`, `"sources"`, `"toYou": true`, `"toYourCreatures": true` ("to you and creatures you control": creatures that come
-  under your control later in the turn too). Static: `"preventDamage": "all" | "noncombat"` (to the affected permanents, e.g.
+  under your control later in the turn too). With `"to"`: `"putCounters": true` ("if damage would be dealt to that creature this turn,
+  prevent that damage and put that many +1/+1 counters on it": a replacement, so the counters are put as the damage is prevented);
+  `"fromOpponents": true` (only damage from sources an opponent of the effect's controller controls); `"whenCreatureDamagePrevented":
+  [effects]` with `"whenPreventedText"` ("whenever damage from a creature is prevented this way, …": a delayed triggered ability for
+  the rest of the turn about the creature that would have dealt the damage, subject `"triggered"`; the text is its rules text).
+  Static: `"preventDamage": "all" | "noncombat"` (to the affected permanents, e.g.
   `"affects": "equipped"`). Replacements: `PreventOneDamageFromOpponentsSources` ("if a source an opponent controls would deal damage to
   you, prevent 1 of that damage", per source and event), `PreventDamageRemoveCounters` ("prevent that damage and remove that many +1/+1
   counters from it").
@@ -1015,6 +1025,9 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
     control, tapped and attacking (the owner chooses the player it attacks), and it can't be blocked that combat. A creature put
     onto the battlefield attacking doesn't skip the blocker and damage steps unless no creature was declared as an attacker or put
     there attacking (508.8).
+  - Engine (no key): a creature put onto the battlefield attacking (tapped-and-attacking tokens, `putFromHand` attacking,
+    warp strike) has its controller choose any opponent, or a planeswalker an opponent controls, for it to attack (508.4). It isn't
+    limited to the players the other attackers attack.
   - `"adventureFromGraveyardUntilYourNextTurn": subject` (on a dies trigger): the card may be cast from its owner's graveyard only as
     its Adventure, until the end of its owner's next turn.
   - `"playExiledWithThisThisTurn": true` with `"costLess": N`: until end of turn the controller may play the cards exiled with this

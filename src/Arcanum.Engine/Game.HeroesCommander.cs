@@ -343,7 +343,7 @@ public sealed partial class Game
                 if (card.Zone != Zone.Exile || ctx.Trigger?.Subject != card.Id || ctx.Trigger.SubjectVersion != card.Version) break;
                 await MoveCardAsync(card.Id, Zone.Battlefield, controller: card.Owner, tapped: true);
                 if (card.Zone != Zone.Battlefield || !card.IsCreature || State.Combat is not { } combat) break;
-                combat.Attacks.Add(new AttackInfo { Attacker = card.Id, Defender = await AttackedPlayerFor(card, ctx) });
+                combat.Attacks.Add(await AttackFor(card, ctx));
                 combat.Unblockable.Add((card.Id, card.Version));
                 break;
             }

@@ -2000,4 +2000,33 @@ public class HeroesCommanderTests
         Assert.True(s.Card(gentleman).OnAdventure);
         Assert.Single(s.Game.State.Battlefield, id => s.Card(id).Name == "Zombie");
     }
+
+    [Fact]
+    public async Task ACreaturePutOntoTheBattlefieldAttackingCanAttackAnOpponentsPlaneswalker()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 3);
+        var walker = s.Add(P1, new CardDefinition { Name = "Sage", ManaCost = ManaCost.Parse("{2}"), Types = CardType.Planeswalker, Loyalty = 5 });
+        s.Card(walker).Counters[CounterKind.Loyalty] = 5;
+        var prince = s.Add(P0, Make("Prince", "Creature — Human Noble", """
+            { "abilities": [{ "cost": "{3}", "effects": [{ "warpStrike": "self" }], "text": "Warp-strike {3}" }] }
+            """, "{W}{U}{B}", "2/3"));
+        bool warped = false;
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!warped && s.Game.State.Step == Step.PrecombatMain && legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == prince) is { } warp)
+            {
+                warped = true;
+                return warp;
+            }
+            return PassPriority.Instance;
+        };
+        IReadOnlyList<string>? choices = null;
+        s.Attacker.Option = (_, request) => { choices = request.Options; return request.Options.ToList().FindIndex(o => o.StartsWith("Sage")); };
+        await s.RunUntilTurn(2);
+        Assert.Equal(2, choices!.Count); // the opponent or their planeswalker
+        Assert.Equal(5 - 2, s.Card(walker).CounterCount(CounterKind.Loyalty));
+        Assert.Equal(20, s.Game.State.GetPlayer(P1).Life);
+    }
 }
