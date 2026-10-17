@@ -57,6 +57,9 @@ public sealed record BoosterSpec(string Name, string Description, IReadOnlyDicti
 
     /// <summary>A picture of this kind of booster, when it differs from the set's pack picture.</summary>
     public string? PackImage { get; init; }
+
+    /// <summary>The sealed ends of <see cref="PackImage"/> (top, then bottom), when given with it.</summary>
+    public (double Top, double Bottom)? PackImageSeals { get; init; }
 }
 
 /// <summary>
@@ -188,6 +191,7 @@ public sealed record SetDefinition
         {
             Variants = variants,
             PackImage = b.TryGetProperty("pack", out var pk) && pk.ValueKind == JsonValueKind.Object ? Str(pk, "image") : null,
+            PackImageSeals = b.TryGetProperty("pack", out var pack) && pack.ValueKind == JsonValueKind.Object ? Seals(pack) : null,
         };
     }
 

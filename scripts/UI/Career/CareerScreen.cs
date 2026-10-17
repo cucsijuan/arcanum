@@ -1527,7 +1527,9 @@ public partial class CareerScreen : Control
         if (BoosterOpening.Available && Settings.Current.BoosterOpening != "skip" && World.Sets.TryGetValue(set, out var definition))
         {
             foreach (var node in nodes) node.Modulate = Colors.Transparent;
-            var opening = new BoosterOpening(definition.BoosterOf(kind)?.PackImage ?? definition.PackImage, definition.PackImageSeals,
+            var spec = definition.BoosterOf(kind);
+            var opening = new BoosterOpening(spec?.PackImage ?? definition.PackImage,
+                spec?.PackImage is not null ? spec.PackImageSeals ?? (0.07, 0.06) : definition.PackImageSeals,
                 World.BoosterName(key), automatic: Settings.Current.BoosterOpening == "auto");
             opening.Opened += _ => Reveal(nodes);
             overlay.AddChild(opening);
