@@ -295,7 +295,10 @@ public partial class CareerScreen
         (DeckList Deck, List<string> Problems)? deck = null;
         if (e.Kind is CareerRules.Constructed or CareerRules.Commander)
         {
-            deck = DeckPicker(body, commander: e.Kind == CareerRules.Commander);
+            var format = World.FormatOf(e);
+            if (e.Kind == CareerRules.Constructed && !string.IsNullOrEmpty(e.Format))
+                body.AddChild(CareerStyle.Text($"{format.Name}: your deck must be legal in {format.Name}.", 19, CareerStyle.InkDim, wrap: true));
+            deck = DeckPicker(body, commander: e.Kind == CareerRules.Commander, format: format);
             if (deck is null) return;
         }
         var links = new HFlowContainer();

@@ -340,14 +340,21 @@ public static partial class CareerRules
     private static OpponentSpec Opponent(CareerState state, CareerWorld world, string id) =>
         Opponents(state, world).FirstOrDefault(o => o.Id == id) ?? throw new CareerRuleException("You can't play that regular yet.");
 
-    private static DeckList PlayableDeck(string text, CareerState state, CareerWorld world, bool commander = false)
+    private static DeckList PlayableDeck(string text, CareerState state, CareerWorld world, bool commander = false) =>
+        PlayableDeck(text, state, world, commander ? world.CommanderFormat : FormatRules.Casual);
+
+    private static DeckList PlayableDeck(string text, CareerState state, CareerWorld world, FormatRules format)
     {
         DeckList deck;
         try { deck = DeckList.Parse(text); }
         catch (FormatException) { throw new CareerRuleException("That deck list can't be read."); }
-        if (DeckProblems(deck, state, world, commander) is [var first, ..]) throw new CareerRuleException(first);
+        if (DeckProblems(deck, state, world, format) is [var first, ..]) throw new CareerRuleException(first);
         return deck;
     }
+
+    /// <summary>Whether a deck is legal in a format, collection aside (the computer players' decks).</summary>
+    public static bool LegalIn(DeckList deck, FormatRules format, CareerWorld world) =>
+        DeckValidator.Validate(deck, format, world.Cards).All(i => i.Severity != IssueSeverity.Error);
 
     private static CareerResult EndMatch(CareerState state, FinishMatch result, CareerWorld world)
     {
@@ -608,7 +615,8 @@ public static partial class CareerRules
         if (e.Kind is Constructed or Commander)
         {
             if (enter.Deck is null) throw new CareerRuleException(e.Kind == Commander ? "Choose a Commander deck." : "Choose a deck.");
-            PlayableDeck(enter.Deck, state, world, e.Kind == Commander);
+            // The event's format: Commander, or the constructed event's (casual when it names none).
+            PlayableDeck(enter.Deck, state, world, world.FormatOf(e));
             deck = enter.Deck;
         }
         var set = e.Kind == Draft ? EventSet(world, e, state.Day) : "";

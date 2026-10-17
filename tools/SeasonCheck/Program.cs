@@ -19,7 +19,8 @@ catch (Exception e) when (e is FormatException or System.Text.Json.JsonException
     return 1;
 }
 var problems = season.Problems(content, module.LoadSets().ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase),
-    module.DeckNames().ToHashSet(StringComparer.OrdinalIgnoreCase)).ToList();
+    module.DeckNames().ToHashSet(StringComparer.OrdinalIgnoreCase),
+    module.LoadFormats().Select(f => f.Id).ToHashSet(StringComparer.OrdinalIgnoreCase)).ToList();
 if (args.Length > 2 && File.Exists(args[2]) && new FileInfo(args[2]).Length > 0)
 {
     var today = DateOnly.FromDateTime(DateTime.UtcNow);

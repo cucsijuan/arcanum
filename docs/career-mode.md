@@ -81,12 +81,17 @@ Every event is defined by data (built-in default schedule in the content module,
 | `id`, `name` | `draft-night`, "Draft night" |
 | `when` | weekly on Wednesday 18:00–24:00 UTC; monthly last Sunday; or a date range |
 | `kind` | constructed (format id), commander pod, draft, sealed, prerelease |
+| `format` | constructed events: a module format id (`standard`, `modern`…); empty: any cards (casual). Commander events use the Commander format |
 | `set` | set code for limited events / featured set |
 | `entry` | cash, boosters, or a qualification token |
 | `prizes` | by place or by record (3-0, 2-1…): cash, boosters, promo, qualification token, rank points, reputation |
 | `minTier` | reputation tier required |
 | `modes` | `pve`, `pvp`, or both; `pveRewardScale` (e.g. 0.5) |
 | `rounds`, `bestOf`, `podSize` | Swiss rounds, Bo1/Bo3, Commander pod of 4 |
+
+An event's format decides which decks it takes. Entering checks the player's deck against it (`CareerRules.Enter`, and
+the same check when a journal is replayed). The computer players bring module decks legal in the format, any of their
+own when none is.
 
 Default week (illustrative):
 
@@ -96,7 +101,9 @@ Default week (illustrative):
 | Wednesday | Draft night | $15 or 3 boosters | featured set |
 | Friday | Commander night | $5 | 4-player pods, social reputation |
 | Saturday | Weekly tournament | $20 | constructed, Swiss, rank points |
-| Last Sunday | Monthly championship | $50 or qualification | top players get a qualification token |
+| Last Sunday | Monthly championship | $25 | local, any cards, open to any reputation, no qualification; first place $150 and 5 boosters; earns the money for the regional qualifier |
+| Seasonal | Regional qualifier | entry fee (`career/career.json`) | offline only, several days; qualifies for the regional championship (design, C6, see *Circuit*) |
+| Seasonal | Regional championship | entry fee (`career/career.json`) | online slots or offline, two days; qualifies for the international tournament (design, C6, see *Circuit*) |
 | Seasonal | International tournament | qualification token | PvP only (config) |
 
 Offline, events are always PvE. An event with `online` (start times UTC, check-in minutes, `pvpOnly`, `offlineScale`)
@@ -170,11 +177,7 @@ shows them and the pointer's position; Ctrl+click copies a point).
 - **Season file** (served by the career service, not EOS Title Storage: the service needs the same file to verify
   careers, so it lives in one place): the module's `career/season.json` lists changes, each from a day on (to a last
   day, optionally): events added, replaced (same id) or cancelled; the featured set; booster prices; a line of news.
-  The season editor (started with `tools/season-editor.sh [module dir] [user@host]`, a page on this computer) plans it on a
-  calendar (store events, the season's, cancelled ones, featured set, prices and news per day; played days locked),
-  with forms for changes and events. It starts from the published season, keeps a draft on this computer
-  (`~/.local/share/arcanum-season-editor/<module id>.json`, dropped once published), downloads it as a file and
-  publishes it; it never writes the module (its `season.json` is replaced by hand when wanted).
+  The season editor plans it (see *Season editor*).
   `server/Arcanum.CareerService/deploy/publish-season.sh <module dir> [user@host] [season file]` checks it (`tools/SeasonCheck`: everything it
   names exists, and no day already played changes, since careers are replayed with it) and puts it on the service,
   which serves `/career/season/<module id>.json` as a static file. The game downloads it when it changed (at start;
@@ -190,6 +193,27 @@ shows them and the pointer's position; Ctrl+click copies a point).
 - **Leaderboards / Stats:** rank per format, event wins, season standings.
 - **Server time:** dailies and event windows use the service's time when online (learned from the season download's
   answer); offline uses the local clock but never goes backwards from the last time seen.
+
+### Season editor
+
+Started with `tools/season-editor.sh [module dir] [user@host]`, a page on this computer. It plans the season on a
+calendar: store events, the season's changes, cancelled events, featured set, prices and news per day. It starts from
+the published season and keeps a draft on this computer (`~/.local/share/arcanum-season-editor/<module id>.json`,
+dropped once published). It downloads the season as a file and publishes it; it never writes the module (its
+`career/season.json` is replaced by hand when wanted).
+
+- **Day tab:** clicking a day lists every event of that day: store events from the module, events changed or added by
+  the season, and cancelled ones. Past days are read only.
+- **Store events:** *Edit this day only*, *Edit from this day on*, *Cancel this day* and *Cancel from this day on*.
+  The editor makes a season change for those days, with a copy of the event under the same id, which replaces the
+  store's event.
+- **Events of a change that hasn't started** are edited in place. A change that has started can't be changed.
+- **Cancelled events** can be restored while their change hasn't started.
+- **All changes tab:** the list of every change.
+- **Formats:** a constructed event has a *Format* selector: *Any cards (casual)*, or one of the module's formats with a
+  legality list (Commander and limited formats aren't listed). The season check reports unknown formats, and a format
+  on an event that isn't constructed. To switch a format off (for example for security), edit the events that use it
+  from the editor.
 
 ### Accounts
 
@@ -242,6 +266,8 @@ than in the drop. Their art and finishes are the real ones (printings with their
   paired into pods/Swiss events. Missing seats are filled with bots; matches against bots pay the PvE scale.
 - PvE choice: the player can enter the same event against bots only, any time in the window, for the reduced prizes.
 - PvP-only events (configured) don't offer that.
+- The online regional championship (design, see *Circuit*) uses two fixed time slots, each with a 30-minute check-in
+  before its start, and plays on two days in the player's slot.
 
 ### Trust — the main open decision
 
@@ -317,8 +343,55 @@ Without the service (until it exists), options are:
    player's pool comes from the event, so the collection doesn't matter and can't be cheated in.
 
 Recommendation: ship C1–C3 with option 1 but already journal-based (so the service can be added without changing the
-save format), big events limited (option 2), and the career service in C5 before online prizes exist. Constructed big
-events need the dedicated host for the games themselves.
+save format), big events limited (option 2), and the career service in C5 before online prizes exist. Constructed
+online games need a host (*Decisions to take*, 2).
+
+Decided for the circuit (design): the circuit's regional qualifiers and regional championships use the real formats,
+constructed included, instead of option 2. The risk is accepted for now; see *Circuit*, *Formats*.
+
+## Circuit: qualifying events (design, C6)
+
+Design only, not implemented. Part of milestone C6. It builds on C4 (remote config) and C5 (online events). The
+qualification chain:
+
+```
+regional qualifier → regional championship → international tournament
+```
+
+Entry fees and prizes for the qualifier and the championship are set in the module's `career/career.json`. No prices
+are fixed here.
+
+### Regional qualifier
+
+- Offline only, against computer players.
+- Shape as in real life: one day at a store, Swiss rounds of best-of-three matches, usually a top 8 single-elimination
+  cut. The number of rounds follows the simulated attendance: about 4 rounds for 16 players, 5 for 32, 6 for 64.
+- Too long for one sitting, so it runs in a window of several days (for example Friday to Sunday). The event's state is
+  kept between rounds in the career folder (`event.json`), so the player plays rounds on different days.
+- The winner, or the top finishers depending on the size, qualify for the regional championship.
+- Open: what happens to rounds not played when the window closes (a loss, or a drop).
+
+### Regional championship
+
+- Shape as in real life: two days (sometimes a third for the top 8). About 14–15 Swiss rounds, about 8 on day 1 and the
+  rest on day 2. Often a cut after day 1 by record, then a top 8.
+- The top finishers qualify for the international tournament.
+- **Online:** two fixed time slots (for example one for Europe and Africa, one for the Americas), each with a 30-minute
+  check-in before its start. Empty seats get computer players, as in *Scheduled online events*. Day 2 is the next day in
+  the same slot, for the players who make the cut.
+- **Offline:** when nobody is online, or the player prefers, it is played against computer players over a multi-day
+  window, like the qualifier.
+- Offline grants less qualification than online. For example, only the champion qualifies offline, against the top
+  finishers online. The online event stays worth playing.
+
+### Formats
+
+- The same formats as the real events, constructed included (Standard, Modern, Pioneer, and so on), and sealed or draft.
+  This replaces the earlier plan to limit the big events, for these events only.
+- **Accepted risk:** the collection and the offline results can't be validated, because the client reports them. A
+  modified client could enter a constructed deck with cards it doesn't own, or claim an offline qualification. The only
+  gain is entry to the international tournament, which is played against people. The career service checks (journal
+  replay, signed profile) narrow this later.
 
 ## Building blocks already there
 
@@ -354,7 +427,7 @@ events need the dedicated host for the games themselves.
 | C3 | **Offline calendar** (done, in testing): weekly events from the module's default schedule (draft night, commander night, Saturday tournament, monthly championship) against bots, prizes and qualification tokens, in-game card prices reacting to results | a full in-game month has a shape |
 | C4 | **Accounts and remote config:** Discord sign-in (replacing Device ID) and account linking screen; Title Storage season file, server time, cached config, cloud save; developer tool to validate a season file before publishing | changing the season file changes next week's events without a release |
 | C5 | **Online events:** career service (profile sync and signing, online prizes), check-in windows, pairing, bot fill, PvE option at reduced prizes, result confirmation, leaderboards and rank | two players meet in a scheduled draft night online |
-| C6 | **The circuit:** qualification chain (monthly → international), PvP-only events, season standings and end-of-season rewards; constructed big events once the dedicated server exists | a season can be won |
+| C6 | **The circuit** (design, not implemented): regional qualifier (offline) → regional championship (online slots or offline) → international tournament, see *Circuit*; PvP-only events, season standings and end-of-season rewards; constructed big events once the dedicated server exists | a season can be won |
 
 C1–C3 are fully useful without any online part, so the mode can ship early as an offline career.
 

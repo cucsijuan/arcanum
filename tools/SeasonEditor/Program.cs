@@ -20,6 +20,9 @@ var module = ContentModule.Load(moduleDir);
 var content = module.LoadCareer() ?? throw new InvalidOperationException("The module has no career.");
 var sets = module.LoadSets().ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase);
 var decks = module.DeckNames().ToHashSet(StringComparer.OrdinalIgnoreCase);
+// Formats a constructed event can be played in: those with a legality list (no format means casual; Commander and limited come with the kind).
+var formats = module.LoadFormats().Where(f => !f.Commander && !f.Limited && f.Legality is not null).ToList();
+var formatIds = module.LoadFormats().Select(f => f.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
 string moduleSeasonFile = Path.Combine(moduleDir, "career", "season.json");
 string draftFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "arcanum-season-editor", module.Manifest.Id + ".json");
 string publishScript = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../server/Arcanum.CareerService/deploy/publish-season.sh"));
@@ -53,7 +56,7 @@ DateOnly Today() => DateOnly.FromDateTime(DateTime.UtcNow);
 // Everything wrong with a season, as the publish check sees it.
 List<string> Check(CareerSeason season)
 {
-    var problems = season.Problems(content, sets, decks).ToList();
+    var problems = season.Problems(content, sets, decks, formatIds).ToList();
     if (published?.ChangedPast(season, Today()) is { } past) problems.Add(past);
     return problems;
 }
@@ -84,6 +87,7 @@ app.MapGet("/api/content", () => Results.Json(new
     events = content.Events,
     tiers = content.Tiers.Select(t => t.Name),
     decks = decks.OrderBy(d => d),
+    formats = formats.Select(f => new { id = f.Id, name = f.Name }),
     publishedNote,
 }, web));
 
@@ -118,9 +122,15 @@ app.MapPost("/api/calendar", (JsonObject body) =>
     var today = Today();
     var days = Enumerable.Range(0, count).Select(i => from.AddDays(i)).Select(day =>
     {
+        // The change in force that sets an event (or cancels it) on this day: its index in the season's changes.
+        var inForce = season.Changes.Select((c, i) => (c, i)).Where(x => x.c.From <= day && (x.c.Until is not { } u || day <= u)).ToList();
+        int? SetBy(string id) => inForce.LastOrDefault(x => x.c.Events.Any(e => e.Id == id)) is { c: not null } hit ? hit.i : null;
+        int? CancelledBy(string id) => inForce.LastOrDefault(x => x.c.Cancel.Contains(id)) is { c: not null } hit ? hit.i : null;
         var events = season.Events(content, day).Where(e => CareerRules.Happens(e, day)).Select(e => new
         {
             e.Id,
+            change = SetBy(e.Id),
+            e.Format,
             e.Name,
             e.Kind,
             set = e.Kind == CareerRules.Draft ? (e.Set.Equals("featured", StringComparison.OrdinalIgnoreCase) ? season.FeaturedSet(content, day) : e.Set) : null,
@@ -129,7 +139,8 @@ app.MapPost("/api/calendar", (JsonObject body) =>
             pvpOnly = e.Online?.PvpOnly ?? false,
             source = content.Events.FirstOrDefault(m => m.Id == e.Id) is { } original ? (original == e ? "module" : "changed") : "season",
         });
-        var cancelled = content.Events.Where(e => CareerRules.Happens(e, day) && season.Events(content, day).All(x => x.Id != e.Id)).Select(e => e.Name);
+        var cancelled = content.Events.Where(e => CareerRules.Happens(e, day) && season.Events(content, day).All(x => x.Id != e.Id))
+            .Select(e => new { e.Id, e.Name, change = CancelledBy(e.Id) });
         var featured = season.FeaturedSet(content, day);
         return new
         {
@@ -142,6 +153,7 @@ app.MapPost("/api/calendar", (JsonObject body) =>
             featuredChanged = featured != CareerSeason.None.FeaturedSet(content, day),
             prices = new[] { (string?)null }.Concat(kinds).ToDictionary(k => k ?? "play", k => season.BoosterPrice(content, k, day)),
             news = season.On(day).Select(c => c.News).OfType<string>(),
+            changes = inForce.Select(x => x.i),
         };
     });
     return Results.Json(new { problems = Check(season), days }, web);

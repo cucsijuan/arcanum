@@ -586,8 +586,10 @@ public partial class CareerScreen : Control
     }
 
     /// <summary>The career deck chooser (shared by every kind of match) and what keeps the chosen deck from being played; null without decks.</summary>
-    private (DeckList Deck, List<string> Problems)? DeckPicker(VBoxContainer page, bool commander = false)
+    /// <param name="format">The format the deck must be legal in (null: Commander or casual, as <paramref name="commander"/> says).</param>
+    private (DeckList Deck, List<string> Problems)? DeckPicker(VBoxContainer page, bool commander = false, Arcanum.Data.Formats.FormatRules? format = null)
     {
+        format ??= commander ? World.CommanderFormat : Arcanum.Data.Formats.FormatRules.Casual;
         var decks = Career.Decks.List(null).Where(d => (d.FormatId == CareerRules.Commander) == commander).ToList();
         if (decks.Count == 0)
         {
@@ -598,7 +600,7 @@ public partial class CareerScreen : Control
         }
         ref int index = ref commander ? ref _commanderDeckIndex : ref _deckIndex;
         if (!(commander ? _commanderDeckPicked : _deckPicked))
-            index = Math.Max(0, decks.FindIndex(d => CareerRules.DeckProblems(Career.Decks.Load(d).Deck, State, World, commander).Count == 0));
+            index = Math.Max(0, decks.FindIndex(d => CareerRules.DeckProblems(Career.Decks.Load(d).Deck, State, World, format).Count == 0));
         index = Math.Clamp(index, 0, decks.Count - 1);
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 12);
@@ -615,7 +617,7 @@ public partial class CareerScreen : Control
         row.AddChild(picker);
         page.AddChild(row);
         var (chosen, _) = Career.Decks.Load(decks[index]);
-        var problems = CareerRules.DeckProblems(chosen, State, World, commander);
+        var problems = CareerRules.DeckProblems(chosen, State, World, format);
         foreach (var problem in problems.Take(3)) page.AddChild(CareerStyle.Text(problem, 18, CareerStyle.Bad, wrap: true));
         return (chosen, problems);
     }

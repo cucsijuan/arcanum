@@ -292,6 +292,12 @@ public sealed record EventSpec(string Id, string Name, string When, string Kind,
 
     /// <summary>Played online at set times too (null: only against the computer, any time of its day).</summary>
     public OnlineSpec? Online { get; init; }
+
+    /// <summary>
+    /// Constructed events: the id of the module format the decks must be legal in ("standard", "modern"…); empty: any cards (casual).
+    /// Commander events always use the Commander format.
+    /// </summary>
+    public string Format { get; init; } = "";
 }
 
 /// <summary>

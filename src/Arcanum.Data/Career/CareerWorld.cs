@@ -21,19 +21,34 @@ public sealed class CareerWorld
     public IReadOnlyDictionary<string, SetDefinition> Sets { get; }
 
     /// <summary>The Commander format's rules (the module's, or the usual ones).</summary>
-    public Formats.FormatRules CommanderFormat { get; }
+    public Arcanum.Data.Formats.FormatRules CommanderFormat { get; }
+
+    /// <summary>The module's formats by id.</summary>
+    public IReadOnlyDictionary<string, Arcanum.Data.Formats.FormatRules> Formats { get; }
+
+    /// <summary>
+    /// The format an event's decks must be legal in: Commander for Commander events, the event's format for constructed ones (casual when it
+    /// names none). Draft events have no deck rules here (the pool decides).
+    /// </summary>
+    public Arcanum.Data.Formats.FormatRules FormatOf(EventSpec e) =>
+        e.Kind == CareerRules.Commander ? CommanderFormat
+        : string.IsNullOrEmpty(e.Format) ? Arcanum.Data.Formats.FormatRules.Casual
+        : Formats.TryGetValue(e.Format, out var format) ? format
+        : throw new CareerRuleException($"{e.Name} is played in a format this game doesn't know ('{e.Format}').");
 
     /// <param name="readDeck">A module deck's text by name, or null when there is no such deck.</param>
     /// <param name="formats">The module's formats (for the Commander format's rules).</param>
     /// <param name="season">The season's changes (none: the content's calendar and prices as they are).</param>
     public CareerWorld(CareerContent content, CardDatabase cards, IEnumerable<SetDefinition> sets, Func<string, string?> readDeck,
-        IEnumerable<Formats.FormatRules>? formats = null, CareerSeason? season = null)
+        IEnumerable<Arcanum.Data.Formats.FormatRules>? formats = null, CareerSeason? season = null)
     {
         Season = season ?? CareerSeason.None;
-        CommanderFormat = formats?.FirstOrDefault(f => f.Commander) ?? new Formats.FormatRules
+        CommanderFormat = formats?.FirstOrDefault(f => f.Commander) ?? new Arcanum.Data.Formats.FormatRules
         {
             Id = "commander", Name = "Commander", MinDeckSize = 100, MaxDeckSize = 100, MaxCopies = 1, Commander = true, StartingLife = 40,
         };
+        Formats = (formats ?? Array.Empty<Arcanum.Data.Formats.FormatRules>()).GroupBy(f => f.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         Content = content;
         Cards = cards;
         Sets = sets.ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase);

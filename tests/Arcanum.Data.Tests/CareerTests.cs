@@ -561,6 +561,29 @@ public class CareerTests
     }
 
     [Fact]
+    public void AConstructedEventInAFormatTakesOnlyDecksLegalInIt()
+    {
+        var (state, journal, _) = StartedWithSixty();
+        const string season = """
+            { "schemaVersion": 1, "changes": [ { "from": "2026-10-12", "events": [
+                { "id": "sat", "name": "Saturday tournament", "when": "Saturday", "kind": "constructed", "format": "standard", "entry": 100,
+                  "prizes": [{ "reputation": 1 }] } ] } ] }
+            """;
+        var standard = Arcanum.Data.Formats.FormatRules.Parse("""{ "id": "standard", "name": "Standard", "legality": "standard" }""");
+        var world = new CareerWorld(CareerContent.Parse(ContentJson.Replace("\"challengesPerWeek\": 2", "\"challengesPerWeek\": 0")), Database(),
+            new[] { SetDefinition.Parse(SetJson) }, name => Decks.GetValueOrDefault(name), new[] { standard }, CareerSeason.Parse(season));
+        var saturday = T0.AddDays(5);
+        // The starter cards have no legality in that format: the deck can't enter.
+        Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(saturday, "sat", CareerRules.PayCash, Sixty), world));
+        Assert.Equal("standard", world.FormatOf(world.Event("sat", DateOnly.FromDateTime(saturday))!).Id);
+
+        // The season check knows the module's formats.
+        var unknown = CareerSeason.Parse(season.Replace("\"standard\"", "\"nonesuch\""));
+        Assert.Contains(unknown.Problems(world.Content, world.Sets, new HashSet<string>(), new HashSet<string> { "standard" }), p => p.Contains("no format 'nonesuch'"));
+        Assert.DoesNotContain(CareerSeason.Parse(season).Problems(world.Content, world.Sets, new HashSet<string>(), new HashSet<string> { "standard" }), p => p.Contains("format"));
+    }
+
+    [Fact]
     public void FoilsAreKeptApartAndWorthMore()
     {
         var (state, journal, world) = StartedWithSixty();

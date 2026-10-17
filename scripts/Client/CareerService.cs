@@ -440,6 +440,15 @@ public sealed class CareerService
         var regulars = world.Content.Opponents.OrderBy(_ => random.Next()).ToList();
         var visitors = world.Content.Visitors.OrderBy(_ => random.Next()).ToList();
         var seats = new List<EventSeat> { new() { Name = Settings.PlayerName, IsHuman = true, Deck = spec.Kind == CareerRules.Constructed ? DeckList.Parse(entry.Deck) : null } };
+        // The computer players bring decks legal in the event's format (any of theirs when none is).
+        var format = spec.Kind == CareerRules.Constructed ? world.FormatOf(spec) : null;
+        List<string> Legal(IReadOnlyList<string> names)
+        {
+            if (format is null || string.IsNullOrEmpty(spec.Format)) return names.ToList();
+            var legal = names.Where(n => world.Deck(n) is { } d && CareerRules.LegalIn(d, format, world)).ToList();
+            return legal.Count > 0 ? legal : names.ToList();
+        }
+        var preconDecks = Legal(world.Content.Precons.Select(p => p.Deck).ToList());
         for (int i = 1; i < spec.Players; i++)
         {
             DeckList? deck = null;
@@ -450,14 +459,21 @@ public sealed class CareerService
                 var regular = regulars[i - 1];
                 name = regular.Name;
                 skill = DraftSkill(regular);
-                if (spec.Kind == CareerRules.Constructed) deck = CareerRules.OpponentDeck(State, world, regular.Id, regular.Decks[random.Next(regular.Decks.Count)]);
+                if (spec.Kind == CareerRules.Constructed)
+                {
+                    var theirs = Legal(regular.Decks);
+                    var name0 = theirs[random.Next(theirs.Count)];
+                    deck = CareerRules.OpponentDeck(State, world, regular.Id, name0);
+                    // A rival's improved deck must still be legal; otherwise the deck as it was.
+                    if (format is not null && !string.IsNullOrEmpty(spec.Format) && !CareerRules.LegalIn(deck, format, world) && world.Deck(name0) is { } plain) deck = plain;
+                }
             }
             else
             {
                 int v = i - 1 - regulars.Count;
                 name = v < visitors.Count ? visitors[v] : $"Visitor {v + 1}";
-                if (spec.Kind == CareerRules.Constructed && world.Content.Precons.Count > 0)
-                    deck = world.Deck(world.Content.Precons[random.Next(world.Content.Precons.Count)].Deck);
+                if (spec.Kind == CareerRules.Constructed && preconDecks.Count > 0)
+                    deck = world.Deck(preconDecks[random.Next(preconDecks.Count)]);
             }
             seats.Add(new EventSeat { Name = name, Deck = deck, Skill = skill });
         }

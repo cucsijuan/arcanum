@@ -52,7 +52,9 @@ public sealed record CareerSeason
     });
 
     /// <summary>What's wrong with the season for a content module's career (sets, booster kinds, decks and events it names).</summary>
-    public IReadOnlyList<string> Problems(CareerContent content, IReadOnlyDictionary<string, Limited.SetDefinition> sets, ICollection<string> decks)
+    /// <param name="formats">The module's format ids (null: not checked).</param>
+    public IReadOnlyList<string> Problems(CareerContent content, IReadOnlyDictionary<string, Limited.SetDefinition> sets, ICollection<string> decks,
+        ICollection<string>? formats = null)
     {
         var problems = new List<string>();
         var known = content.Events.Select(e => e.Id).ToHashSet();
@@ -77,6 +79,11 @@ public sealed record CareerSeason
                 if (e.Kind is not (CareerRules.Draft or CareerRules.Constructed or CareerRules.Commander)) problems.Add($"{where}: unknown kind '{e.Kind}'.");
                 if (e.Kind == CareerRules.Draft && !e.Set.Equals("featured", StringComparison.OrdinalIgnoreCase) && !Sold(e.Set))
                     problems.Add($"{where}: the store doesn't sell boosters of '{e.Set}'.");
+                if (!string.IsNullOrEmpty(e.Format))
+                {
+                    if (e.Kind != CareerRules.Constructed) problems.Add($"{where}: only constructed events take a format.");
+                    else if (formats is not null && !formats.Contains(e.Format)) problems.Add($"{where}: the module has no format '{e.Format}'.");
+                }
                 if (e.Kind == CareerRules.Commander && e.Decks.Count == 0) problems.Add($"{where}: Commander events need the computer players' \"decks\".");
                 foreach (var deck in e.Decks.Where(d => !decks.Contains(d))) problems.Add($"{where}: there is no deck '{deck}'.");
                 if (e.Players < 2 || e.Rounds < 1 || e.BestOf < 1 || e.Entry < 0) problems.Add($"{where}: players, rounds, best of or entry make no sense.");
