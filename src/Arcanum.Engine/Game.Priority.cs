@@ -457,6 +457,8 @@ public sealed partial class Game
         // Cards that went on an adventure (rule 715.4).
         foreach (var id in player.Exile)
             if (State.GetCard(id).OnAdventure) yield return id;
+        // Copies of the prepare spells of the player's prepared creatures, wherever the copy was exiled.
+        foreach (var id in PreparedSpells(playerId)) yield return id;
     }
 
     /// <summary>The extra cost of casting from the graveyard, if the card has one.</summary>
@@ -977,7 +979,9 @@ public sealed partial class Game
         var nextCreature = card.IsCreature ? State.NextCreatureSpell.Where(n => n.Player == player.Id && n.Turn == State.TurnNumber).ToList() : new();
         foreach (var n in nextCreature) State.NextCreatureSpell.Remove(n);
         if (nextCreature.Any(n => n.Haste)) haste = true;
+        var preparedOn = card.PreparedSpellOf;
         await MoveCardAsync(cardId, Zone.Stack, controller: player.Id);
+        if (preparedOn is { } preparedCreature && card.Zone == Zone.Stack) CastPreparedSpell(card, preparedCreature);
         // "If that spell would be put into your graveyard, exile it instead" (the permission it was cast with).
         if (exiledInsteadOfGraveyard && card.Zone == Zone.Stack) State.ExileInsteadOfGraveyard.Add((card.Id, card.Version));
         if (nextCreature.Sum(n => n.Counters) is var nextCounters and > 0)

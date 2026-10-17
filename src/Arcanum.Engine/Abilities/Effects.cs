@@ -1145,6 +1145,18 @@ public sealed record Repeat(Quantity Times, IReadOnlyList<Effect> Effects) : Eff
 public sealed record BecomeRenowned(Subject What) : Effect;
 
 /// <summary>
+/// "[It] becomes prepared" (<paramref name="Prepared"/>) or "becomes unprepared". Only a creature with a prepare spell can become prepared, and
+/// one already prepared can't become prepared again; unpreparing makes the copy of its prepare spell in exile cease to exist.
+/// </summary>
+public sealed record BecomePrepared(Subject What, bool Prepared = true) : Effect;
+
+/// <summary>
+/// "Empower Jace N": put N loyalty counters on a Jace planeswalker token you control (you choose one if you control several; never a nontoken
+/// Jace). If you don't control one, first create a blue Jace planeswalker token with 0 loyalty, "[−1]: Surveil 1" and "[−3]: Draw a card."
+/// </summary>
+public sealed record EmpowerJace(Quantity Amount) : Effect;
+
+/// <summary>
 /// "Transform [it]" (rule 701.27): a double-faced permanent turns over to its other face and stays the same object. Anything
 /// else is unaffected (701.27c), as is a face that would be an instant or sorcery (701.27d); an ability of the permanent
 /// transforms it only if it hasn't transformed since the ability was put on the stack (or a delayed one was created, 701.27f).

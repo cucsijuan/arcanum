@@ -637,6 +637,16 @@ public sealed partial record CardDefinition
     public CardDefinition? Adventure { get; init; }
 
     /// <summary>
+    /// For a preparation card: its prepare spell, an alternative set of characteristics that is never cast from the card itself (the card
+    /// is a creature card in every zone). While the creature is prepared, a copy of this spell waits in exile and the creature's
+    /// controller may cast it ("While it's prepared, you may cast a copy of its spell. Doing so unprepares it.").
+    /// </summary>
+    public CardDefinition? PrepareSpell { get; init; }
+
+    /// <summary>"This creature enters prepared": it is prepared as it enters, before anything sees it enter.</summary>
+    public bool EntersPrepared { get; init; }
+
+    /// <summary>
     /// For a nonmodal double-faced card (rule 712.2): its back face. This definition is the front face; the card is cast
     /// with it up and has only its characteristics everywhere but the battlefield (712.8a). On the battlefield it can
     /// transform (701.27) and then has only the back face's characteristics, whose mana value is the front face's (712.8e).

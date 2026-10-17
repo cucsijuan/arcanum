@@ -223,6 +223,9 @@ public sealed record EnteredThisTurn(ObjectFilter Filter, int AtLeast = 1) : Con
 /// <summary>"If it isn't renowned" / "a renowned creature": the source is renowned.</summary>
 public sealed record SourceRenowned : Condition;
 
+/// <summary>"If this creature isn't prepared" (with not): the source is prepared.</summary>
+public sealed record SourcePrepared : Condition;
+
 /// <summary>"If this permanent is transformed": the source is a double-faced permanent with its back face up (rule 701.27g).</summary>
 public sealed record SourceTransformed : Condition;
 

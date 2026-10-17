@@ -98,6 +98,15 @@ public sealed class Card
 
     /// <summary>Exiled after resolving as an Adventure: its owner may cast it (not as an Adventure) from exile (rule 715.4).</summary>
     public bool OnAdventure { get; set; }
+
+    /// <summary>Prepared: the copy of its prepare spell waiting in exile. Lasts until it's cast, the creature is unprepared, or the creature leaves the battlefield.</summary>
+    public CardId? PreparedCopy { get; set; }
+
+    /// <summary>For the copy of a prepare spell waiting in exile: the prepared creature it belongs to.</summary>
+    public CardId? PreparedSpellOf { get; set; }
+
+    /// <summary>On the stack as the copy of a prepare spell cast from exile ("a prepared spell").</summary>
+    public bool CastPrepared { get; set; }
     public PlayerId Owner { get; }
     public PlayerId Controller { get; set; }
 
@@ -722,6 +731,9 @@ public sealed class Card
         AsAdventure = false;
         CastHalf = null;
         OnAdventure = false;
+        PreparedCopy = null;
+        PreparedSpellOf = null;
+        CastPrepared = false;
         ChosenParity = null;
         ChosenNumber = null;
         CastFromGraveyard = false;

@@ -83,6 +83,7 @@ public partial class CardStatusPanel : VBoxContainer
             var attachments = view.Battlefield.Where(a => a.AttachedTo == c.Id).Select(a => a.Name ?? "?").ToList();
             if (attachments.Count > 0) yield return ($"Attached: {string.Join(", ", attachments)}", State);
             if (c.AttacksEachCombat) yield return ("Attacks each combat if able", Neutral);
+            if (c.Prepared) yield return ($"Prepared: {Player(c.Controller)} may cast a copy of {c.PrepareName} {c.PrepareCost}", Gained);
             if (c.UnblockableBy.Count > 0) yield return ($"Can't be blocked by {string.Join(", ", c.UnblockableBy.Select(Player))}", Gained);
         }
         if (c.HeldUnder is { } holder) yield return ($"Exiled by {NameOf(holder)} until it leaves the battlefield", State);

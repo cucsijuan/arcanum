@@ -89,6 +89,16 @@ public sealed record CardView
     /// <summary>In exile after its Adventure: its owner may cast it from there.</summary>
     public bool OnAdventure { get; init; }
 
+    /// <summary>A preparation card's prepare spell: its name, mana cost and rules text.</summary>
+    public string? PrepareName { get; init; }
+    public string? PrepareCost { get; init; }
+
+    /// <summary>Prepared: its controller may cast the copy of its prepare spell waiting in exile.</summary>
+    public bool Prepared { get; init; }
+
+    /// <summary>The copy of a prepare spell waiting in exile: the prepared creature it belongs to.</summary>
+    public CardId? PreparedSpellOf { get; init; }
+
     /// <summary>A split card's halves: names and mana costs.</summary>
     public IReadOnlyList<string>? SplitHalves { get; init; }
 

@@ -60,6 +60,8 @@ public sealed record SpellCopied(CardId Copy, CardId Original, PlayerId Controll
 public sealed record PoisonGiven(PlayerId Player, int Count) : GameEvent;
 public sealed record EmblemCreated(CardId Emblem, PlayerId Owner) : GameEvent;
 public sealed record ChoiceMade(CardId Card, string Choice) : GameEvent;
+/// <summary>A creature became prepared (a copy of its prepare spell waits in exile), or was unprepared by an effect.</summary>
+public sealed record PreparedChanged(CardId Card, bool Prepared) : GameEvent;
 /// <summary>A player got an enduring story (storied) for the rest of the game.</summary>
 public sealed record EnduringStoryGained(PlayerId Player) : GameEvent;
 /// <summary>A player got the city's blessing (ascend).</summary>

@@ -287,6 +287,16 @@ Quantities also: `sacrificedToughness`, `lifeLostThisWay`, `destroyedThisWay`, `
   `"adventure": { "spell": { … }, "additionalCost": … }` (a script of its own). The card can be cast as its
   Adventure; once that spell resolves the card is exiled and its owner may cast the card itself from exile. A
   countered Adventure goes to the graveyard.
+- **Preparation cards** (layout `prepare`): the script describes the creature face as usual and its prepare spell under
+  `"prepare": { "spell": { … } }` (a script of its own). The card is a creature in every zone. Effects `{ "becomePrepared": subject }`
+  and `{ "becomeUnprepared": subject }` prepare and unprepare it; only a creature with a prepare spell can become prepared, and one
+  already prepared can't again. `"entersPrepared": true` prepares it as it enters. While it's prepared, a copy of the spell waits in
+  exile; only the creature's current controller may cast it, at the spell's normal timing and cost, and casting it unprepares the
+  creature. Unpreparing, or the creature leaving the battlefield, makes the copy cease to exist. Condition `"prepared"` (or
+  `{ "not": "prepared" }`). The keyword `Prepared` is handled by these parts.
+- **Empower Jace** (effect `{ "empowerJace": N }`, N a quantity): puts N loyalty counters on a Jace planeswalker token you control
+  (you choose one if you control several; never a nontoken Jace). If you control none, a blue Jace token with 0 loyalty,
+  "−1: Surveil 1" and "−3: Draw a card" is created first. The keyword `Empower Jace` is handled by this effect.
 - **Transforming double-faced cards** (layout `transform`): the script describes the front face as usual and the back
   face under `"back": { "abilities": [ … ], … }` (a script of its own, with the same shape). The card is supported only
   when both faces are: a back face whose rules text needs a script stays unsupported until `"back"` has one. The card
@@ -535,7 +545,7 @@ Triggers: `dealtNoncombatDamage`, `becomesBlocked`, `youScry`, `combatDamageToYo
   `"yourLands"` (any type a land you control could produce), `"damage": 1`, `"gainLife": 1`, `"while": condition`, and the riders
   `Uncounterable`, `InstantOrSorceryUncounterable`, `ScryIfSharesTypeWithCommander`. `{S}` in activation costs is paid with mana from
   a snow source. A land given a basic land type has its mana ability.
-- **Entering**: `"chooseOnEnter": "revealOrTapped"` with `"enterReveal": filter`; `"entersTappedUnless": { "opponents": 2 }`;
+- **Entering**: `"chooseOnEnter": "revealOrTapped"` with `"enterReveal": filter`; `"entersTappedUnless": { "opponents": 2 }`; `"entersPrepared": true` (see the preparation cards above);
   `"startsOnBattlefield"` with `"startsIfNotStartingPlayer"`, `"startsWithCounter"`, `"startsExilingFromHand"`;
   `"graveyardEnterBonus": filter` (while this card is in your graveyard, those enter with an additional +1/+1 counter).
 
@@ -551,6 +561,7 @@ amount: X), `exerted`. Cycling costs may include `{X}`. `"modesRepeat": true` ("
 ## More effects
 
 `hideaway` and `playHiddenFree`, `regenerate` (and `destroy` with `"noRegeneration"`), `populate`, `becomeRenowned`,
+`becomePrepared` and `becomeUnprepared`, `empowerJace` (see the preparation cards and Empower Jace above),
 `preventDamage` (`"toYou"`, or with `"combatOnly"`, `"dealtBy"`, `"sources"`), `tripleDamage`, `cantLoseThisTurn`,
 `ownersGainControl`, `protectionFromOpponents`, `drawUpTo`, `exileTopFaceDown` and `playOneExiledFree`, `takeCountersOfTriggered`,
 `moveAllCounters`, `mayBounceSharingType`, `copyTriggeredAbility`, `swapGraveyardAndBattlefield`, `temptingOfferSearch`,
@@ -568,7 +579,7 @@ token); copies take `"exileAtEndOfCombat"`; `exileUntilLeaves` takes `"castable"
 Triggers: `opponentSacrifices`, `opponentActivatesAbility`, `opponentTapsArtifactForMana`, `creatureLeaves`, `creaturesAttackOpponent`
 (subject `attackersOfTriggered`), `playerAttacks` (amount: creatures attacking you), `youActivateNonManaAbility`,
 `damageToYouPrevented`. Static abilities: scope `permanents`, `"goads"`, `"protectionFromRingBearers"`, `"fromGraveyard"`,
-`spellCostIncrease`. Keywords: `Split second`, `Skulk`, `Exalted`. Conditions: `"exertedThisTurn"`, `"renowned"`,
+`spellCostIncrease`. Keywords: `Split second`, `Skulk`, `Exalted`. Conditions: `"exertedThisTurn"`, `"renowned"`, `"prepared"`,
 `"triggeredPlayerMostLife"`, `"castDuringMainPhase"`, `"triggeredHadCounters"`, `"hasAnyCounters"`, `{ "cardTypesInGraveyard": 4 }`,
 `{ "opponentHasMore": "life" | "creatures" | "lands" | "cards" }`, `{ "enteredThisTurn": filter }`, `{ "opponents": 2 }`. Filters:
 `renowned`, `attackingYou`, `fromGraveyard`, `hasX`, `castFromHand`, `exiledWithSource`, `manaValueIsX`,

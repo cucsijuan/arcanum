@@ -76,6 +76,10 @@ public sealed record CardScript(
     public Condition? CantBeCounteredIf { get; init; }
     public Condition? AdditionalLandPlayIf { get; init; }
     public Condition? EntersTappedUnless { get; init; }
+    /// <summary>"This creature enters prepared."</summary>
+    public bool EntersPrepared { get; init; }
+    /// <summary>For a preparation card: the script of its prepare spell (the card's second face).</summary>
+    public CardScript? Prepare { get; init; }
     public int EquipDiscount { get; init; }
     public Condition? FreeFirstEquipIf { get; init; }
     public bool ManaOnlyForAbilitiesToo { get; init; }
@@ -218,6 +222,7 @@ public sealed record CardScript(
         CantBeCounteredIf = CantBeCounteredIf ?? d.CantBeCounteredIf,
         AdditionalLandPlayIf = AdditionalLandPlayIf,
         EntersTappedUnless = EntersTappedUnless,
+        EntersPrepared = EntersPrepared || d.EntersPrepared,
         EquipDiscount = EquipDiscount,
         FreeFirstEquipIf = FreeFirstEquipIf,
         ManaOnlyForAbilitiesToo = ManaOnlyForAbilitiesToo,
@@ -498,6 +503,8 @@ public static partial class CardScriptParser
             CantBeCounteredIf = root.TryGetProperty("uncounterableIf", out var ucif) ? ParseCondition(ucif) : null,
             AdditionalLandPlayIf = root.TryGetProperty("additionalLandPlayIf", out var alp) ? ParseCondition(alp) : null,
             EntersTappedUnless = root.TryGetProperty("entersTappedUnless", out var etu) ? ParseCondition(etu) : null,
+            EntersPrepared = Bool(root, "entersPrepared"),
+            Prepare = root.TryGetProperty("prepare", out var prep) ? Parse(prep.GetRawText()) : null,
             EquipDiscount = root.TryGetProperty("equipDiscount", out var eqd) ? eqd.GetInt32() : 0,
             FreeFirstEquipIf = root.TryGetProperty("freeFirstEquipIf", out var ffe) ? ParseCondition(ffe) : null,
             ManaOnlyForAbilitiesToo = Bool(root, "manaOnlyForAbilitiesToo"),
@@ -1143,6 +1150,7 @@ public static partial class CardScriptParser
                 "noMonarch" => new NoMonarch(),
                 "noVotes" => new ReceivedNoVotes(),
                 "renowned" => new SourceRenowned(),
+                "prepared" => new SourcePrepared(),
                 "transformed" => new SourceTransformed(),
                 "frontFaceUp" => new SourceFrontFaceUp(),
                 "dealtDamage" => new SourceHasDealtDamage(),
@@ -1939,6 +1947,9 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("hideaway", out _)) return new Hideaway(Int("hideaway"));
         if (Flag("playHiddenFree")) return new PlayLinkedExiledFree();
         if (Value("becomeRenowned") is { } renowned) return new BecomeRenowned(renowned);
+        if (Value("becomePrepared") is { } prepared) return new BecomePrepared(prepared);
+        if (Value("becomeUnprepared") is { } unprepared) return new BecomePrepared(unprepared, Prepared: false);
+        if (e.TryGetProperty("empowerJace", out _)) return new EmpowerJace(Qty("empowerJace"));
         if (Value("transform") is { } transform) return new Transform(transform);
         if (Value("regenerate") is { } regen) return new Regenerate(regen);
         if (Flag("populate")) return new Populate();

@@ -3587,6 +3587,14 @@ public sealed partial class Game
                 await CastNowWithoutPayingAsync(player, hidden.Id);
                 break;
             }
+            case BecomePrepared bp:
+                foreach (var card in CardsFor(bp.What, ctx).Where(c => c.Zone == Zone.Battlefield).Distinct().ToList())
+                    if (bp.Prepared) Prepare(card);
+                    else Unprepare(card, announce: true);
+                break;
+            case EmpowerJace ej:
+                await EmpowerJaceAsync(ctx.Controller, Eval(ej.Amount, ctx), ctx.Source);
+                break;
             case BecomeRenowned br:
                 foreach (var card in CardsFor(br.What, ctx).ToList())
                 {
@@ -4531,6 +4539,7 @@ public sealed partial class Game
             OpponentHasMore om => State.OpponentsOf(controller).Any(o => OpponentMeasure(om.What, o) > OpponentMeasure(om.What, controller)),
             CastDuringYourMainPhase => source?.CastDuringMainPhase == true,
             SourceRenowned => source is not null && SourceRenownedNow(source),
+            SourcePrepared => source is { Zone: Zone.Battlefield, PreparedCopy: not null },
             SpellsCastLastTurn sl => AnyPlayerCastLastTurn(sl.AtLeast),
             SourceDealtDamageThisTurn dd => source is not null && DamageDealtThisTurnBy(source.Id, SourceObjectVersion(source, null)) >= dd.AtLeast,
             SourceTransformed => source is { Zone: Zone.Battlefield, Transformed: true, IsDoubleFaced: true },

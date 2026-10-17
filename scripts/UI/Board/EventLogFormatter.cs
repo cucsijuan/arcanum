@@ -42,6 +42,7 @@ public static class EventLogFormatter
             PermanentSacrificed sac when !IsCreature(sac.Card) => $"{C(sac.Card)} is sacrificed.",
             ControlChanged cc => $"{P(cc.NewController)} gains control of {C(cc.Card)}.",
             ChoiceMade cm => $"{C(cm.Card)}: {cm.Choice} chosen.",
+            PreparedChanged pc => $"{C(pc.Card)} {(pc.Prepared ? "becomes prepared" : "is no longer prepared")}.",
             EnduringStoryGained es => $"{P(es.Player)} has an enduring story.",
             CitysBlessingGained cb => $"{P(cb.Player)} gets the city's blessing.",
             MonarchChanged mc => $"{P(mc.Player)} becomes the monarch.",

@@ -441,6 +441,8 @@ public sealed partial class Game
         // A promised gift stays known to the permanent a spell becomes ("when it enters, they draw a card", rule 702.174).
         var giftTo = from == Zone.Stack && to == Zone.Battlefield && card.GiftPromised ? card.GiftTo : null;
         bool castFromGraveyard = from == Zone.Stack && to == Zone.Battlefield && card.CastFromGraveyard;
+        // A prepared creature leaving the battlefield stops being prepared: the copy of its prepare spell in exile ceases to exist.
+        if (from == Zone.Battlefield) Unprepare(card, announce: false);
         card.ResetStatus();
         card.EnteredCastFromGraveyard = castFromGraveyard;
         card.GiftPromised = giftTo is not null;
@@ -522,6 +524,8 @@ public sealed partial class Game
                     enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, angels * extraCounterSources));
                 }
                 State.Battlefield.Add(id);
+                // "This creature enters prepared": prepared as it enters, so its enters abilities see it prepared.
+                if (card.Definition.EntersPrepared) Prepare(card, announce: false);
                 if (card.IsCreature && ExtraEnterCounters(card) is var extraCounters and > 0) enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, extraCounters));
                 if (card.Definition.ChooseOnEnter != Cards.EnterChoice.None || card.Definition.Devour > 0 || card.Definition.EntersRemovingCountersFrom is not null)
                     State.PendingEnterChoices.Add((id, card.Version));

@@ -1520,6 +1520,8 @@ public partial class GameBoard : Control
                             => (c.Card, $"Cast {halves[half]} (graveyard)"),
                         CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Graveyard } g => (c.Card, $"Flashback {g.Name}"),
                         CastSpell { Adventure: true } c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (c.Card, $"Adventure: {x.AdventureName} (exile)"),
+                        CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile, PreparedSpellOf: { } on } x
+                            => (c.Card, $"Prepared: {x.Name} {x.ManaCost} ({view.FindCard(on)?.Name})"),
                         CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (c.Card, $"Cast {x.Name} (exile)"),
                         PlayLand l when view.FindCard(l.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (l.Card, $"Play {x.Name} (exile)"),
                         ActivateAbility a when view.FindCard(a.Source) is { Zone: Arcanum.Engine.State.Zone.Graveyard } g
@@ -2457,6 +2459,9 @@ public partial class GameBoard : Control
             case BlockerDeclared b when ev.Card(b.Blocker) is { } blocker && _session.Announces(blocker.Controller):
                 _pendingBlocks.Add(ev);
                 QueueCombatFlush();
+                break;
+            case PreparedChanged pc:
+                _announcer.Enqueue(new($"{ev.Name(pc.Card)} {(pc.Prepared ? "becomes prepared" : "is no longer prepared")}", ViewOf(ev, pc.Card), 1.5));
                 break;
             case PermanentDestroyed d:
                 _announcer.Enqueue(new($"{ev.Name(d.Card)} is destroyed", ViewOf(ev, d.Card), 1.5));

@@ -57,6 +57,33 @@ public static class PredefinedTokens
         IsToken = true,
     };
 
+    /// <summary>The token "empower Jace" creates: "a blue Jace planeswalker token with 0 loyalty, '[−1]: Surveil 1' and '[−3]: Draw a card.'"</summary>
+    public static readonly CardDefinition Jace = new()
+    {
+        Name = "Jace",
+        Types = CardType.Planeswalker,
+        Subtypes = new[] { "Jace" },
+        Colors = new[] { "U" },
+        Loyalty = 0,
+        Abilities = new AbilityDefinition[]
+        {
+            new ActivatedAbility
+            {
+                Cost = new AbilityCost(ManaCost.Zero) { Loyalty = -1 },
+                Effects = new Effect[] { new Surveil(1) },
+                Text = "\u22121: Surveil 1.",
+            },
+            new ActivatedAbility
+            {
+                Cost = new AbilityCost(ManaCost.Zero) { Loyalty = -3 },
+                Effects = new Effect[] { new DrawCards(1, Subject.You) },
+                Text = "\u22123: Draw a card.",
+            },
+        },
+        OracleText = "\u22121: Surveil 1.\n\u22123: Draw a card.",
+        IsToken = true,
+    };
+
     public static CardDefinition? ByName(string name) => name.ToLowerInvariant() switch
     {
         "treasure" => Treasure,

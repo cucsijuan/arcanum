@@ -43,6 +43,7 @@ public static partial class CardFactory
         "Boast", "Spectacle", "Overload", "Revolt", "Eminence", "Commander ninjutsu", "Ninjutsu", // scripted (activation limits, alternative costs)
         "Renown", // its trigger and the renowned designation come from the script (rule 702.112)
         "Support", "Adapt", "Monstrosity", "Explore", "Connive", // keyword actions: the script's effects (targets for support)
+        "Prepared", "Empower Jace", // the script's "entersPrepared", "becomePrepared" and "empowerJace"
         "Blitz", // the script's "blitz" cost (with "blitzExtra", "blitzFromGraveyard")
         // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
         "Persist", "Undying", "Dethrone", "Hideaway", "Heal", "Aftermath",
@@ -79,6 +80,7 @@ public static partial class CardFactory
     public static (CardDefinition Definition, CardSupport Support) Create(CardRecord record, Scripts.CardScript? script = null)
     {
         if (record.Layout == "adventure" && record.Faces.Count == 2) return CreateAdventurer(record, script);
+        if (record.Layout == "prepare" && record.Faces.Count == 2) return CreatePreparationCard(record, script);
         if (record.Layout == "split" && record.Faces.Count == 2) return CreateSplit(record, script);
         if (record.Layout == "transform" && record.Faces.Count == 2) return CreateTransforming(record, script);
         var (supertypes, types, subtypes) = TypeLine.Parse(record.TypeLine);
@@ -156,6 +158,32 @@ public static partial class CardFactory
             Adventure = adventure with { ImageKey = record.DefaultPrintingId },
         };
         bool supported = cardSupport == CardSupport.Full && adventureSupport == CardSupport.Full;
+        return (definition, supported ? CardSupport.Full : CardSupport.Unsupported);
+    }
+
+    /// <summary>
+    /// A preparation card: the card is its first face, a creature in every zone; its second face is its prepare spell, described by the
+    /// script's "prepare" part, which is only ever cast as a copy while the creature is prepared. Both show the card's picture.
+    /// </summary>
+    private static (CardDefinition Definition, CardSupport Support) CreatePreparationCard(CardRecord record, Scripts.CardScript? script)
+    {
+        CardRecord FaceRecord(CardFaceRecord face) => record with
+        {
+            Layout = "normal", Name = face.Name, ManaCost = face.ManaCost, TypeLine = face.TypeLine, OracleText = face.OracleText,
+            Power = face.Power, Toughness = face.Toughness, Faces = Array.Empty<CardFaceRecord>(),
+            // The card source lists the keywords of both faces together: each face keeps those its own text uses.
+            Keywords = record.Keywords.Where(k => face.OracleText.Contains(k, StringComparison.OrdinalIgnoreCase)).ToList(),
+        };
+        var (card, cardSupport) = Create(FaceRecord(record.Faces[0]), script);
+        var (spell, spellSupport) = Create(FaceRecord(record.Faces[1]), script?.Prepare);
+        var face = record.Faces[1];
+        var definition = card with
+        {
+            OracleText = $"{card.OracleText}\n\n{face.Name} {face.ManaCost} ({face.TypeLine})\n{face.OracleText}".Trim(),
+            ImageKey = record.DefaultPrintingId,
+            PrepareSpell = spell with { ImageKey = record.DefaultPrintingId },
+        };
+        bool supported = cardSupport == CardSupport.Full && spellSupport == CardSupport.Full;
         return (definition, supported ? CardSupport.Full : CardSupport.Unsupported);
     }
 
