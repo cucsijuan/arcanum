@@ -26,6 +26,12 @@ public sealed class Player
     /// <summary>This player attacked with at least one creature this turn (raid).</summary>
     public bool AttackedThisTurn { get; set; }
 
+    /// <summary>Activated a loyalty ability this turn.</summary>
+    public bool ActivatedLoyaltyThisTurn { get; set; }
+
+    /// <summary>Subtypes of planeswalkers whose loyalty abilities this player may activate at instant speed this turn.</summary>
+    public HashSet<string> InstantLoyaltySubtypes { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Total life gained this turn.</summary>
     public int LifeGainedThisTurn { get; set; }
 
@@ -111,6 +117,12 @@ public sealed class Player
 
     /// <summary>A card left this player's graveyard this turn.</summary>
     public bool CardLeftGraveyardThisTurn { get; set; }
+
+    /// <summary>Scried or surveilled this turn.</summary>
+    public bool ScriedOrSurveilledThisTurn { get; set; }
+
+    /// <summary>Noncombat damage dealt to this player during the previous turn.</summary>
+    public int NoncombatDamageTakenLastTurn { get; set; }
 
     /// <summary>This player put a counter on a creature this turn.</summary>
     public bool PutCounterOnCreatureThisTurn { get; set; }

@@ -126,6 +126,9 @@ public sealed class Card
     public HashSet<PlayerId> CombatDamagedPlayers { get; } = new();
 
     /// <summary>It has dealt damage (any amount, to anything) since it came to the battlefield.</summary>
+    /// <summary>Has dealt combat damage since it came to the battlefield.</summary>
+    public bool HasDealtCombatDamage { get; set; }
+
     public bool HasDealtDamage { get; set; }
 
     /// <summary>Times it attacked this turn.</summary>
@@ -728,6 +731,7 @@ public sealed class Card
         ChosenName = null;
         AttacksThisTurn = 0;
         HasDealtDamage = false;
+        HasDealtCombatDamage = false;
         AsAdventure = false;
         CastHalf = null;
         OnAdventure = false;

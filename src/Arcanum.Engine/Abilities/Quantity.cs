@@ -156,6 +156,10 @@ public enum QuantityKind
     OpponentsAttackedThisCombat,
     /// <summary><see cref="Quantity.Parts"/>[0] minus [1] ("the difference"; an effect does nothing with a result below one).</summary>
     Difference,
+    /// <summary><see cref="Quantity.Parts"/>[0] divided by <see cref="Quantity.Value"/>, rounded down ("for every seven cards").</summary>
+    Per,
+    /// <summary>Card types among cards in all graveyards (artifact, battle, creature, enchantment, instant, kindred, land, planeswalker, sorcery).</summary>
+    CardTypesInAllGraveyards,
     /// <summary>Colors among permanents the controller controls (W, U, B, R, G: 0 to 5).</summary>
     ColorsAmongYourPermanents,
     /// <summary>Different kinds of counters on the source ("for each kind of counter on it").</summary>

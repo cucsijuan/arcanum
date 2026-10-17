@@ -527,11 +527,13 @@ public sealed partial class Game
     {
         // "Its activated abilities can't be activated" (mana abilities too).
         if (source.Zone == Zone.Battlefield && source.AbilitiesCantBeActivated) return false;
-        if (ability.Cost.LoyaltyX && (!sorcerySpeed || source.LoyaltyActivatedThisTurn)) return false; // −X: X can be 0
+        // Loyalty abilities: sorcery timing (or instant timing through an effect), one per planeswalker per turn (606.3).
+        bool loyaltyTiming = sorcerySpeed || State.GetPlayer(player).InstantLoyaltySubtypes.Any(source.HasSubtype);
+        if (ability.Cost.LoyaltyX && (!loyaltyTiming || source.LoyaltyActivatedThisTurn)) return false; // −X: X can be 0
         if (ability.Cost.Loyalty is { } loyalty)
         {
-            // Loyalty abilities: sorcery timing, one per planeswalker per turn, and enough loyalty to pay (606.3).
-            if (!sorcerySpeed || source.LoyaltyActivatedThisTurn) return false;
+            // ... and enough loyalty to pay.
+            if (!loyaltyTiming || source.LoyaltyActivatedThisTurn) return false;
             if (loyalty < 0 && source.CounterCount(CounterKind.Loyalty) < -loyalty) return false;
         }
         // "During your turn, you may activate equip abilities any time you could cast an instant."
@@ -1242,6 +1244,16 @@ public sealed partial class Game
         foreach (var (observer, abilities) in Observers().Where(o => o.Card.Controller == player.Id))
             foreach (var watching in abilities.Where(a => a.Trigger == TriggerEvent.YouActivateNonManaAbility))
                 AddPending(observer.Id, watching, observer.Controller, new TriggerInfo(source.Id, source.Version, player.Id, State.Stack[^1].Id));
+        // "Whenever you / an opponent activates a loyalty ability" (amount: the loyalty counters removed to activate it).
+        if (ability.Cost.Loyalty is not null || ability.Cost.LoyaltyX)
+        {
+            player.ActivatedLoyaltyThisTurn = true;
+            int removed = ability.Cost.LoyaltyX ? x : Math.Max(0, -(ability.Cost.Loyalty ?? 0));
+            foreach (var (observer, abilities) in Observers())
+                foreach (var watching in abilities.Where(a => a.Trigger == (observer.Controller == player.Id ? TriggerEvent.YouActivateLoyaltyAbility
+                             : State.OpponentsOf(observer.Controller).Contains(player.Id) ? TriggerEvent.OpponentActivatesLoyaltyAbility : (TriggerEvent)(-1))))
+                    AddPending(observer.Id, watching, observer.Controller, new TriggerInfo(source.Id, source.Version, player.Id, removed));
+        }
         return true;
     }
 

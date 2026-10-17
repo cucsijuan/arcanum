@@ -235,6 +235,18 @@ public sealed record SourceFrontFaceUp : Condition;
 /// <summary>"As long as it hasn't dealt damage yet": the source has dealt damage since it came to the battlefield (rule 400.7).</summary>
 public sealed record SourceHasDealtDamage : Condition;
 
+/// <summary>"As long as it hasn't dealt combat damage yet" (with not): the source has dealt combat damage since it came to the battlefield.</summary>
+public sealed record SourceHasDealtCombatDamage : Condition;
+
+/// <summary>"If you've scried or surveilled this turn."</summary>
+public sealed record ScriedOrSurveilledThisTurn : Condition;
+
+/// <summary>"If you've activated a loyalty ability this turn."</summary>
+public sealed record ActivatedLoyaltyAbilityThisTurn : Condition;
+
+/// <summary>"If an opponent has been dealt noncombat damage this turn" (or, with <paramref name="LastTurn"/>, "… last turn").</summary>
+public sealed record OpponentDealtNoncombatDamage(bool LastTurn) : Condition;
+
 /// <summary>"If it's attacking the player with the most life or tied for most life": the player the trigger is about.</summary>
 public sealed record TriggeredPlayerHasMostLife : Condition;
 

@@ -826,7 +826,7 @@ public sealed partial class Game
             QuantityKind.TriggeredToughness => ctx.Trigger is { Subject: { } tt } aboutT ? TriggeredToughnessOf(State.GetCard(tt), aboutT.SubjectVersion) : 0,
             QuantityKind.RingBearerPower => RingBearerOf(ctx.Controller) is { } bearer ? bearer.Power : 0,
             QuantityKind.Sum => q.Parts?.Sum(part => Eval(part, ctx)) ?? 0,
-            QuantityKind.Difference or QuantityKind.ColorsAmongYourPermanents or QuantityKind.CounterKindsOnSource or QuantityKind.ExiledManaValue
+            QuantityKind.Difference or QuantityKind.Per or QuantityKind.CardTypesInAllGraveyards or QuantityKind.ColorsAmongYourPermanents or QuantityKind.CounterKindsOnSource or QuantityKind.ExiledManaValue
                 or QuantityKind.PlayersWhoLostLifeThisTurn or QuantityKind.OpponentsCombatDamagedBySourceOrDragon or QuantityKind.GreatestPowerAsCast or QuantityKind.TriggeredCounterCount or QuantityKind.SacrificedManaValue
                 or QuantityKind.EnteredThisTurnCount or QuantityKind.OpponentsControlling
                 => EvalHeroesCommander(q, ctx),
@@ -3592,6 +3592,9 @@ public sealed partial class Game
                     if (bp.Prepared) Prepare(card);
                     else Unprepare(card, announce: true);
                 break;
+            case LoyaltyAbilitiesAtInstantSpeed li:
+                State.GetPlayer(ctx.Controller).InstantLoyaltySubtypes.Add(li.Subtype);
+                break;
             case EmpowerJace ej:
                 await EmpowerJaceAsync(ctx.Controller, Eval(ej.Amount, ctx), ctx.Source);
                 break;
@@ -4013,7 +4016,9 @@ public sealed partial class Game
         PlacedInUnseenOrder(top, who);
         Emit(new LookedAtTop(who, top.Count, chosen.Count, scry));
         var happened = scry ? TriggerEvent.YouScry : TriggerEvent.YouSurveil;
+        player.ScriedOrSurveilledThisTurn = true;
         foreach (var card in State.PermanentsControlledBy(who).ToList()) Queue(card.Id, happened, who, new TriggerInfo(Player: who, Amount: top.Count));
+        foreach (var card in State.PermanentsControlledBy(who).ToList()) Queue(card.Id, TriggerEvent.YouScryOrSurveil, who, new TriggerInfo(Player: who, Amount: top.Count));
         foreach (var card in player.Graveyard.Select(State.GetCard).ToList())
             foreach (var ability in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.FromGraveyard && a.Trigger == happened))
                 AddPending(card.Id, ability, who, new TriggerInfo(Player: who, Amount: top.Count));
@@ -4544,6 +4549,11 @@ public sealed partial class Game
             SourceDealtDamageThisTurn dd => source is not null && DamageDealtThisTurnBy(source.Id, SourceObjectVersion(source, null)) >= dd.AtLeast,
             SourceTransformed => source is { Zone: Zone.Battlefield, Transformed: true, IsDoubleFaced: true },
             SourceHasDealtDamage => source?.HasDealtDamage == true,
+            SourceHasDealtCombatDamage => source?.HasDealtCombatDamage == true,
+            ScriedOrSurveilledThisTurn => player.ScriedOrSurveilledThisTurn,
+            ActivatedLoyaltyAbilityThisTurn => player.ActivatedLoyaltyThisTurn,
+            OpponentDealtNoncombatDamage od => State.OpponentsOf(controller).Select(State.GetPlayer)
+                .Any(o => od.LastTurn ? o.NoncombatDamageTakenLastTurn > 0 : o.DamageTakenThisTurn > o.CombatDamageTakenThisTurn),
             SourceFrontFaceUp => source is { Zone: Zone.Battlefield, Transformed: false, IsDoubleFaced: true },
             ExertedThisTurn => source is not null && source.ExertedTurn == State.TurnNumber,
             TriggeredPlayerHasMostLife or TriggeredPlayerIsYou => true, // checked where known
@@ -5301,6 +5311,10 @@ public sealed partial class Game
     private void CollectTriggers(GameEvent e)
     {
         TriggerInfo About(Card card, PlayerId? player = null, int amount = 0) => new(card.Id, card.Version, player, amount);
+        // "Whenever an opponent is dealt noncombat damage" (any source).
+        if (e is DamageDealt { IsCombat: false, TargetPlayer: { } burnedOpponent, Amount: > 0 } noncombat)
+            foreach (var card in State.Battlefield.Select(State.GetCard).Where(c => State.OpponentsOf(c.Controller).Contains(burnedOpponent)).ToList())
+                Queue(card.Id, TriggerEvent.OpponentDealtNoncombatDamage, card.Controller, new TriggerInfo(noncombat.Source, State.GetCard(noncombat.Source).Version, burnedOpponent, noncombat.Amount));
         // "Whenever a creature card leaves your graveyard" (wherever it goes).
         if (e is CardMoved { From: Zone.Graveyard } left) AsInGraveyard(State.GetCard(left.Card), card => QueueObservers(TriggerEvent.LeavesGraveyard, card, left.Owner));
         if (e is CardMoved { From: Zone.Battlefield, To: not Zone.Graveyard } leaving) Queue(leaving.Card, TriggerEvent.LeavesBattlefield, leaving.LastController);
@@ -5572,7 +5586,8 @@ public sealed partial class Game
                 {
                     bool mine = observer.Controller == c.Player;
                     if (mine && !spell.IsCreature && observer.Has(Keyword.Prowess))
-                        for (int copies = 1 + ExtraTriggersFor(observer); copies > 0; copies--) _pendingTriggers.Add(new PendingTrigger(observer.Id, ProwessTrigger, c.Player));
+                        for (int instances = 1 + (observer.HasTextAbilities ? observer.Definition.ExtraProwess : 0); instances > 0; instances--)
+                            for (int copies = 1 + ExtraTriggersFor(observer); copies > 0; copies--) _pendingTriggers.Add(new PendingTrigger(observer.Id, ProwessTrigger, c.Player));
                     foreach (var ability in observer.Abilities.OfType<TriggeredAbility>())
                     {
                         var filter = (ability.Filter ?? new ObjectFilter()) with { Controller = ControllerFilter.Any };
@@ -5669,6 +5684,10 @@ public sealed partial class Game
                     _pendingTriggers.Add(new PendingTrigger(card.Id, SuspendUpkeep, s.ActivePlayer));
                 foreach (var card in State.Battlefield.Select(State.GetCard).ToList())
                     Queue(card.Id, TriggerEvent.EachUpkeep, card.Controller, new TriggerInfo(Player: s.ActivePlayer));
+                // "At the beginning of each upkeep, … return this card from your graveyard": the card's own ability, in its owner's graveyard.
+                foreach (var card in State.Players.SelectMany(p => p.Graveyard).Select(State.GetCard).ToList())
+                    foreach (var ability in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.FromGraveyard && a.Trigger == TriggerEvent.EachUpkeep))
+                        AddPending(card.Id, ability, card.Owner, new TriggerInfo(Player: s.ActivePlayer));
                 // "At the beginning of the upkeep of enchanted creature's controller."
                 foreach (var aura in State.Battlefield.Select(State.GetCard).Where(c => c.AttachedTo is { } host && State.GetCard(host) is { Zone: Zone.Battlefield } h
                                                                                        && h.Controller == s.ActivePlayer).ToList())

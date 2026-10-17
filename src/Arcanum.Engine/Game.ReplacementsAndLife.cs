@@ -106,6 +106,8 @@ public sealed partial class Game
             {
                 var b = c.Definition.DamageBonuses[i];
                 if (!Matches(b.Sources, source, controller, c, c.Controller, lastKnown: SourceLeftBattlefield(source))) continue;
+                if (b.NoncombatOnly && part.Combat) continue;
+                if (b.ToOpponentsOnly && !State.OpponentsOf(c.Controller).Contains(part.ToPlayer ?? part.ToCard!.Controller)) continue;
                 int n = b.Amount;
                 yield return new DamageModifier($"plus{n}", $"bonus:{c.Id.Value}:{i}", $"That much plus {n} ({c.Name})", d => d + n);
             }

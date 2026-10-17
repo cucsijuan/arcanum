@@ -330,6 +330,14 @@ public enum TriggerEvent
     YouScry,
     /// <summary>"Whenever you surveil."</summary>
     YouSurveil,
+    /// <summary>"Whenever you scry or surveil": one event for either.</summary>
+    YouScryOrSurveil,
+    /// <summary>"Whenever you activate a loyalty ability" (amount: loyalty counters removed to activate it).</summary>
+    YouActivateLoyaltyAbility,
+    /// <summary>"Whenever an opponent activates a loyalty ability" (the triggered player is that opponent).</summary>
+    OpponentActivatesLoyaltyAbility,
+    /// <summary>"Whenever an opponent is dealt noncombat damage" (by any source; the opponent is the triggered player, the damage the amount).</summary>
+    OpponentDealtNoncombatDamage,
     /// <summary>"When enchanted creature is dealt damage": once for each source dealing damage to the permanent this is attached to.</summary>
     AttachedDealtDamage,
     /// <summary>"Whenever an opponent gains control of a permanent from you": the permanent is "triggered", that opponent "triggeredPlayer".</summary>

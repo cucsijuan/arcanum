@@ -655,6 +655,9 @@ public sealed partial class Game
     private int EvalHeroesCommander(Quantity q, EffectContext ctx) => q.Kind switch
     {
         QuantityKind.Difference => Eval(q.Parts![0], ctx) - Eval(q.Parts![1], ctx),
+        QuantityKind.Per => q.Value > 0 ? Math.Max(0, Eval(q.Parts![0], ctx)) / q.Value : 0,
+        QuantityKind.CardTypesInAllGraveyards => new[] { CardType.Artifact, CardType.Battle, CardType.Creature, CardType.Enchantment, CardType.Instant, CardType.Kindred, CardType.Land, CardType.Planeswalker, CardType.Sorcery }
+            .Count(t => State.Players.Any(p => p.Graveyard.Any(id => State.GetCard(id).Definition.Is(t)))),
         QuantityKind.ColorsAmongYourPermanents => State.PermanentsControlledBy(ctx.Controller).SelectMany(c => c.Colors).Distinct().Count(),
         QuantityKind.CounterKindsOnSource => ctx.Source.Counters.Count(kv => kv.Value > 0),
         QuantityKind.ExiledManaValue => ctx.Results.Exiled.Select(State.GetCard).Sum(ManaValueOf),

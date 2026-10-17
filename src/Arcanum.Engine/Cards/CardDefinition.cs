@@ -646,6 +646,9 @@ public sealed partial record CardDefinition
     /// <summary>"This creature enters prepared": it is prepared as it enters, before anything sees it enter.</summary>
     public bool EntersPrepared { get; init; }
 
+    /// <summary>Instances of prowess beyond one printed on the card ("Prowess, prowess": each triggers, rule 702.108b).</summary>
+    public int ExtraProwess { get; init; }
+
     /// <summary>
     /// For a nonmodal double-faced card (rule 712.2): its back face. This definition is the front face; the card is cast
     /// with it up and has only its characteristics everywhere but the battlefield (712.8a). On the battlefield it can

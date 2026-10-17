@@ -78,6 +78,8 @@ public sealed record CardScript(
     public Condition? EntersTappedUnless { get; init; }
     /// <summary>"This creature enters prepared."</summary>
     public bool EntersPrepared { get; init; }
+    /// <summary>"Prowess, prowess": instances beyond the first.</summary>
+    public int ExtraProwess { get; init; }
     /// <summary>For a preparation card: the script of its prepare spell (the card's second face).</summary>
     public CardScript? Prepare { get; init; }
     public int EquipDiscount { get; init; }
@@ -223,6 +225,7 @@ public sealed record CardScript(
         AdditionalLandPlayIf = AdditionalLandPlayIf,
         EntersTappedUnless = EntersTappedUnless,
         EntersPrepared = EntersPrepared || d.EntersPrepared,
+        ExtraProwess = ExtraProwess,
         EquipDiscount = EquipDiscount,
         FreeFirstEquipIf = FreeFirstEquipIf,
         ManaOnlyForAbilitiesToo = ManaOnlyForAbilitiesToo,
@@ -504,6 +507,7 @@ public static partial class CardScriptParser
             AdditionalLandPlayIf = root.TryGetProperty("additionalLandPlayIf", out var alp) ? ParseCondition(alp) : null,
             EntersTappedUnless = root.TryGetProperty("entersTappedUnless", out var etu) ? ParseCondition(etu) : null,
             EntersPrepared = Bool(root, "entersPrepared"),
+            ExtraProwess = root.TryGetProperty("extraProwess", out var xpw) ? xpw.GetInt32() : 0,
             Prepare = root.TryGetProperty("prepare", out var prep) ? Parse(prep.GetRawText()) : null,
             EquipDiscount = root.TryGetProperty("equipDiscount", out var eqd) ? eqd.GetInt32() : 0,
             FreeFirstEquipIf = root.TryGetProperty("freeFirstEquipIf", out var ffe) ? ParseCondition(ffe) : null,
@@ -594,7 +598,11 @@ public static partial class CardScriptParser
             OpponentsCantCastChosenName = Bool(root, "opponentsCantCastChosenName"),
             DamageBonuses = root.TryGetProperty("damageBonus", out var dbo)
                 ? new[] { new DamageBonus(dbo.TryGetProperty("sources", out var dbs) ? ParseFilter(dbs, ControllerFilter.You) : ObjectFilter.Anything with { Controller = ControllerFilter.You },
-                    dbo.TryGetProperty("amount", out var dba) ? dba.GetInt32() : 1) }
+                    dbo.TryGetProperty("amount", out var dba) ? dba.GetInt32() : 1)
+                    {
+                        NoncombatOnly = dbo.TryGetProperty("noncombat", out var dbn) && dbn.GetBoolean(),
+                        ToOpponentsOnly = dbo.TryGetProperty("toOpponents", out var dbt) && dbt.GetBoolean(),
+                    } }
                 : null,
             DamageToYouReductions = root.TryGetProperty("preventDamageToYou", out var pdy)
                 ? new[] { new DamageToYouReduction(pdy.TryGetProperty("sources", out var pdys) ? ParseFilter(pdys, ControllerFilter.Any) : ObjectFilter.Anything,
@@ -919,6 +927,10 @@ public static partial class CardScriptParser
         "becomesBlocked" => TriggerEvent.BecomesBlocked,
         "youScry" => TriggerEvent.YouScry,
         "youSurveil" => TriggerEvent.YouSurveil,
+        "youScryOrSurveil" => TriggerEvent.YouScryOrSurveil,
+        "youActivateLoyaltyAbility" => TriggerEvent.YouActivateLoyaltyAbility,
+        "opponentActivatesLoyaltyAbility" => TriggerEvent.OpponentActivatesLoyaltyAbility,
+        "opponentDealtNoncombatDamage" => TriggerEvent.OpponentDealtNoncombatDamage,
         "attachedDealtDamage" => TriggerEvent.AttachedDealtDamage,
         "opponentGainsControlFromYou" => TriggerEvent.OpponentGainsControlFromYou,
         "dealsDamage" => TriggerEvent.DealsDamage,
@@ -1154,6 +1166,11 @@ public static partial class CardScriptParser
                 "transformed" => new SourceTransformed(),
                 "frontFaceUp" => new SourceFrontFaceUp(),
                 "dealtDamage" => new SourceHasDealtDamage(),
+                "dealtCombatDamage" => new SourceHasDealtCombatDamage(),
+                "scriedOrSurveilledThisTurn" => new ScriedOrSurveilledThisTurn(),
+                "activatedLoyaltyAbilityThisTurn" => new ActivatedLoyaltyAbilityThisTurn(),
+                "opponentDealtNoncombatDamageThisTurn" => new OpponentDealtNoncombatDamage(false),
+                "opponentDealtNoncombatDamageLastTurn" => new OpponentDealtNoncombatDamage(true),
                 "triggeredHadCounters" => new TriggeredHadCounters(),
                 "hasAnyCounters" => new SourceHasAnyCounters(),
                 "castDuringMainPhase" => new CastDuringYourMainPhase(),
@@ -1951,6 +1968,7 @@ public static partial class CardScriptParser
         if (Value("becomePrepared") is { } prepared) return new BecomePrepared(prepared);
         if (Value("becomeUnprepared") is { } unprepared) return new BecomePrepared(unprepared, Prepared: false);
         if (e.TryGetProperty("empowerJace", out _)) return new EmpowerJace(Qty("empowerJace"));
+        if (Str("loyaltyAtInstantSpeed") is { } instantSubtype) return new LoyaltyAbilitiesAtInstantSpeed(instantSubtype);
         if (Value("transform") is { } transform) return new Transform(transform);
         if (Value("regenerate") is { } regen) return new Regenerate(regen);
         if (Flag("populate")) return new Populate();

@@ -66,6 +66,7 @@ public static partial class CardScriptParser
             return e.GetString() switch
             {
                 "colorsAmongYourPermanents" => new Quantity(0, QuantityKind.ColorsAmongYourPermanents),
+                "cardTypesInAllGraveyards" => new Quantity(0, QuantityKind.CardTypesInAllGraveyards),
                 "counterKindsOnSelf" => new Quantity(0, QuantityKind.CounterKindsOnSource),
                 "playersWhoLostLifeThisTurn" => new Quantity(0, QuantityKind.PlayersWhoLostLifeThisTurn),
                 "greatestPowerAsCast" => new Quantity(0, QuantityKind.GreatestPowerAsCast),
@@ -81,6 +82,8 @@ public static partial class CardScriptParser
             return new Quantity(0, QuantityKind.EnteredThisTurnCount, ParseFilter(ett, ControllerFilter.Any));
         if (e.TryGetProperty("opponentsControlling", out var opc))
             return new Quantity(0, QuantityKind.OpponentsControlling, ParseFilter(opc, ControllerFilter.Any));
+        if (e.TryGetProperty("divide", out var divide))
+            return new Quantity(e.GetProperty("by").GetInt32(), QuantityKind.Per) { Parts = new[] { ParseQuantity(divide) } };
         if (e.TryGetProperty("diff", out var diff))
             return new Quantity(0, QuantityKind.Difference) { Parts = diff.EnumerateArray().Select(ParseQuantity).ToList() };
         return null;

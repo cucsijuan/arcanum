@@ -1157,6 +1157,12 @@ public sealed record BecomePrepared(Subject What, bool Prepared = true) : Effect
 public sealed record EmpowerJace(Quantity Amount) : Effect;
 
 /// <summary>
+/// "Until end of turn, you may activate loyalty abilities of [subtype] planeswalkers you control on any player's turn any time you could
+/// cast an instant" (still one loyalty ability per planeswalker each turn).
+/// </summary>
+public sealed record LoyaltyAbilitiesAtInstantSpeed(string Subtype) : Effect;
+
+/// <summary>
 /// "Transform [it]" (rule 701.27): a double-faced permanent turns over to its other face and stays the same object. Anything
 /// else is unaffected (701.27c), as is a face that would be an instant or sorcery (701.27d); an ability of the permanent
 /// transforms it only if it hasn't transformed since the ability was put on the stack (or a delayed one was created, 701.27f).

@@ -8,7 +8,14 @@ namespace Arcanum.Engine.Cards;
 /// <paramref name="Amount"/> to that permanent or player instead" (a replacement effect, rule 614.1a).
 /// <paramref name="Sources"/> is judged with the permanent that has this ability as the source ("another red source").
 /// </summary>
-public sealed record DamageBonus(ObjectFilter Sources, int Amount);
+public sealed record DamageBonus(ObjectFilter Sources, int Amount)
+{
+    /// <summary>Only noncombat damage ("would deal noncombat damage").</summary>
+    public bool NoncombatOnly { get; init; }
+
+    /// <summary>Only damage to an opponent of the bonus's controller or a permanent an opponent controls.</summary>
+    public bool ToOpponentsOnly { get; init; }
+}
 
 /// <summary>
 /// "If a [matching] source would deal damage to you, prevent <paramref name="Amount"/> of that damage" (a prevention effect,

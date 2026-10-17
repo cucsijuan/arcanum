@@ -36,6 +36,8 @@ public sealed partial class Game
             player.SacrificedThisTurn.Clear();
             player.PermanentLeftThisTurn = false;
             player.EnteredThisTurn.Clear();
+            player.NoncombatDamageTakenLastTurn = player.DamageTakenThisTurn - player.CombatDamageTakenThisTurn;
+            player.ScriedOrSurveilledThisTurn = false;
             player.DamageTakenThisTurn = 0;
             player.CombatDamageTakenThisTurn = 0;
             player.CombatDamagedByLegendaryThisTurn = false;
@@ -44,6 +46,8 @@ public sealed partial class Game
             player.CardLeftGraveyardThisTurn = false;
             player.PutCounterOnCreatureThisTurn = false;
             player.AttackedThisTurn = false;
+            player.ActivatedLoyaltyThisTurn = false;
+            player.InstantLoyaltySubtypes.Clear();
             player.LifeGainedThisTurn = 0;
             player.LifeLostThisTurn = 0;
             player.CardsDrawnThisTurn = 0;
