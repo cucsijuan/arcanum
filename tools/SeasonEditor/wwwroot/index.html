@@ -271,9 +271,10 @@ async function drawDay() {
       el("button", { class: "small", onclick: () => addChange(day.date, addDays(day.date, 6), false) }, "+ Special week from this day"),
       el("button", { class: "small", onclick: () => addChange(day.date, null, false) }, "+ Change from this day on")));
   if (day.changes.length) {
-    panel.append(el("div", { class: "setby" }, "Changes in force on this day:"));
+    panel.append(el("div", { class: "setby" }, "Season changes in force on this day (dates, featured set, prices, news and cancellations are edited there):"));
     for (const i of day.changes)
-      panel.append(el("div", { class: "setby" }, describeChange(season.changes[i]), el("button", { class: "small", onclick: () => openChange(i) }, "Open")));
+      panel.append(el("div", { class: "setby" }, describeChange(season.changes[i]),
+        el("button", { class: "small", title: "Shows the whole change in the All changes tab", onclick: () => openChange(i) }, "Edit the whole change")));
   }
   box.replaceChildren(panel);
 }
@@ -308,7 +309,7 @@ function drawDayEvent(day, e, past) {
   if (c) {
     const days = c.until ? (c.until === c.from ? `on ${c.from} only` : `${c.from} to ${c.until}`) : `from ${c.from} on`;
     wrap.append(el("div", { class: "setby" }, `Set by the change ${days}` + (c.until === c.from ? "" : " (editing it here changes every day it covers)"),
-      el("button", { class: "small", onclick: () => openChange(e.change) }, "Open change")));
+      el("button", { class: "small", title: "Shows the whole change in the All changes tab", onclick: () => openChange(e.change) }, "Edit the whole change")));
     const k = c.events.findLastIndex(x => x.id === e.id);
     if (k >= 0) wrap.append(drawEvent(c, c.events[k], k, past || c.from <= today()));
   }
