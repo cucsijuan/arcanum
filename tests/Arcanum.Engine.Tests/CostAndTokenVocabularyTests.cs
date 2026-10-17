@@ -30,6 +30,16 @@ public class CostAndTokenVocabularyTests
         Assert.Equal(new[] { ManaType.Green }, token.TapForMana);
     }
 
+    [Fact]
+    public void TokenCanTapForManaOfItsListedColors()
+    {
+        var script = CardScriptParser.Parse("""
+            { "spell": { "effects": [{ "tokens": 1, "token": { "name": "Ember Root", "types": "Artifact — Root", "colors": ["G", "R"], "tapForMana": "{R}{G}" } }] } }
+            """);
+        var token = Assert.IsType<CreateTokens>(script.Spell!.Effects[0]).Token;
+        Assert.Equal(new[] { ManaType.Red, ManaType.Green }, token.TapForMana);
+    }
+
     private static readonly CardDefinition Tax = new()
     {
         Name = "Tolling Bell", Types = CardType.Artifact,

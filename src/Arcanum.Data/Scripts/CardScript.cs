@@ -2060,7 +2060,9 @@ public static partial class CardScriptParser
             Colors = t.TryGetProperty("colors", out var c) ? c.EnumerateArray().Select(x => x.GetString()!).ToList() : Array.Empty<string>(),
             Abilities = abilities,
             // A land token with a basic land type has that type's mana ability (rule 305.6): a "Forest Tentacle land creature token" taps for {G}.
-            TapForMana = types.HasFlag(CardType.Land)
+            // "{T}: Add {R} or {G}" on a token: "tapForMana": "{R}{G}".
+            TapForMana = t.TryGetProperty("tapForMana", out var ttm) ? ParseManaTypes(ttm.GetString()!)
+                : types.HasFlag(CardType.Land)
                 ? subtypes.Select(s => s switch { "Plains" => (ManaType?)ManaType.White, "Island" => ManaType.Blue, "Swamp" => ManaType.Black, "Mountain" => ManaType.Red, "Forest" => ManaType.Green, _ => null })
                     .OfType<ManaType>().Distinct().ToList()
                 : Array.Empty<ManaType>(),
