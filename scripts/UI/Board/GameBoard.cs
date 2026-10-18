@@ -922,6 +922,7 @@ public partial class GameBoard : Control
         }
 
         ApplyHighlights(view, decision);
+        if (_zoneViewer.Pile is not null && decision is not TargetDecision) _zoneViewer.Close(); // the targets were chosen or the choice ended
         _zoneViewer.Refresh(view, id => UsableNow(decision, id),
             id => decision is ChooseCardsDecision ? _selected.Contains(id) : _chosenTargets.Any(t => t.Card == id),
             ChoicePiles(decision).Count > 1 ? "Back" : "Close");
@@ -1882,15 +1883,26 @@ public partial class GameBoard : Control
     private void OpenZone(PlayerId player, Arcanum.Engine.State.Zone zone)
     {
         if (_zoneViewer.Visible && _zoneViewer.Player == player && _zoneViewer.Zone == zone) { _zoneViewer.Close(); return; }
-        if (_zoneViewer.GetParent() is null)
-        {
-            _zoneViewer.CardClicked += OnZoneCardClicked;
-            _zoneViewer.CardHoverStarted += ShowPreview;
-            _zoneViewer.CardHoverEnded += HidePreview;
-            AddChild(_zoneViewer);
-        }
+        AttachZoneViewer();
         _zoneViewer.Open(player, zone);
         Refresh();
+    }
+
+    /// <summary>Each token of a stack shown apart, to pick which of them to target.</summary>
+    private void OpenTokenPile(PlayerId controller, IReadOnlyList<CardId> tokens)
+    {
+        AttachZoneViewer();
+        _zoneViewer.OpenPile(controller, tokens);
+        Refresh();
+    }
+
+    private void AttachZoneViewer()
+    {
+        if (_zoneViewer.GetParent() is not null) return;
+        _zoneViewer.CardClicked += OnZoneCardClicked;
+        _zoneViewer.CardHoverStarted += ShowPreview;
+        _zoneViewer.CardHoverEnded += HidePreview;
+        AddChild(_zoneViewer);
     }
 
     /// <summary>A card in the zone viewer: used like a card on the board; the viewer closes once it starts something.</summary>
@@ -2120,7 +2132,13 @@ public partial class GameBoard : Control
         var id = node.Id;
         switch (_session.CurrentDecision)
         {
-            case TargetDecision:
+            case TargetDecision t:
+                // A stack of identical tokens: show each of them, to pick which one to target.
+                if (AreaHolding(node)?.StackMembers(id) is { Count: > 1 } pile && pile.Count(m => UsableNow(t, m)) > 1)
+                {
+                    OpenTokenPile(node.View?.Controller ?? t.Player, pile);
+                    return;
+                }
                 PickTarget(Arcanum.Engine.Abilities.Target.Of(id));
                 return;
 

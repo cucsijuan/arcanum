@@ -9,6 +9,7 @@ namespace Arcanum.UI.Board;
 /// <summary>
 /// Every card in one player's graveyard or exile, opened by clicking that pile. Cards that can be used right now
 /// (cast from exile after an Adventure, flashback, graveyard abilities, targets) are highlighted and act on click.
+/// Also shows the tokens of one stack on the battlefield one by one, to pick which of them to target.
 /// </summary>
 public partial class ZoneViewer : PanelContainer
 {
@@ -26,6 +27,9 @@ public partial class ZoneViewer : PanelContainer
     /// <summary>Whose zone is shown, and which one.</summary>
     public PlayerId Player { get; private set; }
     public Zone Zone { get; private set; }
+
+    /// <summary>The tokens of a battlefield stack being shown instead of a zone; null when showing a zone.</summary>
+    public IReadOnlyList<CardId>? Pile { get; private set; }
 
     public ZoneViewer()
     {
@@ -59,12 +63,23 @@ public partial class ZoneViewer : PanelContainer
     {
         Player = player;
         Zone = zone;
+        Pile = null;
+        Visible = true;
+    }
+
+    /// <summary>Shows each token of one stack on the battlefield, so one of them can be picked.</summary>
+    public void OpenPile(PlayerId controller, IReadOnlyList<CardId> tokens)
+    {
+        Player = controller;
+        Zone = Zone.Battlefield;
+        Pile = tokens;
         Visible = true;
     }
 
     public void Close()
     {
         Visible = false;
+        Pile = null;
         foreach (var child in _grid.GetChildren()) child.QueueFree();
     }
 
@@ -85,12 +100,23 @@ public partial class ZoneViewer : PanelContainer
         if (!Visible) return;
         _close.Text = closeText;
         var owner = view.Players[Player.Value];
-        var cards = (Zone == Zone.Graveyard ? owner.Graveyard : owner.Exile).Reverse().ToList(); // most recent first
-        _title.Text = $"{(Zone == Zone.Graveyard ? "Graveyard" : "Exile")} of {owner.Name} ({cards.Count})";
-        int playable = cards.Count(c => usable(c.Id));
-        _hint.Text = cards.Count == 0 ? "Empty."
-            : playable > 0 ? $"Highlighted cards can be used now ({playable}): click one."
-            : "Most recent first. Hover a card to see it large.";
+        List<CardView> cards;
+        if (Pile is { } pile)
+        {
+            cards = pile.Select(view.FindCard).OfType<CardView>().Where(c => c.Zone == Zone.Battlefield).ToList();
+            if (cards.Count == 0) { Close(); return; } // the tokens are gone
+            _title.Text = $"{cards[0].Name} tokens of {owner.Name} ({cards.Count})";
+            _hint.Text = "Click the token to target.";
+        }
+        else
+        {
+            cards = (Zone == Zone.Graveyard ? owner.Graveyard : owner.Exile).Reverse().ToList(); // most recent first
+            _title.Text = $"{(Zone == Zone.Graveyard ? "Graveyard" : "Exile")} of {owner.Name} ({cards.Count})";
+            int playable = cards.Count(c => usable(c.Id));
+            _hint.Text = cards.Count == 0 ? "Empty."
+                : playable > 0 ? $"Highlighted cards can be used now ({playable}): click one."
+                : "Most recent first. Hover a card to see it large.";
+        }
 
         foreach (var child in _grid.GetChildren()) child.QueueFree();
         foreach (var view1 in cards)
