@@ -5,7 +5,7 @@ using Arcanum.Engine.Mana;
 namespace Arcanum.Engine.Cards;
 
 /// <summary>A choice made as a permanent enters (rule 614.12).</summary>
-public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped, RevealOrTapped, BasicLandType, LookAtOpponentsHandThenCardName, NonbasicLandCardName, Creature, CounterOnPermanent,
+public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLifeOrTapped, RevealOrTapped, BeholdOrTapped, BasicLandType, LookAtOpponentsHandThenCardName, NonbasicLandCardName, Creature, CounterOnPermanent,
     /// <summary>"As this enters, each opponent reveals their hand. You choose the name of a nonland card revealed this way."</summary>
     OpponentsRevealHandsThenNonlandName,
     /// <summary>"As this enters, choose Khans or Dragons": one of <see cref="CardDefinition.EnterOptions"/>.</summary>
@@ -663,6 +663,9 @@ public sealed partial record CardDefinition
 
     /// <summary>"Planeswalkers you control aren't put into their owners' graveyards for having 0 loyalty" (while on the battlefield).</summary>
     public bool YourPlaneswalkersSurviveZeroLoyalty { get; init; }
+
+    /// <summary>"If one or more artifact tokens would be created under your control, that many 5/5 red Dragon creature tokens with flying are created instead."</summary>
+    public bool ArtifactTokensBecomeDragons { get; init; }
 
     /// <summary>
     /// For a nonmodal double-faced card (rule 712.2): its back face. This definition is the front face; the card is cast

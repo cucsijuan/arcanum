@@ -48,6 +48,7 @@ public sealed partial class Game
             player.MilledThisTurn = 0;
             player.NextSpellUncounterableThisTurn = false;
             player.NoLegendRuleThisTurn = false;
+            player.ExtraRedFromMountainsThisTurn = 0;
             player.CardsDiscardedThisTurn = 0;
             player.DamageTakenThisTurn = 0;
             player.CombatDamageTakenThisTurn = 0;

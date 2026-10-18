@@ -174,6 +174,9 @@ public sealed record ActivatedAbility : AbilityDefinition
     /// <summary>"This ability costs {1} less to activate for each [filter] you control."</summary>
     public ObjectFilter? CostReductionPer { get; init; }
 
+    /// <summary>"This ability costs {1} less to activate for each +1/+1 counter on the creature it targets."</summary>
+    public bool CostReductionPerTargetCounter { get; init; }
+
     /// <summary>"This ability costs {N} less to activate if [condition]."</summary>
     public Condition? CostReductionIf { get; init; }
     public int CostReductionAmount { get; init; }

@@ -85,6 +85,7 @@ public sealed record CardScript(
     public bool YourInstantsAndSorceriesHaveSplitSecond { get; init; }
     public bool NoSpellsOrAbilitiesDuringCombat { get; init; }
     public bool YourPlaneswalkersSurviveZeroLoyalty { get; init; }
+    public bool ArtifactTokensBecomeDragons { get; init; }
     /// <summary>For a preparation card: the script of its prepare spell (the card's second face).</summary>
     public CardScript? Prepare { get; init; }
     public int EquipDiscount { get; init; }
@@ -236,6 +237,7 @@ public sealed record CardScript(
         YourInstantsAndSorceriesHaveSplitSecond = YourInstantsAndSorceriesHaveSplitSecond,
         NoSpellsOrAbilitiesDuringCombat = NoSpellsOrAbilitiesDuringCombat,
         YourPlaneswalkersSurviveZeroLoyalty = YourPlaneswalkersSurviveZeroLoyalty,
+        ArtifactTokensBecomeDragons = ArtifactTokensBecomeDragons,
         EquipDiscount = EquipDiscount,
         FreeFirstEquipIf = FreeFirstEquipIf,
         ManaOnlyForAbilitiesToo = ManaOnlyForAbilitiesToo,
@@ -417,6 +419,7 @@ public static partial class CardScriptParser
                         ActivationCondition = a.TryGetProperty("activateIf", out var ifc) ? ParseCondition(ifc) : null,
                         IsEquip = Bool(a, "equip"),
                         CostReductionPer = a.TryGetProperty("costReductionPer", out var crp) ? ParseFilter(crp, ControllerFilter.You) : null,
+                        CostReductionPerTargetCounter = Bool(a, "costReductionPerTargetCounter"),
                         CostReductionIf = a.TryGetProperty("costReductionIf", out var cri) ? ParseCondition(cri) : null,
                         CostReductionAmount = a.TryGetProperty("costReductionAmount", out var cra) ? cra.GetInt32() : 0,
                         MinX = a.TryGetProperty("minX", out var mnx) ? mnx.GetInt32() : 0,
@@ -526,6 +529,7 @@ public static partial class CardScriptParser
             YourInstantsAndSorceriesHaveSplitSecond = Bool(root, "yourInstantsAndSorceriesHaveSplitSecond"),
             NoSpellsOrAbilitiesDuringCombat = Bool(root, "noSpellsOrAbilitiesDuringCombat"),
             YourPlaneswalkersSurviveZeroLoyalty = Bool(root, "yourPlaneswalkersSurviveZeroLoyalty"),
+            ArtifactTokensBecomeDragons = Bool(root, "artifactTokensBecomeDragons"),
             Prepare = root.TryGetProperty("prepare", out var prep) ? Parse(prep.GetRawText()) : null,
             EquipDiscount = root.TryGetProperty("equipDiscount", out var eqd) ? eqd.GetInt32() : 0,
             FreeFirstEquipIf = root.TryGetProperty("freeFirstEquipIf", out var ffe) ? ParseCondition(ffe) : null,
@@ -680,6 +684,7 @@ public static partial class CardScriptParser
         ExileFromGraveyard = e.TryGetProperty("exileGraveyard", out var exg) ? exg.GetInt32() : 0,
         ExileFromGraveyardFilter = e.TryGetProperty("exileGraveyardFilter", out var exgf) ? ParseFilter(exgf, ControllerFilter.Any) : null,
         ReturnToHand = e.TryGetProperty("returnToHand", out var rth) ? ParseFilter(rth, ControllerFilter.You) : null,
+        Behold = e.TryGetProperty("behold", out var bhc) ? ParseFilter(bhc, ControllerFilter.Any) : null,
     };
 
     /// <summary>"instant|sorcery": any of these card types.</summary>
@@ -2000,6 +2005,7 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("removeUpToCounters", out _)) return new RemoveUpToCounters(Int("removeUpToCounters"), Subj("from", "target"));
         if (Flag("nextSpellUncounterable")) return new NextSpellUncounterable();
         if (Flag("noLegendRuleThisTurn")) return new NoLegendRuleThisTurn();
+        if (Flag("mountainsAddExtraRedThisTurn")) return new MountainsAddExtraRedThisTurn();
         if (e.TryGetProperty("surveilledToHand", out var sth))
             return new SurveilledToHand(ParseFilter(sth, ControllerFilter.Any), e.TryGetProperty("maxManaValue", out var sthm) ? ParseQuantity(sthm) : null);
         if (Flag("exileTopMayCast")) return new ExileTopMayCast(e.TryGetProperty("ifNot", out var etn) ? EffectList(etn) : Array.Empty<Effect>());

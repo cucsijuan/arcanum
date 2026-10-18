@@ -3647,6 +3647,10 @@ public sealed partial class Game
                     if (bp.Prepared) Prepare(card);
                     else Unprepare(card, announce: true);
                 break;
+            case MountainsAddExtraRedThisTurn:
+                State.GetPlayer(ctx.Controller).ExtraRedFromMountainsThisTurn++;
+                RecomputeContinuousEffects();
+                break;
             case NoLegendRuleThisTurn:
                 State.GetPlayer(ctx.Controller).NoLegendRuleThisTurn = true;
                 break;
@@ -3832,6 +3836,7 @@ public sealed partial class Game
         int extraFoods = Instances(player, Replacements.ExtraFoodWithTokens);
         int extraFrogs = Instances(player, Replacements.ExtraFrogWithTokens);
         int treasures = Instances(player, Replacements.FoodAlsoTreasure);
+        int dragons = State.PermanentsControlledBy(player).Count(c => c.HasTextAbilities && c.Definition.ArtifactTokensBecomeDragons);
         while (true)
         {
             int foods = batch.Where(b => b.Token.Subtypes.Contains("Food")).Sum(b => b.Count);
@@ -3840,6 +3845,12 @@ public sealed partial class Game
             if (extraFoods > 0) choices.Add(("Those tokens plus an additional Food", () => { batch.Add((PredefinedTokens.Food, 1, false)); extraFoods--; }));
             if (extraFrogs > 0) choices.Add(("Those tokens plus a 1/1 green Frog", () => { batch.Add((FrogToken, 1, false)); extraFrogs--; }));
             if (treasures > 0 && foods > 0) choices.Add(("A Treasure for each Food", () => { batch.Add((PredefinedTokens.Treasure, foods, false)); treasures--; }));
+            if (dragons > 0 && batch.Any(b => b.Token.Types.HasFlag(CardType.Artifact)))
+                choices.Add(("That many 5/5 red Dragons with flying instead of the artifact tokens", () =>
+                {
+                    batch = batch.Select(b => b.Token.Types.HasFlag(CardType.Artifact) ? (VisitingDragon, b.Count, b.Original) : b).ToList();
+                    dragons--;
+                }));
             if (choices.Count == 0) break;
             int pick = 0;
             if (choices.Count > 1)
@@ -3862,6 +3873,12 @@ public sealed partial class Game
         EndEnteringTogether();
         return (originals, all);
     }
+
+    /// <summary>The 5/5 red Dragon creature token with flying created instead of artifact tokens.</summary>
+    private static readonly CardDefinition VisitingDragon = new()
+    {
+        Name = "Dragon", Types = CardType.Creature, Subtypes = new[] { "Dragon" }, Power = 5, Toughness = 5, Colors = new[] { "R" }, Keywords = new[] { "Flying" }, IsToken = true,
+    };
 
     private async Task<CardId?> CreateTokenAsync(CardDefinition definition, PlayerId controller, bool tapped = false, bool backFaceUp = false)
     {
@@ -5223,6 +5240,8 @@ public sealed partial class Game
         foreach (var card in battlefield)
             card.ExtraColorless = battlefield.Count(c => c.Controller == card.Controller && ((c.Replaces & Replacements.ExtraColorlessWhenTappedForColorless) != 0
                 || (card.Is(CardType.Land) && (c.Replaces & Replacements.ExtraColorlessWhenLandTappedForColorless) != 0)));
+        foreach (var card in battlefield)
+            card.ExtraRed = card.Is(CardType.Land) && card.HasSubtype("Mountain") ? State.GetPlayer(card.Controller).ExtraRedFromMountainsThisTurn : 0;
         foreach (var card in battlefield.Where(c => c.Definition.ExtraManaOptions.Count > 0))
         {
             card.InactiveManaOptions.Clear();

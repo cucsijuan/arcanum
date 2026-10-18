@@ -191,6 +191,9 @@ public sealed class Card
     /// <summary>Additional {C} its controller gets whenever this is tapped for {C} (set as continuous effects are worked out).</summary>
     internal int ExtraColorless { get; set; }
 
+    /// <summary>Additional {R} whenever this (a Mountain) is tapped for mana ("until end of turn, whenever you tap a Mountain for mana, add an additional {R}").</summary>
+    internal int ExtraRed { get; set; }
+
     /// <summary>"If you tap a permanent for mana, it produces three times as much of that mana instead": 3 to the power of such effects.</summary>
     internal int ManaMultiplier { get; set; } = 1;
 
@@ -557,6 +560,11 @@ public sealed class Card
                 for (int i = 0; i < options.Count; i++)
                     if (options[i].Produces > 0 && options[i].Types.Count == 1 && options[i].Types[0] == Mana.ManaType.Colorless && !options[i].Combination)
                         options[i] = options[i] with { Amount = options[i].Amount + ExtraColorless };
+            // The additional {R} for a Mountain whose ability adds only {R} is part of the same activation here; others get it as they are tapped.
+            if (ExtraRed > 0)
+                for (int i = 0; i < options.Count; i++)
+                    if (options[i].Produces > 0 && options[i].Types.Count == 1 && options[i].Types[0] == Mana.ManaType.Red && !options[i].Combination)
+                        options[i] = options[i] with { Amount = options[i].Amount + ExtraRed };
             return options;
         }
     }

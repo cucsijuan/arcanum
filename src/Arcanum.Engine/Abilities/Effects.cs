@@ -1177,6 +1177,9 @@ public sealed record NextSpellUncounterable : Effect;
 /// <summary>"The 'legend rule' doesn't apply to permanents you control this turn."</summary>
 public sealed record NoLegendRuleThisTurn : Effect;
 
+/// <summary>"Until end of turn, whenever you tap a Mountain for mana, add an additional {R}."</summary>
+public sealed record MountainsAddExtraRedThisTurn : Effect;
+
 /// <summary>"Put [matching cards] you put into your graveyard this way (surveil) into your hand" (with mana value at most <see cref="MaxManaValue"/>).</summary>
 public sealed record SurveilledToHand(ObjectFilter Filter, Quantity? MaxManaValue) : Effect;
 

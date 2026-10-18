@@ -19,6 +19,9 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
     /// <summary>"Return an artifact you control to its owner's hand": one permanent matching this (the source too).</summary>
     public ObjectFilter? ReturnToHand { get; init; }
 
+    /// <summary>"Behold a [filter]": choose one you control or reveal one from your hand (rule 701.4).</summary>
+    public ObjectFilter? Behold { get; init; }
+
     /// <summary>Crew N: tap untapped creatures you control with total power N or greater (rule 702.122).</summary>
     public int CrewPower { get; init; }
 

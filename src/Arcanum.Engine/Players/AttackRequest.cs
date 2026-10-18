@@ -44,6 +44,9 @@ public sealed record AttackRequest(IReadOnlyList<CardId> Attackers, IReadOnlyLis
     /// <summary>Creatures that "can't attack alone" (rule 506.5).</summary>
     public IReadOnlyList<CardId> CantAttackAlone { get; init; } = Array.Empty<CardId>();
 
+    /// <summary>Planeswalkers no more than one creature can attack each combat.</summary>
+    public IReadOnlyList<CardId> OneAttackerPlaneswalkers { get; init; } = Array.Empty<CardId>();
+
     public IReadOnlyList<AttackRequirement> Requirements { get; init; } = Array.Empty<AttackRequirement>();
 
     /// <summary>Defending players that cost something to attack (their planeswalkers too).</summary>
@@ -57,6 +60,7 @@ public sealed record AttackRequest(IReadOnlyList<CardId> Attackers, IReadOnlyLis
         Planeswalkers = Planeswalkers,
         Forbidden = Forbidden.Concat(Attackers.SelectMany(a => Taxed.Select(d => new AttackForbidden(a, d, true)))).ToList(),
         CantAttackAlone = CantAttackAlone,
+        OneAttackerPlaneswalkers = OneAttackerPlaneswalkers,
         Requirements = Requirements,
     };
 
@@ -92,6 +96,11 @@ public sealed record AttackRequest(IReadOnlyList<CardId> Attackers, IReadOnlyLis
                 reason = "That creature can't attack that player.";
                 return false;
             }
+        if (OneAttackerPlaneswalkers.Any(pw => declared.Count(d => d.Planeswalker == pw) > 1))
+        {
+            reason = "No more than one creature can attack that planeswalker.";
+            return false;
+        }
         if (declared.Count == 1 && CantAttackAlone.Contains(declared[0].Attacker))
         {
             reason = "That creature can't attack alone.";
@@ -138,38 +147,43 @@ public sealed record AttackRequest(IReadOnlyList<CardId> Attackers, IReadOnlyLis
                 .ToList();
         }
 
-        // State: how many creatures attack (0, 1, 2+) and whether one that can't attack alone does (rule 506.5).
-        var memo = new Dictionary<(int, int, bool), ((int Req, int Kept) Score, int Choice)>();
-        (int Req, int Kept) Best(int index, int count, bool alone)
+        // State: how many creatures attack (0, 1, 2+), whether one that can't attack alone does (rule 506.5), and which
+        // planeswalkers that only one creature can attack are already attacked (a bit each).
+        int Bit(AttackDeclaration? d) => d?.Planeswalker is { } pw && OneAttackerPlaneswalkers.ToList().IndexOf(pw) is var i and >= 0 ? 1 << i : 0;
+        var memo = new Dictionary<(int, int, bool, int), ((int Req, int Kept) Score, int Choice)>();
+        (int Req, int Kept) Best(int index, int count, bool alone, int used)
         {
             if (index == attackers.Count) return alone && count < 2 ? (int.MinValue, int.MinValue) : (0, 0);
-            if (memo.TryGetValue((index, count, alone), out var known)) return known.Score;
+            if (memo.TryGetValue((index, count, alone, used), out var known)) return known.Score;
             (int Req, int Kept) best = (int.MinValue, int.MinValue);
             int choice = -1;
             for (int o = 0; o < options[index].Count; o++)
             {
                 var (option, free, kept) = options[index][o];
                 bool attacks = option is not null;
-                var rest = Best(index + 1, Math.Min(2, count + (attacks ? 1 : 0)), alone || (attacks && CantAttackAlone.Contains(attackers[index])));
+                int bit = Bit(option);
+                if ((used & bit) != 0) continue;
+                var rest = Best(index + 1, Math.Min(2, count + (attacks ? 1 : 0)), alone || (attacks && CantAttackAlone.Contains(attackers[index])), used | bit);
                 if (rest.Req == int.MinValue) continue;
                 var score = (rest.Req + free, rest.Kept + kept);
                 if (choice < 0 || score.Item1 > best.Req || (score.Item1 == best.Req && score.Item2 > best.Kept)) { best = score; choice = o; }
             }
-            memo[(index, count, alone)] = (best, choice);
+            memo[(index, count, alone, used)] = (best, choice);
             return best;
         }
 
-        var top = Best(0, 0, false);
+        var top = Best(0, 0, false, 0);
         var result = new List<AttackDeclaration>();
-        int n = 0;
+        int n = 0, usedPlaneswalkers = 0;
         bool lone = false;
         for (int i = 0; i < attackers.Count; i++)
         {
-            var option = options[i][memo[(i, n, lone)].Choice].Choice;
+            var option = options[i][memo[(i, n, lone, usedPlaneswalkers)].Choice].Choice;
             if (option is null) continue;
             result.Add(option);
             n = Math.Min(2, n + 1);
             lone |= CantAttackAlone.Contains(attackers[i]);
+            usedPlaneswalkers |= Bit(option);
         }
         return (top.Req, result);
     }

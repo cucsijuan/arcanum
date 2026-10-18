@@ -130,6 +130,9 @@ public sealed class Player
     /// <summary>The legend rule doesn't apply to this player's permanents this turn.</summary>
     public bool NoLegendRuleThisTurn { get; set; }
 
+    /// <summary>"Until end of turn, whenever you tap a Mountain for mana, add an additional {R}": instances this turn.</summary>
+    public int ExtraRedFromMountainsThisTurn { get; set; }
+
     /// <summary>Cards this player discarded this turn.</summary>
     public int CardsDiscardedThisTurn { get; set; }
 

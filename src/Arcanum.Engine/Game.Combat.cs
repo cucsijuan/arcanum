@@ -139,6 +139,7 @@ public sealed partial class Game
                     .Select(d => new AttackForbidden(id, d, AttackForbiddenWithPlaneswalkers(State.GetCard(id), d))))
                 .ToList(),
             CantAttackAlone = possible.Where(id => State.GetCard(id).Has(Keyword.CantAttackAlone)).ToList(),
+            OneAttackerPlaneswalkers = defenders.SelectMany(d => State.PermanentsControlledBy(d).Where(p => p.Is(CardType.Planeswalker) && p.Has(Keyword.OneAttackerAtMost)).Select(p => p.Id)).ToList(),
             Requirements = requirements,
             Taxed = defenders.Where(d => AttackTax(d) is not null).ToList(),
         };

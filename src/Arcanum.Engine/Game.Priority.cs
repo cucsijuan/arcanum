@@ -142,6 +142,21 @@ public sealed partial class Game
                 else EnterTapped(card);
                 continue;
             }
+            else if (card.Definition.ChooseOnEnter == EnterChoice.BeholdOrTapped)
+            {
+                // "As this land enters, you may behold a [kind]. If you don't, this land enters tapped."
+                var eligible = BeholdCandidates(who, card.Definition.EnterRevealFilter ?? ObjectFilter.Anything, id).Where(c => c.Id != id).ToList();
+                IReadOnlyList<CardId> beheld = Array.Empty<CardId>();
+                if (eligible.Count > 0)
+                {
+                    beheld = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest($"{card.Name}: behold one so it enters untapped (or none)", id,
+                        eligible.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 0, 1, CardChoicePurpose.Keep));
+                    Require(beheld.Count <= 1 && beheld.All(b => eligible.Any(c => c.Id == b)), "Behold one of the listed cards.");
+                }
+                if (beheld.Count == 1) { if (State.GetCard(beheld[0]).Zone == Zone.Hand) Emit(new CardsRevealed(who, beheld.ToList())); }
+                else EnterTapped(card);
+                continue;
+            }
             else if (card.Definition.ChooseOnEnter == EnterChoice.BasicLandType)
             {
                 // "As this enters, choose a basic land type."
@@ -623,6 +638,11 @@ public sealed partial class Game
         if (ability.CostReductionPer is { } per)
             cost = cost.MinusGeneric(State.Battlefield.Select(State.GetCard).Count(c => Matches(per, c, c.Controller, source, player)));
         if (ability.CostReductionIf is { } reduceIf && Holds(reduceIf, player, source)) cost = cost.MinusGeneric(ability.CostReductionAmount);
+        // "Costs {1} less for each +1/+1 counter on the creature it targets" (before targets are chosen, the best legal one).
+        if (ability.CostReductionPerTargetCounter)
+            cost = cost.MinusGeneric((targets is not null ? targets.Select(t => t.Target.Card).OfType<CardId>()
+                    : ability.Targets.SelectMany(spec => LegalTargets(spec, player, source.Id)).Select(t => t.Card).OfType<CardId>())
+                .Select(State.GetCard).Select(h => h.CounterCount(CounterKind.PlusOnePlusOne)).DefaultIfEmpty(0).Max());
         cost = BlackLifeRule(player, cost);
         if (!ability.IsEquip) return cost;
         if (useFreeEquip && FreeEquipAvailable(player)) return ManaCost.Zero;
@@ -1323,6 +1343,7 @@ public sealed partial class Game
         if (extra.ReturnExiledWithSource is { } exiledFilter && !ExiledWith(State.GetCard(source), exiledFilter).Any()) return false;
         if (extra.Sacrifice is { } filter && SacrificeCandidates(playerId, filter, source).Count < extra.SacrificeCount) return false;
         if (extra.ReturnToHand is { } returnFilter && ReturnCandidates(playerId, returnFilter, source).Count == 0) return false;
+        if (extra.Behold is { } beholdFilter && BeholdCandidates(playerId, beholdFilter, source).Count == 0) return false;
         if (extra.TapCreatures is { } tapFilter && TapCandidates(playerId, tapFilter, source).Count < extra.TapCount) return false;
         if (extra.CrewPower > 0 && TapCandidates(playerId, new ObjectFilter(CardType.Creature, Other: true), source).Sum(c => c.Power) < extra.CrewPower) return false;
         if (extra.RemoveCountersFromYourCreatures > 0
@@ -1365,7 +1386,12 @@ public sealed partial class Game
     /// <summary>The cards an additional cost's choices name (exile, tap, discard, return, sacrifice), chosen before anything is paid.</summary>
     private sealed record ExtraPicks(IReadOnlyDictionary<ExtraChoice, IReadOnlyList<CardId>> Chosen);
 
-    private enum ExtraChoice { Exile, Tap, Discard, Return, Sacrifice }
+    private enum ExtraChoice { Exile, Tap, Discard, Return, Sacrifice, Behold }
+
+    /// <summary>What a player may behold: a matching permanent they control or a matching card in their hand (not the source).</summary>
+    private List<Card> BeholdCandidates(PlayerId player, ObjectFilter filter, CardId source) =>
+        State.PermanentsControlledBy(player).Concat(State.GetPlayer(player).Hand.Where(id => id != source).Select(State.GetCard))
+            .Where(c => Matches(filter with { Controller = ControllerFilter.Any }, c, player, State.GetCard(source), player)).ToList();
 
     /// <summary>
     /// The question an additional cost asks for one kind of choice, with the check an answer must pass; null when the
@@ -1400,6 +1426,12 @@ public sealed partial class Game
                 var hand = player.Hand.Where(id => id != source && DiscardableFor(extra, id, playerId, source)).ToList();
                 return (new CardChoiceRequest($"Discard {extra.Discard} to pay the cost", source, Views(hand), extra.Discard, extra.Discard, CardChoicePurpose.Discard),
                     c => c.Count == extra.Discard && Distinct(c) && c.All(hand.Contains), "Discard from your hand.");
+            }
+            case ExtraChoice.Behold when extra.Behold is { } beholding:
+            {
+                var beholdable = BeholdCandidates(playerId, beholding, source);
+                return (new CardChoiceRequest("Behold: choose one you control or reveal one from your hand", source, Views(beholdable.Select(c => c.Id)), 1, 1, CardChoicePurpose.Keep),
+                    c => c.Count == 1 && beholdable.Any(x => x.Id == c[0]), "Choose one of the listed cards.");
             }
             case ExtraChoice.Return when extra.ReturnToHand is { } toReturn:
             {
@@ -1511,6 +1543,11 @@ public sealed partial class Game
             var chosen = await Choose(ExtraChoice.Discard);
             foreach (var id in chosen) await DiscardCardAsync(playerId, id, causedBy);
             _lastDiscardedForCost.AddRange(chosen);
+        }
+        if (extra.Behold is not null)
+        {
+            var beheld = await Choose(ExtraChoice.Behold);
+            if (beheld.Count == 1 && State.GetCard(beheld[0]).Zone == Zone.Hand) Emit(new CardsRevealed(playerId, beheld.ToList()));
         }
         if (extra.ReturnToHand is { } toReturn)
         {
@@ -1671,6 +1708,13 @@ public sealed partial class Game
         if (option is { GainLife: > 0 } heals) await GainLifeAsync(player.Id, heals.GainLife);
         // An ability that adds only {C} already includes the additional {C} (Card.ManaOptions); one that could add something else gets it now.
         if (produced.Contains(ManaType.Colorless) && option is not { Types: [ManaType.Colorless], Combination: false }) AddExtraColorless(player, source);
+        // A Mountain tapped for mana other than only {R}: its additional {R} now (the {R}-only ability already includes it).
+        if (source.ExtraRed > 0 && produced.Count > 0 && option is not { Types: [ManaType.Red], Combination: false })
+            for (int i = 0; i < source.ExtraRed; i++)
+            {
+                player.ManaPool.Add(ManaType.Red);
+                Emit(new ManaAdded(player.Id, ManaType.Red, source.Id));
+            }
         if (source.Definition.SacrificeForMana) await SacrificePermanentAsync(source.Id);
         // "Whenever you tap a nonland permanent for mana, add one mana of any type that permanent produced" (a triggered mana ability, 605.1b).
         if (!source.Is(CardType.Land) && produced.Count > 0)
