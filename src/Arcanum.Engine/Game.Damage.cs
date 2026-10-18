@@ -449,6 +449,9 @@ public sealed partial class Game
         if (removed <= 0) return;
         card.Counters[kind] = card.CounterCount(kind) - removed;
         Emit(new CountersRemoved(card.Id, kind, removed));
+        // Vanishing (702.63a): "When the last time counter is removed from this permanent, sacrifice it."
+        if (kind == CounterKind.Time && card.CounterCount(kind) == 0 && card.Zone == Zone.Battlefield && card.HasTextAbilities && card.Definition.Vanishing > 0)
+            _pendingTriggers.Add(new PendingTrigger(card.Id, VanishingSacrifice, card.Controller) { SourceVersion = card.Version });
     }
 
     /// <summary>

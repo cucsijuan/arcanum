@@ -88,12 +88,27 @@ public sealed class BoosterGenerator : IBoosterSource
                 var sheetName = PickSheet(slot, random);
                 var sheet = _sheets[sheetName];
                 if (sheet.Count == 0) continue;
+                var sheetSpec = _spec.Sheets[sheetName];
+                if (slot.Pair)
+                {
+                    // Both cards of one pair on the sheet, neither already in the booster.
+                    PoolCard[]? Entry(string name) => sheet.FirstOrDefault(c => c[0].Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                    var pairs = sheetSpec.Pairs.Where(p => Entry(p.First) is not null && Entry(p.Second) is not null
+                                                           && !pack.Any(c => c.Name == p.First || c.Name == p.Second)).ToList();
+                    if (pairs.Count == 0) continue;
+                    var (first, second) = pairs[random.Next(pairs.Count)];
+                    foreach (var half in new[] { Entry(first)!, Entry(second)! })
+                    {
+                        var printed = half[random.Next(half.Length)];
+                        pack.Add(sheetSpec.Surge ? printed with { Foil = true, Surge = true } : sheetSpec.Foil ? printed with { Foil = true } : printed);
+                    }
+                    continue;
+                }
                 // Outside wildcard slots (and sheets that may repeat, like foils) a booster never repeats a card.
                 var choices = slot.Wildcard || slot.RepeatSheets.Contains(sheetName) ? sheet : sheet.Where(c => !pack.Any(p => p.Name == c[0].Name)).ToList();
                 if (choices.Count == 0) choices = sheet;
                 var variants = choices[random.Next(choices.Count)];
                 var card = variants[random.Next(variants.Length)];
-                var sheetSpec = _spec.Sheets[sheetName];
                 pack.Add(sheetSpec.Surge ? card with { Foil = true, Surge = true } : sheetSpec.Foil ? card with { Foil = true } : card);
             }
         }

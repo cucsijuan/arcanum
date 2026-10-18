@@ -667,6 +667,21 @@ public sealed partial record CardDefinition
     /// <summary>"If one or more artifact tokens would be created under your control, that many 5/5 red Dragon creature tokens with flying are created instead."</summary>
     public bool ArtifactTokensBecomeDragons { get; init; }
 
+    /// <summary>"Artifacts and lands enter tapped" (every player's, while this is on the battlefield).</summary>
+    public bool ArtifactsAndLandsEnterTapped { get; init; }
+
+    /// <summary>"Skip your draw step."</summary>
+    public bool SkipYourDrawStep { get; init; }
+
+    /// <summary>"Your maximum hand size is N."</summary>
+    public int? YourMaximumHandSize { get; init; }
+
+    /// <summary>Vanishing N (rule 702.63): enters with N time counters; at the beginning of your upkeep remove one; when the last is removed, sacrifice it.</summary>
+    public int Vanishing { get; init; }
+
+    /// <summary>With <see cref="EntersAsCopy"/>: "except it has vanishing N if that creature doesn't have vanishing".</summary>
+    public int CopyGetsVanishingIfNone { get; init; }
+
     /// <summary>"You may cast spells with mana value less than or equal to [quantity] from your hand without paying their mana costs."</summary>
     public Abilities.Quantity? CastFromHandFreeUpTo { get; init; }
 

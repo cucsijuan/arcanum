@@ -86,6 +86,11 @@ public sealed record CardScript(
     public bool NoSpellsOrAbilitiesDuringCombat { get; init; }
     public bool YourPlaneswalkersSurviveZeroLoyalty { get; init; }
     public bool ArtifactTokensBecomeDragons { get; init; }
+    public bool ArtifactsAndLandsEnterTapped { get; init; }
+    public bool SkipYourDrawStep { get; init; }
+    public int? YourMaximumHandSize { get; init; }
+    public int Vanishing { get; init; }
+    public int CopyGetsVanishingIfNone { get; init; }
     public Quantity? CastFromHandFreeUpTo { get; init; }
     public Condition? CastExiledWithThisIf { get; init; }
     /// <summary>For a preparation card: the script of its prepare spell (the card's second face).</summary>
@@ -240,6 +245,11 @@ public sealed record CardScript(
         NoSpellsOrAbilitiesDuringCombat = NoSpellsOrAbilitiesDuringCombat,
         YourPlaneswalkersSurviveZeroLoyalty = YourPlaneswalkersSurviveZeroLoyalty,
         ArtifactTokensBecomeDragons = ArtifactTokensBecomeDragons,
+        ArtifactsAndLandsEnterTapped = ArtifactsAndLandsEnterTapped,
+        SkipYourDrawStep = SkipYourDrawStep,
+        YourMaximumHandSize = YourMaximumHandSize ?? d.YourMaximumHandSize,
+        Vanishing = Vanishing > 0 ? Vanishing : d.Vanishing,
+        CopyGetsVanishingIfNone = CopyGetsVanishingIfNone,
         CastFromHandFreeUpTo = CastFromHandFreeUpTo ?? d.CastFromHandFreeUpTo,
         CastExiledWithThisIf = CastExiledWithThisIf ?? d.CastExiledWithThisIf,
         EquipDiscount = EquipDiscount,
@@ -534,6 +544,11 @@ public static partial class CardScriptParser
             NoSpellsOrAbilitiesDuringCombat = Bool(root, "noSpellsOrAbilitiesDuringCombat"),
             YourPlaneswalkersSurviveZeroLoyalty = Bool(root, "yourPlaneswalkersSurviveZeroLoyalty"),
             ArtifactTokensBecomeDragons = Bool(root, "artifactTokensBecomeDragons"),
+            ArtifactsAndLandsEnterTapped = Bool(root, "artifactsAndLandsEnterTapped"),
+            SkipYourDrawStep = Bool(root, "skipYourDrawStep"),
+            YourMaximumHandSize = root.TryGetProperty("yourMaximumHandSize", out var ymh) ? ymh.GetInt32() : null,
+            Vanishing = root.TryGetProperty("vanishing", out var van) ? van.GetInt32() : 0,
+            CopyGetsVanishingIfNone = root.TryGetProperty("copyGetsVanishingIfNone", out var cgv) ? cgv.GetInt32() : 0,
             CastFromHandFreeUpTo = root.TryGetProperty("castFromHandFreeUpTo", out var cfh) ? ParseQuantity(cfh) : null,
             CastExiledWithThisIf = root.TryGetProperty("castExiledWithThisIf", out var cew) ? ParseCondition(cew) : null,
             Prepare = root.TryGetProperty("prepare", out var prep) ? Parse(prep.GetRawText()) : null,
@@ -803,6 +818,7 @@ public static partial class CardScriptParser
             AnyNumber = Bool(e, "anyNumber"),
             AttachedToTarget = e.TryGetProperty("attachedToTarget", out var att) ? ParseSubject(att.GetString()).Index : null,
             SingleTargetOnly = Bool(e, "singleTarget"),
+            TriggeredAbilitiesOnly = Bool(e, "triggeredOnly"),
             ControlledByTriggeredPlayer = Bool(e, "controlledByTriggeredPlayer"),
             ControlledByDefendingPlayer = Bool(e, "controlledByDefendingPlayer"),
             RepeatFrom = e.TryGetProperty("upTo", out var upTo) ? ParseQuantity(upTo) : null,
@@ -2017,6 +2033,7 @@ public static partial class CardScriptParser
         if (Flag("noLegendRuleThisTurn")) return new NoLegendRuleThisTurn();
         if (Flag("mountainsAddExtraRedThisTurn")) return new MountainsAddExtraRedThisTurn();
         if (Flag("revealTwoFromOutsideOpponentChooses")) return new RevealTwoFromOutsideOpponentChooses();
+        if (Flag("payAnyLife")) return new PayAnyLife(Effects(e));
         if (e.TryGetProperty("castCopiesOfExiledFree", out _)) return new CastCopiesOfExiledFree(Int("castCopiesOfExiledFree"));
         if (Value("grantManaUntilCastFromExile") is { } gmc)
             return new GrantManaUntilCastFromExile(gmc, ManaCost.Parse(Str("mana") ?? "{C}").Pips.Distinct().ToList(), ManaCost.Parse(Str("mana") ?? "{C}").ManaValue);

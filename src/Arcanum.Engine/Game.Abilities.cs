@@ -124,7 +124,7 @@ public sealed partial class Game
                 foreach (var item in State.Stack.Where(s => ControllerOk(s.Controller) && (!spec.SingleTargetOnly || s.Targets.Count == 1)))
                 {
                     if (item is SpellOnStack sp && sp.Card != source && FilterOk(State.GetCard(sp.Card))) yield return Target.Of(sp.Card);
-                    else if (item is AbilityOnStack) yield return Target.OfStack(item.Id);
+                    else if (item is AbilityOnStack ab && (!spec.TriggeredAbilitiesOnly || ab.Ability is TriggeredAbility)) yield return Target.OfStack(item.Id);
                 }
                 yield break;
             case TargetKind.Ability:
@@ -3693,6 +3693,19 @@ public sealed partial class Game
                 }
                 break;
             }
+            case PayAnyLife pl:
+            {
+                var payer = State.GetPlayer(ctx.Controller);
+                // Paying life needs a life total that high (rule 119.4) and the ability to lose life.
+                int most = payer.CantLoseLifeTurn == State.TurnNumber ? 0 : Math.Max(0, payer.Life);
+                if (most == 0) break;
+                int paid = await ControllerOf(ctx.Controller).ChooseNumberAsync(ViewFor(ctx.Controller), new NumberRequest($"{ctx.Source.Name}: pay how much life?", ctx.Source.Id, 0, most));
+                Require(paid >= 0 && paid <= most, $"Choose a number from 0 to {most}.");
+                if (paid == 0) break;
+                ChangeLife(ctx.Controller, -paid);
+                await ApplyAllAsync(pl.Effects, ctx with { X = paid });
+                break;
+            }
             case RevealTwoFromOutsideOpponentChooses:
             {
                 var you = ctx.Controller;
@@ -5866,6 +5879,9 @@ public sealed partial class Game
                     });
                 }
                 foreach (var card in PermanentsAndEmblemsOf(s.ActivePlayer)) Queue(card.Id, TriggerEvent.YourUpkeep, s.ActivePlayer);
+                // Vanishing (702.63a): "at the beginning of your upkeep, if this permanent has a time counter on it, remove a time counter from it".
+                foreach (var card in State.PermanentsControlledBy(s.ActivePlayer).Where(c => c.HasTextAbilities && c.Definition.Vanishing > 0 && c.CounterCount(CounterKind.Time) > 0).ToList())
+                    _pendingTriggers.Add(new PendingTrigger(card.Id, VanishingUpkeep, s.ActivePlayer) { SourceVersion = card.Version });
                 // Suspend (702.62a): "at the beginning of your upkeep, if this card is suspended, remove a time counter from it".
                 foreach (var card in State.GetPlayer(s.ActivePlayer).Exile.Select(State.GetCard).Where(c => c.Suspended && c.CounterCount(CounterKind.Time) > 0).ToList())
                     _pendingTriggers.Add(new PendingTrigger(card.Id, SuspendUpkeep, s.ActivePlayer));
@@ -6333,6 +6349,20 @@ public sealed partial class Game
         Trigger = TriggerEvent.YouAttack,
         Effects = new Effect[] { new PumpUntilEndOfTurn(1, 1, Subject.Triggered) },
         Text = "Exalted: the creature attacking alone gets +1/+1 until end of turn.",
+    };
+
+    private static readonly TriggeredAbility VanishingUpkeep = new()
+    {
+        Trigger = TriggerEvent.YourUpkeep,
+        Effects = new Effect[] { new RemoveCounters(1, Subject.Self, CounterKind.Time) },
+        Text = "Vanishing: at the beginning of your upkeep, remove a time counter from this permanent.",
+    };
+
+    private static readonly TriggeredAbility VanishingSacrifice = new()
+    {
+        Trigger = TriggerEvent.YourUpkeep,
+        Effects = new Effect[] { new SacrificeIt(Subject.Self) },
+        Text = "Vanishing: the last time counter was removed — sacrifice this permanent.",
     };
 
     private static readonly TriggeredAbility SuspendUpkeep = new()

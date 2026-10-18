@@ -123,6 +123,8 @@ public sealed partial class Game
                 continue;
             }
             if (step == Step.Draw && skipDraw) continue;
+            // "Skip your draw step."
+            if (step == Step.Draw && State.PermanentsControlledBy(State.ActivePlayer).Any(c => c.HasTextAbilities && c.Definition.SkipYourDrawStep)) continue;
             // 508.8: skipped when no creature was declared as an attacker or put onto the battlefield attacking.
             if (_skipCombatDamageSteps && step is Step.DeclareBlockers or Step.CombatDamage && State.Combat?.Attacks.AnyEver != true) continue;
             if (step == Step.CombatDamage && CombatHasFirstStrike())
@@ -253,7 +255,10 @@ public sealed partial class Game
     private async Task CleanupAsync()
     {
         var active = State.GetPlayer(State.ActivePlayer);
-        int excess = Has(active.Id, Cards.Replacements.NoMaximumHandSize) || active.NoMaximumHandSize ? 0 : active.Hand.Count - Config.MaxHandSize;
+        // "Your maximum hand size is five" (the smallest such limit; no maximum hand size wins, rule 402.2).
+        int maxHand = State.PermanentsControlledBy(active.Id).Where(c => c.HasTextAbilities && c.Definition.YourMaximumHandSize is not null)
+            .Select(c => c.Definition.YourMaximumHandSize!.Value).DefaultIfEmpty(Config.MaxHandSize).Min();
+        int excess = Has(active.Id, Cards.Replacements.NoMaximumHandSize) || active.NoMaximumHandSize ? 0 : active.Hand.Count - maxHand;
         if (excess > 0)
         {
             var chosen = await ControllerOf(active.Id).ChooseDiscardAsync(ViewFor(active.Id), excess);

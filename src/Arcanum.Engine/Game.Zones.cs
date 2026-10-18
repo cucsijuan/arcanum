@@ -351,7 +351,10 @@ public sealed partial class Game
         // being a card (or a token) stays the copy's own.
         var values = original.Definition with { IsToken = card.PrintedDefinition.IsToken, Foil = card.PrintedDefinition.Foil };
         // "Except it has haste": part of the copy effect, so of its copiable values (rule 707.9b).
-        return EnteringFace(card, transformed).EntersAsCopyWithHaste ? values with { Keywords = values.Keywords.Append("Haste").Distinct().ToList() } : values;
+        var entering = EnteringFace(card, transformed);
+        // "Except it has vanishing 3 if that creature doesn't have vanishing."
+        if (entering.CopyGetsVanishingIfNone > 0 && values.Vanishing == 0) values = values with { Vanishing = entering.CopyGetsVanishingIfNone };
+        return entering.EntersAsCopyWithHaste ? values with { Keywords = values.Keywords.Append("Haste").Distinct().ToList() } : values;
     }
 
     /// <summary>
@@ -496,6 +499,9 @@ public sealed partial class Game
                 if (card.Definition.EntersTappedUnless is { } unless && !Holds(unless, card.Controller, card)) card.Tapped = true;
                 if (card.IsCreature && OpponentsCreaturesEnterTapped(card.Controller)) card.Tapped = true;
                 // "Lands you control enter untapped" (it wins over "enters tapped": its controller applies it last, rule 616.1).
+                // "Artifacts and lands enter tapped" (any player's permanent saying so).
+                if ((card.Is(Cards.CardType.Artifact) || card.Is(Cards.CardType.Land))
+                    && State.Battlefield.Select(State.GetCard).Any(c => c.Id != id && c.HasTextAbilities && c.Definition.ArtifactsAndLandsEnterTapped)) card.Tapped = true;
                 if (card.Is(Cards.CardType.Land) && Has(card.Controller, Cards.Replacements.YourLandsEnterUntapped)) card.Tapped = false;
                 // Counters it enters with (rule 122.6) are on it before it is announced as entered, so its enters triggers see them.
                 if (card.Definition.EntersWithCounters > 0
@@ -505,6 +511,7 @@ public sealed partial class Game
                     enterCounters.Add((card.Definition.EntersWithCounterKind,
                         Eval(countFrom, new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
                 if (card.Definition.Loyalty is { } loyalty) enterCounters.Add((Abilities.CounterKind.Loyalty, loyalty)); // 306.5b
+                if (card.Definition.Vanishing > 0) enterCounters.Add((Abilities.CounterKind.Time, card.Definition.Vanishing)); // 702.63a
                 if (withCounters is not null) enterCounters.AddRange(withCounters.Where(c => c.Count > 0));
                 if (from == Zone.Stack && State.FinalityOnEnter.Remove((id, card.Version - 1))) enterCounters.Add((Abilities.CounterKind.Finality, 1));
                 // A Saga enters with a lore counter (714.3a); read ahead, with as many as the chosen chapter, and the chapters it skips don't

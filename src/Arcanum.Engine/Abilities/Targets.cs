@@ -54,6 +54,9 @@ public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = C
     /// <summary>For stack objects: only ones with a single target.</summary>
     public bool SingleTargetOnly { get; init; }
 
+    /// <summary>For abilities on the stack: only triggered ones ("counter target triggered ability or colorless spell").</summary>
+    public bool TriggeredAbilitiesOnly { get; init; }
+
     /// <summary>The controller must be the player the trigger event was about ("that player controls").</summary>
     public bool ControlledByTriggeredPlayer { get; init; }
 

@@ -100,8 +100,8 @@ public class BoosterTests
     }
 
     /// <summary>
-    /// Optional: with ARCANUM_MODULE_PATH, ARCANUM_CARD_FILE and ARCANUM_PRINTINGS_FILE set, every booster set of the
-    /// module opens complete boosters from the real card data.
+    /// Optional: with ARCANUM_MODULE_PATH and ARCANUM_CARD_FILE set (and ARCANUM_PRINTINGS_FILE when the card file has no printings),
+    /// every booster set of the module (or only ARCANUM_BOOSTER_SET) opens complete boosters from the real card data.
     /// </summary>
     [Fact]
     public void ModuleBoostersOpenWhenProvided()
@@ -109,14 +109,20 @@ public class BoosterTests
         var dir = Environment.GetEnvironmentVariable("ARCANUM_MODULE_PATH");
         var cardFile = Environment.GetEnvironmentVariable("ARCANUM_CARD_FILE");
         var printingsFile = Environment.GetEnvironmentVariable("ARCANUM_PRINTINGS_FILE");
-        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(cardFile) || string.IsNullOrEmpty(printingsFile)) return;
+        var only = Environment.GetEnvironmentVariable("ARCANUM_BOOSTER_SET");
+        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(cardFile)) return;
         var module = Arcanum.Data.Modules.ContentModule.Load(dir);
-        Dictionary<string, List<Printing>> printings;
-        using (var p = File.OpenRead(printingsFile)) printings = OracleJsonl.ImportPrintings(p);
         using var c = File.OpenRead(cardFile);
-        var db = new CardDatabase(OracleJsonl.WithPrintings(OracleJsonl.Import(c, module.Sources.Cards.ToFilter()), printings), module.LoadScripts());
+        var records = OracleJsonl.Import(c, module.Sources.Cards.ToFilter());
+        if (!string.IsNullOrEmpty(printingsFile))
+        {
+            Dictionary<string, List<Printing>> printings;
+            using (var p = File.OpenRead(printingsFile)) printings = OracleJsonl.ImportPrintings(p);
+            records = OracleJsonl.WithPrintings(records, printings);
+        }
+        var db = new CardDatabase(records, module.LoadScripts());
         var errors = new List<string>();
-        foreach (var set in module.LoadSets(errors).Where(s => s.Booster is not null))
+        foreach (var set in module.LoadSets(errors).Where(s => s.Booster is not null && (string.IsNullOrEmpty(only) || s.Code == only)))
         {
             var gen = new BoosterGenerator(set, db);
             Assert.Empty(gen.EmptySheets);

@@ -32,6 +32,9 @@ public sealed record SheetSpec
 
     /// <summary>The sheet's cards are surge foils (a foil treatment with its own pattern; implies <see cref="Foil"/>).</summary>
     public bool Surge { get; init; }
+
+    /// <summary>Pairs of card names on this sheet that a pair slot gives together ("2 cards from the same set of echoed pairs").</summary>
+    public IReadOnlyList<(string First, string Second)> Pairs { get; init; } = Array.Empty<(string, string)>();
 }
 
 /// <summary>
@@ -42,6 +45,12 @@ public sealed record SlotSpec(int Count, IReadOnlyDictionary<string, int> Sheets
 {
     /// <summary>Sheets of this slot whose card may repeat a card already in the booster (a traditional foil replacing a common).</summary>
     public IReadOnlyList<string> RepeatSheets { get; init; } = Array.Empty<string>();
+
+    /// <summary>Each of the slot's <see cref="Count"/> picks is one of the sheet's <see cref="SheetSpec.Pairs"/>: both of its cards.</summary>
+    public bool Pair { get; init; }
+
+    /// <summary>How many cards the slot gives.</summary>
+    public int Cards => Pair ? Count * 2 : Count;
 }
 
 /// <summary>One way a booster can be made up, and how often (relative weight).</summary>
@@ -50,7 +59,7 @@ public sealed record BoosterVariant(int Weight, IReadOnlyList<SlotSpec> Slots);
 /// <param name="Slots">The booster's slots (its first variant's, when it has several).</param>
 public sealed record BoosterSpec(string Name, string Description, IReadOnlyDictionary<string, SheetSpec> Sheets, IReadOnlyList<SlotSpec> Slots)
 {
-    public int CardCount => Slots.Sum(s => s.Count);
+    public int CardCount => Slots.Sum(s => s.Cards);
 
     /// <summary>The booster's variants (a single one of <see cref="Slots"/> when it has none).</summary>
     public IReadOnlyList<BoosterVariant> Variants { get; init; } = Array.Empty<BoosterVariant>();
@@ -180,6 +189,9 @@ public sealed record SetDefinition
                 Exclude = Strings(s, "exclude") ?? new List<string>(),
                 Foil = s.TryGetProperty("foil", out var fo) && fo.GetBoolean() || s.TryGetProperty("surge", out var su) && su.GetBoolean(),
                 Surge = s.TryGetProperty("surge", out var surge) && surge.GetBoolean(),
+                Pairs = s.TryGetProperty("pairs", out var pr)
+                    ? pr.EnumerateArray().Select(p => (p[0].GetString()!, p[1].GetString()!)).ToList()
+                    : Array.Empty<(string, string)>(),
             };
         }
         // Several variants, each with a weight and its slots, or one list of slots.
@@ -211,7 +223,10 @@ public sealed record SetDefinition
             slots.Add(new SlotSpec(count, weights, slot.TryGetProperty("wildcard", out var wc) && wc.GetBoolean())
             {
                 RepeatSheets = slot.TryGetProperty("repeatSheets", out var rs) ? rs.EnumerateArray().Select(x => x.GetString()!).ToList() : Array.Empty<string>(),
+                Pair = slot.TryGetProperty("pair", out var pa) && pa.GetBoolean(),
             });
+            if (slots[^1].Pair && weights.Keys.Any(n => sheets[n].Pairs.Count == 0))
+                throw new FormatException("A pair slot's sheets need \"pairs\".");
         }
         return slots;
     }

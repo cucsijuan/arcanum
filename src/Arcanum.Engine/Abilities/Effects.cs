@@ -1189,6 +1189,9 @@ public sealed record MountainsAddExtraRedThisTurn : Effect;
 /// </summary>
 public sealed record RevealTwoFromOutsideOpponentChooses : Effect;
 
+/// <summary>"You may pay any amount of life. If you do, [effects]" ("X" in the effects is the life paid).</summary>
+public sealed record PayAnyLife(IReadOnlyList<Effect> Effects) : Effect;
+
 /// <summary>
 /// "Copy those cards [exiled this way]. You may cast any number of spells with total mana value N or less from among the copies without paying
 /// their mana costs" (copies not cast cease to exist).
