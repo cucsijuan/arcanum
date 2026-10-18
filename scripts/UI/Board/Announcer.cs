@@ -79,6 +79,8 @@ public partial class Announcer : Control
         if (_remaining <= 0) ShowNext();
     }
 
+    private static readonly string ShotOn = OS.GetEnvironment("ARCANUM_SHOT_ON");
+
     private void ShowNext()
     {
         if (!_queue.TryDequeue(out var next))
@@ -91,6 +93,14 @@ public partial class Announcer : Control
         }
         _remaining = next.Seconds * BoardStyle.AnimationScale;
         next.OnShown?.Invoke();
+        // ARCANUM_SHOT_ON=<text> (with ARCANUM_SHOT=<file.png>): saves a picture of the board shortly after an announcement
+        // containing that text appears, and quits (screenshots of announcements).
+        if (ShotOn.Length > 0 && next.Text.Contains(ShotOn, StringComparison.OrdinalIgnoreCase) && OS.GetEnvironment("ARCANUM_SHOT") is { Length: > 0 } shot)
+            GetTree().CreateTimer(0.6).Timeout += () =>
+            {
+                GetViewport().GetTexture().GetImage().SavePng(shot.Split(',')[0]);
+                GetTree().Quit();
+            };
         if (next.Turn is { } turn)
         {
             _banner.Visible = false;

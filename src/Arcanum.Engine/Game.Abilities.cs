@@ -1018,6 +1018,7 @@ public sealed partial class Game
                     var copy = face with
                     {
                         IsToken = true,
+                        ImageByName = face.ImageByName || (!face.IsToken && face.ImageKey is null),
                         Supertypes = tc.NotLegendary ? face.Supertypes & ~Supertype.Legendary : face.Supertypes,
                         Keywords = tc.Haste ? face.Keywords.Append("Haste").ToList() : face.Keywords,
                         Subtypes = tc.AddSubtypes is { } extra ? face.Subtypes.Concat(extra).Distinct().ToList() : face.Subtypes,

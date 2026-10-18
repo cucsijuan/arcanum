@@ -62,7 +62,7 @@ public partial class CardImageCache : Node
     /// </summary>
     public static string? KeyFor(Arcanum.Engine.Views.CardView view)
     {
-        var key = view.ImageKey is { } id ? "id:" + id : view.IsToken ? null : view.Name;
+        var key = view.ImageKey is { } id ? "id:" + id : view.IsToken && !view.ImageByName ? null : view.Name;
         return key is not null && view.IsBackFace ? BackPrefix + key : key;
     }
 

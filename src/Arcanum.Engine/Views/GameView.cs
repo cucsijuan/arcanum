@@ -61,6 +61,9 @@ public sealed record CardView
     public IReadOnlyList<string> Colors { get; init; } = Array.Empty<string>();
     /// <summary>Exact image identifier when the name is ambiguous (tokens); see <c>CardDefinition.ImageKey</c>.</summary>
     public string? ImageKey { get; init; }
+
+    /// <summary>A token copy of a card: shown with that card's picture, by name.</summary>
+    public bool ImageByName { get; init; }
     /// <summary>A foil copy: the client draws its foil shine.</summary>
     public bool Foil { get; init; }
     /// <summary>A surge foil copy: the client draws the surge pattern.</summary>

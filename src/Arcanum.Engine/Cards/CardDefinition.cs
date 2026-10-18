@@ -262,6 +262,9 @@ public sealed partial record CardDefinition
     /// </summary>
     public string? ImageKey { get; init; }
 
+    /// <summary>A token that's a copy of a card: its picture is that card's, looked up by name like a card's.</summary>
+    public bool ImageByName { get; init; }
+
     /// <summary>A foil copy (how it looks only: a deck can ask for foil copies of printings that exist in foil).</summary>
     public bool Foil { get; init; }
 

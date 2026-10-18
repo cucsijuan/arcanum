@@ -108,7 +108,9 @@ public partial class App : Node
         if (OS.GetEnvironment("ARCANUM_SHOT") is { Length: > 0 } shot)
         {
             var parts = shot.Split(',');
-            double delay = parts.Length > 1 && double.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 8;
+            // With ARCANUM_SHOT_ON the board takes the picture when that announcement shows; this is only the fallback.
+            double delay = parts.Length > 1 && double.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var s) ? s
+                : OS.GetEnvironment("ARCANUM_SHOT_ON").Length > 0 ? 600 : 8;
             if (OS.GetEnvironment("ARCANUM_SHOT_POINTER").Split(',') is [var px, var py]
                 && float.TryParse(px, System.Globalization.CultureInfo.InvariantCulture, out var x) && float.TryParse(py, System.Globalization.CultureInfo.InvariantCulture, out var y))
                 GetTree().CreateTimer(Math.Max(0, delay - 1.5)).Timeout += () =>
