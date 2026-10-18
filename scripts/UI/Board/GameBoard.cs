@@ -2464,6 +2464,9 @@ public partial class GameBoard : Control
             case PreparedChanged pc:
                 _announcer.Enqueue(new($"{ev.Name(pc.Card)} {(pc.Prepared ? "becomes prepared" : "is no longer prepared")}", ViewOf(ev, pc.Card), 1.5));
                 break;
+            case TurnedFaceUp up:
+                _announcer.Enqueue(new($"{PlayerName(up.Player)} turns {ev.Name(up.Card)} face up", ViewOf(ev, up.Card), 1.5));
+                break;
             case PermanentDestroyed d:
                 _announcer.Enqueue(new($"{ev.Name(d.Card)} is destroyed", ViewOf(ev, d.Card), 1.5));
                 break;
