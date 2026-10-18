@@ -39,7 +39,8 @@ public static class EventViews
         {
             CardsRevealed r => r.Cards.ToHashSet(),
             HandRevealed h => h.Cards.ToHashSet(),
-            CardMoved m when m.From.IsPublic() || (m.From == Zone.Hand && m.Owner == viewer) => new HashSet<CardId> { m.Card },
+            // A face-down spell becoming a face-down permanent stays hidden (rule 708.4).
+            CardMoved m when (m.From.IsPublic() || (m.From == Zone.Hand && m.Owner == viewer)) && !(state.Cards.TryGetValue(m.Card, out var moved) && moved.TurnedFaceDown) => new HashSet<CardId> { m.Card },
             _ => new HashSet<CardId>(),
         };
 

@@ -48,7 +48,7 @@ public static partial class CardFactory
         "Blitz", // the script's "blitz" cost (with "blitzExtra", "blitzFromGraveyard")
         // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
         "Persist", "Undying", "Dethrone", "Hideaway", "Heal", "Aftermath",
-        "Impending", "Devour", "Multikicker", "Replicate", "Escalate", "Improvise", "Myriad", "Squad", "Dash", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
+        "Devour", "Multikicker", "Replicate", "Escalate", "Improvise", "Myriad", "Squad", "Dash", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
         // Pairing rules for two commanders (deck construction); "Partner with" also has a trigger derived below.
         "Partner", "Partner with", "Friends forever", "Choose a background", "Doctor's companion",
     };
@@ -56,7 +56,7 @@ public static partial class CardFactory
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
     /// <remarks>Includes keywords whose rules this factory derives from rules text (Equip, Enchant).</remarks>
     public static ISet<string> SupportedKeywords { get; } =
-        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell" }).Concat(ScriptedKeywords),
+        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Impending" }).Concat(ScriptedKeywords),
             StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Why <see cref="Create"/> finds the card unsupported (for tools): each failed requirement, by face.</summary>
@@ -118,6 +118,9 @@ public static partial class CardFactory
             Kicker = derived.Kicker,
             Flashback = derived.Flashback,
             Foretell = ForetellCost(record.OracleText),
+            Morph = KeywordLineCost(record.OracleText, MorphLine()),
+            Impending = KeywordLineCost(record.OracleText, ImpendingLine()),
+            ImpendingCount = ImpendingCount(record.OracleText),
             WardMana = derived.WardMana,
             WardLife = derived.WardLife,
             CantBeCountered = derived.CantBeCountered,
@@ -132,7 +135,9 @@ public static partial class CardFactory
                          & record.Keywords.Aggregate(true, (ok, k) => Note(SupportedKeywords.Contains(k) || IsCycling(k) || IsLabel(record.OracleText.Replace(record.Name, "~"), k), record, $"keyword {k}") && ok)
                          & Note(script is not null || RulesTextIsCovered(record), record, "needs a script")
                          & Note(!MissesItsOwnProtection(record.OracleText, definition), record, "protection missing from the script")
-                         & Note(!MissesItsRenown(record, definition), record, "renown missing from the script");
+                         & Note(!MissesItsRenown(record, definition), record, "renown missing from the script")
+                         // A land with morph is cast face down from the hand, which a land card otherwise never is: not supported yet.
+                         & Note(!(definition.Morph is not null && definition.Types.HasFlag(CardType.Land)), record, "morph on a land");
         return (definition, supported ? CardSupport.Full : CardSupport.Unsupported);
     }
 
@@ -293,7 +298,7 @@ public static partial class CardFactory
             if (EntersTappedLine().IsMatch(line)) continue;
             if (KickerLine().IsMatch(line) || FlashbackLine().IsMatch(line) || WardLine().IsMatch(line) || line == "This spell can't be countered") continue;
             if (CyclingLine().IsMatch(line)) continue;
-            if (UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line)) continue;
+            if (UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line) || MorphLine().IsMatch(line) || ImpendingLine().IsMatch(line)) continue;
             if (CommanderPairingLine().IsMatch(line)) continue;
             // A keyword line: "Flying" or "Flying, trample".
             if (line.Split(',').Select(k => k.Trim()).All(k => record.Keywords.Contains(k, StringComparer.OrdinalIgnoreCase) || WardLine().IsMatch(k))) continue;
@@ -484,6 +489,16 @@ public static partial class CardFactory
     }
 
     /// <summary>"Foretell [cost]": the cost of casting the card from exile on a later turn after foretelling it.</summary>
+    /// <summary>The cost on a keyword line such as "Morph {3}{R}{R}{R}" or "Impending 4—{2}{W}{W}" (the cost is the line's last group).</summary>
+    private static ManaCost? KeywordLineCost(string oracleText, Regex line) =>
+        ReminderText().Replace(oracleText, "").Split('\n').Select(l => line.Match(WithoutLabel(l.Trim().TrimEnd('.'))))
+            .FirstOrDefault(m => m.Success) is { } m ? ManaCost.Parse(m.Groups["cost"].Value) : null;
+
+    /// <summary>N of "Impending N—[cost]".</summary>
+    private static int ImpendingCount(string oracleText) =>
+        ReminderText().Replace(oracleText, "").Split('\n').Select(l => ImpendingLine().Match(l.Trim()))
+            .FirstOrDefault(m => m.Success) is { } m ? int.Parse(m.Groups["count"].Value) : 0;
+
     private static ManaCost? ForetellCost(string oracleText) =>
         ReminderText().Replace(oracleText, "").Split('\n').Select(l => ForetellLine().Match(WithoutLabel(l.Trim().TrimEnd('.'))))
             .FirstOrDefault(m => m.Success) is { } m ? ManaCost.Parse(m.Groups[1].Value) : null;
@@ -644,6 +659,12 @@ public static partial class CardFactory
 
     [GeneratedRegex(@"^Unearth ((\{[0-9WUBRGC]+\})+)$")]
     private static partial Regex UnearthLine();
+
+    [GeneratedRegex(@"^Morph (?<cost>(\{[0-9WUBRGC]+\})+)$")]
+    private static partial Regex MorphLine();
+
+    [GeneratedRegex(@"^Impending (?<count>[0-9]+)—(?<cost>(\{[0-9WUBRGC]+\})+)$")]
+    private static partial Regex ImpendingLine();
 
     [GeneratedRegex(@"^Flashback ((\{[0-9WUBRGC]+\})+)$")]
     private static partial Regex FlashbackLine();

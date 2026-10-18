@@ -449,7 +449,12 @@ public sealed partial class Game
         bool castFromGraveyard = from == Zone.Stack && to == Zone.Battlefield && card.CastFromGraveyard;
         // A prepared creature leaving the battlefield stops being prepared: the copy of its prepare spell in exile ceases to exist.
         if (from == Zone.Battlefield) Unprepare(card, announce: false);
+        // A face-down spell stays face down as it becomes a permanent (708.4); anywhere else it's turned face up and revealed (708.9).
+        bool wasFaceDown = card.TurnedFaceDown;
+        bool staysFaceDown = wasFaceDown && ((from == Zone.Hand && to == Zone.Stack) || (from == Zone.Stack && to == Zone.Battlefield));
         card.ResetStatus();
+        card.TurnedFaceDown = staysFaceDown;
+        if (wasFaceDown && !staysFaceDown && from is Zone.Stack or Zone.Battlefield) Emit(new CardsRevealed(lastController, new[] { id }));
         card.EnteredCastFromGraveyard = castFromGraveyard;
         card.GiftPromised = giftTo is not null;
         card.GiftTo = giftTo;

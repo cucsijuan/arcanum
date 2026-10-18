@@ -1095,7 +1095,7 @@ public partial class GameBoard : Control
             case PriorityDecision p:
                 foreach (var action in p.Legal)
                 {
-                    var id = action switch { PlayLand l => l.Card, CastSpell c => c.Card, ActivateAbility a => a.Source, _ => (CardId?)null };
+                    var id = action switch { PlayLand l => l.Card, CastSpell c => c.Card, ActivateAbility a => a.Source, TurnFaceUp t => t.Card, _ => (CardId?)null };
                     if (id is { } cardId) (FindCard(cardId) ?? PileCard(cardId))?.SetHighlight(CardHighlight.Playable);
                 }
                 break;
@@ -1290,6 +1290,7 @@ public partial class GameBoard : Control
                         CastSpell { Half: { } half } when card?.SplitHalves is { } halves && half < halves.Count => $"Cast {halves[half]}",
                         CastSpell => $"Cast {card?.Name}",
                         ActivateManaAbility m => $"Add {{{m.Type.ToSymbol()}}}",
+                        TurnFaceUp => $"Turn face up ({card?.FaceDownCard?.Name})",
                         ActivateAbility a when card is not null && a.Index < card.AbilityTexts.Count => Shorten(card.AbilityTexts[a.Index]),
                         _ => "Activate",
                     };
@@ -1915,7 +1916,7 @@ public partial class GameBoard : Control
 
     private static List<PlayerAction> SourceActions(PriorityDecision p, CardId source) =>
         p.Legal.Where(a => a is ActivateAbility aa && aa.Source == source || a is ActivateManaAbility m && m.Source == source
-                           || a is CastSpell c && c.Card == source || a is PlayLand l && l.Card == source).ToList();
+                           || a is CastSpell c && c.Card == source || a is PlayLand l && l.Card == source || a is TurnFaceUp t && t.Card == source).ToList();
 
     private static string Shorten(string text) => text.Length <= 28 ? text : text[..27] + "\u2026";
 
@@ -2248,7 +2249,7 @@ public partial class GameBoard : Control
     {
         if (node.View is not { IsHidden: false } view) return;
         _preview.MirrorFoil(node); // a foil card shines on the preview as it does under the pointer
-        _previewView = view;
+        _previewView = view.FaceDownCard ?? view; // a face-down permanent of yours: what it really is
         _previewOtherFace = false;
         ShowPreviewFace();
         _preview.Position = new Vector2(16, (Size.Y - _preview.Size.Y) / 2);

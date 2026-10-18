@@ -293,11 +293,13 @@ public partial class CardNode : Control
         Id = view.Id;
         View = view;
 
-        _back.Visible = view.IsHidden;
+        // A face-down spell or permanent shows the card back, with its face-down P/T on the battlefield (rule 708.2).
+        bool showBack = view.IsHidden || view.FaceDown;
+        _back.Visible = showBack;
         FoilShine = _foilSource is not null ? FoilShine : IsHovered ? 1 : 0;
         ((ShaderMaterial)_face.Material).SetShaderParameter("surge", view is { Surge: true, IsHidden: false } ? 1f : 0f);
         ((ShaderMaterial)_face.Material).SetShaderParameter("fracture", view is { Fracture: true, IsHidden: false } ? 1f : 0f);
-        if (view.IsHidden)
+        if (showBack)
         {
             // Applied on every setup so the current card back setting is used even by nodes created earlier.
             var (backA, backB, accent) = BoardStyle.CardBackColors(BoardStyle.CardBack);
@@ -306,12 +308,12 @@ public partial class CardNode : Control
             back.SetShaderParameter("color_b", backB);
             back.SetShaderParameter("accent", accent);
         }
-        ShowBackImage(view.IsHidden ? BoardStyle.CardBackImageKey(BoardStyle.CardBack) : null);
+        ShowBackImage(showBack ? BoardStyle.CardBackImageKey(BoardStyle.CardBack) : null);
         _face.Visible = false;
-        _fallback.Visible = !view.IsHidden;
-        _pips.Visible = showCostPips && !view.IsHidden;
+        _fallback.Visible = !showBack;
+        _pips.Visible = showCostPips && !showBack;
 
-        if (!view.IsHidden)
+        if (!showBack)
         {
             _fallbackName.Text = view.Name;
             _fallbackType.Text = view.Keywords.Count > 0 ? $"{TypeLine(view)}\n{string.Join(", ", view.Keywords)}" : TypeLine(view);
@@ -333,7 +335,7 @@ public partial class CardNode : Control
                 {
                     if (!IsInstanceValid(this) || View?.Name != name) return;
                     _face.Texture = texture;
-                    _face.Visible = !View.IsHidden;
+                    _face.Visible = !View.IsHidden && !View.FaceDown;
                     _fallback.Visible = !_face.Visible; // the picture replaces the text frame entirely
                 }
                 if (SharpImage)

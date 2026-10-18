@@ -51,6 +51,8 @@ public sealed record CountersPlaced(CardId Card, Abilities.CounterKind Kind, int
 /// <summary>Cards shown to every player ("reveal it").</summary>
 public sealed record CardsRevealed(PlayerId Player, IReadOnlyList<CardId> Cards) : GameEvent;
 public sealed record TokenCreated(CardId Card, PlayerId Controller) : GameEvent;
+/// <summary>A face-down permanent was turned face up (rule 702.37e).</summary>
+public sealed record TurnedFaceUp(CardId Card, PlayerId Player) : GameEvent;
 /// <summary>The tokens one effect created together, after each <see cref="TokenCreated"/>.</summary>
 public sealed record TokensCreated(IReadOnlyList<CardId> Cards, PlayerId Controller) : GameEvent;
 public sealed record PermanentDestroyed(CardId Card) : GameEvent;

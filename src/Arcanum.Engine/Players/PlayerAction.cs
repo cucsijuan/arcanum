@@ -23,4 +23,7 @@ public sealed record CastSpell(CardId Card, bool Adventure = false, int? Half = 
 /// <summary>Activate the <paramref name="Index"/>-th activated ability of a permanent (rule 602).</summary>
 public sealed record ActivateAbility(CardId Source, int Index) : PlayerAction;
 
+/// <summary>Turn a face-down permanent with morph face up, paying its morph cost (a special action, rule 702.37e).</summary>
+public sealed record TurnFaceUp(CardId Card) : PlayerAction;
+
 public sealed record ActivateManaAbility(CardId Source, Mana.ManaType Type, int Option = 0) : PlayerAction;

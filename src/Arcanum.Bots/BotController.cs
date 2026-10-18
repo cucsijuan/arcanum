@@ -284,6 +284,8 @@ public sealed class BotController : IPlayerController
         if (myTurn && view.Step.IsMain() && emptyStack)
         {
             if (legal.OfType<PlayLand>().FirstOrDefault() is { } land) return land;
+            // A face-down creature it can turn face up: before combat, so it attacks as what it really is.
+            if (view.Step == Step.PrecombatMain && legal.OfType<TurnFaceUp>().FirstOrDefault() is { } faceUp) return faceUp;
             if (BestSpell(view, legal, mainPhase: true) is { } spell) return spell;
             if (LoyaltyAbility(view, legal) is { } loyalty) return loyalty;
             if (view.Step == Step.PrecombatMain && Equip(view, legal) is { } equip) return equip;
@@ -1045,7 +1047,9 @@ public sealed class BotController : IPlayerController
     /// that would hurt our own permanent or us: one we had to target because nothing else was legal.
     /// </summary>
     public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) =>
-        Task.FromResult(!(request.Card is { } source && HurtsOwnTarget(view, source, request.Prompt)));
+        // Asked only when the full cost can be paid too: a card with morph is cast face up then (face down only when that's all it can afford).
+        Task.FromResult(!request.Prompt.Contains(" face down as a 2/2", StringComparison.Ordinal)
+                        && !(request.Card is { } source && HurtsOwnTarget(view, source, request.Prompt)));
 
     /// <summary>The targets last chosen for each source's ability, to judge its "you may" choice as it resolves.</summary>
     private readonly Dictionary<CardId, (AbilityDefinition Ability, IReadOnlyList<Target> Targets)> _lastTargets = new();

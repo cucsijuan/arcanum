@@ -14,7 +14,7 @@ public sealed class Card
     public CardDefinition PrintedDefinition { get; }
 
     /// <summary>Its characteristics now: those of its Adventure while it is cast as one (rule 715.3), otherwise the printed card's.</summary>
-    public CardDefinition Definition => EffectCopy ?? CopiedDefinition ?? (MeldPartner is not null && PrintedDefinition.MeldResult is { } melded ? melded
+    public CardDefinition Definition => TurnedFaceDown ? FaceDownCreature : EffectCopy ?? CopiedDefinition ?? (MeldPartner is not null && PrintedDefinition.MeldResult is { } melded ? melded
         : Transformed && BackFaceDefinition is { } back ? back
         : AsAdventure && PrintedDefinition.Adventure is { } adventure ? adventure
         : CastHalf is { } half && PrintedDefinition.SplitHalves is { } halves ? halves[half]
@@ -201,6 +201,15 @@ public sealed class Card
     public bool FaceDown { get; set; }
 
     /// <summary>
+    /// A face-down spell or permanent (cast face down with morph, rule 708): it's a 2/2 creature with no name, text, types besides creature,
+    /// or mana cost (708.2), and only its controller (and players in <see cref="KnownTo"/>) may look at it (708.5).
+    /// </summary>
+    public bool TurnedFaceDown { get; set; }
+
+    /// <summary>The characteristics of a face-down spell or permanent (rule 708.2a).</summary>
+    public static readonly CardDefinition FaceDownCreature = new() { Name = "Face-down creature", Types = CardType.Creature, Power = 2, Toughness = 2 };
+
+    /// <summary>
     /// Players who know this card although where it is hides it from them: in a hand (besides its owner), in a library,
     /// or exiled face down. A player learns it by looking at it or when it's revealed, and keeps knowing it as it moves
     /// from where they could see it, until its place is lost to them: its library is shuffled, or it's put among other
@@ -213,6 +222,7 @@ public sealed class Card
     {
         Zone.Hand => Owner == viewer || KnownTo.Contains(viewer),
         Zone.Library => KnownTo.Contains(viewer),
+        _ when TurnedFaceDown => Controller == viewer || KnownTo.Contains(viewer),
         _ => !FaceDown || KnownTo.Contains(viewer),
     };
 
@@ -763,6 +773,7 @@ public sealed class Card
         ChosenOption = null;
         ReadAheadChapter = 0;
         FaceDown = false;
+        TurnedFaceDown = false;
         KnownTo.Clear();
         Uncounterable = false;
         GrantedWards.Clear();

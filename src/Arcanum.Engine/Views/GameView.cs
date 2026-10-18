@@ -115,6 +115,12 @@ public sealed record CardView
     /// rule 712.6) — the back face while the front is up, the front while it's transformed.
     /// </summary>
     public CardView? OtherFace { get; init; }
+
+    /// <summary>A face-down spell or permanent (rule 708): shown as a card back with its 2/2 face-down characteristics.</summary>
+    public bool FaceDown { get; init; }
+
+    /// <summary>The card a face-down spell or permanent really is, for the players who may look at it (its controller, rule 708.5).</summary>
+    public CardView? FaceDownCard { get; init; }
 }
 
 public sealed record PlayerView

@@ -17,7 +17,7 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>What a spell is cast for (rule 118.9): its mana cost or one alternative cost.</summary>
-    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending }
+    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown }
 
     /// <summary>
     /// One way to pay for casting a card: the cost it's cast for (its mana cost, or the flashback or miracle cost it's being
@@ -83,6 +83,7 @@ public sealed partial class Game
         }
         if (card.Definition.Overload is { } overload) ways.Add(new(CastingWayKind.Overload, overload)); // 702.96a
         if (card.Definition.Impending is { } impending) ways.Add(new(CastingWayKind.Impending, impending)); // 702.176a
+        if (card.Zone == Zone.Hand && card.PrintedDefinition.Morph is not null) ways.Add(new(CastingWayKind.FaceDown, FaceDownCastCost)); // 702.37c
         if (card.Definition.AlternativeCost is { } alt && (alt.If is null || Holds(alt.If, caster, card))) ways.Add(new(CastingWayKind.Alternative, alt.Cost));
         if (card.Zone == Zone.Hand && Has(caster, Replacements.CastFromHandFree)) ways.Add(new(CastingWayKind.WithoutPaying, ManaCost.Zero));
         // "Spells with mana value less than or equal to the number of creatures you control from your hand without paying their mana costs."
@@ -226,9 +227,12 @@ public sealed partial class Game
     private List<CastingChoices> PayableCastingWays(Card card, PlayerId caster, bool flashExtra)
     {
         var options = card.Definition.AdditionalCostOptions is { Count: > 0 } listed ? listed.Select(o => (CostOption?)o).ToList() : new List<CostOption?> { null };
+        // Cast face down, it's a spell with no additional costs of its own, paid for as the face-down spell it is (702.37c, 708.2).
         return CastingWays(card, caster)
-            .SelectMany(way => options.Select(o => new CastingChoices(way) { Option = o, FlashExtra = flashExtra, Tier = CheapestTier(card, caster) }))
-            .Where(c => CanPayToCast(card, caster, c)).ToList();
+            .SelectMany(way => way.Kind == CastingWayKind.FaceDown
+                ? new[] { new CastingChoices(way) { FlashExtra = flashExtra } }
+                : options.Select(o => new CastingChoices(way) { Option = o, FlashExtra = flashExtra, Tier = CheapestTier(card, caster) }))
+            .Where(c => c.Way.Kind == CastingWayKind.FaceDown ? AsFaceDown(card, () => CanPayToCast(card, caster, c)) : CanPayToCast(card, caster, c)).ToList();
     }
 
     /// <summary>
@@ -340,6 +344,7 @@ public sealed partial class Game
                 CastingWayKind.Blitz => $"Cast {card.Name} for its blitz cost {BlitzCostText(card)}?",
                 CastingWayKind.Overload => $"Cast {card.Name} for its overload cost {ways[1].Mana}?",
                 CastingWayKind.Impending => $"Cast {card.Name} for its impending cost {ways[1].Mana}?",
+                CastingWayKind.FaceDown => $"Cast {card.Name} face down as a 2/2 creature for {ways[1].Mana}?",
                 CastingWayKind.WithoutPaying => card.Definition.ManaCost.XCount > 0 ? $"Cast {card.Name} without paying its mana cost (X = 0)?" : $"Cast {card.Name} without paying its mana cost?",
                 _ => $"Pay {ways[1].Mana} instead of the mana cost?",
             };
@@ -353,6 +358,7 @@ public sealed partial class Game
             CastingWayKind.Foretold => $"Foretell cost {w.Mana}",
             CastingWayKind.Overload => $"Overload {w.Mana}",
             CastingWayKind.Impending => $"Impending {w.Mana}",
+            CastingWayKind.FaceDown => $"Face down for {w.Mana}",
             CastingWayKind.WithoutPaying => "Without paying its mana cost",
             _ => $"Pay {w.Mana} instead of the mana cost",
         }).ToList();

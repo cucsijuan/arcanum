@@ -381,6 +381,8 @@ public sealed partial class Game
                 // "One mana of each color" and "in any combination" are single activations (the combination is chosen as it's activated).
                 foreach (var type in source.ManaOptions[option].OneOfEach || source.ManaOptions[option].Combination ? source.ManaOptions[option].Types.Take(1) : source.ManaOptions[option].Types.Distinct())
                     actions.Add(new ActivateManaAbility(source.Id, type, option));
+        // Turning a face-down permanent face up is a special action, any time the player has priority (116.2b), even under split second.
+        actions.AddRange(TurnFaceUpActions(playerId));
         return actions;
     }
 
@@ -737,6 +739,14 @@ public sealed partial class Game
                 return true;
             }
 
+            case TurnFaceUp turn:
+            {
+                int cancels = _playerCancels;
+                bool done = await TurnFaceUpAsync(player, turn);
+                if (!done && _playerCancels == cancels) _failedActions.Add($"turn {State.TurnNumber}, {playerId}: turn {turn.Card} face up");
+                return done;
+            }
+
             case CastSpell or ActivateAbility:
             {
                 int cancels = _playerCancels;
@@ -768,6 +778,7 @@ public sealed partial class Game
         if (half is { } h && card.PrintedDefinition.SplitHalves?[h].Aftermath == true) exileAfter = true;
         if (!await CastAsItIsAsync(player, card, exileAfter, withPriority))
         {
+            if (card.Zone != Zone.Stack) card.TurnedFaceDown = false; // a face-down cast backed out of
             card.AsAdventure = false;
             card.CastHalf = null;
             return false;
@@ -803,6 +814,8 @@ public sealed partial class Game
             giftTo = await ChooseOpponentAsync(player.Id, card, "Choose the opponent who gets the gift");
         // The mana cost or an alternative cost (118.9), such as dash or "without paying its mana cost".
         var way = await ChooseCastingWayAsync(player.Id, card, payable.Select(c => c.Way).Distinct().ToList());
+        // Cast face down: from here on it's the face-down spell (702.37c, 708.4), known only to its caster.
+        if (way.Kind == CastingWayKind.FaceDown) card.TurnedFaceDown = true;
         // Additional cost with alternatives: the caster picks one that can be paid.
         var withWay = payable.Where(c => c.Way == way).ToList();
         int pick = 0;

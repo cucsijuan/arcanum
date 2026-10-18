@@ -109,6 +109,10 @@ public static class ViewBuilder
     {
         var card = state.GetCard(id);
         bool visible = reveal || card.IsVisibleTo(viewer) || RevealedByEffect(state, card, viewer);
+        // A face-down spell or permanent shows its face-down characteristics to everyone (708.2), and what it is only to those who may look.
+        bool faceDown = card.TurnedFaceDown && card.Zone is Zone.Battlefield or Zone.Stack;
+        var faceDownCard = faceDown && visible ? PrintedFace(card, card.PrintedDefinition, isBack: false) : null;
+        if (faceDown) visible = true;
         if (!visible)
         {
             return new CardView
@@ -178,9 +182,11 @@ public static class ViewBuilder
             SplitHalves = card.PrintedDefinition.SplitHalves?.Select(h => $"{h.Name} {h.ManaCost}").ToList(),
             Transformed = card.Transformed,
             IsBackFace = card.Transformed && !card.IsCopy && card.IsDoubleFaced,
+            FaceDown = faceDown,
+            FaceDownCard = faceDownCard,
         };
         // A double-faced card shows its other face on request; a copy of one has only the face it copied (rule 707.8).
-        if (card.IsDoubleFaced && !card.IsCopy && card.PrintedDefinition.BackFace is { } back)
+        if (!faceDown && card.IsDoubleFaced && !card.IsCopy && card.PrintedDefinition.BackFace is { } back)
             face = face with { OtherFace = PrintedFace(card, card.Transformed ? card.PrintedDefinition : back, isBack: !card.Transformed) };
         return face;
     }

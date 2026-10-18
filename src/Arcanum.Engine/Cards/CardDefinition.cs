@@ -305,6 +305,9 @@ public sealed partial record CardDefinition
     /// beginning of its controller's end step a time counter is removed from it.
     /// </summary>
     public ManaCost? Impending { get; init; }
+
+    /// <summary>Morph [cost] (702.37): may be cast face down as a 2/2 creature for {3}, and turned face up for this cost.</summary>
+    public ManaCost? Morph { get; init; }
     public int ImpendingCount { get; init; }
 
     /// <summary>

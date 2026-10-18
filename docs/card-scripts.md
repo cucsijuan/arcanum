@@ -1271,8 +1271,12 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   control have protection from the chosen card type: players can't be targeted by, and damage is prevented from, sources of that type,
   and creatures get protection from that type. The choices are the traditional card types, including kindred. The computer players pick
   creature.
-- **Impending**: `"impending": { "count": 3, "cost": "{1}{B}" }` (rule 702.176). It can be cast for the cost; then it enters with N
-  time counters and isn't a creature while it has one. At the beginning of its controller's end step, a time counter is removed from it.
+- **Impending**: the cost and N are read from the rules text line "Impending N—{cost}" (rule 702.176), so no script key is needed. The
+  `"impending"` key still overrides them: `"impending": { "count": 3, "cost": "{1}{B}" }`. It can be cast for the cost; then it enters
+  with N time counters and isn't a creature while it has one. At the beginning of its controller's end step, a time counter is removed from it.
+- **Morph**: the cost is read from the rules text line "Morph {cost}" (rule 702.37), so no script key is needed. A card with morph in
+  hand can be cast face down as a 2/2 creature for {3}. A face-down permanent can be turned face up for its morph cost at any time its
+  controller has priority. A land with morph isn't supported yet.
 - **Attack triggers doubled for one option**: `"extraTriggersFromAttacking": true` with `"extraTriggersFromAttackingOption": "<option>"`
   (and `"chooseOnEnter": "option"` with `"enterOptions"`): the doubling works only while that option was chosen as it entered.
   `{ "chooseOnEnter": "option", "enterOptions": ["Ashen", "Tide"], "extraTriggersFromAttacking": true, "extraTriggersFromAttackingOption":

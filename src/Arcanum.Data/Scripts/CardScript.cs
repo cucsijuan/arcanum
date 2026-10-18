@@ -94,6 +94,7 @@ public sealed record CardScript(
     public int? YourMaximumHandSize { get; init; }
     public int Vanishing { get; init; }
     public Engine.Mana.ManaCost? Impending { get; init; }
+    public Engine.Mana.ManaCost? Morph { get; init; }
     public int ImpendingCount { get; init; }
     public int CopyGetsVanishingIfNone { get; init; }
     public Quantity? CastFromHandFreeUpTo { get; init; }
@@ -259,6 +260,7 @@ public sealed record CardScript(
         YourMaximumHandSize = YourMaximumHandSize ?? d.YourMaximumHandSize,
         Vanishing = Vanishing > 0 ? Vanishing : d.Vanishing,
         Impending = Impending ?? d.Impending,
+        Morph = Morph ?? d.Morph,
         ImpendingCount = Impending is not null ? ImpendingCount : d.ImpendingCount,
         CopyGetsVanishingIfNone = CopyGetsVanishingIfNone,
         CastFromHandFreeUpTo = CastFromHandFreeUpTo ?? d.CastFromHandFreeUpTo,
@@ -568,6 +570,7 @@ public static partial class CardScriptParser
             // "Impending 4—{2}{W}{W}": { "count": 4, "cost": "{2}{W}{W}" }.
             Impending = root.TryGetProperty("impending", out var imp) ? ManaCost.Parse(imp.GetProperty("cost").GetString()!) : null,
             ImpendingCount = root.TryGetProperty("impending", out var imc) ? imc.GetProperty("count").GetInt32() : 0,
+            Morph = root.TryGetProperty("morph", out var mor) ? ManaCost.Parse(mor.GetString()!) : null,
             CopyGetsVanishingIfNone = root.TryGetProperty("copyGetsVanishingIfNone", out var cgv) ? cgv.GetInt32() : 0,
             CastFromHandFreeUpTo = root.TryGetProperty("castFromHandFreeUpTo", out var cfh) ? ParseQuantity(cfh) : null,
             CastExiledWithThisIf = root.TryGetProperty("castExiledWithThisIf", out var cew) ? ParseCondition(cew) : null,
