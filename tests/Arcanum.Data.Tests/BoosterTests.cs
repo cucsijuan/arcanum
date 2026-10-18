@@ -124,17 +124,20 @@ public class BoosterTests
         var errors = new List<string>();
         foreach (var set in module.LoadSets(errors).Where(s => s.Booster is not null && (string.IsNullOrEmpty(only) || s.Code == only)))
         {
-            var gen = new BoosterGenerator(set, db);
-            Assert.Empty(gen.EmptySheets);
-            foreach (var (name, _) in set.Booster!.Sheets) Console.WriteLine($"{set.Code} sheet {name}: {gen.Sheet(name).Count} cards");
-            var random = new Random(1);
             var unsupported = new HashSet<string>();
-            for (int i = 0; i < 500; i++)
+            foreach (var (kind, spec) in set.Boosters.Prepend(new KeyValuePair<string, BoosterSpec>("", set.Booster!)))
             {
-                var pack = gen.Open(random);
-                Assert.Equal(set.Booster.CardCount, pack.Count);
-                foreach (var card in pack)
-                    if (db.SupportOf(card.Name) != CardSupport.Full) unsupported.Add(card.Name);
+                var gen = new BoosterGenerator(set, db, spec);
+                Assert.Empty(gen.EmptySheets);
+                foreach (var (name, _) in spec.Sheets) Console.WriteLine($"{set.Code} {kind} sheet {name}: {gen.Sheet(name).Count} cards");
+                var random = new Random(1);
+                for (int i = 0; i < 500; i++)
+                {
+                    var pack = gen.Open(random);
+                    Assert.Equal(spec.CardCount, pack.Count);
+                    foreach (var card in pack)
+                        if (db.SupportOf(card.Name) != CardSupport.Full) unsupported.Add(card.Name);
+                }
             }
             Console.WriteLine($"{set.Code}: unsupported cards seen in boosters: {string.Join(", ", unsupported)}");
         }

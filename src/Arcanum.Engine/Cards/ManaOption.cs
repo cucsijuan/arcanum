@@ -35,6 +35,9 @@ public sealed record ManaOption(IReadOnlyList<ManaType> Types, int Amount = 1, O
     /// <summary>Its types are the colors among permanents its controller controls ("for each color among permanents you control").</summary>
     public bool ColorsAmongYourPermanents { get; init; }
 
+    /// <summary>With <see cref="ColorsAmongYourPermanents"/>: only among the permanents matching this ("among legendary creatures and planeswalkers you control").</summary>
+    public Abilities.ObjectFilter? ColorsAmongMatching { get; init; }
+
     /// <summary>Its types are the colors among legendary creature cards in its controller's graveyard.</summary>
     public bool ColorsAmongLegendaryCreatureCardsInGraveyard { get; init; }
 

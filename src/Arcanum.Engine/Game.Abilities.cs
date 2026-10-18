@@ -5239,8 +5239,12 @@ public sealed partial class Game
                 .Select(c => Mana.ManaTypeExtensions.TryParse(c[0], out var t) ? t : (ManaType?)null).OfType<ManaType>().OrderBy(t => t).ToList();
         // "For each color among permanents you control" mana abilities follow the colors settled above.
         foreach (var card in battlefield.Where(c => c.Definition.ExtraManaOptions.Any(o => o.ColorsAmongYourPermanents)))
-            card.ColorsAmongYourPermanents = battlefield.Where(p => p.Controller == card.Controller).SelectMany(p => p.Colors).Distinct()
+        {
+            var among = card.Definition.ExtraManaOptions.First(o => o.ColorsAmongYourPermanents).ColorsAmongMatching;
+            card.ColorsAmongYourPermanents = battlefield.Where(p => p.Controller == card.Controller && (among is null || Matches(among, p, card.Controller, card, card.Controller)))
+                .SelectMany(p => p.Colors).Distinct()
                 .Select(c => Mana.ManaTypeExtensions.TryParse(c[0], out var t) ? t : (ManaType?)null).OfType<ManaType>().OrderBy(t => t).ToList();
+        }
 
         RecomputeManaTypes(battlefield);
 
