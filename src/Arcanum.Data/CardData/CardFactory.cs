@@ -24,7 +24,7 @@ public static partial class CardFactory
     };
 
     // A meld card is a card with one face; the combined back face is a record of its own (linked by CardDatabase).
-    private static readonly HashSet<string> SingleFaceLayouts = new(StringComparer.Ordinal) { "normal", "token", "saga", "meld" };
+    private static readonly HashSet<string> SingleFaceLayouts = new(StringComparer.Ordinal) { "normal", "token", "saga", "meld", "class" };
 
     /// <summary>
     /// Keyword actions and ability words the card source lists as keywords but that only label rules text a card
@@ -42,7 +42,7 @@ public static partial class CardFactory
         "Meld", // the script's "meld" effect, with "meldsWith" and "meldInto"
         "Boast", "Spectacle", "Overload", "Revolt", "Eminence", "Commander ninjutsu", "Ninjutsu", // scripted (activation limits, alternative costs)
         "Renown", // its trigger and the renowned designation come from the script (rule 702.112)
-        "Support", "Adapt", "Monstrosity", "Explore", "Connive", "Incubate", // keyword actions: the script's effects (targets for support)
+        "Support", "Adapt", "Monstrosity", "Explore", "Connive", "Incubate", "Forage", // keyword actions: the script's effects (targets for support)
         "Prepared", "Empower Jace", // the script's "entersPrepared", "becomePrepared" and "empowerJace"
         "Exhaust", // an activated ability the script marks "onlyOnce" (rule 702.177: activate each exhaust ability only once)
         "Blitz", // the script's "blitz" cost (with "blitzExtra", "blitzFromGraveyard")
@@ -56,7 +56,7 @@ public static partial class CardFactory
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
     /// <remarks>Includes keywords whose rules this factory derives from rules text (Equip, Enchant).</remarks>
     public static ISet<string> SupportedKeywords { get; } =
-        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Impending" }).Concat(ScriptedKeywords),
+        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Impending", "Offspring" }).Concat(ScriptedKeywords),
             StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Why <see cref="Create"/> finds the card unsupported (for tools): each failed requirement, by face.</summary>
@@ -120,12 +120,15 @@ public static partial class CardFactory
             Foretell = ForetellCost(record.OracleText),
             Morph = KeywordLineCost(record.OracleText, MorphLine()),
             Impending = KeywordLineCost(record.OracleText, ImpendingLine()),
+            Offspring = KeywordLineCost(record.OracleText, OffspringLine()),
             ImpendingCount = ImpendingCount(record.OracleText),
             WardMana = derived.WardMana,
             WardLife = derived.WardLife,
             CantBeCountered = derived.CantBeCountered,
         };
         if (script is not null) definition = script.ApplyTo(definition);
+        if (definition.Offspring is not null) definition = definition with { Abilities = definition.Abilities.Append(OffspringTrigger).ToList() };
+        definition = definition with { Abilities = Engine.Abilities.AbilityDefinition.InClassLevelOrder(definition.Abilities) };
 
         // "*" power/toughness is fine when the script defines it (characteristic-defining ability).
         powerOk |= script?.PowerFrom is not null;
@@ -298,7 +301,7 @@ public static partial class CardFactory
             if (EntersTappedLine().IsMatch(line)) continue;
             if (KickerLine().IsMatch(line) || FlashbackLine().IsMatch(line) || WardLine().IsMatch(line) || line == "This spell can't be countered") continue;
             if (CyclingLine().IsMatch(line)) continue;
-            if (UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line) || MorphLine().IsMatch(line) || ImpendingLine().IsMatch(line)) continue;
+            if (UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line) || MorphLine().IsMatch(line) || ImpendingLine().IsMatch(line) || OffspringLine().IsMatch(line)) continue;
             if (CommanderPairingLine().IsMatch(line)) continue;
             // A keyword line: "Flying" or "Flying, trample".
             if (line.Split(',').Select(k => k.Trim()).All(k => record.Keywords.Contains(k, StringComparer.OrdinalIgnoreCase) || WardLine().IsMatch(k))) continue;
@@ -662,6 +665,16 @@ public static partial class CardFactory
 
     [GeneratedRegex(@"^Morph (?<cost>(\{[0-9WUBRGC]+\})+)$")]
     private static partial Regex MorphLine();
+
+    [GeneratedRegex(@"^Offspring (?<cost>(\{[0-9WUBRGC]+\})+)$")]
+    private static partial Regex OffspringLine();
+
+    /// <summary>Offspring's trigger (rule 702.175a), added to every card with an offspring cost.</summary>
+    private static readonly Engine.Abilities.AbilityDefinition OffspringTrigger = Scripts.CardScriptParser.Parse("""
+        { "abilities": [ { "trigger": "enters", "if": { "atLeast": "offspringPaid", "value": 1 },
+          "effects": [ { "copy": "self", "setPower": 1, "setToughness": 1 } ],
+          "text": "Offspring — When this creature enters, if its offspring cost was paid, create a token that's a copy of it, except it's 1/1." } ] }
+        """).Abilities[0];
 
     [GeneratedRegex(@"^Impending (?<count>[0-9]+)—(?<cost>(\{[0-9WUBRGC]+\})+)$")]
     private static partial Regex ImpendingLine();

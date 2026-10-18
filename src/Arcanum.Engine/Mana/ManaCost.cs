@@ -65,6 +65,26 @@ public sealed record ManaCost
         PendingGenericReduction = PendingGenericReduction + (MonoHybrid.Count > 0 ? Math.Max(0, amount - Generic) : 0),
     };
 
+    /// <summary>
+    /// This cost with up to <paramref name="amount"/> fewer mana symbols of one color ("costs {U} less", rule 118.7c): that color's
+    /// symbols, then hybrid and Phyrexian symbols with it. Never the generic part.
+    /// </summary>
+    public ManaCost MinusColored(ManaType color, int amount)
+    {
+        if (amount <= 0) return this;
+        var pips = Pips.ToList();
+        var hybrid = Hybrid.ToList();
+        var phyrexian = Phyrexian.ToList();
+        for (; amount > 0; amount--)
+        {
+            if (pips.Remove(color)) continue;
+            int h = hybrid.FindIndex(p => p.First == color || p.Second == color);
+            if (h >= 0) { hybrid.RemoveAt(h); continue; }
+            if (!phyrexian.Remove(color)) break;
+        }
+        return new ManaCost(Generic, pips, hybrid, XCount) { Phyrexian = phyrexian, MonoHybrid = MonoHybrid, PendingGenericReduction = PendingGenericReduction };
+    }
+
     /// <summary>The sum of two costs (a spell's cost plus kicker, for example).</summary>
     public ManaCost Plus(ManaCost other) =>
         new(Generic + other.Generic, Pips.Concat(other.Pips).ToList(), Hybrid.Concat(other.Hybrid).ToList(), XCount + other.XCount)

@@ -339,7 +339,8 @@ public sealed class Card
     /// It has the abilities of its rules text: no effect made it lose all its abilities, nor the abilities from its rules text
     /// (a land whose subtype an effect set, rule 305.7). Static rules of the card itself apply only then.
     /// </summary>
-    public bool HasTextAbilities => !LosesAbilities && !LosesTextAbilities;
+    /// <remarks>A Class below the level section its card-wide rules are printed in doesn't have them yet (rule 716.2c).</remarks>
+    public bool HasTextAbilities => !LosesAbilities && !LosesTextAbilities && (Definition.CardRulesClassLevel <= 1 || ClassLevel >= Definition.CardRulesClassLevel);
 
     /// <summary>The replacement and prevention effects of its rules text it has now: none once it lost those abilities.</summary>
     public Replacements Replaces => HasTextAbilities ? Definition.Replaces : Replacements.None;
@@ -357,6 +358,9 @@ public sealed class Card
 
     /// <summary>Its impending cost was paid as it was cast (rule 702.176a).</summary>
     public bool Impended { get; set; }
+
+    /// <summary>Its offspring cost was paid as it was cast (rule 702.175a).</summary>
+    public bool OffspringPaid { get; set; }
 
     /// <summary>What the card was like the last time it was on the battlefield (rule 608.2h, last known information).</summary>
     public LastKnown? LastKnownInfo { get; internal set; }
@@ -425,8 +429,19 @@ public sealed class Card
     /// <summary>Its abilities now: printed ones (unless it lost them) plus granted ones. Indices match <c>ActivateAbility.Index</c>.</summary>
     public IReadOnlyList<AbilityDefinition> Abilities =>
         LosesAbilities || LosesTextAbilities ? GrantedAbilities
-        : GrantedAbilities.Count == 0 ? Definition.Abilities
-        : Definition.Abilities.Concat(GrantedAbilities).ToList();
+        : GrantedAbilities.Count == 0 ? AtClassLevel(Definition.Abilities)
+        : AtClassLevel(Definition.Abilities).Concat(GrantedAbilities).ToList();
+
+    /// <summary>Its class level (rule 716.3): 1 as it enters the battlefield, raised by its level abilities; 0 elsewhere.</summary>
+    public int ClassLevel { get; set; }
+
+    /// <summary>Without the level sections above its class level (rule 716.2c).</summary>
+    private IReadOnlyList<AbilityDefinition> AtClassLevel(IReadOnlyList<AbilityDefinition> abilities)
+    {
+        bool above = false;
+        foreach (var a in abilities) if (a.ClassLevel > 1 && a.ClassLevel > ClassLevel) { above = true; break; }
+        return above ? abilities.Where(a => a.ClassLevel <= 1 || a.ClassLevel <= ClassLevel).ToList() : abilities;
+    }
 
     /// <summary>Colors now (W, U, B, R, G).</summary>
     public IReadOnlyList<string> Colors => ColorsOverride ?? Definition.ColorList;
@@ -690,6 +705,7 @@ public sealed class Card
                 CopiableBackFaceUp = !IsCopy && IsDoubleFaced && Transformed,
                 Renowned = Renowned,
                 Blitzed = Blitzed,
+                OffspringPaid = OffspringPaid,
                 HasTextAbilities = HasTextAbilities,
             };
             _lastKnownByVersion[Version] = LastKnownInfo;
@@ -735,6 +751,8 @@ public sealed class Card
         Renowned = false;
         Monstrous = false;
         Blitzed = false;
+        OffspringPaid = false;
+        ClassLevel = 0;
         CounterPutTurn = -1;
         Suspended = false;
         ExertedTurn = -1;
@@ -806,6 +824,9 @@ public sealed record LastKnown(int Power, int Toughness, Core.PlayerId Controlle
 
     /// <summary>Its blitz cost had been paid (rule 702.152a).</summary>
     public bool Blitzed { get; init; }
+
+    /// <summary>Its offspring cost had been paid (rule 702.175a).</summary>
+    public bool OffspringPaid { get; init; }
 
     /// <summary>It had the abilities of its rules text (it hadn't lost them, <see cref="Card.HasTextAbilities"/>).</summary>
     public bool HasTextAbilities { get; init; } = true;

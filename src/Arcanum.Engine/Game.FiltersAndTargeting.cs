@@ -22,6 +22,7 @@ public sealed partial class Game
         if (filter.WithoutKeywords is { Count: > 0 } without && without.Any(hasKeyword)) return false;
         if (filter.NotSubtypes is { Count: > 0 } notSubtypes && notSubtypes.Any(obj.HasSubtype)) return false;
         if (filter.InZone is { } zone && obj.Zone != zone) return false;
+        if (filter.NotInZone is { } notZone && obj.Zone == notZone) return false;
         if (filter.HasFlashback && obj.Definition.Flashback is null && obj.Definition.FlashbackExtra is null
             && !State.FlashbackGranted.Any(f => f.Card == obj.Id && f.Version == obj.Version)) return false;
         if (filter.PowerNotEqualToughness && power == toughness) return false;
@@ -35,6 +36,7 @@ public sealed partial class Game
         if (filter.Blocked && State.Combat?.FindAttack(obj.Id) is not { IsBlocked: true }) return false;
         // "Each other creature": a different object from the one the trigger is about (the same card back as a new object counts, rule 400.7).
         if (filter.NotTriggered && _triggeredSubject is { } about && obj.Id == about && obj.Version == _triggeredSubjectVersion) return false;
+        if (filter.LesserManaValueThanTriggered && !(_triggeredSubject is { } lesserThan && ManaValueOf(obj) < ManaValueOf(State.GetCard(lesserThan)))) return false;
         if (filter.MaxManaValueX && (_announcedX < 0 || ManaValueOf(obj) > _announcedX)) return false;
         if (filter.TargetsYou && !(obj.Zone == Zone.Stack && State.Stack.OfType<SpellOnStack>().FirstOrDefault(s => s.Card == obj.Id) is { } spell
                                    && spell.Targets.Any(t => t.Target.Player == sourceController))) return false;

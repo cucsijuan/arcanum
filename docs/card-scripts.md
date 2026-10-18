@@ -37,6 +37,11 @@ companion" only decide which two cards can be commanders together.
   `"additionalCost": { "discard": 1, "sacrifice": filter, "life": 2 }`,
   `"costReduction": { "amount": 3, "if": condition }` (or `"perPermanent": filter` / `"perGraveyardCard": filter`),
   `"entersWithCounters": "X"`. Kicker, flashback, ward and "can't be countered" are also read from the rules text.
+  More card-wide keys: `"doublesCountersYouPut": true` (counters you put are doubled), `"damageCantBePrevented": true`,
+  `"additionalSacrificeAny": filter` (an additional cost: sacrifice any number of matching permanents, {1} less for each),
+  `"castFromGraveyard": filter` with `"castFromGraveyardCost"` (an extra cost) and `"castFromGraveyardWhile"` (a condition),
+  `"entersAsCopyAddSubtypes": [...]` and `"entersAsCopyAddKeywords": [...]` (added to a permanent that enters as a copy),
+  `"giftTapped": true` (the gift enters tapped), `"cardRulesLevel": N` (the card-wide rules apply from Class level N).
 - `abilities`: a permanent's abilities. An entry with `static` is a static ability; one with `trigger` is a
   triggered ability; one with `cost` is an activated ability (`"sorcery": true` limits it to sorcery timing).
 
@@ -75,7 +80,8 @@ targets can't be chosen.
 ## Cost reductions
 
 `{ "spellCost": { "spells": { "types": ["instant", "sorcery"] }, "amount": 1 } }` in `abilities`: spells you cast
-matching the filter cost that much less (generic mana only).
+matching the filter cost that much less (generic mana only). With `"color": "{U}"` the reduction takes that colored
+symbol off the cost instead; it never pays generic mana.
 
 ## Targets
 
@@ -94,6 +100,7 @@ to them as `"target"` (first), `"target2"`, `"target3"`, ...
 
 A target can also be an object: `{ "kind": "permanent", "controller": "opponent", "filter": { "types": ["artifact", "enchantment"] }, "optional": true }`.
 `filter` adds requirements (see Filters); `optional` makes it "up to one" (the player may choose none).
+With `"onlyIfGiftNotPromised": true` the target is used only when no gift was promised (`"onlyIfGiftPromised"` is the reverse).
 
 ## Subjects
 
@@ -172,6 +179,13 @@ Numbers in effects can be `3`, `"X"`, `"-X"`, `"lifeGained"`, `"life"`, `"handSi
 | `countersPlaced` | +1/+1 counters are put on a creature matching `filter` (`"onSelf": true`: on this one) |
 | `becomesTapped` | This permanent becomes tapped |
 | `eachUpkeep` / `eachBeginCombat` / `eachEndStep` | At the beginning of each upkeep / combat / end step |
+| `youForage` | You forage (see the section below) |
+| `youExpend` | With `"expend": N`: the mana you spend on spells this turn first reaches N |
+| `becomesLevel` | With `"level": N`: this Class becomes level N |
+| `youGiveGift` | You give a gift |
+| `youGainOrLoseLife` | You gain or lose life |
+| `leavesWithoutDying` | This permanent leaves the battlefield to any zone but a graveyard |
+| `becomesTargetOfYours` | A spell or ability you control targets this permanent (`"onSelf": true`) |
 
 `"nth": 2` limits a trigger to the Nth such event of the turn ("your second card each turn").
 
@@ -214,7 +228,8 @@ Comma-separated: mana symbols (`{2}{R}`, `{X}`), `{T}` (tap this permanent), `sa
 permanent), `sacrifice:creature` (sacrifice another creature), `discard`, `discard:2`, `life:2`,
 `removeCounters:3` (+1/+1 counters from this permanent) and `exileFromGraveyard` (the ability is activated
 from your graveyard, exiling this card). An activated ability can add `"oncePerTurn": true` and
-`"activateIf": condition`.
+`"activateIf": condition`. `forage` in a cost means the forage choice (see the section below). With
+`"tapCreaturesForMana": true`, each mana of the cost can be paid by tapping an untapped creature you control.
 
 ## More vocabulary
 
@@ -237,6 +252,8 @@ for), `extraMana` (`[{ "types": "any", "amount": 1, "onlyFor": filter, "abilitie
 Besides `affects`/`pump`/`keywords`: `filter`, `while` (condition), quantities in `pump`, `addSubtypes`, `addChosenType`,
 `addTypes`, `grants` (abilities), `losesAbilities`, `setPower`, `setToughness`, `setTypes`, `setSubtypes`, `setColors`,
 `setName`, `grantsMana` / `grantsManaAmount`, `givesControl`. Scope `permanents:you` affects all your permanents.
+`grantsManaOnlyFor`: filter (with `grantsMana`) limits that mana to spells matching the filter. `{ "spellsHaveStorm": filter }`
+gives storm to the spells you cast that match the filter.
 
 ### Targets and spells
 Target objects also take `anyNumber` (last requirement only), `attachedToTarget: "target"`, `singleTarget` (stack objects)
@@ -323,8 +340,41 @@ Quantities also: `sacrificedToughness`, `lifeLostThisWay`, `destroyedThisWay`, `
 - **Sagas** (layout `saga`): chapter abilities are triggered abilities with `"trigger": "chapter", "chapters": [3, 4]`.
   A Saga enters with a lore counter, gets one as its controller's precombat main phase begins, and is sacrificed
   once it has as many lore counters as its last chapter and no chapter ability is waiting or on the stack.
+- **Class cards** (layout `class`): a Class enters at level 1. An ability with `"level": N` belongs to level N's section
+  and is shown only once the Class is at level N or higher; abilities without `"level"` are always there. The level-up
+  ability is `{ "cost": "{2}{R}", "levelUp": 2, "text": "{2}{R}: Level 2" }`: sorcery speed, only from level 1, it
+  sets the level to 2. A trigger `{ "trigger": "becomesLevel", "level": 2, ... }` ("When this Class becomes level 2") fires
+  when it reaches that level. A root `"cardRulesLevel": N` makes the card-wide rules (the `replaces` list and the other
+  card-wide keys) apply only from level N. Each level change is announced ("X becomes level N") and shown in the card status panel.
 - **Cycling and typecycling** (`Cycling {2}`, `Mountaincycling {2}`, …) are read from the rules text: activated from
   the hand by discarding the card.
+
+## Offspring, forage, classes, expend and pawprint modes
+
+Class cards are described with the other card frames above.
+
+- **Offspring** (`Offspring {2}`, read from the rules text, no script needed): the optional extra cost is asked at cast,
+  like kicker. If it was paid, the creature's enters trigger makes a 1/1 token copy of the card. Quantity `"offspringPaid"`
+  (1 when paid). If the creature has left before the trigger resolves, the token is still made from its last known information.
+- **Forage** (rule 701.61a): an extra cost `{ "forage": true }` (in `cost` objects, `mayPay` and `additionalCostOptions`),
+  or `forage` in an activated cost (`"{T}, forage"`). The player chooses to exile three cards from their graveyard or to
+  sacrifice a Food. Only the way that is possible is offered when just one is. The board shows "X forages", and the
+  trigger is `youForage`.
+- **Expend**: trigger `"youExpend"` with `"expend": N`. It fires when the mana you spend on spells this turn first
+  reaches N, counting the mana actually paid:
+  ```json
+  { "trigger": "youExpend", "expend": 4, "effects": [ { "draw": 1 } ], "text": "Whenever you expend 4, draw a card." }
+  ```
+- **Valiant**: `"trigger": "becomesTargetOfYours"` with `"onSelf": true` and `"nth": 1`. It fires the first time each turn
+  that a spell or ability you control targets this permanent.
+- **Pawprint modes**: a spell lists `modes` (see Modal spells) and gives a budget with `"pawprints": N`. Each mode has its
+  own `"pawprints": n`. The player chooses modes one at a time while the total still fits the budget, and may stop earlier.
+  `"modesRepeat": true` lets a mode be chosen again.
+  ```json
+  { "spell": { "pawprints": 5, "modes": [
+      { "text": "Draw a card.", "pawprints": 2, "effects": [ { "draw": 1 } ] },
+      { "text": "Gain 3 life.", "pawprints": 3, "effects": [ { "gainLife": 3 } ] } ] } }
+  ```
 
 ## More effects
 
@@ -348,12 +398,23 @@ Quantities also: `sacrificedToughness`, `lifeLostThisWay`, `destroyedThisWay`, `
 | Behold | `{ "behold": filter, "effects": [ … ] }` (choose one you control or reveal one from your hand; if you do, …) |
 | Cast from your graveyard now | `{ "castFromGraveyard": filter }` (an instant or sorcery cast this way is exiled afterwards) |
 | Prevent all damage it would deal | `{ "preventDamageBy": "target" }` (while the source stays on the battlefield) |
+| Players gain hexproof | `{ "gainHexproof": "you" }` (until end of turn) |
+| Cast the cards this effect exiled | `{ "castExiledThisWay": true }` (they stay exiled; mana of any type pays) |
+| Exile permanents you control | `{ "exileYouControl": 1, "filter": f, "who": subject }` |
+| Top card of library to hand | `{ "topCardToHand": "you" }` |
+| Exile from hand | `{ "exileFromOwnHand": 1, "who": subject }` |
+| Damage per own permanent | `{ "damageEachPlayerPer": filter }` (each player is dealt damage equal to their own matching permanents) |
+| Reveal and exile one of each type | `{ "revealExileOnePerType": "X", "castIfAtLeast": 4 }` (reveal X cards, exile one of each card type among them, the rest go to the graveyard; a spell exiled this way may be cast free if at least `castIfAtLeast` cards were exiled; the other exiled cards go to hand) |
 
 Existing effects take more options: `counter` (`"unlessPays": "{4}"`, `"exilePermanentPlayable": true`), `search`
 (`"count"` as a quantity, `"split": true` for one onto the battlefield tapped and the rest into the hand), `reanimate`
 and `reanimateAll` (`"attachTo"`, `"setTypes"`, `"setSubtypes"`, `"abilities"`), `lookAtTop` (`"tapped"`,
 `"rest": "shuffle"`), `exileTopPlayable` (a quantity, `"of": "target"`, `"payLife"`, `"forever"`, `"faceDown"`,
-`"while"`), `revealUntil` (`"battlefieldIf": filter`; with `"castFree"`, `"creatureHasteAndSacrifice": true`: if you cast a creature
+`"while"`), `returnFromGraveyard` (`"withCounter": kind`, `"amongDestroyed": true`), `become` (`"untilYourNextTurn"`, `"statsIfCreature"`),
+`blink` (`"counters": n`), `flicker` (`"withCounter": kind`), `putFromHand` (`"orGraveyard"`, `"withCounter"`), `lookAtTop` (`"take"` as a quantity,
+`"battlefieldIfYourTurn": true`), `mayCastFromGraveyard` (`"cost"` as an extra cost, `"finality": true`),
+`emblem` (`"untilEndOfYourNextTurn": true`; the emblem keeps the colors of the spell that made it), `greatestManaValueInGraveyard` (`"times": -1` is honored),
+`revealUntil` (`"battlefieldIf": filter`, `"castByDiscarding": true`; with `"castFree"`, `"creatureHasteAndSacrifice": true`: if you cast a creature
 spell this way, it gains haste and "At the beginning of the end step, sacrifice this creature."), `copy` (`"notLegendary"`), `become` (`"powerFrom"`,
 `"toughnessFrom"`, `"continuous"`, `"whileSource"`), `pump` (`"whileSource"`), `returnExiledWithThis` and
 `searchExileWithThis` (`"count"`), `emblem` (`"untilEndOfTurn"`), and `whenYouDo` (`"about"`: what "that creature" is,
@@ -364,9 +425,12 @@ Subjects also: `created`, `found` (cards found by a search), `amassed`, `{ "disc
 `{ "each": filter, "controlledBy": "target" }`, `{ "each": filter, "exceptTargets": true }`.
 Quantities also: `{ "discarded": f }`, `{ "graveyardsWith": 7 }`, `"manaSpent"`, `"returned"`, `{ "power": "attached" }`,
 `{ "toughness": "self" }`, `{ "count": f, "controlledBy": "target" }`.
+Quantities also: `"triggeredPlayerHandSize"`, `{ "opponentsWithHandAtMost": 1 }`, `"opponentsWhoLostLifeThisTurn"`, `{ "ownedInExile": f }`,
+`"cardTypesExiledWithSource"`, `"opponentsCreaturesExiledThisTurn"`, `"yourCreaturesDiedThisTurn"`.
 Conditions also: `"enduringStory"`, `"castFromGraveyard"`, `"giftPromised"`, `{ "targetControlledByYou": "target" }`,
 `{ "drawn": 2 }`, `{ "attackingPower": 12 }`, `{ "resolvedThisTurn": 2, "exactly": true }`.
-Filters also: `inHand`, `fromBattlefieldThisTurn`, `paidWithTreasure`, `chosenParity`, `sharesNameWithYourLegendary`.
+Conditions also: `{ "cardsLeftYourGraveyard": 3 }` (at least that many cards left your graveyard this turn), `{ "targetLostLife": "target" }`.
+Filters also: `inHand`, `fromBattlefieldThisTurn`, `paidWithTreasure`, `chosenParity`, `sharesNameWithYourLegendary`, `lesserManaValueThanTriggered`, `notName`, `notZone`, `maxManaValueSpent`.
 
 ## More triggers, abilities and card-wide rules
 
@@ -391,7 +455,7 @@ and `OpponentsCreaturesExiledInsteadOfDying`. Storied is a keyword: with three o
 Sagas, its controller has an enduring story for the rest of the game.
 
 Counters with rules of their own: hone counters on an Equipment give the equipped creature +1/+0; trample counters give
-trample.
+trample. Counter kinds `flood`, `supply` and `coin` can be named as `kind`.
 
 ## The Ring, phasing, cascade and evasion
 

@@ -69,6 +69,7 @@ public static partial class CardScriptParser
                 "cardTypesInAllGraveyards" => new Quantity(0, QuantityKind.CardTypesInAllGraveyards),
                 "counterKindsOnSelf" => new Quantity(0, QuantityKind.CounterKindsOnSource),
                 "playersWhoLostLifeThisTurn" => new Quantity(0, QuantityKind.PlayersWhoLostLifeThisTurn),
+                "opponentsWhoLostLifeThisTurn" => new Quantity(0, QuantityKind.OpponentsWhoLostLifeThisTurn),
                 "greatestPowerAsCast" => new Quantity(0, QuantityKind.GreatestPowerAsCast),
                 "triggeredCounterCount" => new Quantity(0, QuantityKind.TriggeredCounterCount),
                 "sacrificedManaValue" => new Quantity(0, QuantityKind.SacrificedManaValue),

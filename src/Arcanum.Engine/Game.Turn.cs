@@ -56,11 +56,14 @@ public sealed partial class Game
             player.CombatDamageSourcesThisTurn.Clear();
             player.CombatDamagedByDragonThisTurn = false;
             player.CardLeftGraveyardThisTurn = false;
+            player.CardsLeftGraveyardThisTurn = 0;
+            player.CreaturesExiledThisTurn = 0;
             player.PutCounterOnCreatureThisTurn = false;
             player.AttackedThisTurn = false;
             player.ActivatedLoyaltyThisTurn = false;
             player.InstantLoyaltySubtypes.Clear();
             player.LifeGainedThisTurn = 0;
+            player.ManaSpentOnSpellsThisTurn = 0;
             player.LifeLostThisTurn = 0;
             player.CardsDrawnThisTurn = 0;
             player.LifeGainsThisTurn = 0;
@@ -300,6 +303,12 @@ public sealed partial class Game
             State.GetCard(emblem).Zone = Zone.Exile; // gone (an emblem is no card)
         }
         State.EmblemsUntilEndOfTurn.Clear();
+        foreach (var lasting in State.EmblemsUntilEndOfOwnersNextTurn.Where(e => State.GetCard(e.Emblem).Owner == State.ActivePlayer && State.TurnNumber > e.MadeOnTurn).ToList())
+        {
+            State.EmblemsUntilEndOfOwnersNextTurn.Remove(lasting);
+            State.Emblems.Remove(lasting.Emblem);
+            State.GetCard(lasting.Emblem).Zone = Zone.Exile;
+        }
         RecomputeContinuousEffects();
     }
 }

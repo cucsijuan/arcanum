@@ -66,6 +66,8 @@ public sealed record EmblemCreated(CardId Emblem, PlayerId Owner) : GameEvent;
 public sealed record ChoiceMade(CardId Card, string Choice) : GameEvent;
 /// <summary>A creature became prepared (a copy of its prepare spell waits in exile), or was unprepared by an effect.</summary>
 public sealed record PreparedChanged(CardId Card, bool Prepared) : GameEvent;
+/// <summary>A Class became level <see cref="Level"/> (rule 716.2a).</summary>
+public sealed record ClassLevelChanged(CardId Card, int Level) : GameEvent;
 /// <summary>A player got an enduring story (storied) for the rest of the game.</summary>
 public sealed record EnduringStoryGained(PlayerId Player) : GameEvent;
 /// <summary>A player got the city's blessing (ascend).</summary>
@@ -82,6 +84,12 @@ public sealed record HandLookedAt(PlayerId Looker, PlayerId Player, IReadOnlyLis
 /// <summary><paramref name="Chooser"/> chose these cards from <paramref name="Player"/>'s hand (for that player to discard).</summary>
 public sealed record ChosenFromHand(PlayerId Chooser, PlayerId Player, IReadOnlyList<CardId> Cards) : GameEvent;
 public sealed record PermanentSacrificed(CardId Card) : GameEvent;
+/// <summary>A player foraged (rule 701.61a: exiled three cards from their graveyard or sacrificed a Food).</summary>
+public sealed record Foraged(PlayerId Player) : GameEvent;
+/// <summary>A player gave a gift they promised (rule 702.174): the giftee drew or got the gift token.</summary>
+public sealed record GiftGiven(PlayerId Giver, PlayerId Giftee, CardId Source) : GameEvent;
+/// <summary>A player spent mana to cast a spell: their total for the turn went from <see cref="Before"/> to <see cref="After"/> (expend).</summary>
+public sealed record ManaSpentOnSpell(PlayerId Player, int Before, int After) : GameEvent;
 public sealed record ControlChanged(CardId Card, PlayerId NewController) : GameEvent
 {
     /// <summary>Who controlled it before.</summary>

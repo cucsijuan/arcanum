@@ -45,6 +45,9 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
 
     /// <summary>"Put a [filter] card exiled with [this] into its owner's graveyard".</summary>
     public ObjectFilter? ReturnExiledWithSource { get; init; }
+
+    /// <summary>Forage (rule 701.61a): "exile three cards from your graveyard or sacrifice a Food", the player's choice.</summary>
+    public bool Forage { get; init; }
 }
 
 /// <summary>

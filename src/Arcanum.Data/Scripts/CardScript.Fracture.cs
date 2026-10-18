@@ -26,7 +26,7 @@ public static partial class CardScriptParser
         if (e.ValueKind != JsonValueKind.Object) return null;
         if (e.TryGetProperty("loyalty", out var l) && l.GetString() == "target") return new Quantity(0, QuantityKind.TargetLoyalty);
         if (e.TryGetProperty("greatestManaValueInGraveyard", out var g))
-            return new Quantity(0, QuantityKind.GreatestManaValueInYourGraveyard, ParseFilter(g, ControllerFilter.Any));
+            return new Quantity(0, QuantityKind.GreatestManaValueInYourGraveyard, ParseFilter(g, ControllerFilter.Any), Multiplier: e.TryGetProperty("times", out var gt) ? gt.GetInt32() : 1);
         if (e.TryGetProperty("colorsAmong", out var ca)) return new Quantity(0, QuantityKind.ColorsAmongYourMatching, ParseFilter(ca, ControllerFilter.You));
         if (e.TryGetProperty("opponentsWhoDiscardedFewer", out var odf))
             return new Quantity(odf.GetInt32(), QuantityKind.OpponentsWhoDiscardedFewer, e.TryGetProperty("filter", out var odff) ? ParseFilter(odff, ControllerFilter.Any) : null);

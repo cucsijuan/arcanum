@@ -297,6 +297,35 @@ public sealed partial record CardDefinition
     public ManaCost? Replicate { get; init; }
     public ManaCost? Squad { get; init; }
 
+    /// <summary>
+    /// Offspring (702.175a): "You may pay an additional [cost] as you cast this spell" and "When this permanent enters, if its
+    /// offspring cost was paid, create a token that's a copy of it, except it's 1/1." The trigger is one of its abilities.
+    /// </summary>
+    public ManaCost? Offspring { get; init; }
+
+    /// <summary>
+    /// For a Class whose card-wide rules (replacement effects, damage bonuses and the like) are printed in a level section: that
+    /// level (rule 716.2c). Below it the permanent has none of them. 0: they always apply.
+    /// </summary>
+    public int CardRulesClassLevel { get; init; }
+
+    /// <summary>"If you would put one or more counters on a permanent or player, put twice that many of each of those kinds of counters on that permanent or player instead."</summary>
+    public bool DoublesCountersYouPut { get; init; }
+
+    /// <summary>"Damage can't be prevented" (a static ability of the permanent).</summary>
+    public bool DamageCantBePrevented { get; init; }
+
+    /// <summary>
+    /// "As an additional cost to cast this spell, you may sacrifice any number of [filter]. This spell costs {1} less to cast for
+    /// each permanent sacrificed this way."
+    /// </summary>
+    public Abilities.ObjectFilter? CastSacrificeAny { get; init; }
+
+    /// <summary>"During your turn, you may cast instant and sorcery spells from your graveyard by paying 1 life in addition to their other costs."</summary>
+    public Abilities.ObjectFilter? GraveyardCastFilter { get; init; }
+    public Abilities.ExtraCost? GraveyardCastExtra { get; init; }
+    public Abilities.Condition? GraveyardCastWhile { get; init; }
+
     /// <summary>Dash (702.109): cast for this cost, it gains haste and returns to its owner's hand at the next end step.</summary>
     public ManaCost? Dash { get; init; }
 
@@ -378,6 +407,10 @@ public sealed partial record CardDefinition
 
     /// <summary>Its <see cref="EntersAsCopyOf"/> copy has haste ("except it has haste").</summary>
     public bool EntersAsCopyWithHaste { get; init; }
+
+    /// <summary>"Except it's a Bird in addition to its other types and it has flying": subtypes and keywords the copy also has (rule 707.9b).</summary>
+    public IReadOnlyList<string>? EntersAsCopyAddSubtypes { get; init; }
+    public IReadOnlyList<string>? EntersAsCopyAddKeywords { get; init; }
 
     /// <summary>"You may cast creature spells [matching this] from the top of your library."</summary>
     public ObjectFilter? LibraryTopCastFilter { get; init; }
@@ -618,6 +651,9 @@ public sealed partial record CardDefinition
 
     /// <summary>"Gift a card": the promised opponent draws a card.</summary>
     public bool GiftCard { get; init; }
+
+    /// <summary>"Gift a tapped Fish": the gift token enters tapped.</summary>
+    public bool GiftTapped { get; init; }
 
     /// <summary>"You may cast this spell as though it had flash if [condition]."</summary>
     public Condition? FlashIf { get; init; }

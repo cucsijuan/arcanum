@@ -220,7 +220,8 @@ public sealed partial class Game
             if (!part.Applied.Contains(m.Id)) list.Add(m);
         }
         var source = part.Source;
-        bool preventable = State.DamageCantBePreventedTurn != State.TurnNumber && !part.Unpreventable; // "damage can't be prevented (this turn)"
+        bool preventable = State.DamageCantBePreventedTurn != State.TurnNumber && !part.Unpreventable // "damage can't be prevented (this turn)"
+                           && !State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && c.Definition.DamageCantBePrevented);
         if (preventable)
         {
             if (PreventsAll(source, part.ToCard, part.ToPlayer, part.Combat, out var preventing) is { } reason)

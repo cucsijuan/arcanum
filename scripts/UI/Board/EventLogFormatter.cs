@@ -38,6 +38,8 @@ public static class EventLogFormatter
             SpellCountered c => $"{C(c.Card)} is countered.",
             TokenCreated t => $"{P(t.Controller)} creates a {C(t.Card)} token.",
             TurnedFaceUp f => $"{P(f.Player)} turns {C(f.Card)} face up.",
+            ClassLevelChanged lv => $"{C(lv.Card)} becomes level {lv.Level}.",
+            Foraged fg => $"{P(fg.Player)} forages.",
             PermanentDestroyed d when !IsCreature(d.Card) => $"{C(d.Card)} is destroyed.",
             LifeChanged { NewLife: var now, OldLife: var before } l when now > before => $"{P(l.Player)} gains {now - before} life.",
             PermanentSacrificed sac when !IsCreature(sac.Card) => $"{C(sac.Card)} is sacrificed.",

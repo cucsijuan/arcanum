@@ -31,6 +31,12 @@ public sealed record TopOfLibrary(ObjectFilter Filter) : Condition;
 /// <summary>"If it was kicked" / "if this spell was kicked".</summary>
 public sealed record WasKicked : Condition;
 
+/// <summary>"Activate only if this Class is level N" (rule 716.2a).</summary>
+public sealed record ClassLevelIs(int Level) : Condition;
+
+/// <summary>"If they lost life this turn": the target player (at that target index) lost life this turn.</summary>
+public sealed record TargetPlayerLostLife(int Index) : Condition;
+
 /// <summary>"If an opponent lost life this turn".</summary>
 public sealed record OpponentLostLifeThisTurn : Condition;
 

@@ -44,10 +44,18 @@ public sealed partial class Game
     /// </summary>
     private static int? LeftBattlefieldVersion(Abilities.AbilityDefinition ability, Card source, int sourceVersion)
     {
-        bool left = ability is Abilities.TriggeredAbility { Trigger: Abilities.TriggerEvent.Dies or Abilities.TriggerEvent.LeavesBattlefield or Abilities.TriggerEvent.PutIntoGraveyard or Abilities.TriggerEvent.DiesOrExiled }
+        bool left = ability is Abilities.TriggeredAbility { Trigger: Abilities.TriggerEvent.Dies or Abilities.TriggerEvent.LeavesBattlefield or Abilities.TriggerEvent.LeavesWithoutDying or Abilities.TriggerEvent.PutIntoGraveyard or Abilities.TriggerEvent.DiesOrExiled }
                     || ability is Abilities.ActivatedAbility { Cost.SacrificeSelf: true };
         return left && source.LastKnownOf(sourceVersion - 1) is not null ? sourceVersion - 1 : null;
     }
+
+    /// <summary>
+    /// The resolving ability's source object as it last existed on the battlefield once it left (rule 608.2h); null while the
+    /// source is still that object, or when the ability didn't come from a permanent.
+    /// </summary>
+    private LastKnown? ResolvingSourceGone(Card source) =>
+        _resolvingSource is { } r && r.Card == source.Id && (r.LeftVersion is not null || source.Version != r.Version)
+            ? source.LastKnownOf(r.LeftVersion ?? r.Version) : null;
 
     /// <summary>How the resolving ability's source object (<paramref name="version"/>) last existed on the battlefield, if it did (rule 608.2h).</summary>
     private LastKnown? ResolvingSourceLastKnown(Card source, int version) =>

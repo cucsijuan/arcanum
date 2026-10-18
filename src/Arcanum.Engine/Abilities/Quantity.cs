@@ -113,6 +113,22 @@ public enum QuantityKind
     /// <summary>Times the source's multikicker / squad cost was paid.</summary>
     TimesKicked,
     SquadPaid,
+    /// <summary>1 if the source's offspring cost was paid (as it last existed on the battlefield once it left), else 0.</summary>
+    OffspringPaid,
+    /// <summary>The number of cards in the hand of the player the trigger is about ("if that player has one or fewer cards in hand").</summary>
+    TriggeredPlayerHandSize,
+    /// <summary>Cards the controller owns in exile that match the filter.</summary>
+    OwnedInExile,
+    /// <summary>Creatures that died under the controller's control this turn.</summary>
+    YourCreaturesDiedThisTurn,
+    /// <summary>Creatures exiled from the battlefield this turn under the controller's opponents' control.</summary>
+    OpponentsCreaturesExiledThisTurn,
+    /// <summary>Card types among the cards exiled with the source (as it is now).</summary>
+    CardTypesExiledWithSource,
+    /// <summary>Opponents who lost life this turn ("for each opponent who lost life this turn").</summary>
+    OpponentsWhoLostLifeThisTurn,
+    /// <summary>Opponents with <see cref="Quantity.Value"/> or fewer cards in hand ("for each opponent who has one or fewer cards in hand").</summary>
+    OpponentsWithHandAtMost,
     /// <summary>Votes for the option numbered <see cref="Quantity.Value"/>.</summary>
     VotesFor,
     /// <summary>Votes the player being affected received.</summary>

@@ -1444,6 +1444,7 @@ public partial class GameBoard : Control
                 more.CustomMinimumSize = new Vector2(52, 44);
                 more.Disabled = _number >= nd.Request.Max;
                 AddButton($"X = {_number}", () => nd.Answer(_number), primary: true);
+                if (nd.Request.CanCancel) AddButton("Cancel", () => nd.Answer(NumberRequest.Cancelled));
                 break;
             }
 
@@ -2484,6 +2485,12 @@ public partial class GameBoard : Control
                 break;
             case TurnedFaceUp up:
                 _announcer.Enqueue(new($"{PlayerName(up.Player)} turns {ev.Name(up.Card)} face up", ViewOf(ev, up.Card), 1.5));
+                break;
+            case ClassLevelChanged lv:
+                _announcer.Enqueue(new($"{ev.Name(lv.Card)} becomes level {lv.Level}", ViewOf(ev, lv.Card), 1.5));
+                break;
+            case Foraged fg:
+                _announcer.Enqueue(new($"{PlayerName(fg.Player)} forages", null, 1.2));
                 break;
             case PermanentDestroyed d:
                 _announcer.Enqueue(new($"{ev.Name(d.Card)} is destroyed", ViewOf(ev, d.Card), 1.5));

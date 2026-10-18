@@ -178,6 +178,7 @@ public static class ViewBuilder
             PrepareName = card.Definition.PrepareSpell?.Name,
             PrepareCost = card.Definition.PrepareSpell?.ManaCost.ToString(),
             Prepared = card.PreparedCopy is not null,
+            ClassLevel = card.Zone == Zone.Battlefield && card.HasSubtype("Class") ? card.ClassLevel : 0,
             PreparedSpellOf = card.PreparedSpellOf,
             SplitHalves = card.PrintedDefinition.SplitHalves?.Select(h => $"{h.Name} {h.ManaCost}").ToList(),
             Transformed = card.Transformed,

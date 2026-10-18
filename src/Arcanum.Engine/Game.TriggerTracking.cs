@@ -42,7 +42,8 @@ public sealed partial class Game
                     TriggerEvent.BecomesTargetOfYours => item.Controller == observer.Controller,
                     _ => false,
                 };
-                if (watching && Matches(ability.Filter ?? DefaultFilter(ability.Trigger), aimed, aimed.Controller, observer, observer.Controller))
+                // "Whenever this creature becomes the target …" (valiant): only the observer itself.
+                if (watching && (ability.OnSelf ? aimed.Id == observer.Id : Matches(ability.Filter ?? DefaultFilter(ability.Trigger), aimed, aimed.Controller, observer, observer.Controller)))
                     AddPending(observer.Id, ability, observer.Controller, new TriggerInfo(aimed.Id, aimed.Version, item.Controller)); // "that player": the spell's or ability's controller
             }
     }

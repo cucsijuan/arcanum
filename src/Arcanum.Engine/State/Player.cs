@@ -38,6 +38,9 @@ public sealed class Player
     /// <summary>Total life gained this turn.</summary>
     public int LifeGainedThisTurn { get; set; }
 
+    /// <summary>Total mana spent to cast spells this turn (for expend).</summary>
+    public int ManaSpentOnSpellsThisTurn { get; set; }
+
     /// <summary>Permanent types already used this turn to play cards from the graveyard ("a permanent spell of each permanent type").</summary>
     public Cards.CardType GraveyardTypesUsedThisTurn { get; set; }
 
@@ -121,6 +124,12 @@ public sealed class Player
     /// <summary>A card left this player's graveyard this turn.</summary>
     public bool CardLeftGraveyardThisTurn { get; set; }
 
+    /// <summary>How many cards left this player's graveyard this turn ("if three or more cards left your graveyard this turn").</summary>
+    public int CardsLeftGraveyardThisTurn { get; set; }
+
+    /// <summary>Creatures exiled from the battlefield this turn while this player controlled them.</summary>
+    public int CreaturesExiledThisTurn { get; set; }
+
     /// <summary>Scried or surveilled this turn.</summary>
     public bool ScriedOrSurveilledThisTurn { get; set; }
 
@@ -159,6 +168,9 @@ public sealed class Player
 
     /// <summary>"You can't lose life this turn" / "you can't lose the game this turn and your opponents can't win the game this turn": the turn it applies to.</summary>
     public int CantLoseLifeTurn { get; set; } = -1;
+
+    /// <summary>The turn this player has hexproof until its end ("you gain hexproof until end of turn").</summary>
+    public int HexproofTurn { get; set; } = -1;
 
     /// <summary>The last turn this player flipped a coin ("the first time you flip one or more coins each turn").</summary>
     public int CoinFlipTurn { get; set; } = -1;

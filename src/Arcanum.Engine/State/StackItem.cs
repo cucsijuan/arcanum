@@ -66,6 +66,9 @@ public sealed record SpellOnStack(CardId Card, PlayerId Controller, IReadOnlyLis
 
     /// <summary>Cast for its impending cost (rule 702.176a).</summary>
     public bool Impended { get; init; }
+
+    /// <summary>Its offspring cost was paid (rule 702.175a).</summary>
+    public bool OffspringPaid { get; init; }
 }
 
 public sealed record AbilityOnStack(CardId Source, AbilityDefinition Ability, PlayerId Controller, IReadOnlyList<ChosenTarget> ChosenTargets)

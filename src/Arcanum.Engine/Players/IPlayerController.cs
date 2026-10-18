@@ -67,6 +67,12 @@ public enum OptionKind
 public sealed record OptionRequest(string Prompt, CardId? Source, IReadOnlyList<string> Options, OptionKind Kind);
 
 /// <summary>Choose a number from <see cref="Min"/> to <see cref="Max"/>.</summary>
-public sealed record NumberRequest(string Prompt, CardId? Source, int Min, int Max);
+public sealed record NumberRequest(string Prompt, CardId? Source, int Min, int Max)
+{
+    /// <summary>The player may back out of the spell or ability being announced: the answer is then <see cref="Cancelled"/>.</summary>
+    public bool CanCancel { get; init; }
+
+    public const int Cancelled = -1;
+}
 
 public sealed class InvalidDecisionException(string message) : Exception(message);

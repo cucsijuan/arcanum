@@ -484,7 +484,8 @@ public sealed class BotController : IPlayerController
             if (SpendsCards(ability.Cost) && !(ability.Effects.Any(e => e is DrawCards) && NeedsCards(view) && CheapSacrifice(view, ability.Cost, activate.Source))) continue;
             if (ability.Targets.Count == 0)
             {
-                if (ability.Effects.Any(e => e is DrawCards or CreateTokens)) return activate;
+                // A Class's next level: its new section is the point of the card.
+                if (ability.Effects.Any(e => e is DrawCards or CreateTokens or BecomeClassLevel)) return activate;
                 continue;
             }
             if (!TargetIsHarmed(ability, 0)) continue;

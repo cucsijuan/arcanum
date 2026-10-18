@@ -36,6 +36,9 @@ public sealed partial class Game
         public int KickCount { get; init; }
         public int ReplicateCount { get; init; }
         public int SquadCount { get; init; }
+        public bool OffspringPaid { get; init; }
+        /// <summary>Permanents sacrificed for "you may sacrifice any number of …; it costs {1} less for each".</summary>
+        public int SacrificeAnyCount { get; init; }
         /// <summary>Modes chosen beyond the first, each paying the escalate cost (rule 702.120).</summary>
         public int EscalatedModes { get; init; }
         /// <summary>Tiered (rule 702.183a): the additional cost of the chosen mode.</summary>
@@ -109,6 +112,7 @@ public sealed partial class Game
         for (int i = 0; i < c.KickCount; i++) cost = cost.Plus(card.Definition.Multikicker!);
         for (int i = 0; i < c.ReplicateCount; i++) cost = cost.Plus(card.Definition.Replicate!);
         for (int i = 0; i < c.SquadCount; i++) cost = cost.Plus(card.Definition.Squad!);
+        if (c.OffspringPaid && card.Definition.Offspring is { } offspring) cost = cost.Plus(offspring);
         if (card.Definition.Escalate is { } escalate)
             for (int i = 0; i < c.EscalatedModes; i++) cost = cost.Plus(escalate);
         if (c.Tier is { } tier) cost = cost.Plus(tier);
@@ -122,7 +126,7 @@ public sealed partial class Game
         if (card.Definition.ExtraTargetCost > 0 && targets is not null)
             cost = cost.PlusGeneric(card.Definition.ExtraTargetCost * Math.Max(0, targets.Count(t => !t.Target.IsNone) - 1));
         int genericBefore = cost.Generic;
-        cost = cost.MinusGeneric(CostReductionFor(card, caster, targets));
+        cost = MinusColoredReductions(cost.MinusGeneric(CostReductionFor(card, caster, targets) + c.SacrificeAnyCount), card, caster);
         // "Spend only black mana on X": the X part of the generic mana (what reductions left of it) is paid with that type only.
         if (card.Definition.XManaType is { } xType && c.X > 0 && c.Way.Mana.XCount > 0)
         {
@@ -155,6 +159,8 @@ public sealed partial class Game
         var costs = new List<ExtraCost?> { card.Definition.AdditionalCost, c.Option?.Extra, c.Kicked ? card.Definition.KickerExtra : null };
         if (card.Zone == Zone.Graveyard) costs.Add(GraveyardCost(card));
         if (c.Way.Kind == CastingWayKind.Alternative) costs.Add(card.Definition.AlternativeCost?.Extra);
+        if (c.Way.Kind == CastingWayKind.WithoutPaying && _castFreeExtra.TryGetValue(card.Id, out var freeExtra)) costs.Add(freeExtra);
+        if (c.SacrificeAnyCount > 0 && card.Definition.CastSacrificeAny is { } sacrificeAny) costs.Add(new ExtraCost(Sacrifice: sacrificeAny, SacrificeCount: c.SacrificeAnyCount));
         if (c.Way.Kind == CastingWayKind.Blitz) costs.Add(card.Definition.BlitzExtra);
         // A non-mana escalate cost, once for each mode beyond the first (702.120a).
         if (card.Definition.EscalateExtra is { } escalate && c.EscalatedModes > 0)
@@ -232,7 +238,16 @@ public sealed partial class Game
             .SelectMany(way => way.Kind == CastingWayKind.FaceDown
                 ? new[] { new CastingChoices(way) { FlashExtra = flashExtra } }
                 : options.Select(o => new CastingChoices(way) { Option = o, FlashExtra = flashExtra, Tier = CheapestTier(card, caster) }))
-            .Where(c => c.Way.Kind == CastingWayKind.FaceDown ? AsFaceDown(card, () => CanPayToCast(card, caster, c)) : CanPayToCast(card, caster, c)).ToList();
+            .Where(c => c.Way.Kind == CastingWayKind.FaceDown ? AsFaceDown(card, () => CanPayToCast(card, caster, c))
+                : CanPayToCast(card, caster, c) || SacrificeAnyCounts(card, caster, c).Count > 0).ToList();
+    }
+
+    /// <summary>The numbers of permanents the caster could sacrifice for "you may sacrifice any number of …" and still pay for the spell.</summary>
+    private List<int> SacrificeAnyCounts(Card card, PlayerId caster, CastingChoices c)
+    {
+        if (card.Definition.CastSacrificeAny is not { } filter) return new();
+        int most = SacrificeCandidates(caster, filter, card.Id).Count;
+        return Enumerable.Range(0, most + 1).Where(n => CanPayToCast(card, caster, c with { SacrificeAnyCount = n })).ToList();
     }
 
     /// <summary>

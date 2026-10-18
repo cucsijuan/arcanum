@@ -109,7 +109,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
-    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story }
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story, Flood, Supply, Coin }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect
@@ -271,7 +271,11 @@ public sealed record ExileUntilSourceLeaves(Subject What) : Effect
 }
 
 /// <summary>Exile, then return to the battlefield at the beginning of the next end step (under its owner's control, or yours).</summary>
-public sealed record ExileAndReturnAtEndStep(Subject What, bool UnderYourControl = false) : Effect;
+public sealed record ExileAndReturnAtEndStep(Subject What, bool UnderYourControl = false) : Effect
+{
+    /// <summary>"Return it … with a +1/+1 counter on it" / "with a flying counter on it".</summary>
+    public CounterKind? ReturnCounter { get; init; }
+}
 
 /// <summary>Create token copies of a permanent, optionally with haste and "sacrifice it at the beginning of the next end step".</summary>
 public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = false, bool SacrificeAtEndStep = false) : Effect
@@ -397,6 +401,12 @@ public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, St
 
     /// <summary>With the cards taken exiled: "You may cast the exiled card without paying its mana cost" (after the rest went to the bottom).</summary>
     public bool CastTakenFree { get; init; }
+
+    /// <summary>"Put X cards from among them into your hand": the number taken worked out as it resolves.</summary>
+    public Quantity? TakeFrom { get; init; }
+
+    /// <summary>The taken card may go onto the battlefield if it's the player's turn; otherwise (or if they don't) into their hand.</summary>
+    public bool BattlefieldIfYourTurnElseHand { get; init; }
 }
 
 /// <summary>"[Player] reveals their hand; you choose a [filter] card from it; they discard it."</summary>
@@ -564,6 +574,12 @@ public sealed record ReturnFromGraveyard(ObjectFilter? Filter, int Count, State.
 
     /// <summary>"From a graveyard" (any player's) instead of yours.</summary>
     public bool AnyGraveyard { get; init; }
+
+    /// <summary>"Return it to the battlefield with a [kind] counter on it": it enters with one (rule 614.1c).</summary>
+    public CounterKind? EntersWithCounter { get; init; }
+
+    /// <summary>"A creature card put into your graveyard this way": only cards this spell or ability destroyed.</summary>
+    public bool AmongDestroyed { get; init; }
 }
 
 /// <summary>"[Players] discard their hand."</summary>
@@ -580,6 +596,9 @@ public sealed record CreateEmblem(string Name, IReadOnlyList<AbilityDefinition> 
 
     /// <summary>The emblem lasts until its owner's next turn begins ("until your next turn, whenever …").</summary>
     public bool UntilYourNextTurn { get; init; }
+
+    /// <summary>"Until the end of your next turn": the ability lasts through its owner's next turn.</summary>
+    public bool UntilEndOfYourNextTurn { get; init; }
 
     /// <summary>The players who get an emblem each (they own it: "each player dealt damage this way gets an emblem"); null: the controller.</summary>
     public Subject? For { get; init; }
@@ -679,6 +698,12 @@ public sealed record Become(Subject What, int? Power = null, int? Toughness = nu
     /// <summary>"For as long as that land has a blight counter on it": the effect lasts while the permanent has a counter of this kind.</summary>
     public CounterKind? WhileCounter { get; init; }
 
+    /// <summary>"Until your next turn" instead of until end of turn.</summary>
+    public bool UntilYourNextTurn { get; init; }
+
+    /// <summary>Only creatures among the affected objects get the base power and toughness ("If it's a creature, it also has base power and toughness 2/2").</summary>
+    public bool PowerOnlyIfCreature { get; init; }
+
     /// <summary>"Loses all land types" (layer 4; its other subtypes stay).</summary>
     public bool LosesLandTypes { get; init; }
 
@@ -724,6 +749,9 @@ public sealed record RevealUntil(ObjectFilter Filter, State.Zone To) : Effect
 
     /// <summary>"The player puts that card onto the battlefield": under the revealing player's control (not the ability's controller's).</summary>
     public bool RevealerPuts { get; init; }
+
+    /// <summary>With <see cref="CastFree"/>: "you may cast that card by discarding a card rather than paying its mana cost".</summary>
+    public bool CastByDiscarding { get; init; }
 
     /// <summary>With <see cref="CastFree"/>: the other exiled cards stay in exile (instead of going to the bottom of the library).</summary>
     public bool RestStaysExiled { get; init; }
@@ -938,6 +966,9 @@ public sealed record Blink(Subject What) : Effect
     /// <summary>They return tapped.</summary>
     public bool Tapped { get; init; }
 
+    /// <summary>"Return it to the battlefield … with a +1/+1 counter on it": the counters they return with.</summary>
+    public int EnterCounters { get; init; }
+
     /// <summary>"Return it to the battlefield transformed": a double-faced card returns with its back face up; any other card stays exiled (rule 712.14a).</summary>
     public bool Transformed { get; init; }
 }
@@ -1083,6 +1114,12 @@ public sealed record PutFromHand(ObjectFilter Filter) : Effect
 
     /// <summary>"Tapped and attacking".</summary>
     public bool Attacking { get; init; }
+
+    /// <summary>"From your hand or graveyard".</summary>
+    public bool OrGraveyard { get; init; }
+
+    /// <summary>"With a finality counter on it": a counter of this kind it enters with.</summary>
+    public CounterKind? WithCounter { get; init; }
 }
 
 /// <summary>"Choose up to N [filter], then destroy the rest."</summary>
@@ -1403,7 +1440,14 @@ public sealed record CounterTriggeringUnlessPays(Mana.ManaCost Mana) : Effect;
 public sealed record IgnoreHexproofThisTurn : Effect;
 
 /// <summary>"Until end of turn, you may cast [filter] spells from your graveyard."</summary>
-public sealed record MayCastFromGraveyardThisTurn(ObjectFilter Filter) : Effect;
+public sealed record MayCastFromGraveyardThisTurn(ObjectFilter Filter) : Effect
+{
+    /// <summary>"By foraging in addition to paying their other costs".</summary>
+    public ExtraCost? Extra { get; init; }
+
+    /// <summary>"If you cast a spell this way, that creature enters with a finality counter on it."</summary>
+    public bool Finality { get; init; }
+}
 
 /// <summary>Myriad (rule 702.116): a token copy of the source attacking each other opponent (or a planeswalker they control), exiled at end of combat.</summary>
 public sealed record Myriad : Effect;
@@ -1445,3 +1489,31 @@ public sealed record ReselectAttack(Subject What) : Effect;
 
 /// <summary>Damage to each opponent, so much for each of the given cards that is still in exile (as the same object).</summary>
 public sealed record DamageForEachStillExiled(int PerCard, IReadOnlyList<(Core.CardId Card, int Version)> Cards) : Effect;
+
+/// <summary>"[Cost]: Level N" resolving (rule 716.2a): this Class's level becomes N.</summary>
+public sealed record BecomeClassLevel(int Level) : Effect;
+
+/// <summary>"[Players] gain hexproof until end of turn."</summary>
+public sealed record PlayersGainHexproof(Subject Who) : Effect;
+
+/// <summary>"You may cast that card for as long as it remains exiled, and mana of any type can be spent to cast it": the cards this effect exiled.</summary>
+public sealed record CastExiledThisWay : Effect;
+
+/// <summary>"Target opponent exiles an enchantment they control": each of those players chooses that many of their permanents matching the filter and exiles them.</summary>
+public sealed record PlayerExilesPermanents(Quantity Count, ObjectFilter Filter, Subject Who) : Effect;
+
+/// <summary>"Put the top card of your library into your hand" (not a draw).</summary>
+public sealed record TopCardToHand(Subject Who) : Effect;
+
+/// <summary>"Target opponent exiles a card from their hand": each of those players chooses that many cards from their hand and exiles them.</summary>
+public sealed record ExileFromOwnHand(Quantity Count, Subject Who) : Effect;
+
+/// <summary>"Deals damage to each player equal to the number of nonbasic lands that player controls": each player's own count.</summary>
+public sealed record DamageEachPlayerByCount(ObjectFilter Filter) : Effect;
+
+/// <summary>
+/// "Reveal the top X cards of your library. For each card type, you may exile a card of that type from among them. Put the rest into
+/// your graveyard. You may cast a spell from among the exiled cards without paying its mana cost if you exiled
+/// <see cref="CastIfAtLeast"/> or more cards this way. Then put the rest of the exiled cards into your hand."
+/// </summary>
+public sealed record RevealExileOnePerType(Quantity Count, int CastIfAtLeast) : Effect;

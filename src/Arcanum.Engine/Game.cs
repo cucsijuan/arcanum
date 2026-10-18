@@ -77,6 +77,7 @@ public sealed partial class Game
     {
         var id = Setup(owner, definition, Zone.Battlefield);
         State.GetCard(id).AttachedTo = attachTo;
+        State.GetCard(id).ClassLevel = 1; // as on any entering (rule 716.3)
         return id;
     }
 
@@ -172,12 +173,15 @@ public sealed partial class Game
                 break;
             case CardMoved { From: Zone.Battlefield } left:
                 State.GetPlayer(left.LastController).PermanentLeftThisTurn = true;
+                if (left.To == Zone.Exile && State.GetCard(left.Card).LastKnownInfo is { } exiledLki && (exiledLki.Types & CardType.Creature) != 0)
+                    State.GetPlayer(left.LastController).CreaturesExiledThisTurn++;
                 break;
             case CardMoved { From: Zone.Library, To: Zone.Graveyard } milled:
                 State.GetPlayer(milled.Owner).MilledThisTurn++;
                 break;
             case CardMoved { From: Zone.Graveyard } fromGraveyard:
                 State.GetPlayer(fromGraveyard.Owner).CardLeftGraveyardThisTurn = true;
+                State.GetPlayer(fromGraveyard.Owner).CardsLeftGraveyardThisTurn++;
                 break;
             case CountersPlaced { Count: > 0 } placed:
                 var counted = State.GetCard(placed.Card);

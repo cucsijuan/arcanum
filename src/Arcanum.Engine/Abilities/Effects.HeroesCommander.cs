@@ -170,3 +170,6 @@ public sealed record WasCastFromExile : Condition;
 /// <summary>"Nonartifact spells you cast have improvise" (rule 702.126): while the source is on the battlefield, spells its controller casts that match
 /// <paramref name="Spells"/> have improvise, as if they printed it.</summary>
 public sealed record SpellsHaveImprovise(ObjectFilter Spells) : AbilityDefinition;
+
+/// <summary>"Instant and sorcery spells you cast have storm" (an emblem's or permanent's ability; each instance triggers separately, rule 702.40b).</summary>
+public sealed record SpellsHaveStorm(ObjectFilter Spells) : AbilityDefinition;

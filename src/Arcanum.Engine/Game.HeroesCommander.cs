@@ -667,6 +667,7 @@ public sealed partial class Game
         QuantityKind.CounterKindsOnSource => ctx.Source.Counters.Count(kv => kv.Value > 0),
         QuantityKind.ExiledManaValue => ctx.Results.Exiled.Select(State.GetCard).Sum(ManaValueOf),
         QuantityKind.PlayersWhoLostLifeThisTurn => State.Players.Count(p => p.LifeLostThisTurn > 0),
+        QuantityKind.OpponentsWhoLostLifeThisTurn => State.OpponentsOf(ctx.Controller).Count(o => State.GetPlayer(o).LifeLostThisTurn > 0),
         QuantityKind.GreatestPowerAsCast => ctx.Source.GreatestPowerAsCast,
         QuantityKind.EnteredThisTurnCount => State.GetPlayer(ctx.Controller).EnteredThisTurn.Select(e => (Card: State.GetCard(e.Card), e.Version))
             .Count(e => e.Card.Version == e.Version && e.Card.Zone == Zone.Battlefield
@@ -722,7 +723,7 @@ public sealed partial class Game
     {
         TurnEvent.YouPutCounterOnCreature => State.GetPlayer(ctx.Controller).PutCounterOnCreatureThisTurn,
         TurnEvent.CounterPutOnSource => ctx.Source.Zone == Zone.Battlefield && ctx.Source.CounterPutTurn == State.TurnNumber,
-        TurnEvent.CardLeftYourGraveyard => State.GetPlayer(ctx.Controller).CardLeftGraveyardThisTurn,
+        TurnEvent.CardLeftYourGraveyard => State.GetPlayer(ctx.Controller).CardsLeftGraveyardThisTurn >= Math.Max(1, th.AtLeast),
         TurnEvent.YouLostLife => State.GetPlayer(ctx.AffectedPlayer ?? ctx.Controller).LifeLostThisTurn >= th.AtLeast,
         TurnEvent.PlayerLostLife => State.Players.Any(p => p.LifeLostThisTurn >= th.AtLeast),
         _ => false,

@@ -233,6 +233,16 @@ public sealed record DelayedAction(CardId Card, int Version, bool Return, Player
 /// <summary>Damage dealt by a source (object as it was then) to a permanent (object) or a player during a turn.</summary>
 public sealed record DamageRecord(int Turn, CardId Source, int SourceVersion, CardId? TargetCard, int TargetVersion, PlayerId? TargetPlayer, int Amount);
 
+/// <summary>
+/// "You may cast [filter] spells from your graveyard" (this turn, or for as long as a permanent says so): with an extra cost to pay ("by
+/// paying 1 life", "by foraging") and whether a creature cast this way enters with a finality counter.
+/// </summary>
+public sealed record GraveyardCastRight(PlayerId Player, int Turn, Abilities.ObjectFilter Filter)
+{
+    public Abilities.ExtraCost? Extra { get; init; }
+    public bool Finality { get; init; }
+}
+
 /// <summary>Complete, authoritative state of a game. Only the engine mutates it.</summary>
 public sealed partial class GameState
 {
@@ -289,6 +299,9 @@ public sealed partial class GameState
     /// <summary>Creatures that crewed a Vehicle this turn ("a Vehicle crewed by [this] this turn").</summary>
     public List<(CardId Vehicle, CardId Crewer, int Turn)> CrewedThisTurn { get; } = new();
 
+    /// <summary>Each time a permanent became the target of a spell or ability, and that spell's or ability's controller ("for the first time each turn").</summary>
+    public List<(CardId Card, int Version, PlayerId By, int Turn)> TargetedThisTurn { get; } = new();
+
     /// <summary>Spells (object versions) that enter with a finality counter as they resolve ("that artifact enters with a finality counter on it").</summary>
     public HashSet<(CardId Card, int Version)> FinalityOnEnter { get; } = new();
 
@@ -322,6 +335,9 @@ public sealed partial class GameState
     /// <summary>Emblems that last until their owner's next turn begins.</summary>
     public List<CardId> EmblemsUntilOwnersNextTurn { get; } = new();
 
+    /// <summary>Emblems that last until the end of their owner's next turn, with the turn they were made.</summary>
+    public List<(CardId Emblem, int MadeOnTurn)> EmblemsUntilEndOfOwnersNextTurn { get; } = new();
+
     /// <summary>"Creatures [Attacker] controls can't attack [Subtype] planeswalkers [Protected] controls this turn."</summary>
     public List<(PlayerId Attacker, PlayerId Protected, string Subtype, int Turn)> PlaneswalkerAttackBans { get; } = new();
 
@@ -335,7 +351,7 @@ public sealed partial class GameState
     public HashSet<(CardId Card, int Version)> ExileIfLeaves { get; } = new();
 
     /// <summary>"Until end of turn, you may cast [filter] spells from your graveyard": the player, the turn and what they may cast.</summary>
-    public List<(PlayerId Player, int Turn, Abilities.ObjectFilter Filter)> GraveyardCastRights { get; } = new();
+    public List<GraveyardCastRight> GraveyardCastRights { get; } = new();
 
     /// <summary>"Creatures without flying can't block this turn": filters (with the player whose effect it is) for this turn.</summary>
     public List<(Abilities.ObjectFilter Filter, PlayerId Controller, int Turn)> CantBlockThisTurn { get; } = new();

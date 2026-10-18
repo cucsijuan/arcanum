@@ -22,6 +22,19 @@ public abstract record AbilityDefinition
     public bool CantBeCopied { get; init; }
 
     /// <summary>
+    /// A Class's level section (rule 716.2c): the ability exists only while the Class is at this level or higher. 0 or 1:
+    /// always (the first section, and the "[cost]: Level N" abilities themselves).
+    /// </summary>
+    public int ClassLevel { get; init; }
+
+    /// <summary>
+    /// A Class's abilities with each level section after the lower ones (stable otherwise), so the abilities it has at any
+    /// level are a prefix of its printed list and activation indices mean the same in both.
+    /// </summary>
+    public static IReadOnlyList<AbilityDefinition> InClassLevelOrder(IReadOnlyList<AbilityDefinition> abilities) =>
+        abilities.Any(a => a.ClassLevel > 1) ? abilities.OrderBy(a => Math.Max(1, a.ClassLevel)).ToList() : abilities;
+
+    /// <summary>
     /// For a triggered ability, an intervening "if" clause (rule 603.4): it triggers only if the condition holds,
     /// and does nothing on resolution unless it still holds. Null: unconditional.
     /// </summary>
@@ -47,6 +60,9 @@ public abstract record AbilityDefinition
 
     /// <summary>"You may choose the same mode more than once."</summary>
     public bool ModesMayRepeat { get; init; }
+
+    /// <summary>"Choose up to five {P} worth of modes": the pawprints the chosen modes may add up to; 0 for other modal abilities.</summary>
+    public int PawprintBudget { get; init; }
 
     /// <summary>"Choose one at random": the mode is picked at random among those that can be chosen (rule 700.2).</summary>
     public bool RandomMode { get; init; }
@@ -85,6 +101,9 @@ public sealed record Mode(string Text, IReadOnlyList<TargetSpec> Targets, IReadO
 {
     /// <summary>Tiered (rule 702.183): the additional cost paid for casting the spell with this mode chosen.</summary>
     public Mana.ManaCost? Cost { get; init; }
+
+    /// <summary>The {P} (pawprint) symbols before this mode: what it uses of the spell's pawprint budget.</summary>
+    public int Pawprints { get; init; }
 }
 
 /// <summary>What an instant or sorcery does when it resolves.</summary>
@@ -153,6 +172,9 @@ public sealed record ActivatedAbility : AbilityDefinition
 {
     public required AbilityCost Cost { get; init; }
 
+    /// <summary>"For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana."</summary>
+    public bool TapCreaturesForMana { get; init; }
+
     /// <summary>"X can't be 0": the smallest X that can be announced.</summary>
     public int MinX { get; init; }
 
@@ -215,6 +237,9 @@ public sealed record SpellCostReduction(ObjectFilter Spells, int Amount) : Abili
 
     /// <summary>Those spells can also be cast as though they had flash.</summary>
     public bool GrantsFlash { get; init; }
+
+    /// <summary>"Costs {U} less": the amount is of this color's mana, not generic (rule 118.7c).</summary>
+    public Mana.ManaType? Color { get; init; }
 
     /// <summary>Eminence: it also works while its card is in the command zone.</summary>
     public bool FromCommandZone { get; init; }
@@ -329,6 +354,18 @@ public enum TriggerEvent
     PlayerLosesLife,
     /// <summary>"Whenever you sacrifice a [filter]".</summary>
     YouSacrifice,
+    /// <summary>"Whenever you forage" (rule 701.61).</summary>
+    YouForage,
+    /// <summary>"Whenever you give a gift" (rule 702.174).</summary>
+    YouGiveGift,
+    /// <summary>"Whenever you gain or lose life".</summary>
+    YouGainOrLoseLife,
+    /// <summary>"When this leaves the battlefield without dying" (to any zone but a graveyard).</summary>
+    LeavesWithoutDying,
+    /// <summary>"Whenever you expend N": as you spend your Nth total mana to cast spells this turn.</summary>
+    YouExpend,
+    /// <summary>"When this Class becomes level N" (rule 716.2d): N is the ability's own <see cref="AbilityDefinition.ClassLevel"/>.</summary>
+    BecomesClassLevel,
     /// <summary>A creature an opponent controls would have died and was exiled instead by this permanent ("When you do, …").</summary>
     CreatureExiledInstead,
     /// <summary>A delayed ability: "at the beginning of the next upkeep".</summary>
@@ -511,6 +548,9 @@ public sealed record TriggeredAbility : AbilityDefinition
 
     /// <summary>Only the Nth such event of the turn counts ("your second card each turn", "for the first time each turn").</summary>
     public int? NthOfTurn { get; init; }
+
+    /// <summary>For <see cref="TriggerEvent.YouExpend"/>: N of "whenever you expend N".</summary>
+    public int Expend { get; init; }
 
     /// <summary>For <see cref="TriggerEvent.CountersPlaced"/>: only counters put on the source itself.</summary>
     public bool OnSelf { get; init; }
@@ -734,6 +774,18 @@ public sealed record ObjectFilter(
 
     /// <summary>Not the object the trigger is about ("for each other creature you control" than the attacking one).</summary>
     public bool NotTriggered { get; init; }
+
+    /// <summary>With lesser mana value than the object the trigger is about, as it is or last existed ("target creature you control with lesser mana value").</summary>
+    public bool LesserManaValueThanTriggered { get; init; }
+
+    /// <summary>Not named this ("an Otter spell other than [this card's name]").</summary>
+    public string? NotName { get; init; }
+
+    /// <summary>Not in this zone now ("leave the battlefield without dying": not in a graveyard).</summary>
+    public State.Zone? NotInZone { get; init; }
+
+    /// <summary>Mana value at most the mana spent to cast the source ("with mana value less than or equal to the amount of mana spent to cast this creature").</summary>
+    public bool MaxManaValueSpentOnSource { get; init; }
 
     /// <summary>Mana value X or less, X being the resolving spell's ("with mana value X or less").</summary>
     public bool MaxManaValueX { get; init; }

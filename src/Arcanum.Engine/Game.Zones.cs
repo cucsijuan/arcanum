@@ -183,6 +183,9 @@ public sealed partial class Game
     /// <summary>The impending spell resolving now: it enters with its impending counters (rule 702.176a).</summary>
     private CardId? _enteringImpended;
 
+    /// <summary>The spell resolving now whose offspring cost was paid (rule 702.175a).</summary>
+    private CardId? _enteringOffspring;
+
     /// <summary>Moves a card, asking for the choices its zone-change replacement effects need (rule 616.1).</summary>
     /// <param name="transformed">"Put onto the battlefield transformed": a double-faced card enters with its back face up (rule 712.14a).</param>
     private async Task MoveCardAsync(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
@@ -357,6 +360,8 @@ public sealed partial class Game
         var entering = EnteringFace(card, transformed);
         // "Except it has vanishing 3 if that creature doesn't have vanishing."
         if (entering.CopyGetsVanishingIfNone > 0 && values.Vanishing == 0) values = values with { Vanishing = entering.CopyGetsVanishingIfNone };
+        if (entering.EntersAsCopyAddSubtypes is { } extraSubtypes) values = values with { Subtypes = values.Subtypes.Concat(extraSubtypes).Distinct().ToList() };
+        if (entering.EntersAsCopyAddKeywords is { } extraKeywords) values = values with { Keywords = values.Keywords.Concat(extraKeywords).Distinct().ToList() };
         return entering.EntersAsCopyWithHaste ? values with { Keywords = values.Keywords.Append("Haste").Distinct().ToList() } : values;
     }
 
@@ -483,6 +488,8 @@ public sealed partial class Game
         card.TimesKicked = to == Zone.Battlefield ? timesKicked : 0;
         card.SquadPaid = to == Zone.Battlefield ? squadPaid : 0;
         card.Impended = to == Zone.Battlefield && _enteringImpended == id;
+        card.OffspringPaid = to == Zone.Battlefield && _enteringOffspring == id;
+        card.ClassLevel = to == Zone.Battlefield ? 1 : 0;
         card.CastFromHand = castFromHand;
         card.WasCast = wasCast;
         card.Zone = to;

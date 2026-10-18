@@ -98,6 +98,9 @@ public sealed record CardView
     /// <summary>Prepared: its controller may cast the copy of its prepare spell waiting in exile.</summary>
     public bool Prepared { get; init; }
 
+    /// <summary>A Class's level on the battlefield (rule 716.3); 0 for anything else.</summary>
+    public int ClassLevel { get; init; }
+
     /// <summary>The copy of a prepare spell waiting in exile: the prepared creature it belongs to.</summary>
     public CardId? PreparedSpellOf { get; init; }
 
