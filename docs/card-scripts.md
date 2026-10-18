@@ -1101,6 +1101,7 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - **Land tokens**: a token with a basic land type (`"types": "Land Creature — Forest"`) taps for that type's color, as a land does.
 - **Token mana**: `"tapForMana": "{R}{G}"` (the token taps for one of those colors) or `"tapForMana": "any"` (any of the five colors).
   `"sacrificeForMana": true` with `"manaAmount": 3` makes its mana ability sacrifice the token and add that much mana (default 1).
+- **Token mana cost**: `"manaCost": "{1}"` in a token spec gives the token that mana cost (default none).
 - **Taxes on opponents**: `{ "static": { "spellCostIncrease": { "spells": { "controller": "opponent" }, "amount": 1 } } }` ("spells your
   opponents cast cost {1} more"). The filter's `controller` picks whose spells are taxed; the default taxes all spells.
 - **Damage plus N, narrowed**: in `damageBonus`, `"noncombat": true` (only noncombat damage) and `"toOpponents": true` (only damage to
@@ -1126,6 +1127,20 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   most +1/+1 counters on any of its targets (used with equip).
 - **Keywords for planeswalkers and attackers**: `OneAttackerAtMost` ("No more than one creature can attack this planeswalker each combat")
   and `AssignsNegativePowerAsPositive` ("Assigns combat damage as though its negative power were positive"), in `keywords`.
+- **Spell cost from the command zone**: `spellCost` takes `"fromCommandZone": true` (eminence): the reduction also applies while its
+  source is in the command zone.
+- **Mana of colors among a filter**: an `extraMana` entry `{ "colorsAmong": filter }` adds one mana of any color among the permanents
+  you control that match the filter (`"oneOfEach": true` for one of each), e.g. `{ "colorsAmong": { "types": ["creature", "planeswalker"], "supertype": "legendary" } }`.
+  Without a filter it counts all your permanents, as `"colorsAmongYourPermanents"` does.
+- **Targets**: a target object with `"triggeredOnly": true` (for `"kind": "spellOrAbility"`) can only be a triggered ability on the
+  stack, not a spell or an activated ability.
+- **Vanishing**: `"vanishing": 3` on the card (rule 702.63): it enters with three time counters, one is removed at the beginning of
+  your upkeep, and it is sacrificed when the last is removed. With `"entersAsCopy"`, `"copyGetsVanishingIfNone": 3` makes the copy
+  enter with vanishing 3 when the copied creature doesn't have vanishing.
+- **More card-wide rules**: `"artifactsAndLandsEnterTapped"` (every player's artifacts and lands enter tapped),
+  `"yourCreaturesCantHaveMinusCounters"` (creatures you control can't have -1/-1 counters put on them),
+  `"unspentManaBecomesColorless"` (unspent mana you would lose becomes colorless instead), `"skipYourDrawStep": true`, and
+  `"yourMaximumHandSize": 4` (your maximum hand size is 4).
 
 ### Triggers
 - `youScryOrSurveil`: whenever you scry or surveil. One event for either.
@@ -1142,6 +1157,11 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `creatureBlocks`: whenever a creature blocks, any creature. The triggered player is the blocker's controller.
 - `opponentsDealtCombatDamageDuringYourTurn`: during your turn, when an opponent is dealt combat damage. The triggered player is you.
 - `creaturesAttackOpponent` with `"playersOnly": true`: only attacks on a player trigger it, not attacks on a planeswalker.
+- `youAttackWith` with `"filter"`: whenever one or more creatures matching the filter that you control attack. Once per declaration
+  of attackers; the amount is how many matched. `{ "trigger": "youAttackWith", "filter": { "types": ["creature"], "subtype": "Wizard",
+  "controller": "you" }, "effects": [ … ] }`.
+- `combatDamageToYou`: the subject `"batch"` is the creatures that dealt combat damage to you this step. Each permanent of yours with
+  the ability sees the same batch.
 
 ### Conditions
 - `"scriedOrSurveilledThisTurn"`: you have scried or surveilled this turn.
@@ -1153,6 +1173,8 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `"triggeredAttacksPlayerAlone"`: the creature that triggered the ability attacks a player (not a planeswalker), and no other creature
   attacks that player.
 - `"libraryEmpty"`: your library has no cards.
+- `{ "opponentsControlTotal": filter, "count": 3 }`: your opponents together control at least `count` (default 1) objects matching
+  the filter; the count is across all opponents. Used by `"entersTappedUnless"`.
 
 ### Quantities
 - `{ "divide": quantity, "by": 3 }`: the quantity divided by N, rounded down ("for every three …").
@@ -1164,6 +1186,7 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   than n cards this turn; only cards matching `"filter"` are counted, and `"filter"` is optional).
 - Strings also: `"discardedThisTurn"` (cards you discarded this turn) and `"planeswalkerTypes"` (the different subtypes among
   planeswalkers you control).
+- `"unspentMana"`: the unspent mana you have (the mana in your pool).
 
 ### Filters
 - `"preparedSpell": true`: a copy of a prepare spell cast from exile (see the preparation cards above).
@@ -1189,3 +1212,16 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `{ "discardChosen": subject, "exileInstead": true }`: you choose a card from the subject's hand, and it is exiled instead of discarded.
 - `{ "emblem": "name", "untilYourNextTurn": true }`: the emblem's ability lasts until your next turn, not only until end of turn.
 - `copy` with `"each": true`: makes a token copy of each object the subject matches, instead of one copy.
+- `{ "goad": "target", "forRestOfGame": true }`: the goad lasts for the rest of the game, not only until the goader's next turn.
+- `{ "eachToADifferentOpponent": subject }`: for each permanent of the subject, choose a different opponent; each opponent gains
+  control of the permanent chosen for them.
+- `{ "cantAttackYourPlaneswalkers": subject, "subtype": "Seer" }`: until end of turn, creatures the subject controls can't attack
+  planeswalkers you control with that subtype.
+- `{ "protectionAndLifeLock": subject }`: until that player's next turn, they have protection from everything and their life total
+  can't change.
+- `{ "payAnyLife": true, "effects": [ … ] }`: you may pay any amount of life. If you do, the effects happen; `"X"` in them is the life
+  paid.
+- `{ "revealTwoFromOutsideOpponentChooses": true }`: you may reveal two cards with different names from outside the game (your
+  sideboard). An opponent chooses one, and you put it into your hand.
+- `castFromGraveyard` takes `"perPlayer": true` (with `"fromMilled": true`: for each player, you may cast a card that player milled
+  this way, one choice per player in turn order) and `"noExile": true` (a spell cast this way is not exiled afterwards).
