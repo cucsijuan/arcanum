@@ -478,6 +478,9 @@ public sealed partial class Game
             if (State.GetCard(id).OnAdventure) yield return id;
         // Copies of the prepare spells of the player's prepared creatures, wherever the copy was exiled.
         foreach (var id in PreparedSpells(playerId)) yield return id;
+        // "As long as …, you may cast the exiled card."
+        foreach (var card in State.Cards.Values.Where(c => c.Zone == Zone.Exile && c.ExiledWith is not null && !c.Is(CardType.Land)).ToList())
+            if (ExiledCastableWith(card, playerId) is not null) yield return card.Id;
     }
 
     /// <summary>The extra cost of casting from the graveyard, if the card has one.</summary>

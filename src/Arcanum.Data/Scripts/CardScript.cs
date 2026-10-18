@@ -86,6 +86,8 @@ public sealed record CardScript(
     public bool NoSpellsOrAbilitiesDuringCombat { get; init; }
     public bool YourPlaneswalkersSurviveZeroLoyalty { get; init; }
     public bool ArtifactTokensBecomeDragons { get; init; }
+    public Quantity? CastFromHandFreeUpTo { get; init; }
+    public Condition? CastExiledWithThisIf { get; init; }
     /// <summary>For a preparation card: the script of its prepare spell (the card's second face).</summary>
     public CardScript? Prepare { get; init; }
     public int EquipDiscount { get; init; }
@@ -238,6 +240,8 @@ public sealed record CardScript(
         NoSpellsOrAbilitiesDuringCombat = NoSpellsOrAbilitiesDuringCombat,
         YourPlaneswalkersSurviveZeroLoyalty = YourPlaneswalkersSurviveZeroLoyalty,
         ArtifactTokensBecomeDragons = ArtifactTokensBecomeDragons,
+        CastFromHandFreeUpTo = CastFromHandFreeUpTo ?? d.CastFromHandFreeUpTo,
+        CastExiledWithThisIf = CastExiledWithThisIf ?? d.CastExiledWithThisIf,
         EquipDiscount = EquipDiscount,
         FreeFirstEquipIf = FreeFirstEquipIf,
         ManaOnlyForAbilitiesToo = ManaOnlyForAbilitiesToo,
@@ -530,6 +534,8 @@ public static partial class CardScriptParser
             NoSpellsOrAbilitiesDuringCombat = Bool(root, "noSpellsOrAbilitiesDuringCombat"),
             YourPlaneswalkersSurviveZeroLoyalty = Bool(root, "yourPlaneswalkersSurviveZeroLoyalty"),
             ArtifactTokensBecomeDragons = Bool(root, "artifactTokensBecomeDragons"),
+            CastFromHandFreeUpTo = root.TryGetProperty("castFromHandFreeUpTo", out var cfh) ? ParseQuantity(cfh) : null,
+            CastExiledWithThisIf = root.TryGetProperty("castExiledWithThisIf", out var cew) ? ParseCondition(cew) : null,
             Prepare = root.TryGetProperty("prepare", out var prep) ? Parse(prep.GetRawText()) : null,
             EquipDiscount = root.TryGetProperty("equipDiscount", out var eqd) ? eqd.GetInt32() : 0,
             FreeFirstEquipIf = root.TryGetProperty("freeFirstEquipIf", out var ffe) ? ParseCondition(ffe) : null,
@@ -1003,6 +1009,7 @@ public static partial class CardScriptParser
         "discardedByOpponent" => TriggerEvent.DiscardedByOpponent,
         "discardedThis" => TriggerEvent.DiscardedThis,
         "creatureBlocks" => TriggerEvent.CreatureBlocks,
+        "opponentsDealtCombatDamageDuringYourTurn" => TriggerEvent.OpponentsDealtCombatDamageDuringYourTurn,
         "playerDiscards" => TriggerEvent.PlayerDiscards,
         "dealtDamage" => TriggerEvent.DealtDamage,
         "attachedBlocks" => TriggerEvent.AttachedBlocks,
@@ -1198,6 +1205,7 @@ public static partial class CardScriptParser
                 "dealtCombatDamage" => new SourceHasDealtCombatDamage(),
                 "scriedOrSurveilledThisTurn" => new ScriedOrSurveilledThisTurn(),
                 "activatedLoyaltyAbilityThisTurn" => new ActivatedLoyaltyAbilityThisTurn(),
+                "libraryEmpty" => new LibraryEmpty(),
                 "triggeredAttacksPlayerAlone" => new TriggeredAttacksPlayerAlone(),
                 "opponentDealtNoncombatDamageThisTurn" => new OpponentDealtNoncombatDamage(false),
                 "opponentDealtNoncombatDamageLastTurn" => new OpponentDealtNoncombatDamage(true),
@@ -1810,6 +1818,7 @@ public static partial class CardScriptParser
             return new DiscardChosenByYou(dchosen, e.TryGetProperty("filter", out var df) ? ParseFilter(df, ControllerFilter.Any) : null, e.TryGetProperty("count", out var dn) ? dn.GetInt32() : 1)
             {
                 Optional = Flag("optional"),
+                ExileInstead = Flag("exileInstead"),
                 Else = e.TryGetProperty("else", out var dce) ? EffectList(dce) : null,
             };
         if (Value("exileGraveyard") is { } eg)

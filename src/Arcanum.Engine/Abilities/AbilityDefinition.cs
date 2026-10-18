@@ -363,6 +363,8 @@ public enum TriggerEvent
     EquippedCombatDamageToPlayer,
     /// <summary>"Whenever one or more creatures deal combat damage to you".</summary>
     CombatDamageToYou,
+    /// <summary>"When one or more of your opponents are dealt combat damage during your turn": once per combat damage step.</summary>
+    OpponentsDealtCombatDamageDuringYourTurn,
     /// <summary>"Whenever the final chapter ability of a Saga you control resolves".</summary>
     FinalChapterResolved,
     /// <summary>"Whenever the Ring tempts you".</summary>

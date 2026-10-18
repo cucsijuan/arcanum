@@ -88,6 +88,8 @@ public enum Keyword
     CanBlockOnlyFlyers,
     /// <summary>On a planeswalker: "No more than one creature can attack this planeswalker each combat" (an attack restriction).</summary>
     OneAttackerAtMost,
+    /// <summary>"If its power is negative, it assigns combat damage as though its power were positive."</summary>
+    AssignsNegativePowerAsPositive,
     /// <summary>Can't be blocked except by artifact creatures and/or creatures that share a color with it (rule 702.13).</summary>
     Intimidate,
     /// <summary>"Whenever this creature attacks, it gets +1/+1 until end of turn for each opponent you attacked with a creature this combat" (rule 702.121).</summary>
@@ -152,6 +154,7 @@ public static class Keywords
         Keyword.CanBlockAdditional => "Can block an additional creature each combat",
         Keyword.CanBlockOnlyFlyers => "Can block only creatures with flying",
         Keyword.OneAttackerAtMost => "No more than one creature can attack this planeswalker each combat",
+        Keyword.AssignsNegativePowerAsPositive => "Assigns combat damage as though its negative power were positive",
         _ => keyword.ToString(),
     };
 

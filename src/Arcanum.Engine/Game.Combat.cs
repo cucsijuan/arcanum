@@ -243,7 +243,8 @@ public sealed partial class Game
         State.GetPlayer(card.Controller) is { RingBearer: { } bearer } p && bearer.Card == card.Id && bearer.Version == card.Version && p.RingLevel >= level;
 
     /// <summary>The combat damage a creature assigns: its power, or its toughness when it says so (rule 510.1c).</summary>
-    private static int CombatDamageOf(Card creature) => creature.Has(Keyword.AssignsDamageByToughness) ? creature.Toughness : creature.Power;
+    private static int CombatDamageOf(Card creature) => creature.Has(Keyword.AssignsDamageByToughness) ? creature.Toughness
+        : creature.Power < 0 && creature.Has(Keyword.AssignsNegativePowerAsPositive) ? -creature.Power : creature.Power;
 
     /// <summary>Fewest creatures that can block it: two with menace, or more ("except by three or more creatures").</summary>
     private static int MinimumBlockersOf(Card attacker) => Math.Max(attacker.Has(Keyword.Menace) ? 2 : 1, attacker.HasTextAbilities ? attacker.Definition.MinimumBlockers : 0);

@@ -84,6 +84,10 @@ public sealed partial class Game
         if (card.Definition.Overload is { } overload) ways.Add(new(CastingWayKind.Overload, overload)); // 702.96a
         if (card.Definition.AlternativeCost is { } alt && (alt.If is null || Holds(alt.If, caster, card))) ways.Add(new(CastingWayKind.Alternative, alt.Cost));
         if (card.Zone == Zone.Hand && Has(caster, Replacements.CastFromHandFree)) ways.Add(new(CastingWayKind.WithoutPaying, ManaCost.Zero));
+        // "Spells with mana value less than or equal to the number of creatures you control from your hand without paying their mana costs."
+        else if (card.Zone == Zone.Hand && State.PermanentsControlledBy(caster).Any(p => p.HasTextAbilities && p.Definition.CastFromHandFreeUpTo is { } upTo
+                     && ManaValueOf(card) <= Eval(upTo, new EffectContext(caster, p, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))))
+            ways.Add(new(CastingWayKind.WithoutPaying, ManaCost.Zero));
         return ways;
     }
 
@@ -129,7 +133,8 @@ public sealed partial class Game
         bool anyType = (card.Is(CardType.Creature) && Has(caster, Replacements.CreaturesFromLibraryTop))
                        || (card.Zone == Zone.Exile && card.CounterCount(CounterKind.Stash) > 0 && Has(caster, Replacements.PlayStashedCards))
                        || (card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType))
-                       || (card.Zone == Zone.Graveyard && State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType));
+                       || (card.Zone == Zone.Graveyard && State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType))
+                       || ExiledCastableWith(card, caster) is not null;
         if (anyType) return new ManaCost(cost.ManaValue - cost.Phyrexian.Count, Array.Empty<ManaType>()) { Phyrexian = cost.Phyrexian };
         return BlackLifeRule(caster, cost);
     }
@@ -280,6 +285,11 @@ public sealed partial class Game
         !card.Is(CardType.Creature) && State.NoncreatureSpellsForbiddenFor.Contains((caster, State.TurnNumber));
 
     /// <summary>"You can't cast this spell during your first, second, or third turns of the game."</summary>
+    /// <summary>The permanent letting <paramref name="caster"/> cast this card exiled with it ("as long as …, you may cast the exiled card"), if any.</summary>
+    private Card? ExiledCastableWith(Card card, PlayerId caster) =>
+        card.Zone == Zone.Exile && card.ExiledWith is { } with && State.GetCard(with.Source) is { Zone: Zone.Battlefield } holder && holder.Version == with.Version
+        && holder.Controller == caster && holder.HasTextAbilities && holder.Definition.CastExiledWithThisIf is { } castIf && Holds(castIf, caster, holder) ? holder : null;
+
     private bool CastForbiddenThisEarly(Card card, PlayerId caster) =>
         card.Definition.CastOnlyIf is { } castIf && !Holds(castIf, caster, card) ||
         card.Definition.CantCastDuringFirstTurns > 0 && State.ActivePlayer == caster

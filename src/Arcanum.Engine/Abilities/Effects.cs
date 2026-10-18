@@ -402,6 +402,9 @@ public sealed record DiscardChosenByYou(Subject Who, ObjectFilter? Filter, int C
     /// <summary>"You may choose …": choosing none is allowed.</summary>
     public bool Optional { get; init; }
 
+    /// <summary>"Exile that card" instead of discarding it, linked to the source ("the exiled card").</summary>
+    public bool ExileInstead { get; init; }
+
     /// <summary>"If you don't, …": done for that player when no card was chosen (none could be, or you chose none).</summary>
     public IReadOnlyList<Effect>? Else { get; init; }
 }

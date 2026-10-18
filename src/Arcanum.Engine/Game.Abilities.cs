@@ -1206,7 +1206,14 @@ public sealed partial class Game
                         continue;
                     }
                     Emit(new ChosenFromHand(ctx.Controller, player, chosen.ToList()));
-                    foreach (var id in chosen) await DiscardCardAsync(player, id, ctx.Controller);
+                    if (dc.ExileInstead)
+                        foreach (var id in chosen)
+                        {
+                            await MoveCardAsync(id, Zone.Exile);
+                            if (State.GetCard(id).Zone == Zone.Exile) { State.GetCard(id).ExiledWith = (ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version); ctx.Results.Exiled.Add(id); }
+                        }
+                    else
+                        foreach (var id in chosen) await DiscardCardAsync(player, id, ctx.Controller);
                 }
                 break;
             case CreateEmblem ce:
@@ -4657,6 +4664,7 @@ public sealed partial class Game
             SourceHasDealtCombatDamage => source?.HasDealtCombatDamage == true,
             ScriedOrSurveilledThisTurn => player.ScriedOrSurveilledThisTurn,
             ActivatedLoyaltyAbilityThisTurn => player.ActivatedLoyaltyThisTurn,
+            LibraryEmpty => player.Library.Count == 0,
             OpponentDealtNoncombatDamage od => State.OpponentsOf(controller).Select(State.GetPlayer)
                 .Any(o => od.LastTurn ? o.NoncombatDamageTakenLastTurn > 0 : o.DamageTakenThisTurn > o.CombatDamageTakenThisTurn),
             SourceFrontFaceUp => source is { Zone: Zone.Battlefield, Transformed: false, IsDoubleFaced: true },
@@ -6125,7 +6133,7 @@ public sealed partial class Game
     {
         if (player is { } hurt)
         {
-            if (_combatDamageDealt is null) QueueCombatDamageToYou(hurt);
+            if (_combatDamageDealt is null) { QueueOpponentsDealtCombatDamage(new[] { hurt }); QueueCombatDamageToYou(hurt); }
             else _hurtThisStep.Add(hurt);
             // The Ring, level 4: "Whenever your Ring-bearer deals combat damage to a player, each opponent loses 3 life."
             if (IsRingBearer(source, 4)) _pendingTriggers.Add(new PendingTrigger(source.Id, RingDrain, source.Controller));
@@ -6146,8 +6154,16 @@ public sealed partial class Game
         foreach (var card in State.PermanentsControlledBy(hurt).ToList()) Queue(card.Id, TriggerEvent.CombatDamageToYou, hurt);
     }
 
+    /// <summary>"When one or more of your opponents are dealt combat damage during your turn": the active player's permanents, once.</summary>
+    private void QueueOpponentsDealtCombatDamage(IEnumerable<PlayerId> hurt)
+    {
+        if (!hurt.Any(State.OpponentsOf(State.ActivePlayer).Contains)) return;
+        foreach (var card in State.PermanentsControlledBy(State.ActivePlayer).ToList()) Queue(card.Id, TriggerEvent.OpponentsDealtCombatDamageDuringYourTurn, State.ActivePlayer);
+    }
+
     private void EndCombatDamage()
     {
+        QueueOpponentsDealtCombatDamage(_hurtThisStep);
         foreach (var hurt in _hurtThisStep) QueueCombatDamageToYou(hurt);
         _hurtThisStep.Clear();
         var dealt = _combatDamageDealt;

@@ -244,6 +244,9 @@ public sealed record ScriedOrSurveilledThisTurn : Condition;
 /// <summary>"If you've activated a loyalty ability this turn."</summary>
 public sealed record ActivatedLoyaltyAbilityThisTurn : Condition;
 
+/// <summary>"If your library has no cards in it."</summary>
+public sealed record LibraryEmpty : Condition;
+
 /// <summary>"Whenever a creature … attacks a player alone": the triggered creature attacks a player and no other creature attacks that player.</summary>
 public sealed record TriggeredAttacksPlayerAlone : Condition;
 

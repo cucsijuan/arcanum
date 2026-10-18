@@ -667,6 +667,12 @@ public sealed partial record CardDefinition
     /// <summary>"If one or more artifact tokens would be created under your control, that many 5/5 red Dragon creature tokens with flying are created instead."</summary>
     public bool ArtifactTokensBecomeDragons { get; init; }
 
+    /// <summary>"You may cast spells with mana value less than or equal to [quantity] from your hand without paying their mana costs."</summary>
+    public Abilities.Quantity? CastFromHandFreeUpTo { get; init; }
+
+    /// <summary>"As long as [condition], you may cast the exiled card, and mana of any type can be spent to cast that spell" (the cards exiled with it).</summary>
+    public Abilities.Condition? CastExiledWithThisIf { get; init; }
+
     /// <summary>
     /// For a nonmodal double-faced card (rule 712.2): its back face. This definition is the front face; the card is cast
     /// with it up and has only its characteristics everywhere but the battlefield (712.8a). On the battlefield it can
