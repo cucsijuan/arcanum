@@ -86,7 +86,7 @@ public sealed record CareerSeason
                 }
                 if (e.Kind == CareerRules.Commander && e.Decks.Count == 0) problems.Add($"{where}: Commander events need the computer players' \"decks\".");
                 foreach (var deck in e.Decks.Where(d => !decks.Contains(d))) problems.Add($"{where}: there is no deck '{deck}'.");
-                if (e.Players < 2 || e.Rounds < 1 || e.BestOf < 1 || e.Entry < 0) problems.Add($"{where}: players, rounds, best of or entry make no sense.");
+                if (e.Players < 2 || e.Rounds < 0 || e.BestOf < 1 || e.Entry < 0) // 0 rounds: Swiss rounds by attendance problems.Add($"{where}: players, rounds, best of or entry make no sense.");
                 if (e.Prizes.Count == 0) problems.Add($"{where}: it has no prizes.");
                 if (e.Online is { } online)
                 {
