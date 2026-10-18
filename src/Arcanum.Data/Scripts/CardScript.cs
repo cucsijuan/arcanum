@@ -80,6 +80,11 @@ public sealed record CardScript(
     public bool EntersPrepared { get; init; }
     /// <summary>"Prowess, prowess": instances beyond the first.</summary>
     public int ExtraProwess { get; init; }
+    public Condition? CastOnlyIf { get; init; }
+    public bool EnteringArtifactsAndCreaturesDontTrigger { get; init; }
+    public bool YourInstantsAndSorceriesHaveSplitSecond { get; init; }
+    public bool NoSpellsOrAbilitiesDuringCombat { get; init; }
+    public bool YourPlaneswalkersSurviveZeroLoyalty { get; init; }
     /// <summary>For a preparation card: the script of its prepare spell (the card's second face).</summary>
     public CardScript? Prepare { get; init; }
     public int EquipDiscount { get; init; }
@@ -226,6 +231,11 @@ public sealed record CardScript(
         EntersTappedUnless = EntersTappedUnless,
         EntersPrepared = EntersPrepared || d.EntersPrepared,
         ExtraProwess = ExtraProwess,
+        CastOnlyIf = CastOnlyIf ?? d.CastOnlyIf,
+        EnteringArtifactsAndCreaturesDontTrigger = EnteringArtifactsAndCreaturesDontTrigger,
+        YourInstantsAndSorceriesHaveSplitSecond = YourInstantsAndSorceriesHaveSplitSecond,
+        NoSpellsOrAbilitiesDuringCombat = NoSpellsOrAbilitiesDuringCombat,
+        YourPlaneswalkersSurviveZeroLoyalty = YourPlaneswalkersSurviveZeroLoyalty,
         EquipDiscount = EquipDiscount,
         FreeFirstEquipIf = FreeFirstEquipIf,
         ManaOnlyForAbilitiesToo = ManaOnlyForAbilitiesToo,
@@ -391,6 +401,8 @@ public static partial class CardScriptParser
                         AnyCounterKind = a.TryGetProperty("counterKind", out var anyKind) && anyKind.GetString() == "any",
                         ExceptFirstInDrawStep = Bool(a, "exceptFirstInDrawStep"),
                         SpellTargets = a.TryGetProperty("spellTargets", out var spt) ? ParseFilter(spt, ControllerFilter.Any) : null,
+                        SpellTargetsOpponent = Bool(a, "spellTargetsOpponent"),
+                        FilterOrSpellTargets = Bool(a, "orSpellTargets"),
                     }));
                 }
                 else if (a.TryGetProperty("cost", out var cost))
@@ -508,6 +520,11 @@ public static partial class CardScriptParser
             EntersTappedUnless = root.TryGetProperty("entersTappedUnless", out var etu) ? ParseCondition(etu) : null,
             EntersPrepared = Bool(root, "entersPrepared"),
             ExtraProwess = root.TryGetProperty("extraProwess", out var xpw) ? xpw.GetInt32() : 0,
+            CastOnlyIf = root.TryGetProperty("castOnlyIf", out var coi) ? ParseCondition(coi) : null,
+            EnteringArtifactsAndCreaturesDontTrigger = Bool(root, "enteringArtifactsAndCreaturesDontTrigger"),
+            YourInstantsAndSorceriesHaveSplitSecond = Bool(root, "yourInstantsAndSorceriesHaveSplitSecond"),
+            NoSpellsOrAbilitiesDuringCombat = Bool(root, "noSpellsOrAbilitiesDuringCombat"),
+            YourPlaneswalkersSurviveZeroLoyalty = Bool(root, "yourPlaneswalkersSurviveZeroLoyalty"),
             Prepare = root.TryGetProperty("prepare", out var prep) ? Parse(prep.GetRawText()) : null,
             EquipDiscount = root.TryGetProperty("equipDiscount", out var eqd) ? eqd.GetInt32() : 0,
             FreeFirstEquipIf = root.TryGetProperty("freeFirstEquipIf", out var ffe) ? ParseCondition(ffe) : null,
@@ -978,6 +995,9 @@ public static partial class CardScriptParser
         "blocksCreature" => TriggerEvent.BlocksCreature,
         "youBecomeTargetOfOpponent" => TriggerEvent.YouBecomeTargetOfOpponent,
         "discardedByOpponent" => TriggerEvent.DiscardedByOpponent,
+        "discardedThis" => TriggerEvent.DiscardedThis,
+        "creatureBlocks" => TriggerEvent.CreatureBlocks,
+        "playerDiscards" => TriggerEvent.PlayerDiscards,
         "dealtDamage" => TriggerEvent.DealtDamage,
         "attachedBlocks" => TriggerEvent.AttachedBlocks,
         "permanentDies" => TriggerEvent.PermanentDies,
@@ -1068,6 +1088,7 @@ public static partial class CardScriptParser
             SharesColorWithYourLegendaryCreature = Bool(f, "sharesColorWithYourLegendary"),
             NoSharedCreatureTypeWithYours = Bool(f, "noSharedCreatureType"),
             Renowned = Bool(f, "renowned"),
+            PreparedSpell = Bool(f, "preparedSpell"),
             Transformed = OptBool("transformed"),
             WithCounterKind = f.TryGetProperty("hasCounterKind", out var hck) ? ParseCounterKind(hck.GetString()) : null,
             AttackingYou = Bool(f, "attackingYou"),
@@ -1169,6 +1190,7 @@ public static partial class CardScriptParser
                 "dealtCombatDamage" => new SourceHasDealtCombatDamage(),
                 "scriedOrSurveilledThisTurn" => new ScriedOrSurveilledThisTurn(),
                 "activatedLoyaltyAbilityThisTurn" => new ActivatedLoyaltyAbilityThisTurn(),
+                "triggeredAttacksPlayerAlone" => new TriggeredAttacksPlayerAlone(),
                 "opponentDealtNoncombatDamageThisTurn" => new OpponentDealtNoncombatDamage(false),
                 "opponentDealtNoncombatDamageLastTurn" => new OpponentDealtNoncombatDamage(true),
                 "triggeredHadCounters" => new TriggeredHadCounters(),
@@ -1252,6 +1274,7 @@ public static partial class CardScriptParser
     /// </summary>
     public static Quantity ParseQuantity(JsonElement e)
     {
+        if (ParseFractureQuantity(e) is { } fracture) return fracture;
         if (ParseHeroesCommanderQuantity(e) is { } heroesCommander) return heroesCommander;
         if (ParseHeroesQuantity(e) is { } heroes) return heroes;
         switch (e.ValueKind)
@@ -1969,6 +1992,9 @@ public static partial class CardScriptParser
         if (Value("becomeUnprepared") is { } unprepared) return new BecomePrepared(unprepared, Prepared: false);
         if (e.TryGetProperty("empowerJace", out _)) return new EmpowerJace(Qty("empowerJace"));
         if (Str("loyaltyAtInstantSpeed") is { } instantSubtype) return new LoyaltyAbilitiesAtInstantSpeed(instantSubtype);
+        if (e.TryGetProperty("removeUpToCounters", out _)) return new RemoveUpToCounters(Int("removeUpToCounters"), Subj("from", "target"));
+        if (Flag("nextSpellUncounterable")) return new NextSpellUncounterable();
+        if (Flag("noLegendRuleThisTurn")) return new NoLegendRuleThisTurn();
         if (Value("transform") is { } transform) return new Transform(transform);
         if (Value("regenerate") is { } regen) return new Regenerate(regen);
         if (Flag("populate")) return new Populate();
@@ -2084,6 +2110,9 @@ public static partial class CardScriptParser
                 ? subtypes.Select(s => s switch { "Plains" => (ManaType?)ManaType.White, "Island" => ManaType.Blue, "Swamp" => ManaType.Black, "Mountain" => ManaType.Red, "Forest" => ManaType.Green, _ => null })
                     .OfType<ManaType>().Distinct().ToList()
                 : Array.Empty<ManaType>(),
+            // "{T}, Sacrifice this token: Add three mana of any one color": "sacrificeForMana": true, "manaAmount": 3.
+            SacrificeForMana = t.TryGetProperty("sacrificeForMana", out var tsm) && tsm.GetBoolean(),
+            ManaAmount = t.TryGetProperty("manaAmount", out var tma) ? tma.GetInt32() : 1,
             OracleText = t.TryGetProperty("text", out var text) ? text.GetString() ?? "" : "",
             IsToken = true,
             // "This token's power and toughness are each equal to …": a characteristic-defining ability (rule 604.3).

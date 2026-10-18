@@ -166,6 +166,9 @@ public sealed partial class Game
             case CardMoved { From: Zone.Battlefield } left:
                 State.GetPlayer(left.LastController).PermanentLeftThisTurn = true;
                 break;
+            case CardMoved { From: Zone.Library, To: Zone.Graveyard } milled:
+                State.GetPlayer(milled.Owner).MilledThisTurn++;
+                break;
             case CardMoved { From: Zone.Graveyard } fromGraveyard:
                 State.GetPlayer(fromGraveyard.Owner).CardLeftGraveyardThisTurn = true;
                 break;

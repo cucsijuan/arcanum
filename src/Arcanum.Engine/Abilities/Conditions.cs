@@ -244,6 +244,9 @@ public sealed record ScriedOrSurveilledThisTurn : Condition;
 /// <summary>"If you've activated a loyalty ability this turn."</summary>
 public sealed record ActivatedLoyaltyAbilityThisTurn : Condition;
 
+/// <summary>"Whenever a creature … attacks a player alone": the triggered creature attacks a player and no other creature attacks that player.</summary>
+public sealed record TriggeredAttacksPlayerAlone : Condition;
+
 /// <summary>"If an opponent has been dealt noncombat damage this turn" (or, with <paramref name="LastTurn"/>, "… last turn").</summary>
 public sealed record OpponentDealtNoncombatDamage(bool LastTurn) : Condition;
 

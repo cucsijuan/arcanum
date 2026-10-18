@@ -285,7 +285,10 @@ public sealed partial class Game
         var player = State.GetPlayer(playerId);
         var actions = new List<PlayerAction> { PassPriority.Instance };
         // Split second (702.61): only mana abilities while such a spell is on the stack.
-        bool splitSecond = State.Stack.OfType<SpellOnStack>().Any(s => State.GetCard(s.Card).Has(Keyword.SplitSecond));
+        bool splitSecond = State.Stack.OfType<SpellOnStack>().Any(s => State.GetCard(s.Card) is var sc && (sc.Has(Keyword.SplitSecond)
+            // "Instant and sorcery spells you control have split second."
+            || (sc.Is(CardType.Instant) || sc.Is(CardType.Sorcery))
+               && State.PermanentsControlledBy(s.Controller).Any(p => p.HasTextAbilities && p.Definition.YourInstantsAndSorceriesHaveSplitSecond)));
         bool sorcerySpeed = playerId == State.ActivePlayer && State.Step.IsMain() && State.Stack.Count == 0;
 
         // Cards in hand, commanders in the command zone (rule 903.8), cards with flashback in the graveyard and
@@ -368,6 +371,7 @@ public sealed partial class Game
 
     /// <summary>The player can't cast spells now ("players can't cast spells this turn", "your opponents can't cast spells this turn").</summary>
     private bool SpellsForbidden(PlayerId player) =>
+        CombatLockdown() ||
         State.SpellsForbiddenTurn == State.TurnNumber || State.SpellsForbiddenFor.Contains((player, State.TurnNumber)) || ForbiddenDuringEquippersTurn(player);
 
     /// <summary>Lands the player may play this turn.</summary>
@@ -523,8 +527,13 @@ public sealed partial class Game
                                            && (p.WhileControlling is not { } held || State.GetCard(held.Card) is { Zone: Zone.Battlefield } holder && holder.Version == held.Version && holder.Controller == player))
             .Select(p => p.Card)).Distinct().ToList();
 
+    /// <summary>"During combat, players can't cast spells or activate abilities that aren't mana abilities."</summary>
+    private bool CombatLockdown() =>
+        State.Step.GetPhase() == Phase.Combat && State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && c.Definition.NoSpellsOrAbilitiesDuringCombat);
+
     private bool CanActivate(Card source, ActivatedAbility ability, int index, PlayerId player, bool sorcerySpeed)
     {
+        if (CombatLockdown() && !IsManaAbility(ability)) return false;
         // "Its activated abilities can't be activated" (mana abilities too).
         if (source.Zone == Zone.Battlefield && source.AbilitiesCantBeActivated) return false;
         // Loyalty abilities: sorcery timing (or instant timing through an effect), one per planeswalker per turn (606.3).
@@ -1010,6 +1019,7 @@ public sealed partial class Game
         card.PaidWithTreasure = treasure;
         card.GiftPromised = giftTo is not null;
         card.GiftTo = giftTo;
+        if (player.NextSpellUncounterableThisTurn) { uncounterable = true; player.NextSpellUncounterableThisTurn = false; }
         card.Uncounterable = uncounterable;
         card.Kicked = kicked;
         card.CastFromHand = fromHand;

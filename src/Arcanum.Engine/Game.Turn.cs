@@ -38,6 +38,10 @@ public sealed partial class Game
             player.EnteredThisTurn.Clear();
             player.NoncombatDamageTakenLastTurn = player.DamageTakenThisTurn - player.CombatDamageTakenThisTurn;
             player.ScriedOrSurveilledThisTurn = false;
+            player.MilledThisTurn = 0;
+            player.NextSpellUncounterableThisTurn = false;
+            player.NoLegendRuleThisTurn = false;
+            player.CardsDiscardedThisTurn = 0;
             player.DamageTakenThisTurn = 0;
             player.CombatDamageTakenThisTurn = 0;
             player.CombatDamagedByLegendaryThisTurn = false;

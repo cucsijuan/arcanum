@@ -44,6 +44,7 @@ public static partial class CardFactory
         "Renown", // its trigger and the renowned designation come from the script (rule 702.112)
         "Support", "Adapt", "Monstrosity", "Explore", "Connive", // keyword actions: the script's effects (targets for support)
         "Prepared", "Empower Jace", // the script's "entersPrepared", "becomePrepared" and "empowerJace"
+        "Exhaust", // an activated ability the script marks "onlyOnce" (rule 702.177: activate each exhaust ability only once)
         "Blitz", // the script's "blitz" cost (with "blitzExtra", "blitzFromGraveyard")
         // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
         "Persist", "Undying", "Dethrone", "Hideaway", "Heal", "Aftermath",

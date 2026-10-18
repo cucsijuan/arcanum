@@ -1162,6 +1162,15 @@ public sealed record EmpowerJace(Quantity Amount) : Effect;
 /// </summary>
 public sealed record LoyaltyAbilitiesAtInstantSpeed(string Subtype) : Effect;
 
+/// <summary>"Remove up to N counters from [it]": the controller chooses how many of each kind, N at most in all.</summary>
+public sealed record RemoveUpToCounters(int Max, Subject From) : Effect;
+
+/// <summary>"The next spell you cast this turn can't be countered."</summary>
+public sealed record NextSpellUncounterable : Effect;
+
+/// <summary>"The 'legend rule' doesn't apply to permanents you control this turn."</summary>
+public sealed record NoLegendRuleThisTurn : Effect;
+
 /// <summary>
 /// "Transform [it]" (rule 701.27): a double-faced permanent turns over to its other face and stays the same object. Anything
 /// else is unaffected (701.27c), as is a face that would be an instant or sorcery (701.27d); an ability of the permanent

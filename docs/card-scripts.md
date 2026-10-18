@@ -1092,3 +1092,61 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   other than the battlefield this turn; `entersTapped` makes a permanent cast this way enter tapped);
   `spellCost` takes `"nth": N` (only the Nth spell you cast each turn); `{ "spellsHaveImprovise": filter }` (ability: matching spells
   you cast have improvise while this is on the battlefield, 702.126).
+
+## More vocabulary (turn tracking, loyalty, discards and quantities)
+
+### Costs, tokens and card-wide rules
+- **Discard this card**: `"discardThis"` in a cost (`"cost": "discardThis, {1}"`). The ability is activated from the hand, and the card
+  is discarded as part of the cost.
+- **Land tokens**: a token with a basic land type (`"types": "Land Creature — Forest"`) taps for that type's color, as a land does.
+- **Token mana**: `"tapForMana": "{R}{G}"` (the token taps for one of those colors) or `"tapForMana": "any"` (any of the five colors).
+  `"sacrificeForMana": true` with `"manaAmount": 3` makes its mana ability sacrifice the token and add that much mana (default 1).
+- **Taxes on opponents**: `{ "static": { "spellCostIncrease": { "spells": { "controller": "opponent" }, "amount": 1 } } }` ("spells your
+  opponents cast cost {1} more"). The filter's `controller` picks whose spells are taxed; the default taxes all spells.
+- **Damage plus N, narrowed**: in `damageBonus`, `"noncombat": true` (only noncombat damage) and `"toOpponents": true` (only damage to
+  an opponent of the source's controller, or to a permanent an opponent controls).
+- **Extra prowess**: `"extraProwess": 1` gives one more instance of prowess ("Prowess, prowess"); each instance triggers.
+- **Casting restriction**: `"castOnlyIf": condition` ("you can't cast this spell unless …"). It is checked for the caster, however the
+  spell is cast.
+- **Keyword Exhaust**: the script marks the activated ability `"onlyOnce": true`, so it can be activated once in the game.
+
+### Triggers
+- `youScryOrSurveil`: whenever you scry or surveil. One event for either.
+- `youActivateLoyaltyAbility`: whenever you activate a loyalty ability. The amount is the loyalty counters removed to activate it.
+- `opponentActivatesLoyaltyAbility`: whenever an opponent activates a loyalty ability. The triggered player is that opponent.
+- `opponentDealtNoncombatDamage`: whenever an opponent is dealt noncombat damage, by any source. The triggered player is that
+  opponent and the amount is the damage. Works with `"batched"`.
+- `discardedThis`: when you discard this card, whatever caused it, from wherever it went.
+- `playerDiscards`: whenever a player discards one or more cards. The triggered player is the discarder. Use `"batchedPerPlayer": true`:
+  discarding several cards in one event is one event.
+- `eachUpkeep` with `"fromGraveyard": true`: the ability works from its owner's graveyard, at the beginning of each upkeep.
+- Cast triggers: `"spellTargetsOpponent": true` (the spell may target an opponent instead of a matching object, with `"spellTargets"`), and
+  `"orSpellTargets": true` (the spell matches the filter or targets what `"spellTargets"` describes).
+
+### Conditions
+- `"scriedOrSurveilledThisTurn"`: you have scried or surveilled this turn.
+- `"opponentDealtNoncombatDamageThisTurn"` / `"opponentDealtNoncombatDamageLastTurn"`: an opponent was dealt noncombat damage (from any
+  source) this turn / last turn.
+- `"activatedLoyaltyAbilityThisTurn"`: you have activated a loyalty ability this turn.
+- `"dealtCombatDamage"` (on the source): the source has dealt combat damage since it entered. Use `{ "not": "dealtCombatDamage" }` for
+  "hasn't dealt combat damage yet".
+
+### Quantities
+- `{ "divide": quantity, "by": 3 }`: the quantity divided by N, rounded down ("for every three …").
+- Strings: `"cardTypesInAllGraveyards"` (card types among cards in all graveyards), `"drawnThisWay"` (cards drawn by an earlier effect of
+  this spell or ability), `"domain"` (basic land types among lands you control), `"distinctPowers"` (different powers among your creatures).
+- Objects: `{ "loyalty": "target" }` (loyalty counters on the first target), `{ "greatestManaValueInGraveyard": filter }` (the greatest
+  mana value among matching cards in your graveyard, 0 if none), `{ "milledThisTurn": "target" }` (cards put into the first target
+  player's graveyard from their library this turn).
+
+### Filters
+- `"preparedSpell": true`: a copy of a prepare spell cast from exile (see the preparation cards above).
+- `"greatestManaValueAmongTheirs"` compares among the permanents of the filter's types, so with creatures and planeswalkers listed it
+  compares both. Without types, it compares creatures.
+
+### Effects
+- `{ "loyaltyAtInstantSpeed": "Seer" }`: until end of turn, you may activate the loyalty abilities of planeswalkers you control with
+  that subtype at instant speed, on any turn. Still one loyalty ability per planeswalker each turn.
+- `{ "removeUpToCounters": 3, "from": subject }`: you choose how many counters of each kind to remove from each permanent of the
+  subject (`"from"` defaults to `"target"`), at most 3 in all.
+- `{ "nextSpellUncounterable": true }`: the next spell you cast this turn can't be countered.

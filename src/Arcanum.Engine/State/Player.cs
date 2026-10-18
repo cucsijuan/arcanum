@@ -121,6 +121,18 @@ public sealed class Player
     /// <summary>Scried or surveilled this turn.</summary>
     public bool ScriedOrSurveilledThisTurn { get; set; }
 
+    /// <summary>Cards put into this player's graveyard from their library this turn.</summary>
+    public int MilledThisTurn { get; set; }
+
+    /// <summary>"The next spell you cast this turn can't be countered": waiting for that spell.</summary>
+    public bool NextSpellUncounterableThisTurn { get; set; }
+
+    /// <summary>The legend rule doesn't apply to this player's permanents this turn.</summary>
+    public bool NoLegendRuleThisTurn { get; set; }
+
+    /// <summary>Cards this player discarded this turn.</summary>
+    public int CardsDiscardedThisTurn { get; set; }
+
     /// <summary>Noncombat damage dealt to this player during the previous turn.</summary>
     public int NoncombatDamageTakenLastTurn { get; set; }
 

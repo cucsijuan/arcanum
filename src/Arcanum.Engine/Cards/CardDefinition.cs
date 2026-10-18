@@ -649,6 +649,21 @@ public sealed partial record CardDefinition
     /// <summary>Instances of prowess beyond one printed on the card ("Prowess, prowess": each triggers, rule 702.108b).</summary>
     public int ExtraProwess { get; init; }
 
+    /// <summary>"You can't cast this spell unless [condition]" (checked for its caster, every way of casting it).</summary>
+    public Abilities.Condition? CastOnlyIf { get; init; }
+
+    /// <summary>"Artifacts and creatures entering the battlefield don't cause abilities to trigger" (while on the battlefield).</summary>
+    public bool EnteringArtifactsAndCreaturesDontTrigger { get; init; }
+
+    /// <summary>"Instant and sorcery spells you control have split second" (while on the battlefield).</summary>
+    public bool YourInstantsAndSorceriesHaveSplitSecond { get; init; }
+
+    /// <summary>"During combat, players can't cast spells or activate abilities that aren't mana abilities" (while on the battlefield).</summary>
+    public bool NoSpellsOrAbilitiesDuringCombat { get; init; }
+
+    /// <summary>"Planeswalkers you control aren't put into their owners' graveyards for having 0 loyalty" (while on the battlefield).</summary>
+    public bool YourPlaneswalkersSurviveZeroLoyalty { get; init; }
+
     /// <summary>
     /// For a nonmodal double-faced card (rule 712.2): its back face. This definition is the front face; the card is cast
     /// with it up and has only its characteristics everywhere but the battlefield (712.8a). On the battlefield it can

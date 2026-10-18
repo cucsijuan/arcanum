@@ -435,6 +435,12 @@ public enum TriggerEvent
     YouBecomeTargetOfOpponent,
     /// <summary>"When a spell or ability an opponent controls causes you to discard this card" (works from the graveyard it went to).</summary>
     DiscardedByOpponent,
+    /// <summary>"When you discard this card" (whatever caused it; the card's own ability, from wherever it went).</summary>
+    DiscardedThis,
+    /// <summary>"Whenever a creature [matching filter] blocks": once per blocking creature (the triggered player is its controller).</summary>
+    CreatureBlocks,
+    /// <summary>"Whenever a player discards one or more cards" (the triggered player is the discarder; use batchedPerPlayer).</summary>
+    PlayerDiscards,
     /// <summary>"Whenever this creature is dealt damage" (combat or not; amount: the damage, one trigger per source).</summary>
     DealtDamage,
     /// <summary>"When enchanted/equipped creature blocks" (once however many creatures it blocks; subject: that creature).</summary>
@@ -466,6 +472,12 @@ public sealed record TriggeredAbility : AbilityDefinition
 {
     /// <summary>For cast triggers: the spell must target something matching ("a spell that targets a creature you don't control").</summary>
     public ObjectFilter? SpellTargets { get; init; }
+
+    /// <summary>For cast triggers: the spell may instead target an opponent ("a spell that targets an opponent or a creature an opponent controls").</summary>
+    public bool SpellTargetsOpponent { get; init; }
+
+    /// <summary>For cast triggers: the spell matches the filter OR targets what <see cref="SpellTargets"/> describes ("an Equipment spell or a spell that targets …").</summary>
+    public bool FilterOrSpellTargets { get; init; }
 
     public required TriggerEvent Trigger { get; init; }
 
@@ -641,6 +653,9 @@ public sealed record ObjectFilter(
 
     /// <summary>Renowned ("a renowned creature").</summary>
     public bool Renowned { get; init; }
+
+    /// <summary>A copy of a prepare spell cast from exile ("a prepared spell").</summary>
+    public bool PreparedSpell { get; init; }
 
     /// <summary>"A transformed permanent" (true: back face up, rule 701.27g) or a double-faced permanent front face up (false).</summary>
     public bool? Transformed { get; init; }

@@ -57,7 +57,8 @@ public sealed partial class Game
                 unattach.Add(card);
             }
             // A planeswalker with no loyalty goes to its owner's graveyard (704.5i).
-            if (card.Is(CardType.Planeswalker) && card.CounterCount(Abilities.CounterKind.Loyalty) <= 0) toGraveyard.Add(card);
+            if (card.Is(CardType.Planeswalker) && card.CounterCount(Abilities.CounterKind.Loyalty) <= 0
+                && !State.PermanentsControlledBy(card.Controller).Any(p => p.HasTextAbilities && p.Definition.YourPlaneswalkersSurviveZeroLoyalty)) toGraveyard.Add(card);
             // 704.5f: toughness 0 or less (even if indestructible); 704.5g, 704.5h: lethal damage or deathtouch damage.
             if (card.IsCreature && card.Toughness <= 0) died.Add(card);
             else if (card.IsCreature && !card.Has(Keyword.Indestructible) && (card.Damage >= card.Toughness || card.DamagedByDeathtouch) && !await SurvivesDestructionAsync(card, byEffect: false))
@@ -67,7 +68,7 @@ public sealed partial class Game
         // Legend rule (704.5j): a player with two or more legendary permanents with the same name chooses one; the
         // rest go to their owners' graveyards.
         foreach (var group in permanents.Where(c => (c.Supertypes & Supertype.Legendary) != 0)
-                     .GroupBy(c => (c.Controller, c.Name)).Where(g => g.Count() > 1).ToList())
+                     .GroupBy(c => (c.Controller, c.Name)).Where(g => g.Count() > 1 && !State.GetPlayer(g.Key.Controller).NoLegendRuleThisTurn).ToList())
         {
             var options = group.Select(c => ViewBuilder.Card(State, c.Id, group.Key.Controller, reveal: true)).ToList();
             var keep = await ControllerOf(group.Key.Controller).ChooseCardsAsync(ViewFor(group.Key.Controller),

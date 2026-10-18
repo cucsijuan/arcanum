@@ -160,6 +160,20 @@ public enum QuantityKind
     Per,
     /// <summary>Card types among cards in all graveyards (artifact, battle, creature, enchantment, instant, kindred, land, planeswalker, sorcery).</summary>
     CardTypesInAllGraveyards,
+    /// <summary>Loyalty counters on the first target ("deals damage equal to its loyalty").</summary>
+    TargetLoyalty,
+    /// <summary>Different powers among creatures the controller controls.</summary>
+    DistinctPowersAmongYourCreatures,
+    /// <summary>The greatest mana value among cards matching <see cref="Quantity.Filter"/> in the controller's graveyard.</summary>
+    GreatestManaValueInYourGraveyard,
+    /// <summary>Cards put into the first target player's graveyard from their library this turn.</summary>
+    TargetPlayerMilledThisTurn,
+    /// <summary>Cards drawn by an earlier effect of this spell or ability ("the number of cards drawn this way").</summary>
+    DrawnThisWay,
+    /// <summary>Basic land types among lands the controller controls (domain).</summary>
+    Domain,
+    /// <summary>Cards the controller discarded this turn.</summary>
+    DiscardedThisTurn,
     /// <summary>Colors among permanents the controller controls (W, U, B, R, G: 0 to 5).</summary>
     ColorsAmongYourPermanents,
     /// <summary>Different kinds of counters on the source ("for each kind of counter on it").</summary>

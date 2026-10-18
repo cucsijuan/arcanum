@@ -281,6 +281,7 @@ public sealed partial class Game
 
     /// <summary>"You can't cast this spell during your first, second, or third turns of the game."</summary>
     private bool CastForbiddenThisEarly(Card card, PlayerId caster) =>
+        card.Definition.CastOnlyIf is { } castIf && !Holds(castIf, caster, card) ||
         card.Definition.CantCastDuringFirstTurns > 0 && State.ActivePlayer == caster
         && State.GetPlayer(caster).TurnsTaken <= card.Definition.CantCastDuringFirstTurns;
 
