@@ -4,9 +4,9 @@
 // has the pattern of its foil paper: long, smooth diagonal streaks rising to the right in three families at slightly
 // different angles that cross and run into each other, fading softly into the silver, breaking off and merging, and a
 // rainbow running down the card; the pattern stays put on the card while its colors and shine turn with the pointer (as
-// tilting the card would), and drift slowly on their own. A fracture foil looks like shattered glass: the foil breaks into
-// shards, each a flat facet at its own tilt with its own color, and fine bright cracks run between them; turning the card
-// (the pointer) lights some shards more than others, shifts their colors and makes the cracks near it glint.
+// tilting the card would), and drift slowly on their own. A fracture foil is a holographic glitter of small triangular chips
+// pointing every way over silver: each chip is a tiny mirror with its own tilt and a color a little off the rainbow that sweeps
+// across the card; turning the card (the pointer) lights other chips and shifts the colors.
 shader_type canvas_item;
 
 uniform vec2 rect_size = vec2(90.0, 126.0);
@@ -73,28 +73,23 @@ vec2 hash22(vec2 p) {
 	return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453);
 }
 
-// The shard around p: its cell (identifies it), and the distance to the nearest crack (the edge to the next shard).
-vec3 shards(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = p - i;
-	vec2 nearest = vec2(0.0), cell = vec2(0.0);
-	float best = 8.0;
-	for (int y = -1; y <= 1; y++)
-		for (int x = -1; x <= 1; x++) {
-			vec2 g = vec2(float(x), float(y));
-			vec2 o = g + hash22(i + g) * 0.85 + 0.075;
-			float d = dot(o - f, o - f);
-			if (d < best) { best = d; nearest = o; cell = i + g; }
-		}
-	float edge = 8.0;
-	for (int y = -2; y <= 2; y++)
-		for (int x = -2; x <= 2; x++) {
-			vec2 g = vec2(float(x), float(y));
-			vec2 o = g + hash22(i + g) * 0.85 + 0.075;
-			if (dot(o - nearest, o - nearest) > 0.0001)
-				edge = min(edge, dot(0.5 * (nearest + o) - f, normalize(o - nearest)));
-		}
-	return vec3(cell, edge);
+// One layer of foil chips: a lattice of triangles turned by `turn`, each shrunk by its own amount so the silver shows between
+// them. Returns the chip's identity (x, y) and how much of it covers p (z, 0 in the gaps).
+vec3 chips(vec2 p, float turn, float seed) {
+	float c = cos(turn), s = sin(turn);
+	vec2 q = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+	// A skewed lattice: each cell holds two triangles.
+	vec2 g = vec2(q.x - q.y * 0.57735, q.y * 1.1547);
+	vec2 cell = floor(g);
+	vec2 f = g - cell;
+	float upper = step(1.0, f.x + f.y);
+	vec2 id = cell * 2.0 + vec2(upper, seed);
+	// Distance to the triangle's nearest edge (barycentric), 1/3 at its middle.
+	vec3 bary = upper > 0.5 ? vec3(1.0 - f.x, 1.0 - f.y, f.x + f.y - 1.0) : vec3(f.x, f.y, 1.0 - f.x - f.y);
+	float inside = min(min(bary.x, bary.y), bary.z);
+	float shrink = 0.03 + hash2(id + 17.0) * 0.17;
+	float on = step(0.25, hash2(id + 5.0)) * smoothstep(shrink, shrink + 0.02, inside);
+	return vec3(id, on);
 }
 
 void fragment() {
@@ -139,26 +134,25 @@ void fragment() {
 		tex.rgb = mix(tex.rgb, tinted, m);
 	}
 	if (fracture > 0.0) {
-		// Shards in card heights, larger toward the edges' cracks than fine splinters: two scales, the fine one only near cracks.
-		vec2 pos = UV * vec2(rect_size.x / rect_size.y, 1.0);
-		vec3 big = shards(pos * 5.5 + fbm(pos * 3.0, 2) * 0.6);
-		vec3 small = shards(pos * 13.0 + vec2(7.0, 3.0));
-		bool splinter = big.z < 0.12 && hash2(small.xy) > 0.45;
-		vec2 id = splinter ? small.xy + 100.0 : big.xy;
-		// Each shard is a facet tilted its own way: the pointer lights the facets facing it.
+		// Small chips, about 26 across the card, in two layers at different turns so they point every way.
+		vec2 pos = UV * vec2(rect_size.x / rect_size.y, 1.0) * 19.0;
+		vec3 a = chips(pos, 0.35, 0.0);
+		vec3 b = chips(pos + vec2(3.7, 1.3), 1.4, 50.0);
+		vec3 chip = a.z >= b.z ? a : b;
+		vec2 id = chip.xy;
+		// Each chip is a tiny mirror at its own tilt: the pointer lights the ones facing it; the colors sweep across the
+		// card as a rainbow, each chip a little off it.
 		vec2 tilt = (hash22(id) - 0.5) * 2.0;
-		float facing = clamp(0.5 + 0.9 * dot(tilt, (foil_at - 0.5) * 2.0) * 0.5 + (hash2(id + 3.0) - 0.5) * 0.4, 0.0, 1.0);
-		float hue = fract(hash2(id + 9.0) * 0.6 + foil_at.x * 0.7 - foil_at.y * 0.3 + TIME * 0.02) * 360.0;
-		vec3 rainbow = hsl(hue, 0.85, 0.56);
-		float light = 0.3 + 0.7 * foil;
-		float m = (0.12 + 0.45 * facing * facing) * light * fracture;
-		vec3 tinted = clamp(tex.rgb * (0.55 + 0.7 * rainbow) + rainbow * 0.12 * facing, 0.0, 1.0);
+		float facing = clamp(0.35 + 0.65 * dot(tilt, (foil_at - 0.5) * 2.4) + (hash2(id + 3.0) - 0.5) * 0.8, 0.0, 1.0);
+		float hue = fract(UV.x * 0.55 + UV.y * 0.35 + (hash2(id + 9.0) - 0.5) * 0.35 + (foil_at.x - foil_at.y) * 0.5 + TIME * 0.02) * 360.0;
+		vec3 rainbow = hsl(hue, 0.75, 0.6);
+		float light = 0.4 + 0.6 * foil;
+		// The silver between the chips: a faint even sheen.
+		vec3 silver = clamp(tex.rgb * 0.85 + vec3(0.12), 0.0, 1.0);
+		tex.rgb = mix(tex.rgb, silver, 0.25 * light * fracture);
+		float m = chip.z * (0.15 + 0.55 * facing * facing) * light * fracture;
+		vec3 tinted = clamp(tex.rgb * (0.45 + 0.8 * rainbow) + rainbow * 0.2 * facing, 0.0, 1.0);
 		tex.rgb = mix(tex.rgb, tinted, m);
-		// Cracks: fine lines that catch the light (bright, in the shard's color), brighter where the pointer is.
-		float crack = 1.0 - smoothstep(0.004, 0.016, min(big.z, splinter ? small.z * 0.45 : 8.0));
-		float near = clamp(1.1 - length(UV - foil_at) * 1.2, 0.2, 1.0);
-		vec3 glint = mix(vec3(1.0), hsl(hue + 40.0, 0.8, 0.7), 0.5);
-		tex.rgb = mix(tex.rgb, max(tex.rgb, glint), crack * (0.25 + 0.5 * foil * near) * fracture);
 	}
 	if (grey > 0.0) {
 		float l = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
