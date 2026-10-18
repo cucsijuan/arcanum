@@ -65,6 +65,8 @@ public sealed record CardView
     public bool Foil { get; init; }
     /// <summary>A surge foil copy: the client draws the surge pattern.</summary>
     public bool Surge { get; init; }
+    /// <summary>A fracture foil copy: the client draws the fracture pattern.</summary>
+    public bool Fracture { get; init; }
 
     // What effects changed compared with the printed card (shown beside the card preview).
     public Supertype Supertypes { get; init; }

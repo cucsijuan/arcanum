@@ -114,6 +114,7 @@ public sealed class CareerWorld
     public int Value(CardKey card)
     {
         if (card.Surge) return (int)(Value(card with { Foil = false, Surge = false }) * Content.SurgeMultiplier);
+        if (card.Foil && Cards.IsFracture(card.Name, card.Set, card.Number)) return (int)(Value(card with { Foil = false }) * Content.FractureMultiplier);
         if (card.Foil) return (int)(Value(card with { Foil = false }) * Content.FoilMultiplier);
         if (IsBasicLand(card.Name)) return 0;
         var printings = Cards.Find(card.Name)?.Record.Printings ?? (IReadOnlyList<Printing>)Array.Empty<Printing>();

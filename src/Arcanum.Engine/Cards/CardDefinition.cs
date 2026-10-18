@@ -266,6 +266,9 @@ public sealed partial record CardDefinition
     /// <summary>A surge foil copy (how it looks only).</summary>
     public bool Surge { get; init; }
 
+    /// <summary>A fracture foil copy (how it looks only).</summary>
+    public bool Fracture { get; init; }
+
     /// <summary>"This spell can't be countered."</summary>
     public bool CantBeCountered { get; init; }
 

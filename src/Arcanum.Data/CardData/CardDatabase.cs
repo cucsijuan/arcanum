@@ -115,7 +115,7 @@ public sealed class CardDatabase : ICardDatabase
             if (!_byPrinting.TryGetValue(key, out definition!))
             {
                 definition = printing is null ? entry.Definition : CardFactory.ForPrinting(entry.Definition, printing, Picture(entry.Record, printing));
-                if (foil) definition = definition with { Foil = true };
+                if (foil) definition = definition with { Foil = true, Fracture = printing?.Fracture == true };
                 _byPrinting[key] = definition;
             }
         }
@@ -132,6 +132,10 @@ public sealed class CardDatabase : ICardDatabase
         return record.Printings.Where(p => !p.FoilOnly && p.Illustration == printing.Illustration)
             .OrderBy(p => p.Set == printing.Set ? 0 : 1).FirstOrDefault() ?? printing;
     }
+
+    /// <summary>Whether this printing's foils are fracture foils.</summary>
+    public bool IsFracture(string name, string? set, string? collectorNumber) =>
+        set is not null && _byName.TryGetValue(name, out var entry) && entry.Record.FindPrinting(set, collectorNumber)?.Fracture == true;
 
     /// <summary>Whether the card can be a foil copy in this printing (or, without a set, in its default printing).</summary>
     public bool CanBeFoil(string name, string? set, string? collectorNumber) =>

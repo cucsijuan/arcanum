@@ -296,6 +296,7 @@ public partial class CardNode : Control
         _back.Visible = view.IsHidden;
         FoilShine = _foilSource is not null ? FoilShine : IsHovered ? 1 : 0;
         ((ShaderMaterial)_face.Material).SetShaderParameter("surge", view is { Surge: true, IsHidden: false } ? 1f : 0f);
+        ((ShaderMaterial)_face.Material).SetShaderParameter("fracture", view is { Fracture: true, IsHidden: false } ? 1f : 0f);
         if (view.IsHidden)
         {
             // Applied on every setup so the current card back setting is used even by nodes created earlier.

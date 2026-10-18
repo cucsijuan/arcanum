@@ -37,6 +37,9 @@ public sealed record CareerContent
     /// <summary>A surge foil's value as a multiple of the card's.</summary>
     public double SurgeMultiplier { get; init; } = 4;
 
+    /// <summary>A fracture foil's value as a multiple of the card's.</summary>
+    public double FractureMultiplier { get; init; } = 4;
+
     /// <summary>What the store pays for a card, as a fraction of its value.</summary>
     public double SellRate { get; init; } = 0.5;
 

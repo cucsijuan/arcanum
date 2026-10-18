@@ -191,6 +191,28 @@ public class PrintingTests
     }
 
     [Fact]
+    public void FractureFoilPrintingsAreMarkedAndTheirCopiesShowIt()
+    {
+        const string fracture = """{"oracle_id":"o-1","id":"p-frac","name":"Glade Cub","set":"new","set_name":"New Set","collector_number":"20","rarity":"common","released_at":"2024-01-01","set_type":"expansion","lang":"en","finishes":["foil"],"promo_types":["fracturefoil"]}""";
+        var printings = OracleJsonl.ImportPrintings(Text(Printings + "\n" + fracture));
+        var records = OracleJsonl.WithPrintings(OracleJsonl.Import(Text(Cards)), printings).ToList();
+        var db = new CardDatabase(records, new Dictionary<string, CardScript>());
+        var cub = db.Find("Glade Cub")!.Record;
+        Assert.True(cub.FindPrinting("new", "20")!.Fracture);
+        Assert.False(cub.FindPrinting("new", "10★")!.Fracture);
+        Assert.True(db.IsFracture("Glade Cub", "NEW", "20"));
+        Assert.True(db.TryGet("Glade Cub", "NEW", "20", foil: false, out var copy) && copy.Foil && copy.Fracture);
+        Assert.True(db.TryGet("Glade Cub", "NEW", "10", foil: true, out var plain) && !plain.Fracture);
+
+        // The compact card file keeps the mark.
+        var compact = new MemoryStream();
+        OracleJsonl.WriteCompact(records, compact);
+        compact.Position = 0;
+        var again = new CardDatabase(OracleJsonl.ReadCompact(compact), new Dictionary<string, CardScript>());
+        Assert.True(again.IsFracture("Glade Cub", "NEW", "20"));
+    }
+
+    [Fact]
     public void APrintingOnlyInAnotherLanguageIsKeptButTranslationsAreNot()
     {
         const string prints = """

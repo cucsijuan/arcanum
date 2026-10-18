@@ -143,7 +143,7 @@ public partial class CareerScreen : Control
     /// <summary>
     /// Testing: ARCANUM_CAREER_START=&lt;starting deck&gt; starts a career when there is none; ARCANUM_CAREER_PAGE=&lt;page&gt; opens
     /// store, boosters, precons, counter, a website page (Matches, Practice, Challenges, Events, Market, Cards), opening
-    /// (the first unopened booster), decks (the deck builder), collection (the cards on the desk), daily or ante (plays one), enter or enter:&lt;id&gt; (today's first event, or that one), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck), surge:&lt;set&gt; (opens collector boosters until a surge foil comes), chat or chat2 (the ante chat), thread:&lt;id prefix&gt; (a forum thread: pinned, event:, ante:, practice:).
+    /// (the first unopened booster), decks (the deck builder), collection (the cards on the desk), daily or ante (plays one), enter or enter:&lt;id&gt; (today's first event, or that one), event (the event entered), buy:&lt;deck&gt; (buys a preconstructed deck), surge:&lt;set&gt; or fracture:&lt;set&gt; (opens collector boosters until a surge or fracture foil comes), chat or chat2 (the ante chat), thread:&lt;id prefix&gt; (a forum thread: pinned, event:, ante:, practice:).
     /// </summary>
     private bool RunTestHooks()
     {
@@ -182,17 +182,25 @@ public partial class CareerScreen : Control
                 Career.Decks.Save(UniqueDeckName(DeckTitle(test[4..])), precon.Commander.Count > 0 ? CareerRules.Commander : "casual", precon);
                 OpenWeb(WebPage.Events, instant: true);
                 return true;
-            case var surge when surge.StartsWith("surge:"):
-                // Buys and opens collector boosters of a set until one has a surge foil, and shows it.
-                for (int i = 0; i < 200; i++)
+            case var special when special.StartsWith("surge:") || special.StartsWith("fracture:"):
+            {
+                // Buys and opens collector boosters of a set until one has a surge (or fracture) foil, and shows it.
+                var set = special[(special.IndexOf(':') + 1)..];
+                bool fracture = special.StartsWith("fracture:");
+                for (int i = 0; i < 1000; i++)
                 {
-                    Career.Do(new BuyBooster(Career.Now, test[6..], "collector"));
-                    var key = CareerRules.SealedKey(test[6..], "collector");
+                    Career.Do(new BuyBooster(Career.Now, set, "collector"));
+                    var key = CareerRules.SealedKey(set, "collector");
                     var peek = CareerRandom.For(State.Seed, "booster", State.BoostersOpened);
-                    if (World.Generator(test[6..], "collector").Open(peek).Any(c => c.Surge)) { OpenBooster(key); return true; }
-                    Career.Do(new OpenBooster(Career.Now, test[6..], "collector"));
+                    if (World.Generator(set, "collector").Open(peek).Any(c => fracture ? c.Foil && World.Cards.IsFracture(c.Name, c.Set, c.Number) : c.Surge))
+                    {
+                        OpenBooster(key);
+                        return true;
+                    }
+                    Career.Do(new OpenBooster(Career.Now, set, "collector"));
                 }
                 return true;
+            }
             case "chat" or "chat2" when Career.Decks.List(null).FirstOrDefault(d => d.FormatId != CareerRules.Commander) is { } chatDeck:
                 OpenWeb(WebPage.Practice, instant: true);
                 OpenChat(CareerRules.Opponents(State, World)[0].Id, Career.Decks.Load(chatDeck).Deck);
@@ -1187,14 +1195,17 @@ public partial class CareerScreen : Control
         box.AddChild(Scrolled(grid));
     }
 
+    /// <summary>"foil", "surge foil" or "fracture foil".</summary>
+    private string FoilWord(CardKey card) => card.Surge ? "surge foil" : World.Cards.IsFracture(card.Name, card.Set, card.Number) ? "fracture foil" : "foil";
+
     /// <summary>"Foil", "Special art", "Special art · foil" (collector-only arts say so), or null for a plain card.</summary>
-    private static string? ArtTag(CardKey card, CardArt art)
+    private string? ArtTag(CardKey card, CardArt art)
     {
         var parts = new List<string>();
         if (art == CardArt.SpecialPlay) parts.Add("Special art");
         if (art == CardArt.SpecialCollector) parts.Add("Collector art");
         if (card.Surge) parts.Add("Surge foil");
-        else if (card.Foil) parts.Add("Foil");
+        else if (card.Foil) parts.Add(FoilWord(card) == "fracture foil" ? "Fracture foil" : "Foil");
         return parts.Count == 0 ? null : string.Join(" · ", parts);
     }
 
@@ -1366,7 +1377,7 @@ public partial class CareerScreen : Control
         {
             var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Stop };
             row.AddThemeConstantOverride("separation", 12);
-            var name = CareerStyle.Text($"{count} × {card.Name}{(card.Surge ? " (surge foil)" : card.Foil ? " (foil)" : "")}", 19, ink);
+            var name = CareerStyle.Text($"{count} × {card.Name}{(card.Foil ? $" ({FoilWord(card)})" : "")}", 19, ink);
             name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             name.ClipText = true;
             row.AddChild(name);
@@ -1508,7 +1519,7 @@ public partial class CareerScreen : Control
             node.Setup(ViewOf(DefinitionOf(cardKey)), showCostPips: false);
             node.HoverStarted += _ => ShowPreview(DefinitionOf(cardKey), holder);
             node.HoverEnded += _ => _preview.Visible = false;
-            node.TooltipText = $"{card.Rarity}{(card.Surge ? " · surge foil" : card.Foil ? " · foil" : "")} · sells for {CareerRules.Money(SellPrice(cardKey))}";
+            node.TooltipText = $"{card.Rarity}{(card.Foil ? $" · {FoilWord(cardKey)}" : "")} · sells for {CareerRules.Money(SellPrice(cardKey))}";
             flow.AddChild(holder);
             nodes.Add(node);
         }
@@ -1584,7 +1595,7 @@ public partial class CareerScreen : Control
     {
         Id = new CardId(-1), Owner = new PlayerId(0), Controller = new PlayerId(0), Zone = Zone.Hand, IsHidden = false,
         Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
-        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil, Surge = d.Surge,
+        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil, Surge = d.Surge, Fracture = d.Fracture,
     };
 
     private void ShowPreview(CardDefinition definition, Control anchor)

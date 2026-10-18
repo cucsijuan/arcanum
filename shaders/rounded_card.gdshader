@@ -4,7 +4,9 @@
 // has the pattern of its foil paper: long, smooth diagonal streaks rising to the right in three families at slightly
 // different angles that cross and run into each other, fading softly into the silver, breaking off and merging, and a
 // rainbow running down the card; the pattern stays put on the card while its colors and shine turn with the pointer (as
-// tilting the card would), and drift slowly on their own.
+// tilting the card would), and drift slowly on their own. A fracture foil looks like shattered glass: the foil breaks into
+// shards, each a flat facet at its own tilt with its own color, and fine bright cracks run between them; turning the card
+// (the pointer) lights some shards more than others, shifts their colors and makes the cracks near it glint.
 shader_type canvas_item;
 
 uniform vec2 rect_size = vec2(90.0, 126.0);
@@ -15,6 +17,8 @@ uniform float foil = 0.0;
 uniform vec2 foil_at = vec2(0.5);
 // A surge foil (1) or not (0).
 uniform float surge = 0.0;
+// A fracture foil (1) or not (0).
+uniform float fracture = 0.0;
 // Drawn in greys, darker (1), as a card the player doesn't have; or in color (0).
 uniform float grey = 0.0;
 
@@ -65,6 +69,34 @@ float streaks(vec2 along_across, float warp, float freq, float turn, float seed)
 	return smoothstep(th - 0.3, th + 0.55, f) * on;
 }
 
+vec2 hash22(vec2 p) {
+	return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453);
+}
+
+// The shard around p: its cell (identifies it), and the distance to the nearest crack (the edge to the next shard).
+vec3 shards(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = p - i;
+	vec2 nearest = vec2(0.0), cell = vec2(0.0);
+	float best = 8.0;
+	for (int y = -1; y <= 1; y++)
+		for (int x = -1; x <= 1; x++) {
+			vec2 g = vec2(float(x), float(y));
+			vec2 o = g + hash22(i + g) * 0.85 + 0.075;
+			float d = dot(o - f, o - f);
+			if (d < best) { best = d; nearest = o; cell = i + g; }
+		}
+	float edge = 8.0;
+	for (int y = -2; y <= 2; y++)
+		for (int x = -2; x <= 2; x++) {
+			vec2 g = vec2(float(x), float(y));
+			vec2 o = g + hash22(i + g) * 0.85 + 0.075;
+			if (dot(o - nearest, o - nearest) > 0.0001)
+				edge = min(edge, dot(0.5 * (nearest + o) - f, normalize(o - nearest)));
+		}
+	return vec3(cell, edge);
+}
+
 void fragment() {
 	vec4 tex = texture(TEXTURE, UV);
 	if (foil > 0.0) {
@@ -105,6 +137,28 @@ void fragment() {
 		// The foil's color shows through the ink: light areas take the streak's color, dark ones get a colored sheen.
 		vec3 tinted = clamp(tex.rgb * (0.35 + 1.0 * rainbow) + rainbow * 0.18, 0.0, 1.0);
 		tex.rgb = mix(tex.rgb, tinted, m);
+	}
+	if (fracture > 0.0) {
+		// Shards in card heights, larger toward the edges' cracks than fine splinters: two scales, the fine one only near cracks.
+		vec2 pos = UV * vec2(rect_size.x / rect_size.y, 1.0);
+		vec3 big = shards(pos * 5.5 + fbm(pos * 3.0, 2) * 0.6);
+		vec3 small = shards(pos * 13.0 + vec2(7.0, 3.0));
+		bool splinter = big.z < 0.12 && hash2(small.xy) > 0.45;
+		vec2 id = splinter ? small.xy + 100.0 : big.xy;
+		// Each shard is a facet tilted its own way: the pointer lights the facets facing it.
+		vec2 tilt = (hash22(id) - 0.5) * 2.0;
+		float facing = clamp(0.5 + 0.9 * dot(tilt, (foil_at - 0.5) * 2.0) * 0.5 + (hash2(id + 3.0) - 0.5) * 0.4, 0.0, 1.0);
+		float hue = fract(hash2(id + 9.0) * 0.6 + foil_at.x * 0.7 - foil_at.y * 0.3 + TIME * 0.02) * 360.0;
+		vec3 rainbow = hsl(hue, 0.85, 0.56);
+		float light = 0.3 + 0.7 * foil;
+		float m = (0.12 + 0.45 * facing * facing) * light * fracture;
+		vec3 tinted = clamp(tex.rgb * (0.55 + 0.7 * rainbow) + rainbow * 0.12 * facing, 0.0, 1.0);
+		tex.rgb = mix(tex.rgb, tinted, m);
+		// Cracks: fine lines that catch the light (bright, in the shard's color), brighter where the pointer is.
+		float crack = 1.0 - smoothstep(0.004, 0.016, min(big.z, splinter ? small.z * 0.45 : 8.0));
+		float near = clamp(1.1 - length(UV - foil_at) * 1.2, 0.2, 1.0);
+		vec3 glint = mix(vec3(1.0), hsl(hue + 40.0, 0.8, 0.7), 0.5);
+		tex.rgb = mix(tex.rgb, max(tex.rgb, glint), crack * (0.25 + 0.5 * foil * near) * fracture);
 	}
 	if (grey > 0.0) {
 		float l = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
