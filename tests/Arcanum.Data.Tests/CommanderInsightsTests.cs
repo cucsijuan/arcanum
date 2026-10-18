@@ -85,7 +85,7 @@ public class CommanderInsightsTests
 
     [Fact]
     public void PartnersArePutInAlphabeticalOrder() =>
-        Assert.Equal("kraum-ludevics-opus-tymna-the-weaver", CommanderInsights.Slug(new[] { "Tymna the Weaver", "Kraum, Ludevic's Opus" }));
+        Assert.Equal("orvane-the-mender-quill-ashen-scribe", CommanderInsights.Slug(new[] { "Quill, Ashen Scribe", "Orvane the Mender" }));
 
     private static ContentModule Load(string sources)
     {
