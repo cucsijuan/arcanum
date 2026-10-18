@@ -17,6 +17,13 @@ public sealed partial class Game
     {
         State.TurnNumber++;
         var active = State.GetPlayer(State.ActivePlayer);
+        // "Until your next turn": those emblems of the player whose turn begins end now.
+        foreach (var emblem in State.EmblemsUntilOwnersNextTurn.Where(e => State.GetCard(e).Owner == State.ActivePlayer).ToList())
+        {
+            State.EmblemsUntilOwnersNextTurn.Remove(emblem);
+            State.Emblems.Remove(emblem);
+            State.GetCard(emblem).Zone = Zone.Exile; // gone (an emblem is no card)
+        }
         active.LandsPlayedThisTurn = 0;
         State.CreaturesDiedThisTurn = 0;
         State.PermanentsSacrificedThisTurn = 0;

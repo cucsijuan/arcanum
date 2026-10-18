@@ -313,6 +313,9 @@ public sealed partial class GameState
     /// <summary>Emblems that end with the turn ("whenever you attack this turn, …").</summary>
     public List<CardId> EmblemsUntilEndOfTurn { get; } = new();
 
+    /// <summary>Emblems that last until their owner's next turn begins.</summary>
+    public List<CardId> EmblemsUntilOwnersNextTurn { get; } = new();
+
     /// <summary>Permanents that entered and still need their "as this enters, choose..." choice.</summary>
     public List<(CardId Card, int Version)> PendingEnterChoices { get; } = new();
 

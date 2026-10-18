@@ -402,6 +402,7 @@ public static partial class CardScriptParser
                         ExceptFirstInDrawStep = Bool(a, "exceptFirstInDrawStep"),
                         SpellTargets = a.TryGetProperty("spellTargets", out var spt) ? ParseFilter(spt, ControllerFilter.Any) : null,
                         SpellTargetsOpponent = Bool(a, "spellTargetsOpponent"),
+                        PlayersOnly = Bool(a, "playersOnly"),
                         FilterOrSpellTargets = Bool(a, "orSpellTargets"),
                     }));
                 }
@@ -1089,6 +1090,8 @@ public static partial class CardScriptParser
             NoSharedCreatureTypeWithYours = Bool(f, "noSharedCreatureType"),
             Renowned = Bool(f, "renowned"),
             PreparedSpell = Bool(f, "preparedSpell"),
+            IsRemembered = Bool(f, "remembered"),
+            ToughnessAbovePower = Bool(f, "toughnessAbovePower"),
             Transformed = OptBool("transformed"),
             WithCounterKind = f.TryGetProperty("hasCounterKind", out var hck) ? ParseCounterKind(hck.GetString()) : null,
             AttackingYou = Bool(f, "attackingYou"),
@@ -1718,6 +1721,7 @@ public static partial class CardScriptParser
         if (Str("emblem") is { } emblemName) return new CreateEmblem(emblemName, Parse(e.GetRawText()).Abilities)
         {
             UntilEndOfTurn = Flag("untilEndOfTurn"),
+            UntilYourNextTurn = Flag("untilYourNextTurn"),
             For = e.TryGetProperty("for", out var emblemFor) ? ParseSubject(emblemFor) : null,
             About = e.TryGetProperty("about", out var emblemAbout) ? ParseSubject(emblemAbout) : null,
         };
@@ -1770,6 +1774,7 @@ public static partial class CardScriptParser
                 AtNextEndStepUnless = e.TryGetProperty("atNextEndStepUnless", out var canu) ? ParseCondition(canu) : null,
                 ExileAtEndOfCombat = Flag("exileAtEndOfCombat"),
                 GainsHaste = Flag("gainsHaste"),
+                Each = Flag("each"),
                 SacrificeAtNextUpkeep = Flag("sacrificeAtNextUpkeep"),
                 SacrificeAtYourNextEndStep = Flag("sacrificeAtYourNextEndStep"),
             };
@@ -1995,6 +2000,10 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("removeUpToCounters", out _)) return new RemoveUpToCounters(Int("removeUpToCounters"), Subj("from", "target"));
         if (Flag("nextSpellUncounterable")) return new NextSpellUncounterable();
         if (Flag("noLegendRuleThisTurn")) return new NoLegendRuleThisTurn();
+        if (e.TryGetProperty("surveilledToHand", out var sth))
+            return new SurveilledToHand(ParseFilter(sth, ControllerFilter.Any), e.TryGetProperty("maxManaValue", out var sthm) ? ParseQuantity(sthm) : null);
+        if (Flag("exileTopMayCast")) return new ExileTopMayCast(e.TryGetProperty("ifNot", out var etn) ? EffectList(etn) : Array.Empty<Effect>());
+        if (Value("ownerMayPutOnTop") is { } ompt) return new OwnerMayPutOnTop(ompt, e.TryGetProperty("ifTop", out var oit) ? EffectList(oit) : Array.Empty<Effect>());
         if (Value("transform") is { } transform) return new Transform(transform);
         if (Value("regenerate") is { } regen) return new Regenerate(regen);
         if (Flag("populate")) return new Populate();

@@ -610,6 +610,8 @@ public sealed partial class Game
         public List<PlayerId> PlayersWhoDrew { get; } = new();
         /// <summary>Cards drawn by the draw effects so far ("the number of cards drawn this way").</summary>
         public int Drawn { get; set; }
+        /// <summary>Cards a surveil of this spell or ability put into the graveyard.</summary>
+        public List<CardId> Surveilled { get; } = new();
 
         /// <summary>The card discovered (or found by an exile-until effect) and its mana value as it was exiled, and the N it was discovered for.</summary>
         public (CardId Card, int ManaValue)? Discovered { get; set; }
@@ -829,7 +831,8 @@ public sealed partial class Game
             QuantityKind.RingBearerPower => RingBearerOf(ctx.Controller) is { } bearer ? bearer.Power : 0,
             QuantityKind.Sum => q.Parts?.Sum(part => Eval(part, ctx)) ?? 0,
             QuantityKind.TargetLoyalty or QuantityKind.DistinctPowersAmongYourCreatures or QuantityKind.GreatestManaValueInYourGraveyard
-                or QuantityKind.TargetPlayerMilledThisTurn or QuantityKind.DrawnThisWay or QuantityKind.Domain or QuantityKind.DiscardedThisTurn => EvalFracture(q, ctx),
+                or QuantityKind.TargetPlayerMilledThisTurn or QuantityKind.DrawnThisWay or QuantityKind.Domain or QuantityKind.DiscardedThisTurn
+                or QuantityKind.PlaneswalkerTypesAmongYours or QuantityKind.OpponentsWhoDiscardedFewer => EvalFracture(q, ctx),
             QuantityKind.Difference or QuantityKind.Per or QuantityKind.CardTypesInAllGraveyards or QuantityKind.ColorsAmongYourPermanents or QuantityKind.CounterKindsOnSource or QuantityKind.ExiledManaValue
                 or QuantityKind.PlayersWhoLostLifeThisTurn or QuantityKind.OpponentsCombatDamagedBySourceOrDragon or QuantityKind.GreatestPowerAsCast or QuantityKind.TriggeredCounterCount or QuantityKind.SacrificedManaValue
                 or QuantityKind.EnteredThisTurnCount or QuantityKind.OpponentsControlling
@@ -926,6 +929,15 @@ public sealed partial class Game
                 break;
             case ReflexiveTrigger:
                 break; // the action didn't happen: no "when you do"
+            case CreateTokenCopy tc when tc.Each:
+                foreach (var id in CardsFor(tc.Of, ctx).Select(c => c.Id).ToList())
+                {
+                    var single = ctx with { Results = new EffectResults() };
+                    single.Results.Found.Add(id);
+                    await ApplyAsync(tc with { Each = false, Of = new Subject(SubjectKind.Found) }, single);
+                    ctx.Results.Created.AddRange(single.Results.Created);
+                }
+                break;
             case CreateTokenCopy tc:
             {
                 int count = Eval(tc.Count, ctx);
@@ -1210,6 +1222,7 @@ public sealed partial class Game
                     State.Cards.Add(id, emblem);
                     State.Emblems.Add(id);
                     if (ce.UntilEndOfTurn) State.EmblemsUntilEndOfTurn.Add(id);
+                    if (ce.UntilYourNextTurn) State.EmblemsUntilOwnersNextTurn.Add(id);
                     Emit(new EmblemCreated(id, emblemOwner));
                 }
                 break;
@@ -1953,7 +1966,44 @@ public sealed partial class Game
                 await LookAtTopAsync(ctx.Controller, sc.CountFrom is { } scryCount ? Eval(scryCount, ctx) : sc.Count, CardChoicePurpose.ScryToBottom, ctx.Source);
                 break;
             case Surveil sv:
+            {
+                var graveyardBefore = State.GetPlayer(ctx.Controller).Graveyard.ToHashSet();
                 await LookAtTopAsync(ctx.Controller, sv.Count, CardChoicePurpose.SurveilToGraveyard, ctx.Source);
+                ctx.Results.Surveilled.AddRange(State.GetPlayer(ctx.Controller).Graveyard.Where(id => !graveyardBefore.Contains(id)));
+                break;
+            }
+            case SurveilledToHand sh:
+            {
+                int? most = sh.MaxManaValue is { } mmv ? Eval(mmv, ctx) : null;
+                foreach (var card in ctx.Results.Surveilled.Select(State.GetCard).Where(c => c.Zone == Zone.Graveyard).ToList())
+                    if (Matches(sh.Filter, card, card.Owner, ctx.Source, ctx.Controller) && (most is not { } m || ManaValueOf(card) <= m))
+                        await MoveCardAsync(card.Id, Zone.Hand);
+                break;
+            }
+            case ExileTopMayCast et:
+            {
+                var you = State.GetPlayer(ctx.Controller);
+                if (you.Library.Count == 0) { await ApplyAllAsync(et.IfNot, ctx); break; }
+                var topId = you.Library[0];
+                await MoveCardAsync(topId, Zone.Exile);
+                var top = State.GetCard(topId);
+                bool cast = false;
+                if (top.Zone == Zone.Exile && !top.Is(CardType.Land) && CanBeCast(top, ctx.Controller, flashExtra: false)
+                    && await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast {top.Name}?", topId)))
+                {
+                    await CastSpellAsync(you, topId);
+                    cast = top.Zone == Zone.Stack;
+                }
+                if (!cast) await ApplyAllAsync(et.IfNot, ctx);
+                break;
+            }
+            case OwnerMayPutOnTop ot:
+                foreach (var card in CardsFor(ot.What, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
+                {
+                    bool onTop = await ControllerOf(card.Owner).ChooseYesNoAsync(ViewFor(card.Owner), new YesNoRequest($"{ctx.Source.Name}: put {card.Name} on top of your library?", card.Id));
+                    await MoveCardAsync(card.Id, Zone.Library, toBottom: !onTop);
+                    if (onTop) await ApplyAllAsync(ot.IfTop, ctx);
+                }
                 break;
             case Fight f:
             {
@@ -4798,6 +4848,8 @@ public sealed partial class Game
         if (filter.SharesCreatureTypeWithTriggered && !(_triggeredSubject is { } sharedWith && SharesCreatureType(obj, State.GetCard(sharedWith)))) return false;
         if (filter.Renowned && !obj.Renowned) return false;
         if (filter.PreparedSpell && !obj.CastPrepared) return false;
+        if (filter.IsRemembered && (source?.Remembered is not { } remembered || remembered.Card != obj.Id || remembered.Version != obj.Version)) return false;
+        if (filter.ToughnessAbovePower && obj.Toughness <= obj.Power) return false;
         if (filter.DamagedThisTurnByRemembered && !DamagedByRemembered(obj, source, lastKnown)) return false;
         if (filter.Transformed is { } transformed && !(obj.Zone == Zone.Battlefield && obj.IsDoubleFaced && obj.Transformed == transformed)) return false;
         // An Aura that left the battlefield in the same event as its creature still sees it die, attached as it last was (603.10a).
@@ -5460,7 +5512,7 @@ public sealed partial class Game
                     // "Whenever one or more creatures attack one of your opponents or a planeswalker they control": once per player or planeswalker attacked.
                     foreach (var group in declaredCombat.Attacks.GroupBy(x => (x.Defender, x.Planeswalker)).ToList())
                         foreach (var (observer, abilities) in Observers().Where(o => o.Card.Controller != group.Key.Defender))
-                            foreach (var watching in abilities.Where(x => x.Trigger == TriggerEvent.CreaturesAttackOpponent))
+                            foreach (var watching in abilities.Where(x => x.Trigger == TriggerEvent.CreaturesAttackOpponent && !(x.PlayersOnly && group.Key.Planeswalker is not null)))
                                 AddPending(observer.Id, watching, observer.Controller, new TriggerInfo(group.Key.Planeswalker, 0, group.Key.Defender, group.Count()));
                 }
                 // Exalted (702.83): a creature attacking alone gets +1/+1 for each instance among its controller's permanents.

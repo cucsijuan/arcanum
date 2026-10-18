@@ -174,6 +174,10 @@ public enum QuantityKind
     Domain,
     /// <summary>Cards the controller discarded this turn.</summary>
     DiscardedThisTurn,
+    /// <summary>Planeswalker types among planeswalkers the controller controls.</summary>
+    PlaneswalkerTypesAmongYours,
+    /// <summary>Opponents who discarded fewer than <see cref="Quantity.Value"/> cards matching the filter this way.</summary>
+    OpponentsWhoDiscardedFewer,
     /// <summary>Colors among permanents the controller controls (W, U, B, R, G: 0 to 5).</summary>
     ColorsAmongYourPermanents,
     /// <summary>Different kinds of counters on the source ("for each kind of counter on it").</summary>

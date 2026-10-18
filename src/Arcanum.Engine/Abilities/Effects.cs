@@ -276,6 +276,9 @@ public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = fa
     /// <summary>For a copy of "exiled": the card most recently exiled by this effect only.</summary>
     public bool OnlyLastExiled { get; init; }
 
+    /// <summary>"For each creature target player controls, create a token that's a copy of that creature": one copy of each object.</summary>
+    public bool Each { get; init; }
+
     /// <summary>"Sacrifice that token at the beginning of the next upkeep."</summary>
     public bool SacrificeAtNextUpkeep { get; init; }
 
@@ -561,6 +564,9 @@ public sealed record CreateEmblem(string Name, IReadOnlyList<AbilityDefinition> 
 {
     /// <summary>The emblem lasts only until end of turn (a delayed "whenever … this turn" ability).</summary>
     public bool UntilEndOfTurn { get; init; }
+
+    /// <summary>The emblem lasts until its owner's next turn begins ("until your next turn, whenever …").</summary>
+    public bool UntilYourNextTurn { get; init; }
 
     /// <summary>The players who get an emblem each (they own it: "each player dealt damage this way gets an emblem"); null: the controller.</summary>
     public Subject? For { get; init; }
@@ -1170,6 +1176,15 @@ public sealed record NextSpellUncounterable : Effect;
 
 /// <summary>"The 'legend rule' doesn't apply to permanents you control this turn."</summary>
 public sealed record NoLegendRuleThisTurn : Effect;
+
+/// <summary>"Put [matching cards] you put into your graveyard this way (surveil) into your hand" (with mana value at most <see cref="MaxManaValue"/>).</summary>
+public sealed record SurveilledToHand(ObjectFilter Filter, Quantity? MaxManaValue) : Effect;
+
+/// <summary>"Exile the top card of your library. You may cast that card. If you don't, [<paramref name="IfNot"/>]" (paying its costs, while this resolves).</summary>
+public sealed record ExileTopMayCast(IReadOnlyList<Effect> IfNot) : Effect;
+
+/// <summary>"Its owner may put it on top of their library. If they do, [<paramref name="IfTop"/>]. If they didn't, they put it on the bottom."</summary>
+public sealed record OwnerMayPutOnTop(Subject What, IReadOnlyList<Effect> IfTop) : Effect;
 
 /// <summary>
 /// "Transform [it]" (rule 701.27): a double-faced permanent turns over to its other face and stays the same object. Anything

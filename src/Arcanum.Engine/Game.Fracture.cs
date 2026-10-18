@@ -20,6 +20,10 @@ public sealed partial class Game
         QuantityKind.DrawnThisWay => ctx.Results.Drawn,
         QuantityKind.Domain => BasicLandTypeNames.Count(type => State.PermanentsControlledBy(ctx.Controller).Any(c => c.Is(CardType.Land) && c.HasSubtype(type))),
         QuantityKind.DiscardedThisTurn => State.GetPlayer(ctx.Controller).CardsDiscardedThisTurn,
+        QuantityKind.PlaneswalkerTypesAmongYours => State.PermanentsControlledBy(ctx.Controller).Where(c => c.Is(CardType.Planeswalker))
+            .SelectMany(c => c.CurrentSubtypes).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+        QuantityKind.OpponentsWhoDiscardedFewer => State.OpponentsOf(ctx.Controller).Count(o => ctx.Results.Discarded.Select(State.GetCard)
+            .Count(c => c.Owner == o && (q.Filter is null || Matches(q.Filter, c, o, ctx.Source, ctx.Controller))) < q.Value),
         _ => 0,
     };
 }

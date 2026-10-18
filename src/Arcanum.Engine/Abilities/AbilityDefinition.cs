@@ -476,6 +476,9 @@ public sealed record TriggeredAbility : AbilityDefinition
     /// <summary>For cast triggers: the spell may instead target an opponent ("a spell that targets an opponent or a creature an opponent controls").</summary>
     public bool SpellTargetsOpponent { get; init; }
 
+    /// <summary>For "creatures attack one of your opponents": only attacks on the player, not on their planeswalkers.</summary>
+    public bool PlayersOnly { get; init; }
+
     /// <summary>For cast triggers: the spell matches the filter OR targets what <see cref="SpellTargets"/> describes ("an Equipment spell or a spell that targets …").</summary>
     public bool FilterOrSpellTargets { get; init; }
 
@@ -656,6 +659,12 @@ public sealed record ObjectFilter(
 
     /// <summary>A copy of a prepare spell cast from exile ("a prepared spell").</summary>
     public bool PreparedSpell { get; init; }
+
+    /// <summary>The object an emblem (or other source) remembers ("that creature").</summary>
+    public bool IsRemembered { get; init; }
+
+    /// <summary>Toughness greater than its own power.</summary>
+    public bool ToughnessAbovePower { get; init; }
 
     /// <summary>"A transformed permanent" (true: back face up, rule 701.27g) or a double-faced permanent front face up (false).</summary>
     public bool? Transformed { get; init; }
