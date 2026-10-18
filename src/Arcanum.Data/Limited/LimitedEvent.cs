@@ -26,6 +26,20 @@ public sealed class EventSeat
 
     /// <summary>The deck built from the pool (null until built). Cards of the pool not in it form the sideboard.</summary>
     public DeckList? Deck { get; set; }
+
+    /// <summary>The cards of the pool not in the deck (its sideboard in limited play, rule 100.4b), as a deck list's main part.</summary>
+    public DeckList SideboardFromPool()
+    {
+        var left = new DeckList();
+        var inDeck = (Deck?.Main ?? new List<DeckEntry>()).GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Sum(e => e.Count), StringComparer.OrdinalIgnoreCase);
+        foreach (var card in Pool)
+        {
+            if (inDeck.TryGetValue(card.Name, out int n) && n > 0) { inDeck[card.Name] = n - 1; continue; }
+            left.Main.Add(card.ToEntry());
+        }
+        return left;
+    }
 }
 
 /// <summary>A match between two seats; <see cref="SeatB"/> is null for a bye.</summary>

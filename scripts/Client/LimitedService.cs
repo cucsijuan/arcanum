@@ -485,7 +485,8 @@ public sealed class LimitedService : ILimitedSession
         {
             var (deck, unknown) = ev.Seats[s].Deck!.Resolve(Cards);
             if (unknown.Count > 0) GD.PushWarning($"{ev.Seats[s].Name}'s deck: unknown cards {string.Join(", ", unknown)}");
-            return new GameSession.Seat(ev.Seats[s].Name, deck, IsBot: !ev.Seats[s].IsHuman);
+            var (sideboard, _) = ev.Seats[s].SideboardFromPool().Resolve(Cards);
+            return new GameSession.Seat(ev.Seats[s].Name, deck, IsBot: !ev.Seats[s].IsHuman, Sideboard: sideboard);
         }).ToList();
         int game = match.WinsA + match.WinsB + match.Draws + 1;
         // The round's clock runs from the match's first game.

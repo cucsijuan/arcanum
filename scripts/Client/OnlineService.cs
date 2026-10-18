@@ -198,7 +198,7 @@ public partial class OnlineService : Node
                 Status?.Invoke($"The saved game can't be resumed: {seat.Name}'s deck can't be read.");
                 return false;
             }
-            seats.Add(new HostSeat(seat.Name, check.Deck, check.Commanders, seat.IsComputer, seat.IsComputer ? null : seat.Token));
+            seats.Add(new HostSeat(seat.Name, check.Deck, check.Commanders, seat.IsComputer, seat.IsComputer ? null : seat.Token, check.Sideboard));
         }
         var options = HostOptions() with { Version = Version, Content = ContentId, Replay = save.Answers };
         // The same config as when the game started (LobbyHost.Start), so the recorded answers replay the same game.
@@ -255,7 +255,7 @@ public partial class OnlineService : Node
         if (!format.Commander) definitions.AddRange(deck.ResolveCommanders(cards));
         string? problem = unknown.Count > 0 ? $"Cards the host doesn't know: {string.Join(", ", unknown.Take(3))}" : null;
         problem ??= DeckValidator.Validate(deck, format, cards).FirstOrDefault(i => i.Severity == IssueSeverity.Error)?.Message;
-        return new DeckCheck(definitions, commanders, problem);
+        return new DeckCheck(definitions, commanders, problem, format.Commander ? null : deck.ResolveSideboard(cards));
     }
 
     private void ListAddresses()

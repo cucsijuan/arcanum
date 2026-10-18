@@ -17,7 +17,8 @@ namespace Arcanum.Client;
 public sealed class GameSession : IBoardSession
 {
     /// <param name="IsBot">Played by the computer instead of a person on this device.</param>
-    public sealed record Seat(string Name, IReadOnlyList<CardDefinition> Deck, bool IsBot = false, IReadOnlyList<CardDefinition>? Commanders = null);
+    public sealed record Seat(string Name, IReadOnlyList<CardDefinition> Deck, bool IsBot = false, IReadOnlyList<CardDefinition>? Commanders = null,
+        IReadOnlyList<CardDefinition>? Sideboard = null);
 
     private readonly GameConfig _config;
     private readonly IReadOnlyList<Seat> _seats;
@@ -68,11 +69,11 @@ public sealed class GameSession : IBoardSession
             {
                 var bot = new Arcanum.Bots.BotController(new PlayerId(i)) { Pace = BotPaceAsync, AlwaysKeep = setup is not null };
                 bots.Add(bot);
-                return new PlayerSetup(s.Name, bot, s.Deck, s.Commanders);
+                return new PlayerSetup(s.Name, bot, s.Deck, s.Commanders, s.Sideboard);
             }
             var controller = new UiPlayerController(new PlayerId(i), Hub, Log, policy, PresentAsync);
             _controllers.Add(controller);
-            return new PlayerSetup(s.Name, controller, s.Deck, s.Commanders);
+            return new PlayerSetup(s.Name, controller, s.Deck, s.Commanders, s.Sideboard);
         }).ToList());
         // Bots read printed rules only for cards they can see (the controller enforces that).
         foreach (var bot in bots) bot.UseCardRules(id => Game.State.Cards.TryGetValue(id, out var c) ? c.Definition : null);

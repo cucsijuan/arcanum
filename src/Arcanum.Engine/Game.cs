@@ -58,6 +58,13 @@ public sealed partial class Game
                 State.Cards.Add(card.Id, card);
                 statePlayers[i].Command.Add(card.Id);
             }
+            // The sideboard: cards the player owns outside the game (rule 400.11b).
+            foreach (var def in players[i].Sideboard ?? Array.Empty<CardDefinition>())
+            {
+                var card = new Card(new CardId(nextId++), def, statePlayers[i].Id) { Zone = Zone.Outside };
+                State.Cards.Add(card.Id, card);
+                statePlayers[i].Outside.Add(card.Id);
+            }
         }
     }
 

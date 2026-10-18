@@ -172,6 +172,10 @@ public sealed partial class DeckList
         return (cards, unknown);
     }
 
+    /// <summary>The sideboard's cards (outside the game, rule 400.11b); names the database doesn't know are left out.</summary>
+    public List<CardDefinition> ResolveSideboard(ICardDatabase database) =>
+        Sideboard.SelectMany(e => TryResolve(database, e, out var def) ? Enumerable.Repeat(WithTokenArt(database, def), e.Count) : Enumerable.Empty<CardDefinition>()).ToList();
+
     /// <summary>The commander(s), their tokens shown with this deck's pictures.</summary>
     public List<CardDefinition> ResolveCommanders(ICardDatabase database) =>
         Definitions(database, Commander).Select(d => WithTokenArt(database, d)).ToList();

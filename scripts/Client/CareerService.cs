@@ -360,7 +360,8 @@ public sealed class CareerService
         var opponent = world.Content.Opponents.First(o => o.Id == pending.OpponentId);
         var cards = App.Instance.Cards!;
         var (mine, _) = deck.Resolve(cards);
-        var (theirs, _) = CareerRules.OpponentDeck(State, world, pending.OpponentId, pending.Deck).Resolve(cards);
+        var theirList = CareerRules.OpponentDeck(State, world, pending.OpponentId, pending.Deck);
+        var (theirs, _) = theirList.Resolve(cards);
         if (pending.Kind == CareerRules.Ante)
         {
             // The player's stake is out of the collection now: out of the deck too when the deck needed that copy.
@@ -371,7 +372,8 @@ public sealed class CareerService
         }
         var title = pending.Kind switch { CareerRules.Practice => "Practice match", CareerRules.Ante => "Ante match", _ => "Daily match" };
         // Testing: ARCANUM_SANDBOX=1 starts the match from the sandbox board.
-        return new MatchSetup(new[] { new GameSession.Seat(playerName, mine), new GameSession.Seat(opponent.Name, theirs, IsBot: true) }, 20,
+        return new MatchSetup(new[] { new GameSession.Seat(playerName, mine, Sideboard: deck.ResolveSideboard(cards)),
+                new GameSession.Seat(opponent.Name, theirs, IsBot: true, Sideboard: theirList.ResolveSideboard(cards)) }, 20,
             Sandbox: OS.GetEnvironment("ARCANUM_SANDBOX") == "1")
         {
             Event = new EventHook(winner => Finish(winner == 0), App.CareerScene, title) { ReturnText = "Back home" },

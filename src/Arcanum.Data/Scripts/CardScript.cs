@@ -2016,6 +2016,7 @@ public static partial class CardScriptParser
         if (Flag("nextSpellUncounterable")) return new NextSpellUncounterable();
         if (Flag("noLegendRuleThisTurn")) return new NoLegendRuleThisTurn();
         if (Flag("mountainsAddExtraRedThisTurn")) return new MountainsAddExtraRedThisTurn();
+        if (Flag("revealTwoFromOutsideOpponentChooses")) return new RevealTwoFromOutsideOpponentChooses();
         if (e.TryGetProperty("castCopiesOfExiledFree", out _)) return new CastCopiesOfExiledFree(Int("castCopiesOfExiledFree"));
         if (Value("grantManaUntilCastFromExile") is { } gmc)
             return new GrantManaUntilCastFromExile(gmc, ManaCost.Parse(Str("mana") ?? "{C}").Pips.Distinct().ToList(), ManaCost.Parse(Str("mana") ?? "{C}").ManaValue);

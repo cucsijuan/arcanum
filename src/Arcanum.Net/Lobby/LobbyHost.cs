@@ -8,7 +8,8 @@ using Arcanum.Net.Transport;
 namespace Arcanum.Net.Lobby;
 
 /// <summary>A deck list read by the host: the cards, or why it can't be played in this game.</summary>
-public sealed record DeckCheck(IReadOnlyList<CardDefinition> Deck, IReadOnlyList<CardDefinition>? Commanders, string? Problem);
+public sealed record DeckCheck(IReadOnlyList<CardDefinition> Deck, IReadOnlyList<CardDefinition>? Commanders, string? Problem,
+    IReadOnlyList<CardDefinition>? Sideboard = null);
 
 /// <summary>How a seat was set up, to save a hosted game and resume it later.</summary>
 public sealed record SeatSetup(string Name, string? DeckName, string DeckList, bool IsComputer, string Token);
@@ -143,7 +144,7 @@ public sealed class LobbyHost
             NonbasicLandNames = options.NonbasicLandNames,
             CreatureCardNames = options.CreatureCardNames,
         };
-        var seats = _slots.Select(s => new HostSeat(s.Name, s.Deck!.Deck, s.Deck.Commanders, s.Kind == LobbySeatKind.Computer,
+        var seats = _slots.Select(s => new HostSeat(s.Name, s.Deck!.Deck, s.Deck.Commanders, s.Kind == LobbySeatKind.Computer, Sideboard: s.Deck.Sideboard, Token:
             s.Kind == LobbySeatKind.Person ? s.Token : null)).ToList();
         Game = new GameHost(config, seats, options with { Version = _settings.Version, Content = _settings.Content });
         foreach (var listener in _listeners) Game.AddListener(listener);

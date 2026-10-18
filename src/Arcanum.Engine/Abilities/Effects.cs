@@ -1184,6 +1184,12 @@ public sealed record NoLegendRuleThisTurn : Effect;
 public sealed record MountainsAddExtraRedThisTurn : Effect;
 
 /// <summary>
+/// "You may reveal exactly two cards you own with different names from outside the game. An opponent chooses one of them. You put that card into
+/// your hand."
+/// </summary>
+public sealed record RevealTwoFromOutsideOpponentChooses : Effect;
+
+/// <summary>
 /// "Copy those cards [exiled this way]. You may cast any number of spells with total mana value N or less from among the copies without paying
 /// their mana costs" (copies not cast cease to exist).
 /// </summary>

@@ -3693,6 +3693,31 @@ public sealed partial class Game
                 }
                 break;
             }
+            case RevealTwoFromOutsideOpponentChooses:
+            {
+                var you = ctx.Controller;
+                var outside = State.GetPlayer(you).Outside.Select(State.GetCard).ToList();
+                if (outside.Select(c => c.Name).Distinct().Count() < 2) break; // exactly two with different names, or nothing
+                if (!await ControllerOf(you).ChooseYesNoAsync(ViewFor(you), new YesNoRequest($"{ctx.Source.Name}: reveal two cards with different names from outside the game?", ctx.Source.Id)))
+                    break;
+                var first = await ControllerOf(you).ChooseCardsAsync(ViewFor(you), new CardChoiceRequest($"{ctx.Source.Name}: the first card to reveal from outside the game", ctx.Source.Id,
+                    outside.Select(c => ViewBuilder.Card(State, c.Id, you, reveal: true)).ToList(), 1, 1, CardChoicePurpose.Keep));
+                Require(first.Count == 1 && outside.Any(c => c.Id == first[0]), "Choose one of the listed cards.");
+                var others = outside.Where(c => c.Name != State.GetCard(first[0]).Name).ToList();
+                var second = await ControllerOf(you).ChooseCardsAsync(ViewFor(you), new CardChoiceRequest($"{ctx.Source.Name}: the second card to reveal (a different name)", ctx.Source.Id,
+                    others.Select(c => ViewBuilder.Card(State, c.Id, you, reveal: true)).ToList(), 1, 1, CardChoicePurpose.Keep));
+                Require(second.Count == 1 && others.Any(c => c.Id == second[0]), "Choose one of the listed cards.");
+                var shown = new List<CardId> { first[0], second[0] };
+                Emit(new CardsRevealed(you, shown.ToList()));
+                if (await ChooseOpponentAsync(you, ctx.Source, $"{ctx.Source.Name}: choose the opponent who picks the card") is not { } chooser) break;
+                var pick = await ControllerOf(chooser).ChooseCardsAsync(ViewFor(chooser), new CardChoiceRequest(
+                    $"{ctx.Source.Name}: choose the card {State.GetPlayer(you).Name} puts into their hand", ctx.Source.Id,
+                    shown.Select(id => ViewBuilder.Card(State, id, chooser, reveal: true)).ToList(), 1, 1, CardChoicePurpose.ToHand));
+                Require(pick.Count == 1 && shown.Contains(pick[0]), "Choose one of the revealed cards.");
+                Emit(new ChoiceMade(pick[0], $"chosen by {State.GetPlayer(chooser).Name}"));
+                await MoveCardAsync(pick[0], Zone.Hand);
+                break;
+            }
             case MountainsAddExtraRedThisTurn:
                 State.GetPlayer(ctx.Controller).ExtraRedFromMountainsThisTurn++;
                 RecomputeContinuousEffects();

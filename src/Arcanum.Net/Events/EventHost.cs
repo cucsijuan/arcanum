@@ -348,7 +348,8 @@ public sealed class EventHost
     {
         var order = new[] { match.SeatA, match.SeatB!.Value };
         tokens ??= order.Select(s => IsPerson(s) ? Tokens.New() : null).ToArray();
-        var seats = order.Select((s, i) => new HostSeat(_ev.Seats[s].Name, _rules.Cards(_ev.Seats[s].Deck!), null, !IsPerson(s), tokens[i])).ToList();
+        var seats = order.Select((s, i) => new HostSeat(_ev.Seats[s].Name, _rules.Cards(_ev.Seats[s].Deck!), null, !IsPerson(s), tokens[i],
+            _rules.Cards(_ev.Seats[s].SideboardFromPool()))).ToList();
         seed ??= (ulong)_random.NextInt64();
         var host = new GameHost(new GameConfig { Seed = seed.Value, CardNames = _options.Games.CardNames, NonbasicLandNames = _options.Games.NonbasicLandNames, CreatureCardNames = _options.Games.CreatureCardNames }, seats, _options.Games with { Clock = _options.Clock, Replay = replay });
         _games.Add(new ActiveGame { Match = match, Host = host, Seed = seed.Value, Tokens = tokens });

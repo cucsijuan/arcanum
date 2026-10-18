@@ -10,10 +10,12 @@ public enum Zone
     Stack,
     Exile,
     Command,
+    /// <summary>Outside the game (rule 400.11): the cards of a player's sideboard, which some effects bring into the game.</summary>
+    Outside,
 }
 
 public static class ZoneExtensions
 {
     /// <summary>Public zones are visible to every player (rule 400.2).</summary>
-    public static bool IsPublic(this Zone zone) => zone is not (Zone.Library or Zone.Hand);
+    public static bool IsPublic(this Zone zone) => zone is not (Zone.Library or Zone.Hand or Zone.Outside);
 }

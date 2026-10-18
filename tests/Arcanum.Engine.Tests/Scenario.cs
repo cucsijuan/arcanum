@@ -22,12 +22,13 @@ public sealed class Scenario
     };
     public Game Game { get; }
 
-    public Scenario(int seed = 1)
+    /// <param name="sideboard">Player 0's cards outside the game.</param>
+    public Scenario(int seed = 1, IReadOnlyList<CardDefinition>? sideboard = null)
     {
         var lands = Decks.Of((GenericCards.Forest, 20));
         Game = new Game(new GameConfig { Seed = (ulong)seed, StartingPlayer = P0 }, new[]
         {
-            new PlayerSetup("Attacker", Attacker, lands),
+            new PlayerSetup("Attacker", Attacker, lands, Sideboard: sideboard),
             new PlayerSetup("Defender", Defender, lands),
         });
     }

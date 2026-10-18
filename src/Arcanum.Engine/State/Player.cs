@@ -17,6 +17,9 @@ public sealed class Player
     public List<CardId> Exile { get; } = new();
     public List<CardId> Command { get; } = new();
 
+    /// <summary>The player's cards outside the game (their sideboard, rule 400.11b): private to them.</summary>
+    public List<CardId> Outside { get; } = new();
+
     public ManaPool ManaPool { get; } = new();
     public int LandsPlayedThisTurn { get; set; }
 
@@ -178,6 +181,7 @@ public sealed class Player
         Zone.Graveyard => Graveyard,
         Zone.Exile => Exile,
         Zone.Command => Command,
+        Zone.Outside => Outside,
         _ => throw new ArgumentException($"{zone} is not a per-player zone.", nameof(zone)),
     };
 

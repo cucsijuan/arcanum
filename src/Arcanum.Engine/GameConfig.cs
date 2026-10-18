@@ -40,8 +40,9 @@ public sealed record GameConfig
 }
 
 /// <param name="Commanders">The player's commander(s) in a commander game; they start in the command zone.</param>
+/// <param name="Sideboard">The player's sideboard: their cards outside the game (rule 400.11b), which effects such as "from outside the game" may bring in.</param>
 public sealed record PlayerSetup(string Name, IPlayerController Controller, IReadOnlyList<CardDefinition> Deck,
-    IReadOnlyList<CardDefinition>? Commanders = null);
+    IReadOnlyList<CardDefinition>? Commanders = null, IReadOnlyList<CardDefinition>? Sideboard = null);
 
 /// <summary>
 /// Rules of the commander variant (rule 903): commanders start in the command zone, can be cast from there for
