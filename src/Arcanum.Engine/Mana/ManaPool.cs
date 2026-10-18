@@ -69,6 +69,15 @@ public sealed class ManaPool
         _special.RemoveAll(u => keep is null || !keep.Contains(u.Type));
     }
 
+    /// <summary>"If you would lose unspent mana, that mana becomes colorless instead": every mana in the pool becomes {C} (restrictions stay).</summary>
+    public void MakeColorless()
+    {
+        int total = 0;
+        for (int i = 0; i < _amounts.Length; i++) { total += _amounts[i]; _amounts[i] = 0; }
+        _amounts[(int)ManaType.Colorless] = total;
+        for (int i = 0; i < _special.Count; i++) _special[i] = _special[i] with { Type = ManaType.Colorless };
+    }
+
     public ManaPool Clone()
     {
         var copy = new ManaPool();

@@ -179,7 +179,7 @@ public sealed partial class Game
         var extras = NonManaCastingCosts(card, c);
         if (!extras.All(e => CanPayExtra(caster, e, card.Id))) return false;
         int life = c.Way.Life + extras.Sum(e => e.PayLife) + (card.Definition.PayXLife ? c.X : 0);
-        if (life > 0 && (life > player.Life || player.CantLoseLifeTurn == State.TurnNumber)) return false; // rule 119.4, 119.8
+        if (life > 0 && (life > player.Life || player.CantLoseLifeNow(State.TurnNumber))) return false; // rule 119.4, 119.8
         int graveyard = player.Graveyard.Count(id => id != card.Id) - extras.Sum(e => e.ExileFromGraveyard);
         if (graveyard < 0) return false;
         if (c.Conspire && ConspireCandidates(card, caster).Count < 2) return false;

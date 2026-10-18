@@ -322,6 +322,9 @@ public sealed partial class GameState
     /// <summary>Emblems that last until their owner's next turn begins.</summary>
     public List<CardId> EmblemsUntilOwnersNextTurn { get; } = new();
 
+    /// <summary>"Creatures [Attacker] controls can't attack [Subtype] planeswalkers [Protected] controls this turn."</summary>
+    public List<(PlayerId Attacker, PlayerId Protected, string Subtype, int Turn)> PlaneswalkerAttackBans { get; } = new();
+
     /// <summary>Permanents that entered and still need their "as this enters, choose..." choice.</summary>
     public List<(CardId Card, int Version)> PendingEnterChoices { get; } = new();
 
@@ -429,6 +432,9 @@ public sealed partial class GameState
 
     /// <summary>Goaded creatures (card, version) and who goaded them, until that player's next turn (rule 701.15).</summary>
     public List<(CardId Card, int Version, PlayerId Goader)> Goads { get; } = new();
+
+    /// <summary>Goads that last for the rest of the game.</summary>
+    public List<(CardId Card, int Version, PlayerId Goader)> GoadsForever { get; } = new();
 
 
     /// <summary>Damage prevention shields that last this turn.</summary>

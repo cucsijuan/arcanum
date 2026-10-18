@@ -670,6 +670,12 @@ public sealed partial record CardDefinition
     /// <summary>"Artifacts and lands enter tapped" (every player's, while this is on the battlefield).</summary>
     public bool ArtifactsAndLandsEnterTapped { get; init; }
 
+    /// <summary>"Creatures you control can't have -1/-1 counters put on them."</summary>
+    public bool YourCreaturesCantHaveMinusCounters { get; init; }
+
+    /// <summary>"If you would lose unspent mana, that mana becomes colorless instead."</summary>
+    public bool UnspentManaBecomesColorless { get; init; }
+
     /// <summary>"Skip your draw step."</summary>
     public bool SkipYourDrawStep { get; init; }
 

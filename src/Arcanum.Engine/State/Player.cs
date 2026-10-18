@@ -133,6 +133,12 @@ public sealed class Player
     /// <summary>The legend rule doesn't apply to this player's permanents this turn.</summary>
     public bool NoLegendRuleThisTurn { get; set; }
 
+    /// <summary>"Their life total can't change" until this player's next turn.</summary>
+    public bool LifeCantChange { get; set; }
+
+    /// <summary>The player can't lose life now ("you can't lose life this turn", or their life total can't change).</summary>
+    public bool CantLoseLifeNow(int turn) => CantLoseLifeTurn == turn || LifeCantChange;
+
     /// <summary>"Until end of turn, whenever you tap a Mountain for mana, add an additional {R}": instances this turn.</summary>
     public int ExtraRedFromMountainsThisTurn { get; set; }
 

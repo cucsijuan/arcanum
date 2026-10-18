@@ -247,6 +247,9 @@ public sealed record ActivatedLoyaltyAbilityThisTurn : Condition;
 /// <summary>"If your library has no cards in it."</summary>
 public sealed record LibraryEmpty : Condition;
 
+/// <summary>"Unless your opponents control eight or more lands": counted across all opponents together.</summary>
+public sealed record OpponentsControlTotal(ObjectFilter Filter, int AtLeast) : Condition;
+
 /// <summary>"Whenever a creature … attacks a player alone": the triggered creature attacks a player and no other creature attacks that player.</summary>
 public sealed record TriggeredAttacksPlayerAlone : Condition;
 

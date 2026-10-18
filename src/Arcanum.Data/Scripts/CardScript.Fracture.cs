@@ -19,6 +19,7 @@ public static partial class CardScriptParser
                 "domain" => new Quantity(0, QuantityKind.Domain),
                 "discardedThisTurn" => new Quantity(0, QuantityKind.DiscardedThisTurn),
                 "planeswalkerTypes" => new Quantity(0, QuantityKind.PlaneswalkerTypesAmongYours),
+                "unspentMana" => new Quantity(0, QuantityKind.UnspentMana),
                 "distinctPowers" => new Quantity(0, QuantityKind.DistinctPowersAmongYourCreatures),
                 _ => null,
             };

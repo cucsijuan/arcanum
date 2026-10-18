@@ -1345,7 +1345,7 @@ public sealed partial class Game
         var player = State.GetPlayer(playerId);
         if (player.Hand.Count(id => id != source && DiscardableFor(extra, id, playerId, source)) < extra.Discard) return false;
         int life = LifeToPay(extra, playerId);
-        if (life > player.Life || (life > 0 && player.CantLoseLifeTurn == State.TurnNumber)) return false; // rule 119.8
+        if (life > player.Life || (life > 0 && player.CantLoseLifeNow(State.TurnNumber))) return false; // rule 119.8
         if (ExilableFromGraveyard(player, extra, source).Count < extra.ExileFromGraveyard) return false;
         if (extra.ReturnExiledWithSource is { } exiledFilter && !ExiledWith(State.GetCard(source), exiledFilter).Any()) return false;
         if (extra.Sacrifice is { } filter && SacrificeCandidates(playerId, filter, source).Count < extra.SacrificeCount) return false;
@@ -1680,6 +1680,7 @@ public sealed partial class Game
         foreach (var type in plainUsed) player.ManaPool.Remove(type);
         foreach (var unit in specialUsed) player.ManaPool.RemoveSpecial(unit);
         if (phyrexianLife > 0) ChangeLife(player.Id, -phyrexianLife);
+        ManaPoolChanged();
         return new ManaPaid(taps, specialUsed);
     }
 
@@ -1737,6 +1738,13 @@ public sealed partial class Game
         if (option is { AddsCounter: { } addsCounter }) PutCounters(source, addsCounter, 1, player.Id);
         if (option is { ExileSelf: true }) await MoveCardAsync(source.Id, Zone.Exile);
         if (option is { CopyNextInstantOrSorcery: true }) State.CopyNextInstantOrSorcery.Add((player.Id, State.TurnNumber, 1));
+        ManaPoolChanged();
+    }
+
+    /// <summary>Something counts unspent mana ("gets +1/+1 for each unspent mana you have"): its value follows the pool.</summary>
+    private void ManaPoolChanged()
+    {
+        if (State.Battlefield.Select(State.GetCard).Any(c => c.Definition.UnspentManaBecomesColorless)) RecomputeContinuousEffects();
     }
 
     /// <summary>
@@ -1825,8 +1833,12 @@ public sealed partial class Game
         }
         if (card.Definition.Undaunted) total += State.OpponentsOf(caster).Count(); // "costs {1} less to cast for each opponent"
         if (ExiledWithPlayRightFor(card, caster) is { } exiledWithRight) total += exiledWithRight.CostLess; // "spells you cast this way cost {2} less"
-        foreach (var permanent in State.PermanentsControlledBy(caster))
-            foreach (var reduction in permanent.Abilities.OfType<SpellCostReduction>())
+        // Eminence (a commander's ability that also works from the command zone).
+        var reducers = State.PermanentsControlledBy(caster).Select(p => (Card: p, Abilities: (IEnumerable<AbilityDefinition>)p.Abilities))
+            .Concat(State.GetPlayer(caster).Command.Select(State.GetCard).Where(c => c.Id != card.Id)
+                .Select(c => (Card: c, Abilities: c.Definition.Abilities.Where(x => x is SpellCostReduction { FromCommandZone: true }))));
+        foreach (var (permanent, abilities) in reducers)
+            foreach (var reduction in abilities.OfType<SpellCostReduction>())
                 if (ReductionApplies(reduction, permanent, card, caster))
                     total += reduction.AmountFrom is { } from
                         ? Math.Max(0, Eval(from, new EffectContext(caster, permanent, Array.Empty<ChosenTarget>(), Array.Empty<bool>())))

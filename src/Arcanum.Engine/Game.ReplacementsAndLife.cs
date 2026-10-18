@@ -26,7 +26,7 @@ public sealed partial class Game
     /// </summary>
     private async Task GainLifeAsync(PlayerId player, int amount)
     {
-        if (amount <= 0 || State.GetPlayer(player).HasLost) return;
+        if (amount <= 0 || State.GetPlayer(player).HasLost || State.GetPlayer(player).LifeCantChange) return;
         if (State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && (c.Definition.PlayersCantGainLife || (c.Definition.OpponentsCantGainLife && c.Controller != player)))) return;
         var applied = new HashSet<string>();
         bool loss = false;

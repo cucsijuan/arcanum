@@ -80,6 +80,7 @@ public sealed partial class Game
         State.LastingEffects.RemoveAll(e => e.UntilTurnOf == active.Id);
         State.AttackTaxesUntilNextTurn.RemoveAll(t => t.Protected == active.Id);
         active.Protected = false; // "protection from everything until your next turn"
+        active.LifeCantChange = false; // "their life total can't change" until their next turn
         foreach (var card in State.Cards.Values)
         {
             card.ActivatedThisTurn.Clear();
@@ -248,8 +249,16 @@ public sealed partial class Game
             var kept = new List<Mana.ManaType>();
             if (Has(player.Id, Cards.Replacements.KeepGreenMana)) kept.Add(Mana.ManaType.Green);
             if (Has(player.Id, Cards.Replacements.KeepRedMana)) kept.Add(Mana.ManaType.Red);
+            // "If you would lose unspent mana, that mana becomes colorless instead."
+            if (State.PermanentsControlledBy(player.Id).Any(c => c.HasTextAbilities && c.Definition.UnspentManaBecomesColorless))
+            {
+                if (step == Step.Cleanup) player.ManaPool.Clear(endOfTurn: true, keep: new[] { Mana.ManaType.White, Mana.ManaType.Blue, Mana.ManaType.Black, Mana.ManaType.Red, Mana.ManaType.Green, Mana.ManaType.Colorless });
+                player.ManaPool.MakeColorless();
+                continue;
+            }
             player.ManaPool.Clear(endOfTurn: step == Step.Cleanup, keep: kept.Count > 0 ? kept : null);
         }
+        ManaPoolChanged();
     }
 
     private async Task CleanupAsync()

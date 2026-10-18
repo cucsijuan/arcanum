@@ -215,6 +215,9 @@ public sealed record SpellCostReduction(ObjectFilter Spells, int Amount) : Abili
 
     /// <summary>Those spells can also be cast as though they had flash.</summary>
     public bool GrantsFlash { get; init; }
+
+    /// <summary>Eminence: it also works while its card is in the command zone.</summary>
+    public bool FromCommandZone { get; init; }
 }
 
 public enum TriggerEvent
@@ -264,6 +267,8 @@ public enum TriggerEvent
     YourBeginCombat,
     /// <summary>"Whenever you attack" (one or more creatures you control attack).</summary>
     YouAttack,
+    /// <summary>"Whenever one or more [filter] you control attack": once per declaration with any matching attacker (amount: how many).</summary>
+    YouAttackWithMatching,
     /// <summary>"Whenever an opponent casts a [filter] spell" (the filter's controller is ignored).</summary>
     OpponentCastsSpell,
     /// <summary>"Whenever a [filter] creature attacks" (another creature, usually one you control).</summary>

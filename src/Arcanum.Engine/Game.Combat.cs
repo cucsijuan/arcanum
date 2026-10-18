@@ -121,7 +121,7 @@ public sealed partial class Game
             var card = State.GetCard(id);
             if ((card.Definition.AttacksEachCombat && card.HasTextAbilities) || card.Has(Keyword.AttacksEachCombat)) requirements.Add(new AttackRequirement(id, AttackRequirementKind.Attacks));
             // Each goad: "attacks each combat if able and attacks a player other than [the goader] if able" (701.15b-c).
-            foreach (var goader in State.Goads.Where(g => g.Card == id && g.Version == card.Version).Select(g => g.Goader).Concat(card.StaticGoaders).Distinct())
+            foreach (var goader in State.Goads.Concat(State.GoadsForever).Where(g => g.Card == id && g.Version == card.Version).Select(g => g.Goader).Concat(card.StaticGoaders).Distinct())
             {
                 requirements.Add(new AttackRequirement(id, AttackRequirementKind.Attacks));
                 requirements.Add(new AttackRequirement(id, AttackRequirementKind.AttacksPlayerOtherThan, goader));
@@ -133,7 +133,9 @@ public sealed partial class Game
         }
         return new AttackRequest(possible, defenders)
         {
-            Planeswalkers = defenders.SelectMany(d => State.PermanentsControlledBy(d).Where(p => p.Is(CardType.Planeswalker)).Select(p => new AttackablePlaneswalker(p.Id, d))).ToList(),
+            Planeswalkers = defenders.SelectMany(d => State.PermanentsControlledBy(d).Where(p => p.Is(CardType.Planeswalker)
+                    && !State.PlaneswalkerAttackBans.Any(b => b.Attacker == active && b.Protected == d && b.Turn == State.TurnNumber && p.HasSubtype(b.Subtype)))
+                .Select(p => new AttackablePlaneswalker(p.Id, d))).ToList(),
             Forbidden = possible.SelectMany(id => defenders
                     .Where(d => AttackForbidden(State.GetCard(id), d) || AttackForbiddenWithPlaneswalkers(State.GetCard(id), d))
                     .Select(d => new AttackForbidden(id, d, AttackForbiddenWithPlaneswalkers(State.GetCard(id), d))))
@@ -473,7 +475,8 @@ public sealed partial class Game
     private void ChangeLife(PlayerId playerId, int delta)
     {
         var player = State.GetPlayer(playerId);
-        if (delta < 0 && player.CantLoseLifeTurn == State.TurnNumber) return; // "you can't lose life this turn"
+        if (delta < 0 && player.CantLoseLifeNow(State.TurnNumber)) return; // "you can't lose life this turn"
+        if (player.LifeCantChange) return; // "their life total can't change"
         int old = player.Life;
         player.Life += delta;
         Emit(new LifeChanged(playerId, old, player.Life));

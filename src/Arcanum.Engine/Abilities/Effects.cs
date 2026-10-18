@@ -500,7 +500,14 @@ public sealed record DestroyOneAtRandom(Subject Among) : Effect;
 public sealed record DamageCantBePreventedThisTurn : Effect;
 
 /// <summary>"Goad target creature" (rule 701.15): it attacks each combat if able, and a player other than the goader if able, until the goader's next turn.</summary>
-public sealed record Goad(Subject What) : Effect;
+public sealed record Goad(Subject What) : Effect
+{
+    /// <summary>"They're goaded for the rest of the game" (not only until the goader's next turn).</summary>
+    public bool ForRestOfGame { get; init; }
+}
+
+/// <summary>"For each of those permanents, choose a different opponent. Each opponent gains control of the permanent for which they were chosen."</summary>
+public sealed record EachToADifferentOpponent(Subject What) : Effect;
 
 /// <summary>"Gains protection from the card type of your choice until end of turn".</summary>
 public sealed record ProtectionFromChosenType(Subject What) : Effect;
@@ -1016,6 +1023,12 @@ public sealed record CastFromGraveyardNow(ObjectFilter Filter) : Effect
 
     /// <summary>Only among cards milled by this effect ("from among them").</summary>
     public bool FromMilled { get; init; }
+
+    /// <summary>"For each player, you may cast a card that player milled this way": one cast among each owner's cards.</summary>
+    public bool PerPlayer { get; init; }
+
+    /// <summary>The spell goes wherever it would (no "if it would be put into a graveyard, exile it instead").</summary>
+    public bool NoExile { get; init; }
 }
 
 /// <summary>Prevent all damage the subject would deal, for as long as the source remains on the battlefield.</summary>
@@ -1179,6 +1192,12 @@ public sealed record NextSpellUncounterable : Effect;
 
 /// <summary>"The 'legend rule' doesn't apply to permanents you control this turn."</summary>
 public sealed record NoLegendRuleThisTurn : Effect;
+
+/// <summary>"Creatures [that player] controls can't attack [Jaces] you control this turn."</summary>
+public sealed record CantAttackYourPlaneswalkersThisTurn(Subject Who, string Subtype) : Effect;
+
+/// <summary>"Until that player's next turn, they gain protection from everything and their life total can't change."</summary>
+public sealed record ProtectionAndLifeLockUntilTheirTurn(Subject Who) : Effect;
 
 /// <summary>"Until end of turn, whenever you tap a Mountain for mana, add an additional {R}."</summary>
 public sealed record MountainsAddExtraRedThisTurn : Effect;

@@ -178,6 +178,8 @@ public enum QuantityKind
     PlaneswalkerTypesAmongYours,
     /// <summary>Colors among permanents the controller controls that match <see cref="Quantity.Filter"/> ("each color among other artifacts you control").</summary>
     ColorsAmongYourMatching,
+    /// <summary>The unspent mana in the controller's mana pool.</summary>
+    UnspentMana,
     /// <summary>Opponents who discarded fewer than <see cref="Quantity.Value"/> cards matching the filter this way.</summary>
     OpponentsWhoDiscardedFewer,
     /// <summary>Colors among permanents the controller controls (W, U, B, R, G: 0 to 5).</summary>
