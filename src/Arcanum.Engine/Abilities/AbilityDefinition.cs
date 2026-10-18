@@ -139,6 +139,9 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>With <see cref="FromHand"/>: exiling this card from the hand face down is part of the cost instead (foretell, rule 702.143a).</summary>
     public bool ExileFaceDown { get; init; }
 
+    /// <summary>With <see cref="FromHand"/>: "Exile this card from your hand" is the cost (face up), instead of discarding it.</summary>
+    public bool ExileFromHand { get; init; }
+
     /// <summary>{S} symbols: each paid with one mana from a snow source (rule 107.4h).</summary>
     public int SnowMana { get; init; }
 

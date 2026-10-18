@@ -16,7 +16,7 @@ public sealed partial class Game
         return State.PermanentsControlledBy(player).Sum(card =>
         {
             var cost = card.Definition.ManaCost;
-            return cost.Pips.Count(types.Contains) + cost.Hybrid.Count(h => types.Contains(h.First) || types.Contains(h.Second));
+            return cost.Pips.Count(types.Contains) + cost.MonoHybrid.Count(types.Contains) + cost.Hybrid.Count(h => types.Contains(h.First) || types.Contains(h.Second));
         });
     }
 

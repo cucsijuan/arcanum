@@ -1453,7 +1453,7 @@ public static partial class CardScriptParser
         bool tap = false, sacrifice = false, fromGraveyard = false;
         int discard = 0, life = 0, removeCounters = 0;
         var removeKind = CounterKind.PlusOnePlusOne;
-        bool exileSelf = false, returnToHand = false, tapGranter = false, lifeFromCommanderColors = false, ninjutsu = false, discardX = false, discardThis = false;
+        bool exileSelf = false, returnToHand = false, tapGranter = false, lifeFromCommanderColors = false, ninjutsu = false, discardX = false, discardThis = false, exileFromHand = false;
         ObjectFilter? returnPermanent = null;
         int? loyalty = null;
         bool loyaltyX = false;
@@ -1476,6 +1476,7 @@ public static partial class CardScriptParser
             else if (lower == "fromgraveyard") fromGraveyard = true;
             else if (lower == "discard") discard = 1;
             else if (lower == "discardthis") discardThis = true; // "Discard this card": activated from the hand
+            else if (lower == "exilefromhand") { discardThis = true; exileFromHand = true; } // "Exile this card from your hand"
             else if (lower == "discard:x") discardX = true;
             else if (lower.StartsWith("discard:")) discard = int.Parse(lower[8..]);
             else if (lower == "life:commandercolors") lifeFromCommanderColors = true;
@@ -1556,7 +1557,7 @@ public static partial class CardScriptParser
         return new AbilityCost(mana, tap, sacrifice)
         {
             Extra = extra, FromGraveyard = fromGraveyard, RemoveCounters = removeCounters, RemoveCounterKind = removeKind, ExileSelf = exileSelf, Ninjutsu = ninjutsu, DiscardX = discardX,
-            Loyalty = loyalty, LoyaltyX = loyaltyX, FromHand = discardThis,
+            Loyalty = loyalty, LoyaltyX = loyaltyX, FromHand = discardThis, ExileFromHand = exileFromHand,
             AddCounters = addCounters, AddCounterKind = addKind, ReturnSelfToHand = returnToHand, TapGranter = tapGranter, SnowMana = snow,
         };
     }
@@ -2015,6 +2016,9 @@ public static partial class CardScriptParser
         if (Flag("nextSpellUncounterable")) return new NextSpellUncounterable();
         if (Flag("noLegendRuleThisTurn")) return new NoLegendRuleThisTurn();
         if (Flag("mountainsAddExtraRedThisTurn")) return new MountainsAddExtraRedThisTurn();
+        if (e.TryGetProperty("castCopiesOfExiledFree", out _)) return new CastCopiesOfExiledFree(Int("castCopiesOfExiledFree"));
+        if (Value("grantManaUntilCastFromExile") is { } gmc)
+            return new GrantManaUntilCastFromExile(gmc, ManaCost.Parse(Str("mana") ?? "{C}").Pips.Distinct().ToList(), ManaCost.Parse(Str("mana") ?? "{C}").ManaValue);
         if (e.TryGetProperty("surveilledToHand", out var sth))
             return new SurveilledToHand(ParseFilter(sth, ControllerFilter.Any), e.TryGetProperty("maxManaValue", out var sthm) ? ParseQuantity(sthm) : null);
         if (Flag("exileTopMayCast")) return new ExileTopMayCast(e.TryGetProperty("ifNot", out var etn) ? EffectList(etn) : Array.Empty<Effect>());

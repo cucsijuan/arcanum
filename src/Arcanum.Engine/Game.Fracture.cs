@@ -19,6 +19,8 @@ public sealed partial class Game
         QuantityKind.TargetPlayerMilledThisTurn => ctx.TargetAt(0)?.Player is { } p ? State.GetPlayer(p).MilledThisTurn : 0,
         QuantityKind.DrawnThisWay => ctx.Results.Drawn,
         QuantityKind.Domain => BasicLandTypeNames.Count(type => State.PermanentsControlledBy(ctx.Controller).Any(c => c.Is(CardType.Land) && c.HasSubtype(type))),
+        QuantityKind.ColorsAmongYourMatching => State.PermanentsControlledBy(ctx.Controller)
+            .Where(c => q.Filter is null || Matches(q.Filter, c, c.Controller, ctx.Source, ctx.Controller)).SelectMany(c => c.Colors).Distinct().Count(),
         QuantityKind.DiscardedThisTurn => State.GetPlayer(ctx.Controller).CardsDiscardedThisTurn,
         QuantityKind.PlaneswalkerTypesAmongYours => State.PermanentsControlledBy(ctx.Controller).Where(c => c.Is(CardType.Planeswalker))
             .SelectMany(c => c.CurrentSubtypes).Distinct(StringComparer.OrdinalIgnoreCase).Count(),

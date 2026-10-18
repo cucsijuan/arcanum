@@ -127,7 +127,8 @@ public sealed partial class Game
             int xPart = c.X * c.Way.Mana.XCount;
             int reduced = genericBefore - cost.Generic;
             int xLeft = Math.Max(0, xPart - Math.Max(0, reduced - (genericBefore - xPart)));
-            cost = new ManaCost(cost.Generic - xLeft, cost.Pips.Concat(Enumerable.Repeat(xType, xLeft)).ToList(), cost.Hybrid) { Phyrexian = cost.Phyrexian };
+            cost = new ManaCost(cost.Generic - xLeft, cost.Pips.Concat(Enumerable.Repeat(xType, xLeft)).ToList(), cost.Hybrid)
+            { Phyrexian = cost.Phyrexian, MonoHybrid = cost.MonoHybrid, PendingGenericReduction = cost.PendingGenericReduction };
         }
         // "Mana of any type can be spent" to pay it.
         bool anyType = (card.Is(CardType.Creature) && Has(caster, Replacements.CreaturesFromLibraryTop))
@@ -135,7 +136,8 @@ public sealed partial class Game
                        || (card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType))
                        || (card.Zone == Zone.Graveyard && State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType))
                        || ExiledCastableWith(card, caster) is not null;
-        if (anyType) return new ManaCost(cost.ManaValue - cost.Phyrexian.Count, Array.Empty<ManaType>()) { Phyrexian = cost.Phyrexian };
+        // With mana of any type, a {2/W} is best paid as one mana of its color (any mana does).
+        if (anyType) return new ManaCost(Math.Max(0, cost.ManaValue - cost.Phyrexian.Count - cost.MonoHybrid.Count - cost.PendingGenericReduction), Array.Empty<ManaType>()) { Phyrexian = cost.Phyrexian };
         return BlackLifeRule(caster, cost);
     }
 

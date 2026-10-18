@@ -729,7 +729,7 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - A spell's additional cost that sacrifices or discards
   remembers the cards for `sacrificedPower`, `sacrificedToughness` and discard quantities.
 
-## Combat, costs, filters and targeting (Magic Origins)
+## Combat, costs, filters and targeting
 
 - **Block tax** (card-wide): `"blockTax": "{1}"` with `"blockTaxIf": "attacking"` ("as long as this creature is attacking,
   creatures can't block unless their controller pays {1} for each of those creatures"). Every permanent whose condition holds adds
@@ -1109,6 +1109,23 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - **Casting restriction**: `"castOnlyIf": condition` ("you can't cast this spell unless …"). It is checked for the caster, however the
   spell is cast.
 - **Keyword Exhaust**: the script marks the activated ability `"onlyOnce": true`, so it can be activated once in the game.
+- **Card-wide rules** (booleans on the card, in effect while it is on the battlefield):
+  `"enteringArtifactsAndCreaturesDontTrigger"` (artifacts and creatures entering don't cause any ability to trigger),
+  `"yourInstantsAndSorceriesHaveSplitSecond"`, `"noSpellsOrAbilitiesDuringCombat"` (no spells or non-mana abilities during combat, for
+  everyone), `"yourPlaneswalkersSurviveZeroLoyalty"` (your planeswalkers with 0 loyalty stay on the battlefield), and
+  `"artifactTokensBecomeDragons"` (artifact tokens you create are created as Dragons instead).
+- **Free casting from hand**: `"castFromHandFreeUpTo"` takes a quantity. You may cast spells from your hand with mana value up to that
+  quantity without paying their mana costs. The quantity is read from the permanent that grants it.
+- **Casting exiled cards**: `"castExiledWithThisIf"` takes a condition. While it holds, you may cast the cards exiled with this card, and
+  mana of any type can be spent to cast them.
+- **Behold as a cost**: `"behold": filter` in an additional cost (`"additionalCost"`) or in a `mayPay` cost. The spell or ability can
+  only be paid for while a matching object can be beholded.
+- **Behold on entering**: `chooseOnEnter: "beholdOrTapped"` (you may behold a matching card as this enters, or it enters tapped); the
+  filter is `"enterReveal"`.
+- **Cost reduction per target counter**: `"costReductionPerTargetCounter": true` on an activated ability reduces its generic cost by the
+  most +1/+1 counters on any of its targets (used with equip).
+- **Keywords for planeswalkers and attackers**: `OneAttackerAtMost` ("No more than one creature can attack this planeswalker each combat")
+  and `AssignsNegativePowerAsPositive` ("Assigns combat damage as though its negative power were positive"), in `keywords`.
 
 ### Triggers
 - `youScryOrSurveil`: whenever you scry or surveil. One event for either.
@@ -1122,6 +1139,9 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `eachUpkeep` with `"fromGraveyard": true`: the ability works from its owner's graveyard, at the beginning of each upkeep.
 - Cast triggers: `"spellTargetsOpponent": true` (the spell may target an opponent instead of a matching object, with `"spellTargets"`), and
   `"orSpellTargets": true` (the spell matches the filter or targets what `"spellTargets"` describes).
+- `creatureBlocks`: whenever a creature blocks, any creature. The triggered player is the blocker's controller.
+- `opponentsDealtCombatDamageDuringYourTurn`: during your turn, when an opponent is dealt combat damage. The triggered player is you.
+- `creaturesAttackOpponent` with `"playersOnly": true`: only attacks on a player trigger it, not attacks on a planeswalker.
 
 ### Conditions
 - `"scriedOrSurveilledThisTurn"`: you have scried or surveilled this turn.
@@ -1130,6 +1150,9 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `"activatedLoyaltyAbilityThisTurn"`: you have activated a loyalty ability this turn.
 - `"dealtCombatDamage"` (on the source): the source has dealt combat damage since it entered. Use `{ "not": "dealtCombatDamage" }` for
   "hasn't dealt combat damage yet".
+- `"triggeredAttacksPlayerAlone"`: the creature that triggered the ability attacks a player (not a planeswalker), and no other creature
+  attacks that player.
+- `"libraryEmpty"`: your library has no cards.
 
 ### Quantities
 - `{ "divide": quantity, "by": 3 }`: the quantity divided by N, rounded down ("for every three …").
@@ -1137,12 +1160,17 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   this spell or ability), `"domain"` (basic land types among lands you control), `"distinctPowers"` (different powers among your creatures).
 - Objects: `{ "loyalty": "target" }` (loyalty counters on the first target), `{ "greatestManaValueInGraveyard": filter }` (the greatest
   mana value among matching cards in your graveyard, 0 if none), `{ "milledThisTurn": "target" }` (cards put into the first target
-  player's graveyard from their library this turn).
+  player's graveyard from their library this turn); `{ "opponentsWhoDiscardedFewer": n, "filter": f }` (the number of opponents who discarded fewer
+  than n cards this turn; only cards matching `"filter"` are counted, and `"filter"` is optional).
+- Strings also: `"discardedThisTurn"` (cards you discarded this turn) and `"planeswalkerTypes"` (the different subtypes among
+  planeswalkers you control).
 
 ### Filters
 - `"preparedSpell": true`: a copy of a prepare spell cast from exile (see the preparation cards above).
 - `"greatestManaValueAmongTheirs"` compares among the permanents of the filter's types, so with creatures and planeswalkers listed it
   compares both. Without types, it compares creatures.
+- `"remembered": true`: only the object the source has remembered matches (same card and version).
+- `"toughnessAbovePower": true`: the object's toughness is greater than its power.
 
 ### Effects
 - `{ "loyaltyAtInstantSpeed": "Seer" }`: until end of turn, you may activate the loyalty abilities of planeswalkers you control with
@@ -1150,3 +1178,14 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `{ "removeUpToCounters": 3, "from": subject }`: you choose how many counters of each kind to remove from each permanent of the
   subject (`"from"` defaults to `"target"`), at most 3 in all.
 - `{ "nextSpellUncounterable": true }`: the next spell you cast this turn can't be countered.
+- `{ "noLegendRuleThisTurn": true }`: the legend rule doesn't apply to your legendary permanents this turn.
+- `{ "mountainsAddExtraRedThisTurn": true }`: until end of turn, whenever you tap a Mountain for mana, add an additional {R}.
+- `{ "surveilledToHand": filter, "maxManaValue": quantity }`: each card the spell or ability surveilled that is still in a graveyard and
+  matches the filter goes to your hand, if its mana value is at most the quantity (`"maxManaValue"` is optional).
+- `{ "exileTopMayCast": true, "ifNot": [effects] }`: exile the top card of your library. You may cast it (not a land). If you don't, or
+  you can't, the `"ifNot"` effects happen. They also happen if your library is empty.
+- `{ "ownerMayPutOnTop": subject, "ifTop": [effects] }`: the owner of each battlefield permanent the subject matches chooses to put it on
+  top of its library or on the bottom. The `"ifTop"` effects happen when it goes on top.
+- `{ "discardChosen": subject, "exileInstead": true }`: you choose a card from the subject's hand, and it is exiled instead of discarded.
+- `{ "emblem": "name", "untilYourNextTurn": true }`: the emblem's ability lasts until your next turn, not only until end of turn.
+- `copy` with `"each": true`: makes a token copy of each object the subject matches, instead of one copy.

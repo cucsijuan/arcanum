@@ -453,6 +453,9 @@ public sealed partial class Game
             if (cost.Pips[i] != ManaType.Colorless) units.Add((1, i, new[] { cost.Pips[i].ToSymbol().ToString() }));
         for (int i = 0; i < cost.Hybrid.Count; i++)
             units.Add((2, i, new[] { cost.Hybrid[i].First, cost.Hybrid[i].Second }.Where(t => t != ManaType.Colorless).Select(t => t.ToSymbol().ToString()).ToArray()));
+        // A {2/W}: a creature of its color pays it (its colored half).
+        for (int i = 0; i < cost.MonoHybrid.Count; i++)
+            if (cost.MonoHybrid[i] != ManaType.Colorless) units.Add((3, i, new[] { cost.MonoHybrid[i].ToSymbol().ToString() }));
         var owner = Enumerable.Repeat(-1, units.Count).ToArray();
         var paysUnit = Enumerable.Repeat(-1, creatures.Count).ToArray();
         bool Augment(int creature, bool[] seen)
@@ -484,6 +487,8 @@ public sealed partial class Game
             cost.Hybrid.Where((_, i) => !Paid(2, i)).ToList(), cost.XCount)
         {
             Phyrexian = cost.Phyrexian.Where((_, i) => !Paid(0, i)).ToList(),
+            MonoHybrid = cost.MonoHybrid.Where((_, i) => !Paid(3, i)).ToList(),
+            PendingGenericReduction = cost.PendingGenericReduction,
         };
         // Keep the creatures in the order given (their colored symbol first is irrelevant to the player).
         return (rest, creatures.Where(used.Contains).ToList());

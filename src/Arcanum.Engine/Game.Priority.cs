@@ -629,7 +629,7 @@ public sealed partial class Game
         var cost = ability.Cost.Mana;
         // "Mana of any type can be spent to activate [this]'s abilities": colored symbols can be paid with any mana.
         if ((source.Replaces & Replacements.AnyManaForItsAbilities) != 0 && cost.Pips.Count > 0)
-            cost = new ManaCost(cost.Generic + cost.Pips.Count + cost.Hybrid.Count, Array.Empty<ManaType>(), null, cost.XCount);
+            cost = new ManaCost(Math.Max(0, cost.Generic + cost.Pips.Count + cost.Hybrid.Count + cost.MonoHybrid.Count - cost.PendingGenericReduction), Array.Empty<ManaType>(), null, cost.XCount);
         // "Activated abilities of Foods you control cost {1} less", "Equip abilities you activate cost {1} less".
         foreach (var reducer in State.PermanentsControlledBy(player))
             foreach (var r in reducer.Abilities.OfType<AbilityCostReduction>())
@@ -1014,8 +1014,11 @@ public sealed partial class Game
         foreach (var n in nextCreature) State.NextCreatureSpell.Remove(n);
         if (nextCreature.Any(n => n.Haste)) haste = true;
         var preparedOn = card.PreparedSpellOf;
+        (CardId, int)? castFromExileAs = card.Zone == Zone.Exile ? (card.Id, card.Version) : null;
         await MoveCardAsync(cardId, Zone.Stack, controller: player.Id);
         if (preparedOn is { } preparedCreature && card.Zone == Zone.Stack) CastPreparedSpell(card, preparedCreature);
+        // "… until this card is cast from exile": those effects end now.
+        if (castFromExileAs is { } exiledAs && card.Zone == Zone.Stack && State.LastingEffects.RemoveAll(e => e.UntilCastFromExile == exiledAs) > 0) RecomputeContinuousEffects();
         // "If that spell would be put into your graveyard, exile it instead" (the permission it was cast with).
         if (exiledInsteadOfGraveyard && card.Zone == Zone.Stack) State.ExileInsteadOfGraveyard.Add((card.Id, card.Version));
         if (nextCreature.Sum(n => n.Counters) is var nextCounters and > 0)
@@ -1192,6 +1195,7 @@ public sealed partial class Game
             RemoveCountersFrom(source, ability.Cost.RemoveCounterKind, ability.Cost.RemoveCounters);
         if (ability.Cost.ExileSelf) await MoveCardAsync(source.Id, Zone.Exile);
         if (ability.Cost.FromHand && ability.Cost.ExileFaceDown) await ForetellAsync(player.Id, source);
+        else if (ability.Cost.FromHand && ability.Cost.ExileFromHand) await MoveCardAsync(source.Id, Zone.Exile);
         else if (ability.Cost.FromHand)
         {
             await DiscardCardAsync(player.Id, source.Id, null); // cycling: discard this card

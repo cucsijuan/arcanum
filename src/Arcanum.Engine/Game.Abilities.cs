@@ -832,7 +832,7 @@ public sealed partial class Game
             QuantityKind.Sum => q.Parts?.Sum(part => Eval(part, ctx)) ?? 0,
             QuantityKind.TargetLoyalty or QuantityKind.DistinctPowersAmongYourCreatures or QuantityKind.GreatestManaValueInYourGraveyard
                 or QuantityKind.TargetPlayerMilledThisTurn or QuantityKind.DrawnThisWay or QuantityKind.Domain or QuantityKind.DiscardedThisTurn
-                or QuantityKind.PlaneswalkerTypesAmongYours or QuantityKind.OpponentsWhoDiscardedFewer => EvalFracture(q, ctx),
+                or QuantityKind.PlaneswalkerTypesAmongYours or QuantityKind.OpponentsWhoDiscardedFewer or QuantityKind.ColorsAmongYourMatching => EvalFracture(q, ctx),
             QuantityKind.Difference or QuantityKind.Per or QuantityKind.CardTypesInAllGraveyards or QuantityKind.ColorsAmongYourPermanents or QuantityKind.CounterKindsOnSource or QuantityKind.ExiledManaValue
                 or QuantityKind.PlayersWhoLostLifeThisTurn or QuantityKind.OpponentsCombatDamagedBySourceOrDragon or QuantityKind.GreatestPowerAsCast or QuantityKind.TriggeredCounterCount or QuantityKind.SacrificedManaValue
                 or QuantityKind.EnteredThisTurnCount or QuantityKind.OpponentsControlling
@@ -3654,6 +3654,45 @@ public sealed partial class Game
                     if (bp.Prepared) Prepare(card);
                     else Unprepare(card, announce: true);
                 break;
+            case GrantManaUntilCastFromExile gm:
+                if (ctx.Source.Zone != Zone.Exile) break;
+                foreach (var land in CardsFor(gm.What, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
+                    State.LastingEffects.Add(new UntilEndOfTurnEffect(land.Id, land.Version, 0, 0, Array.Empty<Keyword>())
+                    {
+                        GrantsMana = gm.Types, GrantsManaAmount = gm.Amount, UntilCastFromExile = (ctx.Source.Id, ctx.Source.Version), Timestamp = NewTimestamp(),
+                    });
+                // "You may cast this card for as long as it remains exiled."
+                State.PlayableFromExile.Add(new PlayableFromExile(ctx.Source.Id, ctx.Source.Version, ctx.Source.Owner, int.MaxValue) { CastOnly = true });
+                RecomputeContinuousEffects();
+                break;
+            case CastCopiesOfExiledFree cc:
+            {
+                int left = cc.MaxTotalManaValue;
+                var unused = ctx.Results.Exiled.Select(State.GetCard).Where(c => c.Zone == Zone.Exile && !c.Is(CardType.Land)).ToList();
+                while (true)
+                {
+                    var options = unused.Where(c => ManaValueOf(c) <= left && HasLegalTargets(CastingTargets(c.Definition), ctx.Controller, c.Id)).ToList();
+                    if (options.Count == 0) break;
+                    var pick = await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller), new CardChoiceRequest(
+                        $"{ctx.Source.Name}: cast a copy of one of these without paying its mana cost ({left} mana value left), or none", ctx.Source.Id,
+                        options.Select(c => ViewBuilder.Card(State, c.Id, ctx.Controller)).ToList(), 0, 1, CardChoicePurpose.Keep));
+                    if (pick.Count != 1 || options.All(c => c.Id != pick[0])) break;
+                    var original = State.GetCard(pick[0]);
+                    unused.Remove(original);
+                    left -= ManaValueOf(original);
+                    var id = new CardId(State.Cards.Keys.Max(k => k.Value) + 1);
+                    var copy = new Card(id, original.Definition with { IsToken = true }, ctx.Controller) { Zone = Zone.Exile };
+                    State.Cards.Add(id, copy);
+                    State.GetPlayer(ctx.Controller).Exile.Add(id);
+                    await CastNowWithoutPayingAsync(State.GetPlayer(ctx.Controller), id);
+                    if (copy.Zone == Zone.Exile)
+                    {
+                        State.GetPlayer(ctx.Controller).Exile.Remove(id); // a copy not cast ceases to exist (rule 704.5e)
+                        copy.CeasedToExist = true;
+                    }
+                }
+                break;
+            }
             case MountainsAddExtraRedThisTurn:
                 State.GetPlayer(ctx.Controller).ExtraRedFromMountainsThisTurn++;
                 RecomputeContinuousEffects();
@@ -5348,7 +5387,7 @@ public sealed partial class Game
                 changes.Add((effect.Timestamp, State.GetCard(effect.Card), card =>
                 {
                     if (effect.LosesAbilities) LoseAllAbilities(card);
-                    if (effect.GrantsMana is { } mana) card.GrantedManaOptions.Add(new ManaOption(mana));
+                    if (effect.GrantsMana is { } mana) card.GrantedManaOptions.Add(new ManaOption(mana, effect.GrantsManaAmount));
                     card.GrantedKeywords.UnionWith(effect.Keywords);
                     card.LostKeywords.ExceptWith(effect.Keywords);
                     if (effect.LoseKeywords is { } lost) { card.LostKeywords.UnionWith(lost); card.GrantedKeywords.ExceptWith(lost); }

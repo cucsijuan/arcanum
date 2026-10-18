@@ -40,6 +40,19 @@ public class CostAndTokenVocabularyTests
         Assert.Equal(new[] { ManaType.Red, ManaType.Green }, token.TapForMana);
     }
 
+    [Fact]
+    public void MonocoloredHybridSymbolsAreTwoGenericOrOneColored()
+    {
+        var cost = ManaCost.Parse("{2/W}{2/U}");
+        Assert.Equal(4, cost.ManaValue);
+        Assert.Equal("{2/W}{2/U}", cost.ToString());
+        var variants = cost.Variants().Select(v => v.ToString()).ToHashSet();
+        Assert.Equal(new HashSet<string> { "{W}{U}", "{2}{U}", "{2}{W}", "{4}" }, variants);
+        // A generic reduction applies to the generic mana it is paid with.
+        Assert.Contains("{1}{U}", cost.MinusGeneric(1).Variants().Select(v => v.ToString()));
+        Assert.Equal(new[] { "U", "W" }.OrderBy(c => c), cost.Colors().OrderBy(c => c));
+    }
+
     private static readonly CardDefinition Tax = new()
     {
         Name = "Tolling Bell", Types = CardType.Artifact,

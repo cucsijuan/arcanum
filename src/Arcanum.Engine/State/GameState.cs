@@ -54,6 +54,12 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
     /// <summary>A mana ability it has from this effect (layer 6), as the mana types it can add.</summary>
     public IReadOnlyList<Mana.ManaType>? GrantsMana { get; init; }
 
+    /// <summary>How much mana the granted ability adds ("{T}: Add {C}{C}").</summary>
+    public int GrantsManaAmount { get; init; } = 1;
+
+    /// <summary>Ends when this card (id, version, in exile) is cast ("until this card is cast from exile").</summary>
+    public (CardId Card, int Version)? UntilCastFromExile { get; init; }
+
     /// <summary>Ends when this permanent (id, version) leaves the battlefield ("for as long as this Saga remains").</summary>
     public (CardId Card, int Version)? WhileSource { get; init; }
 

@@ -32,6 +32,15 @@ public sealed record ManaCost
     /// <summary>Phyrexian symbols ({B/P}): each paid with its type of mana or with 2 life (rule 107.4f).</summary>
     public IReadOnlyList<ManaType> Phyrexian { get; init; } = Array.Empty<ManaType>();
 
+    /// <summary>Monocolored hybrid symbols ({2/W}): each paid with one mana of its color or two generic mana; mana value 2 each (rule 107.4e, 202.3f).</summary>
+    public IReadOnlyList<ManaType> MonoHybrid { get; init; } = Array.Empty<ManaType>();
+
+    /// <summary>
+    /// Generic reductions not yet applied because the cost has too little generic mana until its monocolored hybrid symbols are paid
+    /// as generic mana: applied to each variant (rule 601.2f, reductions apply to the total cost).
+    /// </summary>
+    public int PendingGenericReduction { get; init; }
+
     public ManaCost(int generic, IReadOnlyList<ManaType> pips, IReadOnlyList<HybridPip>? hybrid = null, int xCount = 0)
     {
         if (generic < 0) throw new ArgumentOutOfRangeException(nameof(generic));
@@ -42,22 +51,30 @@ public sealed record ManaCost
     }
 
     /// <summary>Mana value (X counts as 0 outside the stack, rule 202.3e).</summary>
-    public int ManaValue => Generic + Pips.Count + Hybrid.Count + Phyrexian.Count;
+    public int ManaValue => Generic + Pips.Count + Hybrid.Count + Phyrexian.Count + 2 * MonoHybrid.Count;
 
-    public bool IsConcrete => Hybrid.Count == 0 && XCount == 0 && Phyrexian.Count == 0;
+    public bool IsConcrete => Hybrid.Count == 0 && XCount == 0 && Phyrexian.Count == 0 && MonoHybrid.Count == 0;
 
     /// <summary>This cost plus extra generic mana (cost increases such as commander tax).</summary>
-    public ManaCost PlusGeneric(int extra) => extra == 0 ? this : new ManaCost(Generic + extra, Pips, Hybrid, XCount) { Phyrexian = Phyrexian };
+    public ManaCost PlusGeneric(int extra) => extra == 0 ? this : new ManaCost(Generic + extra, Pips, Hybrid, XCount) { Phyrexian = Phyrexian, MonoHybrid = MonoHybrid, PendingGenericReduction = PendingGenericReduction };
 
     /// <summary>This cost with up to <paramref name="amount"/> less generic mana (cost reductions).</summary>
-    public ManaCost MinusGeneric(int amount) => amount <= 0 ? this : new ManaCost(Math.Max(0, Generic - amount), Pips, Hybrid, XCount) { Phyrexian = Phyrexian };
+    public ManaCost MinusGeneric(int amount) => amount <= 0 ? this : new ManaCost(Math.Max(0, Generic - amount), Pips, Hybrid, XCount)
+    {
+        Phyrexian = Phyrexian, MonoHybrid = MonoHybrid,
+        PendingGenericReduction = PendingGenericReduction + (MonoHybrid.Count > 0 ? Math.Max(0, amount - Generic) : 0),
+    };
 
     /// <summary>The sum of two costs (a spell's cost plus kicker, for example).</summary>
     public ManaCost Plus(ManaCost other) =>
-        new(Generic + other.Generic, Pips.Concat(other.Pips).ToList(), Hybrid.Concat(other.Hybrid).ToList(), XCount + other.XCount) { Phyrexian = Phyrexian.Concat(other.Phyrexian).ToList() };
+        new(Generic + other.Generic, Pips.Concat(other.Pips).ToList(), Hybrid.Concat(other.Hybrid).ToList(), XCount + other.XCount)
+        {
+            Phyrexian = Phyrexian.Concat(other.Phyrexian).ToList(), MonoHybrid = MonoHybrid.Concat(other.MonoHybrid).ToList(),
+            PendingGenericReduction = PendingGenericReduction + other.PendingGenericReduction,
+        };
 
     /// <summary>The cost with each {X} replaced by <paramref name="x"/> generic mana.</summary>
-    public ManaCost WithX(int x) => XCount == 0 ? this : new ManaCost(Generic + x * XCount, Pips, Hybrid) { Phyrexian = Phyrexian };
+    public ManaCost WithX(int x) => XCount == 0 ? this : new ManaCost(Generic + x * XCount, Pips, Hybrid) { Phyrexian = Phyrexian, MonoHybrid = MonoHybrid, PendingGenericReduction = PendingGenericReduction };
 
     /// <summary>
     /// The ways to pay its Phyrexian symbols (rule 107.4f): each set of them paid with life instead of mana, as the mana cost left (its other
@@ -77,34 +94,41 @@ public sealed record ManaCost
             for (int i = 0; i < Phyrexian.Count; i++)
                 if ((mask & (1 << i)) == 0) pips.Add(Phyrexian[i]);
                 else life += 2;
-            yield return (new ManaCost(Generic, pips, Hybrid, XCount), life);
+            yield return (new ManaCost(Generic, pips, Hybrid, XCount) { MonoHybrid = MonoHybrid, PendingGenericReduction = PendingGenericReduction }, life);
         }
     }
 
     /// <summary>The cost with its colored pips of <paramref name="type"/> made Phyrexian ("you may pay 2 life rather than pay that mana").</summary>
     public ManaCost PhyrexianFor(ManaType type) =>
-        Pips.Contains(type) ? new ManaCost(Generic, Pips.Where(p => p != type).ToList(), Hybrid, XCount) { Phyrexian = Phyrexian.Concat(Pips.Where(p => p == type)).ToList() } : this;
+        Pips.Contains(type) ? new ManaCost(Generic, Pips.Where(p => p != type).ToList(), Hybrid, XCount)
+        { Phyrexian = Phyrexian.Concat(Pips.Where(p => p == type)).ToList(), MonoHybrid = MonoHybrid, PendingGenericReduction = PendingGenericReduction } : this;
 
     /// <summary>Every concrete cost this one can be paid as, choosing a half of each hybrid symbol.</summary>
     public IEnumerable<ManaCost> Variants()
     {
-        if (Hybrid.Count == 0)
+        if (Hybrid.Count == 0 && MonoHybrid.Count == 0)
         {
             yield return Phyrexian.Count == 0 ? this : new ManaCost(Generic, Pips.Concat(Phyrexian).ToList(), null, XCount);
             yield break;
         }
         for (int mask = 0; mask < 1 << Hybrid.Count; mask++)
-        {
-            var pips = Pips.Concat(Phyrexian).ToList();
-            for (int i = 0; i < Hybrid.Count; i++) pips.Add((mask & (1 << i)) == 0 ? Hybrid[i].First : Hybrid[i].Second);
-            yield return new ManaCost(Generic, pips, null, XCount);
-        }
+            for (int mono = 0; mono < 1 << MonoHybrid.Count; mono++)
+            {
+                var pips = Pips.Concat(Phyrexian).ToList();
+                for (int i = 0; i < Hybrid.Count; i++) pips.Add((mask & (1 << i)) == 0 ? Hybrid[i].First : Hybrid[i].Second);
+                int generic = Generic;
+                // A {2/W} paid with its color, or with two generic mana.
+                for (int i = 0; i < MonoHybrid.Count; i++)
+                    if ((mono & (1 << i)) == 0) pips.Add(MonoHybrid[i]);
+                    else generic += 2;
+                yield return new ManaCost(Math.Max(0, generic - PendingGenericReduction), pips, null, XCount);
+            }
     }
 
     /// <summary>Colors of the colored symbols (W, U, B, R, G), in WUBRG order.</summary>
     public IReadOnlyList<string> Colors()
     {
-        var types = Pips.Concat(Phyrexian).Concat(Hybrid.SelectMany(h => new[] { h.First, h.Second })).Where(t => t != ManaType.Colorless).ToHashSet();
+        var types = Pips.Concat(Phyrexian).Concat(MonoHybrid).Concat(Hybrid.SelectMany(h => new[] { h.First, h.Second })).Where(t => t != ManaType.Colorless).ToHashSet();
         return new[] { ManaType.White, ManaType.Blue, ManaType.Black, ManaType.Red, ManaType.Green }
             .Where(types.Contains).Select(t => t.ToSymbol().ToString()).ToList();
     }
@@ -116,6 +140,7 @@ public sealed record ManaCost
         var pips = new List<ManaType>();
         var hybrid = new List<HybridPip>();
         var phyrexian = new List<ManaType>();
+        var mono = new List<ManaType>();
         int i = 0;
         while (i < text.Length)
         {
@@ -128,13 +153,14 @@ public sealed record ManaCost
             else if (symbol is "X" or "x") x++;
             else if (symbol.Length == 1 && ManaTypeExtensions.TryParse(symbol[0], out var type)) pips.Add(type);
             else if (symbol.Length == 3 && symbol[1] == '/' && symbol[2] is 'P' or 'p' && ManaTypeExtensions.TryParse(symbol[0], out var ph)) phyrexian.Add(ph);
+            else if (symbol.Length == 3 && symbol[0] == '2' && symbol[1] == '/' && ManaTypeExtensions.TryParse(symbol[2], out var mh)) mono.Add(mh);
             else if (symbol.Length == 3 && symbol[1] == '/' && ManaTypeExtensions.TryParse(symbol[0], out var a) && ManaTypeExtensions.TryParse(symbol[2], out var b)
                      && symbol[2] != 'P' && symbol[2] != 'p')
                 hybrid.Add(new HybridPip(a, b));
             else throw new FormatException($"Unsupported mana symbol '{{{symbol}}}' in '{text}'.");
             i = close + 1;
         }
-        return new ManaCost(generic, pips, hybrid, x) { Phyrexian = phyrexian };
+        return new ManaCost(generic, pips, hybrid, x) { Phyrexian = phyrexian, MonoHybrid = mono };
     }
 
     public override string ToString()
@@ -144,6 +170,7 @@ public sealed record ManaCost
         for (int i = 0; i < XCount; i++) sb.Append("{X}");
         if (Generic > 0) sb.Append('{').Append(Generic).Append('}');
         foreach (var h in Hybrid) sb.Append(h);
+        foreach (var m in MonoHybrid) sb.Append("{2/").Append(m.ToSymbol()).Append('}');
         foreach (var p in Phyrexian) sb.Append('{').Append(p.ToSymbol()).Append("/P}");
         foreach (var pip in Pips) sb.Append('{').Append(pip.ToSymbol()).Append('}');
         return sb.ToString();
@@ -151,7 +178,7 @@ public sealed record ManaCost
 
     public bool Equals(ManaCost? other) =>
         other is not null && Generic == other.Generic && XCount == other.XCount && Pips.SequenceEqual(other.Pips) && Hybrid.SequenceEqual(other.Hybrid)
-        && Phyrexian.SequenceEqual(other.Phyrexian);
+        && Phyrexian.SequenceEqual(other.Phyrexian) && MonoHybrid.SequenceEqual(other.MonoHybrid) && PendingGenericReduction == other.PendingGenericReduction;
 
     public override int GetHashCode()
     {

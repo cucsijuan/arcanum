@@ -1183,6 +1183,15 @@ public sealed record NoLegendRuleThisTurn : Effect;
 /// <summary>"Until end of turn, whenever you tap a Mountain for mana, add an additional {R}."</summary>
 public sealed record MountainsAddExtraRedThisTurn : Effect;
 
+/// <summary>
+/// "Copy those cards [exiled this way]. You may cast any number of spells with total mana value N or less from among the copies without paying
+/// their mana costs" (copies not cast cease to exist).
+/// </summary>
+public sealed record CastCopiesOfExiledFree(int MaxTotalManaValue) : Effect;
+
+/// <summary>"[Target land] gains '{T}: Add {C}{C}' until this card is cast from exile. You may cast this card for as long as it remains exiled."</summary>
+public sealed record GrantManaUntilCastFromExile(Subject What, IReadOnlyList<Mana.ManaType> Types, int Amount) : Effect;
+
 /// <summary>"Put [matching cards] you put into your graveyard this way (surveil) into your hand" (with mana value at most <see cref="MaxManaValue"/>).</summary>
 public sealed record SurveilledToHand(ObjectFilter Filter, Quantity? MaxManaValue) : Effect;
 
