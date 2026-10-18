@@ -42,13 +42,13 @@ public static partial class CardFactory
         "Meld", // the script's "meld" effect, with "meldsWith" and "meldInto"
         "Boast", "Spectacle", "Overload", "Revolt", "Eminence", "Commander ninjutsu", "Ninjutsu", // scripted (activation limits, alternative costs)
         "Renown", // its trigger and the renowned designation come from the script (rule 702.112)
-        "Support", "Adapt", "Monstrosity", "Explore", "Connive", // keyword actions: the script's effects (targets for support)
+        "Support", "Adapt", "Monstrosity", "Explore", "Connive", "Incubate", // keyword actions: the script's effects (targets for support)
         "Prepared", "Empower Jace", // the script's "entersPrepared", "becomePrepared" and "empowerJace"
         "Exhaust", // an activated ability the script marks "onlyOnce" (rule 702.177: activate each exhaust ability only once)
         "Blitz", // the script's "blitz" cost (with "blitzExtra", "blitzFromGraveyard")
         // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
         "Persist", "Undying", "Dethrone", "Hideaway", "Heal", "Aftermath",
-        "Devour", "Multikicker", "Replicate", "Escalate", "Improvise", "Myriad", "Squad", "Dash", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
+        "Impending", "Devour", "Multikicker", "Replicate", "Escalate", "Improvise", "Myriad", "Squad", "Dash", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
         // Pairing rules for two commanders (deck construction); "Partner with" also has a trigger derived below.
         "Partner", "Partner with", "Friends forever", "Choose a background", "Doctor's companion",
     };
@@ -312,7 +312,9 @@ public static partial class CardFactory
         CardDefinition Pictured(CardDefinition token)
         {
             if (token.ImageKey is not null && !replace) return token;
-            var candidates = tokens.Where(t => t.Name.Equals(token.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+            // A double-faced token is listed by both faces' names ("Incubator // Phyrexian").
+            var candidates = tokens.Where(t => t.Name.Equals(token.Name, StringComparison.OrdinalIgnoreCase)
+                                               || t.Name.StartsWith(token.Name + " // ", StringComparison.OrdinalIgnoreCase)).ToList();
             var match = candidates.Count <= 1 ? candidates.FirstOrDefault() : candidates.FirstOrDefault(t => MatchesStats(t, token)) ?? candidates[0];
             return match is null ? token : token with { ImageKey = match.Id };
         }
@@ -321,6 +323,7 @@ public static partial class CardFactory
             Engine.Abilities.CreateTokens create => create with { Token = Pictured(create.Token) },
             Engine.Abilities.Amass amass => amass with { Token = Pictured(amass.Token) },
             Engine.Abilities.Recruit recruit => recruit with { Token = Pictured(recruit.Token) },
+            Engine.Abilities.Incubate incubate => incubate with { Token = Pictured(incubate.Token) },
             _ => effect,
         });
     }

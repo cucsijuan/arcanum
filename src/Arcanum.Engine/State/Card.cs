@@ -345,6 +345,9 @@ public sealed class Card
     /// </summary>
     public long Timestamp { get; internal set; }
 
+    /// <summary>Its impending cost was paid as it was cast (rule 702.176a).</summary>
+    public bool Impended { get; set; }
+
     /// <summary>What the card was like the last time it was on the battlefield (rule 608.2h, last known information).</summary>
     public LastKnown? LastKnownInfo { get; internal set; }
 
@@ -694,6 +697,7 @@ public sealed class Card
         GrantedSubtypes.Clear();
         GrantedAbilities.Clear();
         Timestamp = 0;
+        Impended = false;
         TypesOverride = null;
         GrantedTypes = 0;
         SubtypesOverride = null;

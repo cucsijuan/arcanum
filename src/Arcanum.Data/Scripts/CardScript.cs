@@ -49,6 +49,7 @@ public sealed record CardScript(
     public CounterKind? CountersPerChosenType { get; init; }
     public Quantity? EntersWithCountersFrom { get; init; }
     public CardType HexproofFromTypes { get; init; }
+    public bool ProtectionFromChosenCardType { get; init; }
     public IReadOnlyList<CostOption>? AdditionalCostOptions { get; init; }
     public AlternativeCost? AlternativeCost { get; init; }
     public ManaCost? FlashExtraCost { get; init; }
@@ -92,6 +93,8 @@ public sealed record CardScript(
     public bool SkipYourDrawStep { get; init; }
     public int? YourMaximumHandSize { get; init; }
     public int Vanishing { get; init; }
+    public Engine.Mana.ManaCost? Impending { get; init; }
+    public int ImpendingCount { get; init; }
     public int CopyGetsVanishingIfNone { get; init; }
     public Quantity? CastFromHandFreeUpTo { get; init; }
     public Condition? CastExiledWithThisIf { get; init; }
@@ -159,6 +162,7 @@ public sealed record CardScript(
     public bool TripleManaFromPermanents { get; init; }
     public bool ExtraManaFromNonlandPermanents { get; init; }
     public bool ExtraTriggersFromAttacking { get; init; }
+    public string? ExtraTriggersFromAttackingOption { get; init; }
     public ManaCost? Overload { get; init; }
     public SpellAbility? Overloaded { get; init; }
     public ManaCost? Ninjutsu { get; init; }
@@ -219,6 +223,7 @@ public sealed record CardScript(
         CountersPerChosenType = CountersPerChosenType,
         EntersWithCountersFrom = EntersWithCountersFrom ?? d.EntersWithCountersFrom,
         HexproofFromTypes = HexproofFromTypes,
+        ProtectionFromChosenCardType = ProtectionFromChosenCardType,
         AdditionalCostOptions = AdditionalCostOptions,
         AlternativeCost = AlternativeCost,
         FlashExtraCost = FlashExtraCost,
@@ -253,6 +258,8 @@ public sealed record CardScript(
         SkipYourDrawStep = SkipYourDrawStep,
         YourMaximumHandSize = YourMaximumHandSize ?? d.YourMaximumHandSize,
         Vanishing = Vanishing > 0 ? Vanishing : d.Vanishing,
+        Impending = Impending ?? d.Impending,
+        ImpendingCount = Impending is not null ? ImpendingCount : d.ImpendingCount,
         CopyGetsVanishingIfNone = CopyGetsVanishingIfNone,
         CastFromHandFreeUpTo = CastFromHandFreeUpTo ?? d.CastFromHandFreeUpTo,
         CastExiledWithThisIf = CastExiledWithThisIf ?? d.CastExiledWithThisIf,
@@ -317,6 +324,7 @@ public sealed record CardScript(
         TripleManaFromPermanents = TripleManaFromPermanents || d.TripleManaFromPermanents,
         ExtraManaFromNonlandPermanents = ExtraManaFromNonlandPermanents || d.ExtraManaFromNonlandPermanents,
         ExtraTriggersFromAttacking = ExtraTriggersFromAttacking || d.ExtraTriggersFromAttacking,
+        ExtraTriggersFromAttackingOption = ExtraTriggersFromAttackingOption ?? d.ExtraTriggersFromAttackingOption,
         Overload = Overload ?? d.Overload,
         Overloaded = Overloaded ?? d.Overloaded,
         Ninjutsu = Ninjutsu ?? d.Ninjutsu,
@@ -484,6 +492,7 @@ public static partial class CardScriptParser
             EnterCounterKind = root.TryGetProperty("entersCounterOn", out var eck) ? ParseCounterKind(eck.GetProperty("kind").GetString()) : CounterKind.PlusOnePlusOne,
             CountersPerChosenType = root.TryGetProperty("countersPerChosenType", out var cpt) ? ParseCounterKind(cpt.GetString()) : null,
             HexproofFromTypes = root.TryGetProperty("hexproofFromTypes", out var hft) ? ParseTypes(hft) : 0,
+            ProtectionFromChosenCardType = Bool(root, "protectionFromChosenCardType"),
             AdditionalCostOptions = root.TryGetProperty("additionalCostOptions", out var aco)
                 ? aco.EnumerateArray().Select(o => new CostOption(o.TryGetProperty("mana", out var om) ? ManaCost.Parse(om.GetString()!) : null,
                     o.TryGetProperty("cost", out var oc) ? ParseExtraCost(oc) : null)).ToList()
@@ -556,6 +565,9 @@ public static partial class CardScriptParser
             SkipYourDrawStep = Bool(root, "skipYourDrawStep"),
             YourMaximumHandSize = root.TryGetProperty("yourMaximumHandSize", out var ymh) ? ymh.GetInt32() : null,
             Vanishing = root.TryGetProperty("vanishing", out var van) ? van.GetInt32() : 0,
+            // "Impending 4—{2}{W}{W}": { "count": 4, "cost": "{2}{W}{W}" }.
+            Impending = root.TryGetProperty("impending", out var imp) ? ManaCost.Parse(imp.GetProperty("cost").GetString()!) : null,
+            ImpendingCount = root.TryGetProperty("impending", out var imc) ? imc.GetProperty("count").GetInt32() : 0,
             CopyGetsVanishingIfNone = root.TryGetProperty("copyGetsVanishingIfNone", out var cgv) ? cgv.GetInt32() : 0,
             CastFromHandFreeUpTo = root.TryGetProperty("castFromHandFreeUpTo", out var cfh) ? ParseQuantity(cfh) : null,
             CastExiledWithThisIf = root.TryGetProperty("castExiledWithThisIf", out var cew) ? ParseCondition(cew) : null,
@@ -624,6 +636,7 @@ public static partial class CardScriptParser
             TripleManaFromPermanents = Bool(root, "tripleManaFromPermanents"),
             ExtraManaFromNonlandPermanents = Bool(root, "extraManaFromNonlandPermanents"),
             ExtraTriggersFromAttacking = Bool(root, "extraTriggersFromAttacking"),
+            ExtraTriggersFromAttackingOption = root.TryGetProperty("extraTriggersFromAttackingOption", out var etao) ? etao.GetString() : null,
             Overload = root.TryGetProperty("overload", out var ovl) ? ManaCost.Parse(ovl.GetString()!) : null,
             Overloaded = root.TryGetProperty("overloaded", out var ovd) ? WithModes(ovd, new SpellAbility { Targets = Targets(ovd), Effects = Effects(ovd), Text = Text(ovd) }) : null,
             Ninjutsu = root.TryGetProperty("ninjutsu", out var nj) ? ManaCost.Parse(nj.GetString()!) : root.TryGetProperty("commanderNinjutsu", out var cnj) ? ManaCost.Parse(cnj.GetString()!) : null,
@@ -1001,6 +1014,7 @@ public static partial class CardScriptParser
         "leaves" => TriggerEvent.LeavesBattlefield,
         "ringBearerChosen" => TriggerEvent.RingBearerChosen,
         "tokenCreated" => TriggerEvent.TokenCreated,
+        "tokensCreated" => TriggerEvent.TokensCreated,
         "youAttackPlayer" => TriggerEvent.YouAttackPlayer,
         "dealsDamageTo" => TriggerEvent.DealsDamageToCreature,
         "excessNoncombatDamage" => TriggerEvent.ExcessNoncombatDamage,
@@ -1117,6 +1131,7 @@ public static partial class CardScriptParser
         {
             MaxPowerTriggered = Bool(f, "maxPowerTriggered"),
             Historic = Bool(f, "historic"),
+            HasToxic = Bool(f, "hasToxic"),
             PowerIsX = Bool(f, "powerIsX"),
             DamagedThisTurnByYourSpider = Bool(f, "damagedThisTurnByYourSpider"),
             LesserPowerThanSource = Bool(f, "lesserPower"),
@@ -1217,6 +1232,7 @@ public static partial class CardScriptParser
                 "greatestPower" => new YouControlGreatestPower(),
                 "triggeredPlayerAttackedYou" => new TriggeredPlayerAttackedYou(),
                 "triggeredPlayerIsYou" => new TriggeredPlayerIsYou(),
+                "triggeredInGraveyard" => new TriggeredInGraveyard(),
                 "monarch" => new IsMonarch(),
                 "attachedControllerIsMonarch" => new AttachedControllerIsMonarch(),
                 "creatureCardExiledWithThis" => new CreatureCardExiledWithSource(),
@@ -1344,6 +1360,8 @@ public static partial class CardScriptParser
                     "votesReceived" => new Quantity(0, QuantityKind.VotesReceived),
                     "opponentsVotedOtherwise" => new Quantity(0, QuantityKind.OpponentsVotedOtherwise),
                     "affectedHandSize" => new Quantity(0, QuantityKind.AffectedHandSize),
+                    "greatestOpponentPoison" => new Quantity(0, QuantityKind.GreatestOpponentPoison),
+                    "affectedLifeLostThisTurn" => new Quantity(0, QuantityKind.AffectedLifeLostThisTurn),
                     "triggerAmount" => new Quantity(0, QuantityKind.TriggerAmount),
                     "-triggerAmount" => new Quantity(0, QuantityKind.TriggerAmount, Multiplier: -1),
                     "triggeredPower" => new Quantity(0, QuantityKind.TriggeredPower),
@@ -1620,7 +1638,7 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("gainLife", out _)) return new GainLife(Qty("gainLife"), Subj("who", "you"));
         if (e.TryGetProperty("loseLife", out _)) return new LoseLife(Qty("loseLife"), Subj("who", "you"));
         if (e.TryGetProperty("mill", out _)) return new Mill(Qty("mill"), Subj("who", "you")) { RepeatWhileNonlandShareColor = Flag("repeatIfShareColor") };
-        if (Value("destroy") is { } destroy) return new Destroy(destroy) { CantBeRegenerated = Flag("noRegeneration") };
+        if (Value("destroy") is { } destroy) return new Destroy(destroy) { CantBeRegenerated = Flag("noRegeneration"), ExceptCreatedThisWay = Flag("exceptCreated") };
         if (Value("exile") is { } exile)
             return new ExileIt(exile) { WithCounter = Str("withCounter") is { } wc ? ParseCounterKind(wc) : null, ExceptCreatedThisWay = Flag("exceptCreated"), Linked = Flag("linked") };
         if (Flag("loseGame")) return new LoseGame { Who = e.TryGetProperty("who", out var lgw) ? ParseSubject(lgw) : null };
@@ -1703,6 +1721,7 @@ public static partial class CardScriptParser
                 Tapped = Flag("tapped"),
                 RestToGraveyard = Str("rest") == "graveyard",
                 RestShuffled = Str("rest") == "shuffle",
+                RestBottomAnyOrder = Str("rest") == "bottomAnyOrder",
                 RevealerPuts = Flag("revealerPuts"),
                 From = e.TryGetProperty("from", out var ruf) ? ParseSubject(ruf) : null,
                 CastFree = Flag("castFree"),
@@ -1724,6 +1743,9 @@ public static partial class CardScriptParser
         if (Value("copySpell") is { } copySpell)
             return new CopySpell(copySpell, e.TryGetProperty("count", out var csc) ? ParseQuantity(csc) : 1) { NotLegendary = Flag("notLegendary"), EachOtherPlayer = Flag("eachOtherPlayer"), CounteredThisWay = Flag("counteredThisWay") };
         if (e.TryGetProperty("addManaAnyColor", out _)) return new AddManaOfAnyColor(Int("addManaAnyColor")) { Who = e.TryGetProperty("who", out var amw) ? ParseSubject(amw) : null };
+        if (e.TryGetProperty("incubate", out _)) return new Incubate(Qty("incubate"));
+        if (e.TryGetProperty("putExiledWithThisIntoGraveyard", out _))
+            return new PutExiledWithThisIntoGraveyard(EffectList(e.GetProperty("ifLand")), EffectList(e.GetProperty("ifNonland")));
         if (Flag("returnExiledWithThis")) return new ReturnExiledWithThis { Count = e.TryGetProperty("count", out var rewc) ? rewc.GetInt32() : 0 };
         if (e.TryGetProperty("searchExileWithThis", out var sew))
             return new SearchAndExileWithThis(ParseFilter(sew, ControllerFilter.Any)) { Count = e.TryGetProperty("count", out var sewc) ? sewc.GetInt32() : 1 };
@@ -1945,6 +1967,9 @@ public static partial class CardScriptParser
         if (Flag("opponentsCantCastSpells")) return new OpponentsCantCastSpellsThisTurn();
         if (Flag("opponentsCantCastNoncreatureSpells")) return new OpponentsCantCastSpellsThisTurn { NoncreatureOnly = true };
         if (Value("exchangeControl") is { } exc) return new ExchangeControl(exc, Subj("with", "target2"));
+        if (e.TryGetProperty("atTheNextEndStep", out var ane))
+            return new AtNextUpkeep(new TriggeredAbility { Trigger = TriggerEvent.NextUpkeep, Targets = Targets(ane), Effects = Effects(ane), Text = Text(ane) },
+                e.TryGetProperty("amount", out var anea2) ? ParseQuantity(anea2) : null) { EndStep = true };
         if (e.TryGetProperty("atNextUpkeep", out var anu))
             return new AtNextUpkeep(new TriggeredAbility { Trigger = TriggerEvent.NextUpkeep, Targets = Targets(anu), Effects = Effects(anu), Text = Text(anu) },
                 e.TryGetProperty("amount", out var anua) ? ParseQuantity(anua) : null)
@@ -2182,6 +2207,7 @@ public static partial class CardScriptParser
             // "This token's power and toughness are each equal to …": a characteristic-defining ability (rule 604.3).
             PowerFrom = t.TryGetProperty("powerFrom", out var tpf) ? ParseQuantity(tpf) : null,
             ToughnessFrom = t.TryGetProperty("toughnessFrom", out var ttf) ? ParseQuantity(ttf) : null,
+            Toxic = t.TryGetProperty("toxic", out var ttx) ? ttx.GetInt32() : 0,
         };
     }
 }

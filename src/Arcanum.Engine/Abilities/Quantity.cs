@@ -135,6 +135,10 @@ public enum QuantityKind
     HalfRoundedUp,
     /// <summary>The mana value of the object a static ability is being applied to ("equal to its mana value").</summary>
     AffectedManaValue,
+    /// <summary>The life the player being affected (or else the controller) lost this turn.</summary>
+    AffectedLifeLostThisTurn,
+    /// <summary>The most poison counters an opponent has ("as long as an opponent has three or more poison counters").</summary>
+    GreatestOpponentPoison,
     /// <summary>The power / toughness of the card a reveal found, as it was when revealed ("equal to its power").</summary>
     FoundPower,
     FoundToughness,

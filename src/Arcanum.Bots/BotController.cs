@@ -88,6 +88,10 @@ public sealed class BotController : IPlayerController
     public Task<int> ChooseOptionAsync(GameView view, OptionRequest request)
     {
         if (request.Kind == OptionKind.CardName) return Task.FromResult(ChooseCardName(view, request));
+        // A card type to have protection from: creatures are what attacks and blocks.
+        if (request.Prompt.Contains("card type", StringComparison.OrdinalIgnoreCase)
+            && request.Options.ToList().FindIndex(o => o.Equals("Creature", StringComparison.OrdinalIgnoreCase)) is var creature and >= 0)
+            return Task.FromResult(creature);
         var mine = view.Battlefield.Where(c => c.Controller == _me).Concat(view.Self.Hand).Where(c => !c.IsHidden).ToList();
         int best = 0, bestScore = -1;
         for (int i = 0; i < request.Options.Count; i++)

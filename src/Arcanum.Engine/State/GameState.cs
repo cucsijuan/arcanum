@@ -379,6 +379,9 @@ public sealed partial class GameState
     /// <summary>Delayed abilities that trigger at the beginning of the next upkeep.</summary>
     public List<DelayedTrigger> AtNextUpkeep { get; } = new();
 
+    /// <summary>Delayed abilities that trigger at the beginning of the next end step, with an amount worked out when they were made.</summary>
+    public List<DelayedTrigger> AtNextEndStepTriggers { get; } = new();
+
     /// <summary>Delayed abilities "at the beginning of that player's next declare attackers step", with that player.</summary>
     public List<(DelayedTrigger Trigger, PlayerId Whose)> AtNextDeclareAttackers { get; } = new();
 

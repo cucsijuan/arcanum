@@ -180,6 +180,9 @@ public sealed partial class Game
         }
     }
 
+    /// <summary>The impending spell resolving now: it enters with its impending counters (rule 702.176a).</summary>
+    private CardId? _enteringImpended;
+
     /// <summary>Moves a card, asking for the choices its zone-change replacement effects need (rule 616.1).</summary>
     /// <param name="transformed">"Put onto the battlefield transformed": a double-faced card enters with its back face up (rule 712.14a).</param>
     private async Task MoveCardAsync(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
@@ -474,6 +477,7 @@ public sealed partial class Game
         card.Kicked = kicked;
         card.TimesKicked = to == Zone.Battlefield ? timesKicked : 0;
         card.SquadPaid = to == Zone.Battlefield ? squadPaid : 0;
+        card.Impended = to == Zone.Battlefield && _enteringImpended == id;
         card.CastFromHand = castFromHand;
         card.WasCast = wasCast;
         card.Zone = to;

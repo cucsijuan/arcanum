@@ -383,6 +383,8 @@ public enum TriggerEvent
     RingBearerChosen,
     /// <summary>"Whenever you create a token" (once per token).</summary>
     TokenCreated,
+    /// <summary>"Whenever you create one or more [filter] tokens": once for each effect that creates them.</summary>
+    TokensCreated,
     /// <summary>"Whenever one or more [filter] you control attack a player": once per player attacked (amount: how many).</summary>
     YouAttackPlayer,
     /// <summary>"Whenever this creature deals damage to a [filter]" (subject: the creature dealt damage).</summary>
@@ -618,6 +620,9 @@ public sealed record ObjectFilter(
 
     /// <summary>Historic: an artifact, a legendary or a Saga (rule 700.6).</summary>
     public bool Historic { get; init; }
+
+    /// <summary>"Creatures with toxic".</summary>
+    public bool HasToxic { get; init; }
 
     /// <summary>Power exactly X ("target creature with power X").</summary>
     public bool PowerIsX { get; init; }

@@ -26,6 +26,9 @@ public sealed record Destroy(Subject What) : Effect
 {
     /// <summary>"They can't be regenerated."</summary>
     public bool CantBeRegenerated { get; init; }
+
+    /// <summary>"Destroy all other creatures": skip tokens this spell or ability created.</summary>
+    public bool ExceptCreatedThisWay { get; init; }
 }
 public sealed record ExileIt(Subject What) : Effect
 {
@@ -106,7 +109,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
-    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell }
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect
@@ -716,6 +719,9 @@ public sealed record RevealUntil(ObjectFilter Filter, State.Zone To) : Effect
     /// <summary>"Then shuffles all other cards revealed this way into their library" (instead of the bottom in a random order).</summary>
     public bool RestShuffled { get; init; }
 
+    /// <summary>"The rest on the bottom of their library in any order" (instead of a random order).</summary>
+    public bool RestBottomAnyOrder { get; init; }
+
     /// <summary>"The player puts that card onto the battlefield": under the revealing player's control (not the ability's controller's).</summary>
     public bool RevealerPuts { get; init; }
 
@@ -753,6 +759,18 @@ public sealed record UntapUpTo(int Count, ObjectFilter Filter) : Effect;
 
 /// <summary>Give players poison counters.</summary>
 public sealed record AddPoison(int Count, Subject Who) : Effect;
+
+/// <summary>Incubate N (rule 701.53): <see cref="Token"/> is the Incubator token, with the picture of the card that incubates.</summary>
+public sealed record Incubate(Quantity Amount) : Effect
+{
+    public CardDefinition Token { get; init; } = PredefinedTokens.Incubator;
+}
+
+/// <summary>
+/// "Put a card exiled with this into its owner's graveyard. If it's a land card, [IfLand]. If it's a nonland card, [IfNonland]."
+/// The controller chooses the card among those this object exiled.
+/// </summary>
+public sealed record PutExiledWithThisIntoGraveyard(IReadOnlyList<Effect> IfLand, IReadOnlyList<Effect> IfNonland) : Effect;
 
 /// <summary>"End the turn" (rule 724).</summary>
 public sealed record EndTheTurn : Effect;
@@ -981,6 +999,9 @@ public sealed record AtNextUpkeep(TriggeredAbility Ability, Quantity? Amount = n
 
     /// <summary>The player the delayed ability will call "that player" ("its controller may draw …"), worked out now.</summary>
     public Subject? Player { get; init; }
+
+    /// <summary>"At the beginning of the next end step" instead of the next upkeep.</summary>
+    public bool EndStep { get; init; }
 }
 
 /// <summary>"Choose a creature type": the source remembers it (for "creatures of that type").</summary>

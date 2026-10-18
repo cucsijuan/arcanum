@@ -312,6 +312,7 @@ public sealed partial class Game
         if (State.DamagePreventions.Any(d => d.Card == source.Id && d.Version == source.Version)) return "its damage is prevented";
         if (targetPlayer is { } protectedPlayer && State.GetPlayer(protectedPlayer).Protected) return "protection"; // protection from everything
         if (targetPlayer is { } shieldedPlayer && PlayerProtectedFrom(shieldedPlayer, SourceController(source))) return "protection from opponents";
+        if (targetPlayer is { } typeShielded && PlayerProtectedFromSource(typeShielded, source)) return "protection"; // 702.16e
         if (targetCard is not null && ProtectedFrom(targetCard, source)) return "protection"; // 702.16e
         if (targetCard is not null && (targetCard.StaticDamagePrevention & (combat ? StaticDamagePrevention.Combat : StaticDamagePrevention.Noncombat)) != 0)
             return "a static ability";
@@ -401,6 +402,7 @@ public sealed partial class Game
             Emit(new DamageDealt(source.Id, null, player, amount, part.Combat));
             ChangeLife(player, -LifeLostToDamage(player, amount));
             if (part.Combat) RecordCommanderDamage(source, player, amount);
+            if (part.Combat && source.Definition.Toxic > 0) State.GetPlayer(player).Poison += source.Definition.Toxic; // rule 702.164c
             Lifelink();
             return;
         }

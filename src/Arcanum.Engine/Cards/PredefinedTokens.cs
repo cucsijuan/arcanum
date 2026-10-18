@@ -84,11 +84,64 @@ public static class PredefinedTokens
         IsToken = true,
     };
 
+    /// <summary>"A colorless Map artifact token with '{1}, {T}, Sacrifice this token: Target creature you control explores. Activate only as a sorcery.'"</summary>
+    public static readonly CardDefinition Map = new()
+    {
+        Name = "Map",
+        Types = CardType.Artifact,
+        Subtypes = new[] { "Map" },
+        Abilities = new AbilityDefinition[]
+        {
+            new ActivatedAbility
+            {
+                Cost = new AbilityCost(ManaCost.Parse("{1}"), Tap: true, SacrificeSelf: true),
+                Targets = new[] { new TargetSpec(TargetKind.Creature, ControllerFilter.You) },
+                Effects = new Effect[] { new Explore(Subject.TargetAt(0)) },
+                SorcerySpeed = true,
+                Text = "{1}, {T}, Sacrifice this token: Target creature you control explores. Activate only as a sorcery.",
+            },
+        },
+        OracleText = "{1}, {T}, Sacrifice this token: Target creature you control explores. Activate only as a sorcery.",
+        IsToken = true,
+    };
+
+    /// <summary>
+    /// The token incubate creates (rule 701.53a): "an Incubator token. It's an artifact with '{2}: Transform this artifact' and a back face
+    /// that's a 0/0 Phyrexian artifact creature".
+    /// </summary>
+    public static readonly CardDefinition Incubator = new()
+    {
+        Name = "Incubator",
+        Types = CardType.Artifact,
+        Subtypes = new[] { "Incubator" },
+        Abilities = new AbilityDefinition[]
+        {
+            new ActivatedAbility
+            {
+                Cost = new AbilityCost(ManaCost.Parse("{2}")),
+                Effects = new Effect[] { new Transform(Subject.Self) },
+                Text = "{2}: Transform this artifact.",
+            },
+        },
+        OracleText = "{2}: Transform this artifact.",
+        IsToken = true,
+        BackFace = new CardDefinition
+        {
+            Name = "Phyrexian",
+            Types = CardType.Artifact | CardType.Creature,
+            Subtypes = new[] { "Phyrexian" },
+            Power = 0,
+            Toughness = 0,
+            IsToken = true,
+        },
+    };
+
     public static CardDefinition? ByName(string name) => name.ToLowerInvariant() switch
     {
         "treasure" => Treasure,
         "food" => Food,
         "clue" => Clue,
+        "map" => Map,
         _ => null,
     };
 }

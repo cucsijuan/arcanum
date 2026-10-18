@@ -673,11 +673,12 @@ public sealed partial class Game
     private int ExtraTriggersFromAttack(Card source, TriggeredAbility ability, TriggerInfo? info)
     {
         if (source.Zone != Zone.Battlefield) return 0;
-        bool fromAttack = ability.Trigger is TriggerEvent.Attacks or TriggerEvent.CreatureAttacks or TriggerEvent.YouAttack or TriggerEvent.YouAttackPlayer
+        bool fromAttack = ability.Trigger is TriggerEvent.Attacks or TriggerEvent.CreatureAttacks or TriggerEvent.YouAttack or TriggerEvent.YouAttackPlayer or TriggerEvent.YouAttackWithMatching
                               or TriggerEvent.CreaturesAttackOpponent or TriggerEvent.PlayerAttacks or TriggerEvent.EquippedAttacks
                           || (ability.Trigger == TriggerEvent.AttacksOrBlocks && info?.Defender is not null);
         if (!fromAttack) return 0;
-        return State.PermanentsControlledBy(source.Controller).Count(c => c.HasTextAbilities && c.Definition.ExtraTriggersFromAttacking);
+        return State.PermanentsControlledBy(source.Controller).Count(c => c.HasTextAbilities && c.Definition.ExtraTriggersFromAttacking
+                                                                          && (c.Definition.ExtraTriggersFromAttackingOption is not { } option || c.ChosenOption == option));
     }
 
     /// <summary>A permanent of the caster lets it cast this top card of its library by paying life equal to its mana value.</summary>

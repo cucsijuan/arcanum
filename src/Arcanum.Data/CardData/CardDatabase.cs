@@ -252,6 +252,7 @@ public sealed class CardDatabase : ICardDatabase
                 Engine.Abilities.CreateTokens create => create.Token,
                 Engine.Abilities.Amass amass => amass.Token,
                 Engine.Abilities.Recruit recruit => recruit.Token,
+                Engine.Abilities.Incubate incubate => incubate.Token,
                 _ => null,
             })
             .OfType<CardDefinition>()

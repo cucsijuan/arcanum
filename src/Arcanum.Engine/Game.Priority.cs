@@ -167,6 +167,17 @@ public sealed partial class Game
                 RecomputeContinuousEffects();
                 continue;
             }
+            else if (card.Definition.ChooseOnEnter == EnterChoice.CardType)
+            {
+                // "As this enters, choose a card type."
+                var names = ChoosableCardTypes.Select(t => t.ToString()).ToList();
+                int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose a card type", id, names, OptionKind.Other));
+                Require(i >= 0 && i < names.Count, "Choose one of the card types.");
+                card.ChosenType = names[i];
+                Emit(new ChoiceMade(id, names[i].ToLowerInvariant()));
+                RecomputeContinuousEffects();
+                continue;
+            }
             else if (card.Definition.ChooseOnEnter == EnterChoice.Creature)
             {
                 // "As this Aura enters, choose a creature": any creature on the battlefield; the choice is remembered, not a target.
@@ -1058,6 +1069,7 @@ public sealed partial class Game
         {
             Ability = ability != CastingTargets(card.Definition) ? ability : null,
             X = x, Kicked = kicked, Flashback = flashback, GiftTo = giftTo, SacrificedForCost = costSacrificed, DiscardedForCost = costDiscarded, Division = division, KickCount = choices.KickCount, SquadCount = choices.SquadCount, Dashed = choices.Way.Kind == CastingWayKind.Dash, Blitzed = choices.Way.Kind == CastingWayKind.Blitz,
+            Impended = choices.Way.Kind == CastingWayKind.Impending,
         });
         Emit(new SpellCast(player.Id, cardId));
         foreach (var castThis in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.Trigger == TriggerEvent.CastThis))
@@ -1902,9 +1914,13 @@ public sealed partial class Game
                 int castVersion = card.Version;
                 // An Aura spell enters attached to the object it targeted (rule 303.4f).
                 var attachTo = card.Definition.EnchantTarget is not null ? item.Targets[0].Target.Card : null;
+                // Impending: it enters with N time counters (rule 702.176a).
+                _enteringImpended = spell.Impended && card.Types.IsPermanent() ? spell.Card : null;
                 await MoveCardAsync(spell.Card, card.Types.IsPermanent() ? Zone.Battlefield : discard, controller: spell.Controller, attachTo: attachTo,
                     kicked: spell.Kicked && card.Types.IsPermanent(), castFromHand: card.CastFromHand && card.Types.IsPermanent(),
-                    wasCast: card.Types.IsPermanent() && !card.Definition.IsToken, timesKicked: spell.KickCount, squadPaid: spell.SquadCount);
+                    wasCast: card.Types.IsPermanent() && !card.Definition.IsToken, timesKicked: spell.KickCount, squadPaid: spell.SquadCount,
+                    withCounters: _enteringImpended is not null ? new[] { (CounterKind.Time, card.Definition.ImpendingCount) } : null);
+                _enteringImpended = null;
                 if (card.Zone == Zone.Battlefield && spell.Dashed)
                 {
                     // Dash: it gains haste, and it returns to its owner's hand at the beginning of the next end step.

@@ -134,7 +134,7 @@ Numbers in effects can be `3`, `"X"`, `"-X"`, `"lifeGained"`, `"life"`, `"handSi
 | Counters | `{ "counters": 1, "what": "self" }` / `{ "counters": 1, "what": "target", "kind": "-1/-1" }` |
 | Attach this Aura/Equipment | `{ "attach": "target" }` |
 | Tokens | `{ "tokens": 2, "token": { "name": "Soldier", "types": "Creature — Soldier", "power": 1, "toughness": 1, "keywords": [], "colors": ["W"] } }` |
-| Predefined tokens | `{ "tokens": 1, "token": "Treasure" }` (also `"Food"`, `"Clue"`) |
+| Predefined tokens | `{ "tokens": 1, "token": "Treasure" }` (also `"Food"`, `"Clue"`, `"Map"`) |
 | Scry / surveil | `{ "scry": 2 }` / `{ "surveil": 1 }` |
 | Fight | `{ "fight": "target", "with": "target2" }` (or `"fight": "self"`) |
 | Discard (the player chooses) | `{ "discard": 1, "who": "opponents" }` |
@@ -1225,3 +1225,55 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   sideboard). An opponent chooses one, and you put it into your hand.
 - `castFromGraveyard` takes `"perPlayer": true` (with `"fromMilled": true`: for each player, you may cast a card that player milled
   this way, one choice per player in turn order) and `"noExile": true` (a spell cast this way is not exiled afterwards).
+
+## Commander deck vocabulary (toxic, impending, incubate and more)
+
+### Tokens, counters and destruction
+- **Destroy all others except created tokens**: `"exceptCreated": true` on `destroy` skips the tokens this spell or ability created.
+  `{ "destroy": { "each": { "types": ["creature"], "other": true } }, "exceptCreated": true }`.
+- **Incubate**: `{ "incubate": N }` (rule 701.53): creates an Incubator token that enters with N +1/+1 counters on it. The number is a
+  quantity, e.g. `{ "incubate": "triggerAmount" }`. The Incubator is predefined: an artifact with "{2}: Transform this artifact", whose
+  back face is a 0/0 Phyrexian artifact creature.
+- **Map token**: `"token": "Map"` (predefined): a colorless Map artifact with "{1}, {T}, Sacrifice this token: Target creature you control
+  explores. Activate only as a sorcery." `{ "tokens": 1, "token": "Map" }`.
+- **Toxic on a token**: `"toxic": N` in a token spec (rule 702.164): combat damage the creature deals to a player also gives that player N
+  poison counters. `{ "tokens": 1, "token": { "name": "Mire Thrall", "types": "Creature — Phyrexian Zombie", "power": 1, "toughness": 1,
+  "keywords": [], "colors": ["B"], "toxic": 1 } }`.
+- **Creatures with toxic**: `"hasToxic": true` in a filter. `{ "types": ["creature"], "hasToxic": true }`.
+- **Story counters**: `"kind": "story"` in counter effects. `{ "counters": 1, "what": "self", "kind": "story" }`.
+
+### Triggers and conditions
+- **Whenever you create one or more tokens**: trigger `tokensCreated` with a `"filter"`. It triggers once for each effect that creates
+  tokens, if any token it created matches the filter; the amount is how many were created. `{ "trigger": "tokensCreated", "filter":
+  { "types": ["creature"], "token": true }, "effects": [ … ] }`.
+- **The card the trigger is about, still in a graveyard**: the condition `"triggeredInGraveyard"` holds while the card is in a graveyard as
+  the same object. `{ "if": "triggeredInGraveyard", "then": [ … ] }` (e.g. "you may exile that card from your graveyard").
+- **Poison in a condition**: `{ "atLeast": "greatestOpponentPoison", "value": 3 }` ("if an opponent has three or more poison counters").
+
+### Quantities
+- `"affectedLifeLostThisTurn"`: the life the player being affected lost this turn. `{ "loseLife": "affectedLifeLostThisTurn", "who":
+  "opponents" }` ("each opponent loses life equal to the life that player lost this turn").
+- `"greatestOpponentPoison"`: the most poison counters any opponent has.
+
+### Effects
+- **Card exiled with this, to the graveyard**: `{ "putExiledWithThisIntoGraveyard": true, "ifLand": [ … ], "ifNonland": [ … ] }`. The
+  controller chooses one of the cards this object exiled and puts it into its owner's graveyard. Then the `"ifLand"` effects happen if
+  it was a land card, and the `"ifNonland"` effects if it was a nonland card.
+- **At the beginning of the next end step**: `{ "atTheNextEndStep": { "effects": [ … ], "text": "…" }, "amount": "returned" }`. A delayed
+  ability like `atNextUpkeep`, at the next end step instead of the next upkeep. The amount is worked out now and read as `"triggerAmount"`.
+- **Reveal until, rest on the bottom in any order**: `"rest": "bottomAnyOrder"` on `revealUntil`. The revealing player puts the other
+  cards on the bottom of their library in an order they choose. `{ "revealUntil": { "types": ["creature"] }, "to": "hand", "rest":
+  "bottomAnyOrder" }`.
+- **Protection from the chosen type** (existing `protectionFromChosenType`): the chosen types now include kindred.
+
+### Card-wide rules
+- **Choose a card type as it enters**: `"chooseOnEnter": "CardType"` with `"protectionFromChosenCardType": true`. You and creatures you
+  control have protection from the chosen card type: players can't be targeted by, and damage is prevented from, sources of that type,
+  and creatures get protection from that type. The choices are the traditional card types, including kindred. The computer players pick
+  creature.
+- **Impending**: `"impending": { "count": 3, "cost": "{1}{B}" }` (rule 702.176). It can be cast for the cost; then it enters with N
+  time counters and isn't a creature while it has one. At the beginning of its controller's end step, a time counter is removed from it.
+- **Attack triggers doubled for one option**: `"extraTriggersFromAttacking": true` with `"extraTriggersFromAttackingOption": "<option>"`
+  (and `"chooseOnEnter": "option"` with `"enterOptions"`): the doubling works only while that option was chosen as it entered.
+  `{ "chooseOnEnter": "option", "enterOptions": ["Ashen", "Tide"], "extraTriggersFromAttacking": true, "extraTriggersFromAttackingOption":
+  "Ashen" }`. Triggers from "whenever you attack with one or more creatures" count as triggers caused by attacking.

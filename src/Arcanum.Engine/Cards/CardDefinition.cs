@@ -11,7 +11,9 @@ public enum EnterChoice { None, Color, CreatureType, CardName, OddOrEven, PayLif
     /// <summary>"As this enters, choose Khans or Dragons": one of <see cref="CardDefinition.EnterOptions"/>.</summary>
     Option,
     /// <summary>"As this enters, choose a number."</summary>
-    Number }
+    Number,
+    /// <summary>"As this enters, choose a card type."</summary>
+    CardType }
 
 /// <summary>Replacement and rule-changing effects a permanent has while on the battlefield (rule 614).</summary>
 [Flags]
@@ -299,6 +301,13 @@ public sealed partial record CardDefinition
     public ManaCost? Dash { get; init; }
 
     /// <summary>
+    /// Impending N—[cost] (702.176): cast for this cost, it enters with N time counters, isn't a creature while it has one, and at the
+    /// beginning of its controller's end step a time counter is removed from it.
+    /// </summary>
+    public ManaCost? Impending { get; init; }
+    public int ImpendingCount { get; init; }
+
+    /// <summary>
     /// Blitz (702.152): cast for this cost (and <see cref="BlitzExtra"/>), it has haste and "when this is put into a graveyard from the
     /// battlefield, draw a card", and is sacrificed at the beginning of the next end step.
     /// </summary>
@@ -393,6 +402,12 @@ public sealed partial record CardDefinition
 
     /// <summary>"As long as this card is in your graveyard, each [filter] you control enters with an additional +1/+1 counter."</summary>
     public ObjectFilter? GraveyardEnterBonus { get; init; }
+
+    /// <summary>"You and creatures you control have protection from the chosen card type" (<see cref="EnterChoice.CardType"/>).</summary>
+    public bool ProtectionFromChosenCardType { get; init; }
+
+    /// <summary>Toxic N (702.164): combat damage this creature deals to a player also gives that player N poison counters.</summary>
+    public int Toxic { get; init; }
 
     /// <summary>Devour N (702.82): as it enters, its controller may sacrifice any number of [filter: creatures]; it enters with N +1/+1 counters for each.</summary>
     public int Devour { get; init; }
@@ -522,6 +537,9 @@ public sealed partial record CardDefinition
 
     /// <summary>"If a creature attacking causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time."</summary>
     public bool ExtraTriggersFromAttacking { get; init; }
+
+    /// <summary>Only while this option was chosen as it entered ("• Mardu — If a creature attacking causes …").</summary>
+    public string? ExtraTriggersFromAttackingOption { get; init; }
 
     /// <summary>"Overload {cost}" (rule 702.96): cast for this cost, the spell is <see cref="Overloaded"/> ("target" becomes "each").</summary>
     public Mana.ManaCost? Overload { get; init; }

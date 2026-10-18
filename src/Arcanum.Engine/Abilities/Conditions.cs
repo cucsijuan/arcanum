@@ -202,6 +202,9 @@ public sealed record TriggeredPlayerAttackedYou : Condition;
 /// <summary>The player the event happened to is you ("deals combat damage to you").</summary>
 public sealed record TriggeredPlayerIsYou : Condition;
 
+/// <summary>The card the trigger is about is still in a graveyard, as the same object ("you may exile that card from your graveyard").</summary>
+public sealed record TriggeredInGraveyard : Condition;
+
 /// <summary>"As long as [equipped creature] is blocking or blocked by a [filter]".</summary>
 public sealed record EquippedInCombatWith(ObjectFilter Filter) : Condition;
 

@@ -17,7 +17,7 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>What a spell is cast for (rule 118.9): its mana cost or one alternative cost.</summary>
-    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold }
+    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending }
 
     /// <summary>
     /// One way to pay for casting a card: the cost it's cast for (its mana cost, or the flashback or miracle cost it's being
@@ -82,6 +82,7 @@ public sealed partial class Game
             ways.Add(new(CastingWayKind.Blitz, blitz));
         }
         if (card.Definition.Overload is { } overload) ways.Add(new(CastingWayKind.Overload, overload)); // 702.96a
+        if (card.Definition.Impending is { } impending) ways.Add(new(CastingWayKind.Impending, impending)); // 702.176a
         if (card.Definition.AlternativeCost is { } alt && (alt.If is null || Holds(alt.If, caster, card))) ways.Add(new(CastingWayKind.Alternative, alt.Cost));
         if (card.Zone == Zone.Hand && Has(caster, Replacements.CastFromHandFree)) ways.Add(new(CastingWayKind.WithoutPaying, ManaCost.Zero));
         // "Spells with mana value less than or equal to the number of creatures you control from your hand without paying their mana costs."
@@ -338,6 +339,7 @@ public sealed partial class Game
                 CastingWayKind.Dash => $"Cast {card.Name} for its dash cost {ways[1].Mana}?",
                 CastingWayKind.Blitz => $"Cast {card.Name} for its blitz cost {BlitzCostText(card)}?",
                 CastingWayKind.Overload => $"Cast {card.Name} for its overload cost {ways[1].Mana}?",
+                CastingWayKind.Impending => $"Cast {card.Name} for its impending cost {ways[1].Mana}?",
                 CastingWayKind.WithoutPaying => card.Definition.ManaCost.XCount > 0 ? $"Cast {card.Name} without paying its mana cost (X = 0)?" : $"Cast {card.Name} without paying its mana cost?",
                 _ => $"Pay {ways[1].Mana} instead of the mana cost?",
             };
@@ -350,6 +352,7 @@ public sealed partial class Game
             CastingWayKind.Blitz => $"Blitz {BlitzCostText(card)}",
             CastingWayKind.Foretold => $"Foretell cost {w.Mana}",
             CastingWayKind.Overload => $"Overload {w.Mana}",
+            CastingWayKind.Impending => $"Impending {w.Mana}",
             CastingWayKind.WithoutPaying => "Without paying its mana cost",
             _ => $"Pay {w.Mana} instead of the mana cost",
         }).ToList();
