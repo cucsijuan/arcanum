@@ -5,12 +5,26 @@
 # vX.Y.Z; GitHub Actions then exports Linux/Windows and publishes the release (.github/workflows/release.yml); last it
 # updates the wiki from docs/ (tools/wiki_sync.py).
 #
-# usage: tools/release.sh            (run from anywhere inside the repository)
+# usage: tools/release.sh                              (asks for everything; run from anywhere inside the repository)
+#        tools/release.sh X.Y.Z --yes [--test-export]  (no questions: the notes must already exist; --test-export runs
+#                                                       the export on GitHub before tagging)
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 ask() { local answer; read -r -p "$1" answer; printf '%s' "$answer"; }
 die() { echo "error: $*" >&2; exit 1; }
+version="" yes=0 test_export=0
+for arg in "$@"; do
+    case "$arg" in
+        --yes) yes=1 ;;
+        --test-export) test_export=1 ;;
+        -*) die "unknown option $arg" ;;
+        *) version=$arg ;;
+    esac
+done
+(( yes )) && [[ -z "$version" ]] && die "--yes needs the version"
+# Yes without asking when --yes was given.
+confirm() { (( yes )) || [[ "$(ask "$1")" == [yY]* ]]; }
 # Commits what changed (nothing when rerun after a commit that wasn't tagged) and pushes main.
 commit() { git add -u && git add "$notes"; git diff --cached --quiet || git commit -q -m "Version $version"; git push -q origin main; }
 
@@ -19,7 +33,7 @@ command -v gh >/dev/null || die "the GitHub CLI (gh) is needed"
 
 current=$(sed -n 's/^config\/version="\(.*\)"/\1/p' project.godot)
 echo "Current version: $current (last tag: $(git describe --tags --abbrev=0 2>/dev/null || echo none))"
-version=$(ask "New version (X.Y.Z): ")
+[[ -n "$version" ]] || version=$(ask "New version (X.Y.Z): ")
 version=${version#v}
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "'$version' isn't X.Y.Z"
 tag="v$version"
@@ -29,11 +43,12 @@ git ls-remote --exit-code --tags origin "$tag" >/dev/null 2>&1 && die "tag $tag 
 # Changes to tracked files go into the release commit; show them first.
 if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
     git status --short --untracked-files=no
-    [[ "$(ask "These changes will be committed with the release. Continue? [y/N] ")" == [yY]* ]] || exit 1
+    confirm "These changes will be committed with the release. Continue? [y/N] " || exit 1
 fi
 
 notes="docs/releases/$tag.md"
 if [[ ! -f "$notes" ]]; then
+    (( yes )) && die "$notes is missing (write it before releasing with --yes)"
     last=$(ls docs/releases/v*.md 2>/dev/null | sort -V | tail -1 || true)
     { echo "## What's new"; echo "- "; echo
       [[ -n "$last" ]] && sed -n '/^## Install/,$p' "$last"; } > "$notes"
@@ -48,7 +63,7 @@ echo "Building and testing…"
 dotnet build Arcanum.csproj -v q -nologo | tail -3
 for t in tests/*/; do dotnet test "$t" -v q --nologo | grep -E "Passed!|Failed!" || die "tests failed in $t"; done
 
-if [[ "$(ask "Test the export on GitHub first (about 5 minutes)? [y/N] ")" == [yY]* ]]; then
+if (( test_export )) || { (( ! yes )) && [[ "$(ask "Test the export on GitHub first (about 5 minutes)? [y/N] ")" == [yY]* ]]; }; then
     commit
     gh workflow run release.yml --ref main
     sleep 5
@@ -59,7 +74,7 @@ else
     commit
 fi
 
-[[ "$(ask "Publish $tag now? [y/N] ")" == [yY]* ]] || { echo "Not published (the commit is pushed; rerun to tag it)."; exit 0; }
+confirm "Publish $tag now? [y/N] " || { echo "Not published (the commit is pushed; rerun to tag it)."; exit 0; }
 git tag "$tag" && git push -q origin "$tag"
 sleep 5
 run=$(gh run list --workflow release.yml -L 1 --json databaseId --jq '.[0].databaseId')
