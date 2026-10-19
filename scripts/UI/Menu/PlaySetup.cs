@@ -384,7 +384,7 @@ public partial class PlaySetup : Control
             seats.Add(new GameSession.Seat(_seats[i].Name.Text is { Length: > 0 } n ? n : $"Player {i + 1}", definitions, bot, commanders,
                 format.Commander ? null : deck.ResolveSideboard(cards)));
         }
-        App.Instance.PendingMatch = new MatchSetup(seats, format.StartingLife, format.Commander, _sandbox.ButtonPressed);
+        App.Instance.PendingMatch = new MatchSetup(seats, format.StartingLife, format.Commander, _sandbox.ButtonPressed) { Label = $"{format.Name} match" };
         App.Instance.GoTo(App.GameBoardScene);
     }
 }

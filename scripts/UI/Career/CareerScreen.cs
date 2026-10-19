@@ -77,6 +77,7 @@ public partial class CareerScreen : Control
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
         Theme = CareerStyle.Web; // the pixel font everywhere on these screens
+        Presence.ShowCareer("In their room");
         AddChild(new ColorRect { Color = new Color("0d0b0a"), AnchorRight = 1, AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore });
         _preview.Size = new Vector2(300, 418);
 
@@ -283,6 +284,7 @@ public partial class CareerScreen : Control
 
     private void UpdateHud()
     {
+        Presence.ShowCareer(_web is not null ? "Looking at the PC" : _place == Place.Store ? "At the LGS" : "In their room");
         _back.Text = _note is not null || _web is not null ? "Esc  Close" : _place == Place.Store ? "Esc  Back home" : "Esc  Main menu";
         if (!Career.HasCareer)
         {

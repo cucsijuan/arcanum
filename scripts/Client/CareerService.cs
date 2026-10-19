@@ -399,7 +399,8 @@ public sealed class CareerService
     public LimitedService Events => _events ??= new LimitedService(Folder + "/event.json", App.EventScene, () => EventTable(EnteredEvent), DraftRatingsForPlayers,
         (name, human) => human ? PlayerMat : CareerRules.OpponentPlaymat(World!, name),
         () => EnteredEvent is { TournamentMat: true } e ? e.Name : null,
-        () => EnteredEvent is { RoundMinutes: > 0 } or { TournamentMat: true } ? EnteredEvent!.Name : null);
+        () => EnteredEvent is { RoundMinutes: > 0 } or { TournamentMat: true } ? EnteredEvent!.Name : null,
+        () => EnteredEvent?.Name);
 
     /// <summary>The event entered, if any (without loading or setting up its running event).</summary>
     private EventSpec? EnteredEvent => HasCareer && State.Event is { } entry ? World!.Event(entry.Id, entry.Day) : null;
@@ -614,6 +615,7 @@ public sealed class CareerService
         }
         return new MatchSetup(seats, World!.CommanderFormat.StartingLife, Commander: true)
         {
+            Label = $"{spec.Name} · game {pod.Winners.Count + 1} of {spec.Rounds}",
             Event = new EventHook(winner =>
             {
                 pod.Winners.Add(winner ?? -1);

@@ -13,6 +13,9 @@ public sealed record MatchSetup(IReadOnlyList<GameSession.Seat> Seats, int Start
     /// <summary>A game that is part of an event: who won is reported back, and the game ends with a way back to it.</summary>
     public EventHook? Event { get; init; }
 
+    /// <summary>What the player's Discord activity calls this game ("Modern match", an event's name); null: the event hook's title.</summary>
+    public string? Label { get; init; }
+
     /// <summary>A picture of a table both players share (its top half behind the opponent, its bottom half behind this player), instead of the playmats.</summary>
     public string? Table { get; init; }
 

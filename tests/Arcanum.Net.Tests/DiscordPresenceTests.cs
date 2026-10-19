@@ -19,11 +19,11 @@ public class DiscordPresenceTests
     }
 
     [Fact]
-    public void TheActivityCarriesItsLinesTimePartyAndPicture()
+    public void TheActivityCarriesItsLinesTimeAndPicture()
     {
         var presence = new DiscordPresence("123", "https://example.org/icon.png", "Game");
         var start = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000);
-        var command = presence.Command(new DiscordActivity("Commander game", "Turn 7", start, 3, 4), 42);
+        var command = presence.Command(new DiscordActivity("Commander game", "Turn 7", start), 42);
 
         Assert.Equal("SET_ACTIVITY", (string?)command["cmd"]);
         Assert.Equal(42, (int?)command["args"]!["pid"]);
@@ -31,7 +31,7 @@ public class DiscordPresenceTests
         Assert.Equal("Commander game", (string?)activity["details"]);
         Assert.Equal("Turn 7", (string?)activity["state"]);
         Assert.Equal(1_700_000_000L, (long?)activity["timestamps"]!["start"]);
-        Assert.Equal(new[] { 3, 4 }, activity["party"]!["size"]!.AsArray().Select(n => (int)n!).ToArray());
+        Assert.Null(activity["party"]);
         Assert.Equal("https://example.org/icon.png", (string?)activity["assets"]!["large_image"]);
         Assert.Equal("Game", (string?)activity["assets"]!["large_text"]);
         Assert.False(string.IsNullOrEmpty((string?)command["nonce"]));

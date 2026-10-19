@@ -401,18 +401,16 @@ public partial class GameBoard : Control
 
     private DateTimeOffset _sessionStart = DateTimeOffset.UtcNow;
 
-    /// <summary>The player's Discord activity: which game, its turn, how many at the table and since when.</summary>
+    /// <summary>The player's Discord activity: which game ("Modern match", an event's name), its turn and their life, and since when.</summary>
     private void ShowPresence(GameView view)
     {
         var lobby = _online is not null ? App.Instance.Online.Lobby?.State : null;
-        bool commander = lobby?.Commander ?? _match?.Commander ?? view.Players.Any(p => p.Command.Count > 0);
-        string kind = commander ? "Commander game" : "Game";
-        string details = _match?.Event is { } hook ? hook.Title
-            : _online is not null ? (lobby?.Event is not null ? "Online event" : $"Online {kind.ToLowerInvariant()}")
-            : _match?.Seats.Any(s => s.IsBot) == true || lobby?.Seats.Any(s => s.Kind == LobbySeatKind.Computer) == true ? $"{kind} vs computer"
-            : kind;
-        string state = view.TurnNumber == 0 ? "Mulligan" : $"Turn {view.TurnNumber}";
-        Presence.Show(new Arcanum.Net.Services.DiscordActivity(details, state, _sessionStart, view.Players.Count, view.Players.Count));
+        string details = _match?.Label
+            ?? (lobby is not null ? lobby.Event ?? $"{lobby.Format} match" : null)
+            ?? _match?.Event?.Title
+            ?? (view.Players.Any(p => p.Command.Count > 0) ? "Commander match" : "Match");
+        string state = view.TurnNumber == 0 ? "Mulligan phase" : $"Turn {view.TurnNumber} · Life {view.Players[Bottom.Value].Life}";
+        Presence.Show(new Arcanum.Net.Services.DiscordActivity(details, state, _sessionStart));
     }
 
     /// <summary>Test-mode undo: rebuild the game up to the last decision a person made and ask it again.</summary>

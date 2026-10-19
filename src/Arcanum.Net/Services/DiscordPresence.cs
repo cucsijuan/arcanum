@@ -12,8 +12,7 @@ namespace Arcanum.Net.Services;
 /// <param name="Details">The first line ("Commander game").</param>
 /// <param name="State">The second line ("Turn 7").</param>
 /// <param name="Start">When the shown activity began (Discord counts the time from it); null shows no time.</param>
-/// <param name="PartySize">Players at the table, with <paramref name="PartyMax"/> (both 0: no party shown).</param>
-public sealed record DiscordActivity(string Details, string? State = null, DateTimeOffset? Start = null, int PartySize = 0, int PartyMax = 0);
+public sealed record DiscordActivity(string Details, string? State = null, DateTimeOffset? Start = null);
 
 /// <summary>
 /// The player's activity on Discord ("rich presence"): talks to the Discord app running on the same computer through its
@@ -106,8 +105,6 @@ public sealed class DiscordPresence(string clientId, string? largeImage = null, 
                 if (largeText is not null) assets["large_text"] = largeText;
                 body["assets"] = assets;
             }
-            if (activity.PartyMax > 0)
-                body["party"] = new JsonObject { ["size"] = new JsonArray(Math.Max(1, activity.PartySize), activity.PartyMax) };
         }
         return new JsonObject
         {

@@ -31,7 +31,7 @@ game stops to let you act. You can change them during a game on the phase bar to
 - **Discord account**: **Sign in** or **Sign out** with Discord. The game only learns your Discord user id and name. See
   [Online](online.md).
 - **Show activity on Discord**: while the Discord app is open on this computer, your Discord profile shows what you are
-  doing in Arcanum: the screen you are on, or your game, its turn and how many players are at the table. It works without
+  doing in Arcanum: the screen you are on, or your game, its turn and your life total. It works without
   signing in. See [Online](online.md).
 - **Time per decision**: for games you host, how long each player has for a decision: no limit, 30 seconds, 1 minute,
   2 minutes or 5 minutes. When the time is up, the computer makes the decision.

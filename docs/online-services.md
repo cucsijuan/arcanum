@@ -82,9 +82,15 @@ Not an online service: it shows on the player's Discord profile what they are do
   opcode, a little-endian int32 length and JSON: a handshake, then `SET_ACTIVITY`. The work runs on a background task; when
   Discord is not running it retries every 20 seconds, and an activity already shown is not sent again.
 - `scripts/Client/Presence.cs` decides what is shown. Each screen sets it as it opens (`ShowScreen`, from the scene change in
-  `App`): the menus, choosing a game, building a deck, a draft or sealed event, the online lobby (with its party size), the
-  career screens. The game board sets its own activity (`GameBoard.ShowPresence`): the kind of game, `Mulligan` or `Turn N`,
-  the number of players and the time since the game started. The picture is the repository's `icon.png`, by URL.
+  `App`): the menus, choosing a game, building a deck, a draft or sealed event, the online lobby, and the career screens.
+  The career screens set their second line with `Presence.ShowCareer`: `CareerScreen` says "In their room", "Looking at the
+  PC" (website open) or "At the LGS" (store), and `DeckDesk` says "Building a deck" or "Browsing cards". The event screen
+  shows the event's name. The game board sets its own activity (`GameBoard.ShowPresence`): the first line is the game's
+  label: a match name ("Commander match", "Draft match"), or in an event the event's name or the match name followed by
+  the round ("<event> · Round 3"; a playoff round says "Quarterfinals", "Semifinals" or "Final"). A career commander night
+  says "<event> · game 2 of 4". The second line is `Mulligan phase` before turn 1
+  or `Turn N · Life N` (the local player's life), and the time since the game started. No party is sent, so Discord shows
+  no player count. The picture is the repository's `icon.png`, by URL.
 - The setting is `SettingsData.DiscordActivity` (default on), shown as **Show activity on Discord** in Settings, Online.
   Turning it off clears the activity at once.
 

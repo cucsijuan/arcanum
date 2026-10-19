@@ -142,6 +142,7 @@ public partial class DeckDesk : Control
         Building = null;
         _pick = Picking;
         Picking = null;
+        Presence.ShowCareer(_pick is null ? "Building a deck" : "Browsing cards");
         _grid.Columns = GridColumns;
         if (!Career.HasCareer || App.Instance.Cards is null)
         {

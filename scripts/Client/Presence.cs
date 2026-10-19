@@ -18,6 +18,16 @@ public static class Presence
     private static DiscordActivity? _shown;
     private static bool _listening;
 
+        /// <summary>What the career screens say the player does: the room, the computer, the store, the deck desk.</summary>
+    private static string _careerState = "In their room";
+
+    /// <summary>The career screen (or the deck desk) says what the player is doing there.</summary>
+    public static void ShowCareer(string state)
+    {
+        _careerState = state;
+        Show(new("Career", state));
+    }
+
     /// <summary>Shows <paramref name="activity"/> (null shows nothing).</summary>
     public static void Show(DiscordActivity? activity)
     {
@@ -40,9 +50,8 @@ public static class Presence
             App.DeckBuilderScene => new("Building a deck"),
             App.LimitedScene => new(app.Limited.Current?.Mode == LimitedMode.Sealed ? "Sealed event" : "Draft"),
             App.OnlineScene => Lobby(app.Online.Lobby?.State),
-            App.CareerScene => new("Career", "Around town"),
-            App.DeckDeskScene => new("Career", "Building a deck"),
-            App.EventScene => new("Career", "At an event"),
+            App.CareerScene or App.DeckDeskScene => new("Career", _careerState),
+            App.EventScene => new("Career", app.Career.CurrentEvent()?.Spec.Name ?? "At an event"),
             App.GameBoardScene => _shown, // the board says which game once it starts
             _ => new("In the menus"),
         };
@@ -52,8 +61,7 @@ public static class Presence
     private static DiscordActivity Lobby(LobbyState? lobby) =>
         lobby is null
             ? new("Online", "Looking for a game")
-            : new("Online", lobby.Commander ? "Commander lobby" : "In a lobby",
-                PartySize: lobby.Seats.Count(s => s.Kind != LobbySeatKind.Open), PartyMax: lobby.Seats.Count);
+            : new("Online", lobby.Commander ? "Commander lobby" : "In a lobby");
 
     public static void Stop() => Discord.Dispose();
 

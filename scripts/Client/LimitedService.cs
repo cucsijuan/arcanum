@@ -24,6 +24,7 @@ public sealed class LimitedService : ILimitedSession
     private readonly Func<string?> _table;
     private readonly Func<string?> _tournamentMat;
     private readonly Func<string?> _broadcast;
+    private readonly Func<string?> _eventName;
     private readonly Func<string, bool, string?>? _tableMat;
 
     /// <param name="savePath">Where the event is saved (the career keeps its events apart from the Play screen's).</param>
@@ -31,11 +32,13 @@ public sealed class LimitedService : ILimitedSession
     /// <param name="table">A table picture for the event's games (see <see cref="MatchSetup.Table"/>), asked for each game.</param>
     /// <param name="broadcast">The event's name when its games show a tournament's broadcast overlay (see <see cref="MatchSetup.Broadcast"/>), asked for each game.</param>
     /// <param name="tournamentMat">The event's name when its games are played on a big tournament's mat (see <see cref="MatchSetup.TournamentMat"/>), asked for each game.</param>
+    /// <param name="eventName">The event's name, for the player's Discord activity; null: "Draft match" or "Sealed match".</param>
     /// <param name="ratingsForPlayer">Whether the player may use the set's draft statistics (shown as grades, and in "Build for me").</param>
     /// <param name="tableMat">The playmat a player puts on the table, by their name and whether they are the person here (see <see cref="MatchSetup.TableMats"/>).</param>
     public LimitedService(string savePath = "user://limited/current.json", string returnScene = App.LimitedScene, Func<string?>? table = null, bool ratingsForPlayer = false,
-        Func<string, bool, string?>? tableMat = null, Func<string?>? tournamentMat = null, Func<string?>? broadcast = null)
+        Func<string, bool, string?>? tableMat = null, Func<string?>? tournamentMat = null, Func<string?>? broadcast = null, Func<string?>? eventName = null)
     {
+        _eventName = eventName ?? (() => null);
         _broadcast = broadcast ?? (() => null);
         _tableMat = tableMat;
         _savePath = savePath;
@@ -503,6 +506,7 @@ public sealed class LimitedService : ILimitedSession
         }
         return new MatchSetup(seats, 20)
         {
+            Label = $"{_eventName() ?? $"{ev.Mode} match"} · {RoundName(ev, round)}",
             Event = new EventHook(winner => RecordGame(match, winner is null ? null : winner == 0 ? human : opponent),
                 _returnScene, $"Round {ev.Rounds.Count} · game {game}"),
             Table = _table(),
