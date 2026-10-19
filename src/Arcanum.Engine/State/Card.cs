@@ -194,6 +194,9 @@ public sealed class Card
     /// <summary>Additional {R} whenever this (a Mountain) is tapped for mana ("until end of turn, whenever you tap a Mountain for mana, add an additional {R}").</summary>
     internal int ExtraRed { get; set; }
 
+    /// <summary>Additional {G} whenever this land is tapped for mana ("whenever enchanted land is tapped for mana, its controller adds an additional {G}", "whenever you tap a Forest for mana, add an additional {G}").</summary>
+    internal int ExtraGreen { get; set; }
+
     /// <summary>"If you tap a permanent for mana, it produces three times as much of that mana instead": 3 to the power of such effects.</summary>
     internal int ManaMultiplier { get; set; } = 1;
 
@@ -267,6 +270,9 @@ public sealed class Card
 
     /// <summary>The permanent this Aura or Equipment is attached to (rule 701.3).</summary>
     public CardId? AttachedTo { get; set; }
+
+    /// <summary>The player this Aura is attached to ("Enchant player", rule 303.4).</summary>
+    public PlayerId? AttachedPlayer { get; set; }
 
     // Continuous-effect modifications, recomputed by the engine (layer 7c and keyword grants in layer 6).
     internal int PowerBonus { get; set; }
@@ -362,6 +368,12 @@ public sealed class Card
     /// <summary>Its offspring cost was paid as it was cast (rule 702.175a).</summary>
     public bool OffspringPaid { get; set; }
 
+    /// <summary>"Creatures you control are every creature type", also as a spell and a card outside the battlefield (layer 4).</summary>
+    internal bool EveryCreatureType { get; set; }
+
+    /// <summary>The source whose "put onto the battlefield" effect put this permanent there ("if it wasn't put onto the battlefield with this ability").</summary>
+    public CardId? PutOntoBattlefieldBy { get; set; }
+
     /// <summary>What the card was like the last time it was on the battlefield (rule 608.2h, last known information).</summary>
     public LastKnown? LastKnownInfo { get; internal set; }
 
@@ -445,6 +457,10 @@ public sealed class Card
 
     /// <summary>Colors now (W, U, B, R, G).</summary>
     public IReadOnlyList<string> Colors => ColorsOverride ?? Definition.ColorList;
+    /// <summary>Base power and toughness (rule 208.3: after characteristic-setting effects, before modifications and counters).</summary>
+    public int BasePower => BasePowerOverride ?? Definition.Power ?? 0;
+    public int BaseToughness => BaseToughnessOverride ?? Definition.Toughness ?? 0;
+
     public int Power => (BasePowerOverride ?? Definition.Power ?? 0) + PowerBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne);
     public int Toughness => (BaseToughnessOverride ?? Definition.Toughness ?? 0) + ToughnessBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne);
 
@@ -457,7 +473,7 @@ public sealed class Card
     /// <summary>Has this subtype (changelings have every creature type).</summary>
     public bool HasSubtype(string subtype) =>
         ((SubtypesOverride ?? Definition.Subtypes).Contains(subtype, StringComparer.OrdinalIgnoreCase) || GrantedSubtypes.Contains(subtype)
-         || (Has(Keyword.Changeling) && !NonCreatureSubtypes.Contains(subtype)))
+         || ((Has(Keyword.Changeling) || (EveryCreatureType && IsCreature)) && !NonCreatureSubtypes.Contains(subtype)))
         && (TypesOverride is null || SubtypeFitsTypes(subtype));
 
     /// <summary>
@@ -557,6 +573,8 @@ public sealed class Card
             {
                 var types = Definition.ManaFromChosenColor && ChosenColor is { } color && Mana.ManaTypeExtensions.TryParse(color[0], out var type)
                     ? new[] { type }
+                    : Definition.ManaAlsoChosenColor && ChosenColor is { } also && Mana.ManaTypeExtensions.TryParse(also[0], out var alsoType)
+                        ? Definition.TapForMana.Append(alsoType).Distinct().ToList()
                     : Definition.TapForMana;
                 if (types.Count > 0 && ManaAmount > 0) options.Add(new ManaOption(types, ManaAmount, Definition.ManaOnlyFor, Definition.ManaOnlyForAbilitiesToo));
                 options.AddRange(Definition.ExtraManaOptions.Select((o, i) =>
@@ -593,6 +611,10 @@ public sealed class Card
                 for (int i = 0; i < options.Count; i++)
                     if (options[i].Produces > 0 && options[i].Types.Count == 1 && options[i].Types[0] == Mana.ManaType.Red && !options[i].Combination)
                         options[i] = options[i] with { Amount = options[i].Amount + ExtraRed };
+            if (ExtraGreen > 0)
+                for (int i = 0; i < options.Count; i++)
+                    if (options[i].Produces > 0 && options[i].Types.Count == 1 && options[i].Types[0] == Mana.ManaType.Green && !options[i].Combination)
+                        options[i] = options[i] with { Amount = options[i].Amount + ExtraGreen };
             return options;
         }
     }
@@ -715,6 +737,7 @@ public sealed class Card
         DamagedByDeathtouch = false;
         ControlledSinceTurnStart = false;
         Counters.Clear();
+        AttachedPlayer = null;
         AttachedTo = null;
         PowerBonus = 0;
         ToughnessBonus = 0;

@@ -80,6 +80,7 @@ public partial class CardStatusPanel : VBoxContainer
                 yield return ($"Attacking {(attack.Planeswalker is { } pw ? NameOf(pw) : Player(attack.Defender))}" + (attack.IsBlocked ? " (blocked)" : ""), State);
             foreach (var blocked in view.Attacks.Where(a => a.Blockers.Contains(c.Id))) yield return ($"Blocking {NameOf(blocked.Attacker)}", State);
             if (c.AttachedTo is { } host) yield return ($"Attached to {NameOf(host)}", State);
+            if (c.AttachedToPlayer is { } enchanted) yield return ($"Enchanting {Player(enchanted)}", State);
             var attachments = view.Battlefield.Where(a => a.AttachedTo == c.Id).Select(a => a.Name ?? "?").ToList();
             if (attachments.Count > 0) yield return ($"Attached: {string.Join(", ", attachments)}", State);
             if (c.AttacksEachCombat) yield return ("Attacks each combat if able", Neutral);

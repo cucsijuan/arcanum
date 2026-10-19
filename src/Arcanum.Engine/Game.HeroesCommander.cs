@@ -611,6 +611,13 @@ public sealed partial class Game
         || Has(card.Owner, Replacements.PermanentsFromGraveyard) || card.Definition.GraveyardCastCost is not null
         || (card.Definition.GraveyardCastIf is { } castIf && Holds(castIf, card.Owner, card)) || CastWithGraveyardArtifactsPermission(card);
 
+    private static string EscapeCostText(Card card)
+    {
+        var text = card.Definition.Escape?.ToString() ?? "";
+        if (card.Definition.EscapeExtra is { ExileFromGraveyard: > 0 } extra) text += $", exile {extra.ExileFromGraveyard} other cards from your graveyard";
+        return text;
+    }
+
     private static string BlitzCostText(Card card)
     {
         var text = card.Definition.Blitz?.ToString() ?? "";

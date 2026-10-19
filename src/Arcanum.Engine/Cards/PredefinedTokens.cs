@@ -57,6 +57,25 @@ public static class PredefinedTokens
         IsToken = true,
     };
 
+    /// <summary>"A colorless Blood artifact token with '{1}, {T}, Discard a card, Sacrifice this token: Draw a card.'" (rule 111.10g)</summary>
+    public static readonly CardDefinition Blood = new()
+    {
+        Name = "Blood",
+        Types = CardType.Artifact,
+        Subtypes = new[] { "Blood" },
+        Abilities = new AbilityDefinition[]
+        {
+            new ActivatedAbility
+            {
+                Cost = new AbilityCost(ManaCost.Parse("{1}"), Tap: true, SacrificeSelf: true) { Extra = new ExtraCost { Discard = 1 } },
+                Effects = new Effect[] { new DrawCards(1, Subject.You) },
+                Text = "{1}, {T}, Discard a card, Sacrifice this token: Draw a card.",
+            },
+        },
+        OracleText = "{1}, {T}, Discard a card, Sacrifice this token: Draw a card.",
+        IsToken = true,
+    };
+
     /// <summary>The token "empower Jace" creates: "a blue Jace planeswalker token with 0 loyalty, '[−1]: Surveil 1' and '[−3]: Draw a card.'"</summary>
     public static readonly CardDefinition Jace = new()
     {
@@ -142,6 +161,7 @@ public static class PredefinedTokens
         "food" => Food,
         "clue" => Clue,
         "map" => Map,
+        "blood" => Blood,
         _ => null,
     };
 }

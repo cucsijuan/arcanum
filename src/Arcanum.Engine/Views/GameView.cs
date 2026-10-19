@@ -31,6 +31,8 @@ public sealed record CardView
     /// <summary>Rules text of each of the card's abilities, indexed like <c>ActivateAbility.Index</c>.</summary>
     public IReadOnlyList<string> AbilityTexts { get; init; } = Array.Empty<string>();
     public CardId? AttachedTo { get; init; }
+    /// <summary>The player an Aura is attached to ("Enchant player").</summary>
+    public PlayerId? AttachedToPlayer { get; init; }
     /// <summary>
     /// For a card exiled only while a permanent stays on the battlefield ("until this leaves the battlefield"): that permanent.
     /// The board draws the card tucked under it instead of in the exile pile.

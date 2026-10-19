@@ -67,8 +67,14 @@ public sealed record SpellOnStack(CardId Card, PlayerId Controller, IReadOnlyLis
     /// <summary>Cast for its impending cost (rule 702.176a).</summary>
     public bool Impended { get; init; }
 
+    /// <summary>Cast with escape (rule 702.138): the permanent it becomes "escaped".</summary>
+    public bool Escaped { get; init; }
+
     /// <summary>Its offspring cost was paid (rule 702.175a).</summary>
     public bool OffspringPaid { get; init; }
+
+    /// <summary>How many gained offspring abilities had their cost paid ("creature spells you cast gain offspring {2}").</summary>
+    public int GrantedOffspringPaid { get; init; }
 }
 
 public sealed record AbilityOnStack(CardId Source, AbilityDefinition Ability, PlayerId Controller, IReadOnlyList<ChosenTarget> ChosenTargets)

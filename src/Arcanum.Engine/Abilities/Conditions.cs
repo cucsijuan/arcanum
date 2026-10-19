@@ -46,6 +46,9 @@ public sealed record YourTurn : Condition;
 /// <summary>"If the source has N or more +1/+1 counters on it".</summary>
 public sealed record SourceHasCounters(int AtLeast, CounterKind Kind = CounterKind.PlusOnePlusOne) : Condition;
 
+/// <summary>"If there are twenty or more counters on it": counters of every kind together.</summary>
+public sealed record SourceHasCountersOfAnyKind(int AtLeast) : Condition;
+
 /// <summary>"As long as it's attacking".</summary>
 public sealed record SourceAttacking : Condition;
 
@@ -256,6 +259,15 @@ public sealed record ActivatedLoyaltyAbilityThisTurn : Condition;
 /// <summary>"If your library has no cards in it."</summary>
 public sealed record LibraryEmpty : Condition;
 
+/// <summary>"If you created a token this turn".</summary>
+public sealed record CreatedTokenThisTurn : Condition;
+
+/// <summary>"At the beginning of enchanted player's end step": it's the turn of the player this Aura enchants.</summary>
+public sealed record EnchantedPlayersTurn : Condition;
+
+/// <summary>This Class is level N or higher (a level section's card-wide rule, rule 716.2d).</summary>
+public sealed record ClassLevelAtLeast(int Level) : Condition;
+
 /// <summary>"Unless your opponents control eight or more lands": counted across all opponents together.</summary>
 public sealed record OpponentsControlTotal(ObjectFilter Filter, int AtLeast) : Condition;
 
@@ -312,6 +324,9 @@ public sealed record ChoseOption(string Option) : Condition;
 
 /// <summary>"As long as a card exiled with this is a creature card".</summary>
 public sealed record CreatureCardExiledWithSource : Condition;
+
+/// <summary>"If there are cards exiled with it": a card exiled by this object (hideaway and other linked exiles, rule 607) is still in exile.</summary>
+public sealed record CardsExiledWithSource : Condition;
 
 /// <summary>"During the declare attackers step" (or another step).</summary>
 public sealed record DuringStep(State.Step Step) : Condition;

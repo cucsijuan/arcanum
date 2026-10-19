@@ -17,7 +17,7 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>What a spell is cast for (rule 118.9): its mana cost or one alternative cost.</summary>
-    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown }
+    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown, Escape }
 
     /// <summary>
     /// One way to pay for casting a card: the cost it's cast for (its mana cost, or the flashback or miracle cost it's being
@@ -37,6 +37,9 @@ public sealed partial class Game
         public int ReplicateCount { get; init; }
         public int SquadCount { get; init; }
         public bool OffspringPaid { get; init; }
+
+        /// <summary>The offspring costs paid of the offspring abilities the spell gained ("creature spells you cast gain offspring {2}").</summary>
+        public IReadOnlyList<ManaCost> GrantedOffspringPaid { get; init; } = Array.Empty<ManaCost>();
         /// <summary>Permanents sacrificed for "you may sacrifice any number of …; it costs {1} less for each".</summary>
         public int SacrificeAnyCount { get; init; }
         /// <summary>Modes chosen beyond the first, each paying the escalate cost (rule 702.120).</summary>
@@ -84,6 +87,13 @@ public sealed partial class Game
                 return new() { new(CastingWayKind.Blitz, blitz) };
             ways.Add(new(CastingWayKind.Blitz, blitz));
         }
+        if (card.Zone == Zone.Graveyard && card.Definition.Escape is { } escape)
+        {
+            // 702.138a: from the graveyard only with escape, unless something else lets it be cast from there.
+            if (!GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0 && !BlitzFromGraveyard(card))
+                return new() { new(CastingWayKind.Escape, escape) };
+            ways.Add(new(CastingWayKind.Escape, escape));
+        }
         if (card.Definition.Overload is { } overload) ways.Add(new(CastingWayKind.Overload, overload)); // 702.96a
         if (card.Definition.Impending is { } impending) ways.Add(new(CastingWayKind.Impending, impending)); // 702.176a
         if (card.Zone == Zone.Hand && card.PrintedDefinition.Morph is not null) ways.Add(new(CastingWayKind.FaceDown, FaceDownCastCost)); // 702.37c
@@ -113,6 +123,7 @@ public sealed partial class Game
         for (int i = 0; i < c.ReplicateCount; i++) cost = cost.Plus(card.Definition.Replicate!);
         for (int i = 0; i < c.SquadCount; i++) cost = cost.Plus(card.Definition.Squad!);
         if (c.OffspringPaid && card.Definition.Offspring is { } offspring) cost = cost.Plus(offspring);
+        foreach (var granted in c.GrantedOffspringPaid) cost = cost.Plus(granted);
         if (card.Definition.Escalate is { } escalate)
             for (int i = 0; i < c.EscalatedModes; i++) cost = cost.Plus(escalate);
         if (c.Tier is { } tier) cost = cost.Plus(tier);
@@ -126,7 +137,7 @@ public sealed partial class Game
         if (card.Definition.ExtraTargetCost > 0 && targets is not null)
             cost = cost.PlusGeneric(card.Definition.ExtraTargetCost * Math.Max(0, targets.Count(t => !t.Target.IsNone) - 1));
         int genericBefore = cost.Generic;
-        cost = MinusColoredReductions(cost.MinusGeneric(CostReductionFor(card, caster, targets) + c.SacrificeAnyCount), card, caster);
+        cost = MinusColoredReductions(cost.MinusGeneric(CostReductionFor(card, caster, targets) + (card.Definition.SacrificeAnyNoReduction ? 0 : c.SacrificeAnyCount)), card, caster);
         // "Spend only black mana on X": the X part of the generic mana (what reductions left of it) is paid with that type only.
         if (card.Definition.XManaType is { } xType && c.X > 0 && c.Way.Mana.XCount > 0)
         {
@@ -162,6 +173,7 @@ public sealed partial class Game
         if (c.Way.Kind == CastingWayKind.WithoutPaying && _castFreeExtra.TryGetValue(card.Id, out var freeExtra)) costs.Add(freeExtra);
         if (c.SacrificeAnyCount > 0 && card.Definition.CastSacrificeAny is { } sacrificeAny) costs.Add(new ExtraCost(Sacrifice: sacrificeAny, SacrificeCount: c.SacrificeAnyCount));
         if (c.Way.Kind == CastingWayKind.Blitz) costs.Add(card.Definition.BlitzExtra);
+        if (c.Way.Kind == CastingWayKind.Escape) costs.Add(card.Definition.EscapeExtra);
         // A non-mana escalate cost, once for each mode beyond the first (702.120a).
         if (card.Definition.EscalateExtra is { } escalate && c.EscalatedModes > 0)
             costs.Add(escalate with
@@ -359,6 +371,7 @@ public sealed partial class Game
                 CastingWayKind.Blitz => $"Cast {card.Name} for its blitz cost {BlitzCostText(card)}?",
                 CastingWayKind.Overload => $"Cast {card.Name} for its overload cost {ways[1].Mana}?",
                 CastingWayKind.Impending => $"Cast {card.Name} for its impending cost {ways[1].Mana}?",
+                CastingWayKind.Escape => $"Cast {card.Name} for its escape cost {EscapeCostText(card)}?",
                 CastingWayKind.FaceDown => $"Cast {card.Name} face down as a 2/2 creature for {ways[1].Mana}?",
                 CastingWayKind.WithoutPaying => card.Definition.ManaCost.XCount > 0 ? $"Cast {card.Name} without paying its mana cost (X = 0)?" : $"Cast {card.Name} without paying its mana cost?",
                 _ => $"Pay {ways[1].Mana} instead of the mana cost?",
@@ -373,6 +386,7 @@ public sealed partial class Game
             CastingWayKind.Foretold => $"Foretell cost {w.Mana}",
             CastingWayKind.Overload => $"Overload {w.Mana}",
             CastingWayKind.Impending => $"Impending {w.Mana}",
+            CastingWayKind.Escape => $"Escape {EscapeCostText(card)}",
             CastingWayKind.FaceDown => $"Face down for {w.Mana}",
             CastingWayKind.WithoutPaying => "Without paying its mana cost",
             _ => $"Pay {w.Mana} instead of the mana cost",

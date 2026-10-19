@@ -201,6 +201,30 @@ public sealed partial record CardDefinition
     /// <summary>Its mana ability adds mana of the color chosen as it entered.</summary>
     public bool ManaFromChosenColor { get; init; }
 
+    /// <summary>"{T}: Add {R} or one mana of the chosen color": the chosen color is one more type its mana ability can add.</summary>
+    public bool ManaAlsoChosenColor { get; init; }
+
+    /// <summary>An Aura: "Whenever enchanted land is tapped for mana, its controller adds an additional {G}."</summary>
+    public bool EnchantedLandExtraGreen { get; init; }
+
+    /// <summary>"Whenever you tap a Forest for mana, add an additional {G}."</summary>
+    public bool YourForestsExtraGreen { get; init; }
+
+    /// <summary>"Each opponent can't draw more than one card each turn."</summary>
+    public bool OpponentsDrawAtMostOne { get; init; }
+
+    /// <summary>"Creatures you control are every creature type", and so are your creature spells and creature cards elsewhere.</summary>
+    public bool YourCreaturesAreEveryType { get; init; }
+
+    /// <summary>"Creature spells you cast gain offspring {2} as you cast them."</summary>
+    public ManaCost? CreatureSpellsGainOffspring { get; init; }
+
+    /// <summary>"The first spell you cast each turn that mana from a Treasure was spent to cast has cascade."</summary>
+    public bool FirstTreasureSpellHasCascade { get; init; }
+
+    /// <summary>"Choose a color other than red": the color letter the choice made as it enters excludes.</summary>
+    public string? ChosenColorExcept { get; init; }
+
     /// <summary>"As this enters, choose a color / creature type."</summary>
     public EnterChoice ChooseOnEnter { get; init; }
 
@@ -324,6 +348,12 @@ public sealed partial record CardDefinition
     /// </summary>
     public Abilities.ObjectFilter? CastSacrificeAny { get; init; }
 
+    /// <summary>With <see cref="CastSacrificeAny"/>: the sacrifices don't reduce the cost ("you may sacrifice one or more creatures").</summary>
+    public bool SacrificeAnyNoReduction { get; init; }
+
+    /// <summary>"When you do, copy this spell for each creature sacrificed this way" (with <see cref="CastSacrificeAny"/>).</summary>
+    public bool CopyPerSacrificed { get; init; }
+
     /// <summary>"During your turn, you may cast instant and sorcery spells from your graveyard by paying 1 life in addition to their other costs."</summary>
     public Abilities.ObjectFilter? GraveyardCastFilter { get; init; }
     public Abilities.ExtraCost? GraveyardCastExtra { get; init; }
@@ -353,6 +383,18 @@ public sealed partial record CardDefinition
 
     /// <summary>"You may cast this card from your graveyard using its blitz ability."</summary>
     public bool BlitzFromGraveyard { get; init; }
+
+    /// <summary>
+    /// Escape (702.138): it may be cast from its owner's graveyard for this cost (and <see cref="EscapeExtra"/>) rather than its mana
+    /// cost. Read from "Escape—{3}{B}{B}, Exile four other cards from your graveyard".
+    /// </summary>
+    public ManaCost? Escape { get; init; }
+
+    /// <summary>The non-mana part of the escape cost (exile N other cards from your graveyard).</summary>
+    public Abilities.ExtraCost? EscapeExtra { get; init; }
+
+    /// <summary>"This creature escapes with N +1/+1 counters on it" (702.138c): the counters it enters with when cast with escape.</summary>
+    public int EscapesWithCounters { get; init; }
 
     /// <summary>Foretell (702.143): the cost of casting it from exile on a later turn after it was foretold. Read from "Foretell {cost}".</summary>
     public ManaCost? Foretell { get; init; }
@@ -547,6 +589,9 @@ public sealed partial record CardDefinition
     /// <summary>"You may play N additional lands on each of your turns."</summary>
     public int ExtraLandPlays { get; init; }
 
+    /// <summary>"Each player may play an additional land on each of their turns."</summary>
+    public int EachPlayerExtraLandPlays { get; init; }
+
     /// <summary>"Each opponent can cast spells only any time they could cast a sorcery."</summary>
     public bool OpponentsCastAtSorcerySpeed { get; init; }
 
@@ -655,6 +700,15 @@ public sealed partial record CardDefinition
     /// <summary>"Gift a card": the promised opponent draws a card.</summary>
     public bool GiftCard { get; init; }
 
+    /// <summary>"Gift an extra turn": the promised opponent takes an extra turn after this one.</summary>
+    public bool GiftExtraTurn { get; init; }
+
+    /// <summary>The card has a gift to promise (a token, a card or an extra turn).</summary>
+    public bool HasGift => Gift is not null || GiftCard || GiftExtraTurn;
+
+    /// <summary>What the gift is, as the promise names it.</summary>
+    public string GiftName => GiftCard ? "a card" : GiftExtraTurn ? "an extra turn" : Gift?.Name ?? "";
+
     /// <summary>"Gift a tapped Fish": the gift token enters tapped.</summary>
     public bool GiftTapped { get; init; }
 
@@ -729,6 +783,12 @@ public sealed partial record CardDefinition
 
     /// <summary>"If one or more artifact tokens would be created under your control, that many 5/5 red Dragon creature tokens with flying are created instead."</summary>
     public bool ArtifactTokensBecomeDragons { get; init; }
+
+    /// <summary>"If you would create a Clue, Food, or Treasure token, instead create one of each" (for each such token, one of each).</summary>
+    public bool ClueFoodTreasureEach { get; init; }
+
+    /// <summary>"If one or more tokens would be created under your control, those tokens plus that many 1/1 green Squirrel creature tokens are created instead."</summary>
+    public bool TokensPlusThatManySquirrels { get; init; }
 
     /// <summary>"Artifacts and lands enter tapped" (every player's, while this is on the battlefield).</summary>
     public bool ArtifactsAndLandsEnterTapped { get; init; }

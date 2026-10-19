@@ -103,6 +103,9 @@ public sealed record ControlEffect(CardId Card, int Version, PlayerId NewControl
 
     /// <summary>"For as long as they're the monarch": ends once this player isn't the monarch.</summary>
     public PlayerId? WhileMonarch { get; init; }
+
+    /// <summary>"For as long as it has a shield counter on it": ends once the permanent has no counter of this kind.</summary>
+    public Abilities.CounterKind? WhileCounter { get; init; }
 }
 
 /// <summary>A card exiled until a source leaves the battlefield.</summary>
@@ -231,7 +234,11 @@ public sealed record DelayedAction(CardId Card, int Version, bool Return, Player
 }
 
 /// <summary>Damage dealt by a source (object as it was then) to a permanent (object) or a player during a turn.</summary>
-public sealed record DamageRecord(int Turn, CardId Source, int SourceVersion, CardId? TargetCard, int TargetVersion, PlayerId? TargetPlayer, int Amount);
+public sealed record DamageRecord(int Turn, CardId Source, int SourceVersion, CardId? TargetCard, int TargetVersion, PlayerId? TargetPlayer, int Amount)
+{
+    /// <summary>Who controlled the source as it dealt the damage ("damage dealt to it this turn by sources they controlled").</summary>
+    public PlayerId? SourceController { get; init; }
+}
 
 /// <summary>
 /// "You may cast [filter] spells from your graveyard" (this turn, or for as long as a permanent says so): with an extra cost to pay ("by
@@ -301,6 +308,9 @@ public sealed partial class GameState
 
     /// <summary>Each time a permanent became the target of a spell or ability, and that spell's or ability's controller ("for the first time each turn").</summary>
     public List<(CardId Card, int Version, PlayerId By, int Turn)> TargetedThisTurn { get; } = new();
+
+    /// <summary>Each creature declared as an attacker, by turn ("each creature that attacked this turn", even one gone since).</summary>
+    public HashSet<(CardId Card, int Version, int Turn)> AttackersThisTurn { get; } = new();
 
     /// <summary>Spells (object versions) that enter with a finality counter as they resolve ("that artifact enters with a finality counter on it").</summary>
     public HashSet<(CardId Card, int Version)> FinalityOnEnter { get; } = new();
@@ -395,6 +405,9 @@ public sealed partial class GameState
     /// <summary>Delayed abilities that trigger at the beginning of the next upkeep.</summary>
     public List<DelayedTrigger> AtNextUpkeep { get; } = new();
 
+    /// <summary>Delayed abilities "at end of combat" (rule 603.7): they trigger as the next end of combat step begins.</summary>
+    public List<DelayedTrigger> AtEndOfCombat { get; } = new();
+
     /// <summary>Delayed abilities that trigger at the beginning of the next end step, with an amount worked out when they were made.</summary>
     public List<DelayedTrigger> AtNextEndStepTriggers { get; } = new();
 
@@ -442,6 +455,9 @@ public sealed partial class GameState
 
     /// <summary>"[Creature] attacks [player] this turn if able": the creature (card, version), the player and the turn.</summary>
     public List<(CardId Card, int Version, PlayerId Player, int Turn)> AttackPlayerRequirements { get; } = new();
+
+    /// <summary>For the next combat this turn: the creature attacks if able and can't attack this player or their planeswalkers.</summary>
+    public List<(CardId Card, int Version, PlayerId Protected, int Turn)> NextCombatRules { get; } = new();
 
     /// <summary>
     /// "Doesn't untap during its controller's next untap step" (no player) or "during [player]'s next untap step": the

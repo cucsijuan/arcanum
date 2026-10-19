@@ -139,6 +139,12 @@ public sealed class Player
     /// <summary>"The next spell you cast this turn can't be countered": waiting for that spell.</summary>
     public bool NextSpellUncounterableThisTurn { get; set; }
 
+    /// <summary>"Creature spells you cast this turn can't be countered."</summary>
+    public bool CreatureSpellsUncounterableThisTurn { get; set; }
+
+    /// <summary>Spells cast this turn that mana from a Treasure was spent to cast.</summary>
+    public int TreasureSpellsThisTurn { get; set; }
+
     /// <summary>The legend rule doesn't apply to this player's permanents this turn.</summary>
     public bool NoLegendRuleThisTurn { get; set; }
 
@@ -150,6 +156,9 @@ public sealed class Player
 
     /// <summary>"Until end of turn, whenever you tap a Mountain for mana, add an additional {R}": instances this turn.</summary>
     public int ExtraRedFromMountainsThisTurn { get; set; }
+
+    /// <summary>"If you created a token this turn".</summary>
+    public bool CreatedTokenThisTurn { get; set; }
 
     /// <summary>Cards this player discarded this turn.</summary>
     public int CardsDiscardedThisTurn { get; set; }

@@ -154,6 +154,7 @@ public static class ViewBuilder
             Surge = card.Definition.Surge,
             Fracture = card.Definition.Fracture,
             AttachedTo = card.AttachedTo,
+            AttachedToPlayer = card.Zone == Zone.Battlefield ? card.AttachedPlayer : null,
             HeldUnder = HeldUnder(state, card),
             IsCommander = card.IsCommander,
             CommanderTax = card.IsCommander ? commanderTaxPerCast * state.GetPlayer(card.Owner).CommanderCasts.GetValueOrDefault(card.Id) : 0,

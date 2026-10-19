@@ -56,7 +56,7 @@ public static partial class CardFactory
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
     /// <remarks>Includes keywords whose rules this factory derives from rules text (Equip, Enchant).</remarks>
     public static ISet<string> SupportedKeywords { get; } =
-        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Impending", "Offspring" }).Concat(ScriptedKeywords),
+        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Impending", "Offspring", "Escape", "Toxic", "Vanishing", "Ravenous" }).Concat(ScriptedKeywords),
             StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Why <see cref="Create"/> finds the card unsupported (for tools): each failed requirement, by face.</summary>
@@ -122,12 +122,19 @@ public static partial class CardFactory
             Impending = KeywordLineCost(record.OracleText, ImpendingLine()),
             Offspring = KeywordLineCost(record.OracleText, OffspringLine()),
             ImpendingCount = ImpendingCount(record.OracleText),
+            Escape = KeywordLineCost(record.OracleText, EscapeLine()),
+            EscapeExtra = KeywordLineNumber(record.OracleText, EscapeLine()) is int escapeExiles and > 0 ? new Engine.Abilities.ExtraCost { ExileFromGraveyard = escapeExiles } : null,
+            EscapesWithCounters = KeywordLineNumber(record.OracleText.Replace(record.Name, "~"), EscapesWithLine()) ?? 0,
+            Toxic = KeywordLineNumber(record.OracleText, ToxicLine()) ?? 0,
+            Vanishing = KeywordLineNumber(record.OracleText, VanishingLine()) ?? 0,
+            EntersWithXCounters = record.Keywords.Contains("Ravenous", StringComparer.OrdinalIgnoreCase), // 702.156a
             WardMana = derived.WardMana,
             WardLife = derived.WardLife,
             CantBeCountered = derived.CantBeCountered,
         };
         if (script is not null) definition = script.ApplyTo(definition);
         if (definition.Offspring is not null) definition = definition with { Abilities = definition.Abilities.Append(OffspringTrigger).ToList() };
+        if (record.Keywords.Contains("Ravenous", StringComparer.OrdinalIgnoreCase)) definition = definition with { Abilities = definition.Abilities.Append(RavenousTrigger).ToList() };
         definition = definition with { Abilities = Engine.Abilities.AbilityDefinition.InClassLevelOrder(definition.Abilities) };
 
         // "*" power/toughness is fine when the script defines it (characteristic-defining ability).
@@ -302,6 +309,7 @@ public static partial class CardFactory
             if (KickerLine().IsMatch(line) || FlashbackLine().IsMatch(line) || WardLine().IsMatch(line) || line == "This spell can't be countered") continue;
             if (CyclingLine().IsMatch(line)) continue;
             if (UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line) || MorphLine().IsMatch(line) || ImpendingLine().IsMatch(line) || OffspringLine().IsMatch(line)) continue;
+            if (EscapeLine().IsMatch(line) || EscapesWithLine().IsMatch(line.Replace(record.Name, "~")) || ToxicLine().IsMatch(line) || VanishingLine().IsMatch(line)) continue;
             if (CommanderPairingLine().IsMatch(line)) continue;
             // A keyword line: "Flying" or "Flying, trample".
             if (line.Split(',').Select(k => k.Trim()).All(k => record.Keywords.Contains(k, StringComparer.OrdinalIgnoreCase) || WardLine().IsMatch(k))) continue;
@@ -408,8 +416,10 @@ public static partial class CardFactory
             var enchantMatch = EnchantLine().Match(line);
             if (enchantMatch.Success)
             {
-                var kind = Enum.Parse<Engine.Abilities.TargetKind>(enchantMatch.Groups[1].Value, ignoreCase: true);
-                var controller = enchantMatch.Groups[2].Success ? Engine.Abilities.ControllerFilter.You : Engine.Abilities.ControllerFilter.Any;
+                bool opponent = enchantMatch.Groups[1].Value == "opponent";
+                var kind = opponent ? Engine.Abilities.TargetKind.Player : Enum.Parse<Engine.Abilities.TargetKind>(enchantMatch.Groups[1].Value, ignoreCase: true);
+                var controller = opponent ? Engine.Abilities.ControllerFilter.Opponent
+                    : enchantMatch.Groups[2].Success ? Engine.Abilities.ControllerFilter.You : Engine.Abilities.ControllerFilter.Any;
                 enchant = new Engine.Abilities.TargetSpec(kind, controller);
             }
             if (EntersTappedLine().IsMatch(line)) entersTapped = true;
@@ -496,6 +506,14 @@ public static partial class CardFactory
     private static ManaCost? KeywordLineCost(string oracleText, Regex line) =>
         ReminderText().Replace(oracleText, "").Split('\n').Select(l => line.Match(WithoutLabel(l.Trim().TrimEnd('.'))))
             .FirstOrDefault(m => m.Success) is { } m ? ManaCost.Parse(m.Groups["cost"].Value) : null;
+
+    /// <summary>The number on a keyword line such as "Toxic 2" or "Escape—{3}{B}{B}, Exile four other cards from your graveyard" (its "n" group).</summary>
+    private static int? KeywordLineNumber(string oracleText, Regex line) =>
+        ReminderText().Replace(oracleText, "").Split('\n').Select(l => line.Match(WithoutLabel(l.Trim().TrimEnd('.'))))
+            .FirstOrDefault(m => m.Success) is { } m ? m.Groups["n"].Value is not { Length: > 0 } n ? 1 // "with a +1/+1 counter"
+            : Array.IndexOf(NumberWords, n.ToLowerInvariant()) is int i and >= 0 ? i : int.Parse(n) : null;
+
+    private static readonly string[] NumberWords = { "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten" };
 
     /// <summary>N of "Impending N—[cost]".</summary>
     private static int ImpendingCount(string oracleText) =>
@@ -651,7 +669,7 @@ public static partial class CardFactory
     [GeneratedRegex(@"^Equip ((\{[0-9WUBRGC]+\})+)$")]
     private static partial Regex EquipLine();
 
-    [GeneratedRegex(@"^Enchant (creature|land|artifact|enchantment|permanent)( you control)?$")]
+    [GeneratedRegex(@"^Enchant (creature|land|artifact|enchantment|permanent|player|opponent)( you control)?$")]
     private static partial Regex EnchantLine();
 
     [GeneratedRegex(@"^Kicker ((\{[0-9WUBRGC]+\})+)$")]
@@ -674,6 +692,24 @@ public static partial class CardFactory
         { "abilities": [ { "trigger": "enters", "if": { "atLeast": "offspringPaid", "value": 1 },
           "effects": [ { "copy": "self", "setPower": 1, "setToughness": 1 } ],
           "text": "Offspring — When this creature enters, if its offspring cost was paid, create a token that's a copy of it, except it's 1/1." } ] }
+        """).Abilities[0];
+
+    [GeneratedRegex(@"^Escape—(?<cost>(\{[0-9WUBRGC]+\})+), Exile (?<n>[a-z]+|[0-9]+) other cards from your graveyard$")]
+    private static partial Regex EscapeLine();
+
+    [GeneratedRegex(@"^(?:~|This creature|This permanent) escapes with (?:an?|(?<n>[a-z]+|[0-9]+)) \+1/\+1 counters? on it$")]
+    private static partial Regex EscapesWithLine();
+
+    [GeneratedRegex(@"^Toxic (?<n>[0-9]+)$")]
+    private static partial Regex ToxicLine();
+
+    [GeneratedRegex(@"^Vanishing (?<n>[0-9]+)$")]
+    private static partial Regex VanishingLine();
+
+    /// <summary>Ravenous's trigger (rule 702.156a); its "enters with X +1/+1 counters" is <see cref="Engine.Cards.CardDefinition.EntersWithXCounters"/>.</summary>
+    private static readonly Engine.Abilities.AbilityDefinition RavenousTrigger = Scripts.CardScriptParser.Parse("""
+        { "abilities": [ { "trigger": "enters", "if": { "atLeast": "X", "value": 5 }, "effects": [ { "draw": 1 } ],
+          "text": "Ravenous — When this permanent enters, if X is 5 or more, draw a card." } ] }
         """).Abilities[0];
 
     [GeneratedRegex(@"^Impending (?<count>[0-9]+)—(?<cost>(\{[0-9WUBRGC]+\})+)$")]

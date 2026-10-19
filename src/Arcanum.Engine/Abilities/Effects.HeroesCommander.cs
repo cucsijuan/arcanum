@@ -173,3 +173,9 @@ public sealed record SpellsHaveImprovise(ObjectFilter Spells) : AbilityDefinitio
 
 /// <summary>"Instant and sorcery spells you cast have storm" (an emblem's or permanent's ability; each instance triggers separately, rule 702.40b).</summary>
 public sealed record SpellsHaveStorm(ObjectFilter Spells) : AbilityDefinition;
+
+/// <summary>"Enchantment spells you cast from your hand have cascade."</summary>
+public sealed record SpellsHaveCascade(ObjectFilter Spells) : AbilityDefinition;
+
+/// <summary>"If you would create a Fish token, create a 3/3 blue Shark creature token instead" (a replacement effect, rule 614.1a).</summary>
+public sealed record TokenReplacement(string Subtype, Cards.CardDefinition Instead) : AbilityDefinition;

@@ -62,7 +62,10 @@ public sealed partial class Game
         State.DamageLog.RemoveAll(r => r.Turn != State.TurnNumber);
         var source = State.GetCard(dealt.Source);
         var target = dealt.TargetCard is { } t ? State.GetCard(t) : null;
-        State.DamageLog.Add(new DamageRecord(State.TurnNumber, source.Id, DamageSourceVersion(source), target?.Id, target?.Version ?? 0, dealt.TargetPlayer, dealt.Amount));
+        State.DamageLog.Add(new DamageRecord(State.TurnNumber, source.Id, DamageSourceVersion(source), target?.Id, target?.Version ?? 0, dealt.TargetPlayer, dealt.Amount)
+        {
+            SourceController = source.Zone is Zone.Battlefield or Zone.Stack || source.LastKnownInfo is null ? source.Controller : source.LastKnownInfo.Controller,
+        });
     }
 
     /// <summary>Damage the object (card, version) has dealt this turn.</summary>

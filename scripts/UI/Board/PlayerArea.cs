@@ -338,7 +338,9 @@ public partial class PlayerArea : Control
         LayoutStatic();
 
         // An Aura or Equipment is shown on the permanent it's attached to, even on another player's side.
-        PlayerId SideOf(CardView c) => c.AttachedTo is { } host && view.FindCard(host) is { Zone: Zone.Battlefield } h ? h.Controller : c.Controller;
+        // An Aura enchanting a player is shown on that player's side.
+        PlayerId SideOf(CardView c) => c.AttachedToPlayer is { } enchanted ? enchanted
+            : c.AttachedTo is { } host && view.FindCard(host) is { Zone: Zone.Battlefield } h ? h.Controller : c.Controller;
         var battlefield = view.Battlefield.Where(c => SideOf(c) == Player).ToList();
         // Exiled cards (any owner's) held under a permanent shown on this side are drawn tucked under it.
         var held = view.Players.SelectMany(p => p.Exile)

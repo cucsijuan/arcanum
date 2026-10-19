@@ -12,6 +12,8 @@ public enum AffectedScope
     YourCreatures,
     /// <summary>Creatures controlled by the source controller's opponents.</summary>
     OpponentsCreatures,
+    /// <summary>Permanents your opponents control.</summary>
+    OpponentsPermanents,
     /// <summary>Every creature.</summary>
     AllCreatures,
     /// <summary>The permanent this Aura is attached to.</summary>
@@ -82,6 +84,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     public IReadOnlyList<Mana.ManaType>? GrantsMana { get; init; }
     public int GrantsManaAmount { get; init; } = 1;
 
+    /// <summary>The granted mana's spending restriction ("Spend this mana only to cast a creature spell").</summary>
+    public ObjectFilter? GrantsManaOnlyFor { get; init; }
+
     /// <summary>"You control enchanted permanent" (layer 2).</summary>
     public bool GivesControl { get; init; }
 
@@ -114,6 +119,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
 
     /// <summary>"Has all activated abilities of all [filter] cards in your graveyard."</summary>
     public ObjectFilter? GrantsGraveyardAbilities { get; init; }
+
+    /// <summary>"Have all activated abilities of all creature cards exiled with this creature."</summary>
+    public bool GrantsExiledCreatureAbilities { get; init; }
 
     /// <summary>Keywords the affected permanents lose ("loses flying", layer 6).</summary>
     public IReadOnlyList<Keyword>? LosesKeywords { get; init; }

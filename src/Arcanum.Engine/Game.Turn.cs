@@ -47,8 +47,11 @@ public sealed partial class Game
             player.ScriedOrSurveilledThisTurn = false;
             player.MilledThisTurn = 0;
             player.NextSpellUncounterableThisTurn = false;
+            player.CreatureSpellsUncounterableThisTurn = false;
+            player.TreasureSpellsThisTurn = 0;
             player.NoLegendRuleThisTurn = false;
             player.ExtraRedFromMountainsThisTurn = 0;
+            player.CreatedTokenThisTurn = false;
             player.CardsDiscardedThisTurn = 0;
             player.DamageTakenThisTurn = 0;
             player.CombatDamageTakenThisTurn = 0;
@@ -215,6 +218,7 @@ public sealed partial class Game
                 await DeclareAttackersAsync();
                 break;
             case Step.DeclareBlockers:
+                State.NextCombatRules.Clear(); // they were for the attack just declared ("that combat")
                 await DeclareBlockersAsync();
                 break;
             case Step.CombatDamage:

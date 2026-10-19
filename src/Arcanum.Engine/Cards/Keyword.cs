@@ -92,6 +92,8 @@ public enum Keyword
     AssignsNegativePowerAsPositive,
     /// <summary>Can't be blocked except by artifact creatures and/or creatures that share a color with it (rule 702.13).</summary>
     Intimidate,
+    /// <summary>Can't be blocked except by artifact creatures and/or black creatures (rule 702.36).</summary>
+    Fear,
     /// <summary>"Whenever this creature attacks, it gets +1/+1 until end of turn for each opponent you attacked with a creature this combat" (rule 702.121).</summary>
     Melee,
     /// <summary>

@@ -120,6 +120,8 @@ public sealed partial class Game
         {
             var card = State.GetCard(id);
             if ((card.Definition.AttacksEachCombat && card.HasTextAbilities) || card.Has(Keyword.AttacksEachCombat)) requirements.Add(new AttackRequirement(id, AttackRequirementKind.Attacks));
+            // "Each of those creatures attacks that combat if able."
+            if (State.NextCombatRules.Any(r => r.Card == id && r.Version == card.Version && r.Turn == State.TurnNumber)) requirements.Add(new AttackRequirement(id, AttackRequirementKind.Attacks));
             // Each goad: "attacks each combat if able and attacks a player other than [the goader] if able" (701.15b-c).
             foreach (var goader in State.Goads.Concat(State.GoadsForever).Where(g => g.Card == id && g.Version == card.Version).Select(g => g.Goader).Concat(card.StaticGoaders).Distinct())
             {
@@ -153,6 +155,7 @@ public sealed partial class Game
     /// </summary>
     private bool AttackForbiddenWithPlaneswalkers(Card attacker, PlayerId defender) =>
         attacker.CantAttackPlayersAndPlaneswalkers.Contains(defender) ||
+        State.NextCombatRules.Any(r => r.Card == attacker.Id && r.Version == attacker.Version && r.Turn == State.TurnNumber && r.Protected == defender) ||
         attacker.Definition.CantAttackUnlessDefenderControls is { } needed && attacker.HasTextAbilities
         && !State.PermanentsControlledBy(defender).Any(p => Matches(needed with { Controller = Abilities.ControllerFilter.Any }, p, defender, attacker, attacker.Controller));
 
@@ -206,6 +209,7 @@ public sealed partial class Game
         && !(IsRingBearer(attacker, 1) && blocker.Power > attacker.Power) // the Ring, level 1
         && !(attacker.Has(Keyword.Skulk) && blocker.Power > attacker.Power) // skulk (702.118)
         && !(attacker.Has(Keyword.Intimidate) && !blocker.Is(CardType.Artifact) && !blocker.Colors.Intersect(attacker.Colors).Any()) // intimidate (702.13b)
+        && !(attacker.Has(Keyword.Fear) && !blocker.Is(CardType.Artifact) && !blocker.Colors.Contains("B")) // fear (702.36b)
         && !(attacker.Definition.CantBeBlockedBy is { } restriction && attacker.HasTextAbilities
              && Matches(restriction with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, attacker, attacker.Controller))
         // "Can't be blocked by creatures with power 2 or less" / "can't be blocked except by Spirits" from an effect.

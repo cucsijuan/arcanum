@@ -207,6 +207,7 @@ public sealed partial class Game
                 break;
             case AttackerDeclared ad:
                 State.GetCard(ad.Attacker).AttacksThisTurn++;
+                State.AttackersThisTurn.Add((ad.Attacker, State.GetCard(ad.Attacker).Version, State.TurnNumber));
                 if (State.Combat?.FindAttack(ad.Attacker) is { Planeswalker: null } attacked)
                     State.GetPlayer(State.GetCard(ad.Attacker).Controller).PlayersAttackedThisTurn.Add(attacked.Defender);
                 break;

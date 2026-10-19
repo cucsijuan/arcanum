@@ -1345,3 +1345,84 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   (and `"chooseOnEnter": "option"` with `"enterOptions"`): the doubling works only while that option was chosen as it entered.
   `{ "chooseOnEnter": "option", "enterOptions": ["Ashen", "Tide"], "extraTriggersFromAttacking": true, "extraTriggersFromAttackingOption":
   "Ashen" }`. Triggers from "whenever you attack with one or more creatures" count as triggers caused by attacking.
+
+## More Commander deck vocabulary
+
+### From the rules text (no script key)
+- **Escape**: the cost and the exile count are read from the line "Escape—{cost}, Exile N other cards from your graveyard", and the
+  counters from "escapes with N +1/+1 counters". The card can be cast from the graveyard for the escape cost (rule 702.138).
+- **Ravenous**: "Ravenous" makes the creature enter with X +1/+1 counters, where X is the value chosen for its cast. It draws a card if X is 5 or more.
+- **Toxic N**, **Vanishing N** and **Fear** are read from the rules text.
+- **Enchant player** and **Enchant opponent**: an Aura that is attached to a player. The Aura is shown on that player's side of the board.
+
+### Card-wide
+- `clueFoodTreasureEach`: "If you would create a Clue, Food, or Treasure token, instead create one of each" (each such token about to be made becomes one of each).
+- `tokensPlusThatManySquirrels`: "If one or more tokens would be created under your control, those tokens plus that many 1/1 green Squirrel creature tokens are created instead."
+- `"gift": "extraTurn"`: the player who receives the gift takes an extra turn after this one.
+- `eachPlayerExtraLandPlays: N`: each player may play N more lands each turn.
+- `chooseColorOtherThan: "R"` with `manaAlsoChosenColor`, `chooseOnEnter: "color"` and `tapForMana`: the color chosen as it enters
+  can't be red. With `manaAlsoChosenColor`, the mana ability also makes mana of the chosen color.
+  `{ "chooseOnEnter": "color", "chooseColorOtherThan": "R", "tapForMana": true, "manaAlsoChosenColor": true }`.
+- `enchantedLandExtraGreen`: on an Aura, the enchanted land has an extra green mana ability.
+- `yourForestsExtraGreen`: each Forest you control taps for an extra green mana.
+- `opponentsDrawAtMostOne`: each opponent can't draw more than one card each turn.
+- `firstTreasureSpellHasCascade`: the first spell with a Treasure cast each turn has cascade.
+- `creatureSpellsGainOffspring: "{2}"`: creature spells you cast gain offspring with that cost.
+- `yourCreaturesAreEveryType`: creatures you control are every creature type.
+- `sacrificeAnyNoReduction`: the sacrifice-any additional cost (`additionalSacrificeAny`) doesn't reduce the spell's cost.
+- `copyPerSacrificed`: when you sacrifice any number of permanents to cast the spell, it makes a copy for each one sacrificed.
+
+### Abilities and statics
+- `{ "spellsHaveCascade": filter }`: spells that match the filter have cascade.
+- `{ "replacesTokenSubtype": "Fish", "instead": token }`: a token of that subtype is made as the given token instead. Works with `"level"`.
+- Activated ability with `"fromCommandZone": true`: the ability can be activated from the command zone.
+- Static scope `"permanents:opponents"`: the static ability applies to permanents your opponents control.
+- Static `"exiledCreatureAbilities": true`: the source has the activated abilities of the creature cards exiled with it.
+- Static `grantsManaOnlyFor`: restricts the mana the static grants to the given use.
+
+### Costs
+- `"sacrificeAny:Squirrel*X"`: sacrifice X Squirrels, with X announced as the ability is activated.
+- `"tapTokens:X"`: tap X untapped tokens.
+- `"removeCounters:4:hoofprint"`: remove 4 hoofprint counters.
+
+### Triggers
+- `cardPutIntoYourGraveyard`: a card you own is put into your graveyard from anywhere. Use `"batched": true` for "one or more".
+- `attackBetweenYouAndEnchanted`: a creature attacks between you and the enchanted player.
+
+### Effects
+- `{ "temptingOffer": prompt, "effects": [ … ] }`: the effects happen for you. Then each opponent, in turn order, may accept. For each
+  accepting opponent the effects happen for that opponent, and then once more for you.
+- `{ "parley": true }`: each player reveals the top card of their library, in turn order. Quantity `"nonlandRevealed"` counts the
+  nonland cards revealed.
+- `{ "chooseOpponent": true }` then `{ "each": f, "controlledBy": "chosenPlayer" }`: choose an opponent, then act on the cards that player controls.
+- `{ "repeatProcess": true }`: inside a `mayPay`, repeats the ability's effects.
+- `{ "lookAtTopMayBottom": "target" }`: look at the top card of a target library, and may put it on the bottom.
+- `{ "exileLibrary": "target" }`: exile the target player's library.
+- `{ "shuffleHandIntoLibrary": "target" }`: the target player shuffles their hand into their library.
+- `{ "copiesOfDestroyedHalved": 2 }`: for each destroyed creature, makes that many token copies (2 here) with half its power and
+  toughness, rounded up.
+- `{ "eachDrawsDamageDealtToThis": true }`: each player draws a card for each point of damage they dealt to it this turn.
+- `{ "returnAtEndOfCombat": "found" }`: a delayed trigger that returns each card found, if it is still on the battlefield, to its owner's hand at the end of combat.
+- `{ "revealTopCastOneFree": quantity, "filter": f }`: reveal the top cards and cast one of those matching the filter for free.
+- `{ "fromOutsideOrExileToHand": filter }`: put a matching card from outside the game or from exile into your hand.
+- `{ "attackersAttackAgainNotYou": true }`: the attacking creatures attack again, but not you.
+- `{ "linkedExiledOwnerCreates": token }`: the owner of the card this exiled creates the token. Its X/X is the exiled card's mana value.
+- `{ "creatureSpellsUncounterableThisTurn": true }`: creature spells can't be countered this turn.
+- `sacrifice` with `"otherwiseDiscard": 1`: a player who sacrifices nothing discards that many cards instead.
+- `blink` with `"underYourControl": true`: the card returns under your control.
+- `gainControl` with `"whileCounter": "shield"`: control lasts while the permanent has a shield counter.
+- Emblem with `"replaces"` and `"emblemText"`: the emblem replaces the named rule, and `emblemText` is its text.
+- Copy with `"attackingTriggeredPlayer": true`: the copy's target is the player attacked by the triggering creature.
+
+### Targets, subjects, quantities and conditions
+- Target spec `"attackingTriggeredPlayer": true`: targets the player attacked by the triggering creature.
+- Subjects `"playersWhoDrewThisWay"` and `"enchantedPlayer"`.
+- Quantities `"creaturesAttackedThisTurn"`, `"defendingPlayerHandSize"` and `"-handSize"` (the negative of the hand size).
+- Conditions `"cardsExiledWithThis"`, `"createdTokenThisTurn"`, `"enchantedPlayersTurn"`, `{ "classLevelAtLeast": 2 }`, and
+  `{ "counters": 20, "kind": "any" }` (counters of every kind).
+
+### Filters and counters
+- Filters `lessManaValueThanSourcePower`, `attackingYourOpponent`, `basePower: 1`, `basePowerOrToughness: 1`, `wasCast: false`,
+  `atMostManaValueOfTriggered` and `notPutByThis`.
+- Counter kinds: `hoofprint`, `ingredient`, `acorn` and `growth`.
+- Predefined token: `"Blood"`.

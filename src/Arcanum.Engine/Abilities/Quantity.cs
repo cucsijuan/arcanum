@@ -88,6 +88,10 @@ public enum QuantityKind
     MilledManaValue,
     /// <summary>Permanents tapped by this effect.</summary>
     TappedThisWay,
+    /// <summary>Parley: "for each nonland card revealed this way".</summary>
+    NonlandRevealedThisWay,
+    /// <summary>"The number of cards in defending player's hand".</summary>
+    DefendingPlayerHandSize,
     /// <summary>Times the Ring has tempted the controller.</summary>
     RingLevel,
     /// <summary>Auras and Equipment this effect attached.</summary>
@@ -121,6 +125,8 @@ public enum QuantityKind
     OwnedInExile,
     /// <summary>Creatures that died under the controller's control this turn.</summary>
     YourCreaturesDiedThisTurn,
+    /// <summary>"For each creature that attacked this turn".</summary>
+    CreaturesAttackedThisTurn,
     /// <summary>Creatures exiled from the battlefield this turn under the controller's opponents' control.</summary>
     OpponentsCreaturesExiledThisTurn,
     /// <summary>Card types among the cards exiled with the source (as it is now).</summary>

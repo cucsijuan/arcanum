@@ -60,6 +60,9 @@ public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = C
     /// <summary>The controller must be the player the trigger event was about ("that player controls").</summary>
     public bool ControlledByTriggeredPlayer { get; init; }
 
+    /// <summary>"Target creature that's attacking that player": attacking the player the trigger is about (not a planeswalker).</summary>
+    public bool AttackingTriggeredPlayer { get; init; }
+
     /// <summary>The controller must be the player the creature a trigger is about is attacking ("defending player controls").</summary>
     public bool ControlledByDefendingPlayer { get; init; }
 
@@ -201,6 +204,10 @@ public enum SubjectKind
     Sacrificers,
     /// <summary>The players dealt damage by this spell or ability so far ("each player dealt damage this way"), in turn order.</summary>
     PlayersDamagedThisWay,
+    /// <summary>"Each player who drew a card this way".</summary>
+    PlayersWhoDrewThisWay,
+    /// <summary>The player the source Aura enchants.</summary>
+    EnchantedPlayer,
     /// <summary>Each opponent other than the player the trigger is about ("each other opponent").</summary>
     OtherOpponents,
     /// <summary>The player or planeswalker the source is attacking ("the player or planeswalker it's attacking").</summary>
@@ -217,6 +224,9 @@ public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filt
 {
     /// <summary>For <see cref="SubjectKind.Each"/>: only permanents the target player at <see cref="Index"/> controls ("creatures target player controls").</summary>
     public bool ControlledByTarget { get; init; }
+
+    /// <summary>With <see cref="SubjectKind.Each"/>: only permanents the chosen player ("choose an opponent") controls.</summary>
+    public bool ControlledByChosenPlayer { get; init; }
 
     /// <summary>For <see cref="SubjectKind.Each"/>: leaves out the chosen targets ("each other creature you control").</summary>
     public bool ExceptTargets { get; init; }

@@ -112,9 +112,12 @@ public sealed partial class Game
             }
             if (card.Definition.ChooseOnEnter == EnterChoice.Color)
             {
-                int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose a color", id, ColorNames, OptionKind.Color));
-                Require(i >= 0 && i < ColorNames.Length, "Choose one of the colors.");
-                card.ChosenColor = ColorLetters[i];
+                // "Choose a color other than red": that color isn't offered.
+                var letters = ColorLetters.Where(l => l != card.Definition.ChosenColorExcept).ToList();
+                var names = letters.Select(l => ColorNames[Array.IndexOf(ColorLetters, l)]).ToList();
+                int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose a color", id, names, OptionKind.Color));
+                Require(i >= 0 && i < names.Count, "Choose one of the colors.");
+                card.ChosenColor = letters[i];
             }
             else if (card.Definition.ChooseOnEnter == EnterChoice.PayLifeOrTapped)
             {
@@ -362,12 +365,14 @@ public sealed partial class Game
         }
 
         foreach (var permanent in State.PermanentsControlledBy(playerId).Concat(player.Graveyard.Select(State.GetCard)).Concat(player.Hand.Select(State.GetCard))
-                     .Concat(player.Command.Select(State.GetCard).Where(c => c.Definition.CommanderNinjutsu)))
+                     .Concat(player.Command.Select(State.GetCard).Where(c => c.Definition.CommanderNinjutsu
+                         || c.Definition.Abilities.OfType<ActivatedAbility>().Any(a => a.FromCommandZone))))
         {
             var abilities = permanent.Abilities;
             for (int i = 0; i < abilities.Count; i++)
                 if (abilities[i] is ActivatedAbility ability && ability.Cost.FromGraveyard == (permanent.Zone == Zone.Graveyard)
                     && (ability.Cost.Ninjutsu ? permanent.Zone == Zone.Hand || (permanent.Zone == Zone.Command && permanent.Definition.CommanderNinjutsu)
+                        : ability.FromCommandZone ? permanent.Zone == Zone.Command
                         : ability.Cost.FromHand == (permanent.Zone == Zone.Hand) && permanent.Zone != Zone.Command)
                     && !splitSecond && CanActivate(permanent, ability, i, playerId, sorcerySpeed))
                     actions.Add(new ActivateAbility(permanent.Id, i));
@@ -406,7 +411,8 @@ public sealed partial class Game
         Config.LandsPerTurn + State.GetPlayer(playerId).ExtraLandsThisTurn
         + State.PermanentsControlledBy(playerId).Count(c => (c.Replaces & Replacements.AdditionalLandPlay) != 0
                                                             && (c.Definition.AdditionalLandPlayIf is not { } cond || Holds(cond, playerId, c)))
-        + State.PermanentsControlledBy(playerId).Where(c => c.HasTextAbilities).Sum(c => c.Definition.ExtraLandPlays);
+        + State.PermanentsControlledBy(playerId).Where(c => c.HasTextAbilities).Sum(c => c.Definition.ExtraLandPlays)
+        + State.Battlefield.Select(State.GetCard).Where(c => c.HasTextAbilities).Sum(c => c.Definition.EachPlayerExtraLandPlays);
 
     /// <summary>"Can be cast as though it had flash" from a permanent the caster controls ("the first creature spell you cast each turn").</summary>
     private bool GrantedFlash(Card card, PlayerId caster) =>
@@ -477,7 +483,7 @@ public sealed partial class Game
         if (Has(playerId, Replacements.LandsFromGraveyard))
             foreach (var id in player.Graveyard.Where(id => State.GetCard(id).Is(CardType.Land))) yield return id;
         foreach (var id in player.Graveyard)
-            if (BlitzFromGraveyard(State.GetCard(id))) yield return id;
+            if (BlitzFromGraveyard(State.GetCard(id)) || (State.GetCard(id).Definition.Escape is not null && !State.GetCard(id).Is(CardType.Land))) yield return id;
         foreach (var id in player.Exile)
             if (Foretold(State.GetCard(id))) yield return id;
         foreach (var id in player.Graveyard)
@@ -841,8 +847,8 @@ public sealed partial class Game
         // 601.2b: announcements, each one only if what's been announced so far can still be paid with it.
         // A gift is promised (or not) as the spell is cast, to an opponent (rule 702.174a).
         PlayerId? giftTo = null;
-        if ((card.Definition.Gift is not null || card.Definition.GiftCard) && State.OpponentsOf(player.Id).Any()
-            && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Promise an opponent a gift ({(card.Definition.GiftCard ? "a card" : card.Definition.Gift!.Name)}) for {card.Name}?", cardId)))
+        if (card.Definition.HasGift && State.OpponentsOf(player.Id).Any()
+            && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Promise an opponent a gift ({card.Definition.GiftName}) for {card.Name}?", cardId)))
             giftTo = await ChooseOpponentAsync(player.Id, card, "Choose the opponent who gets the gift");
         // The mana cost or an alternative cost (118.9), such as dash or "without paying its mana cost".
         var way = await ChooseCastingWayAsync(player.Id, card, payable.Select(c => c.Way).Distinct().ToList());
@@ -875,13 +881,21 @@ public sealed partial class Game
         if (card.Definition.CastSacrificeAny is not null && SacrificeAnyCounts(card, player.Id, choices) is { Count: > 0 } sacrificeCounts && sacrificeCounts.Max() > 0)
         {
             int n = await ControllerOf(player.Id).ChooseNumberAsync(ViewFor(player.Id), new NumberRequest(
-                $"{card.Name}: sacrifice how many permanents ({{1}} less each)?", cardId, sacrificeCounts.Min(), sacrificeCounts.Max()));
+                card.Definition.SacrificeAnyNoReduction ? $"{card.Name}: sacrifice how many?" : $"{card.Name}: sacrifice how many permanents ({{1}} less each)?",
+                cardId, sacrificeCounts.Min(), sacrificeCounts.Max()));
             Require(sacrificeCounts.Contains(n), "That many can't be sacrificed and still pay for the spell.");
             choices = choices with { SacrificeAnyCount = n };
         }
         if (card.Definition.Offspring is { } offspring && CanPayToCast(card, player.Id, choices with { OffspringPaid = true })
             && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Pay offspring {offspring} for {card.Name}?", cardId)))
             choices = choices with { OffspringPaid = true };
+        // "Creature spells you cast gain offspring {2} as you cast them": each such ability is one more offspring cost to pay or not.
+        if (card.IsCreature)
+            foreach (var granted in State.PermanentsControlledBy(player.Id).Where(p => p.HasTextAbilities && p.Definition.CreatureSpellsGainOffspring is not null)
+                         .Select(p => p.Definition.CreatureSpellsGainOffspring!).ToList())
+                if (CanPayToCast(card, player.Id, choices with { GrantedOffspringPaid = choices.GrantedOffspringPaid.Append(granted).ToList() })
+                    && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Pay offspring {granted} for {card.Name}?", cardId)))
+                    choices = choices with { GrantedOffspringPaid = choices.GrantedOffspringPaid.Append(granted).ToList() };
         // Splice onto instant or sorcery (702.47): cards revealed from the hand add their effects to this spell.
         if (card.Is(CardType.Instant) || card.Is(CardType.Sorcery))
             foreach (var other in player.Hand.Where(h => h != cardId).Select(State.GetCard).Where(c => c.Definition.Splice is not null).ToList())
@@ -1123,6 +1137,7 @@ public sealed partial class Game
         card.GiftPromised = giftTo is not null;
         card.GiftTo = giftTo;
         if (player.NextSpellUncounterableThisTurn) { uncounterable = true; player.NextSpellUncounterableThisTurn = false; }
+        if (player.CreatureSpellsUncounterableThisTurn && card.IsCreature) uncounterable = true;
         card.Uncounterable = uncounterable;
         card.Kicked = kicked;
         card.CastFromHand = fromHand;
@@ -1135,7 +1150,7 @@ public sealed partial class Game
         {
             Ability = ability != CastingTargets(card.Definition) ? ability : null,
             X = x, Kicked = kicked, Flashback = flashback, GiftTo = giftTo, SacrificedForCost = costSacrificed, DiscardedForCost = costDiscarded, Division = division, KickCount = choices.KickCount, SquadCount = choices.SquadCount, Dashed = choices.Way.Kind == CastingWayKind.Dash, Blitzed = choices.Way.Kind == CastingWayKind.Blitz,
-            Impended = choices.Way.Kind == CastingWayKind.Impending, OffspringPaid = choices.OffspringPaid,
+            Impended = choices.Way.Kind == CastingWayKind.Impending, Escaped = choices.Way.Kind == CastingWayKind.Escape, OffspringPaid = choices.OffspringPaid, GrantedOffspringPaid = choices.GrantedOffspringPaid.Count,
         });
         Emit(new SpellCast(player.Id, cardId));
         foreach (var castThis in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.Trigger == TriggerEvent.CastThis))
@@ -1147,16 +1162,39 @@ public sealed partial class Game
                 .Count(x => Matches(x.g.Spells with { Controller = ControllerFilter.Any }, card, player.Id, x.p, player.Id));
         for (int i = 0; i < storms && castBefore > 0; i++)
             _pendingTriggers.Add(new PendingTrigger(cardId, StormTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, castBefore)));
+        if (card.Definition.CopyPerSacrificed && choices.SacrificeAnyCount > 0)
+            _pendingTriggers.Add(new PendingTrigger(cardId, CopyPerSacrificedTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, choices.SacrificeAnyCount)));
         if (choices.ReplicateCount > 0)
             _pendingTriggers.Add(new PendingTrigger(cardId, ReplicateTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, choices.ReplicateCount)));
         if (conspirators is not null)
             _pendingTriggers.Add(new PendingTrigger(cardId, ConspireTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, 1)));
-        for (int i = 0; i < card.Definition.Cascade; i++) // cascade triggers as the spell is cast (rule 702.85a)
+        if (card.PaidWithTreasure) player.TreasureSpellsThisTurn++;
+        int cascades = card.Definition.Cascade
+            + (card.PaidWithTreasure && player.TreasureSpellsThisTurn == 1
+                ? State.PermanentsControlledBy(player.Id).Count(p => p.HasTextAbilities && p.Definition.FirstTreasureSpellHasCascade) : 0)
+            + State.PermanentsControlledBy(player.Id).Where(p => p.HasTextAbilities)
+                .SelectMany(p => p.Abilities.OfType<SpellsHaveCascade>().Select(g => (p, g)))
+                .Count(x => Matches(x.g.Spells with { Controller = ControllerFilter.Any }, card, player.Id, x.p, player.Id));
+        for (int i = 0; i < cascades; i++) // cascade triggers as the spell is cast (rule 702.85a)
             _pendingTriggers.Add(new PendingTrigger(cardId, CascadeTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, card.ManaValue)));
         foreach (var source in copySources) QueueCopyThatSpell(source, player.Id, card);
         foreach (var source in scrySources) _pendingTriggers.Add(new PendingTrigger(source, ScryOneForSharedType, player.Id));
         return true;
     }
+
+    private static readonly TriggeredAbility GrantedOffspringTrigger = new()
+    {
+        Trigger = TriggerEvent.EntersBattlefield,
+        Effects = new Effect[] { new CreateTokenCopy(Subject.Self, 1, false, false) { SetPower = 1, SetToughness = 1 } },
+        Text = "Offspring — When this creature enters, if its offspring cost was paid, create a token that's a copy of it, except it's 1/1.",
+    };
+
+    private static readonly TriggeredAbility CopyPerSacrificedTrigger = new()
+    {
+        Trigger = TriggerEvent.Reflexive,
+        Effects = new Effect[] { new CopySpell(Subject.Triggered, new Quantity(0, QuantityKind.TriggerAmount)) },
+        Text = "When you do, copy this spell for each creature sacrificed this way. You may choose new targets for the copies.",
+    };
 
     private static readonly TriggeredAbility StormTrigger = new()
     {
@@ -1270,8 +1308,34 @@ public sealed partial class Game
             }
             Require(x >= ability.MinX && x <= max, $"X must be between {ability.MinX} and {max}.");
         }
+        if (ability.Cost.SacrificeX && announcedX is null && ability.Cost.Extra?.Sacrifice is { } sacrificeXFilter)
+        {
+            int most = SacrificeCandidates(player.Id, sacrificeXFilter, source.Id).Count;
+            x = await ControllerOf(player.Id).ChooseNumberAsync(ViewFor(player.Id), new NumberRequest($"{source.Name}: choose X (sacrifice X)", source.Id, 0, most) { CanCancel = true });
+            if (x == NumberRequest.Cancelled)
+            {
+                _playerCancels++;
+                return false;
+            }
+            Require(x >= 0 && x <= most, $"X must be between 0 and {most}.");
+            announcedX = x;
+        }
+        if (ability.Cost.TapX && announcedX is null && ability.Cost.Extra?.TapCreatures is { } tapXFilter)
+        {
+            int most = State.PermanentsControlledBy(player.Id).Count(c => !c.Tapped && c.Id != source.Id && Matches(tapXFilter with { Controller = ControllerFilter.Any }, c, player.Id, source, player.Id));
+            x = await ControllerOf(player.Id).ChooseNumberAsync(ViewFor(player.Id), new NumberRequest($"{source.Name}: choose X (tap X)", source.Id, 0, most) { CanCancel = true });
+            if (x == NumberRequest.Cancelled)
+            {
+                _playerCancels++;
+                return false;
+            }
+            Require(x >= 0 && x <= most, $"X must be between 0 and {most}.");
+            announcedX = x;
+        }
         cost = cost.WithX(x);
         var extraCost = ability.Cost.DiscardX && x > 0 ? (ability.Cost.Extra ?? new ExtraCost()) with { Discard = x } : ability.Cost.Extra;
+        if (ability.Cost.TapX) extraCost = x > 0 ? extraCost! with { TapCount = x } : extraCost! with { TapCreatures = null, TapCount = 0 };
+        if (ability.Cost.SacrificeX) extraCost = x > 0 ? extraCost! with { SacrificeCount = x } : extraCost! with { Sacrifice = null, SacrificeCount = 1 };
         // What the cost will sacrifice, discard, ...: chosen first, while backing out still changes nothing.
         if (await ChooseExtraAsync(player.Id, extraCost, source.Id) is not { } extraPicks) return false;
 
@@ -1897,6 +1961,12 @@ public sealed partial class Game
                 player.ManaPool.Add(ManaType.Red);
                 Emit(new ManaAdded(player.Id, ManaType.Red, source.Id));
             }
+        if (source.ExtraGreen > 0 && produced.Count > 0 && option is not { Types: [ManaType.Green], Combination: false })
+            for (int i = 0; i < source.ExtraGreen; i++)
+            {
+                player.ManaPool.Add(ManaType.Green);
+                Emit(new ManaAdded(player.Id, ManaType.Green, source.Id));
+            }
         if (source.Definition.SacrificeForMana) await SacrificePermanentAsync(source.Id);
         // "Whenever you tap a nonland permanent for mana, add one mana of any type that permanent produced" (a triggered mana ability, 605.1b).
         if (!source.Is(CardType.Land) && produced.Count > 0)
@@ -2092,15 +2162,23 @@ public sealed partial class Game
                 int castVersion = card.Version;
                 // An Aura spell enters attached to the object it targeted (rule 303.4f).
                 var attachTo = card.Definition.EnchantTarget is not null ? item.Targets[0].Target.Card : null;
+                _enteringAttachedPlayer = card.Definition.EnchantTarget is { Kind: TargetKind.Player } && item.Targets[0].Target.Player is { } enchanted ? (spell.Card, enchanted) : null;
                 // Impending: it enters with N time counters (rule 702.176a).
                 _enteringImpended = spell.Impended && card.Types.IsPermanent() ? spell.Card : null;
                 _enteringOffspring = spell.OffspringPaid && card.Types.IsPermanent() ? spell.Card : null;
+                _enteringCastX = (spell.Card, spell.X);
                 await MoveCardAsync(spell.Card, card.Types.IsPermanent() ? Zone.Battlefield : discard, controller: spell.Controller, attachTo: attachTo,
                     kicked: spell.Kicked && card.Types.IsPermanent(), castFromHand: card.CastFromHand && card.Types.IsPermanent(),
                     wasCast: card.Types.IsPermanent() && !card.Definition.IsToken, timesKicked: spell.KickCount, squadPaid: spell.SquadCount,
-                    withCounters: _enteringImpended is not null ? new[] { (CounterKind.Time, card.Definition.ImpendingCount) } : null);
+                    withCounters: EnteringCounters(card, spell));
                 _enteringImpended = null;
                 _enteringOffspring = null;
+                _enteringCastX = null;
+                _enteringAttachedPlayer = null;
+                // Each offspring ability it gained as it was cast triggers as it enters, if its cost was paid (702.175a).
+                if (card.Zone == Zone.Battlefield)
+                    for (int i = 0; i < spell.GrantedOffspringPaid; i++)
+                        _pendingTriggers.Add(new PendingTrigger(card.Id, GrantedOffspringTrigger, card.Controller) { SourceVersion = card.Version });
                 if (card.Zone == Zone.Battlefield && spell.Dashed)
                 {
                     // Dash: it gains haste, and it returns to its owner's hand at the beginning of the next end step.
@@ -2113,11 +2191,6 @@ public sealed partial class Game
                 if (card.Zone == Zone.Battlefield && State.HasteAndSacrificeOnEnter.Remove((spell.Card, castVersion)))
                     State.LastingEffects.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste })
                         { Timestamp = NewTimestamp(), Abilities = new AbilityDefinition[] { SacrificeThisCreatureAtEndStep } });
-                if (card.Zone == Zone.Battlefield) card.CastX = spell.X;
-                if (card.Zone == Zone.Battlefield && State.ExtraCountersOnEnter.Remove((spell.Card, castVersion), out var extraCounters))
-                    PutCounters(card, CounterKind.PlusOnePlusOne, extraCounters, spell.Controller);
-                if (card.Zone == Zone.Battlefield && card.Definition.EntersWithXCounters && spell.X > 0)
-                    PutCounters(card, CounterKind.PlusOnePlusOne, spell.X * card.Definition.XCountersMultiplier, spell.Controller);
                 Emit(new SpellResolved(spell.Card));
                 break;
             }
@@ -2130,5 +2203,21 @@ public sealed partial class Game
                 Emit(new AbilityResolved(ability.Source, ability.Ability.Text));
                 break;
         }
+    }
+
+    /// <summary>
+    /// The counters a resolving permanent spell enters with (rule 122.6, before its enters triggers look): impending's time counters
+    /// (702.176a), "enters with X +1/+1 counters" and ravenous (702.156a), and the counters it escapes with (702.138c).
+    /// </summary>
+    private IReadOnlyList<(CounterKind Kind, int Count)>? EnteringCounters(Card card, SpellOnStack spell)
+    {
+        if (!card.Types.IsPermanent()) return null;
+        var counters = new List<(CounterKind Kind, int Count)>();
+        if (spell.Impended) counters.Add((CounterKind.Time, card.Definition.ImpendingCount));
+        if (card.Definition.EntersWithXCounters && spell.X > 0) counters.Add((CounterKind.PlusOnePlusOne, spell.X * card.Definition.XCountersMultiplier));
+        if (spell.Escaped && card.Definition.EscapesWithCounters > 0) counters.Add((CounterKind.PlusOnePlusOne, card.Definition.EscapesWithCounters));
+        // "That creature enters with N additional +1/+1 counters on it" (from abilities that saw it cast).
+        if (State.ExtraCountersOnEnter.Remove((spell.Card, card.Version), out var extra) && extra > 0) counters.Add((CounterKind.PlusOnePlusOne, extra));
+        return counters.Count > 0 ? counters : null;
     }
 }

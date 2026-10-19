@@ -109,7 +109,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
-    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story, Flood, Supply, Coin }
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story, Flood, Supply, Coin, Hoofprint, Ingredient, Acorn, Growth }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect
@@ -147,6 +147,10 @@ public sealed record MayDo(string Prompt, IReadOnlyList<Effect> Effects) : Effec
 /// <summary>Put cards (from a graveyard, usually) onto the battlefield; "under your control" unless <paramref name="UnderOwnersControl"/>.</summary>
 public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool UnderOwnersControl = false) : Effect
 {
+    /// <summary>"Each of them is a 1/1 Spirit …": its base power and toughness from now on.</summary>
+    public int? SetPower { get; init; }
+    public int? SetToughness { get; init; }
+
     /// <summary>"Tapped and attacking": it attacks a player or planeswalker its controller chooses (rule 508.4).</summary>
     public bool Attacking { get; init; }
 
@@ -220,7 +224,11 @@ public sealed record SearchLibrary(ObjectFilter Filter, int Count, State.Zone To
 }
 
 /// <summary>"[Players] sacrifice N [permanents] of their choice."</summary>
-public sealed record Sacrifice(Quantity Count, ObjectFilter Filter, Subject Who) : Effect;
+public sealed record Sacrifice(Quantity Count, ObjectFilter Filter, Subject Who) : Effect
+{
+    /// <summary>"Each player who can't discards a card": how many cards a player who sacrificed nothing discards.</summary>
+    public int OtherwiseDiscard { get; init; }
+}
 
 /// <summary>Put a target creature on the top or bottom of its owner's library (the owner chooses: "on their choice").</summary>
 public sealed record PutIntoLibrary(Subject What, bool Bottom = false) : Effect
@@ -255,6 +263,9 @@ public sealed record GainControl(Subject What, bool UntilEndOfTurn = false, Subj
 
     /// <summary>"For as long as they're the monarch": the player the trigger is about; nothing happens if they aren't the monarch as this resolves.</summary>
     public bool WhileTriggeredPlayerIsMonarch { get; init; }
+
+    /// <summary>"For as long as it has a [kind] counter on it".</summary>
+    public CounterKind? WhileCounter { get; init; }
 }
 
 /// <summary>
@@ -294,6 +305,9 @@ public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = fa
 
     /// <summary>"Exile the token at end of combat."</summary>
     public bool ExileAtEndOfCombat { get; init; }
+
+    /// <summary>With <see cref="Attacking"/>: "attacking that player" (the player the trigger is about).</summary>
+    public bool AttackingTriggeredPlayer { get; init; }
 
     /// <summary>"Except the tokens aren't legendary."</summary>
     public bool NotLegendary { get; init; }
@@ -591,6 +605,12 @@ public sealed record MillUntil(Subject Who, ObjectFilter Until) : Effect;
 /// <summary>Create an emblem for the controller: an object in the command zone with these abilities.</summary>
 public sealed record CreateEmblem(string Name, IReadOnlyList<AbilityDefinition> Abilities) : Effect
 {
+    /// <summary>Rule-changing effects of the emblem ("You may cast spells from your hand without paying their mana costs").</summary>
+    public Cards.Replacements Replaces { get; init; }
+
+    /// <summary>The emblem's rules text when it isn't the text of its abilities (a rule-changing effect).</summary>
+    public string? EmblemText { get; init; }
+
     /// <summary>The emblem lasts only until end of turn (a delayed "whenever … this turn" ability).</summary>
     public bool UntilEndOfTurn { get; init; }
 
@@ -966,6 +986,9 @@ public sealed record Blink(Subject What) : Effect
     /// <summary>They return tapped.</summary>
     public bool Tapped { get; init; }
 
+    /// <summary>"Return that card to the battlefield under your control" (instead of its owner's).</summary>
+    public bool UnderYourControl { get; init; }
+
     /// <summary>"Return it to the battlefield … with a +1/+1 counter on it": the counters they return with.</summary>
     public int EnterCounters { get; init; }
 
@@ -1149,6 +1172,9 @@ public sealed record UnblockableByMostLifePlayer(Subject What) : Effect;
 /// <summary>Return to the battlefield (under their owners' control) the cards exiled by this object's linked ability (rule 607).</summary>
 public sealed record ReturnLinkedExiled : Effect;
 
+/// <summary>"The exiled card's owner creates an X/X … token, where X is the mana value of the exiled card" (a card still exiled with this, rule 607).</summary>
+public sealed record LinkedExiledOwnerCreatesToken(Cards.CardDefinition Token) : Effect;
+
 /// <summary>"[Filter] creatures can't block this turn" (a rules effect: creatures that come later are affected too, rule 611.2c).</summary>
 public sealed record CantBlockThisTurn(ObjectFilter Filter) : Effect;
 
@@ -1248,6 +1274,45 @@ public sealed record RemoveUpToCounters(int Max, Subject From) : Effect;
 /// <summary>"The next spell you cast this turn can't be countered."</summary>
 public sealed record NextSpellUncounterable : Effect;
 
+/// <summary>"If you do, repeat this process": the resolving ability's effects happen again from the start.</summary>
+public sealed record RepeatProcess : Effect;
+
+/// <summary>"Look at the top card of target player's library. You may put that card on the bottom of that player's library."</summary>
+public sealed record LookAtTopMayBottom(Subject Who) : Effect;
+
+/// <summary>"Exile all cards from target player's library."</summary>
+public sealed record ExileLibrary(Subject Who) : Effect;
+
+/// <summary>
+/// "Remove all attacking creatures from combat and untap them. After this phase, there is an additional combat phase. Each of those
+/// creatures attacks that combat if able. They can't attack you or planeswalkers you control that combat."
+/// </summary>
+public sealed record AttackersAttackAgainNotYou : Effect;
+
+/// <summary>
+/// "Reveal the top X cards of your library. You may cast a spell with mana value X or less from among cards revealed this way without
+/// paying its mana cost. Put the rest on the bottom of your library in a random order." The filter picks what may be cast.
+/// </summary>
+public sealed record RevealTopCastOneFree(Quantity Count, ObjectFilter Filter) : Effect;
+
+/// <summary>"Return that creature to its owner's hand at end of combat" (a delayed triggered ability, rule 603.7).</summary>
+public sealed record ReturnToHandAtEndOfCombat(Subject What) : Effect;
+
+/// <summary>"Each player draws cards equal to the amount of damage dealt to [this] this turn by sources they controlled."</summary>
+public sealed record EachDrawsDamageDealtToSource : Effect;
+
+/// <summary>
+/// "If that creature dies this way, its controller creates two tokens that are copies of that creature, except their power is half that
+/// creature's power and their toughness is half that creature's toughness. Round up each time." (as it last existed, rule 608.2h)
+/// </summary>
+public sealed record CopiesOfDestroyedHalved(int Count) : Effect;
+
+/// <summary>"That player shuffles their hand into their library."</summary>
+public sealed record ShuffleHandIntoLibrary(Subject Who) : Effect;
+
+/// <summary>"Creature spells you cast this turn can't be countered."</summary>
+public sealed record CreatureSpellsUncounterableThisTurn : Effect;
+
 /// <summary>"The 'legend rule' doesn't apply to permanents you control this turn."</summary>
 public sealed record NoLegendRuleThisTurn : Effect;
 
@@ -1265,6 +1330,12 @@ public sealed record MountainsAddExtraRedThisTurn : Effect;
 /// your hand."
 /// </summary>
 public sealed record RevealTwoFromOutsideOpponentChooses : Effect;
+
+/// <summary>
+/// "You may reveal an artifact card you own from outside the game or choose a face-up artifact card you own in exile. Put that card
+/// into your hand." (the filter picks the cards)
+/// </summary>
+public sealed record FromOutsideOrExileToHand(ObjectFilter Filter) : Effect;
 
 /// <summary>"You may pay any amount of life. If you do, [effects]" ("X" in the effects is the life paid).</summary>
 public sealed record PayAnyLife(IReadOnlyList<Effect> Effects) : Effect;
@@ -1328,6 +1399,15 @@ public sealed record SwapGraveyardAndBattlefield(ObjectFilter Filter) : Effect;
 
 /// <summary>Tempting offer (search): you search for a [filter] card onto the battlefield; each opponent may too; you search again for each who did.</summary>
 public sealed record TemptingOfferSearch(ObjectFilter Filter) : Effect;
+
+/// <summary>Parley: each player reveals the top card of their library (the count of nonland cards revealed is "nonlandRevealed").</summary>
+public sealed record Parley : Effect;
+
+/// <summary>
+/// Tempting offer: you do the effects, then each opponent may do them; for each opponent who does, you do them again. Opponents
+/// decide in turn order before any of them acts (rule 101.4).
+/// </summary>
+public sealed record TemptingOffer(string Prompt, IReadOnlyList<Effect> Effects) : Effect;
 
 /// <summary>"For each [filter] you control, create a token that's a copy of that permanent."</summary>
 public sealed record CopyEachYouControl(ObjectFilter Filter) : Effect;

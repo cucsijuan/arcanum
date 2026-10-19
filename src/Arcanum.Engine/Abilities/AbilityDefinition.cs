@@ -133,6 +133,12 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>"Discard X cards" as a cost: X is announced (rule 601.2b) and that many cards are discarded.</summary>
     public bool DiscardX { get; init; }
 
+    /// <summary>"Sacrifice X Squirrels" as a cost: X is announced and that many matching permanents (<see cref="Extra"/>'s filter) are sacrificed.</summary>
+    public bool SacrificeX { get; init; }
+
+    /// <summary>"Tap X untapped tokens you control" as a cost: X is announced and that many matching permanents (<see cref="Extra"/>'s tap filter) are tapped.</summary>
+    public bool TapX { get; init; }
+
     /// <summary>Ninjutsu (rule 702.49): activated from the hand (or, for commander ninjutsu, the command zone) by returning an unblocked attacker you control to its owner's hand.</summary>
     public bool Ninjutsu { get; init; }
 
@@ -402,6 +408,8 @@ public enum TriggerEvent
     YourMainPhase,
     /// <summary>"Whenever a [filter] card is put into a graveyard from anywhere other than the battlefield."</summary>
     CardPutIntoGraveyardNotFromBattlefield,
+    /// <summary>A card matching the filter is put into your graveyard from anywhere (with "batched": "one or more").</summary>
+    CardPutIntoYourGraveyard,
     /// <summary>"Whenever equipped creature attacks" (an Equipment's own ability): the creature is "triggered".</summary>
     EquippedAttacks,
     /// <summary>"Whenever equipped creature deals combat damage to a player" (an Equipment's own ability): amount, that player.</summary>
@@ -424,6 +432,8 @@ public enum TriggerEvent
     TokensCreated,
     /// <summary>"Whenever one or more [filter] you control attack a player": once per player attacked (amount: how many).</summary>
     YouAttackPlayer,
+    /// <summary>"When you attack enchanted opponent or a planeswalker they control or when they attack you or a planeswalker you control."</summary>
+    AttackBetweenYouAndEnchanted,
     /// <summary>"Whenever this creature deals damage to a [filter]" (subject: the creature dealt damage).</summary>
     DealsDamageToCreature,
     /// <summary>"Whenever a [filter] is dealt excess noncombat damage" (amount: the excess).</summary>
@@ -664,6 +674,9 @@ public sealed record ObjectFilter(
     /// <summary>"Creatures with toxic".</summary>
     public bool HasToxic { get; init; }
 
+    /// <summary>"With mana value less than this creature's power".</summary>
+    public bool LessManaValueThanSourcePower { get; init; }
+
     /// <summary>Power exactly X ("target creature with power X").</summary>
     public bool PowerIsX { get; init; }
 
@@ -688,6 +701,9 @@ public sealed record ObjectFilter(
     /// <summary>Attacking the filter's controller, not a planeswalker ("creatures attacking you").</summary>
     public bool AttackingYouDirectly { get; init; }
 
+    /// <summary>"That's attacking one of your opponents": attacking an opponent of the source's controller (not a planeswalker or battle).</summary>
+    public bool AttackingYourOpponent { get; init; }
+
     /// <summary>A spell cast from a graveyard / a permanent that entered from a graveyard.</summary>
     public bool FromGraveyard { get; init; }
 
@@ -696,6 +712,15 @@ public sealed record ObjectFilter(
 
     /// <summary>A spell cast from its owner's hand.</summary>
     public bool CastFromHand { get; init; }
+
+    /// <summary>"With base power 1" (base power and toughness after copy and setting effects, before modifications).</summary>
+    public int? BasePower { get; init; }
+
+    /// <summary>"With base power or toughness 1".</summary>
+    public int? BasePowerOrToughness { get; init; }
+
+    /// <summary>"If it wasn't cast" (false) / "if it was cast" (true): a permanent that entered as a cast spell resolved.</summary>
+    public bool? WasCast { get; init; }
 
     /// <summary>A spell cast from exile / a land played (or permanent put) onto the battlefield from exile.</summary>
     public bool FromExile { get; init; }
@@ -777,6 +802,12 @@ public sealed record ObjectFilter(
 
     /// <summary>With lesser mana value than the object the trigger is about, as it is or last existed ("target creature you control with lesser mana value").</summary>
     public bool LesserManaValueThanTriggered { get; init; }
+
+    /// <summary>"With equal or lesser mana value" than the object the trigger is about.</summary>
+    public bool AtMostManaValueOfTriggered { get; init; }
+
+    /// <summary>"If it wasn't put onto the battlefield with this ability": not put there by the source's own effect.</summary>
+    public bool NotPutByThis { get; init; }
 
     /// <summary>Not named this ("an Otter spell other than [this card's name]").</summary>
     public string? NotName { get; init; }

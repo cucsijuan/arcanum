@@ -186,6 +186,15 @@ public sealed partial class Game
     /// <summary>The spell resolving now whose offspring cost was paid (rule 702.175a).</summary>
     private CardId? _enteringOffspring;
 
+    /// <summary>An Aura spell that enchants a player, entering attached to that player (rule 303.4f).</summary>
+    private (CardId Card, PlayerId Player)? _enteringAttachedPlayer;
+
+    /// <summary>The source of the "put onto the battlefield" effect now resolving (see <see cref="Card.PutOntoBattlefieldBy"/>).</summary>
+    private CardId? _puttingOntoBattlefieldBy;
+
+    /// <summary>The X of the permanent spell now entering the battlefield; any other permanent enters with X = 0 (rule 107.3m).</summary>
+    private (CardId Card, int X)? _enteringCastX;
+
     /// <summary>Moves a card, asking for the choices its zone-change replacement effects need (rule 616.1).</summary>
     /// <param name="transformed">"Put onto the battlefield transformed": a double-faced card enters with its back face up (rule 712.14a).</param>
     private async Task MoveCardAsync(CardId id, Zone to, bool toBottom = false, PlayerId? controller = null, CardId? attachTo = null, bool kicked = false,
@@ -489,6 +498,8 @@ public sealed partial class Game
         card.SquadPaid = to == Zone.Battlefield ? squadPaid : 0;
         card.Impended = to == Zone.Battlefield && _enteringImpended == id;
         card.OffspringPaid = to == Zone.Battlefield && _enteringOffspring == id;
+        card.PutOntoBattlefieldBy = to == Zone.Battlefield ? _puttingOntoBattlefieldBy : null;
+        card.CastX = to == Zone.Battlefield && _enteringCastX is { } enteringX && enteringX.Card == id ? enteringX.X : 0;
         card.ClassLevel = to == Zone.Battlefield ? 1 : 0;
         card.CastFromHand = castFromHand;
         card.WasCast = wasCast;
@@ -510,6 +521,7 @@ public sealed partial class Game
                 card.Controller = controller ?? card.Owner;
                 card.BaseController = card.Controller;
                 card.AttachedTo = attachTo;
+                card.AttachedPlayer = _enteringAttachedPlayer is { } enchanting && enchanting.Card == id ? enchanting.Player : null;
                 // Replacement effects that modify how the permanent enters (rule 614.1c).
                 if (tapped || card.Definition.EntersTapped || (from == Zone.Stack && State.EntersTappedFromStack.Remove((id, card.Version - 1)))) card.Tapped = true;
                 if (card.Definition.EntersTappedUnless is { } unless && !Holds(unless, card.Controller, card)) card.Tapped = true;
@@ -621,6 +633,9 @@ public sealed partial class Game
     {
         applied ??= new HashSet<CardId>();
         var player = State.GetPlayer(playerId);
+        // "Each opponent can't draw more than one card each turn": a draw beyond the first doesn't happen.
+        if (player.CardsDrawnThisTurn >= 1 && State.Battlefield.Select(State.GetCard)
+                .Any(c => c.HasTextAbilities && c.Definition.OpponentsDrawAtMostOne && State.OpponentsOf(c.Controller).Contains(playerId))) return;
         // "If you would draw a card except the first one you draw in each of your draw steps …"
         bool firstInDrawStep = State.Step == Step.Draw && State.ActivePlayer == playerId && !player.DrewInDrawStep;
         if (State.Step == Step.Draw && State.ActivePlayer == playerId) player.DrewInDrawStep = true;

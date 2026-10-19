@@ -43,6 +43,14 @@ public sealed record CardScript(
     public int ManaAmount { get; init; } = 1;
     public Quantity? ManaAmountFrom { get; init; }
     public bool ManaFromChosenColor { get; init; }
+    public bool ManaAlsoChosenColor { get; init; }
+    public bool EnchantedLandExtraGreen { get; init; }
+    public bool YourForestsExtraGreen { get; init; }
+    public bool OpponentsDrawAtMostOne { get; init; }
+    public bool YourCreaturesAreEveryType { get; init; }
+    public ManaCost? CreatureSpellsGainOffspring { get; init; }
+    public bool FirstTreasureSpellHasCascade { get; init; }
+    public string? ChosenColorExcept { get; init; }
     public EnterChoice ChooseOnEnter { get; init; }
     public ObjectFilter? EnterCounterOn { get; init; }
     public CounterKind EnterCounterKind { get; init; }
@@ -87,6 +95,8 @@ public sealed record CardScript(
     public bool NoSpellsOrAbilitiesDuringCombat { get; init; }
     public bool YourPlaneswalkersSurviveZeroLoyalty { get; init; }
     public bool ArtifactTokensBecomeDragons { get; init; }
+    public bool ClueFoodTreasureEach { get; init; }
+    public bool TokensPlusThatManySquirrels { get; init; }
     public bool ArtifactsAndLandsEnterTapped { get; init; }
     public bool YourCreaturesCantHaveMinusCounters { get; init; }
     public bool UnspentManaBecomesColorless { get; init; }
@@ -114,6 +124,8 @@ public sealed record CardScript(
     public bool DoublesCountersYouPut { get; init; }
     public bool DamageCantBePrevented { get; init; }
     public ObjectFilter? CastSacrificeAny { get; init; }
+    public bool SacrificeAnyNoReduction { get; init; }
+    public bool CopyPerSacrificed { get; init; }
     public ObjectFilter? GraveyardCastFilter { get; init; }
     public ExtraCost? GraveyardCastExtra { get; init; }
     public Condition? GraveyardCastWhile { get; init; }
@@ -147,6 +159,7 @@ public sealed record CardScript(
     public bool Improvise { get; init; }
     public bool GiftTapped { get; init; }
     public bool GiftCard { get; init; }
+    public bool GiftExtraTurn { get; init; }
     public bool AttackTaxPlayerOnly { get; init; }
     public bool EntersAsCopyUntilEndOfTurn { get; init; }
     public bool EntersAsCopyWithHaste { get; init; }
@@ -164,6 +177,7 @@ public sealed record CardScript(
     public bool PayLifeForBlackMana { get; init; }
     public bool WinsDrawingFromEmptyLibrary { get; init; }
     public int ExtraLandPlays { get; init; }
+    public int EachPlayerExtraLandPlays { get; init; }
     public bool OpponentsCastAtSorcerySpeed { get; init; }
     public bool OpponentsCantCastDuringYourTurnWhileAttached { get; init; }
     public GraveyardCastOncePerTurn? GraveyardCastOncePerTurn { get; init; }
@@ -217,7 +231,7 @@ public sealed record CardScript(
         SelfCostReduction = CostReduction ?? d.SelfCostReduction,
         AttacksEachCombat = d.AttacksEachCombat || AttacksEachCombat,
         DoesntUntap = DoesntUntap,
-        EntersWithXCounters = EntersWithXCounters || XCountersTimes > 0,
+        EntersWithXCounters = EntersWithXCounters || XCountersTimes > 0 || d.EntersWithXCounters,
         PowerFrom = PowerFrom ?? d.PowerFrom,
         ToughnessFrom = ToughnessFrom ?? d.ToughnessFrom,
         CantBeBlockedBy = CantBeBlockedBy ?? d.CantBeBlockedBy,
@@ -228,6 +242,14 @@ public sealed record CardScript(
         ManaAmount = ManaAmount,
         ManaAmountFrom = ManaAmountFrom,
         ManaFromChosenColor = ManaFromChosenColor,
+        ManaAlsoChosenColor = ManaAlsoChosenColor,
+        EnchantedLandExtraGreen = EnchantedLandExtraGreen,
+        YourForestsExtraGreen = YourForestsExtraGreen,
+        OpponentsDrawAtMostOne = OpponentsDrawAtMostOne,
+        YourCreaturesAreEveryType = YourCreaturesAreEveryType,
+        CreatureSpellsGainOffspring = CreatureSpellsGainOffspring,
+        FirstTreasureSpellHasCascade = FirstTreasureSpellHasCascade,
+        ChosenColorExcept = ChosenColorExcept,
         ChooseOnEnter = ChooseOnEnter,
         EnterCounterOn = EnterCounterOn,
         EnterCounterKind = EnterCounterKind,
@@ -263,6 +285,8 @@ public sealed record CardScript(
         NoSpellsOrAbilitiesDuringCombat = NoSpellsOrAbilitiesDuringCombat,
         YourPlaneswalkersSurviveZeroLoyalty = YourPlaneswalkersSurviveZeroLoyalty,
         ArtifactTokensBecomeDragons = ArtifactTokensBecomeDragons,
+        ClueFoodTreasureEach = ClueFoodTreasureEach,
+        TokensPlusThatManySquirrels = TokensPlusThatManySquirrels,
         ArtifactsAndLandsEnterTapped = ArtifactsAndLandsEnterTapped,
         YourCreaturesCantHaveMinusCounters = YourCreaturesCantHaveMinusCounters,
         UnspentManaBecomesColorless = UnspentManaBecomesColorless,
@@ -288,6 +312,8 @@ public sealed record CardScript(
         DoublesCountersYouPut = DoublesCountersYouPut,
         DamageCantBePrevented = DamageCantBePrevented,
         CastSacrificeAny = CastSacrificeAny ?? d.CastSacrificeAny,
+        SacrificeAnyNoReduction = SacrificeAnyNoReduction,
+        CopyPerSacrificed = CopyPerSacrificed,
         GraveyardCastFilter = GraveyardCastFilter ?? d.GraveyardCastFilter,
         GraveyardCastExtra = GraveyardCastExtra ?? d.GraveyardCastExtra,
         GraveyardCastWhile = GraveyardCastWhile ?? d.GraveyardCastWhile,
@@ -319,6 +345,7 @@ public sealed record CardScript(
         EscalateExtra = EscalateExtra ?? d.EscalateExtra,
         Improvise = Improvise || d.Improvise,
         GiftCard = GiftCard || d.GiftCard,
+        GiftExtraTurn = GiftExtraTurn || d.GiftExtraTurn,
         GiftTapped = GiftTapped || d.GiftTapped,
         AttackTaxPlayerOnly = AttackTaxPlayerOnly || d.AttackTaxPlayerOnly,
         EntersAsCopyUntilEndOfTurn = EntersAsCopyUntilEndOfTurn || d.EntersAsCopyUntilEndOfTurn,
@@ -337,6 +364,7 @@ public sealed record CardScript(
         PayLifeForBlackMana = PayLifeForBlackMana || d.PayLifeForBlackMana,
         WinsDrawingFromEmptyLibrary = WinsDrawingFromEmptyLibrary || d.WinsDrawingFromEmptyLibrary,
         ExtraLandPlays = ExtraLandPlays > 0 ? ExtraLandPlays : d.ExtraLandPlays,
+        EachPlayerExtraLandPlays = EachPlayerExtraLandPlays,
         OpponentsCastAtSorcerySpeed = OpponentsCastAtSorcerySpeed || d.OpponentsCastAtSorcerySpeed,
         OpponentsCantCastDuringYourTurnWhileAttached = OpponentsCantCastDuringYourTurnWhileAttached || d.OpponentsCantCastDuringYourTurnWhileAttached,
         GraveyardCastOncePerTurn = GraveyardCastOncePerTurn ?? d.GraveyardCastOncePerTurn,
@@ -416,6 +444,14 @@ public static partial class CardScriptParser
                 {
                     abilities.Add(new SpellsHaveStorm(ParseFilter(shs, ControllerFilter.Any)) { Text = Text(a) });
                 }
+                else if (a.TryGetProperty("replacesTokenSubtype", out var rts))
+                {
+                    abilities.Add(new TokenReplacement(rts.GetString()!, ParseToken(a.GetProperty("instead")) with { IsToken = true }) { Text = Text(a), ClassLevel = a.TryGetProperty("level", out var trl) ? trl.GetInt32() : 0 });
+                }
+                else if (a.TryGetProperty("spellsHaveCascade", out var shc))
+                {
+                    abilities.Add(new SpellsHaveCascade(ParseFilter(shc, ControllerFilter.Any)) { Text = Text(a) });
+                }
                 else if (a.TryGetProperty("spellCostIncrease", out var sci))
                 {
                     abilities.Add(new SpellCostIncrease(ParseFilter(sci.GetProperty("spells"), ControllerFilter.Any), sci.GetProperty("amount").GetInt32()) { Text = Text(a) });
@@ -490,6 +526,7 @@ public static partial class CardScriptParser
                         MinX = a.TryGetProperty("minX", out var mnx) ? mnx.GetInt32() : 0,
                         CantBeCopied = Bool(a, "cantBeCopied"),
                         TapCreaturesForMana = Bool(a, "tapCreaturesForMana"),
+                        FromCommandZone = Bool(a, "fromCommandZone"),
                     }));
                 }
                 else throw new FormatException("An ability needs a \"trigger\", a \"cost\" or a \"static\".");
@@ -527,6 +564,14 @@ public static partial class CardScriptParser
             ManaAmount = root.TryGetProperty("manaAmount", out var mam) ? mam.GetInt32() : 1,
             ManaAmountFrom = root.TryGetProperty("manaAmountFrom", out var maf) ? ParseQuantity(maf) : null,
             ManaFromChosenColor = Bool(root, "manaFromChosenColor"),
+            ManaAlsoChosenColor = Bool(root, "manaAlsoChosenColor"),
+            EnchantedLandExtraGreen = Bool(root, "enchantedLandExtraGreen"),
+            YourForestsExtraGreen = Bool(root, "yourForestsExtraGreen"),
+            OpponentsDrawAtMostOne = Bool(root, "opponentsDrawAtMostOne"),
+            YourCreaturesAreEveryType = Bool(root, "yourCreaturesAreEveryType"),
+            CreatureSpellsGainOffspring = root.TryGetProperty("creatureSpellsGainOffspring", out var csgo) ? ManaCost.Parse(csgo.GetString()!) : null,
+            FirstTreasureSpellHasCascade = Bool(root, "firstTreasureSpellHasCascade"),
+            ChosenColorExcept = root.TryGetProperty("chooseColorOtherThan", out var cce) ? cce.GetString() : null,
             ChooseOnEnter = root.TryGetProperty("chooseOnEnter", out var coe) ? Enum.Parse<EnterChoice>(coe.GetString()!, ignoreCase: true)
                 : root.TryGetProperty("entersCounterOn", out _) ? EnterChoice.CounterOnPermanent : EnterChoice.None,
             EnterCounterOn = root.TryGetProperty("entersCounterOn", out var eco) ? ParseFilter(eco.GetProperty("filter"), ControllerFilter.You) : null,
@@ -580,7 +625,8 @@ public static partial class CardScriptParser
             EntersWithCountersFrom = root.TryGetProperty("entersWithCounters", out var ewcf) && (ewcf.ValueKind == JsonValueKind.Object || (ewcf.ValueKind == JsonValueKind.String && ewcf.GetString() != "X")) ? ParseQuantity(ewcf) : null,
             Adventure = root.TryGetProperty("adventure", out var adv) ? Parse(adv.GetRawText()) : null,
             Back = root.TryGetProperty("back", out var backFace) ? Parse(backFace.GetRawText()) : null,
-            Gift = root.TryGetProperty("gift", out var gift) && !(gift.ValueKind == JsonValueKind.String && gift.GetString() == "card") ? ParseToken(gift) : null,
+            Gift = root.TryGetProperty("gift", out var gift) && !(gift.ValueKind == JsonValueKind.String && gift.GetString() is "card" or "extraTurn") ? ParseToken(gift) : null,
+            GiftExtraTurn = root.TryGetProperty("gift", out var giftTurn) && giftTurn.ValueKind == JsonValueKind.String && giftTurn.GetString() == "extraTurn",
             GiftCard = root.TryGetProperty("gift", out var giftCard) && giftCard.ValueKind == JsonValueKind.String && giftCard.GetString() == "card",
             GiftTapped = Bool(root, "giftTapped"),
             FlashIf = root.TryGetProperty("flashIf", out var fli) ? ParseCondition(fli) : null,
@@ -601,6 +647,8 @@ public static partial class CardScriptParser
             NoSpellsOrAbilitiesDuringCombat = Bool(root, "noSpellsOrAbilitiesDuringCombat"),
             YourPlaneswalkersSurviveZeroLoyalty = Bool(root, "yourPlaneswalkersSurviveZeroLoyalty"),
             ArtifactTokensBecomeDragons = Bool(root, "artifactTokensBecomeDragons"),
+            ClueFoodTreasureEach = Bool(root, "clueFoodTreasureEach"),
+            TokensPlusThatManySquirrels = Bool(root, "tokensPlusThatManySquirrels"),
             ArtifactsAndLandsEnterTapped = Bool(root, "artifactsAndLandsEnterTapped"),
             YourCreaturesCantHaveMinusCounters = Bool(root, "yourCreaturesCantHaveMinusCounters"),
             UnspentManaBecomesColorless = Bool(root, "unspentManaBecomesColorless"),
@@ -628,6 +676,8 @@ public static partial class CardScriptParser
             DoublesCountersYouPut = Bool(root, "doublesCountersYouPut"),
             DamageCantBePrevented = Bool(root, "damageCantBePrevented"),
             CastSacrificeAny = root.TryGetProperty("additionalSacrificeAny", out var asa) ? ParseFilter(asa, ControllerFilter.You) : null,
+            SacrificeAnyNoReduction = Bool(root, "sacrificeAnyNoReduction"),
+            CopyPerSacrificed = Bool(root, "copyPerSacrificed"),
             GraveyardCastFilter = root.TryGetProperty("castFromGraveyard", out var cfgy) ? ParseFilter(cfgy, ControllerFilter.Any) : null,
             GraveyardCastExtra = root.TryGetProperty("castFromGraveyardCost", out var cfgc) ? ParseExtraCost(cfgc) : null,
             GraveyardCastWhile = root.TryGetProperty("castFromGraveyardWhile", out var cfgw) ? ParseCondition(cfgw) : null,
@@ -677,6 +727,7 @@ public static partial class CardScriptParser
             PayLifeForBlackMana = Bool(root, "payLifeForBlackMana"),
             WinsDrawingFromEmptyLibrary = Bool(root, "winsDrawingFromEmptyLibrary"),
             ExtraLandPlays = root.TryGetProperty("extraLandPlays", out var elp) ? elp.GetInt32() : 0,
+            EachPlayerExtraLandPlays = root.TryGetProperty("eachPlayerExtraLandPlays", out var eelp) ? eelp.GetInt32() : 0,
             OpponentsCastAtSorcerySpeed = Bool(root, "opponentsCastAtSorcerySpeed"),
             OpponentsCantCastDuringYourTurnWhileAttached = Bool(root, "opponentsCantCastDuringYourTurnWhileAttached"),
             CreaturePlusOneCountersPlusOne = Bool(root, "creaturePlusOneCountersPlusOne"),
@@ -814,6 +865,7 @@ public static partial class CardScriptParser
             "equipped" => AffectedScope.Equipped,
             "permanents:you" => AffectedScope.YourPermanents,
             "permanents" => AffectedScope.AllPermanents,
+            "permanents:opponents" => AffectedScope.OpponentsPermanents,
             var unknown => throw new FormatException($"Unknown static scope '{unknown}'."),
         };
         var filter = new AffectedFilter(
@@ -845,6 +897,7 @@ public static partial class CardScriptParser
             AddTypes = s.TryGetProperty("addTypes", out var at) ? ParseTypes(at) : 0,
             GrantsMana = s.TryGetProperty("grantsMana", out var gm) ? ParseManaTypes(gm.GetString()!) : null,
             GrantsManaAmount = s.TryGetProperty("grantsManaAmount", out var gma) ? gma.GetInt32() : 1,
+            GrantsManaOnlyFor = s.TryGetProperty("grantsManaOnlyFor", out var gmo) ? ParseFilter(gmo, ControllerFilter.Any) : null,
             GivesControl = Bool(s, "givesControl"),
             GivesControlToMonarch = Bool(s, "givesControlToMonarch"),
             CantAttackYou = Bool(s, "cantAttackYou"),
@@ -857,6 +910,7 @@ public static partial class CardScriptParser
             GrantsDyingTriggerBonus = Bool(s, "grantsDyingTriggerBonus"),
             RemoveTypes = s.TryGetProperty("removeTypes", out var rmt) ? ParseTypes(rmt) : 0,
             GrantsGraveyardAbilities = s.TryGetProperty("graveyardAbilities", out var ga) ? ParseFilter(ga, ControllerFilter.Any) : null,
+            GrantsExiledCreatureAbilities = Bool(s, "exiledCreatureAbilities"),
             LosesKeywords = s.TryGetProperty("loseKeywords", out var lk) ? lk.EnumerateArray().Select(x => ParseKeyword(x.GetString()!)).ToList() : null,
             PreventsDamage = s.TryGetProperty("preventDamage", out var pd) ? Enum.Parse<StaticDamagePrevention>(pd.GetString()!, ignoreCase: true) : StaticDamagePrevention.None,
             CantActivateAbilities = Bool(s, "cantActivate"),
@@ -896,6 +950,7 @@ public static partial class CardScriptParser
             SingleTargetOnly = Bool(e, "singleTarget"),
             TriggeredAbilitiesOnly = Bool(e, "triggeredOnly"),
             ControlledByTriggeredPlayer = Bool(e, "controlledByTriggeredPlayer"),
+            AttackingTriggeredPlayer = Bool(e, "attackingTriggeredPlayer"),
             ControlledByDefendingPlayer = Bool(e, "controlledByDefendingPlayer"),
             RepeatFrom = e.TryGetProperty("upTo", out var upTo) ? ParseQuantity(upTo) : null,
             PerPlayer = Bool(e, "perPlayer"),
@@ -961,6 +1016,8 @@ public static partial class CardScriptParser
         "opponentsWhoVotedWithYou" => new Subject(SubjectKind.OpponentsWhoVotedWithYou),
         "youAndOpponentsWhoVotedWithYou" => new Subject(SubjectKind.YouAndOpponentsWhoVotedWithYou),
         "playersDamagedThisWay" => new Subject(SubjectKind.PlayersDamagedThisWay),
+        "playersWhoDrewThisWay" => new Subject(SubjectKind.PlayersWhoDrewThisWay),
+        "enchantedPlayer" => new Subject(SubjectKind.EnchantedPlayer),
         "otherOpponents" => new Subject(SubjectKind.OtherOpponents),
         "attackedBySelf" => new Subject(SubjectKind.AttackedBySource),
         "defendingPlayer" => new Subject(SubjectKind.DefendingPlayer),
@@ -976,12 +1033,13 @@ public static partial class CardScriptParser
         e.ValueKind == JsonValueKind.String ? ParseSubject(e.GetString())
         : e.TryGetProperty("each", out var f) ? Subject.Each(ParseFilter(f, ControllerFilter.Any)) with
         {
-            ControlledByTarget = e.TryGetProperty("controlledBy", out _),
+            ControlledByTarget = e.TryGetProperty("controlledBy", out var cbt) && cbt.GetString() != "chosenPlayer",
+            ControlledByChosenPlayer = e.TryGetProperty("controlledBy", out var cbc) && cbc.GetString() == "chosenPlayer",
             ExceptTargets = Bool(e, "exceptTargets"),
             ExceptChosen = Bool(e, "exceptChosen"),
             AttachedToTarget = e.TryGetProperty("attachedTo", out _),
             Index = e.TryGetProperty("attachedTo", out var att) ? ParseSubject(att.GetString()).Index
-                : e.TryGetProperty("controlledBy", out var cb) ? ParseSubject(cb.GetString()).Index : 0,
+                : e.TryGetProperty("controlledBy", out var cb) && cb.GetString() != "chosenPlayer" ? ParseSubject(cb.GetString()).Index : 0,
         }
         : e.TryGetProperty("discarded", out var df) ? new Subject(SubjectKind.Discarded, Filter: ParseFilter(df, ControllerFilter.Any))
         : e.TryGetProperty("milled", out var mf) ? new Subject(SubjectKind.Milled, Filter: ParseFilter(mf, ControllerFilter.Any))
@@ -1069,6 +1127,7 @@ public static partial class CardScriptParser
         "postcombatMain" => TriggerEvent.YourPostcombatMain,
         "mainPhase" => TriggerEvent.YourMainPhase,
         "cardPutIntoGraveyard" => TriggerEvent.CardPutIntoGraveyardNotFromBattlefield,
+        "cardPutIntoYourGraveyard" => TriggerEvent.CardPutIntoYourGraveyard,
         "equippedCombatDamageToPlayer" => TriggerEvent.EquippedCombatDamageToPlayer,
         "combatDamageToYou" => TriggerEvent.CombatDamageToYou,
         "finalChapterResolved" => TriggerEvent.FinalChapterResolved,
@@ -1078,6 +1137,7 @@ public static partial class CardScriptParser
         "tokenCreated" => TriggerEvent.TokenCreated,
         "tokensCreated" => TriggerEvent.TokensCreated,
         "youAttackPlayer" => TriggerEvent.YouAttackPlayer,
+        "attackBetweenYouAndEnchanted" => TriggerEvent.AttackBetweenYouAndEnchanted,
         "dealsDamageTo" => TriggerEvent.DealsDamageToCreature,
         "excessNoncombatDamage" => TriggerEvent.ExcessNoncombatDamage,
         "becomesTargetOfSpell" => TriggerEvent.BecomesTargetOfSpell,
@@ -1194,6 +1254,7 @@ public static partial class CardScriptParser
             MaxPowerTriggered = Bool(f, "maxPowerTriggered"),
             Historic = Bool(f, "historic"),
             HasToxic = Bool(f, "hasToxic"),
+            LessManaValueThanSourcePower = Bool(f, "lessManaValueThanSourcePower"),
             PowerIsX = Bool(f, "powerIsX"),
             DamagedThisTurnByYourSpider = Bool(f, "damagedThisTurnByYourSpider"),
             LesserPowerThanSource = Bool(f, "lesserPower"),
@@ -1210,10 +1271,14 @@ public static partial class CardScriptParser
             WithCounterKind = f.TryGetProperty("hasCounterKind", out var hck) ? ParseCounterKind(hck.GetString()) : null,
             AttackingYou = Bool(f, "attackingYou"),
             AttackingYouDirectly = Bool(f, "attackingYouDirectly"),
+            AttackingYourOpponent = Bool(f, "attackingYourOpponent"),
             FromGraveyard = Bool(f, "fromGraveyard"),
             EnteredOrCastFromGraveyard = Bool(f, "enteredOrCastFromGraveyard"),
             HasXInCost = Bool(f, "hasX"),
             CastFromHand = Bool(f, "castFromHand"),
+            BasePower = f.TryGetProperty("basePower", out var fbp) ? fbp.GetInt32() : null,
+            BasePowerOrToughness = f.TryGetProperty("basePowerOrToughness", out var fbpt) ? fbpt.GetInt32() : null,
+            WasCast = f.TryGetProperty("wasCast", out var fwc) ? fwc.GetBoolean() : null,
             FromExile = Bool(f, "fromExile"),
             ExiledWithSource = Bool(f, "exiledWithSource"),
             ManaValueIsX = Bool(f, "manaValueIsX"),
@@ -1234,6 +1299,8 @@ public static partial class CardScriptParser
             Blocked = Bool(f, "blocked"),
             NotTriggered = Bool(f, "notTriggered"),
             LesserManaValueThanTriggered = Bool(f, "lesserManaValueThanTriggered"),
+            AtMostManaValueOfTriggered = Bool(f, "atMostManaValueOfTriggered"),
+            NotPutByThis = Bool(f, "notPutByThis"),
             NotName = f.TryGetProperty("notName", out var nnm) ? nnm.GetString() : null,
             NotInZone = f.TryGetProperty("notZone", out var nfz) ? Enum.Parse<Engine.State.Zone>(nfz.GetString()!, ignoreCase: true) : null,
             MaxManaValueSpentOnSource = Bool(f, "maxManaValueSpent"),
@@ -1302,6 +1369,7 @@ public static partial class CardScriptParser
                 "monarch" => new IsMonarch(),
                 "attachedControllerIsMonarch" => new AttachedControllerIsMonarch(),
                 "creatureCardExiledWithThis" => new CreatureCardExiledWithSource(),
+                "cardsExiledWithThis" => new CardsExiledWithSource(),
                 "noMonarch" => new NoMonarch(),
                 "noVotes" => new ReceivedNoVotes(),
                 "renowned" => new SourceRenowned(),
@@ -1313,6 +1381,8 @@ public static partial class CardScriptParser
                 "scriedOrSurveilledThisTurn" => new ScriedOrSurveilledThisTurn(),
                 "activatedLoyaltyAbilityThisTurn" => new ActivatedLoyaltyAbilityThisTurn(),
                 "libraryEmpty" => new LibraryEmpty(),
+                "createdTokenThisTurn" => new CreatedTokenThisTurn(),
+                "enchantedPlayersTurn" => new EnchantedPlayersTurn(),
                 "triggeredAttacksPlayerAlone" => new TriggeredAttacksPlayerAlone(),
                 "opponentDealtNoncombatDamageThisTurn" => new OpponentDealtNoncombatDamage(false),
                 "opponentDealtNoncombatDamageLastTurn" => new OpponentDealtNoncombatDamage(true),
@@ -1337,6 +1407,8 @@ public static partial class CardScriptParser
         if (c.TryGetProperty("control", out var control))
             return new YouControl(ParseFilter(control), c.TryGetProperty("count", out var count) ? count.GetInt32() : 1);
         if (c.TryGetProperty("life", out var life)) return new LifeAtLeast(life.GetInt32());
+        if (c.TryGetProperty("counters", out var anyCounters) && c.TryGetProperty("kind", out var anyKind) && anyKind.GetString() == "any")
+            return new SourceHasCountersOfAnyKind(anyCounters.GetInt32());
         if (c.TryGetProperty("counters", out var counters))
             return new SourceHasCounters(counters.GetInt32(), c.TryGetProperty("kind", out var ck) ? ParseCounterKind(ck.GetString()) : CounterKind.PlusOnePlusOne);
         if (c.TryGetProperty("targetLifeExactly", out var tle)) return new TargetLifeExactly(c.TryGetProperty("target", out var tl) ? ParseSubject(tl.GetString()).Index : 0, tle.GetInt32());
@@ -1345,6 +1417,7 @@ public static partial class CardScriptParser
         if (c.TryGetProperty("sourceHadCounters", out var shc)) return new SourceHadCounters(ParseCounterKind(shc.GetString()));
         if (c.TryGetProperty("differentNames", out var dn)) return new DifferentNames(ParseFilter(dn), c.GetProperty("count").GetInt32());
         if (c.TryGetProperty("activatedThisTurn", out var att)) return new ActivatedThisTurn(att.GetInt32());
+        if (c.TryGetProperty("classLevelAtLeast", out var cla)) return new ClassLevelAtLeast(cla.GetInt32());
         if (c.TryGetProperty("resolvedThisTurn", out var rtt)) return new ResolvedThisTurn(rtt.GetInt32(), Bool(c, "exactly"));
         if (c.TryGetProperty("targetControlledByYou", out var tcy)) return new TargetControlledByYou(ParseSubject(tcy.GetString()).Index);
         if (c.TryGetProperty("targetLostLife", out var tll)) return new TargetPlayerLostLife(ParseSubject(tll.GetString()).Index);
@@ -1418,6 +1491,8 @@ public static partial class CardScriptParser
                     "-lifeGained" => new Quantity(0, QuantityKind.LifeGainedThisTurn, Multiplier: -1),
                     "life" => new Quantity(0, QuantityKind.YourLife),
                     "handSize" => new Quantity(0, QuantityKind.HandSize),
+                    "-handSize" => new Quantity(0, QuantityKind.HandSize, Multiplier: -1),
+                    "defendingPlayerHandSize" => new Quantity(0, QuantityKind.DefendingPlayerHandSize),
                     "opponentCount" => new Quantity(0, QuantityKind.OpponentCount),
                     "cardsInAllHands" => new Quantity(0, QuantityKind.CardsInAllHands),
                     "greatestCommanderManaValue" => new Quantity(0, QuantityKind.GreatestCommanderManaValue),
@@ -1433,6 +1508,7 @@ public static partial class CardScriptParser
                     "cardTypesExiledWithSource" => new Quantity(0, QuantityKind.CardTypesExiledWithSource),
                     "opponentsCreaturesExiledThisTurn" => new Quantity(0, QuantityKind.OpponentsCreaturesExiledThisTurn),
                     "yourCreaturesDiedThisTurn" => new Quantity(0, QuantityKind.YourCreaturesDiedThisTurn),
+                    "creaturesAttackedThisTurn" => new Quantity(0, QuantityKind.CreaturesAttackedThisTurn),
                     "greatestOpponentPoison" => new Quantity(0, QuantityKind.GreatestOpponentPoison),
                     "affectedLifeLostThisTurn" => new Quantity(0, QuantityKind.AffectedLifeLostThisTurn),
                     "triggerAmount" => new Quantity(0, QuantityKind.TriggerAmount),
@@ -1459,6 +1535,7 @@ public static partial class CardScriptParser
                     "otherSpellsManaValue" => new Quantity(0, QuantityKind.ManaValueOfOtherSpellsThisTurn),
                     "milledManaValue" => new Quantity(0, QuantityKind.MilledManaValue),
                     "tapped" => new Quantity(0, QuantityKind.TappedThisWay),
+                    "nonlandRevealed" => new Quantity(0, QuantityKind.NonlandRevealedThisWay),
                     "ringLevel" => new Quantity(0, QuantityKind.RingLevel),
                     "attached" => new Quantity(0, QuantityKind.AttachedThisWay),
                     "ringBearerPower" => new Quantity(0, QuantityKind.RingBearerPower),
@@ -1574,7 +1651,7 @@ public static partial class CardScriptParser
         int discard = 0, life = 0, removeCounters = 0;
         var removeKind = CounterKind.PlusOnePlusOne;
         bool forage = false;
-        bool exileSelf = false, returnToHand = false, tapGranter = false, lifeFromCommanderColors = false, ninjutsu = false, discardX = false, discardThis = false, exileFromHand = false;
+        bool exileSelf = false, returnToHand = false, tapGranter = false, lifeFromCommanderColors = false, ninjutsu = false, discardX = false, sacrificeX = false, tapX = false, discardThis = false, exileFromHand = false;
         ObjectFilter? returnPermanent = null;
         int? loyalty = null;
         bool loyaltyX = false;
@@ -1620,6 +1697,13 @@ public static partial class CardScriptParser
                 addCounters = int.Parse(bits[0]);
                 if (bits.Length > 1) addKind = ParseCounterKind(bits[1]);
             }
+            else if (lower == "taptokens:x")
+            {
+                // "Tap X untapped tokens you control".
+                tapX = true;
+                tapCount = 0;
+                tapFilter = new ObjectFilter { Token = true };
+            }
             else if (lower.StartsWith("tapcreatures:"))
             {
                 var bits = part[13..].Split(':');
@@ -1655,7 +1739,8 @@ public static partial class CardScriptParser
                 bool anyPermanent = lower.StartsWith("sacrificeany:");
                 var what = part[(anyPermanent ? 13 : 10)..];
                 // "sacrifice:Food*3": sacrifice three Foods.
-                if (what.Contains('*')) { sacrificeCount = int.Parse(what[(what.IndexOf('*') + 1)..]); what = what[..what.IndexOf('*')]; }
+                if (what.EndsWith("*X")) { sacrificeX = true; sacrificeCount = 0; what = what[..^2]; } // "Sacrifice X Squirrels"
+                else if (what.Contains('*')) { sacrificeCount = int.Parse(what[(what.IndexOf('*') + 1)..]); what = what[..what.IndexOf('*')]; }
                 bool legendary = what.StartsWith("legendary ", StringComparison.OrdinalIgnoreCase);
                 if (legendary) what = what[10..];
                 var kinds = what.Split('|');
@@ -1678,7 +1763,7 @@ public static partial class CardScriptParser
             : null;
         return new AbilityCost(mana, tap, sacrifice)
         {
-            Extra = extra, FromGraveyard = fromGraveyard, RemoveCounters = removeCounters, RemoveCounterKind = removeKind, ExileSelf = exileSelf, Ninjutsu = ninjutsu, DiscardX = discardX,
+            Extra = extra, FromGraveyard = fromGraveyard, RemoveCounters = removeCounters, RemoveCounterKind = removeKind, ExileSelf = exileSelf, Ninjutsu = ninjutsu, DiscardX = discardX, SacrificeX = sacrificeX, TapX = tapX,
             Loyalty = loyalty, LoyaltyX = loyaltyX, FromHand = discardThis, ExileFromHand = exileFromHand,
             AddCounters = addCounters, AddCounterKind = addKind, ReturnSelfToHand = returnToHand, TapGranter = tapGranter, SnowMana = snow,
         };
@@ -1755,7 +1840,7 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("chooseEffect", out var cho))
             return new ChooseOneEffect(cho.EnumerateArray().Select(o => new EffectChoice(Text(o), Effects(o))).ToList());
         if (Value("gainControl") is { } gain)
-            return new GainControl(gain, Flag("untilEndOfTurn"), e.TryGetProperty("to", out var gto) ? ParseSubject(gto) : null) { WhileYouControlSource = Flag("whileYouControl"), UntilEndOfYourNextTurn = Flag("untilEndOfYourNextTurn"), WhileTriggeredPlayerIsMonarch = Flag("whileTriggeredPlayerIsMonarch") };
+            return new GainControl(gain, Flag("untilEndOfTurn"), e.TryGetProperty("to", out var gto) ? ParseSubject(gto) : null) { WhileYouControlSource = Flag("whileYouControl"), UntilEndOfYourNextTurn = Flag("untilEndOfYourNextTurn"), WhileTriggeredPlayerIsMonarch = Flag("whileTriggeredPlayerIsMonarch"), WhileCounter = Str("whileCounter") is { } gwc ? ParseCounterKind(gwc) : null };
         if (Str("mayPay") is { } payPrompt)
             return new MayPay(payPrompt, e.TryGetProperty("mana", out var pm) ? ManaCost.Parse(pm.GetString()!) : null,
                 e.TryGetProperty("cost", out var pc) ? ParseExtraCost(pc) : null, Effects(e))
@@ -1877,6 +1962,8 @@ public static partial class CardScriptParser
         if (Str("addManaUntilEndOfTurn") is { } amu) return new AddManaUntilEndOfTurn(ManaCost.Parse(amu).Pips);
         if (Str("emblem") is { } emblemName) return new CreateEmblem(emblemName, Parse(e.GetRawText()).Abilities)
         {
+            Replaces = Parse(e.GetRawText()).Replaces,
+            EmblemText = Str("emblemText"),
             UntilEndOfTurn = Flag("untilEndOfTurn"),
             UntilYourNextTurn = Flag("untilYourNextTurn"),
             UntilEndOfYourNextTurn = Flag("untilEndOfYourNextTurn"),
@@ -1931,6 +2018,7 @@ public static partial class CardScriptParser
                 AtNextEndStep = e.TryGetProperty("atNextEndStep", out var cane) ? EffectList(cane) : null,
                 AtNextEndStepUnless = e.TryGetProperty("atNextEndStepUnless", out var canu) ? ParseCondition(canu) : null,
                 ExileAtEndOfCombat = Flag("exileAtEndOfCombat"),
+                AttackingTriggeredPlayer = Flag("attackingTriggeredPlayer"),
                 GainsHaste = Flag("gainsHaste"),
                 Each = Flag("each"),
                 SacrificeAtNextUpkeep = Flag("sacrificeAtNextUpkeep"),
@@ -2019,7 +2107,8 @@ public static partial class CardScriptParser
             };
         }
         if (e.TryGetProperty("sacrifice", out _))
-            return new Sacrifice(Qty("sacrifice"), e.TryGetProperty("filter", out var sf) ? ParseFilter(sf, ControllerFilter.Any) : new ObjectFilter(CardType.Creature), Subj("who", "you"));
+            return new Sacrifice(Qty("sacrifice"), e.TryGetProperty("filter", out var sf) ? ParseFilter(sf, ControllerFilter.Any) : new ObjectFilter(CardType.Creature), Subj("who", "you"))
+                { OtherwiseDiscard = e.TryGetProperty("otherwiseDiscard", out var sod) ? sod.GetInt32() : 0 };
         if (e.TryGetProperty("pump", out var pump))
         {
             var pt = pump.EnumerateArray().Select(ParseQuantity).ToArray();
@@ -2048,7 +2137,7 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("revealTopPut", out var rtp)) return new RevealTopPutOntoBattlefield(Subj("who", "you"), ParseFilter(rtp, ControllerFilter.Any));
         if (e.TryGetProperty("exileLibraryAllBut", out var elb)) return new ExileLibraryAllButBottom(Subj("who", "target"), elb.GetInt32());
         if (Value("cantHaveCounters") is { } chc) return new PreventCounters(chc);
-        if (Value("blink") is { } blink) return new Blink(blink) { Tapped = Flag("tapped"), Transformed = Flag("transformed"), EnterCounters = e.TryGetProperty("counters", out var blc) ? blc.GetInt32() : 0 };
+        if (Value("blink") is { } blink) return new Blink(blink) { Tapped = Flag("tapped"), UnderYourControl = Flag("underYourControl"), Transformed = Flag("transformed"), EnterCounters = e.TryGetProperty("counters", out var blc) ? blc.GetInt32() : 0 };
         if (Value("shuffleIntoLibrary") is { } sil) return new ShuffleIntoLibrary(sil);
         if (Flag("additionalLand")) return new AdditionalLandThisTurn();
         if (Flag("noSpellsThisTurn")) return new NoSpellsThisTurn();
@@ -2100,6 +2189,7 @@ public static partial class CardScriptParser
         if (Value("preventDamageBy") is { } pdb) return new PreventDamageBy(pdb);
         if (Value("phaseOut") is { } po) return new PhaseOut(po);
         if (Flag("returnLinkedExiled")) return new ReturnLinkedExiled();
+        if (e.TryGetProperty("linkedExiledOwnerCreates", out var leoc)) return new LinkedExiledOwnerCreatesToken(ParseToken(leoc));
         if (e.TryGetProperty("cantBlockThisTurn", out var cbt)) return new CantBlockThisTurn(ParseFilter(cbt, ControllerFilter.Any));
         if (Value("unblockableByMostLifePlayer") is { } ubm) return new UnblockableByMostLifePlayer(ubm);
         if (Flag("ringTempts")) return new RingTemptsYou();
@@ -2137,11 +2227,13 @@ public static partial class CardScriptParser
         if (Flag("mayBounceSharingType")) return new MayBounceAnotherSharingType();
         if (Flag("copyTriggeredAbility")) return new CopyTriggeredAbility();
         if (e.TryGetProperty("swapGraveyardAndBattlefield", out var sgb)) return new SwapGraveyardAndBattlefield(ParseFilter(sgb, ControllerFilter.Any));
+        if (Str("temptingOffer") is { } toPrompt) return new TemptingOffer(toPrompt, Effects(e));
         if (e.TryGetProperty("temptingOfferSearch", out var tos)) return new TemptingOfferSearch(ParseFilter(tos, ControllerFilter.Any));
         if (e.TryGetProperty("copyEachYouControl", out var cey)) return new CopyEachYouControl(ParseFilter(cey, ControllerFilter.You));
         if (e.TryGetProperty("opponentsExileGreatestPower", out var oeg))
             return new OpponentsExileGreatestPower(e.TryGetProperty("damageIf", out var oegd) ? ParseCondition(oegd) : null);
         if (Flag("chooseOpponent")) return new ChooseAnOpponent();
+        if (Flag("parley")) return new Parley();
         if (Value("destroyPowerAbove") is { } dpa) return new DestroyPowerAbove(dpa);
         if (e.TryGetProperty("exileFromGraveyardChosen", out var efgc)) return new ExileChosenFromGraveyard(ParseFilter(efgc, ControllerFilter.Any));
         if (e.TryGetProperty("returnFromGraveyardAll", out var rfga)) return new ReturnAllFromGraveyardToHand(ParseFilter(rfga, ControllerFilter.Any));
@@ -2165,6 +2257,18 @@ public static partial class CardScriptParser
         if (Str("loyaltyAtInstantSpeed") is { } instantSubtype) return new LoyaltyAbilitiesAtInstantSpeed(instantSubtype);
         if (e.TryGetProperty("removeUpToCounters", out _)) return new RemoveUpToCounters(Int("removeUpToCounters"), Subj("from", "target"));
         if (Flag("nextSpellUncounterable")) return new NextSpellUncounterable();
+        if (Flag("repeatProcess")) return new RepeatProcess();
+        if (Value("lookAtTopMayBottom") is { } ltb) return new LookAtTopMayBottom(ltb);
+        if (Value("exileLibrary") is { } exl) return new ExileLibrary(exl);
+        if (Flag("attackersAttackAgainNotYou")) return new AttackersAttackAgainNotYou();
+        if (e.TryGetProperty("fromOutsideOrExileToHand", out var foe)) return new FromOutsideOrExileToHand(ParseFilter(foe, ControllerFilter.Any));
+        if (e.TryGetProperty("revealTopCastOneFree", out _))
+            return new RevealTopCastOneFree(Qty("revealTopCastOneFree"), e.TryGetProperty("filter", out var rtcf) ? ParseFilter(rtcf, ControllerFilter.Any) : new ObjectFilter());
+        if (Value("returnAtEndOfCombat") is { } raec) return new ReturnToHandAtEndOfCombat(raec);
+        if (Flag("eachDrawsDamageDealtToThis")) return new EachDrawsDamageDealtToSource();
+        if (e.TryGetProperty("copiesOfDestroyedHalved", out _)) return new CopiesOfDestroyedHalved(Int("copiesOfDestroyedHalved"));
+        if (Value("shuffleHandIntoLibrary") is { } shHand) return new ShuffleHandIntoLibrary(shHand);
+        if (Flag("creatureSpellsUncounterableThisTurn")) return new CreatureSpellsUncounterableThisTurn();
         if (Flag("noLegendRuleThisTurn")) return new NoLegendRuleThisTurn();
         if (Value("cantAttackYourPlaneswalkers") is { } cayp) return new CantAttackYourPlaneswalkersThisTurn(cayp, Str("subtype") ?? "");
         if (Value("protectionAndLifeLock") is { } pll) return new ProtectionAndLifeLockUntilTheirTurn(pll);
@@ -2253,6 +2357,8 @@ public static partial class CardScriptParser
             SetTypes = e.TryGetProperty("setTypes", out var st) ? ParseTypes(st) : null,
             SetSubtypes = Strings("setSubtypes"),
             AddAbilities = e.TryGetProperty("abilities", out var ab) ? Parse("{\"abilities\":" + ab.GetRawText() + "}").Abilities : null,
+            SetPower = e.TryGetProperty("setPower", out var esp) ? esp.GetInt32() : null,
+            SetToughness = e.TryGetProperty("setToughness", out var est) ? est.GetInt32() : null,
         };
     }
 
