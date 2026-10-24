@@ -33,7 +33,28 @@ The left side is the card search:
 
 - Type a name, or use the filters, to find cards. **Prev** and **Next** turn the pages.
 - Click a card to add a copy to the deck. Right-click a card to take a copy out.
+- Hover a card for a large preview. A double-faced card's other face is shown beside it, on the side away from the pointer.
 - Pick a set to see that set's printings and their art, then choose the one the deck uses.
+
+The search takes the terms of the search box's help line. Some of them are about prices and printings:
+
+- `eur<1` and `usd>=5` find the cards with a printing at that price (Cardmarket euros, TCGplayer dollars). The price is the
+  cheaper of the printing's foil and nonfoil prices.
+- `order:eur` and `order:usd` sort by the cheapest printing. Cards with no price come last.
+- `is:fullart`, `is:showcase`, `is:etched`, `is:reserved`, `is:firstprint`, `is:prerelease` and the other `is:` printing
+  kinds, `border:borderless` and `frame:2015` (or a frame effect such as `frame:showcase`).
+- Land nicknames such as `is:shockland`, `is:fetchland`, `is:triome` and `is:bounceland`, judged from what each land says.
+  `is:alchemy`, `is:rebalanced` and `is:oversized` match no card.
+
+## Prices
+
+Prices are Cardmarket prices in euros, from when the module's card data was downloaded. They are not live.
+
+- Each result tile shows its price. A tile for a printing shows that printing's nonfoil price. Without a chosen set, a tile
+  shows the price of the cheapest printing.
+- The deck list ends with the Cardmarket total of the section. Each copy counts at its chosen printing's price (the foil
+  price for a foil copy), or at the cheapest printing's when none is chosen. Copies with no price are counted apart.
+- The career deck desk keeps its own prices (see [Career](career.md)).
 
 The right side shows the deck grouped by card type, with a mana curve. Tabs switch between:
 
@@ -51,6 +72,9 @@ When the content module has community deck statistics, a **Suggestions** switch 
   expensive decks or one theme.
 - **In another format**, the suggestions come from community decks like yours. They are the cards those decks play,
   and each card shows how many of those decks play it.
+
+The sort box has **Most played**, **Highest synergy**, **Lowest price** and **Highest price**, in both kinds. The price
+sorts use the Cardmarket price of the cheapest printing, and cards with no price come last.
 
 Click a suggested card to add it to your deck. **Use average deck** replaces the main deck with the average of the
 suggested decks. A note on the screen gives the decks the numbers come from.

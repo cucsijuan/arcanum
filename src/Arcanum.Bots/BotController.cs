@@ -88,6 +88,7 @@ public sealed class BotController : IPlayerController
     public Task<int> ChooseOptionAsync(GameView view, OptionRequest request)
     {
         if (request.Kind == OptionKind.CardName) return Task.FromResult(ChooseCardName(view, request));
+        if (request.Kind == OptionKind.Other && CostChoice(view, request) is { } way) return Task.FromResult(way);
         // A card type to have protection from: creatures are what attacks and blocks.
         if (request.Prompt.Contains("card type", StringComparison.OrdinalIgnoreCase)
             && request.Options.ToList().FindIndex(o => o.Equals("Creature", StringComparison.OrdinalIgnoreCase)) is var creature and >= 0)
@@ -129,6 +130,74 @@ public sealed class BotController : IPlayerController
     }
 
     private static string ColorLetter(string color) => color switch { "Blue" => "U", _ => color[..1] };
+
+    /// <summary>
+    /// A choice among ways to pay ("choose the additional cost", "you may sacrifice a Food or pay {2}{W}"): mana rather than
+    /// giving up a permanent or a card, and an optional payment declined when what it gives isn't worth it. Null: not a cost.
+    /// </summary>
+    private int? CostChoice(GameView view, OptionRequest request)
+    {
+        bool optional = request.Options.Count > 0 && request.Options[^1] == "Don't pay";
+        if (!optional && !request.Prompt.EndsWith(": choose the additional cost", StringComparison.Ordinal)) return null;
+        int mana = request.Options.ToList().FindIndex(o => (o.StartsWith('{') || o.StartsWith("Pay {", StringComparison.Ordinal)) && !o.Contains(" and ", StringComparison.Ordinal));
+        if (mana >= 0) return mana;
+        if (optional && request.Source is { } source && FindMayPay(view, source, request.Prompt) is { Options: { } ways } pay
+            && !ways.Any(w => PaymentWorthIt(view, source, pay, w.Extra))) return request.Options.Count - 1;
+        return 0;
+    }
+
+    /// <summary>The "you may pay … If you do, …" of a source with this prompt, if any.</summary>
+    private MayPay? FindMayPay(GameView view, CardId source, string prompt)
+    {
+        var rules = Rules(view, source) ?? _definitions(source);
+        if (rules is null) return null;
+        var abilities = rules.Spell is { } spell ? rules.Abilities.Append(spell) : rules.Abilities;
+        return abilities.SelectMany(a => AllEffects(a.Effects)).OfType<MayPay>().FirstOrDefault(m => m.Prompt == prompt);
+    }
+
+    private static IEnumerable<Effect> AllEffects(IEnumerable<Effect> effects)
+    {
+        foreach (var effect in effects)
+        {
+            yield return effect;
+            var inner = effect switch
+            {
+                MayDo m => m.Effects, MayPay m => m.Else is { } e ? m.Effects.Concat(e) : m.Effects, MayPayX m => m.Effects,
+                IfThen i => i.Else is { } e ? i.Then.Concat(e) : i.Then,
+                _ => null,
+            };
+            if (inner is not null) foreach (var e in AllEffects(inner)) yield return e;
+        }
+    }
+
+    /// <summary>
+    /// Whether to sacrifice for an optional payoff: never the commander, and only what is worth less than the payoff, or, for
+    /// a look at the top of the library (surveil, scry), something cheap when there are no spells left in hand to cast.
+    /// Paying mana or life is left as it was (yes).
+    /// </summary>
+    private bool PaymentWorthIt(GameView view, CardId source, MayPay pay, ExtraCost? extra)
+    {
+        if (extra is not { Sacrifice: { } filter }) return true;
+        var given = SacrificeCandidates(view, filter, source).OrderBy(KeepValue).Take(extra.SacrificeCount).ToList();
+        if (given.Count < extra.SacrificeCount || given.Any(c => c.IsCommander)) return false;
+        double lost = given.Sum(KeepValue), gain = PayoffValue(pay.Effects);
+        if (gain >= lost) return true;
+        bool selection = Unwrapped(pay.Effects).All(e => e is Scry or Surveil or DrawCards);
+        return selection && NeedsCards(view) && given.All(c => KeepValue(c) <= CheapPermanent);
+    }
+
+    /// <summary>Roughly what effects done for us are worth, on the scale of <see cref="KeepValue"/>.</summary>
+    private static double PayoffValue(IEnumerable<Effect> effects) => Unwrapped(effects).Sum(effect => effect switch
+    {
+        DrawCards d when d.Who.Kind == SubjectKind.You => 1.5 * d.Count.Estimate,
+        CreateTokens t => 2 * t.Count.Estimate,
+        Scry s => 0.4 * s.Count,
+        Surveil s => 0.4 * s.Count,
+        DealDamage d => d.Amount.Estimate,
+        GainLife g => 0.3 * g.Amount.Estimate,
+        AddCounters { Kind: CounterKind.PlusOnePlusOne } a => 1.5 * a.Count.Estimate,
+        _ => 1.0,
+    });
 
     /// <summary>
     /// Use everything available for X; a loyalty cost of −X keeps the planeswalker alive; X paid in life is the X planned when
@@ -179,8 +248,7 @@ public sealed class BotController : IPlayerController
     {
         int xs = 0;
         for (int i = cost.IndexOf("{X}", StringComparison.Ordinal); i >= 0; i = cost.IndexOf("{X}", i + 3, StringComparison.Ordinal)) xs++;
-        int mana = view.Battlefield.Count(c => c.Controller == _me && !c.Tapped && (c.Types & CardType.Land) != 0) + view.Self.ManaPoolTotal;
-        return Math.Max(0, (mana - (ManaValue(cost) - xs)) / Math.Max(1, xs)); // ManaValue counts each {X} as 1
+        return Math.Max(0, (AvailableMana(view) - (ManaValue(cost) - xs)) / Math.Max(1, xs)); // ManaValue counts each {X} as 1
     }
 
     public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request)
@@ -310,10 +378,34 @@ public sealed class BotController : IPlayerController
         if (!threat) return null;
         foreach (var cast in legal.OfType<CastSpell>())
         {
-            var spell = SpellRules(view, cast)?.Spell;
-            if (spell is not null && spell.Effects.Any(e => e is CounterSpell)) return cast;
+            var rules = SpellRules(view, cast);
+            if (rules?.Spell is { } spell && spell.Effects.Any(e => e is CounterSpell) && CounterCostWorthIt(view, cast, rules, top)) return cast;
         }
         return null;
+    }
+
+    /// <summary>
+    /// A counterspell whose cost sacrifices (when no way of paying it with mana alone is affordable) is cast only when what it
+    /// gives up is worth less than what it saves, and never to save the very permanent it would sacrifice.
+    /// </summary>
+    private bool CounterCostWorthIt(GameView view, CastSpell cast, CardDefinition rules, StackItemView top)
+    {
+        int mana = AvailableMana(view) - ManaValue(view.FindCard(cast.Card)?.ManaCost);
+        var sacrifices = new List<ExtraCost>();
+        if (rules.AdditionalCost is { Sacrifice: not null } always) sacrifices.Add(always);
+        if (rules.AdditionalCostOptions is { Count: > 0 } options
+            && !options.Any(o => o.Extra is not { Sacrifice: not null } && (o.Mana?.ManaValue ?? 0) <= mana))
+            sacrifices.AddRange(options.Select(o => o.Extra).OfType<ExtraCost>().Where(e => e.Sacrifice is not null).Take(1));
+        if (sacrifices.Count == 0) return true;
+        var saved = top.Targets.Select(t => t.Card).OfType<CardId>().Select(view.FindCard).OfType<CardView>()
+            .Where(c => c.Controller == _me && c.Zone == Zone.Battlefield).ToList();
+        double worth = saved.Count > 0 ? saved.Sum(PermanentValue) : ManaValue(top.Card.ManaCost);
+        foreach (var cost in sacrifices)
+        {
+            var given = SacrificeCandidates(view, cost.Sacrifice!, cast.Card).OrderBy(KeepValue).Take(cost.SacrificeCount).ToList();
+            if (given.Count < cost.SacrificeCount || given.Any(g => saved.Any(s => s.Id == g.Id)) || given.Sum(KeepValue) >= worth) return false;
+        }
+        return true;
     }
 
     /// <summary>The spell worth casting most right now, or null. Creatures and permanents in main phases; removal when it has a good target.</summary>
@@ -422,7 +514,8 @@ public sealed class BotController : IPlayerController
             int damage = DamageTo(spell, 0, _x);
             return damage >= view.Players[facePlayer.Value].Life ? 100 : 0; // burn to the face only to finish a player
         }
-        return view.FindCard(target.Value.Card!.Value) is { } victim ? 1 + CreatureValue(victim) : 0;
+        // A noncreature by what it does (a Food or Treasure token is barely worth a card).
+        return view.FindCard(target.Value.Card!.Value) is { } victim ? victim.Power is null ? PermanentValue(victim) : 1 + CreatureValue(victim) : 0;
     }
 
     private double AuraScore(GameView view, CardDefinition aura, int manaValue)
@@ -515,14 +608,24 @@ public sealed class BotController : IPlayerController
     {
         if (cost.ExileSelf || cost.ReturnSelfToHand || cost.DiscardX || cost.Extra is not { Sacrifice: { } filter } extra
             || extra.Discard > 0 || extra.ReturnToHand is not null) return false;
-        var picks = view.Battlefield
-            .Where(c => c.Controller == _me && !(filter.Other && c.Id == source)
-                        && (filter.Types == 0 || (c.Types & filter.Types) != 0) && (filter.ExcludedTypes & c.Types) == 0
-                        && (filter.Subtype is null || c.Subtypes.Contains(filter.Subtype, StringComparer.OrdinalIgnoreCase))
-                        && (filter.Token is null || c.IsToken == filter.Token))
-            .OrderBy(KeepValue).Take(extra.SacrificeCount).ToList();
+        var picks = SacrificeCandidates(view, filter, source).OrderBy(KeepValue).Take(extra.SacrificeCount).ToList();
         return picks.Count == extra.SacrificeCount && picks.All(c => !c.IsCommander && KeepValue(c) <= CheapPermanent);
     }
+
+    /// <summary>Our permanents a sacrifice cost could take (roughly: its types, supertype, subtype and token-ness).</summary>
+    private IEnumerable<CardView> SacrificeCandidates(GameView view, ObjectFilter filter, CardId source) =>
+        view.Battlefield.Where(c => c.Controller == _me && !(filter.Other && c.Id == source) && SacrificeMatches(filter, c));
+
+    private static bool SacrificeMatches(ObjectFilter f, CardView c) =>
+        (f.AnyOf is not { Count: > 0 } any || any.Any(a => SacrificeMatches(a, c)))
+        && (f.Types == 0 || (c.Types & f.Types) != 0) && (f.ExcludedTypes & c.Types) == 0
+        && (f.Supertype == 0 || (c.Supertypes & f.Supertype) != 0)
+        && (f.Subtype is null || c.Subtypes.Contains(f.Subtype, StringComparer.OrdinalIgnoreCase))
+        && (f.Token is null || c.IsToken == f.Token);
+
+    /// <summary>Our untapped lands and floating mana: about what we could still pay.</summary>
+    private int AvailableMana(GameView view) =>
+        view.Battlefield.Count(c => c.Controller == _me && !c.Tapped && (c.Types & CardType.Land) != 0) + view.Self.ManaPoolTotal;
 
     /// <summary>The most a permanent may be worth to be sacrificed for a card (a 1/1 flying token, a small artifact).</summary>
     private const double CheapPermanent = 4.5;
@@ -537,17 +640,80 @@ public sealed class BotController : IPlayerController
         return value;
     }
 
-    /// <summary>A pump spell that wins a combat for one of our creatures.</summary>
+    /// <summary>A pump spell that wins a combat for one of our creatures, or a "gets -N/-N" that turns a combat our way.</summary>
     private PlayerAction? CombatTrick(GameView view, IReadOnlyList<PlayerAction> legal)
     {
         foreach (var cast in legal.OfType<CastSpell>())
         {
             var spell = SpellRules(view, cast)?.Spell;
-            var pump = spell?.Effects.OfType<PumpUntilEndOfTurn>().FirstOrDefault(p => p.Power.Estimate + p.Toughness.Estimate > 0);
-            if (spell is null || pump is null || spell.Targets.Count != 1) continue;
-            if (FightToWin(view, pump) is not null) return cast;
+            if (spell is null || spell.Targets.Count != 1) continue;
+            var pump = spell.Effects.OfType<PumpUntilEndOfTurn>().FirstOrDefault(p => p.Power.Estimate + p.Toughness.Estimate > 0);
+            if (pump is not null && FightToWin(view, pump) is not null) return cast;
+            if (OnlyLethalHarm(spell, 0) && ShrinkToWin(view, spell) is { } victim)
+            {
+                _plannedHarm[cast.Card] = victim.Id;
+                return cast;
+            }
         }
         return null;
+    }
+
+    /// <summary>
+    /// An opposing creature in combat that a "gets -N/-N" spell is worth a card on, once blocks are known: one it kills, an
+    /// attacker or blocker our creatures then kill, one that then no longer kills our creature, or an unblocked attacker
+    /// whose damage would otherwise finish us.
+    /// </summary>
+    private CardView? ShrinkToWin(GameView view, AbilityDefinition spell)
+    {
+        int damage = DamageTo(spell, 0), shrink = ShrinkOf(spell, 0);
+        int lost = Unwrapped(spell.Effects).OfType<PumpUntilEndOfTurn>().Where(p => RefersToTarget(p, 0)).Sum(p => -p.Power.Estimate);
+        static int PowerOf(CardView c) => Math.Max(0, c.Power ?? 0);
+        bool Targetable(CardView c) => c.Controller != _me && !Has(c, "Hexproof") && !Has(c, "Shroud");
+        int unblocked = view.Attacks.Where(a => a.Defender == _me && a.Planeswalker is null && !a.IsBlocked)
+            .Select(a => view.FindCard(a.Attacker)).OfType<CardView>().Sum(PowerOf);
+
+        CardView? best = null;
+        double bestGain = 1.5; // worth about a card
+        void Consider(CardView c, double gain)
+        {
+            if (Targetable(c) && gain > bestGain) { bestGain = gain; best = c; }
+        }
+        foreach (var attack in view.Attacks)
+        {
+            var attacker = view.FindCard(attack.Attacker);
+            if (attacker is null) continue;
+            var blockers = attack.Blockers.Select(view.FindCard).OfType<CardView>().ToList();
+            if (attacker.Controller != _me)
+            {
+                if (attack.Defender != _me && blockers.All(b => b.Controller != _me)) continue;
+                int incoming = blockers.Sum(PowerOf);
+                bool deathtouch = blockers.Any(b => Has(b, "Deathtouch"));
+                double gain = DiesFrom(attacker, damage + incoming, shrink, deathtouch) && !DiesFrom(attacker, incoming, 0, deathtouch) ? CreatureValue(attacker) : 0;
+                // Our blockers it no longer kills (each judged as if it took all the attacker's damage).
+                int power = PowerOf(attacker), weaker = Math.Max(0, power - lost);
+                gain += blockers.Where(b => b.Controller == _me && DiesFrom(b, power, 0, Has(attacker, "Deathtouch")) && !DiesFrom(b, weaker, 0, Has(attacker, "Deathtouch") && weaker > 0))
+                    .Sum(CreatureValue);
+                // Unblocked: damage that would finish us, but not once it's smaller.
+                if (!attack.IsBlocked && attack.Defender == _me && attack.Planeswalker is null && unblocked >= view.Self.Life && unblocked - Math.Min(lost, power) < view.Self.Life)
+                    gain += 100;
+                Consider(attacker, gain);
+            }
+            else
+            {
+                // Our attacker blocked: a blocker it then kills, or that no longer kills it.
+                int incoming = blockers.Sum(PowerOf);
+                foreach (var blocker in blockers)
+                {
+                    double gain = DiesFrom(blocker, damage + PowerOf(attacker), shrink, Has(attacker, "Deathtouch")) && !DiesFrom(blocker, PowerOf(attacker), 0, Has(attacker, "Deathtouch"))
+                        ? CreatureValue(blocker) : 0;
+                    int after = incoming - Math.Min(lost, PowerOf(blocker));
+                    bool deathtouch = blockers.Any(b => Has(b, "Deathtouch"));
+                    if (DiesFrom(attacker, incoming, 0, deathtouch) && !DiesFrom(attacker, after, 0, deathtouch && after > 0)) gain += CreatureValue(attacker);
+                    Consider(blocker, gain);
+                }
+            }
+        }
+        return best;
     }
 
     /// <summary>Our creature in a combat that the pump turns from losing into surviving/killing.</summary>
@@ -618,9 +784,15 @@ public sealed class BotController : IPlayerController
             Target pick;
             if (ability is not null && TargetIsHarmed(ability, specIndex(i)))
             {
-                // Only our own things to aim it at: the one we'd miss least (a "you may" effect is then declined).
-                pick = BestHarmTarget(view, ability, specIndex(i), real)
-                       ?? real.OrderBy(t => t.Card is { } c && view.FindCard(c) is { } own ? PermanentValue(own) : double.MaxValue).First();
+                // What a combat trick was cast for, else the best opposing target, else any opposing one. With only our own
+                // things to aim it at, a spell being cast is called off; anything else hits the one we'd miss least (a "you may"
+                // effect is then declined).
+                var planned = _plannedHarm.Remove(request.Source, out var p) && real.Contains(Target.Of(p)) ? Target.Of(p) : (Target?)null;
+                var opposing = real.Where(t => !Ours(view, t))
+                    .OrderByDescending(t => t.Card is { } c && view.FindCard(c) is { Zone: Zone.Battlefield } card ? PermanentValue(card) : 0).ToList();
+                var harm = planned ?? BestHarmTarget(view, ability, specIndex(i), real) ?? (opposing.Count > 0 ? opposing[0] : null);
+                if (harm is null && request.CanCancel) return null;
+                pick = harm ?? real.OrderBy(t => t.Card is { } c && view.FindCard(c) is { } own ? PermanentValue(own) : double.MaxValue).First();
             }
             else
             {
@@ -634,6 +806,12 @@ public sealed class BotController : IPlayerController
         if (ability is not null) _lastTargets[request.Source] = (ability, chosen);
         return chosen;
     }
+
+    /// <summary>The creature each combat trick that shrinks was cast for (by the spell's card), for its target.</summary>
+    private readonly Dictionary<CardId, CardId> _plannedHarm = new();
+
+    /// <summary>Whether a target is us or something we control.</summary>
+    private bool Ours(GameView view, Target t) => t.Player == _me || t.Card is { } c && view.FindCard(c)?.Controller == _me;
 
     private AbilityDefinition? FindAbility(GameView view, TargetRequest request)
     {
@@ -693,6 +871,14 @@ public sealed class BotController : IPlayerController
             .ToList();
         // In multiplayer, a creature matters more when its controller is the biggest threat to us.
         double Weight(CardView c) => CreatureValue(c) * (view.Players.Count(p => !p.HasLost) > 2 ? 1 + Threat(view, c.Controller) / 30 : 1);
+        if (OnlyLethalHarm(ability, index))
+        {
+            // "Gets -2/-2" (with damage or not) only matters to a creature it kills; in a combat it changes, CombatTrick aims it.
+            int shrink = ShrinkOf(ability, index, _x);
+            var dies = creatures.Where(x => x.Card.Power is not null && DiesFrom(x.Card, damage, shrink))
+                .OrderByDescending(x => Weight(x.Card)).FirstOrDefault();
+            return dies.Card is not null ? dies.Target : null;
+        }
         if (damage > 0)
         {
             var killable = creatures.Where(x => damage >= RemainingToughness(x.Card) && !Has(x.Card, "Indestructible"))
@@ -1045,12 +1231,14 @@ public sealed class BotController : IPlayerController
 
     /// <summary>
     /// Says yes (the commander goes back to the command zone, optional effects are done), except to a "you may" effect
-    /// that would hurt our own permanent or us: one we had to target because nothing else was legal.
+    /// that would hurt our own permanent or us: one we had to target because nothing else was legal; and to an optional
+    /// sacrifice that isn't worth its payoff (see <see cref="PaymentWorthIt"/>).
     /// </summary>
     public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) =>
         // Asked only when the full cost can be paid too: a card with morph is cast face up then (face down only when that's all it can afford).
         Task.FromResult(!request.Prompt.Contains(" face down as a 2/2", StringComparison.Ordinal)
-                        && !(request.Card is { } source && HurtsOwnTarget(view, source, request.Prompt)));
+                        && !(request.Card is { } source && HurtsOwnTarget(view, source, request.Prompt))
+                        && !(request.Card is { } payer && FindMayPay(view, payer, request.Prompt) is { Options: null } pay && !PaymentWorthIt(view, payer, pay, pay.Extra)));
 
     /// <summary>The targets last chosen for each source's ability, to judge its "you may" choice as it resolves.</summary>
     private readonly Dictionary<CardId, (AbilityDefinition Ability, IReadOnlyList<Target> Targets)> _lastTargets = new();

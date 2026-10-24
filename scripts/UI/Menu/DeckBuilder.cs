@@ -58,7 +58,7 @@ public partial class DeckBuilder : Control
     private readonly HBoxContainer _filters = new();
 
     // Suggestions for the commander (community statistics from the module's source), shown instead of the search.
-    private static readonly string[] SuggestionSorts = { "Most played", "Highest synergy" };
+    private static readonly string[] SuggestionSorts = { "Most played", "Highest synergy", "Lowest price", "Highest price" };
     private readonly HBoxContainer _modeRow = new();
     private readonly Button _searchMode = BoardStyle.MakeButton("Search", 15);
     private readonly Button _suggestMode = BoardStyle.MakeButton("Suggestions", 15);
@@ -87,7 +87,7 @@ public partial class DeckBuilder : Control
     private readonly HBoxContainer _curve = new();
     private readonly RichTextLabel _validation = new() { BbcodeEnabled = true, FitContent = true, ScrollActive = false };
 
-    private readonly CardNode _preview = new() { SharpImage = true, MouseFilter = MouseFilterEnum.Ignore, Visible = false, ZIndex = 300 };
+    private readonly CardNode _preview = new() { SharpImage = true, ShowsOtherFace = true, MouseFilter = MouseFilterEnum.Ignore, Visible = false, ZIndex = 300 };
     private readonly AcceptDialog _importDialog = new();
     private readonly TextEdit _importText = new();
 
@@ -313,7 +313,7 @@ public partial class DeckBuilder : Control
         _suggestSection.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _suggestSection.TooltipText = "Group of suggested cards";
         _suggestSection.ItemSelected += _ => ShowSuggestions();
-        _suggestSort.TooltipText = "Most played: share of the decks that could play the card that do · Highest synergy: played the most above other decks of its colors";
+        _suggestSort.TooltipText = "Most played: share of the decks that could play the card that do · Highest synergy: played the most above other decks of its colors" + PriceSortHint;
         _suggestSort.ItemSelected += _ => ShowSuggestions();
         _suggestVariant.CustomMinimumSize = new Vector2(240, 0);
         _suggestVariant.ClipText = true;
@@ -378,8 +378,8 @@ public partial class DeckBuilder : Control
             _suggestMode.TooltipText = commander ? "The cards most played with your commander, by the community's decks"
                 : "The cards played by the community's decks most like yours";
             _suggestSort.TooltipText = commander
-                ? "Most played: share of the decks that could play the card that do · Highest synergy: played the most above other decks of its colors"
-                : "Most played: share of the decks like yours that play the card · Highest synergy: played more by the decks most like yours";
+                ? "Most played: share of the decks that could play the card that do · Highest synergy: played the most above other decks of its colors" + PriceSortHint
+                : "Most played: share of the decks like yours that play the card · Highest synergy: played more by the decks most like yours" + PriceSortHint;
             _suggestVariant.TooltipText = commander ? "All the commander's decks, only budget or expensive ones, or one theme"
                 : "All the decks like yours, or one of them (with how many of your cards it plays)";
             if (!commander)
@@ -487,6 +487,14 @@ public partial class DeckBuilder : Control
             if (legality is not null && !(entry.Record.Legalities.TryGetValue(legality, out var status) && status is "legal" or "restricted")) { hidden++; continue; }
             if (!_suggestStats.TryAdd(entry.Name, suggestion)) continue;
             results.Add((entry, null));
+        }
+        if (_suggestSort.Selected >= 2)
+        {
+            // By Cardmarket price (its cheapest printing); cards with no price listed last.
+            bool highest = _suggestSort.Selected == 3;
+            var priced = results.Where(r => PriceOf(r.Item1, null, null) is not null).ToList();
+            results = (highest ? priced.OrderByDescending(r => PriceOf(r.Item1, null, null)) : priced.OrderBy(r => PriceOf(r.Item1, null, null)))
+                .Concat(results.Where(r => PriceOf(r.Item1, null, null) is null)).ToList();
         }
         _results = results;
         ShowPage(0);
@@ -621,12 +629,7 @@ public partial class DeckBuilder : Control
         _next.Disabled = _page >= pages - 1;
     }
 
-    private static CardView ViewOf(CardDefinition d, int id) => new()
-    {
-        Id = new CardId(id), Owner = new PlayerId(0), Controller = new PlayerId(0), Zone = Zone.Hand, IsHidden = false,
-        Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
-        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil, Surge = d.Surge, Fracture = d.Fracture,
-    };
+    private static CardView ViewOf(CardDefinition d, int id) => MenuKit.CardViewOf(d, id);
 
     /// <summary>The card's definition in a printing (its art, foil when asked and possible), or its default one.</summary>
     private CardDefinition DefinitionOf(string name, string? set, string? number, bool foil = false) =>
@@ -661,6 +664,15 @@ public partial class DeckBuilder : Control
                 + $"In {stats.Inclusion:P0} of the decks that could play it ({stats.Decks:N0} of {stats.PotentialDecks:N0}).\n"
                 + $"Synergy {Signed(stats.Synergy)}: how much more it is played with this commander than in other decks of its colors.";
         }
+        if (PriceOf(entry, set, number) is { } price)
+        {
+            var tag = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(8, 8) };
+            tag.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.07f, 0.08f, 0.1f, 0.85f), 8));
+            tag.AddChild(BoardStyle.MakeLabel(Euros(price), 14, BoardStyle.Text, bold: true));
+            tile.AddChild(tag);
+            card.TooltipText = (card.TooltipText.Length > 0 ? card.TooltipText + "\n" : "")
+                + (printing is null ? $"Cardmarket: from {Euros(price)} (its cheapest printing)" : $"Cardmarket: {Euros(price)}");
+        }
         int copies = Section.Where(e => e.Name.Equals(entry.Name, StringComparison.OrdinalIgnoreCase)).Sum(e => e.Count);
         if (copies > 0)
         {
@@ -672,6 +684,17 @@ public partial class DeckBuilder : Control
         }
         return tile;
     }
+
+    /// <summary>
+    /// What a copy goes for on Cardmarket (prices from when the card data was downloaded): its printing's, foil or not, when one
+    /// is chosen, else the cheapest printing's. Null: not listed.
+    /// </summary>
+    private static double? PriceOf(CardEntry entry, string? set, string? number, bool foil = false) =>
+        set is not null && entry.Record.FindPrinting(set, number) is { } printing ? printing.Prices.EurFor(foil) : CardFilter.CheapestPrice(entry, euros: true);
+
+    private const string PriceSortHint = " · Lowest / Highest price: on Cardmarket, its cheapest printing";
+
+    private static string Euros(double price) => price.ToString("€0.00", System.Globalization.CultureInfo.InvariantCulture);
 
     private void ShowPreview(CardNode card, Control anchor)
     {
@@ -754,6 +777,13 @@ public partial class DeckBuilder : Control
             _list.AddChild(BoardStyle.MakeLabel($"{group.Key} ({group.Sum(x => x.Entry.Count)})", 14, BoardStyle.TextDim, bold: true));
             foreach (var (entry, card) in group.OrderBy(x => x.Card?.ManaValue ?? 99).ThenBy(x => x.Entry.Name))
                 _list.AddChild(DeckRow(entry, card));
+        }
+        if (Section.Count > 0)
+        {
+            var prices = Section.Select(e => (e.Count, Price: Cards.Find(e.Name) is { } c ? PriceOf(c, e.Set, e.Number, e.Foil) : null)).ToList();
+            int unpriced = prices.Where(p => p.Price is null).Sum(p => p.Count);
+            _list.AddChild(BoardStyle.MakeLabel($"Cardmarket: {Euros(prices.Sum(p => p.Count * (p.Price ?? 0)))}"
+                + (unpriced > 0 ? $" ({unpriced} without a price)" : "") + " · the chosen printings, else the cheapest", 13, BoardStyle.TextDim));
         }
         if (Section.Count == 0)
             _list.AddChild(MenuKit.Hint(_editingCommander ? "Click a legendary creature on the left to make it your commander."

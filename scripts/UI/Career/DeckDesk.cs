@@ -108,7 +108,7 @@ public partial class DeckDesk : Control
     private readonly HBoxContainer _basics = new();
     private readonly Label _count = CareerStyle.Text("", 26, new Color(1f, 0.95f, 0.85f));
     private readonly Label _problems = CareerStyle.Text("", 17, CareerStyle.Ink, wrap: true);
-    private readonly CardNode _preview = new() { SharpImage = true, MouseFilter = MouseFilterEnum.Ignore, Visible = false, ZIndex = 300 };
+    private readonly CardNode _preview = new() { SharpImage = true, ShowsOtherFace = true, MouseFilter = MouseFilterEnum.Ignore, Visible = false, ZIndex = 300 };
     private List<DeckInfo> _saved = new();
 
     // Suggestions for a Commander deck's commander (community statistics from the module's source), shown on the mat instead
@@ -1308,12 +1308,7 @@ public partial class DeckDesk : Control
     private static CardDefinition Definition(DeckEntry entry) =>
         DeckList.TryResolve(Cards, entry, out var d) ? d : Cards.Find(entry.Name)!.Definition;
 
-    private static CardView ViewOf(CardDefinition d) => new()
-    {
-        Id = new CardId(-1), Owner = new PlayerId(0), Controller = new PlayerId(0), Zone = Zone.Hand, IsHidden = false,
-        Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
-        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil, Surge = d.Surge, Fracture = d.Fracture,
-    };
+    private static CardView ViewOf(CardDefinition d) => MenuKit.CardViewOf(d);
 
     private void ShowPreview(CardNode card, Control anchor)
     {

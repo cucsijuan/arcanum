@@ -116,6 +116,29 @@ public static class Evaluation
         Unwrapped(ability.Effects).OfType<DealDamage>().Where(d => d.To.Kind == SubjectKind.Target && d.To.Index == index)
             .Sum(d => d.Amount.Kind == QuantityKind.X && x is { } value ? value * d.Amount.Multiplier : d.Amount.Estimate);
 
+    /// <summary>How much toughness an ability takes from target <paramref name="index"/> until end of turn ("gets -2/-2"), if any.</summary>
+    public static int ShrinkOf(AbilityDefinition ability, int index, int? x = null) =>
+        -Unwrapped(ability.Effects).OfType<PumpUntilEndOfTurn>().Where(p => RefersToTarget(p, index))
+            .Sum(p => p.Toughness.Kind == QuantityKind.X && x is { } value ? value * p.Toughness.Multiplier : p.Toughness.Estimate);
+
+    /// <summary>
+    /// Whether all an ability does to target <paramref name="index"/> is damage and lowering its stats until end of turn: it only
+    /// matters to a creature it kills (or in a combat it changes).
+    /// </summary>
+    public static bool OnlyLethalHarm(AbilityDefinition ability, int index) =>
+        Unwrapped(ability.Effects).Where(e => RefersToTarget(e, index)).ToList() is { Count: > 0 } onTarget
+        && onTarget.All(e => e is DealDamage || e is PumpUntilEndOfTurn p && IsHarmful(p))
+        && onTarget.Any(e => e is PumpUntilEndOfTurn);
+
+    /// <summary>Whether a creature dies from <paramref name="damage"/> more damage after losing <paramref name="shrink"/> toughness.</summary>
+    public static bool DiesFrom(CardView c, int damage, int shrink, bool deathtouch = false)
+    {
+        int toughness = (c.Toughness ?? 0) - shrink;
+        if (toughness <= 0) return true;
+        if (Has(c, "Indestructible")) return false;
+        return toughness <= c.Damage + damage || deathtouch && damage > 0;
+    }
+
     /// <summary>Whether an ability deals damage to target <paramref name="index"/>.</summary>
     public static bool DamagesTarget(AbilityDefinition ability, int index) =>
         Unwrapped(ability.Effects).OfType<DealDamage>().Any(d => d.To.Kind == SubjectKind.Target && d.To.Index == index);

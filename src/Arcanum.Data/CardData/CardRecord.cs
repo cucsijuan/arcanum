@@ -25,6 +25,50 @@ public sealed record Printing(
 
     /// <summary>The artwork's identifier in the card source (the same picture across printings), when it has one.</summary>
     public string? Illustration { get; init; }
+
+    /// <summary>What a copy sold for when the card data was downloaded (null: not listed): Cardmarket in euros, TCGplayer in dollars.</summary>
+    public PrintingPrices Prices { get; init; } = PrintingPrices.None;
+
+    /// <summary>Made in etched foil.</summary>
+    public bool Etched { get; init; }
+
+    /// <summary>Made in glossy finish.</summary>
+    public bool Glossy { get; init; }
+
+    /// <summary>Full-art card: the art covers the text box.</summary>
+    public bool FullArt { get; init; }
+
+    /// <summary>Printed without rules text.</summary>
+    public bool Textless { get; init; }
+
+    /// <summary>The card source has a high-resolution scan of it.</summary>
+    public bool HighRes { get; init; }
+
+    /// <summary>Border color ("black", "white", "borderless", "silver", "gold").</summary>
+    public string Border { get; init; } = "";
+
+    /// <summary>Frame edition ("1993", "1997", "2003", "2015", "future").</summary>
+    public string Frame { get; init; } = "";
+
+    /// <summary>Frame effects ("showcase", "extendedart", "colorshifted", "inverted", ...).</summary>
+    public IReadOnlyList<string> FrameEffects { get; init; } = Array.Empty<string>();
+
+    /// <summary>Promo kinds ("prerelease", "datestamped", "buyabox", "boosterfun", "serialized", ...).</summary>
+    public IReadOnlyList<string> PromoTypes { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>Market prices of one printing (null: not listed).</summary>
+public sealed record PrintingPrices(double? Eur, double? EurFoil, double? Usd, double? UsdFoil)
+{
+    public static readonly PrintingPrices None = new(null, null, null, null);
+
+    /// <summary>The euro price of a copy: foil or not when known, else the cheaper one listed.</summary>
+    public double? EurFor(bool? foil) => foil switch { true => EurFoil, false => Eur, _ => Min(Eur, EurFoil) };
+
+    /// <summary>The dollar price of a copy: foil or not when known, else the cheaper one listed.</summary>
+    public double? UsdFor(bool? foil) => foil switch { true => UsdFoil, false => Usd, _ => Min(Usd, UsdFoil) };
+
+    private static double? Min(double? a, double? b) => a is { } x && b is { } y ? Math.Min(x, y) : a ?? b;
 }
 
 /// <summary>A set as seen through its printings.</summary>
@@ -60,6 +104,12 @@ public sealed record CardRecord
     public IReadOnlyDictionary<string, string> Legalities { get; init; } = new Dictionary<string, string>();
     public IReadOnlyList<CardFaceRecord> Faces { get; init; } = Array.Empty<CardFaceRecord>();
     public bool IsToken { get; init; }
+
+    /// <summary>On the reserved list (never reprinted).</summary>
+    public bool Reserved { get; init; }
+
+    /// <summary>On the Commander format's list of cards that change games the most.</summary>
+    public bool GameChanger { get; init; }
 
     /// <summary>Tokens this card creates, for picking the exact token image.</summary>
     public IReadOnlyList<RelatedToken> RelatedTokens { get; init; } = Array.Empty<RelatedToken>();

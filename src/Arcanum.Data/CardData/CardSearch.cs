@@ -262,8 +262,17 @@ public static class CardSearch
                 case "unique" or "display" or "prefer" or "include":
                     return Node.True; // how results are shown elsewhere: nothing to filter
 
-                case "a" or "artist" or "artists" or "ft" or "flavor" or "wm" or "watermark" or "border" or "frame" or "stamp"
-                    or "usd" or "eur" or "tix" or "cheapest" or "cube" or "otag" or "oracletag" or "function" or "atag" or "arttag"
+                case "usd" or "eur":
+                    return PriceTerm(op, value, euros: key == "eur");
+                case "border":
+                    return new Is(c => c.Printing is { } p && p.Border.Equals(lower, StringComparison.OrdinalIgnoreCase), printing: true);
+                case "frame":
+                    // A frame edition ("frame:2015") or a frame effect ("frame:showcase").
+                    return new Is(c => c.Printing is { } p && (p.Frame.Equals(lower, StringComparison.OrdinalIgnoreCase)
+                                                               || p.FrameEffects.Contains(lower, StringComparer.OrdinalIgnoreCase)), printing: true);
+
+                case "a" or "artist" or "artists" or "ft" or "flavor" or "wm" or "watermark" or "stamp"
+                    or "tix" or "cheapest" or "cube" or "otag" or "oracletag" or "function" or "atag" or "arttag"
                     or "art" or "edhrec" or "edhrecrank" or "b" or "block" or "g" or "group" or "new":
                     throw new SearchError($"the game has no data for {key}:.");
             }
@@ -505,12 +514,86 @@ public static class CardSearch
             "unique" => new Is(c => c.Entry.Record.Printings.Select(p => p.Set.ToLowerInvariant()).Distinct().Count() <= 1),
             "digital" => Node.False,
             "token" => new Is(c => c.Entry.Record.IsToken),
+            "reserved" => new Is(c => c.Entry.Record.Reserved),
+            "gamechanger" => new Is(c => c.Entry.Record.GameChanger),
+            "alchemy" or "rebalanced" or "oversized" => Node.False, // digital-only and oversized printings aren't kept
+            "firstprint" or "firstprinting" => new Is(c => c.Printing is { } p && !c.Entry.Record.Printings.Any(o => string.CompareOrdinal(o.Released, p.Released) < 0), printing: true),
+            "etched" => new Is(c => c.Printing is { Etched: true }, printing: true),
+            "glossy" => new Is(c => c.Printing is { Glossy: true }, printing: true),
+            "full" or "fullart" => new Is(c => c.Printing is { FullArt: true }, printing: true),
+            "textless" => new Is(c => c.Printing is { Textless: true }, printing: true),
+            "hires" => new Is(c => c.Printing is { HighRes: true }, printing: true),
+            "borderless" => new Is(c => c.Printing is { Border: "borderless" }, printing: true),
+            "showcase" or "extendedart" or "colorshifted" or "inverted" or "nyxtouched" or "companion_frame"
+                => FrameEffect(value),
+            "prerelease" or "datestamped" or "buyabox" or "giftbox" or "intropack" or "gameday" or "release" or "league"
+                or "planeswalkerdeck" or "playtest" or "boosterfun" or "serialized" or "promopack" or "bundle" or "starterdeck"
+                or "brawldeck" or "themepack" or "convention" or "tourney" or "judgegift" or "setpromo" or "stamped"
+                or "halofoil" or "galaxyfoil" or "surgefoil" or "textured" or "confettifoil" or "doublerainbow" or "fracturefoil"
+                => new Is(c => c.Printing is { } p && p.PromoTypes.Contains(value, StringComparer.OrdinalIgnoreCase), printing: true),
+            _ when LandCycles.TryGetValue(value, out var cycle) => new Is(c => FrontType(c.Entry.Record).Contains("Land") && cycle(c.Entry)),
             "supported" => new Is(c => c.Entry.Support == CardSupport.Full),
             "unsupported" => new Is(c => c.Entry.Support != CardSupport.Full),
             _ => throw new SearchError($"the game doesn't know is:{value}."),
         };
 
         private static Node Layout(params string[] layouts) => new Is(c => layouts.Contains(c.Entry.Record.Layout));
+
+        private static Node FrameEffect(string effect) =>
+            new Is(c => c.Printing is { } p && p.FrameEffects.Contains(effect, StringComparer.OrdinalIgnoreCase), printing: true);
+
+        /// <summary>"usd>=2", "eur<0.5": a printing's price when the card data was downloaded (foil or not when known, else the cheaper).</summary>
+        private static Node PriceTerm(string op, string value, bool euros)
+        {
+            if (!double.TryParse(value.TrimStart('$', '€'), NumberStyles.Float, CultureInfo.InvariantCulture, out double wanted))
+                throw new SearchError($"\"{value}\" isn't a price.");
+            return new Is(c => c.Printing is { } p && (euros ? p.Prices.EurFor(c.Foil) : p.Prices.UsdFor(c.Foil)) is { } have && Compare(have, op, wanted), printing: true);
+        }
+
+        // ------------------------------------------------------------ land cycles
+
+        private static readonly string[] BasicTypes = { "Plains", "Island", "Swamp", "Mountain", "Forest" };
+
+        private static int BasicTypeCount(CardEntry e) => Subtypes(e.Record).Count(BasicTypes.Contains);
+
+        private static bool Text(CardEntry e, string pattern) => OracleTexts(e).Any(t => Regex.IsMatch(t, pattern, RegexOptions.IgnoreCase));
+
+        private const string TwoColors = @"\{T\}: Add \{[WUBRG]\} or \{[WUBRG]\}\.";
+        private const string Basic = "(?:Plains|Island|Swamp|Mountain|Forest)";
+
+        /// <summary>The nicknames of the land cycles, by what their rules text says.</summary>
+        private static readonly Dictionary<string, Func<CardEntry, bool>> LandCycles = new()
+        {
+            ["dual"] = e => BasicTypeCount(e) == 2 && Regex.IsMatch(e.Record.OracleText.Trim(), @"^\(\{T\}: Add \{[WUBRG]\} or \{[WUBRG]\}\.\)$"),
+            ["shockland"] = e => BasicTypeCount(e) == 2 && Text(e, @"you may pay 2 life\. If you don't, it enters tapped"),
+            ["fetchland"] = e => Text(e, $@"Pay 1 life, Sacrifice this land: Search your library for an? {Basic} or {Basic} card"),
+            ["checkland"] = e => Text(e, $@"^This land enters tapped unless you control an? {Basic} or an? {Basic}\."),
+            ["fastland"] = e => Text(e, @"enters tapped unless you control two or fewer other lands"),
+            ["slowland"] = e => Text(e, @"enters tapped unless you control two or more other lands"),
+            ["painland"] = e => Text(e, TwoColors + @" This land deals 1 damage to you\."),
+            ["filterland"] = e => Text(e, @"\{[WUBRG]/[WUBRG]\}, \{T\}: Add \{[WUBRG]\}\{[WUBRG]\}, \{[WUBRG]\}\{[WUBRG]\}, or \{[WUBRG]\}\{[WUBRG]\}"),
+            ["gainland"] = e => Text(e, @"When this land enters, you gain 1 life\.") && Text(e, TwoColors),
+            ["scryland"] = e => Text(e, @"When this land enters, scry 1\.") && Text(e, TwoColors),
+            ["surveilland"] = e => BasicTypeCount(e) == 2 && Text(e, @"When this land enters, surveil 1\."),
+            ["bounceland"] = e => Text(e, @"When this land enters, return a land you control to its owner's hand"),
+            ["karoo"] = e => Text(e, @"When this land enters, return a land you control to its owner's hand"),
+            ["canopyland"] = e => Text(e, @"\{T\}, Pay 1 life: Add \{[WUBRG]\} or \{[WUBRG]\}\.") && Text(e, @"Sacrifice this land: Draw a card"),
+            ["canland"] = e => Text(e, @"\{T\}, Pay 1 life: Add \{[WUBRG]\} or \{[WUBRG]\}\.") && Text(e, @"Sacrifice this land: Draw a card"),
+            ["bikeland"] = e => BasicTypeCount(e) == 2 && Text(e, @"This land enters tapped\.") && Text(e, @"Cycling \{2\}"),
+            ["cycleland"] = e => BasicTypeCount(e) == 2 && Text(e, @"This land enters tapped\.") && Text(e, @"Cycling \{2\}"),
+            ["bicycleland"] = e => BasicTypeCount(e) == 2 && Text(e, @"This land enters tapped\.") && Text(e, @"Cycling \{2\}"),
+            ["tangoland"] = e => BasicTypeCount(e) == 2 && Text(e, @"enters tapped unless you control two or more basic lands"),
+            ["battleland"] = e => BasicTypeCount(e) == 2 && Text(e, @"enters tapped unless you control two or more basic lands"),
+            ["shadowland"] = e => Text(e, $@"you may reveal an? {Basic} or {Basic} card from your hand\. If you don't, this land enters tapped"),
+            ["snarl"] = e => Text(e, $@"you may reveal an? {Basic} or {Basic} card from your hand\. If you don't, this land enters tapped"),
+            ["storageland"] = e => Text(e, @"storage counter"),
+            ["triland"] = e => BasicTypeCount(e) == 0 && Regex.IsMatch(e.Record.OracleText.Trim(), @"^This land enters tapped\.\n\{T\}: Add \{[WUBRG]\}, \{[WUBRG]\}, or \{[WUBRG]\}\.$"),
+            ["triome"] = e => BasicTypeCount(e) == 3,
+            ["trikland"] = e => BasicTypeCount(e) == 3,
+            ["pathway"] = e => e.Record.Layout == "modal_dfc" && e.Record.Faces.Count == 2 && e.Record.Faces.All(f => f.TypeLine == "Land" && f.Name.EndsWith(" Pathway", StringComparison.Ordinal)),
+            ["bondland"] = e => Text(e, @"enters tapped unless you have two or more opponents"),
+            ["crowdland"] = e => Text(e, @"enters tapped unless you have two or more opponents"),
+        };
 
         private static bool IsFrenchVanilla(CardRecord record)
         {
@@ -578,7 +661,7 @@ public static class CardSearch
 
         // ------------------------------------------------------------ sorting
 
-        public static readonly string[] Orders = { "name", "cmc", "mv", "power", "toughness", "color", "rarity", "set", "released" };
+        public static readonly string[] Orders = { "name", "cmc", "mv", "power", "toughness", "color", "rarity", "set", "released", "usd", "eur" };
     }
 
     private sealed class SearchError(string message) : Exception(message);
@@ -713,10 +796,25 @@ public sealed class CardFilter
     public bool Matches(CardEntry entry, Printing? printing, bool? foil, object item) =>
         _root.Eval(new CardSearch.Context(entry, printing, foil, item));
 
+    /// <summary>The lowest price listed among a card's printings (foil or not), in euros or dollars; null when none is.</summary>
+    public static double? CheapestPrice(CardEntry entry, bool euros) =>
+        entry.Record.Printings.Select(p => euros ? p.Prices.EurFor(null) : p.Prices.UsdFor(null)).Min();
+
     /// <summary>The cards in the order asked for (as they come when none was).</summary>
     public IEnumerable<CardEntry> Sort(IEnumerable<CardEntry> cards)
     {
         if (Order is null) return Descending ? cards.Reverse() : cards;
+        if (Order is "usd" or "eur")
+        {
+            // By the cheapest printing; cards with no price listed come last either way.
+            bool euros = Order == "eur";
+            var priced = cards.Select(e => (Entry: e, Price: CheapestPrice(e, euros))).ToList();
+            var withPrice = priced.Where(x => x.Price is not null);
+            return (Descending ? withPrice.OrderByDescending(x => x.Price) : withPrice.OrderBy(x => x.Price))
+                .ThenBy(x => x.Entry.Name, StringComparer.OrdinalIgnoreCase)
+                .Concat(priced.Where(x => x.Price is null).OrderBy(x => x.Entry.Name, StringComparer.OrdinalIgnoreCase))
+                .Select(x => x.Entry);
+        }
         Func<CardEntry, IComparable> key = Order switch
         {
             "cmc" or "mv" => e => e.ManaValue,

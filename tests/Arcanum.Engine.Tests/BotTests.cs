@@ -508,3 +508,147 @@ public class BotMultiplayerTests
         Assert.False(Evaluation.AuraIsHarmful(Aura(new StaticAbility(enchanted, 3, 0, new[] { Keyword.CantBlock }))));
     }
 }
+
+public class BotSpellJudgmentTests
+{
+    private static readonly CardDefinition Wither = new()
+    {
+        Name = "Withering Hex", Types = CardType.Instant, ManaCost = ManaCost.Parse("{B}"),
+        Spell = new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Creature) }, Effects = new Effect[] { new PumpUntilEndOfTurn(-2, -2, Subject.TargetAt(0)) } },
+    };
+
+    private static (Game Game, BotController Bot) BotDefending(TestController attacker, IReadOnlyList<CardDefinition>? attackerDeck = null)
+    {
+        var bot = new BotController(Scenario.P1) { AlwaysKeep = true };
+        var game = new Game(new GameConfig { Seed = 1, StartingPlayer = Scenario.P0 }, new[]
+        {
+            new PlayerSetup("Opponent", attacker, attackerDeck ?? Decks.Of((GenericCards.Forest, 20))),
+            new PlayerSetup("Bot", bot, Decks.Of((GenericCards.Forest, 20))),
+        });
+        bot.UseCardRules(id => game.State.Cards.TryGetValue(id, out var c) ? c.Definition : null);
+        return (game, bot);
+    }
+
+    private static async Task RunTurns(Game game, int untilTurn)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        game.EventRaised += e => { if (e is TurnBegan t && t.TurnNumber == untilTurn) cts.Cancel(); };
+        try { await game.RunAsync(cts.Token); } catch (OperationCanceledException) { }
+    }
+
+    /// <summary>A "gets -2/-2" spell outside combat goes only at a creature it kills; one it can't kill is left alone.</summary>
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task ShrinkSpellsAreCastOnlyToKill(int toughness)
+    {
+        var passive = new TestController { Act = (_, _) => PassPriority.Instance, Attack = (_, _, _) => Array.Empty<AttackDeclaration>() };
+        var (game, _) = BotDefending(passive);
+        game.SetupPermanent(Scenario.P1, GenericCards.Swamp);
+        var wither = game.SetupInHand(Scenario.P1, Wither);
+        var bird = game.SetupPermanent(Scenario.P0, Scenario.Creature("Bird", 1, toughness, Keyword.Flying));
+        await RunTurns(game, 2);
+
+        Assert.Equal(toughness <= 2 ? Zone.Graveyard : Zone.Battlefield, game.State.GetCard(bird).Zone);
+        Assert.Equal(toughness <= 2 ? Zone.Graveyard : Zone.Hand, game.State.GetCard(wither).Zone);
+    }
+
+    /// <summary>In combat, a "gets -2/-2" makes an attacker small enough for the bot's blocker to kill.</summary>
+    [Fact]
+    public async Task ShrinkSpellsWinABlock()
+    {
+        var attacker = new TestController { Act = (_, _) => PassPriority.Instance };
+        var (game, _) = BotDefending(attacker);
+        game.SetupPermanent(Scenario.P1, GenericCards.Swamp);
+        var wither = game.SetupInHand(Scenario.P1, Wither);
+        var ogre = game.SetupPermanent(Scenario.P0, Scenario.Creature("Ogre", 4, 4));
+        var guard = game.SetupPermanent(Scenario.P1, Scenario.Creature("Guard", 2, 5));
+        await RunTurns(game, 2);
+
+        Assert.Contains(game.Log, e => e is BlockerDeclared b && b.Blocker == guard && b.Attacker == ogre);
+        Assert.Equal(Zone.Graveyard, game.State.GetCard(wither).Zone);
+        Assert.Equal(Zone.Graveyard, game.State.GetCard(ogre).Zone);
+        Assert.Equal(Zone.Battlefield, game.State.GetCard(guard).Zone);
+    }
+
+    private static readonly CardDefinition LastStand = new()
+    {
+        Name = "Oath of Refusal", Types = CardType.Instant, ManaCost = ManaCost.Parse("{U}"),
+        AdditionalCostOptions = new[]
+        {
+            new CostOption(null, new ExtraCost(Sacrifice: new ObjectFilter(CardType.Creature, Supertype: Supertype.Legendary))),
+            new CostOption(ManaCost.Parse("{2}"), null),
+        },
+        Spell = new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Spell) }, Effects = new Effect[] { new CounterSpell(Subject.TargetAt(0)) } },
+    };
+
+    private static readonly CardDefinition Zap = new()
+    {
+        Name = "Ember Jolt", Types = CardType.Instant, ManaCost = ManaCost.Parse("{R}"),
+        Spell = new SpellAbility { Targets = new[] { new TargetSpec(TargetKind.Creature) }, Effects = new Effect[] { new DealDamage(3, Subject.TargetAt(0)) } },
+    };
+
+    /// <summary>
+    /// "Sacrifice a legendary creature or pay {2}": with the mana the bot counters the removal aimed at its legend; without
+    /// it, sacrificing that legend to save it is pointless, so the bot lets the removal resolve.
+    /// </summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task CounterspellsDoNotSacrificeWhatTheySave(int islands)
+    {
+        var caster = new TestController
+        {
+            Act = (view, legal) => view.Stack.Count == 0 && legal.OfType<CastSpell>().FirstOrDefault() is { } cast ? cast : PassPriority.Instance,
+            Attack = (_, _, _) => Array.Empty<AttackDeclaration>(),
+        };
+        var (game, _) = BotDefending(caster);
+        game.SetupPermanent(Scenario.P0, GenericCards.Mountain);
+        var zap = game.SetupInHand(Scenario.P0, Zap);
+        for (int i = 0; i < islands; i++) game.SetupPermanent(Scenario.P1, GenericCards.Island);
+        var stand = game.SetupInHand(Scenario.P1, LastStand);
+        var hero = game.SetupPermanent(Scenario.P1, Scenario.Creature("Hero", 3, 3) with { Supertypes = Supertype.Legendary });
+        await RunTurns(game, 2);
+
+        Assert.Equal(Zone.Graveyard, game.State.GetCard(zap).Zone);
+        Assert.Equal(islands >= 3 ? Zone.Battlefield : Zone.Graveyard, game.State.GetCard(hero).Zone);
+        Assert.Equal(islands >= 3 ? Zone.Graveyard : Zone.Hand, game.State.GetCard(stand).Zone);
+    }
+
+    private static readonly CardDefinition Trader = Scenario.Creature("Tide Bargainer", 2, 2) with
+    {
+        ManaCost = ManaCost.Parse("{G}"),
+        Abilities = new AbilityDefinition[]
+        {
+            new TriggeredAbility
+            {
+                Trigger = TriggerEvent.EntersBattlefield, Text = "When this creature enters, you may sacrifice another artifact. If you do, surveil 2.",
+                Effects = new Effect[] { new MayPay("Sacrifice another artifact to surveil 2?", null, new ExtraCost(Sacrifice: new ObjectFilter(CardType.Artifact, Other: true)), new Effect[] { new Surveil(2) }) },
+            },
+        },
+    };
+
+    /// <summary>Sacrificing a permanent just to surveil is done only with no spells left in hand.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SacrificesToSurveilOnlyWhenOutOfSpells(bool spellInHand)
+    {
+        var bot = new BotController(Scenario.P0) { AlwaysKeep = true };
+        var passive = new TestController { Act = (_, _) => PassPriority.Instance, Attack = (_, _, _) => Array.Empty<AttackDeclaration>() };
+        var game = new Game(new GameConfig { Seed = 1, StartingPlayer = Scenario.P0 }, new[]
+        {
+            new PlayerSetup("Bot", bot, Decks.Of((GenericCards.Forest, 20))),
+            new PlayerSetup("Defender", passive, Decks.Of((GenericCards.Forest, 20))),
+        });
+        bot.UseCardRules(id => game.State.Cards.TryGetValue(id, out var c) ? c.Definition : null);
+        game.SetupPermanent(Scenario.P0, GenericCards.Forest);
+        game.SetupInHand(Scenario.P0, Trader);
+        var trinket = game.SetupPermanent(Scenario.P0, new CardDefinition { Name = "Trinket", Types = CardType.Artifact, ManaCost = ManaCost.Parse("{1}") });
+        if (spellInHand) game.SetupInHand(Scenario.P0, GenericCards.GreatWurm);
+        await RunTurns(game, 2);
+
+        Assert.Contains(game.Log, e => e is AbilityTriggered);
+        Assert.Equal(spellInHand ? Zone.Battlefield : Zone.Graveyard, game.State.GetCard(trinket).Zone);
+    }
+}

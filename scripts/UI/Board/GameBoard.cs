@@ -2011,6 +2011,18 @@ public partial class GameBoard : Control
     /// <summary>The blocks picked so far, one per blocker and attacker it blocks.</summary>
     private List<BlockDeclaration> BlockPairs() => _blocks.SelectMany(kv => kv.Value.Select(attacker => new BlockDeclaration(kv.Key, attacker))).ToList();
 
+    /// <summary>
+    /// The attacker a click on an attacking stack of identical tokens means for the blocker being placed: the first of the
+    /// stack not blocked yet that it can block (a blocked one leaves the stack, see <see cref="StackMark"/>), else the first it
+    /// can block. Null: it can't block any of them.
+    /// </summary>
+    private CardId? AttackerToBlock(CardNode node, BlockDecision b, CardId blocker)
+    {
+        var pile = (AreaHolding(node)?.StackMembers(node.Id) ?? new[] { node.Id })
+            .Where(a => b.Attackers.Contains(a) && b.Request.CanBlock[blocker].Contains(a)).Cast<CardId?>().ToList();
+        return pile.FirstOrDefault(a => !_blocks.Values.Any(blocked => blocked.Contains(a!.Value))) ?? pile.FirstOrDefault();
+    }
+
     private IEnumerable<CardId> PendingBlockers() => _pendingBlocker is { } first ? _pendingGroup.Prepend(first) : Enumerable.Empty<CardId>();
 
     private bool IsPendingBlocker(CardId id) => _pendingBlocker == id || _pendingGroup.Contains(id);
@@ -2030,6 +2042,8 @@ public partial class GameBoard : Control
         if (_chosenTargets.Any(t => t.Card == id)) mark.Append('t');
         if (_attackTargets.TryGetValue(id, out var defender)) mark.Append($"a{defender.Value}/{(_attackWalkers.TryGetValue(id, out var w) ? w.Value : -1)}");
         if (_blocks.TryGetValue(id, out var blocked)) mark.Append($"b{string.Join(",", blocked.Select(x => x.Value))}");
+        // An attacker picked to be blocked leaves its stack, so the others stay there to be blocked too.
+        if (_blocks.Where(kv => kv.Value.Contains(id)).Select(kv => kv.Key.Value).ToList() is { Count: > 0 } blockers) mark.Append($"x{string.Join(",", blockers)}");
         if (IsPendingBlocker(id)) mark.Append('p');
         if (_damageSplit.TryGetValue(id, out var dmg)) mark.Append($"d{dmg}");
         mark.Append(decision switch
@@ -2227,8 +2241,9 @@ public partial class GameBoard : Control
                         _pendingBlocker = id;
                     }
                 }
-                else if (b.Attackers.Contains(id) && _pendingBlocker is { } blocker && b.Request.CanBlock[blocker].Contains(id))
+                else if (b.Attackers.Contains(id) && _pendingBlocker is { } blocker && AttackerToBlock(node, b, blocker) is { } attacked)
                 {
+                    id = attacked;
                     bool keepPicking = false;
                     foreach (var picked in PendingBlockers().Where(p => b.Request.CanBlock[p].Contains(id)).ToList())
                     {

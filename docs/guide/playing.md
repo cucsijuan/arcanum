@@ -85,7 +85,9 @@ with **+** and **−**, or for yes or no.
 - **Attacking.** At declare attackers the prompt says **choose attackers**. Click your creatures that attack. In a game
   with more than two players, choose which opponent each attacker goes to, with the buttons shown.
 - **Blocking.** At declare blockers, click one of your creatures to choose it as a blocker, then click the attacker it
-  blocks. A creature that can block several attackers is clicked again when it has all of them.
+  blocks. A creature that can block several attackers is clicked again when it has all of them. Clicking a stack of
+  identical attacking tokens blocks the first attacker of the stack that isn't blocked yet. A blocked attacker leaves the
+  stack, and the rest stay together to be blocked.
 - **Identical creatures.** When several identical creatures attack or block together, a small picker asks how many.
   Move the slider with Left and Right, Enter confirms, Esc cancels.
 - **Damage.** When an attacker is blocked by several creatures, you divide its damage with the controls shown.

@@ -288,10 +288,45 @@ public partial class CardNode : Control
     /// <summary>Shows the counters tag (off for the large preview, which lists counters beside the card).</summary>
     public bool ShowCounterBadge { get; set; } = true;
 
+    /// <summary>
+    /// A large menu preview: a double-faced card's other face is shown beside it, on the side with room (it hides with it).
+    /// </summary>
+    public bool ShowsOtherFace { get; set; }
+
+    private CardNode? _otherFace;
+
+    private void ShowOtherFace(CardView view)
+    {
+        if (!ShowsOtherFace) return;
+        if (view.OtherFace is not { } other || view.IsHidden || view.FaceDown)
+        {
+            if (_otherFace is not null) _otherFace.Visible = false;
+            return;
+        }
+        if (_otherFace is null)
+        {
+            _otherFace = new CardNode { SharpImage = SharpImage, ShowCounterBadge = false, MouseFilter = MouseFilterEnum.Ignore };
+            AddChild(_otherFace);
+        }
+        _otherFace.Size = Size;
+        _otherFace.Setup(other, showCostPips: false);
+        _otherFace.Visible = true;
+        // Placed once the screen has positioned the preview this frame.
+        Callable.From(() =>
+        {
+            if (_otherFace is null || !IsInstanceValid(_otherFace)) return;
+            // Away from the pointer (the hovered card is on that side), where there is room.
+            bool roomRight = GlobalPosition.X + 2 * Size.X + 12 < GetViewportRect().Size.X, roomLeft = GlobalPosition.X - Size.X - 12 >= 0;
+            bool right = roomRight && (!roomLeft || GetGlobalMousePosition().X < GlobalPosition.X + Size.X / 2);
+            _otherFace.Position = new Vector2(right ? Size.X + 12 : -Size.X - 12, 0);
+        }).CallDeferred();
+    }
+
     public void Setup(CardView view, bool showCostPips)
     {
         Id = view.Id;
         View = view;
+        ShowOtherFace(view);
 
         // A face-down spell or permanent shows the card back, with its face-down P/T on the battlefield (rule 708.2).
         bool showBack = view.IsHidden || view.FaceDown;

@@ -26,7 +26,7 @@ public partial class EventScreen : Control
 
     private readonly VBoxContainer _content = new();
     private readonly Label _title = CareerStyle.Text("", 26, Light);
-    private readonly CardNode _preview = new() { SharpImage = true, MouseFilter = MouseFilterEnum.Ignore, Visible = false, ZIndex = 300 };
+    private readonly CardNode _preview = new() { SharpImage = true, ShowsOtherFace = true, MouseFilter = MouseFilterEnum.Ignore, Visible = false, ZIndex = 300 };
     private ArtScene _table = null!;
 
     private static CareerService Career => App.Instance.Career;
@@ -452,12 +452,7 @@ public partial class EventScreen : Control
     private static Arcanum.Engine.Cards.CardDefinition Definition(PoolCard card) =>
         DeckList.TryResolve(Cards, card.ToEntry(), out var d) ? d : Cards.Find(card.Name)!.Definition;
 
-    private static CardView ViewOf(Arcanum.Engine.Cards.CardDefinition d) => new()
-    {
-        Id = new CardId(-1), Owner = new PlayerId(0), Controller = new PlayerId(0), Zone = Zone.Hand, IsHidden = false,
-        Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
-        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil, Surge = d.Surge, Fracture = d.Fracture,
-    };
+    private static CardView ViewOf(Arcanum.Engine.Cards.CardDefinition d) => MenuKit.CardViewOf(d);
 
     private void ShowPreview(Arcanum.Engine.Cards.CardDefinition definition, Control anchor)
     {

@@ -86,6 +86,8 @@ public static class OracleJsonl
                 : new Dictionary<string, string>(),
             Faces = faces,
             IsToken = layout == "token" || (Str(c, "type_line")?.StartsWith("Token") ?? false),
+            Reserved = Flag(c, "reserved"),
+            GameChanger = Flag(c, "game_changer"),
             RelatedTokens = Tokens(c),
             DefaultPrintingId = Str(c, "id"),
             Printings = c.TryGetProperty("printings", out var printings)
@@ -117,8 +119,25 @@ public static class OracleJsonl
                        && promos.EnumerateArray().Any(t => t.GetString() == "fracturefoil")
                        || c.TryGetProperty("fracture_foil", out var ff) && ff.ValueKind == JsonValueKind.True,
             Illustration = Str(c, "illustration_id"),
+            Prices = c.TryGetProperty("prices", out var prices) && prices.ValueKind == JsonValueKind.Object
+                ? new PrintingPrices(Price(prices, "eur"), Price(prices, "eur_foil"), Price(prices, "usd"), Price(prices, "usd_foil")) : PrintingPrices.None,
+            Etched = finishes.Contains("etched") || Flag(c, "etched"),
+            Glossy = finishes.Contains("glossy") || Flag(c, "glossy"),
+            FullArt = Flag(c, "full_art"),
+            Textless = Flag(c, "textless"),
+            HighRes = Flag(c, "highres_image"),
+            Border = Str(c, "border_color") ?? "",
+            Frame = Str(c, "frame") ?? "",
+            FrameEffects = StrList(c, "frame_effects"),
+            PromoTypes = StrList(c, "promo_types"),
         };
     }
+
+    private static bool Flag(JsonElement c, string name) => c.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+
+    /// <summary>A price as the source writes it ("1.23"), or null.</summary>
+    private static double? Price(JsonElement prices, string name) =>
+        Str(prices, name) is { } text && double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double value) ? value : null;
 
     /// <summary>The finishes a printing was made in ("nonfoil", "foil", "etched"); empty when the source doesn't say.</summary>
     private static List<string> Finishes(JsonElement c) =>
@@ -227,6 +246,8 @@ public static class OracleJsonl
                     writer.WriteEndObject();
                 }
                 WriteTokens(writer, r.RelatedTokens);
+                if (r.Reserved) writer.WriteBoolean("reserved", true);
+                if (r.GameChanger) writer.WriteBoolean("game_changer", true);
                 WriteIf(writer, "id", r.DefaultPrintingId);
                 if (r.Printings.Count > 0)
                 {
@@ -246,6 +267,28 @@ public static class OracleJsonl
                         if (p.FoilOnly) writer.WriteBoolean("foil_only", true);
                         if (p.Fracture) writer.WriteBoolean("fracture_foil", true);
                         if (p.Illustration is { } art) writer.WriteString("illustration_id", art);
+                        if (p.Prices != PrintingPrices.None)
+                        {
+                            writer.WriteStartObject("prices");
+                            void WritePrice(string name, double? value)
+                            {
+                                if (value is { } v) writer.WriteString(name, v.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                            }
+                            WritePrice("eur", p.Prices.Eur);
+                            WritePrice("eur_foil", p.Prices.EurFoil);
+                            WritePrice("usd", p.Prices.Usd);
+                            WritePrice("usd_foil", p.Prices.UsdFoil);
+                            writer.WriteEndObject();
+                        }
+                        if (p.Etched) writer.WriteBoolean("etched", true);
+                        if (p.Glossy) writer.WriteBoolean("glossy", true);
+                        if (p.FullArt) writer.WriteBoolean("full_art", true);
+                        if (p.Textless) writer.WriteBoolean("textless", true);
+                        if (p.HighRes) writer.WriteBoolean("highres_image", true);
+                        WriteIf(writer, "border_color", p.Border);
+                        WriteIf(writer, "frame", p.Frame);
+                        WriteList(writer, "frame_effects", p.FrameEffects);
+                        WriteList(writer, "promo_types", p.PromoTypes);
                         WriteTokens(writer, p.Tokens);
                         writer.WriteEndObject();
                     }

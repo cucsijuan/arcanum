@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using System.Text;
 using Arcanum.Data.CardData;
 
 namespace Arcanum.Data.Tests;
@@ -111,7 +112,7 @@ public class CardSearchTests
         Assert.False(filter.Matches(cub, null, null, (1.0, 2)));
         Assert.False(filter.Matches(cub, null, null, (2.0, 3)));
         Assert.True(filter.Matches(cub, null, null, "no values")); // a term without a value finds the card
-        Assert.Single(Db.Filter("usd>=1.5").Warnings); // without the screen's terms, there are no prices
+        Assert.Empty(Db.Filter("usd>=1.5").Warnings); // without the screen's terms, the printings' own prices
         Assert.Single(Db.Filter("qty>=abc", terms).Warnings);
     }
 
@@ -129,5 +130,219 @@ public class CardSearchTests
     {
         Assert.Equal(new[] { "Fire Giant", "Sky Lancer", "Azure Sage", "Glade Cub" }, Find("t:creature order:mv direction:desc"));
         Assert.Equal(new[] { "Azure Sage", "Fire Giant", "Glade Cub", "Sky Lancer" }, Find("t:creature"));
+    }
+
+    private static List<string> FindIn(CardDatabase db, string search) => db.Search(new CardQuery { Text = search }).Select(e => e.Name).ToList();
+
+    private static Stream Text(string s) => new MemoryStream(Encoding.UTF8.GetBytes(s));
+
+    private static Printing Priced(Printing p, double? eur, double? eurFoil, double? usd, double? usdFoil) =>
+        p with { Prices = new PrintingPrices(eur, eurFoil, usd, usdFoil) };
+
+    // Invented cards with listed prices (euros and dollars, nonfoil and foil).
+    private static readonly CardDatabase Market = new(new[]
+    {
+        Card("Copper Ox", "Creature — Ox", "{3}{R}", new[] { "R" }, p: "3", t: "3",
+            printings: new[] { Priced(Print("pri", "5", "rare", "2024-01-01"), 1.50, 3.00, 2.00, 3.00) }),
+        Card("Tin Hound", "Creature — Dog", "{1}{B}", new[] { "B" }, p: "1", t: "1",
+            printings: new[] { Priced(Print("pri", "9", "common", "2024-01-01"), 0.80, null, null, 0.90) }),
+        Card("Ember Crown", "Artifact", "{2}", Array.Empty<string>(),
+            printings: new[] { Priced(Print("pri", "12", "mythic", "2024-01-01"), null, null, 10.00, null) }),
+        Card("Ash Relic", "Artifact", "{1}", Array.Empty<string>()), // no price listed
+    });
+
+    [Theory]
+    [InlineData("usd>=2", "Copper Ox", "Ember Crown")]
+    [InlineData("usd<1", "Tin Hound")]
+    [InlineData("usd:0.9", "Tin Hound")]
+    [InlineData("usd<=2", "Copper Ox", "Tin Hound")]
+    [InlineData("eur<1", "Tin Hound")]
+    [InlineData("eur>=1", "Copper Ox")]
+    [InlineData("eur:1.5", "Copper Ox")]
+    public void PriceTermsReadTheListedPrice(string search, params string[] expected) =>
+        Assert.Equal(expected.OrderBy(n => n), FindIn(Market, search).OrderBy(n => n));
+
+    [Fact]
+    public void PriceTermsAskForTheFoilCopyWhenTheSearchKnowsIt()
+    {
+        var ox = Market.Find("Copper Ox")!;
+        var filter = Market.Filter("usd>2.5");
+        Assert.False(filter.Matches(ox, ox.Record.Printings[0], foil: false)); // 2.00 as a nonfoil
+        Assert.True(filter.Matches(ox, ox.Record.Printings[0], foil: true)); // 3.00 as a foil
+
+        var tin = Market.Find("Tin Hound")!;
+        Assert.False(Market.Filter("usd<1").Matches(tin, tin.Record.Printings[0], foil: false)); // no nonfoil price listed
+        Assert.True(Market.Filter("usd<1").Matches(tin, tin.Record.Printings[0], foil: true));
+    }
+
+    [Fact]
+    public void PriceOrdersPutUnpricedCardsLast()
+    {
+        Assert.Equal(new[] { "Tin Hound", "Copper Ox", "Ember Crown", "Ash Relic" }, FindIn(Market, "order:usd"));
+        Assert.Equal(new[] { "Tin Hound", "Copper Ox", "Ash Relic", "Ember Crown" }, FindIn(Market, "order:eur"));
+        Assert.Equal(new[] { "Ember Crown", "Copper Ox", "Tin Hound", "Ash Relic" }, FindIn(Market, "order:usd dir:desc"));
+    }
+
+    // Invented cards, each with one printing feature or card-level flag that the search asks about.
+    private static readonly CardDatabase Printed = new(new[]
+    {
+        Card("Hollow Drake", "Creature — Drake", "{2}{U}", new[] { "U" }, p: "2", t: "2",
+            printings: new[] { Print("bdr", "20", "rare", "2021-01-01") with { Border = "borderless", Frame = "2015" } }),
+        Card("Ivory Scribe", "Creature — Human", "{1}{W}", new[] { "W" }, p: "1", t: "1",
+            printings: new[] { Print("bdr", "21", "common", "2021-01-01") with { Border = "black", Frame = "1997" } }),
+        Card("Wicked Mask", "Enchantment", "{1}{B}", new[] { "B" },
+            printings: new[] { Print("ext", "3", "uncommon", "2021-01-01") with { Frame = "2015", FrameEffects = new[] { "showcase" } } }),
+        Card("Extended Tide", "Instant", "{U}", new[] { "U" },
+            printings: new[] { Print("ext", "4", "rare", "2021-01-01") with { FrameEffects = new[] { "extendedart" } } }),
+        Card("Etched Lantern", "Artifact", "{2}", Array.Empty<string>(),
+            printings: new[] { Print("pri", "3", "uncommon", "2024-01-01") with { Etched = true } }),
+        Card("Glossy Idol", "Artifact", "{1}", Array.Empty<string>(),
+            printings: new[] { Print("pri", "4", "common", "2024-01-01") with { Glossy = true } }),
+        Card("Broad Vista", "Sorcery", "{G}", new[] { "G" },
+            printings: new[] { Print("pri", "6", "common", "2024-01-01") with { FullArt = true } }),
+        Card("Blank Tablet", "Artifact", "{0}", Array.Empty<string>(),
+            printings: new[] { Print("pri", "7", "common", "2024-01-01") with { Textless = true } }),
+        Card("Sharp Scan", "Sorcery", "{R}", new[] { "R" },
+            printings: new[] { Print("pri", "8", "common", "2024-01-01") with { HighRes = true } }),
+        Card("Pale Herald", "Creature — Angel", "{3}{W}", new[] { "W" }, p: "3", t: "3",
+            printings: new[] { Print("pro", "1", "rare", "2024-02-01", booster: false) with { PromoTypes = new[] { "prerelease" } } }),
+        Card("Dated Charm", "Artifact", "{1}", Array.Empty<string>(),
+            printings: new[] { Print("pro", "2", "rare", "2024-02-01", booster: false) with { PromoTypes = new[] { "datestamped" } } }),
+        Card("Boosted Fang", "Creature — Wolf", "{1}{G}", new[] { "G" }, p: "2", t: "2",
+            printings: new[] { Print("pri", "10", "rare", "2024-01-01") with { PromoTypes = new[] { "boosterfun" } } }),
+        Card("Reserved Tome", "Artifact", "{4}", Array.Empty<string>()) with { Reserved = true },
+        Card("Gamey Engine", "Artifact", "{5}", Array.Empty<string>()) with { GameChanger = true },
+        Card("Old Standard", "Instant", "{1}{R}", new[] { "R" },
+            printings: new[] { Print("old", "7", "common", "2000-01-01"), Print("new", "7", "common", "2020-01-01") }),
+    });
+
+    [Theory]
+    [InlineData("border:borderless", "Hollow Drake")]
+    [InlineData("is:borderless", "Hollow Drake")]
+    [InlineData("border:black", "Ivory Scribe")]
+    [InlineData("frame:2015", "Hollow Drake", "Wicked Mask")]
+    [InlineData("frame:1997", "Ivory Scribe")]
+    [InlineData("frame:showcase", "Wicked Mask")]
+    [InlineData("is:showcase", "Wicked Mask")]
+    [InlineData("is:extendedart", "Extended Tide")]
+    [InlineData("is:etched", "Etched Lantern")]
+    [InlineData("is:glossy", "Glossy Idol")]
+    [InlineData("is:fullart", "Broad Vista")]
+    [InlineData("is:textless", "Blank Tablet")]
+    [InlineData("is:hires", "Sharp Scan")]
+    [InlineData("is:prerelease", "Pale Herald")]
+    [InlineData("is:datestamped", "Dated Charm")]
+    [InlineData("is:boosterfun", "Boosted Fang")]
+    [InlineData("is:reserved", "Reserved Tome")]
+    [InlineData("is:gamechanger", "Gamey Engine")]
+    [InlineData("is:reprint", "Old Standard")]
+    public void PrintingAndCardTermsFindTheFeatureTheyName(string search, params string[] expected) =>
+        Assert.Equal(expected.OrderBy(n => n), FindIn(Printed, search).OrderBy(n => n));
+
+    [Fact]
+    public void FirstPrintingIsTheOldestOne()
+    {
+        var card = Printed.Find("Old Standard")!;
+        var filter = Printed.Filter("is:firstprint");
+        Assert.True(filter.Matches(card, card.Record.Printings[0], null));
+        Assert.False(filter.Matches(card, card.Record.Printings[1], null));
+    }
+
+    // Invented lands in the shapes the land cycles are judged by (type line and rules text).
+    private static readonly CardDatabase Lands = new(new[]
+    {
+        Card("Salt Rift", "Land — Plains Island", "", Array.Empty<string>(), "({T}: Add {W} or {U}.)"),
+        Card("Ember Gate", "Land — Mountain Plains", "", Array.Empty<string>(),
+            "As this land enters, you may pay 2 life. If you don't, it enters tapped.\n{T}: Add {R} or {W}."),
+        Card("Mossy Vale", "Land", "", Array.Empty<string>(),
+            "{T}, Pay 1 life, Sacrifice this land: Search your library for an Island or Swamp card, put it onto the battlefield, then shuffle."),
+        Card("Glen Hollow", "Land", "", Array.Empty<string>(),
+            "This land enters tapped unless you control a Plains or an Island.\n{T}: Add {W} or {U}."),
+        Card("Swift Shallows", "Land", "", Array.Empty<string>(),
+            "This land enters tapped unless you control two or fewer other lands.\n{T}: Add {G} or {U}."),
+        Card("Harm Mire", "Land", "", Array.Empty<string>(),
+            "{T}: Add {C}.\n{T}: Add {W} or {U}. This land deals 1 damage to you."),
+        Card("Three Crown", "Land — Plains Island Swamp", "", Array.Empty<string>(), "This land enters tapped.\n{T}: Add {W}, {U}, or {B}."),
+        Card("Mistfall Pathway // Ashfall Pathway", "Land", "", Array.Empty<string>()) with
+        {
+            Layout = "modal_dfc",
+            Faces = new[]
+            {
+                new CardFaceRecord("Mistfall Pathway", "", "Land", "{T}: Add {W}.", null, null),
+                new CardFaceRecord("Ashfall Pathway", "", "Land", "{T}: Add {R}.", null, null),
+            },
+        },
+        Card("Plain Field", "Basic Land — Plains", "", Array.Empty<string>()),
+    });
+
+    [Theory]
+    [InlineData("is:dual", "Salt Rift")]
+    [InlineData("is:shockland", "Ember Gate")]
+    [InlineData("is:fetchland", "Mossy Vale")]
+    [InlineData("is:checkland", "Glen Hollow")]
+    [InlineData("is:fastland", "Swift Shallows")]
+    [InlineData("is:painland", "Harm Mire")]
+    [InlineData("is:triome", "Three Crown")]
+    [InlineData("is:pathway", "Mistfall Pathway // Ashfall Pathway")]
+    public void LandCyclesAreJudgedByTypeLineAndRulesText(string search, params string[] expected) =>
+        Assert.Equal(expected.OrderBy(n => n), FindIn(Lands, search).OrderBy(n => n));
+
+    [Fact]
+    public void AlchemyTermMatchesNothing()
+    {
+        Assert.Empty(FindIn(Lands, "is:alchemy"));
+        Assert.Empty(FindIn(Printed, "is:alchemy"));
+    }
+
+    [Fact]
+    public void CompactFormatRoundTripsPrintingDetails()
+    {
+        var card = Card("Copper Ox", "Creature — Ox", "{3}{R}", new[] { "R" }, p: "3", t: "3", printings: new[]
+        {
+            Print("pri", "5", "rare", "2024-01-01") with
+            {
+                Prices = new PrintingPrices(1.50, 3.00, 2.00, null), Etched = true, Glossy = true, FullArt = true, Textless = true,
+                HighRes = true, Border = "borderless", Frame = "2015", FrameEffects = new[] { "showcase" },
+                PromoTypes = new[] { "prerelease", "boosterfun" }, Illustration = "art-1",
+            },
+            Print("pri", "6", "common", "2024-01-01", foil: false, booster: false),
+        }) with { Reserved = true, GameChanger = true };
+
+        var ms = new MemoryStream();
+        OracleJsonl.WriteCompact(new[] { card }, ms);
+        ms.Position = 0;
+        var back = Assert.Single(OracleJsonl.ReadCompact(ms));
+
+        Assert.True(back.Reserved);
+        Assert.True(back.GameChanger);
+        Assert.Equal(2, back.Printings.Count);
+        var p = back.Printings[0];
+        Assert.Equal(card.Printings[0].Prices, p.Prices);
+        Assert.True(p.Etched && p.Glossy && p.FullArt && p.Textless && p.HighRes);
+        Assert.Equal("borderless", p.Border);
+        Assert.Equal("2015", p.Frame);
+        Assert.Equal(new[] { "showcase" }, p.FrameEffects);
+        Assert.Equal(new[] { "prerelease", "boosterfun" }, p.PromoTypes);
+        Assert.Equal("art-1", p.Illustration);
+        Assert.True(p.Foil);
+        var plain = back.Printings[1];
+        Assert.Equal(PrintingPrices.None, plain.Prices);
+        Assert.False(plain.Foil || plain.Booster || plain.Etched || plain.FullArt || plain.Textless || plain.HighRes);
+        Assert.Equal("", plain.Border);
+        Assert.Empty(plain.PromoTypes);
+    }
+
+    [Fact]
+    public void ImportedPrintingsReadTheirPriceStrings()
+    {
+        const string lines = """
+            {"oracle_id":"o-1","id":"p-1","name":"Copper Ox","set":"pri","set_name":"Priced Set","collector_number":"5","rarity":"rare","released_at":"2024-01-01","set_type":"expansion","booster":true,"lang":"en","finishes":["nonfoil","foil"],"prices":{"eur":"1.50","eur_foil":"3.00","usd":"2.00","usd_foil":null}}
+            {"oracle_id":"o-1","id":"p-2","name":"Copper Ox","set":"pri","set_name":"Priced Set","collector_number":"6","rarity":"common","released_at":"2024-01-01","set_type":"expansion","lang":"en","finishes":["foil"],"prices":{"eur":null,"eur_foil":"0.25","usd":null,"usd_foil":"0.30"}}
+            {"oracle_id":"o-2","id":"p-3","name":"Tin Hound","set":"pri","set_name":"Priced Set","collector_number":"9","rarity":"common","released_at":"2024-01-01","set_type":"expansion","lang":"en","finishes":["nonfoil"]}
+            """;
+        var printings = OracleJsonl.ImportPrintings(Text(lines));
+        Assert.Equal(new PrintingPrices(1.50, 3.00, 2.00, null), printings["o-1"][0].Prices);
+        Assert.Equal(new PrintingPrices(null, 0.25, null, 0.30), printings["o-1"][1].Prices);
+        Assert.Equal(PrintingPrices.None, printings["o-2"][0].Prices);
     }
 }

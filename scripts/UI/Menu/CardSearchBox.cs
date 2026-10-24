@@ -19,6 +19,8 @@ public static class CardSearchBox
         "  m:2WW  mana cost · mv<=3  mana value · pow>=4 tou<pow loy=3 · produces:g · devotion:ggg\n" +
         "  r>=rare  rarity · s:fdn  set · cn<50 · st:core · in:rare · date>=2020 · year<2010\n" +
         "  f:commander  legal · banned: restricted: · is:commander is:permanent is:vanilla is:foil is:supported...\n" +
+        "  is:fetchland is:shockland is:triome is:dual... · is:fullart is:showcase is:etched is:reserved is:gamechanger\n" +
+        "  eur<1 usd>=5  price · border:borderless · frame:showcase frame:2015 · order:eur order:usd\n" +
         "  !\"exact name\" · -t:creature  not · t:elf or t:goblin · (a or b) · o:/regex/ · order:mv direction:desc";
 
     /// <summary>Reads the search in the box and shows its warnings on it.</summary>

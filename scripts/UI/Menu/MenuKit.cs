@@ -8,6 +8,23 @@ namespace Arcanum.UI.Menu;
 /// <summary>Shared building blocks for the menu screens so they look consistent.</summary>
 public static class MenuKit
 {
+    /// <summary>A card as the menus show it (outside a game), with its other face when it is double-faced.</summary>
+    public static Arcanum.Engine.Views.CardView CardViewOf(Arcanum.Engine.Cards.CardDefinition d, int id = -1) => new()
+    {
+        Id = new Arcanum.Engine.Core.CardId(id), Owner = new Arcanum.Engine.Core.PlayerId(0), Controller = new Arcanum.Engine.Core.PlayerId(0),
+        Zone = Arcanum.Engine.State.Zone.Hand, IsHidden = false,
+        Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
+        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil, Surge = d.Surge, Fracture = d.Fracture,
+        OtherFace = d.BackFace is { } back ? new()
+        {
+            Id = new Arcanum.Engine.Core.CardId(id), Owner = new Arcanum.Engine.Core.PlayerId(0), Controller = new Arcanum.Engine.Core.PlayerId(0),
+            Zone = Arcanum.Engine.State.Zone.Hand, IsHidden = false,
+            Name = back.Name, ManaCost = back.ManaCost.ToString(), Types = back.Types, Power = back.Power, Toughness = back.Toughness,
+            Keywords = back.Keywords, BasePower = back.Power, BaseToughness = back.Toughness, ImageKey = back.ImageKey ?? d.ImageKey,
+            Foil = d.Foil, Surge = d.Surge, Fracture = d.Fracture, Transformed = true, IsBackFace = true,
+        } : null,
+    };
+
     /// <summary>The menus' backdrop: the animated arcane sky, darker behind screens full of panels and text.</summary>
     public static void AddBackdrop(Control screen) => AddArcaneBackdrop(screen, shade: 0.5f);
 

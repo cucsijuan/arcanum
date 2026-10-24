@@ -23,7 +23,7 @@ public partial class LimitedScreen : Control
     private static readonly Vector2 TileSize = new(150, 210);
 
     private readonly VBoxContainer _content = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill };
-    private readonly CardNode _preview = new() { SharpImage = true, MouseFilter = MouseFilterEnum.Ignore, Visible = false, ZIndex = 300 };
+    private readonly CardNode _preview = new() { SharpImage = true, ShowsOtherFace = true, MouseFilter = MouseFilterEnum.Ignore, Visible = false, ZIndex = 300 };
     private Label _title = null!;
     private int _selected = -1;
     private string? _selectedFor; // the pick _selected belongs to
@@ -384,12 +384,7 @@ public partial class LimitedScreen : Control
     private static CardDefinition DefinitionOf(DeckEntry entry) =>
         DeckList.TryResolve(Cards, entry, out var d) ? d : Cards.Find(entry.Name)!.Definition;
 
-    private static CardView ViewOf(CardDefinition d) => new()
-    {
-        Id = new CardId(-1), Owner = new PlayerId(0), Controller = new PlayerId(0), Zone = Zone.Hand, IsHidden = false,
-        Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
-        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil, Surge = d.Surge, Fracture = d.Fracture,
-    };
+    private static CardView ViewOf(CardDefinition d) => MenuKit.CardViewOf(d);
 
     private CardNode Tile(CardDefinition definition, Control parent)
     {

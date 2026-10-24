@@ -57,7 +57,7 @@ public partial class CareerScreen : Control
     private readonly Control _hud = new() { MouseFilter = MouseFilterEnum.Ignore, ZIndex = 50 };
     private readonly Label _back = CareerStyle.Text("", 20, new Color(1f, 0.95f, 0.85f));
     private readonly Label _money = CareerStyle.Text("", 20, new Color(1f, 0.95f, 0.85f));
-    private readonly CardNode _preview = new() { SharpImage = true, MouseFilter = MouseFilterEnum.Ignore, Visible = false, ZIndex = 300 };
+    private readonly CardNode _preview = new() { SharpImage = true, ShowsOtherFace = true, MouseFilter = MouseFilterEnum.Ignore, Visible = false, ZIndex = 300 };
 
     // The computer drawn over the dimmed room, the website on its screen, and a note over the store (when one is open).
     private Control? _monitor, _casing, _web;
@@ -1593,12 +1593,7 @@ public partial class CareerScreen : Control
     private static CardDefinition DefinitionOf(CardKey card) =>
         DeckList.TryResolve(Cards, card.ToEntry(), out var d) ? d : Cards.Find(card.Name)!.Definition;
 
-    private static CardView ViewOf(CardDefinition d) => new()
-    {
-        Id = new CardId(-1), Owner = new PlayerId(0), Controller = new PlayerId(0), Zone = Zone.Hand, IsHidden = false,
-        Name = d.Name, ManaCost = d.ManaCost.ToString(), Types = d.Types, Power = d.Power, Toughness = d.Toughness,
-        Keywords = d.Keywords, BasePower = d.Power, BaseToughness = d.Toughness, ImageKey = d.ImageKey, Foil = d.Foil, Surge = d.Surge, Fracture = d.Fracture,
-    };
+    private static CardView ViewOf(CardDefinition d) => MenuKit.CardViewOf(d);
 
     private void ShowPreview(CardDefinition definition, Control anchor)
     {
