@@ -248,49 +248,53 @@ public class CardSearchTests
         Assert.False(filter.Matches(card, card.Record.Printings[1], null));
     }
 
-    // Invented lands in the shapes the land cycles are judged by (type line and rules text).
-    private static readonly CardDatabase Lands = new(new[]
+    // Invented cards with the source's curated tags: card-level by oracle id, printing-level by printing id.
+    private static readonly CardDatabase Tagged = new(new[]
     {
-        Card("Salt Rift", "Land — Plains Island", "", Array.Empty<string>(), "({T}: Add {W} or {U}.)"),
-        Card("Ember Gate", "Land — Mountain Plains", "", Array.Empty<string>(),
-            "As this land enters, you may pay 2 life. If you don't, it enters tapped.\n{T}: Add {R} or {W}."),
-        Card("Mossy Vale", "Land", "", Array.Empty<string>(),
-            "{T}, Pay 1 life, Sacrifice this land: Search your library for an Island or Swamp card, put it onto the battlefield, then shuffle."),
-        Card("Glen Hollow", "Land", "", Array.Empty<string>(),
-            "This land enters tapped unless you control a Plains or an Island.\n{T}: Add {W} or {U}."),
-        Card("Swift Shallows", "Land", "", Array.Empty<string>(),
-            "This land enters tapped unless you control two or fewer other lands.\n{T}: Add {G} or {U}."),
-        Card("Harm Mire", "Land", "", Array.Empty<string>(),
-            "{T}: Add {C}.\n{T}: Add {W} or {U}. This land deals 1 damage to you."),
-        Card("Three Crown", "Land — Plains Island Swamp", "", Array.Empty<string>(), "This land enters tapped.\n{T}: Add {W}, {U}, or {B}."),
-        Card("Mistfall Pathway // Ashfall Pathway", "Land", "", Array.Empty<string>()) with
+        Card("Ember Gate", "Land — Mountain Plains", "", Array.Empty<string>()),
+        Card("Three Crown", "Land — Plains Island Swamp", "", Array.Empty<string>()),
+        Card("Plain Field", "Basic Land — Plains", "", Array.Empty<string>(), printings: new[]
         {
-            Layout = "modal_dfc",
-            Faces = new[]
-            {
-                new CardFaceRecord("Mistfall Pathway", "", "Land", "{T}: Add {W}.", null, null),
-                new CardFaceRecord("Ashfall Pathway", "", "Land", "{T}: Add {R}.", null, null),
-            },
-        },
-        Card("Plain Field", "Basic Land — Plains", "", Array.Empty<string>()),
-    });
+            Print("old", "1", "common", "1994-04-01") with { Frame = "1993" },
+            Print("new", "2", "common", "2020-01-01") with { Frame = "2015", PromoTypes = new[] { "crossoverone", "promopack" } },
+        }),
+    })
+    {
+        SearchTags = new SearchTags(
+            new Dictionary<string, string> { ["triome"] = "tricycleland", ["snarl"] = "shadowland" },
+            new Dictionary<string, IReadOnlySet<string>> { ["shockland"] = new HashSet<string> { "o-Ember Gate" }, ["tricycleland"] = new HashSet<string> { "o-Three Crown" } },
+            new Dictionary<string, IReadOnlySet<string>> { ["atypical"] = new HashSet<string> { "new-2" } }),
+    };
 
     [Theory]
-    [InlineData("is:dual", "Salt Rift")]
     [InlineData("is:shockland", "Ember Gate")]
-    [InlineData("is:fetchland", "Mossy Vale")]
-    [InlineData("is:checkland", "Glen Hollow")]
-    [InlineData("is:fastland", "Swift Shallows")]
-    [InlineData("is:painland", "Harm Mire")]
-    [InlineData("is:triome", "Three Crown")]
-    [InlineData("is:pathway", "Mistfall Pathway // Ashfall Pathway")]
-    public void LandCyclesAreJudgedByTypeLineAndRulesText(string search, params string[] expected) =>
-        Assert.Equal(expected.OrderBy(n => n), FindIn(Lands, search).OrderBy(n => n));
+    [InlineData("is:tricycleland", "Three Crown")]
+    [InlineData("is:triome", "Three Crown")] // an alias
+    [InlineData("-is:shockland t:land", "Three Crown", "Plain Field")]
+    [InlineData("is:atypical", "Plain Field")]
+    [InlineData("is:default", "Ember Gate", "Three Crown", "Plain Field")] // every card has a printing that isn't atypical
+    [InlineData("is:crossoverone", "Plain Field")] // any promo kind the printings have
+    [InlineData("is:promo_pack", "Plain Field")]
+    [InlineData("is:old", "Plain Field")]
+    [InlineData("is:new", "Plain Field")]
+    [InlineData("is:old is:atypical")]
+    public void CuratedTagsFindExactlyTheTaggedCards(string search, params string[] expected) =>
+        Assert.Equal(expected.OrderBy(n => n), FindIn(Tagged, search).OrderBy(n => n));
+
+    [Fact]
+    public void CuratedValuesWithoutTagsAreReported()
+    {
+        Assert.Contains("no data", Assert.Single(Tagged.Filter("is:snarl").Warnings)); // an alias of a value with no list here
+        Assert.Contains("no data", Assert.Single(Db.Filter("is:shockland").Warnings));
+        Assert.Contains("doesn't know", Assert.Single(Db.Filter("is:nothinglikeit").Warnings));
+        var plain = Tagged.Find("Plain Field")!;
+        Assert.False(Tagged.Filter("is:default").Matches(plain, plain.Record.Printings[1], null));
+    }
 
     [Fact]
     public void AlchemyTermMatchesNothing()
     {
-        Assert.Empty(FindIn(Lands, "is:alchemy"));
+        Assert.Empty(FindIn(Tagged, "is:alchemy"));
         Assert.Empty(FindIn(Printed, "is:alchemy"));
     }
 

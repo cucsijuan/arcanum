@@ -37,7 +37,7 @@ public partial class ContentLoader : Node
         var dataDir = ProjectSettings.GlobalizePath($"user://card_data/{Module.Manifest.Id}");
         Directory.CreateDirectory(dataDir);
         // Bump the version when import rules change so existing installs re-import.
-        var compact = Path.Combine(dataDir, $"cards.v12-{Module.Manifest.Version}.jsonl.gz");
+        var compact = Path.Combine(dataDir, $"cards.v13-{Module.Manifest.Version}.jsonl.gz");
 
         if (!File.Exists(compact))
         {
@@ -83,11 +83,13 @@ public partial class ContentLoader : Node
         var scriptErrors = new List<string>();
         var scripts = Module.LoadScripts(scriptErrors);
         foreach (var error in scriptErrors) GD.PushWarning($"Card script: {error}");
+        int scriptCount = scriptErrors.Count;
         Cards = await Task.Run(() =>
         {
             using var input = File.OpenRead(compact);
-            return new CardDatabase(OracleJsonl.ReadCompact(input), scripts);
+            return new CardDatabase(OracleJsonl.ReadCompact(input), scripts) { SearchTags = Module.LoadSearchTags(scriptErrors) };
         });
+        foreach (var error in scriptErrors.Skip(scriptCount)) GD.PushWarning($"Search tags: {error}");
         GD.Print($"Loaded {Cards.Count} cards from module '{Module.Manifest.Id}'.");
         return true;
     }

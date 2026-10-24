@@ -53,6 +53,12 @@ public sealed record Printing(
     /// <summary>Frame effects ("showcase", "extendedart", "colorshifted", "inverted", ...).</summary>
     public IReadOnlyList<string> FrameEffects { get; init; } = Array.Empty<string>();
 
+    /// <summary>The name printed on it when it differs from the card's (another language's, a world's own).</summary>
+    public string? PrintedName { get; init; }
+
+    /// <summary>The other name it is printed with beside the card's own (a crossover printing).</summary>
+    public string? FlavorName { get; init; }
+
     /// <summary>Promo kinds ("prerelease", "datestamped", "buyabox", "boosterfun", "serialized", ...).</summary>
     public IReadOnlyList<string> PromoTypes { get; init; } = Array.Empty<string>();
 }

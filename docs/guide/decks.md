@@ -41,10 +41,13 @@ The search takes the terms of the search box's help line. Some of them are about
 - `eur<1` and `usd>=5` find the cards with a printing at that price (Cardmarket euros, TCGplayer dollars). The price is the
   cheaper of the printing's foil and nonfoil prices.
 - `order:eur` and `order:usd` sort by the cheapest printing. Cards with no price come last.
-- `is:fullart`, `is:showcase`, `is:etched`, `is:reserved`, `is:firstprint`, `is:prerelease` and the other `is:` printing
-  kinds, `border:borderless` and `frame:2015` (or a frame effect such as `frame:showcase`).
-- Land nicknames such as `is:shockland`, `is:fetchland`, `is:triome` and `is:bounceland`, judged from what each land says.
+- `is:fullart`, `is:showcase`, `is:etched`, `is:firstprint` and the other `is:` printing kinds, `border:borderless` and
+  `frame:2015` (or a frame effect such as `frame:showcase`).
+- Curated nicknames such as `is:shockland`, `is:fetchland`, `is:triome`, `is:bounceland` and `is:bear` find exactly the cards
+  (or printings) the card data's source tags with them, so the aliases (`is:karoo`, `is:battleland`...) match the same lists.
   `is:alchemy`, `is:rebalanced` and `is:oversized` match no card.
+- Promo kinds the printings have, by their own names: `is:prerelease`, `is:serialized`, `is:universesbeyond` (or `is:ub`) and
+  the promo kind that names the game or story a crossover card comes from. Underscores are ignored, so `is:promo_pack` works as `is:promopack`.
 
 ## Prices
 

@@ -192,6 +192,19 @@ public sealed class ContentModule
         catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException) { errors?.Add($"{Path.GetFileName(file)}: {e.Message}"); return null; }
     }
 
+    /// <summary>The curated search tags in search/tags.json.gz, or null when the module has none.</summary>
+    public CardData.SearchTags? LoadSearchTags(List<string>? errors = null)
+    {
+        var file = Path.Combine(Directory, "search", "tags.json.gz");
+        if (!File.Exists(file)) return null;
+        try
+        {
+            using var input = File.OpenRead(file);
+            return CardData.SearchTags.Parse(input);
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or JsonException or InvalidOperationException) { errors?.Add($"{Path.GetFileName(file)}: {e.Message}"); return null; }
+    }
+
     /// <summary>The career settings in career/career.json, or null when the module has no career.</summary>
     public Career.CareerContent? LoadCareer(List<string>? errors = null)
     {

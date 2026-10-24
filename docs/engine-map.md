@@ -19,7 +19,7 @@ Game content (scripts, sets, decks) lives in the content module repository, not 
 
 ## From card data to a definition
 
-1. `OracleJsonl.Import` reads card records. A printing whose `promo_types` has `fracturefoil` is marked `Fracture` (`CardRecord.Printings`), and the compact card file stores it as `fracture_foil`. The same record carries each printing's market prices (`PrintingPrices`: Cardmarket euros and TCGplayer dollars, foil and nonfoil) and its attributes (`Etched`, `Border`, `Frame`, `FrameEffects`, `PromoTypes`, ...); the compact card file keeps them as well, under `cards.v12-<module version>`.
+1. `OracleJsonl.Import` reads card records. A printing whose `promo_types` has `fracturefoil` is marked `Fracture` (`CardRecord.Printings`), and the compact card file stores it as `fracture_foil`. The same record carries each printing's market prices (`PrintingPrices`: Cardmarket euros and TCGplayer dollars, foil and nonfoil) and its attributes (`Etched`, `Border`, `Frame`, `FrameEffects`, `PromoTypes`, ...); the compact card file keeps them as well, under `cards.v13-<module version>`.
 2. `CardFactory.Create(record, script)` (`Arcanum.Data/CardData/CardFactory.cs`) builds a `CardDefinition`: it derives keywords and
    simple abilities from the oracle text, merges the module's script, and decides `CardSupport`. `CardFactory.Explain` says why a card
    isn't fully supported. Keywords a script must spell out are in `ScriptedKeywords`; derived ones in `SupportedKeywords`. Flavor and
@@ -169,7 +169,9 @@ screen searches.
 |-------|-------|
 | Parsing, keywords, `CardFilter.Matches`, `Sort`, warnings | `Arcanum.Data/CardData/CardSearch.cs` |
 | Price terms (`usd`, `eur`), `order:usd` / `order:eur` (`CardFilter.CheapestPrice`, cheapest printing, unpriced last) | `Arcanum.Data/CardData/CardSearch.cs` |
-| Land cycle nicknames (`is:shockland`, `is:triome`, ...), judged from the rules text (`LandCycles`) | `Arcanum.Data/CardData/CardSearch.cs` |
+| Curated `is:` values (`is:shockland`, `is:triome`, `is:bear`, `is:atypical`, ...) and their aliases, from the module's `search/tags.json.gz` (`SearchTags`: cards by oracle id, printings by printing id; a value without tags is a "no data" warning) | `Arcanum.Data/CardData/SearchTags.cs`, `Arcanum.Data/CardData/CardSearch.cs` (`IsTerm`) |
+| Loading the tags (`ContentModule.LoadSearchTags`), set on `CardDatabase.SearchTags`; `SearchVocabulary` (the tags and the promo kinds the printings have, built by `CardDatabase.Filter`) | `Arcanum.Data/Modules/ContentModule.cs`, `Arcanum.Data/CardData/CardDatabase.cs`, `scripts/Client/ContentLoader.cs` |
+| Other `is:` values the card data says: layouts, frames (`is:old`, `is:new`), finishes, frame effects (`is:showcase`, `is:extendedart`), printing names, promo kinds (`is:serialized`); underscores ignored | `Arcanum.Data/CardData/CardSearch.cs` (`IsTerm`, `BuiltIn`) |
 | Printing prices and printing attributes read from the card data | `Arcanum.Data/CardData/OracleJsonl.cs`, `Arcanum.Data/CardData/CardRecord.cs` (`PrintingPrices`) |
 | `CardDatabase.Filter(text, extra)` | `Arcanum.Data/CardData/CardDatabase.cs` |
 | Search box: reads the filter, warnings in the tooltip and the amber text, help line from `SearchTerms.Help` | `scripts/UI/Menu/CardSearchBox.cs` |

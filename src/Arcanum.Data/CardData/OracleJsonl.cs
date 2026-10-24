@@ -130,6 +130,8 @@ public static class OracleJsonl
             Frame = Str(c, "frame") ?? "",
             FrameEffects = StrList(c, "frame_effects"),
             PromoTypes = StrList(c, "promo_types"),
+            PrintedName = Str(c, "printed_name"),
+            FlavorName = Str(c, "flavor_name"),
         };
     }
 
@@ -289,6 +291,8 @@ public static class OracleJsonl
                         WriteIf(writer, "frame", p.Frame);
                         WriteList(writer, "frame_effects", p.FrameEffects);
                         WriteList(writer, "promo_types", p.PromoTypes);
+                        WriteIf(writer, "printed_name", p.PrintedName);
+                        WriteIf(writer, "flavor_name", p.FlavorName);
                         WriteTokens(writer, p.Tokens);
                         writer.WriteEndObject();
                     }

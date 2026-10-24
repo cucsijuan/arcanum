@@ -181,8 +181,22 @@ public sealed class CardDatabase : ICardDatabase
 
     public IEnumerable<CardDefinition> All => _sorted.Select(e => e.Definition);
 
+    /// <summary>The module's curated search tags (null: none, so the values they decide aren't known).</summary>
+    public SearchTags? SearchTags
+    {
+        get => _searchTags;
+        set { _searchTags = value; _vocabulary = null; }
+    }
+
+    private SearchTags? _searchTags;
+    private SearchVocabulary? _vocabulary;
+
+    /// <summary>The tags and the promo kinds the printings have, for <c>is:</c> values.</summary>
+    private SearchVocabulary Vocabulary => _vocabulary ??= new SearchVocabulary(_searchTags,
+        _sorted.SelectMany(e => e.Record.Printings).SelectMany(p => p.PromoTypes).ToHashSet(StringComparer.OrdinalIgnoreCase));
+
     /// <summary>Reads a search in the card search language, with this database's sets for release dates.</summary>
-    public CardFilter Filter(string text, SearchTerms? extra = null) => CardSearch.Parse(text, FindSet, extra);
+    public CardFilter Filter(string text, SearchTerms? extra = null) => CardSearch.Parse(text, FindSet, extra, Vocabulary);
 
     public IEnumerable<CardEntry> Search(CardQuery query)
     {

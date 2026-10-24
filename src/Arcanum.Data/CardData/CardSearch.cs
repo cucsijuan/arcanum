@@ -15,9 +15,10 @@ public static class CardSearch
 {
     /// <summary>Reads a search; <paramref name="findSet"/> gives set release dates (<c>date&gt;fdn</c>).</summary>
     /// <param name="extra">Number terms a screen adds (a career's prices and copies), by keyword.</param>
-    public static CardFilter Parse(string text, Func<string, SetInfo?>? findSet = null, SearchTerms? extra = null)
+    /// <param name="vocabulary">The curated tags and promo kinds behind <c>is:</c> values (none: only what the cards themselves say).</param>
+    public static CardFilter Parse(string text, Func<string, SetInfo?>? findSet = null, SearchTerms? extra = null, SearchVocabulary? vocabulary = null)
     {
-        var parser = new Parser(Lex(text ?? ""), findSet, extra);
+        var parser = new Parser(Lex(text ?? ""), findSet, extra, vocabulary ?? SearchVocabulary.None);
         var root = parser.ParseAll();
         return new CardFilter(root, parser.Warnings, parser.Order, parser.Descending);
     }
@@ -73,7 +74,7 @@ public static class CardSearch
 
     // ---------------------------------------------------------------- parsing
 
-    private sealed class Parser(List<Token> tokens, Func<string, SetInfo?>? findSet, SearchTerms? extra)
+    private sealed class Parser(List<Token> tokens, Func<string, SetInfo?>? findSet, SearchTerms? extra, SearchVocabulary vocabulary)
     {
         private int _at;
         public List<string> Warnings { get; } = new();
@@ -476,7 +477,38 @@ public static class CardSearch
         private static readonly string[] PartyTypes = { "Cleric", "Rogue", "Warrior", "Wizard" };
         private static readonly string[] OutlawTypes = { "Assassin", "Mercenary", "Pirate", "Rogue", "Warlock" };
 
-        private static Node? IsTerm(string value) => value switch
+        /// <summary>
+        /// An <c>is:</c> value: the source's curated tags first (exactly the cards or printings it tags), then what the card data
+        /// says (layouts, frames, finishes, promo kinds). "promo_pack" is "promopack".
+        /// </summary>
+        private Node IsTerm(string value)
+        {
+            var key = value.Replace("_", "");
+            if (vocabulary.Tags is { } tags)
+            {
+                key = tags.Canonical(key);
+                if (tags.Cards.TryGetValue(key, out var cards)) return new Is(c => cards.Contains(c.Entry.Record.OracleId));
+                if (tags.Printings.TryGetValue(key, out var printings)) return new Is(c => c.Printing is { } p && printings.Contains(p.Id), printing: true);
+                if (key == "default" && tags.Printings.TryGetValue("atypical", out var atypical))
+                    return new Is(c => c.Printing is { } p && !atypical.Contains(p.Id), printing: true);
+            }
+            if (BuiltIn(key) is { } known) return known;
+            if (key == "ub") key = "universesbeyond";
+            if (vocabulary.PromoTypes.Contains(key)) return new Is(c => c.Printing is { } p && p.PromoTypes.Contains(key), printing: true);
+            throw new SearchError(CuratedValues.Contains(key) ? $"the game has no data for is:{value} (the module's search tags)." : $"the game doesn't know is:{value}.");
+        }
+
+        /// <summary>The values the source decides by tagging cards, known only from a module's search tags.</summary>
+        private static readonly HashSet<string> CuratedValues = new()
+        {
+            "dual", "shockland", "fetchland", "checkland", "fastland", "slowland", "painland", "filterland", "gainland", "scryland",
+            "surveilland", "bounceland", "karoo", "canopyland", "canland", "horizonland", "bikeland", "cycleland", "bicycleland",
+            "tangoland", "battleland", "shadowland", "snarl", "storageland", "triland", "tricycleland", "trikeland", "triome",
+            "pathway", "bondland", "crowdland", "spikey", "etb", "meldpart", "meldresult", "class", "prepare", "augment", "host",
+            "contentwarning", "duelcommander", "oathbreaker", "paupercommander", "atypical", "default", "spotlight", "scryfallpreview",
+        };
+
+        private static Node? BuiltIn(string value) => value switch
         {
             "split" => Layout("split"),
             "flip" => Layout("flip"),
@@ -484,7 +516,7 @@ public static class CardSearch
             "meld" => Layout("meld"),
             "leveler" => Layout("leveler"),
             "mdfc" => Layout("modal_dfc"),
-            "dfc" => Layout("transform", "modal_dfc", "meld", "reversible_card"),
+            "dfc" or "doublesided" => Layout("transform", "modal_dfc", "meld", "reversible_card"),
             "adventure" => Layout("adventure"),
             "saga" => new Is(c => Subtypes(c.Entry.Record).Contains("Saga")),
             "spell" => new Is(c => !FrontType(c.Entry.Record).Contains("Land")),
@@ -524,17 +556,16 @@ public static class CardSearch
             "textless" => new Is(c => c.Printing is { Textless: true }, printing: true),
             "hires" => new Is(c => c.Printing is { HighRes: true }, printing: true),
             "borderless" => new Is(c => c.Printing is { Border: "borderless" }, printing: true),
-            "showcase" or "extendedart" or "colorshifted" or "inverted" or "nyxtouched" or "companion_frame"
-                => FrameEffect(value),
-            "prerelease" or "datestamped" or "buyabox" or "giftbox" or "intropack" or "gameday" or "release" or "league"
-                or "planeswalkerdeck" or "playtest" or "boosterfun" or "serialized" or "promopack" or "bundle" or "starterdeck"
-                or "brawldeck" or "themepack" or "convention" or "tourney" or "judgegift" or "setpromo" or "stamped"
-                or "halofoil" or "galaxyfoil" or "surgefoil" or "textured" or "confettifoil" or "doublerainbow" or "fracturefoil"
-                => new Is(c => c.Printing is { } p && p.PromoTypes.Contains(value, StringComparer.OrdinalIgnoreCase), printing: true),
-            _ when LandCycles.TryGetValue(value, out var cycle) => new Is(c => FrontType(c.Entry.Record).Contains("Land") && cycle(c.Entry)),
+            "showcase" or "colorshifted" or "tombstone" => FrameEffect(value),
+            "extendedart" or "extended" => FrameEffect("extendedart"),
+            "old" => new Is(c => c.Printing is { Frame: "1993" or "1997" }, printing: true),
+            "new" => new Is(c => c.Printing is { Frame: not ("1993" or "1997" or "") }, printing: true),
+            "masterpiece" => new Is(c => c.Printing is { } p && SetTypeIs(p, "masterpiece"), printing: true),
+            "printedname" => new Is(c => c.Printing is { PrintedName: not null }, printing: true),
+            "flavorname" => new Is(c => c.Printing is { FlavorName: not null }, printing: true),
             "supported" => new Is(c => c.Entry.Support == CardSupport.Full),
             "unsupported" => new Is(c => c.Entry.Support != CardSupport.Full),
-            _ => throw new SearchError($"the game doesn't know is:{value}."),
+            _ => null,
         };
 
         private static Node Layout(params string[] layouts) => new Is(c => layouts.Contains(c.Entry.Record.Layout));
@@ -550,50 +581,6 @@ public static class CardSearch
             return new Is(c => c.Printing is { } p && (euros ? p.Prices.EurFor(c.Foil) : p.Prices.UsdFor(c.Foil)) is { } have && Compare(have, op, wanted), printing: true);
         }
 
-        // ------------------------------------------------------------ land cycles
-
-        private static readonly string[] BasicTypes = { "Plains", "Island", "Swamp", "Mountain", "Forest" };
-
-        private static int BasicTypeCount(CardEntry e) => Subtypes(e.Record).Count(BasicTypes.Contains);
-
-        private static bool Text(CardEntry e, string pattern) => OracleTexts(e).Any(t => Regex.IsMatch(t, pattern, RegexOptions.IgnoreCase));
-
-        private const string TwoColors = @"\{T\}: Add \{[WUBRG]\} or \{[WUBRG]\}\.";
-        private const string Basic = "(?:Plains|Island|Swamp|Mountain|Forest)";
-
-        /// <summary>The nicknames of the land cycles, by what their rules text says.</summary>
-        private static readonly Dictionary<string, Func<CardEntry, bool>> LandCycles = new()
-        {
-            ["dual"] = e => BasicTypeCount(e) == 2 && Regex.IsMatch(e.Record.OracleText.Trim(), @"^\(\{T\}: Add \{[WUBRG]\} or \{[WUBRG]\}\.\)$"),
-            ["shockland"] = e => BasicTypeCount(e) == 2 && Text(e, @"you may pay 2 life\. If you don't, it enters tapped"),
-            ["fetchland"] = e => Text(e, $@"Pay 1 life, Sacrifice this land: Search your library for an? {Basic} or {Basic} card"),
-            ["checkland"] = e => Text(e, $@"^This land enters tapped unless you control an? {Basic} or an? {Basic}\."),
-            ["fastland"] = e => Text(e, @"enters tapped unless you control two or fewer other lands"),
-            ["slowland"] = e => Text(e, @"enters tapped unless you control two or more other lands"),
-            ["painland"] = e => Text(e, TwoColors + @" This land deals 1 damage to you\."),
-            ["filterland"] = e => Text(e, @"\{[WUBRG]/[WUBRG]\}, \{T\}: Add \{[WUBRG]\}\{[WUBRG]\}, \{[WUBRG]\}\{[WUBRG]\}, or \{[WUBRG]\}\{[WUBRG]\}"),
-            ["gainland"] = e => Text(e, @"When this land enters, you gain 1 life\.") && Text(e, TwoColors),
-            ["scryland"] = e => Text(e, @"When this land enters, scry 1\.") && Text(e, TwoColors),
-            ["surveilland"] = e => BasicTypeCount(e) == 2 && Text(e, @"When this land enters, surveil 1\."),
-            ["bounceland"] = e => Text(e, @"When this land enters, return a land you control to its owner's hand"),
-            ["karoo"] = e => Text(e, @"When this land enters, return a land you control to its owner's hand"),
-            ["canopyland"] = e => Text(e, @"\{T\}, Pay 1 life: Add \{[WUBRG]\} or \{[WUBRG]\}\.") && Text(e, @"Sacrifice this land: Draw a card"),
-            ["canland"] = e => Text(e, @"\{T\}, Pay 1 life: Add \{[WUBRG]\} or \{[WUBRG]\}\.") && Text(e, @"Sacrifice this land: Draw a card"),
-            ["bikeland"] = e => BasicTypeCount(e) == 2 && Text(e, @"This land enters tapped\.") && Text(e, @"Cycling \{2\}"),
-            ["cycleland"] = e => BasicTypeCount(e) == 2 && Text(e, @"This land enters tapped\.") && Text(e, @"Cycling \{2\}"),
-            ["bicycleland"] = e => BasicTypeCount(e) == 2 && Text(e, @"This land enters tapped\.") && Text(e, @"Cycling \{2\}"),
-            ["tangoland"] = e => BasicTypeCount(e) == 2 && Text(e, @"enters tapped unless you control two or more basic lands"),
-            ["battleland"] = e => BasicTypeCount(e) == 2 && Text(e, @"enters tapped unless you control two or more basic lands"),
-            ["shadowland"] = e => Text(e, $@"you may reveal an? {Basic} or {Basic} card from your hand\. If you don't, this land enters tapped"),
-            ["snarl"] = e => Text(e, $@"you may reveal an? {Basic} or {Basic} card from your hand\. If you don't, this land enters tapped"),
-            ["storageland"] = e => Text(e, @"storage counter"),
-            ["triland"] = e => BasicTypeCount(e) == 0 && Regex.IsMatch(e.Record.OracleText.Trim(), @"^This land enters tapped\.\n\{T\}: Add \{[WUBRG]\}, \{[WUBRG]\}, or \{[WUBRG]\}\.$"),
-            ["triome"] = e => BasicTypeCount(e) == 3,
-            ["trikland"] = e => BasicTypeCount(e) == 3,
-            ["pathway"] = e => e.Record.Layout == "modal_dfc" && e.Record.Faces.Count == 2 && e.Record.Faces.All(f => f.TypeLine == "Land" && f.Name.EndsWith(" Pathway", StringComparison.Ordinal)),
-            ["bondland"] = e => Text(e, @"enters tapped unless you have two or more opponents"),
-            ["crowdland"] = e => Text(e, @"enters tapped unless you have two or more opponents"),
-        };
 
         private static bool IsFrenchVanilla(CardRecord record)
         {
