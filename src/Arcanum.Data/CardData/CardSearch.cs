@@ -621,7 +621,6 @@ public static class CardSearch
         private static Node InTerm(string value)
         {
             if (value == "paper" || value is "en" or "english") return Node.True;
-            if (value is "mtgo" or "arena") return Node.False;
             string rarity = RarityName(value);
             if (Rarities.Contains(rarity) || rarity is "special" or "bonus")
                 return new Is(c => c.Entry.Record.Printings.Any(p => p.Rarity.Equals(rarity, StringComparison.OrdinalIgnoreCase)));

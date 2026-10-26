@@ -248,3 +248,57 @@ public class CommanderFormatTests
         Assert.Contains(Errors(deck), e => e.Contains("Choose a commander"));
     }
 }
+
+/// <summary>A companion (rule 702.139) in a Commander deck: the one card allowed outside the 100, within the color identity.</summary>
+public class CompanionDeckTests
+{
+    private static CardRecord Card(string name, string type, string cost, string[] identity, string text = "", string[]? keywords = null) => new()
+    {
+        OracleId = "c-" + name, Name = name, Layout = "normal", TypeLine = type, ManaCost = cost, OracleText = text,
+        ColorIdentity = identity, Keywords = keywords ?? Array.Empty<string>(), Power = type.Contains("Creature") ? "2" : null,
+        Toughness = type.Contains("Creature") ? "2" : null, Legalities = new Dictionary<string, string> { ["edh"] = "legal" },
+    };
+
+    private const string Condition = "Companion — No card in your starting deck has more than one of the same mana symbol in its mana cost.";
+
+    private static readonly CardDatabase Db = new(new[]
+    {
+        Card("Forest", "Basic Land — Forest", "", new[] { "G" }),
+        Card("Grove Queen", "Legendary Creature — Elf", "{2}{G}", new[] { "G" }),
+        Card("Wild Elk", "Legendary Creature — Elk", "{4}{G}", new[] { "G" }, Condition, new[] { "Companion" }),
+        Card("Ember Elk", "Legendary Creature — Elk", "{4}{R}", new[] { "R" }, Condition, new[] { "Companion" }),
+        Card("Twin Sprout", "Creature — Plant", "{G}{G}", new[] { "G" }),
+    }.Concat(Enumerable.Range(0, 60).Select(i => Card($"Elf {i}", "Creature — Elf", "{1}{G}", new[] { "G" }))),
+        new Dictionary<string, Arcanum.Data.Scripts.CardScript>
+        {
+            ["c-Wild Elk"] = Arcanum.Data.Scripts.CardScriptParser.Parse("""{ "companion": "noRepeatedManaSymbols" }"""),
+            ["c-Ember Elk"] = Arcanum.Data.Scripts.CardScriptParser.Parse("""{ "companion": "noRepeatedManaSymbols" }"""),
+        });
+
+    private static readonly FormatRules Edh = FormatRules.Parse("""
+        { "id": "edh", "name": "Commander", "legality": "edh", "minDeckSize": 100, "maxDeckSize": 100, "maxCopies": 1, "sideboardMax": 0, "commander": true, "startingLife": 40 }
+        """);
+
+    private static List<DeckIssue> Issues(string sideboard, string extra = "1 Elf 59") => DeckValidator.Validate(DeckList.Parse(
+        "Commander\n1 Grove Queen\nDeck\n39 Forest\n" + string.Join("\n", Enumerable.Range(0, 59).Select(i => $"1 Elf {i}")) + $"\n{extra}\nSideboard\n{sideboard}"), Edh, Db);
+
+    private static List<string> Errors(List<DeckIssue> issues) => issues.Where(i => i.Severity == IssueSeverity.Error).Select(i => i.Message).ToList();
+
+    [Fact]
+    public void OneCompanionMayWaitOutsideTheHundred() => Assert.Empty(Errors(Issues("1 Wild Elk")));
+
+    [Fact]
+    public void TheCompanionMustFitTheColorIdentity() =>
+        Assert.Contains(Errors(Issues("1 Ember Elk")), e => e.Contains("Ember Elk is outside your commander's color identity"));
+
+    [Fact]
+    public void OnlyOneCompanion() => Assert.Contains(Errors(Issues("1 Wild Elk\n1 Ember Elk")), e => e.Contains("Only one companion"));
+
+    [Fact]
+    public void ADeckThatMissesTheConditionIsWarned()
+    {
+        var issues = Issues("1 Wild Elk", "1 Twin Sprout"); // {G}{G}
+        Assert.Empty(Errors(issues));
+        Assert.Contains(issues, i => i.Severity == IssueSeverity.Warning && i.Message.Contains("companion condition"));
+    }
+}

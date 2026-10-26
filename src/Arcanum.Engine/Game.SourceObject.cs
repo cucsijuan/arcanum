@@ -91,6 +91,14 @@ public sealed partial class Game
         return subject.Zone == Zone.Battlefield ? subject.PrintedDefinition.Power ?? 0 : subject.Power;
     }
 
+    /// <summary>"The number of counters on that creature": all its counters, as <see cref="TriggeredPowerOf"/> works out its power.</summary>
+    private static int TriggeredCounterTotal(Card subject, int version)
+    {
+        if (subject.Version == version && subject.Zone == Zone.Battlefield) return subject.Counters.Values.Sum();
+        var lki = subject.Version == version ? subject.LastKnownOf(version - 1) : subject.LastKnownOf(version) ?? subject.LastKnownOf(version - 1);
+        return lki?.Counters.Values.Sum() ?? (subject.Zone == Zone.Battlefield ? subject.Counters.Values.Sum() : 0);
+    }
+
     /// <summary>The toughness of the object a trigger was about, as <see cref="TriggeredPowerOf"/> works out its power.</summary>
     private static int TriggeredToughnessOf(Card subject, int version)
     {

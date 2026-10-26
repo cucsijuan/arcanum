@@ -4,7 +4,7 @@ using Arcanum.Engine.Abilities;
 
 namespace Arcanum.Data.Tests;
 
-/// <summary>Vocabulary for triggers and turn tracking (Magic Origins).</summary>
+/// <summary>Vocabulary for triggers and turn tracking.</summary>
 public class TriggerTrackingScriptTests
 {
     [Theory]

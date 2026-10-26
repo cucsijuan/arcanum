@@ -25,6 +25,8 @@ public enum CardChoicePurpose
     Keep,
     /// <summary>Choose a source of damage ("a source of your choice").</summary>
     DamageSource,
+    /// <summary>The chosen creature gets <see cref="CardChoiceRequest.Amount"/> -1/-1 counters (blight).</summary>
+    Weaken,
 }
 
 /// <summary>
@@ -39,4 +41,7 @@ public sealed record CardChoiceRequest(
     /// when <see cref="Min"/> is above zero cancels the spell or ability.
     /// </summary>
     public bool CanCancel { get; init; }
+
+    /// <summary>How many counters a <see cref="CardChoicePurpose.Weaken"/> choice puts on.</summary>
+    public int Amount { get; init; }
 }

@@ -13,7 +13,7 @@ namespace Arcanum.Engine.Tests;
 
 /// <summary>
 /// Damage events, prevention and redirection, divided damage, random discards and destruction, becomes-target triggers,
-/// loyalty −X, X paid with one color and abilities counted per turn (Magic 2010 cards).
+/// loyalty −X, X paid with one color and abilities counted per turn.
 /// </summary>
 public class DamageAndPreventionTests
 {

@@ -78,6 +78,9 @@ public abstract record AbilityDefinition
 
     /// <summary>What this spell does when kicked, when that changes its targets ("instead any number of target creatures").</summary>
     public AbilityDefinition? WhenKicked { get; init; }
+
+    /// <summary>The spell as it is when its optional additional cost was paid ("If this spell's additional cost was paid, choose both instead").</summary>
+    public AbilityDefinition? WhenAdditionalCostPaid { get; init; }
 }
 
 /// <summary>Constraints between the targets of one spell or ability.</summary>
@@ -94,6 +97,8 @@ public enum TargetRule
     ShareCardType,
     /// <summary>Different objects controlled by the same player ("another target creature that player controls").</summary>
     SameController,
+    /// <summary>Different objects that share a creature type ("two target creature cards that share a creature type").</summary>
+    ShareCreatureType,
 }
 
 /// <summary>One mode of a modal spell or ability.</summary>
@@ -104,6 +109,9 @@ public sealed record Mode(string Text, IReadOnlyList<TargetSpec> Targets, IReadO
 
     /// <summary>The {P} (pawprint) symbols before this mode: what it uses of the spell's pawprint budget.</summary>
     public int Pawprints { get; init; }
+
+    /// <summary>A rule between this mode's own targets ("two target creature cards that share a creature type").</summary>
+    public TargetRule TargetRule { get; init; }
 }
 
 /// <summary>What an instant or sorcery does when it resolves.</summary>
@@ -195,6 +203,9 @@ public sealed record ActivatedAbility : AbilityDefinition
 
     /// <summary>"Activate only once" (for as long as the permanent stays on the battlefield).</summary>
     public bool OnlyOnce { get; init; }
+
+    /// <summary>"Only your opponents may activate this ability": its controller's opponents may, its controller may not (rule 602.1b).</summary>
+    public bool OnlyOpponents { get; init; }
 
     /// <summary>"Activate only if [condition]."</summary>
     public Condition? ActivationCondition { get; init; }
@@ -314,6 +325,8 @@ public enum TriggerEvent
     YouDrawCard,
     /// <summary>"Whenever a [filter] creature deals combat damage to a player".</summary>
     CreatureDealsCombatDamageToPlayer,
+    /// <summary>"Whenever a [filter] creature deals combat damage to a player or planeswalker".</summary>
+    CreatureDealsCombatDamageToPlayerOrPlaneswalker,
     /// <summary>"At the beginning of each end step" / "the end step".</summary>
     EachEndStep,
     /// <summary>"At the beginning of each combat".</summary>
@@ -527,6 +540,8 @@ public enum TriggerEvent
     PermanentLeaves,
     /// <summary>"When this dies or is put into exile from the battlefield."</summary>
     DiesOrExiled,
+    /// <summary>"When a [type] is championed with this creature" (rule 702.72): the trigger is about the exiled card.</summary>
+    Championed,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -749,6 +764,9 @@ public sealed record ObjectFilter(
     /// <summary>Toughness greater than its own power.</summary>
     public bool ToughnessAbovePower { get; init; }
 
+    /// <summary>"With total power and toughness 5 or less".</summary>
+    public int? MaxPowerPlusToughness { get; init; }
+
     /// <summary>"A transformed permanent" (true: back face up, rule 701.27g) or a double-faced permanent front face up (false).</summary>
     public bool? Transformed { get; init; }
 
@@ -806,6 +824,15 @@ public sealed record ObjectFilter(
     /// <summary>"With equal or lesser mana value" than the object the trigger is about.</summary>
     public bool AtMostManaValueOfTriggered { get; init; }
 
+    /// <summary>"With mana value less than or equal to the number of counters on that creature" (the object the trigger is about).</summary>
+    public bool MaxManaValueTriggeredCounters { get; init; }
+
+    /// <summary>Not the card the trigger is about, as whatever object it is now ("another target permanent card" after it died).</summary>
+    public bool NotTriggeredCard { get; init; }
+
+    /// <summary>"A spell with a single target": a spell on the stack whose targets are one object or player.</summary>
+    public bool SingleTargetSpell { get; init; }
+
     /// <summary>"If it wasn't put onto the battlefield with this ability": not put there by the source's own effect.</summary>
     public bool NotPutByThis { get; init; }
 
@@ -831,6 +858,9 @@ public sealed record ObjectFilter(
 
     /// <summary>A creature with the greatest power among creatures its controller controls ("a creature with the greatest power among creatures they control").</summary>
     public bool GreatestPowerAmongItsController { get; init; }
+
+    /// <summary>"Its power is greater than each other creature's power": a creature whose power is above every other creature's on the battlefield.</summary>
+    public bool PowerGreaterThanEachOtherCreature { get; init; }
 
     /// <summary>A creature with the greatest mana value among creatures its controller controls.</summary>
     public bool GreatestManaValueAmongItsController { get; init; }

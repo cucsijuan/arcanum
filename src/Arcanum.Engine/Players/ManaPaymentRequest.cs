@@ -20,6 +20,9 @@ public sealed record ManaSourceOption(CardId Source, IReadOnlyList<ManaType> Typ
 
     /// <summary>It adds any number of mana up to <see cref="Amount"/> (one per counter removed): <see cref="ManaTap.Amount"/> says how many.</summary>
     public bool AnyAmount { get; init; }
+
+    /// <summary>Its mana can't pay generic mana costs.</summary>
+    public bool CantPayGeneric { get; init; }
 }
 
 /// <summary>

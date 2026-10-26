@@ -63,6 +63,10 @@ public sealed record SpellOnStack(CardId Card, PlayerId Controller, IReadOnlyLis
 
     /// <summary>Its blitz cost was paid (rule 702.152); a copy copies that (707.10).</summary>
     public bool Blitzed { get; init; }
+    /// <summary>Cast for its evoke cost (rule 702.74a).</summary>
+    public bool Evoked { get; init; }
+    /// <summary>Compleated (rule 702.150a): the loyalty counters fewer it enters with.</summary>
+    public int CompleatedFewer { get; init; }
 
     /// <summary>Cast for its impending cost (rule 702.176a).</summary>
     public bool Impended { get; init; }

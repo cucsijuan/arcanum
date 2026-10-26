@@ -611,7 +611,7 @@ public sealed class CareerService
         {
             var deck = i == 0 ? DeckList.Parse(entry.Deck) : World!.Deck(pod.Decks[i]);
             var (main, _) = deck.Resolve(cards);
-            seats.Add(new GameSession.Seat(pod.Names[i], main, IsBot: i > 0, deck.ResolveCommanders(cards)));
+            seats.Add(new GameSession.Seat(pod.Names[i], main, IsBot: i > 0, deck.ResolveCommanders(cards), deck.ResolveCompanions(cards)));
         }
         return new MatchSetup(seats, World!.CommanderFormat.StartingLife, Commander: true)
         {

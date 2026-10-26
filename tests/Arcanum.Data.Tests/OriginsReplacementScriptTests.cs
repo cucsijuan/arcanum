@@ -5,7 +5,7 @@ using Arcanum.Engine.Cards;
 
 namespace Arcanum.Data.Tests;
 
-/// <summary>Vocabulary for replacement effects, damage prevention and life (Magic Origins).</summary>
+/// <summary>Vocabulary for replacement effects, damage prevention and life.</summary>
 public class OriginsReplacementScriptTests
 {
     [Fact]

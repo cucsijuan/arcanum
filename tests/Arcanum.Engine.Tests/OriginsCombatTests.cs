@@ -13,7 +13,7 @@ using static Arcanum.Engine.Tests.Scenario;
 namespace Arcanum.Engine.Tests;
 
 /// <summary>
-/// Magic Origins cards about combat, costs, filters and targeting, played with their module scripts: block taxes, "can block
+/// Core set cards about combat, costs, filters and targeting, played with their module scripts: block taxes, "can block
 /// only creatures with flying", "except by creatures with flying or reach", tapping artifacts as a cost, graveyard exile costs,
 /// targeting restrictions, conditional uncounterability, copying a countered spell and changing a target to a creature.
 /// </summary>

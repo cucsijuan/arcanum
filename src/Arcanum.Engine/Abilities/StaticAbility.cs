@@ -57,6 +57,12 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>Creature types added ("is an Angel in addition to its other types").</summary>
     public IReadOnlyList<string>? AddSubtypes { get; init; }
 
+    /// <summary>"Is all creature types" (layer 4).</summary>
+    public bool EveryCreatureType { get; init; }
+
+    /// <summary>"Enchanted land is the chosen color" (layer 5): the source's chosen color replaces the affected object's colors.</summary>
+    public bool SetChosenColor { get; init; }
+
     /// <summary>Abilities granted ("Enchanted creature has '{T}: ...'", "Equipped creature has '...'").</summary>
     public IReadOnlyList<AbilityDefinition>? GrantsAbilities { get; init; }
 
@@ -113,6 +119,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
 
     /// <summary>Grants ward with this cost ("artifacts and creatures you control have ward {1}").</summary>
     public Mana.ManaCost? GrantsWard { get; init; }
+
+    /// <summary>"Have 'Ward—Pay 2 life'": a ward that costs this much life.</summary>
+    public int GrantsWardLife { get; init; }
 
     /// <summary>"If a triggered ability of [an affected permanent] triggers, that ability triggers an additional time."</summary>
     public bool ExtraTriggers { get; init; }

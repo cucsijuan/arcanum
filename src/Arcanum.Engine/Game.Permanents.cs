@@ -21,7 +21,7 @@ public sealed partial class Game
     /// </summary>
     private void Untap(Card card)
     {
-        if (!card.Tapped) return;
+        if (!card.Tapped || card.Has(Cards.Keyword.CantBecomeUntapped)) return;
         if (card.CounterCount(Abilities.CounterKind.Stun) > 0)
         {
             RemoveCountersFrom(card, Abilities.CounterKind.Stun, 1);

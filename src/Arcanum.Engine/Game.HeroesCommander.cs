@@ -224,7 +224,8 @@ public sealed partial class Game
             }
             case ChooseOneOf one:
             {
-                var among = CardsFor(one.Among, ctx).Distinct().ToList();
+                var among = CardsFor(one.Among, ctx).Distinct()
+                    .Where(c => one.Filter is not { } only || c.Zone == Zone.Battlefield && Matches(only, c, c.Controller, ctx.Source, ctx.Controller)).ToList();
                 ctx.Results.Found.Clear();
                 if (among.Count == 0) break;
                 var pick = among.Count == 1 ? new[] { among[0].Id } : await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller), new CardChoiceRequest(

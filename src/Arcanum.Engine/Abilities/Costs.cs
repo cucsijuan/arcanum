@@ -22,6 +22,15 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
     /// <summary>"Behold a [filter]": choose one you control or reveal one from your hand (rule 701.4).</summary>
     public ObjectFilter? Behold { get; init; }
 
+    /// <summary>"Behold a [filter] and exile it": the beheld card is exiled, linked to the permanent the spell becomes (rule 607.2).</summary>
+    public bool BeholdExile { get; init; }
+
+    /// <summary>"Behold three Elementals": how many different objects (1 when not said).</summary>
+    public int BeholdCount { get; init; } = 1;
+
+    /// <summary>"Choose a creature type and behold N creatures of that type": the type is chosen as the cost is paid (the spell's chosen type).</summary>
+    public bool BeholdChooseType { get; init; }
+
     /// <summary>Crew N: tap untapped creatures you control with total power N or greater (rule 702.122).</summary>
     public int CrewPower { get; init; }
 
@@ -48,6 +57,15 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
 
     /// <summary>Forage (rule 701.61a): "exile three cards from your graveyard or sacrifice a Food", the player's choice.</summary>
     public bool Forage { get; init; }
+
+    /// <summary>Blight N (a keyword action): "put N -1/-1 counters on a creature you control", the creature chosen as the cost is paid.</summary>
+    public int Blight { get; init; }
+
+    /// <summary>"Blight X": the spell's X counters (<see cref="Blight"/> once X is announced).</summary>
+    public bool BlightX { get; init; }
+
+    /// <summary>"Exile a green card from your hand": one matching card other than the spell being cast, revealed as it is exiled.</summary>
+    public ObjectFilter? ExileFromHand { get; init; }
 }
 
 /// <summary>
@@ -79,4 +97,4 @@ public sealed record AlternativeCost(Mana.ManaCost Cost, Condition? If = null)
 }
 
 /// <summary>Riders on mana from a source (rule 106.6): what happens when it's spent on matching spells.</summary>
-public enum ManaRider { None, HasteForDragonCreatureSpells, CopyRedInstantOrSorcery, LegendaryUncounterable, Uncounterable, InstantOrSorceryUncounterable, ScryIfSharesTypeWithCommander }
+public enum ManaRider { None, HasteForDragonCreatureSpells, CopyRedInstantOrSorcery, LegendaryUncounterable, Uncounterable, InstantOrSorceryUncounterable, ScryIfSharesTypeWithCommander, CommanderEntersWithCastCountCounters }

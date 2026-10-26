@@ -15,7 +15,7 @@ using static Arcanum.Engine.Tests.Scenario;
 namespace Arcanum.Engine.Tests;
 
 /// <summary>
-/// Magic Origins replacement and prevention effects, played with their scripts: prevention shields on one object, damage
+/// Core set replacement and prevention effects, played with their scripts: prevention shields on one object, damage
 /// "plus 1", "prevent 1" from creatures, life gain doubled or turned into life loss (ordered by rule 616.1), exile instead of
 /// dying, tokens exiled instead of entering, the town hero's end-of-combat transformation and the champion's abilities.
 /// </summary>
@@ -122,13 +122,13 @@ public class OriginsReplacementTests
           ],
           "back": { "abilities": [
             { "cost": "+2", "targets": [{ "kind": "creature", "controller": "opponent", "optional": true }], "effects": [{ "attacksSourceNextTurn": "target" }],
-              "text": "+2: Up to one target creature an opponent controls attacks Forged Champion during its controller's next turn if able." },
+              "text": "+2: Up to one target creature an opponent controls attacks Tempered Champion during its controller's next turn if able." },
             { "cost": "+1", "targets": ["creature"], "effects": [{ "pump": [0, 0], "what": "target", "keywords": ["Indestructible"], "untilYourNextTurn": true }, { "untap": "target" }],
               "text": "+1: Until your next turn, target creature gains indestructible. Untap that creature." },
             { "cost": "0", "effects": [
                 { "become": "self", "power": 4, "toughness": 4, "addTypes": ["creature"], "addSubtypes": ["Human", "Soldier"], "keywords": ["Indestructible"] },
                 { "preventDamage": true, "to": "self" } ],
-              "text": "0: Until end of turn, Forged Champion becomes a 4/4 Human Soldier creature with indestructible that's still a planeswalker. Prevent all damage that would be dealt to him this turn." }
+              "text": "0: Until end of turn, Tempered Champion becomes a 4/4 Human Soldier creature with indestructible that's still a planeswalker. Prevent all damage that would be dealt to him this turn." }
           ] }
         }
         """;
@@ -136,15 +136,15 @@ public class OriginsReplacementTests
     private static CardDefinition TownHero()
     {
         const string json = """
-            {"oracle_id":"ori-hero","name":"Town Hero // Forged Champion","layout":"transform","mana_cost":"","type_line":"Legendary Creature — Human Soldier // Legendary Planeswalker — Gideon","oracle_text":"","colors":["W"],"keywords":["Transform"],"games":["paper"],
+            {"oracle_id":"ori-hero","name":"Town Hero // Tempered Champion","layout":"transform","mana_cost":"","type_line":"Legendary Creature — Human Soldier // Legendary Planeswalker — Gideon","oracle_text":"","colors":["W"],"keywords":["Transform"],"games":["paper"],
              "card_faces":[{"name":"Town Hero","mana_cost":"{W}","type_line":"Legendary Creature — Human Soldier","oracle_text":"At end of combat, if Town Hero and at least two other creatures attacked this combat, exile Kytheon, then return him to the battlefield transformed under his owner's control.\n{2}{W}: Kytheon gains indestructible until end of turn.","power":"2","toughness":"1","colors":["W"]},
-                           {"name":"Forged Champion","mana_cost":"","type_line":"Legendary Planeswalker — Gideon","oracle_text":"+2: Up to one target creature an opponent controls attacks Forged Champion during its controller's next turn if able.\n+1: Until your next turn, target creature gains indestructible. Untap that creature.\n0: Until end of turn, Forged Champion becomes a 4/4 Human Soldier creature with indestructible that's still a planeswalker. Prevent all damage that would be dealt to him this turn.","loyalty":"3","colors":["W"]}]}
+                           {"name":"Tempered Champion","mana_cost":"","type_line":"Legendary Planeswalker — Gideon","oracle_text":"+2: Up to one target creature an opponent controls attacks Tempered Champion during its controller's next turn if able.\n+1: Until your next turn, target creature gains indestructible. Untap that creature.\n0: Until end of turn, Tempered Champion becomes a 4/4 Human Soldier creature with indestructible that's still a planeswalker. Prevent all damage that would be dealt to him this turn.","loyalty":"3","colors":["W"]}]}
             """;
         var record = OracleJsonl.Import(new MemoryStream(Encoding.UTF8.GetBytes(json.ReplaceLineEndings(" ")))).First();
         return CardFactory.Create(record, CardScriptParser.Parse(TownHeroScript)).Definition;
     }
 
-    /// <summary>Forged Champion on the battlefield (Town Hero turned over), under player 0's control since the turn began.</summary>
+    /// <summary>Tempered Champion on the battlefield (Town Hero turned over), under player 0's control since the turn began.</summary>
     private static CardId Champion(Scenario s)
     {
         var id = s.Add(P0, TownHero().BackFace!);
@@ -412,7 +412,7 @@ public class OriginsReplacementTests
         Assert.Equal(2, s.Game.State.Battlefield.Count(id => s.Card(id).Name == "Soldier"));
     }
 
-    // ------------------------------------------------------------------ Town Hero and Forged Champion
+    // ------------------------------------------------------------------ Town Hero and Tempered Champion
 
     [Fact]
     public async Task TownHeroTransformsAfterAttackingWithTwoOthersEvenIfOneDied()

@@ -22,7 +22,7 @@ public sealed class CareerSave
     public List<CareerAction> Journal { get; set; } = new();
     public CareerState State { get; set; } = new();
 
-    private static readonly byte[] Magic = "ARCCAR1"u8.ToArray();
+    private static readonly byte[] Header = "ARCCAR1"u8.ToArray();
 
     private static readonly JsonSerializerOptions Options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -33,16 +33,16 @@ public sealed class CareerSave
             JsonSerializer.Serialize(gzip, this, Options);
         var body = payload.ToArray();
         var mac = HMACSHA256.HashData(key, body);
-        return Magic.Concat(mac).Concat(body).ToArray();
+        return Header.Concat(mac).Concat(body).ToArray();
     }
 
     /// <summary>Reads a saved career; throws <see cref="InvalidDataException"/> when the file isn't one or was changed outside the game.</summary>
     public static CareerSave Read(byte[] data, byte[] key)
     {
-        if (data.Length < Magic.Length + 32 || !data.AsSpan(0, Magic.Length).SequenceEqual(Magic))
+        if (data.Length < Header.Length + 32 || !data.AsSpan(0, Header.Length).SequenceEqual(Header))
             throw new InvalidDataException("This isn't a saved career.");
-        var mac = data.AsSpan(Magic.Length, 32);
-        var body = data.AsSpan(Magic.Length + 32).ToArray();
+        var mac = data.AsSpan(Header.Length, 32);
+        var body = data.AsSpan(Header.Length + 32).ToArray();
         if (!CryptographicOperations.FixedTimeEquals(mac, HMACSHA256.HashData(key, body)))
             throw new InvalidDataException("The saved career was changed outside the game or is damaged.");
         using var gzip = new GZipStream(new MemoryStream(body), CompressionMode.Decompress);

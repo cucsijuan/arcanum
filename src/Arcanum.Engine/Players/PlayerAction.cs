@@ -23,7 +23,13 @@ public sealed record CastSpell(CardId Card, bool Adventure = false, int? Half = 
 /// <summary>Activate the <paramref name="Index"/>-th activated ability of a permanent (rule 602).</summary>
 public sealed record ActivateAbility(CardId Source, int Index) : PlayerAction;
 
-/// <summary>Turn a face-down permanent with morph face up, paying its morph cost (a special action, rule 702.37e).</summary>
-public sealed record TurnFaceUp(CardId Card) : PlayerAction;
+/// <summary>
+/// Turn a face-down permanent face up, a special action: paying its morph cost (rule 702.37e) or, with <paramref name="ForManaCost"/>,
+/// a manifested creature card's mana cost (rule 701.40b).
+/// </summary>
+public sealed record TurnFaceUp(CardId Card, bool ForManaCost = false) : PlayerAction;
+
+/// <summary>Pay {3} and put your companion from outside the game into your hand (a special action, rules 702.139a, 116.2g).</summary>
+public sealed record PutCompanionIntoHand(CardId Card) : PlayerAction;
 
 public sealed record ActivateManaAbility(CardId Source, Mana.ManaType Type, int Option = 0) : PlayerAction;

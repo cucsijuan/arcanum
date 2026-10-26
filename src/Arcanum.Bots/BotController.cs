@@ -265,6 +265,8 @@ public sealed class BotController : IPlayerController
             CardChoicePurpose.ScryToBottom or CardChoicePurpose.SurveilToGraveyard => request.Options.Where(Unwanted),
             CardChoicePurpose.ToHand or CardChoicePurpose.ToBattlefield or CardChoicePurpose.Keep => request.Options.OrderByDescending(Value).Take(request.Max),
             // "A source of your choice": the opponents' most dangerous creature.
+            // -1/-1 counters: on the least valuable creature that survives them, else on the least valuable one.
+            CardChoicePurpose.Weaken => request.Options.OrderByDescending(c => c.Toughness is { } t && t > request.Amount).ThenBy(Value).Take(request.Min),
             CardChoicePurpose.DamageSource => request.Options.OrderByDescending(c => c.Controller != _me).ThenByDescending(c => c.Power ?? 0).ThenByDescending(Value).Take(request.Min),
             _ => request.Options.OrderBy(Value).Take(request.Min),
         };
@@ -358,6 +360,8 @@ public sealed class BotController : IPlayerController
             if (LoyaltyAbility(view, legal) is { } loyalty) return loyalty;
             if (view.Step == Step.PrecombatMain && Equip(view, legal) is { } equip) return equip;
             if (view.Step == Step.PostcombatMain && UsefulActivation(view, legal) is { } ping) return ping;
+            // Mana left over with nothing better to do: the companion comes into the hand.
+            if (legal.OfType<PutCompanionIntoHand>().FirstOrDefault() is { } companion) return companion;
             return PassPriority.Instance;
         }
 
@@ -1235,10 +1239,31 @@ public sealed class BotController : IPlayerController
     /// sacrifice that isn't worth its payoff (see <see cref="PaymentWorthIt"/>).
     /// </summary>
     public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) =>
-        // Asked only when the full cost can be paid too: a card with morph is cast face up then (face down only when that's all it can afford).
-        Task.FromResult(!request.Prompt.Contains(" face down as a 2/2", StringComparison.Ordinal)
+        // Asked only when the full cost can be paid too: a card with morph is cast face up then (face down only when that's all it can afford),
+        // and a card with evoke is cast to stay rather than evoked.
+        Task.FromResult(!EndsALoop(view, request) && !request.Prompt.Contains(" face down as a 2/2", StringComparison.Ordinal)
+                        && !request.Prompt.Contains(" for its evoke cost ", StringComparison.Ordinal)
                         && !(request.Card is { } source && HurtsOwnTarget(view, source, request.Prompt))
                         && !(request.Card is { } payer && FindMayPay(view, payer, request.Prompt) is { Options: null } pay && !PaymentWorthIt(view, payer, pay, pay.Extra)));
+
+    /// <summary>How many times this turn the same "you may" of the same source was asked.</summary>
+    private readonly Dictionary<(CardId? Source, string Prompt), (int Turn, int Count)> _askedThisTurn = new();
+
+    /// <summary>The most times in one turn the bot says yes to the same optional action of the same source.</summary>
+    private const int LoopLimit = 40;
+
+    /// <summary>
+    /// A loop that only goes on while this player keeps taking an optional action (rule 732.2a: that player chooses how many times):
+    /// past <see cref="LoopLimit"/> repetitions in one turn the bot stops it.
+    /// </summary>
+    private bool EndsALoop(GameView view, YesNoRequest request)
+    {
+        var key = (request.Card, request.Prompt);
+        var (turn, count) = _askedThisTurn.GetValueOrDefault(key);
+        count = turn == view.TurnNumber ? count + 1 : 1;
+        _askedThisTurn[key] = (view.TurnNumber, count);
+        return count > LoopLimit;
+    }
 
     /// <summary>The targets last chosen for each source's ability, to judge its "you may" choice as it resolves.</summary>
     private readonly Dictionary<CardId, (AbilityDefinition Ability, IReadOnlyList<Target> Targets)> _lastTargets = new();

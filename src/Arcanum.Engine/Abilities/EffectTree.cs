@@ -13,6 +13,7 @@ public static class EffectTree
             Effects = List(ability.Effects),
             Modes = ability.Modes?.Select(m => m with { Effects = List(m.Effects) }).ToList(),
             WhenKicked = ability.WhenKicked is { } kicked ? Map(kicked, map) : null,
+            WhenAdditionalCostPaid = ability.WhenAdditionalCostPaid is { } paid ? Map(paid, map) : null,
         };
         if (mapped is StaticAbility { GrantsAbilities: { } granted } st)
             mapped = st with { GrantsAbilities = granted.Select(a => Map(a, map)).ToList() };

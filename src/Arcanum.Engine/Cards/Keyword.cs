@@ -103,6 +103,18 @@ public enum Keyword
     Evolve,
     /// <summary>"Whenever this creature attacks with another creature with greater power, put a +1/+1 counter on this creature" (rule 702.149).</summary>
     Training,
+    /// <summary>Damage it deals to a creature is dealt as -1/-1 counters its controller puts on that creature (rules 702.80, 120.3d).</summary>
+    Wither,
+    /// <summary>"Can't become untapped": nothing untaps it, so a stun counter on it isn't removed either (rule 122.1d).</summary>
+    CantBecomeUntapped,
+    /// <summary>"Can't have counters put on it."</summary>
+    CantHaveCounters,
+    /// <summary>"When this permanent is put into a graveyard from the battlefield, if it had no -1/-1 counters on it, return it with a -1/-1 counter" (rule 702.79).</summary>
+    Persist,
+    /// <summary>The same with +1/+1 counters (rule 702.93).</summary>
+    Undying,
+    /// <summary>"Hexproof from each of its colors": opponents' sources sharing a color with it can't target it (rule 702.11d).</summary>
+    HexproofFromItsColors,
 }
 
 public static class Keywords
@@ -157,6 +169,9 @@ public static class Keywords
         Keyword.CanBlockOnlyFlyers => "Can block only creatures with flying",
         Keyword.OneAttackerAtMost => "No more than one creature can attack this planeswalker each combat",
         Keyword.AssignsNegativePowerAsPositive => "Assigns combat damage as though its negative power were positive",
+        Keyword.CantBecomeUntapped => "Can't become untapped",
+        Keyword.CantHaveCounters => "Can't have counters put on it",
+        Keyword.HexproofFromItsColors => "Hexproof from each of its colors",
         _ => keyword.ToString(),
     };
 

@@ -464,7 +464,7 @@ trample. Counter kinds `flood`, `supply` and `coin` can be named as `kind`.
   sacrificed at end of combat; 4: when it deals combat damage to a player, each opponent loses 3 life. Trigger
   `ringTempts` ("whenever the Ring tempts you"), quantity `"ringLevel"`.
 - `{ "phaseOut": subject }`: phases out until its controller's next untap step (with what's attached to it).
-- `"cascade": 2` (card-wide): cascade instances. `"minimumBlockers": 3`: can't be blocked except by that many creatures.
+- `"cascade": 2` (card-wide): cascade instances. Without it, the count comes from the rules text ("Cascade, cascade" is two). `"minimumBlockers": 3`: can't be blocked except by that many creatures.
 - Keywords `Islandwalk` (and the other landwalks), `Shadow`, `Ascend` (`"citysBlessing"` condition). Indestructible,
   lifelink and shadow counters give their keyword (a shadow counter also makes it a Wraith).
 - `{ "playerProtection": true }`: you have protection from everything until your next turn.
@@ -1360,6 +1360,12 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `tokensPlusThatManySquirrels`: "If one or more tokens would be created under your control, those tokens plus that many 1/1 green Squirrel creature tokens are created instead."
 - `"gift": "extraTurn"`: the player who receives the gift takes an extra turn after this one.
 - `eachPlayerExtraLandPlays: N`: each player may play N more lands each turn.
+- `preventCombatDamageToYourAttackers`: "Prevent all combat damage that would be dealt to attacking creatures you control." Combat
+  damage only; other damage still gets through.
+- `yourCreaturesActivateAsThoughHaste`: "You may activate abilities of creatures you control as though those creatures had haste."
+  It covers abilities with {T} in their cost and mana abilities that tap a creature.
+- `everythingIsChosenColor` with `"chooseOnEnter": "color"`: the source chooses a color as it enters. While it is on the battlefield,
+  every card in every zone (spells and permanents too) has that color in addition to its own colors.
 - `chooseColorOtherThan: "R"` with `manaAlsoChosenColor`, `chooseOnEnter: "color"` and `tapForMana`: the color chosen as it enters
   can't be red. With `manaAlsoChosenColor`, the mana ability also makes mana of the chosen color.
   `{ "chooseOnEnter": "color", "chooseColorOtherThan": "R", "tapForMana": true, "manaAlsoChosenColor": true }`.
@@ -1371,6 +1377,24 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `yourCreaturesAreEveryType`: creatures you control are every creature type.
 - `sacrificeAnyNoReduction`: the sacrifice-any additional cost (`additionalSacrificeAny`) doesn't reduce the spell's cost.
 - `copyPerSacrificed`: when you sacrifice any number of permanents to cast the spell, it makes a copy for each one sacrificed.
+- `replaces` `ExtraTriggersFromPermanentsEntering`: when a permanent enters and triggers an ability of a permanent you control,
+  that ability triggers one more time for each instance of this replacement.
+- `"spellsFromHandGainEvoke": { "filter": f, "cost": "{1}{U}" }`: permanent spells matching the filter that you cast from your
+  hand gain evoke with that cost. They get the sacrifice trigger of evoke too.
+- `"firstTokensCopyEquipped": true` (on Equipment): the first time you would create one or more tokens each turn, you may create
+  that many tokens that are copies of the equipped creature instead.
+- `"castExiledWithThis": { "filter": f, "yourTurn": true, "extra": cost }`: you may cast spells matching the filter from among the
+  cards you own that this permanent exiled. `yourTurn` allows it only on your turn. `extra` is an additional cost paid to cast them.
+- `"typeChoices": ["Elemental", "Elf"]` with `"chooseOnEnter": "creatureType"`: the creature type chosen as it enters is one of the
+  listed types. Without the list, any creature type.
+- `"spellsHaveConvoke": filter` and `"spellsHaveConspire": filter`: spells you cast that match the filter have convoke or conspire.
+- `"landManaBonus"`: `"enchantedAnyColor"` (an enchanted land adds one more mana of any color when tapped for mana),
+  `"enchantedChosenColor"` (one more mana of the permanent's chosen color) or `"basicSameType"` (whenever a player taps a basic
+  land for mana, that player adds one more mana of any type that land produced).
+- `"yourSpellsCantBeCountered": true`: spells you control can't be countered.
+- `"doublesDamageOfChosenType": true`: double all damage that sources you control of the chosen type would deal.
+- `"allDamageWither": true`: all damage is dealt as though its source had wither.
+- `"playersCantDraw": true`: no player can draw cards.
 
 ### Abilities and statics
 - `{ "spellsHaveCascade": filter }`: spells that match the filter have cascade.
@@ -1379,15 +1403,32 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - Static scope `"permanents:opponents"`: the static ability applies to permanents your opponents control.
 - Static `"exiledCreatureAbilities": true`: the source has the activated abilities of the creature cards exiled with it.
 - Static `grantsManaOnlyFor`: restricts the mana the static grants to the given use.
+- Activated ability with `"onlyOpponents": true`: only the controller's opponents may activate it. The controller can't.
+- `extraMana` entries take `"cantPayGeneric": true`: the mana can pay colored and {C} symbols only, not generic costs.
+- Static `"everyCreatureType": true`: the affected creatures are every creature type.
+- Static `"setChosenColor": true`: the affected object becomes the source's chosen color.
+- Static `"grantsWardLife": 2`: the affected objects have "Ward—Pay 2 life".
+- Keywords `CantBecomeUntapped` (can't be untapped), `CantHaveCounters` (no counters can be put on it), `HexproofFromItsColors`
+  (hexproof from each of its colors, as they are now), `Persist` and `Undying`. When such a permanent dies without a -1/-1 counter
+  (Persist) or a +1/+1 counter (Undying), it returns once with a -1/-1 or a +1/+1 counter.
 
 ### Costs
 - `"sacrificeAny:Squirrel*X"`: sacrifice X Squirrels, with X announced as the ability is activated.
 - `"tapTokens:X"`: tap X untapped tokens.
 - `"removeCounters:4:hoofprint"`: remove 4 hoofprint counters.
+- `"beholdChooseType": true` (with `"behold": filter` and `"beholdCount": N`, default 1): as the spell is cast, its controller
+  chooses a creature type that at least N beholdable objects have. Beholdable objects are permanents you control and cards in your
+  hand, other than the source. The beheld objects must have that type, and the spell's chosen type becomes that type.
+- `"beholdExile": true` (behold): when exactly one card is beheld, it is exiled, linked to the permanent the spell becomes, instead
+  of being revealed.
+- Cost token `removeCounterFrom:self` (or `removeCounterFrom:self:N`): remove N counters (default 1) of any kind from this permanent.
+  `removeCounterFrom:nonland` removes a counter from a nonland permanent you control, and `removeCounterFrom:permanent` from any
+  permanent.
 
 ### Triggers
 - `cardPutIntoYourGraveyard`: a card you own is put into your graveyard from anywhere. Use `"batched": true` for "one or more".
 - `attackBetweenYouAndEnchanted`: a creature attacks between you and the enchanted player.
+- `creatureCombatDamageToPlayerOrPlaneswalker`: a creature deals combat damage to a player or planeswalker. Filters on the creature apply.
 
 ### Effects
 - `{ "temptingOffer": prompt, "effects": [ … ] }`: the effects happen for you. Then each opponent, in turn order, may accept. For each
@@ -1395,7 +1436,8 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `{ "parley": true }`: each player reveals the top card of their library, in turn order. Quantity `"nonlandRevealed"` counts the
   nonland cards revealed.
 - `{ "chooseOpponent": true }` then `{ "each": f, "controlledBy": "chosenPlayer" }`: choose an opponent, then act on the cards that player controls.
-- `{ "repeatProcess": true }`: inside a `mayPay`, repeats the ability's effects.
+- `{ "repeatProcess": true }`: inside a `mayPay` or a clash's `ifWin`, repeats the effects of the spell or ability from the start.
+  Works in spells as well as abilities.
 - `{ "lookAtTopMayBottom": "target" }`: look at the top card of a target library, and may put it on the bottom.
 - `{ "exileLibrary": "target" }`: exile the target player's library.
 - `{ "shuffleHandIntoLibrary": "target" }`: the target player shuffles their hand into their library.
@@ -1413,6 +1455,51 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `gainControl` with `"whileCounter": "shield"`: control lasts while the permanent has a shield counter.
 - Emblem with `"replaces"` and `"emblemText"`: the emblem replaces the named rule, and `emblemText` is its text.
 - Copy with `"attackingTriggeredPlayer": true`: the copy's target is the player attacked by the triggering creature.
+- `{ "counterAllOfOpponents": true }`: counter every spell and ability your opponents control.
+- `{ "sacrificeNotSharingTypeWithChosen": true }`: for each player, you choose a creature that player controls. Then each player
+  sacrifices the other creatures they control that don't share a creature type with that creature.
+- `{ "revealFromHandYouChooseExile": 2, "who": "target" }`: the player reveals that many cards from their hand. You choose one, and
+  they exile it. If it is an instant or sorcery, you may cast it for as long as you control the source, and mana of any type can be
+  spent on it. `who` defaults to `"target"`.
+- `{ "revealNonlandExileOnePerColor": true }`: reveal from the top until X nonland cards, where X is the number of colors among
+  permanents you control. For each of those colors you may exile one card of that color from the revealed cards. Then shuffle, and
+  you may cast the exiled cards this turn.
+- `{ "exileWithCounterWhenResolves": "dream" }`: the spell the trigger is about is exiled with a counter of that kind, instead of
+  going to the graveyard as it resolves.
+- `{ "chooseColor": true }`: the controller chooses a color as it resolves. It becomes the source's chosen color.
+- `{ "exchangeLifeWithToughness": "you" }`: the player gains or loses life to the creature's toughness, and the creature's base
+  toughness becomes the old life total. Nothing happens if either can't change.
+- `{ "exileFromHand": 2, "who": "target" }`: each of those players chooses and exiles that many cards from their hand. `who`
+  defaults to `"you"`.
+- `{ "graveyardToLibraryBottom": "you" }`: that player puts all cards from their graveyard on the bottom of their library, in a random order.
+- `{ "addManaAnyColor": 1, "commanderIdentity": true }`: one mana of any color in your commander's color identity (none if that identity is colorless).
+- `"rider": "commanderEntersWithCastCountCounters"` on `addManaAnyColor`: if you spend this mana to cast your commander, the commander
+  enters with a +1/+1 counter for each time it has been cast from the command zone (this cast included), for each such mana.
+- `{ "addManaAnyColor": 1, "sourceBecomesThatColor": true }`: the creature becomes that color until end of turn.
+- `{ "addManaOneColor": 2, "onlyFor": filter }`: that mana can be spent only to cast spells matching the filter.
+- `{ "become": subject, "everyCreatureType": true }`: the subject gains all creature types. `"setTypes": ["Artifact"]` sets its card
+  types from now on, in place of the types it has.
+- `{ "copySpell": "target", "spellsGain": ["Haste"] }`: the original and its copies have those keywords while they are on the stack.
+- `{ "chooseOneOf": subject, "filter": f }`: the choice is limited to matching permanents on the battlefield.
+- `{ "becomeCopy": { "each": filter }, "target": "target" }`: the subject can be `{ "each": filter }`, a set of objects matching the filter.
+- `{ "revealUntil": f, "sharesCreatureTypeWith": "target" }`: the revealed card must also share a creature type with that object, as it last existed.
+- `{ "search": f, "to": "hand", "battlefieldInsteadIf": condition, "battlefieldInsteadIfFound": f }`: when the condition holds and
+  the found card matches the filter, it goes onto the battlefield instead of to its destination.
+- `{ "takeMilled": f, "to": "top" }`: the milled cards go on top of the library instead of into the hand.
+- `{ "lookAtTop": 1, "to": "graveyard" }`: the card taken from the top goes into the graveyard. It is not a mill.
+- `{ "toLibrary": "target", "position": 2, "orBottom": true }`: second from the top, or on the bottom. The owner chooses between them.
+- `{ "exileTopPlayable": N, "untilTotalManaValue": 10 }`: exile cards until they have a total mana value of at least that much.
+  `"onceEachTurnThisTurn": true` allows one cast per turn among the cards exiled this way. `"maxManaValue": quantity` allows only
+  spells with mana value at most that, checked when the spell would be cast.
+- `{ "castFromGraveyard": f, "fromExile": true }`: cast a matching card from among the cards you own in exile. It goes where it would.
+- `{ "putFromHand": f, "maxManaValue": quantity }`: only cards with mana value at most that can be put onto the battlefield.
+- `{ "preventDamage": …, "untilYourNextTurn": true }`: the prevention lasts until your next turn.
+- `{ "atNextEndStepOf": "opponents", "about": subject, "effects": [ … ] }`: the subject is the object the delayed ability is about
+  ("that creature"). Its effects reach it as "triggered".
+- `{ "poison": 1, "upTo": 9 }`: the players get poison counters up to 9 in all. Each gets the difference to 9, or none if they have 9 or more.
+  The `poison` count is ignored.
+- `{ "removeUpToCounters": 3, "from": subject }`: the number removed is the quantity `countersRemovedThisWay`.
+- `{ "revealUntil": f, "anyNumber": true }`: put any number of the found cards onto the battlefield. The controller chooses which of them move.
 
 ### Targets, subjects, quantities and conditions
 - Target spec `"attackingTriggeredPlayer": true`: targets the player attacked by the triggering creature.
@@ -1420,9 +1507,75 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - Quantities `"creaturesAttackedThisTurn"`, `"defendingPlayerHandSize"` and `"-handSize"` (the negative of the hand size).
 - Conditions `"cardsExiledWithThis"`, `"createdTokenThisTurn"`, `"enchantedPlayersTurn"`, `{ "classLevelAtLeast": 2 }`, and
   `{ "counters": 20, "kind": "any" }` (counters of every kind).
+- Target kind `spellOrCreature`: a spell on the stack (not this source) or a creature permanent ("target spell or creature"); a filter applies to both.
+- Target kind `ability` with `"triggeredOnly": true`: a triggered ability only.
+- Target rule `"targetRule": "shareCreatureType"`: all the targets share a creature type. A mode takes its own `targetRule`.
+- Subjects `sourceOwner` (the source's owner), `playersOtherThanSourceOwner` (each player except that owner, in turn order) and
+  `triggeredController` (the controller of the triggering object).
+- Conditions `"creatureAttackingYou"` (a creature is attacking you), `"yourMainPhase"`, `"foretold"`, `{ "spentToCast": "{W}{W}" }`
+  (at least that much of those colors was spent to cast it) and `{ "attackedWith": 2, "filter": f }` (at least that many of your
+  attackers matching the filter attacked this turn).
+- Quantities `{ "greatestPowerAmong": filter }` (the greatest power among the matching permanents), `"spellsAndAbilitiesCounteredThisWay"`,
+  `"colorsSpentToCast"` (the colors of mana spent to cast the source), `"chosenPlayerExtraCardsInHand"` (how many more cards the chosen
+  player has than you, at least 0), `"triggeredPowerToughnessDifference"` (the absolute difference between the power and toughness of
+  the triggered object) and `"chosenPowerDifference"` (the difference between the powers of two chosen objects; 0 unless two are chosen).
 
 ### Filters and counters
 - Filters `lessManaValueThanSourcePower`, `attackingYourOpponent`, `basePower: 1`, `basePowerOrToughness: 1`, `wasCast: false`,
   `atMostManaValueOfTriggered` and `notPutByThis`.
 - Counter kinds: `hoofprint`, `ingredient`, `acorn` and `growth`.
 - Predefined token: `"Blood"`.
+- Filters `powerGreaterThanEachOther` (its power is greater than each other creature's), `maxPowerPlusToughness: 5` (power plus
+  toughness at most that), `maxManaValueTriggeredCounters` (mana value at most the counters on the triggered creature),
+  `notTriggeredCard` (not the card the trigger is about) and `singleTarget` (a spell with a single target).
+- Counter kinds `dream` and `tower`.
+
+### Champion (rule 702.72)
+- Effect `{ "champion": filter }`: when the source enters, its controller may exile another permanent they control that matches
+  the filter. The exiled card is linked to the source, and the trigger `"championed"` runs about that card. If no card is
+  exiled, the source is sacrificed.
+- A champion card's script pairs that enters effect with a `"leaves"` trigger whose effect is `{ "returnLinkedExiled": true }`:
+  when the source leaves the battlefield, the linked card comes back.
+- `Champion` is a scripted keyword (`CardFactory`), so the script carries these triggers.
+
+## Blight, evoke, encore, clash, manifest and companion
+
+- **Blight N** (put N -1/-1 counters on a creature you control, chosen as it happens):
+  - Cost token `blight:N` in an activated cost (`"{1}, blight:2"`). In an extra-cost object (`additionalCost`,
+    `additionalCostOptions`, a `mayPay` `cost`, `wardCost`, `kickerCost`): `"blight": N`, or `"blight": "X"` (N is the X
+    announced as the spell is cast). As a cost it can't be paid without a creature that can take -1/-1 counters.
+  - Effect `{ "blight": N, "who": subject }` (`who` defaults to `"you"`; also `"opponents"` or `"target"`). Each player
+    chooses in APNAP order, then the counters go on together. A player with no creature does nothing. The choice has
+    purpose `Weaken`; bots put the counters on the least valuable creature that survives them.
+  - The board shows "X blights N: card". The blighted creatures are "found" for the next effects.
+- **Optional additional cost** (card-wide): `"optionalAdditionalCost": extra` is "As an additional cost to cast this spell,
+  you may [cost]". It is asked as the spell is cast, and only when the spell can be cast with it. Condition
+  `"additionalCostPaid"`. A spell's `"whenAdditionalCostPaid": { … }` replaces the spell when the cost is paid, like
+  `whenKicked` (for example "choose both instead"). It is not kicker: `"kicked"` doesn't see it. Copies keep it.
+- **`"maxX": quantity`** (card-wide): "X can't be greater than [quantity]" when casting, e.g. `"greatestToughness"`.
+  `"additionalCost": { "blight": "X" }` makes the spell ask for X even with no {X} in its cost.
+- **Wither**: a keyword read from the card data, no script. Damage that a source with wither deals to a creature is
+  -1/-1 counters put on it by the source's controller. It is still damage for lifelink, deathtouch and triggers.
+- **Evoke**: read from the rules text ("Evoke {1}{G}", hybrid allowed, or "Evoke—Exile a green card from your hand"), no
+  script. Each card with evoke gets the trigger "when this enters, if its evoke cost was paid, its controller sacrifices
+  it", an enters trigger like any other, so the card's own enters abilities can be ordered before it and still resolve.
+  Condition `"evoked"`. Bots don't evoke when they can pay the full cost.
+- **Encore**: read from the rules text ("Encore {cost}"), no script. Activated from the graveyard as a sorcery, and the card
+  is exiled as the cost is paid. For each opponent, one token copy attacks that opponent this turn if able, with haste (not
+  copiable values). Each is sacrificed at the next end step.
+- **Compleated**: a keyword read from the card data, no script. The permanent enters with two fewer loyalty counters for
+  each of its own Phyrexian symbols paid with life. Life pays the symbols that other effects made Phyrexian first.
+- **Clash**: effect `{ "clash": true, "ifWin": [ … ], "else": [ … ] }`. The controller chooses an opponent, and both reveal
+  the top card of their library. Each, in APNAP order, puts theirs on the top or the bottom (bots choose as they do for
+  scry). The greater mana value wins; a tie runs `else`. An empty library reveals nothing, which any card beats.
+  `"repeatProcess": true` in `ifWin` repeats the spell's or ability's effects from the start, so the clash happens again.
+  The board shows "X clashes with Y: A vs B — X wins".
+- **Manifest**: effect `{ "manifest": N, "who": subject }` (`who` defaults to `"you"`, e.g. `"targetController"`). The top card
+  of that library goes onto the battlefield face down as a 2/2 creature. A manifested creature card can be turned face up
+  for its mana cost (X = 0) as a special action, besides morph if it has morph. No other card can be turned face up this way.
+- **Companion**: card-wide `"companion": "noRepeatedManaSymbols"` (the enum `CompanionCondition`: no card in the starting
+  deck has the same mana symbol twice in its mana cost). Before the game, each player in APNAP order may reveal a companion
+  from outside the game whose condition their starting deck (library and commanders) meets. Once per game, at sorcery
+  timing, they may pay {3} to put it into their hand (a button on the board). In Commander, one companion may wait in the
+  sideboard, within the color identity; the deck check warns when the deck misses the condition. Commander games pass the
+  companions as the cards outside the game.

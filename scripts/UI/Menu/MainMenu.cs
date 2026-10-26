@@ -412,7 +412,7 @@ public partial class MainMenu : Control
         breath.TweenProperty(glow, "self_modulate:a", 0.35f, 1.4).SetTrans(Tween.TransitionType.Sine);
         breath.TweenProperty(glow, "self_modulate:a", GlowColor.A, 1.4).SetTrans(Tween.TransitionType.Sine);
 
-        foreach (var stars in MagicStars())
+        foreach (var stars in SparkleStars())
         {
             // Emitted at the arrow, in the glow's coordinates.
             stars.Position -= glow.Position;
@@ -433,11 +433,11 @@ public partial class MainMenu : Control
     }
 
     /// <summary>
-    /// Stars drifting out of the selector to the right, like magic leaving it: the four-pointed star of the card backs
+    /// Stars drifting out of the selector to the right, like sparks leaving it: the four-pointed star of the card backs
     /// in several sizes, eight-pointed ones and small glints, in the nebula's violets with a little gold, faint enough
     /// to stay behind the text. In world space, so they trail behind when the selector moves.
     /// </summary>
-    private static IEnumerable<CpuParticles2D> MagicStars()
+    private static IEnumerable<CpuParticles2D> SparkleStars()
     {
         var colors = new Gradient();
         colors.SetColor(0, new Color(0.62f, 0.42f, 1f));

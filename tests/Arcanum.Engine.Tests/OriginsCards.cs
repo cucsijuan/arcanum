@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// The Magic Origins card scripts of the classic content module about combat, costs, filters and targeting: the same rules
+// The card scripts of one core set of the classic content module about combat, costs, filters and targeting: the same rules
 // text and scripts, so these tests check the scripts as players get them.
 using Arcanum.Data.CardData;
 using Arcanum.Data.Scripts;

@@ -27,11 +27,37 @@ public sealed partial class Game
     }
 
     /// <summary>Face-down permanents the player controls that they can turn face up now, paying their morph costs (702.37e, 116.2b).</summary>
-    private IEnumerable<PlayerAction> TurnFaceUpActions(PlayerId playerId) =>
-        State.PermanentsControlledBy(playerId)
-            .Where(c => c.TurnedFaceDown && c.PrintedDefinition.Morph is { } morph
-                        && morph.Variants().Any(v => ManaPayment.FindPlan(State, playerId, v) is not null))
-            .Select(c => new TurnFaceUp(c.Id));
+    private IEnumerable<PlayerAction> TurnFaceUpActions(PlayerId playerId)
+    {
+        bool Affordable(ManaCost cost) => cost.Variants().Any(v => ManaPayment.FindPlan(State, playerId, v) is not null);
+        foreach (var c in State.PermanentsControlledBy(playerId).Where(c => c.TurnedFaceDown).ToList())
+        {
+            if (c.PrintedDefinition.Morph is { } morph && Affordable(morph)) yield return new TurnFaceUp(c.Id);
+            if (ManifestTurnUpCost(c) is { } cost && Affordable(cost)) yield return new TurnFaceUp(c.Id, ForManaCost: true);
+        }
+    }
+
+    /// <summary>A manifested creature card's mana cost, which turns it face up (701.40b; X is 0); null for any other card.</summary>
+    private static ManaCost? ManifestTurnUpCost(Card card) =>
+        card.Manifested && card.PrintedDefinition.IsCreature() ? card.PrintedDefinition.ManaCost.WithX(0) : null;
+
+    /// <summary>
+    /// Manifest (rule 701.40a): the player puts the top card of their library onto the battlefield face down as a 2/2 creature.
+    /// </summary>
+    private async Task<CardId?> ManifestTopAsync(PlayerId player)
+    {
+        var library = State.GetPlayer(player).Library;
+        if (library.Count == 0) return null;
+        var top = library[0];
+        _enteringFaceDown = top;
+        try { await MoveCardAsync(top, Zone.Battlefield, controller: player); }
+        finally { _enteringFaceDown = null; }
+        var card = State.GetCard(top);
+        if (card.Zone != Zone.Battlefield) return null;
+        card.Manifested = true;
+        Emit(new Manifested(player, top));
+        return top;
+    }
 
     /// <summary>
     /// Turning a face-down permanent face up: pay its morph cost, then it has its own characteristics (702.37e). This doesn't use the
@@ -40,9 +66,11 @@ public sealed partial class Game
     private async Task<bool> TurnFaceUpAsync(Player player, TurnFaceUp action)
     {
         var card = State.GetCard(action.Card);
-        Require(card.Zone == Zone.Battlefield && card.TurnedFaceDown && card.Controller == player.Id && card.PrintedDefinition.Morph is not null,
-            "Only a face-down permanent you control with morph can be turned face up.");
-        if (!await PayManaAsync(player, card.Id, card.PrintedDefinition.Morph!, null)) return false;
+        var cost = action.ForManaCost ? ManifestTurnUpCost(card) : card.PrintedDefinition.Morph;
+        Require(card.Zone == Zone.Battlefield && card.TurnedFaceDown && card.Controller == player.Id && cost is not null,
+            action.ForManaCost ? "Only a manifested creature card you control can be turned face up for its mana cost."
+                : "Only a face-down permanent you control with morph can be turned face up.");
+        if (!await PayManaAsync(player, card.Id, cost!, null)) return false;
         card.TurnedFaceDown = false;
         RecomputeContinuousEffects();
         Emit(new TurnedFaceUp(card.Id, player.Id));

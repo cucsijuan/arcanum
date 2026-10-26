@@ -28,4 +28,18 @@ public class MorphRulesTextTests
         Assert.Equal("{2}{W}{W}", definition.Impending!.ToString());
         Assert.Equal(4, definition.ImpendingCount);
     }
+
+    [Theory]
+    [InlineData("Cascade (When you cast this spell, exile cards from the top of your library until you exile a nonland card that costs less. You may cast it without paying its mana cost. Put the exiled cards on the bottom in a random order.)", 1)]
+    [InlineData("Creatures you control have haste.\nCascade, cascade (When you cast this spell, exile cards from the top of your library until you exile a nonland card that costs less. You may cast it without paying its mana cost. Put the exiled cards on the bottom in a random order. Then do it again.)", 2)]
+    [InlineData("Spells you cast have cascade.", 0)]
+    public void CascadeLinesGiveTheInstances(string oracleText, int cascades)
+    {
+        var (definition, _) = CardFactory.Create(new CardRecord
+        {
+            OracleId = "o-c", Name = "Storm Wanderer", Layout = "normal", TypeLine = "Creature — Elemental", ManaCost = "{5}{G}{U}{R}",
+            Power = "7", Toughness = "5", OracleText = oracleText, Keywords = new[] { "Cascade" },
+        });
+        Assert.Equal(cascades, definition.Cascade);
+    }
 }

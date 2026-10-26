@@ -82,7 +82,16 @@ public static class DeckValidator
         var issues = new List<DeckIssue>();
         int main = deck.Main.Sum(e => e.Count) + (format.Commander ? deck.Commander.Sum(e => e.Count) : 0);
         if (format.Commander) ValidateCommanders(deck, format, cards, issues);
-        int side = deck.Sideboard.Sum(e => e.Count);
+        // A companion (rule 702.139) waits outside the game: in Commander it is the one card allowed there.
+        var companions = deck.Sideboard.Where(e => cards.Find(e.Name)?.Definition.Companion is not null).ToList();
+        int side = deck.Sideboard.Sum(e => e.Count) - (format.Commander && companions.Sum(e => e.Count) == 1 ? 1 : 0);
+        if (format.Commander && companions.Sum(e => e.Count) > 1)
+            issues.Add(new(IssueSeverity.Error, "Only one companion can wait outside a Commander deck."));
+        var startingDeck = deck.Main.Concat(format.Commander ? deck.Commander : Enumerable.Empty<DeckEntry>())
+            .Select(e => cards.Find(e.Name)?.Definition).OfType<CardDefinition>().ToList();
+        foreach (var companion in companions.Select(e => cards.Find(e.Name)!).DistinctBy(c => c.Name))
+            if (!companion.Definition.Companion!.Value.FulfilledBy(startingDeck))
+                issues.Add(new(IssueSeverity.Warning, $"Your deck doesn't meet {companion.Name}'s companion condition, so it can't be revealed as your companion.", companion.Name));
         if (main < format.MinDeckSize) issues.Add(new(IssueSeverity.Error, $"Deck has {main} cards; {format.Name} needs at least {format.MinDeckSize}."));
         if (format.MaxDeckSize is { } max && main > max) issues.Add(new(IssueSeverity.Error, $"Deck has {main} cards; {format.Name} allows at most {max}."));
         if (side > format.SideboardMax) issues.Add(new(IssueSeverity.Error, $"Sideboard has {side} cards; at most {format.SideboardMax}."));
@@ -165,7 +174,7 @@ public static class DeckValidator
         // Color identity (rule 903.4): every card's mana symbols must fit the commanders' combined identity.
         var identity = commanders.SelectMany(c => c.Record.ColorIdentity).ToHashSet();
         if (commanders.Count == 0) return;
-        foreach (var entry in deck.Main)
+        foreach (var entry in deck.Main.Concat(deck.Sideboard)) // the sideboard holds at most the companion here
         {
             if (cards.Find(entry.Name) is not { } card) continue;
             var outside = card.Record.ColorIdentity.Where(color => !identity.Contains(color)).ToList();

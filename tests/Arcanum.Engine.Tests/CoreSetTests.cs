@@ -11,10 +11,10 @@ using static Arcanum.Engine.Tests.Scenario;
 
 namespace Arcanum.Engine.Tests;
 
-/// <summary>Magic 2010 cards with copies, libraries, continuous effects and hidden information, played from their scripts.</summary>
-public class Magic2010Tests
+/// <summary>Core set cards with copies, libraries, continuous effects and hidden information, played from their scripts.</summary>
+public class CoreSetTests
 {
-    private static CardDefinition M(string name) => Magic2010Cards.Get(name);
+    private static CardDefinition M(string name) => CoreSetCards.Get(name);
 
     /// <summary>Player 0 casts or activates whatever it can (no land drop) and never attacks; player 1 only passes.</summary>
     private static Scenario Casting(int seed = 1)

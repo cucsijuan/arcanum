@@ -16,7 +16,7 @@ using static Arcanum.Engine.Tests.Scenario;
 namespace Arcanum.Engine.Tests;
 
 /// <summary>
-/// Rules found by the skeptical review of Magic Origins, played with the module scripts of the cards involved: last known
+/// Rules found by the skeptical review of that set, played with the module scripts of the cards involved: last known
 /// information of an object that left and came back (400.7, 603.10a, 608.2h), tokens that ceased to exist (111.7), counters
 /// a permanent enters with (614.1c), "defending player" once the attacker left combat (508.5) and static rules of a card
 /// that lost its abilities (112.10b).

@@ -6,7 +6,7 @@ using Arcanum.Engine.Mana;
 
 namespace Arcanum.Data.Tests;
 
-/// <summary>Script vocabulary for damage, prevention, random discards and the costs of Magic 2010 cards.</summary>
+/// <summary>Script vocabulary for damage, prevention, random discards and the costs of one core set's cards.</summary>
 public class DamageScriptTests
 {
     [Fact]

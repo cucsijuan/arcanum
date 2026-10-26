@@ -36,8 +36,14 @@ public sealed partial class Game
         if (filter.Blocked && State.Combat?.FindAttack(obj.Id) is not { IsBlocked: true }) return false;
         // "Each other creature": a different object from the one the trigger is about (the same card back as a new object counts, rule 400.7).
         if (filter.NotTriggered && _triggeredSubject is { } about && obj.Id == about && obj.Version == _triggeredSubjectVersion) return false;
+        // "Another target card" after "whenever a creature dies": not that creature's card, in whatever zone it went to.
+        if (filter.NotTriggeredCard && _triggeredSubject == obj.Id) return false;
+        if (filter.SingleTargetSpell && !(State.Stack.OfType<SpellOnStack>().FirstOrDefault(s => s.Card == obj.Id) is { } single
+                                         && single.Targets.Select(t => t.Target).Where(t => t != Target.None).Distinct().Count() == 1)) return false;
         if (filter.LesserManaValueThanTriggered && !(_triggeredSubject is { } lesserThan && ManaValueOf(obj) < ManaValueOf(State.GetCard(lesserThan)))) return false;
         if (filter.AtMostManaValueOfTriggered && !(_triggeredSubject is { } atMost && ManaValueOf(obj) <= ManaValueOf(State.GetCard(atMost)))) return false;
+        if (filter.MaxManaValueTriggeredCounters && !(_triggeredSubject is { } counted
+                                                      && ManaValueOf(obj) <= TriggeredCounterTotal(State.GetCard(counted), _triggeredSubjectVersion))) return false;
         if (filter.MaxManaValueX && (_announcedX < 0 || ManaValueOf(obj) > _announcedX)) return false;
         if (filter.TargetsYou && !(obj.Zone == Zone.Stack && State.Stack.OfType<SpellOnStack>().FirstOrDefault(s => s.Card == obj.Id) is { } spell
                                    && spell.Targets.Any(t => t.Target.Player == sourceController))) return false;

@@ -249,10 +249,22 @@ public enum QuantityKind
     OpponentsDealtCombatDamage,
     /// <summary>Counters this effect removed ("for each lore counter removed this way").</summary>
     CountersRemovedThisWay,
+    /// <summary>"For each spell and ability countered this way".</summary>
+    SpellsAndAbilitiesCounteredThisWay,
     /// <summary>Cards this effect found (put into a hand, revealed …) that match the filter ("if you put a Town card into your hand this way").</summary>
     FoundMatching,
     /// <summary>The total mana value of the cards this effect discarded ("loses life equal to the discarded card's mana value").</summary>
     DiscardedManaValue,
+    /// <summary>"The greatest power among [filter]" (0 when nothing matches).</summary>
+    GreatestPowerAmong,
+    /// <summary>Converge: the number of colors of mana spent to cast the source.</summary>
+    ColorsSpentToCast,
+    /// <summary>"If that player has more cards in hand than you, … equal to the difference" (the chosen player; 0 otherwise).</summary>
+    ChosenPlayerExtraCardsInHand,
+    /// <summary>"The difference between its power and toughness" (the creature the trigger is about).</summary>
+    TriggeredPowerToughnessDifference,
+    /// <summary>"The difference between the chosen creatures' powers" (two chosen this way).</summary>
+    ChosenPowerDifference,
 }
 
 /// <summary>

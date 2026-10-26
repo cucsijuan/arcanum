@@ -164,6 +164,9 @@ public sealed class Card
     /// <summary>As a spell: the mana spent to cast it.</summary>
     public int ManaSpent { get; set; }
 
+    /// <summary>The mana spent to cast it, by type: as a spell, and kept as it becomes a permanent ("if {W}{W} was spent to cast it").</summary>
+    public IReadOnlyList<Mana.ManaType> SpentManaTypes { get; set; } = Array.Empty<Mana.ManaType>();
+
     /// <summary>The spell it was (version) and its mana value with X, as it last existed on the stack.</summary>
     public (int Version, int ManaValue)? LastOnStack { get; set; }
 
@@ -209,6 +212,9 @@ public sealed class Card
     /// </summary>
     public bool TurnedFaceDown { get; set; }
 
+    /// <summary>Put onto the battlefield face down by a manifest (rule 701.40a): a creature card can be turned face up for its mana cost.</summary>
+    public bool Manifested { get; set; }
+
     /// <summary>The characteristics of a face-down spell or permanent (rule 708.2a).</summary>
     public static readonly CardDefinition FaceDownCreature = new() { Name = "Face-down creature", Types = CardType.Creature, Power = 2, Toughness = 2 };
 
@@ -240,6 +246,8 @@ public sealed class Card
 
     /// <summary>Ward costs granted by other permanents (recomputed with continuous effects).</summary>
     internal List<Mana.ManaCost> GrantedWards { get; } = new();
+    /// <summary>Wards that cost life, granted by static abilities.</summary>
+    internal List<int> GrantedWardLives { get; } = new();
 
     /// <summary>Gains haste until end of turn as it enters (mana rider).</summary>
     public bool HasteOnEnter { get; set; }
@@ -371,6 +379,9 @@ public sealed class Card
     /// <summary>"Creatures you control are every creature type", also as a spell and a card outside the battlefield (layer 4).</summary>
     internal bool EveryCreatureType { get; set; }
 
+    /// <summary>An effect gave it all creature types ("gains all creature types until end of turn", layer 4).</summary>
+    internal bool EffectEveryCreatureType { get; set; }
+
     /// <summary>The source whose "put onto the battlefield" effect put this permanent there ("if it wasn't put onto the battlefield with this ability").</summary>
     public CardId? PutOntoBattlefieldBy { get; set; }
 
@@ -456,7 +467,12 @@ public sealed class Card
     }
 
     /// <summary>Colors now (W, U, B, R, G).</summary>
-    public IReadOnlyList<string> Colors => ColorsOverride ?? Definition.ColorList;
+    public IReadOnlyList<string> Colors => AddedColors is { Count: > 0 } added
+        ? (ColorsOverride ?? Definition.ColorList).Concat(added).Distinct().ToList()
+        : ColorsOverride ?? Definition.ColorList;
+
+    /// <summary>Colors every object has in addition to its own, wherever it is ("all cards, spells and permanents are the chosen color too").</summary>
+    internal IReadOnlyList<string>? AddedColors { get; set; }
     /// <summary>Base power and toughness (rule 208.3: after characteristic-setting effects, before modifications and counters).</summary>
     public int BasePower => BasePowerOverride ?? Definition.Power ?? 0;
     public int BaseToughness => BaseToughnessOverride ?? Definition.Toughness ?? 0;
@@ -473,7 +489,7 @@ public sealed class Card
     /// <summary>Has this subtype (changelings have every creature type).</summary>
     public bool HasSubtype(string subtype) =>
         ((SubtypesOverride ?? Definition.Subtypes).Contains(subtype, StringComparer.OrdinalIgnoreCase) || GrantedSubtypes.Contains(subtype)
-         || ((Has(Keyword.Changeling) || (EveryCreatureType && IsCreature)) && !NonCreatureSubtypes.Contains(subtype)))
+         || ((Has(Keyword.Changeling) || ((EveryCreatureType || EffectEveryCreatureType) && IsCreature)) && !NonCreatureSubtypes.Contains(subtype)))
         && (TypesOverride is null || SubtypeFitsTypes(subtype));
 
     /// <summary>
@@ -658,6 +674,12 @@ public sealed class Card
     /// <summary>Cast with its kicker cost paid (kept as the spell becomes a permanent, rule 702.33).</summary>
     public bool Kicked { get; set; }
 
+    /// <summary>Cast with its optional additional cost paid ("if this spell's additional cost was paid").</summary>
+    public bool AdditionalCostPaid { get; set; }
+
+    /// <summary>As a spell: cast for its foretell cost ("if this spell was foretold").</summary>
+    public bool CastForetold { get; set; }
+
     /// <summary>Suspended (rule 702.62): in exile with time counters and suspend.</summary>
     public bool Suspended { get; set; }
 
@@ -675,6 +697,9 @@ public sealed class Card
 
     /// <summary>Its blitz cost was paid (rule 702.152a): as a permanent, until it leaves the battlefield.</summary>
     public bool Blitzed { get; set; }
+
+    /// <summary>Its evoke cost was paid (rule 702.74a): as a permanent, until it leaves the battlefield.</summary>
+    public bool Evoked { get; set; }
 
     /// <summary>As a spell: the creatures tapped to pay for it with convoke (rule 702.51c), as the objects they were.</summary>
     public List<(CardId Card, int Version)> Convokers { get; set; } = new();
@@ -727,6 +752,7 @@ public sealed class Card
                 CopiableBackFaceUp = !IsCopy && IsDoubleFaced && Transformed,
                 Renowned = Renowned,
                 Blitzed = Blitzed,
+                Evoked = Evoked,
                 OffspringPaid = OffspringPaid,
                 HasTextAbilities = HasTextAbilities,
             };
@@ -769,6 +795,8 @@ public sealed class Card
         BasePowerOverride = null;
         BaseToughnessOverride = null;
         Kicked = false;
+        AdditionalCostPaid = false;
+        CastForetold = false;
         TimesKicked = 0;
         SquadPaid = 0;
         Renowned = false;
@@ -807,6 +835,7 @@ public sealed class Card
         CastFromExile = false;
         ForetoldTurn = -1;
         ManaSpent = 0;
+        SpentManaTypes = Array.Empty<Mana.ManaType>();
         FormerHost = null;
         PaidWithTreasure = false;
         GiftPromised = false;
@@ -815,9 +844,11 @@ public sealed class Card
         ReadAheadChapter = 0;
         FaceDown = false;
         TurnedFaceDown = false;
+        Manifested = false;
         KnownTo.Clear();
         Uncounterable = false;
         GrantedWards.Clear();
+        GrantedWardLives.Clear();
         Version++;
         Controller = Owner;
         BaseController = Owner;
@@ -847,6 +878,9 @@ public sealed record LastKnown(int Power, int Toughness, Core.PlayerId Controlle
 
     /// <summary>Its blitz cost had been paid (rule 702.152a).</summary>
     public bool Blitzed { get; init; }
+
+    /// <summary>Its evoke cost had been paid (rule 702.74a).</summary>
+    public bool Evoked { get; init; }
 
     /// <summary>Its offspring cost had been paid (rule 702.175a).</summary>
     public bool OffspringPaid { get; init; }

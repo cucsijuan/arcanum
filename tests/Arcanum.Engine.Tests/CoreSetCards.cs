@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Generated from the Magic 2010 card scripts of the classic content module: the same rules text and scripts, so these tests
+// Generated from the card scripts of one core set of the classic content module: the same rules text and scripts, so these tests
 // check the scripts as players get them.
 using Arcanum.Data.CardData;
 using Arcanum.Data.Scripts;
@@ -7,7 +7,7 @@ using Arcanum.Engine.Cards;
 
 namespace Arcanum.Engine.Tests;
 
-public static class Magic2010Cards
+public static class CoreSetCards
 {
     private static CardDefinition Make(CardRecord record, string script)
     {

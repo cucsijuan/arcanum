@@ -27,6 +27,8 @@ public enum TargetKind
     Ability,
     /// <summary>"Target spell or nonland permanent": a spell on the stack or a permanent.</summary>
     SpellOrPermanent,
+    /// <summary>A spell or a creature permanent ("target spell or creature"; a filter applies to both).</summary>
+    SpellOrCreature,
     /// <summary>"Target spell, nonland permanent, or card in a graveyard" (the filter applies to the spells and permanents; any graveyard card).</summary>
     SpellPermanentOrGraveyardCard,
     /// <summary>A card in a graveyard ("target creature card from your graveyard": controller filter = owner).</summary>
@@ -47,6 +49,10 @@ public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = C
 {
     /// <summary>"Any number of target ..." (only as the last requirement): the player picks as many different ones as they like (at least one unless optional).</summary>
     public bool AnyNumber { get; init; }
+
+    /// <summary>The rule between this mode's targets (a mode's own "targetRule"), from <see cref="ModeStart"/> on.</summary>
+    public TargetRule ModeRule { get; init; }
+    public int ModeStart { get; init; }
 
     /// <summary>The chosen object must be attached to the target chosen for requirement N ("Equipment attached to that creature").</summary>
     public int? AttachedToTarget { get; init; }
@@ -218,6 +224,12 @@ public enum SubjectKind
     Milled,
     /// <summary>Cards this effect put onto the battlefield ("they gain haste", "return those creatures").</summary>
     EnteredThisWay,
+    /// <summary>The controller of the object the trigger is about ("its controller loses 1 life"), as it last was if it left.</summary>
+    TriggeredController,
+    /// <summary>The owner of the source ("its owner draws that many cards").</summary>
+    SourceOwner,
+    /// <summary>Each player other than the source's owner ("each other player", after "its owner").</summary>
+    PlayersOtherThanSourceOwner,
 }
 
 public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filter = null)

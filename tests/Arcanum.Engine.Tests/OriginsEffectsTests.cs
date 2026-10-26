@@ -15,7 +15,7 @@ using static Arcanum.Engine.Tests.Scenario;
 namespace Arcanum.Engine.Tests;
 
 /// <summary>
-/// Magic Origins cards whose rules needed new effects: sweeping hands, graveyards and permanents into libraries, casting revealed
+/// Core set cards whose rules needed new effects: sweeping hands, graveyards and permanents into libraries, casting revealed
 /// cards while resolving, naming a card, per-object base P/T, token copies of creatures that left, storage counters and more.
 /// The scripts are those of the content module.
 /// </summary>

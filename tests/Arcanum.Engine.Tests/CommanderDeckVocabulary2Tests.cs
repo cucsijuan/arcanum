@@ -204,12 +204,12 @@ public class CommanderDeckVocabulary2Tests
     {
         var s = Casting();
         s.Lands(P0, 1);
-        var giant = s.Add(P1, Creature("Stone Giant", 5, 3));
+        var giant = s.Add(P1, Creature("Quarry Hulk", 5, 3));
         s.InHand(P0, Scripted(new CardDefinition { Name = "Split Trick", ManaCost = ManaCost.Parse("{R}"), Types = CardType.Instant },
             """{ "spell": { "targets": ["creature"], "effects": [ { "destroy": "target" }, { "copiesOfDestroyedHalved": 2 } ], "text": "Destroy target creature. …" } }"""));
         await s.RunUntilTurn();
         Assert.Equal(Zone.Graveyard, s.Card(giant).Zone);
-        var copies = s.Game.State.PermanentsControlledBy(P1).Where(c => c.Name == "Stone Giant").ToList();
+        var copies = s.Game.State.PermanentsControlledBy(P1).Where(c => c.Name == "Quarry Hulk").ToList();
         Assert.Equal(2, copies.Count);
         Assert.All(copies, c => { Assert.Equal(3, c.Power); Assert.Equal(2, c.Toughness); });
     }

@@ -35,8 +35,8 @@ public static class ManaPayment
     public static IEnumerable<Card> AvailableSources(GameState state, PlayerId player, CardId? exclude = null, OptionUsable? usable = null) =>
         state.PermanentsControlledBy(player)
             .Where(c => !c.Tapped && c.Id != exclude && !c.AbilitiesCantBeActivated && UsableOptions(c, Affordable(state, usable)).Count > 0)
-            // Creatures can't use {T} abilities while summoning sick (rule 302.6).
-            .Where(c => !c.IsSummoningSick);
+            // Creatures can't use {T} abilities while summoning sick (rule 302.6), unless they may as though they had haste.
+            .Where(c => !c.IsSummoningSick || state.PermanentsControlledBy(player).Any(p => p.HasTextAbilities && p.Definition.YourCreaturesActivateAsThoughHaste));
 
     /// <summary>
     /// Spends floating mana on <paramref name="cost"/>: specific pips first, then generic. Restricted mana is used only
@@ -52,7 +52,9 @@ public static class ManaPayment
         var remainingPips = new List<ManaType>();
         bool Take(ManaType type)
         {
-            int i = specials.FindIndex(u => u.Type == type);
+            // Mana that can't pay generic costs goes to the symbols first.
+            int i = specials.FindIndex(u => u.Type == type && u.CantPayGeneric);
+            if (i < 0) i = specials.FindIndex(u => u.Type == type);
             if (i >= 0) { specialUsed?.Add(specials[i]); specials.RemoveAt(i); fromPool.Add(type); return true; }
             if (plain[type] > 0) { plain.Remove(type); plainUsed?.Add(type); fromPool.Add(type); return true; }
             return false;
@@ -60,7 +62,7 @@ public static class ManaPayment
         foreach (var pip in cost.Pips)
             if (!Take(pip)) remainingPips.Add(pip);
         int generic = cost.Generic;
-        while (generic > 0 && specials.Count > 0) { Take(specials[0].Type); generic--; }
+        while (generic > 0 && specials.FirstOrDefault(u => !u.CantPayGeneric) is { } unrestricted) { Take(unrestricted.Type); generic--; }
         foreach (var type in Enum.GetValues<ManaType>())
             while (generic > 0 && plain[type] > 0) { Take(type); generic--; }
         return (fromPool, new ManaCost(generic, remainingPips));
@@ -70,10 +72,18 @@ public static class ManaPayment
     /// What is still owed after paying <paramref name="cost"/> with <paramref name="paid"/> mana, and how many of
     /// those mana were surplus (could not be applied to anything).
     /// </summary>
-    public static (ManaCost Remaining, int Excess) Apply(ManaCost cost, IEnumerable<ManaType> paid)
+    public static (ManaCost Remaining, int Excess) Apply(ManaCost cost, IEnumerable<ManaType> paid, IEnumerable<ManaType>? symbolsOnly = null)
     {
         var pips = cost.Pips.ToList();
         var leftovers = new List<ManaType>();
+        int excess = 0;
+        // Mana that can't pay generic costs: only the symbols of its type, or nothing.
+        foreach (var type in symbolsOnly ?? Enumerable.Empty<ManaType>())
+        {
+            int index = pips.IndexOf(type);
+            if (index >= 0) pips.RemoveAt(index);
+            else excess++;
+        }
         foreach (var type in paid)
         {
             int index = pips.IndexOf(type);
@@ -81,7 +91,6 @@ public static class ManaPayment
             else leftovers.Add(type);
         }
         int generic = cost.Generic;
-        int excess = 0;
         foreach (var _ in leftovers)
         {
             if (generic > 0) generic--;
@@ -98,7 +107,7 @@ public static class ManaPayment
         var all = AvailableSources(state, player, exclude, usable).ToList();
         // Sources with an ability that adds several mana are decided first (skip, or each ability and type); the
         // others (one mana per activation, from any of their usable abilities) pay what is left with the pip solver.
-        var multi = all.Where(c => UsableOptions(c, usable).Any(i => c.ManaOptions[i].Produces > 1)).ToList();
+        var multi = all.Where(c => UsableOptions(c, usable).Any(i => c.ManaOptions[i].Produces > 1 || c.ManaOptions[i].CantPayGeneric)).ToList();
         var single = all.Except(multi)
             .OrderBy(c => c.Definition.SacrificeForMana || c.ManaOptions.Any(o => o.ExileSelf)) // keep one-shot sources (Treasure) for last
             .ThenBy(c => SingleTypes(c, usable).Count)
@@ -125,7 +134,7 @@ public static class ManaPayment
         foreach (var option in UsableOptions(source, usable))
             foreach (var tap in TapsOf(source, option))
             {
-                var (left, _) = Apply(remaining, Produced(source, tap));
+                var (left, _) = source.ManaOptions[option].CantPayGeneric ? Apply(remaining, Array.Empty<ManaType>(), Produced(source, tap)) : Apply(remaining, Produced(source, tap));
                 chosen.Add(tap);
                 var result = SolveMulti(multi, index + 1, left, chosen, single, usable);
                 chosen.RemoveAt(chosen.Count - 1);
@@ -166,6 +175,14 @@ public static class ManaPayment
     /// <summary>Every mana a set of taps adds (abilities that add several mana count each one).</summary>
     public static IEnumerable<ManaType> Produced(GameState state, IEnumerable<ManaTap> taps) =>
         taps.SelectMany(t => Produced(state.GetCard(t.Source), t));
+
+    /// <summary>What is still owed after these taps, the mana of abilities that can't pay generic costs kept to the symbols.</summary>
+    public static (ManaCost Remaining, int Excess) ApplyTaps(GameState state, ManaCost cost, IEnumerable<ManaTap> taps)
+    {
+        bool Restricted(ManaTap t) => state.GetCard(t.Source) is var c && t.Option < c.ManaOptions.Count && c.ManaOptions[t.Option].CantPayGeneric;
+        var list = taps.ToList();
+        return Apply(cost, Produced(state, list.Where(t => !Restricted(t))), Produced(state, list.Where(Restricted)));
+    }
 
     /// <summary>The mana one activation adds: one of each type for "one mana of each color" abilities.</summary>
     public static IEnumerable<ManaType> Produced(Card source, ManaTap tap) =>

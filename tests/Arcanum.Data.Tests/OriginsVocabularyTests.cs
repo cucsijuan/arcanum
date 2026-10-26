@@ -5,7 +5,7 @@ using Arcanum.Engine.Cards;
 
 namespace Arcanum.Data.Tests;
 
-/// <summary>Parsing of the vocabulary added for Magic Origins: sweeps into libraries, casting revealed cards, naming, storage counters.</summary>
+/// <summary>Parsing of the vocabulary added for one set: sweeps into libraries, casting revealed cards, naming, storage counters.</summary>
 public class OriginsVocabularyTests
 {
     [Fact]

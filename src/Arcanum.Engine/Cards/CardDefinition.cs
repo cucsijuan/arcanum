@@ -146,6 +146,8 @@ public enum Replacements : long
     YourLandsEnterUntapped = 1L << 61,
     /// <summary>"If a card or token would be put into your graveyard from anywhere, exile it instead."</summary>
     ExileInsteadOfYourGraveyard = 1L << 62,
+    /// <summary>"If a permanent entering causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time."</summary>
+    ExtraTriggersFromPermanentsEntering = 1L << 63,
 }
 
 /// <summary>
@@ -378,6 +380,31 @@ public sealed partial record CardDefinition
     /// </summary>
     public ManaCost? Blitz { get; init; }
 
+    /// <summary>
+    /// Evoke (702.74a): it may be cast for this cost (and <see cref="EvokeExtra"/>) rather than its mana cost; "when this enters,
+    /// if its evoke cost was paid, its controller sacrifices it" (the trigger the card factory adds).
+    /// </summary>
+    public ManaCost? Evoke { get; init; }
+
+    /// <summary>Its companion ability's deck condition ("Companion — …", rule 702.139a).</summary>
+    public CompanionCondition? Companion { get; init; }
+
+    /// <summary>The creature types a "choose a creature type" as it enters is limited to ("choose Elemental, Elf, Faerie, …"); null: any.</summary>
+    public IReadOnlyList<string>? CreatureTypeChoices { get; init; }
+
+    /// <summary>"Creature spells you cast have convoke": the spells this permanent gives convoke.</summary>
+    public Abilities.ObjectFilter? SpellsHaveConvoke { get; init; }
+
+    /// <summary>"Each noncreature spell you cast has conspire": the spells this permanent gives conspire.</summary>
+    public Abilities.ObjectFilter? SpellsHaveConspire { get; init; }
+
+    /// <summary>"[Filter] permanent spells you cast from your hand gain evoke [cost] as you cast them" (with <see cref="GrantedEvokeCost"/>).</summary>
+    public Abilities.ObjectFilter? SpellsFromHandGainEvoke { get; init; }
+    public ManaCost? GrantedEvokeCost { get; init; }
+
+    /// <summary>The non-mana part of an evoke cost ("Evoke—Exile a green card from your hand").</summary>
+    public Abilities.ExtraCost? EvokeExtra { get; init; }
+
     /// <summary>The non-mana part of the blitz cost ("Blitz—{2}{R}{R}, Discard a card").</summary>
     public Abilities.ExtraCost? BlitzExtra { get; init; }
 
@@ -519,6 +546,12 @@ public sealed partial record CardDefinition
     /// <summary>Costs paid in addition to the mana cost ("As an additional cost to cast this spell, discard a card").</summary>
     public ExtraCost? AdditionalCost { get; init; }
 
+    /// <summary>"As an additional cost to cast this spell, you may [cost]": asked as it is cast (rule 601.2b); see <see cref="State.Card.AdditionalCostPaid"/>.</summary>
+    public ExtraCost? OptionalAdditionalCost { get; init; }
+
+    /// <summary>"X can't be greater than [quantity]": the most X can be announced as when casting it.</summary>
+    public Abilities.Quantity? MaxX { get; init; }
+
     /// <summary>"This spell costs {N} less to cast if [condition]" — or for each matching object, see <see cref="CostReduction"/>.</summary>
     public CostReduction? SelfCostReduction { get; init; }
 
@@ -618,6 +651,24 @@ public sealed partial record CardDefinition
 
     /// <summary>"Whenever you tap a nonland permanent for mana, add one mana of any type that permanent produced."</summary>
     public bool ExtraManaFromNonlandPermanents { get; init; }
+
+    /// <summary>
+    /// "Whenever enchanted land is tapped for mana, its controller adds an additional one mana of any color" (or of the chosen color),
+    /// "whenever a player taps a basic land for mana, that player adds one mana of any type that land produced": a triggered mana ability.
+    /// </summary>
+    public LandManaBonus? LandManaBonus { get; init; }
+
+    /// <summary>"Spells you control can't be countered."</summary>
+    public bool YourSpellsCantBeCountered { get; init; }
+
+    /// <summary>"Double all damage that sources you control of the chosen type would deal."</summary>
+    public bool DoublesDamageOfChosenType { get; init; }
+
+    /// <summary>"All damage is dealt as though its source had wither."</summary>
+    public bool AllDamageWither { get; init; }
+
+    /// <summary>"Players can't draw cards."</summary>
+    public bool PlayersCantDraw { get; init; }
 
     /// <summary>"If a creature attacking causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time."</summary>
     public bool ExtraTriggersFromAttacking { get; init; }
@@ -789,6 +840,26 @@ public sealed partial record CardDefinition
 
     /// <summary>"If one or more tokens would be created under your control, those tokens plus that many 1/1 green Squirrel creature tokens are created instead."</summary>
     public bool TokensPlusThatManySquirrels { get; init; }
+
+    /// <summary>"As long as this Equipment is attached to a creature, the first time you would create one or more tokens each turn, you may instead create that many tokens that are copies of equipped creature."</summary>
+    public bool FirstTokensCopyEquipped { get; init; }
+
+    /// <summary>"Prevent all combat damage that would be dealt to attacking creatures you control."</summary>
+    public bool PreventCombatDamageToYourAttackers { get; init; }
+
+    /// <summary>"You may activate abilities of creatures you control as though those creatures had haste."</summary>
+    public bool YourCreaturesActivateAsThoughHaste { get; init; }
+
+    /// <summary>"All cards that aren't on the battlefield, spells, and permanents are the chosen color in addition to their other colors."</summary>
+    public bool EverythingIsChosenColor { get; init; }
+
+    /// <summary>
+    /// "[During your turn,] you may cast [filter] spells from among cards you own exiled with this [by paying an additional cost]":
+    /// the cards it exiled (linked, rule 607) that its controller owns.
+    /// </summary>
+    public Abilities.ObjectFilter? CastExiledWithThis { get; init; }
+    public bool CastExiledWithThisYourTurn { get; init; }
+    public Abilities.ExtraCost? CastExiledWithThisExtra { get; init; }
 
     /// <summary>"Artifacts and lands enter tapped" (every player's, while this is on the battlefield).</summary>
     public bool ArtifactsAndLandsEnterTapped { get; init; }

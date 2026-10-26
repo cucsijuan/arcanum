@@ -220,6 +220,8 @@ public sealed partial class Game
         _ct = ct;
         var startingPlayer = Config.StartingPlayer ?? new PlayerId(Rng.Next(State.Players.Count));
         Emit(new GameStarted(startingPlayer, Config.Seed));
+        State.ActivePlayer = startingPlayer;
+        await RevealCompanionsAsync();
 
         foreach (var player in State.Players) Shuffle(player);
         RecomputeContinuousEffects(); // permanents set up before the game may have static abilities

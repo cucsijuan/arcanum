@@ -17,7 +17,7 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>What a spell is cast for (rule 118.9): its mana cost or one alternative cost.</summary>
-    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown, Escape }
+    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown, Escape, Evoke }
 
     /// <summary>
     /// One way to pay for casting a card: the cost it's cast for (its mana cost, or the flashback or miracle cost it's being
@@ -33,6 +33,8 @@ public sealed partial class Game
         /// <summary>Paying extra to cast it as though it had flash.</summary>
         public bool FlashExtra { get; init; }
         public bool Kicked { get; init; }
+        /// <summary>The optional additional cost (<see cref="CardDefinition.OptionalAdditionalCost"/>) is paid.</summary>
+        public bool AdditionalCostPaid { get; init; }
         public int KickCount { get; init; }
         public int ReplicateCount { get; init; }
         public int SquadCount { get; init; }
@@ -51,7 +53,8 @@ public sealed partial class Game
         /// <summary>Creatures tapped for convoke (rule 702.51): kept out of the mana payment.</summary>
         public IReadOnlyCollection<CardId> Convoked { get; init; } = Array.Empty<CardId>();
         public IReadOnlyList<Card> Spliced { get; init; } = Array.Empty<Card>();
-        public bool Conspire { get; init; }
+        /// <summary>Conspire instances paid for (rule 702.78b: each is paid and copies separately).</summary>
+        public int ConspireCount { get; init; }
         public int X { get; init; }
     }
 
@@ -80,6 +83,11 @@ public sealed partial class Game
         }
         var ways = new List<CastingWay> { new(CastingWayKind.ManaCost, card.Definition.ManaCost) };
         if (card.Zone == Zone.Hand && card.Definition.Dash is { } dash) ways.Add(new(CastingWayKind.Dash, dash)); // 702.109a
+        if (card.Definition.Evoke is { } evoke) ways.Add(new(CastingWayKind.Evoke, evoke)); // an alternative cost (702.74a)
+        // "Gain evoke {N} as you cast them": one more evoke cost per permanent granting it.
+        if (card.Zone == Zone.Hand && card.Types.IsPermanent())
+            foreach (var granted in GrantedEvokeCosts(card, caster).Where(g => !ways.Any(w => w.Kind == CastingWayKind.Evoke && w.Mana.Equals(g))))
+                ways.Add(new(CastingWayKind.Evoke, granted));
         if (card.Definition.Blitz is { } blitz && (card.Zone == Zone.Hand || BlitzFromGraveyard(card)))
         {
             // 702.152a; "you may cast this card from your graveyard using its blitz ability": only that way, unless something else allows it.
@@ -167,12 +175,18 @@ public sealed partial class Game
     /// <summary>The non-mana costs the announcements commit to (601.2b): additional costs and those of casting from the graveyard.</summary>
     private List<ExtraCost> NonManaCastingCosts(Card card, CastingChoices c)
     {
-        var costs = new List<ExtraCost?> { card.Definition.AdditionalCost, c.Option?.Extra, c.Kicked ? card.Definition.KickerExtra : null };
+        var costs = new List<ExtraCost?> { card.Definition.AdditionalCost, c.Option?.Extra, c.Kicked ? card.Definition.KickerExtra : null,
+            c.AdditionalCostPaid ? card.Definition.OptionalAdditionalCost : null };
         if (card.Zone == Zone.Graveyard) costs.Add(GraveyardCost(card));
+        // Cast with "… by removing three counters from among creatures you control in addition to paying their other costs" (no other permission).
+        if (card.Zone == Zone.Exile && StaticExiledWithPermission(card, card.Owner) is { } holder && ExiledWithPlayRightFor(card, card.Owner) is null
+            && !State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.Player == card.Owner))
+            costs.Add(holder.Definition.CastExiledWithThisExtra);
         if (c.Way.Kind == CastingWayKind.Alternative) costs.Add(card.Definition.AlternativeCost?.Extra);
         if (c.Way.Kind == CastingWayKind.WithoutPaying && _castFreeExtra.TryGetValue(card.Id, out var freeExtra)) costs.Add(freeExtra);
         if (c.SacrificeAnyCount > 0 && card.Definition.CastSacrificeAny is { } sacrificeAny) costs.Add(new ExtraCost(Sacrifice: sacrificeAny, SacrificeCount: c.SacrificeAnyCount));
         if (c.Way.Kind == CastingWayKind.Blitz) costs.Add(card.Definition.BlitzExtra);
+        if (c.Way.Kind == CastingWayKind.Evoke && card.Definition.Evoke is { } ownEvoke && ownEvoke.Equals(c.Way.Mana)) costs.Add(card.Definition.EvokeExtra); // not a granted evoke
         if (c.Way.Kind == CastingWayKind.Escape) costs.Add(card.Definition.EscapeExtra);
         // A non-mana escalate cost, once for each mode beyond the first (702.120a).
         if (card.Definition.EscalateExtra is { } escalate && c.EscalatedModes > 0)
@@ -186,7 +200,8 @@ public sealed partial class Game
             costs.Add(card.Definition.FlashbackExtra);
             if (card.Definition.FlashbackExilesX && c.X > 0) costs.Add(new ExtraCost { ExileFromGraveyard = c.X });
         }
-        return costs.OfType<ExtraCost>().ToList();
+        // "Blight X": X is announced by now (601.2b), so the cost is that many counters.
+        return costs.OfType<ExtraCost>().Select(e => e.BlightX ? e with { BlightX = false, Blight = c.X } : e).ToList();
     }
 
     /// <summary>
@@ -202,9 +217,9 @@ public sealed partial class Game
         if (life > 0 && (life > player.Life || player.CantLoseLifeNow(State.TurnNumber))) return false; // rule 119.4, 119.8
         int graveyard = player.Graveyard.Count(id => id != card.Id) - extras.Sum(e => e.ExileFromGraveyard);
         if (graveyard < 0) return false;
-        if (c.Conspire && ConspireCandidates(card, caster).Count < 2) return false;
+        if (c.ConspireCount > 0 && ConspireCandidates(card, caster).Count < 2 * c.ConspireCount) return false;
         if (card.Definition.Delve) total = total.MinusGeneric(graveyard); // 702.66a
-        if (card.Definition.Convoke && total.ManaValue > 0) return CanPayWithConvoke(card, caster, c, total);
+        if (HasConvoke(card, caster) && total.ManaValue > 0) return CanPayWithConvoke(card, caster, c, total);
         if (HasImprovise(card, caster) && total.Generic > 0)
         {
             // 702.126a: each artifact tapped this way pays for {1}; try the artifacts that don't make mana first.
@@ -329,6 +344,16 @@ public sealed partial class Game
         card.Definition.CantCastDuringFirstTurns > 0 && State.ActivePlayer == caster
         && State.GetPlayer(caster).TurnsTaken <= card.Definition.CantCastDuringFirstTurns;
 
+    /// <summary>Convoke (702.51): printed, or given by a permanent the caster controls ("creature spells you cast have convoke").</summary>
+    private bool HasConvoke(Card spell, PlayerId caster) =>
+        spell.Definition.Convoke || State.PermanentsControlledBy(caster).Any(p => p.HasTextAbilities && p.Definition.SpellsHaveConvoke is { } f
+            && Matches(f with { Controller = ControllerFilter.Any }, spell, caster, p, caster));
+
+    /// <summary>Conspire instances (702.78b): printed, plus one from each permanent the caster controls that gives the spell conspire.</summary>
+    private int ConspireInstances(Card spell, PlayerId caster) =>
+        (spell.Definition.Conspire ? 1 : 0) + State.PermanentsControlledBy(caster).Count(p => p.HasTextAbilities && p.Definition.SpellsHaveConspire is { } f
+            && Matches(f with { Controller = ControllerFilter.Any }, spell, caster, p, caster));
+
     /// <summary>Untapped creatures the caster controls that share a color with the spell (conspire, 702.78a).</summary>
     private List<Card> ConspireCandidates(Card card, PlayerId caster) =>
         State.PermanentsControlledBy(caster).Where(c => c.IsCreature && !c.Tapped && c.Colors.Any(card.Colors.Contains)).ToList();
@@ -348,11 +373,11 @@ public sealed partial class Game
             var selfSacrificing = candidates.Where(s => s.Definition.SacrificeForMana).ToList();
             if (candidates.Count - selfSacrificing.Count < extra.SacrificeCount) reserved.UnionWith(selfSacrificing.Select(s => s.Id));
         }
-        if (c.Conspire)
+        if (c.ConspireCount > 0)
         {
             var candidates = ConspireCandidates(card, caster);
             var manaCreatures = candidates.Where(s => s.ManaOptions.Count > 0).ToList();
-            if (candidates.Count - manaCreatures.Count < 2) reserved.UnionWith(manaCreatures.Select(s => s.Id));
+            if (candidates.Count - manaCreatures.Count < 2 * c.ConspireCount) reserved.UnionWith(manaCreatures.Select(s => s.Id));
         }
         reserved.UnionWith(c.Improvised);
         reserved.UnionWith(c.Convoked);
@@ -369,6 +394,7 @@ public sealed partial class Game
             {
                 CastingWayKind.Dash => $"Cast {card.Name} for its dash cost {ways[1].Mana}?",
                 CastingWayKind.Blitz => $"Cast {card.Name} for its blitz cost {BlitzCostText(card)}?",
+                CastingWayKind.Evoke => $"Cast {card.Name} for its evoke cost {EvokeCostText(card, ways[1].Mana)} (it's sacrificed when it enters)?",
                 CastingWayKind.Overload => $"Cast {card.Name} for its overload cost {ways[1].Mana}?",
                 CastingWayKind.Impending => $"Cast {card.Name} for its impending cost {ways[1].Mana}?",
                 CastingWayKind.Escape => $"Cast {card.Name} for its escape cost {EscapeCostText(card)}?",
@@ -383,6 +409,7 @@ public sealed partial class Game
             CastingWayKind.ManaCost => $"Pay its mana cost {w.Mana}",
             CastingWayKind.Dash => $"Dash {w.Mana}",
             CastingWayKind.Blitz => $"Blitz {BlitzCostText(card)}",
+            CastingWayKind.Evoke => $"Evoke {EvokeCostText(card, w.Mana)}",
             CastingWayKind.Foretold => $"Foretell cost {w.Mana}",
             CastingWayKind.Overload => $"Overload {w.Mana}",
             CastingWayKind.Impending => $"Impending {w.Mana}",

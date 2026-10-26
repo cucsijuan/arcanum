@@ -13,7 +13,7 @@ using static Arcanum.Engine.Tests.Scenario;
 namespace Arcanum.Engine.Tests;
 
 /// <summary>
-/// Magic Origins triggers and turn tracking: becoming renowned, becoming blocked, becoming the target of your spells and abilities,
+/// Core set triggers and turn tracking: becoming renowned, becoming blocked, becoming the target of your spells and abilities,
 /// spells cast last turn, damage an object dealt this turn, players dealt damage this way and "one or more … to a player".
 /// The card scripts are the module's.
 /// </summary>

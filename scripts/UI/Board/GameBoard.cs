@@ -231,7 +231,7 @@ public partial class GameBoard : Control
             var (deck, _) = list.Resolve(cards);
             var commanders = list.ResolveCommanders(cards);
             bool bot = vsBot && i > 0;
-            seats.Add(new GameSession.Seat(bot ? $"Computer {i}" : $"Player {i + 1}", deck, bot, commanders));
+            seats.Add(new GameSession.Seat(bot ? $"Computer {i}" : $"Player {i + 1}", deck, bot, commanders, list.ResolveCompanions(cards)));
         }
         _newSession = MatchFactory(seats, 40, commander: true, setup: null);
         return true;
@@ -1289,6 +1289,7 @@ public partial class GameBoard : Control
                         CastSpell { Half: { } half } when card?.SplitHalves is { } halves && half < halves.Count => $"Cast {halves[half]}",
                         CastSpell => $"Cast {card?.Name}",
                         ActivateManaAbility m => $"Add {{{m.Type.ToSymbol()}}}",
+                        TurnFaceUp { ForManaCost: true } => $"Turn face up for {card?.FaceDownCard?.ManaCost} ({card?.FaceDownCard?.Name})",
                         TurnFaceUp => $"Turn face up ({card?.FaceDownCard?.Name})",
                         ActivateAbility a when card is not null && a.Index < card.AbilityTexts.Count => Shorten(card.AbilityTexts[a.Index]),
                         _ => "Activate",
@@ -1527,6 +1528,8 @@ public partial class GameBoard : Control
                         PlayLand l when view.FindCard(l.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (l.Card, $"Play {x.Name} (exile)"),
                         ActivateAbility a when view.FindCard(a.Source) is { Zone: Arcanum.Engine.State.Zone.Graveyard } g
                             => (a.Source, $"{g.Name}: {Shorten(a.Index < g.AbilityTexts.Count ? g.AbilityTexts[a.Index] : "activate")}"),
+                        // The companion waits outside the game, not on the board.
+                        PutCompanionIntoHand pc => (pc.Card, $"Companion: {view.FindCard(pc.Card)?.Name ?? "your companion"} into your hand ({{3}})"),
                         _ => (default(CardId?), ""),
                     };
                     if (id is not null) AddChoiceButton(label, () => Choose(p, action));
@@ -1746,9 +1749,14 @@ public partial class GameBoard : Control
     }
 
     /// <summary>What the staged taps still leave unpaid.</summary>
-    private ManaCost RemainingCost(ManaPaymentDecision pay) =>
-        ManaPayment.Apply(pay.Request.RemainingAfterPool, _staged.SelectMany(t => t.Combination
-            ?? Enumerable.Repeat(t.Type, t.Amount ?? pay.Request.Sources.FirstOrDefault(s => s.Source == t.Source && s.Option == t.Option)?.Amount ?? 1))).Remaining;
+    private ManaCost RemainingCost(ManaPaymentDecision pay)
+    {
+        ManaSourceOption? OptionOf(ManaTap t) => pay.Request.Sources.FirstOrDefault(s => s.Source == t.Source && s.Option == t.Option);
+        IEnumerable<ManaType> Mana(ManaTap t) => t.Combination ?? Enumerable.Repeat(t.Type, t.Amount ?? OptionOf(t)?.Amount ?? 1);
+        // Mana that can't pay generic costs only pays the symbols.
+        return ManaPayment.Apply(pay.Request.RemainingAfterPool, _staged.Where(t => OptionOf(t)?.CantPayGeneric != true).SelectMany(Mana),
+            _staged.Where(t => OptionOf(t)?.CantPayGeneric == true).SelectMany(Mana)).Remaining;
+    }
 
     /// <summary>Every combination of mana a "in any combination" source can add.</summary>
     private static List<IReadOnlyList<ManaType>> Combinations(ManaSourceOption source) =>
@@ -2505,8 +2513,42 @@ public partial class GameBoard : Control
             case Foraged fg:
                 _announcer.Enqueue(new($"{PlayerName(fg.Player)} forages", null, 1.2));
                 break;
+            case CompanionRevealed cr:
+                _announcer.Enqueue(new($"{PlayerName(cr.Player)} reveals their companion: {ev.Name(cr.Card)}", ViewOf(ev, cr.Card), 2.0));
+                break;
+            case CompanionPutIntoHand ch:
+                _announcer.Enqueue(new($"{PlayerName(ch.Player)} puts their companion {ev.Name(ch.Card)} into their hand", ViewOf(ev, ch.Card), 1.5));
+                break;
+            case Manifested mf:
+                _announcer.Enqueue(new($"{PlayerName(mf.Player)} manifests the top card of their library", ViewOf(ev, mf.Card), 1.5));
+                break;
+            case Clashed cl:
+                _announcer.Enqueue(new($"{PlayerName(cl.Player)} clashes with {PlayerName(cl.Opponent)}: {(cl.PlayerCard is { } mine ? ev.Name(mine) : "no card")} vs {(cl.OpponentCard is { } theirs ? ev.Name(theirs) : "no card")} — {(cl.Winner is { } w ? $"{PlayerName(w)} wins" : "nobody wins")}",
+                    cl.PlayerCard is { } shown ? ViewOf(ev, shown) : null, 2.0));
+                break;
+            case Blighted bl:
+                _announcer.Enqueue(new($"{PlayerName(bl.Player)} blights {bl.Count}: {ev.Name(bl.Card)}", ViewOf(ev, bl.Card), 1.5));
+                break;
             case PermanentDestroyed d:
                 _announcer.Enqueue(new($"{ev.Name(d.Card)} is destroyed", ViewOf(ev, d.Card), 1.5));
+                break;
+            case PermanentSacrificed sc:
+                _announcer.Enqueue(new($"{ev.Name(sc.Card)} is sacrificed", ViewOf(ev, sc.Card), 1.5));
+                break;
+            case SpellCountered sp:
+                _announcer.Enqueue(new($"{ev.Name(sp.Card)} is countered", ViewOf(ev, sp.Card), 1.5));
+                break;
+            case AbilityCountered ac:
+                _announcer.Enqueue(new($"An ability of {ev.Name(ac.Source)} is countered", ViewOf(ev, ac.Source), 1.5));
+                break;
+            case CardsRevealed { Cards.Count: > 0 } rv:
+                _announcer.Enqueue(new($"{PlayerName(rv.Player)} reveals {RevealedNames(ev, rv.Cards)}", ViewOf(ev, rv.Cards[^1]), 2.0));
+                break;
+            case ChoiceMade cm:
+                _announcer.Enqueue(new($"{ev.Name(cm.Card)}: {cm.Choice} chosen", ViewOf(ev, cm.Card), 1.5));
+                break;
+            case ControlChanged cc:
+                _announcer.Enqueue(new($"{PlayerName(cc.NewController)} gains control of {ev.Name(cc.Card)}", ViewOf(ev, cc.Card), 1.5));
                 break;
             case PermanentTransformed tf when ViewOf(ev, tf.Card) is { } turned:
                 _announcer.Enqueue(new($"{turned.OtherFace?.Name ?? ev.Name(tf.Card)} transforms into {turned.Name}", turned, 1.5));
@@ -2522,6 +2564,10 @@ public partial class GameBoard : Control
                 break;
         }
     }
+
+    /// <summary>The names of revealed cards for an announcement: all of a few, or the count and the last ones of many.</summary>
+    private static string RevealedNames(EventView ev, IReadOnlyList<CardId> cards) =>
+        cards.Count <= 4 ? string.Join(", ", cards.Select(ev.Name)) : $"{cards.Count} cards, the last {string.Join(", ", cards.TakeLast(3).Select(ev.Name))}";
 
     /// <summary>The large "whose turn" banner (queued like any announcement), with a soft chime when the turn is yours.</summary>
     private void AnnounceTurn(TurnBegan turn)

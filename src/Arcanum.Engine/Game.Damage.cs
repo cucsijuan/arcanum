@@ -234,7 +234,7 @@ public sealed partial class Game
                     return 0;
                 }) { PlainPrevention = true });
             // "If damage would be dealt to that creature this turn, prevent that damage and put that many +1/+1 counters on it."
-            foreach (var shield in State.PreventionShields.Where(s => s.CountersInstead && s.Turn == State.TurnNumber && (part.Combat || !s.CombatOnly)))
+            foreach (var shield in State.PreventionShields.Where(s => s.CountersInstead && s.ActiveOn(State.TurnNumber) && (part.Combat || !s.CombatOnly)))
                 if (part.ToCard is { } counted && ShieldPrevents(shield, source, part.ToCard, part.ToPlayer))
                     Add(new DamageModifier("preventCounters", $"preventCounters:{shield.Id}", $"Prevent it and put that many +1/+1 counters on {counted.Name}", n =>
                     {
@@ -308,7 +308,7 @@ public sealed partial class Game
     private string? PreventsAll(Card source, Card? targetCard, PlayerId? targetPlayer, bool combat, out PreventionShield? preventing)
     {
         preventing = null;
-        foreach (var shield in State.PreventionShields.Where(s => s.Turn == State.TurnNumber && !s.CountersInstead && (combat || !s.CombatOnly)))
+        foreach (var shield in State.PreventionShields.Where(s => s.ActiveOn(State.TurnNumber) && !s.CountersInstead && (combat || !s.CombatOnly)))
             if (ShieldPrevents(shield, source, targetCard, targetPlayer)) { preventing = shield; return "a prevention effect"; }
         if (State.DamagePreventions.Any(d => d.Card == source.Id && d.Version == source.Version)) return "its damage is prevented";
         if (targetPlayer is { } protectedPlayer && State.GetPlayer(protectedPlayer).Protected) return "protection"; // protection from everything
@@ -322,6 +322,10 @@ public sealed partial class Game
             if ((source.Replaces & Replacements.PreventCombatDamageToAndBySelf) != 0) return source.Name;
             if (targetCard is not null && ((targetCard.Replaces & Replacements.PreventCombatDamageToAndBySelf) != 0
                                            || State.CombatDamagePrevented.Contains((targetCard.Id, targetCard.Version)))) return targetCard.Name;
+            // "Prevent all combat damage that would be dealt to attacking creatures you control."
+            if (targetCard is { IsCreature: true } attacker && State.Combat?.FindAttack(attacker.Id) is not null
+                && State.PermanentsControlledBy(attacker.Controller).FirstOrDefault(c => c.HasTextAbilities && c.Definition.PreventCombatDamageToYourAttackers) is { } gate)
+                return gate.Name;
         }
         else if (targetCard is not null && targetCard.IsCreature
                  && State.PermanentsControlledBy(targetCard.Controller).FirstOrDefault(c => c.Id != targetCard.Id && (c.Replaces & Replacements.PreventNoncombatDamageToYourOtherCreatures) != 0) is { } guard)
@@ -377,6 +381,10 @@ public sealed partial class Game
         if (wizard)
             foreach (var c in State.PermanentsControlledBy(controller).Where(c => (c.Replaces & Replacements.DoubleWizardDamage) != 0))
                 result.Add(($"double:{c.Id}", $"Double it ({c.Name})", 2));
+        // "Double all damage that sources you control of the chosen type would deal."
+        foreach (var c in State.PermanentsControlledBy(controller).Where(c => c.HasTextAbilities && c.Definition.DoublesDamageOfChosenType && c.ChosenType is not null))
+            if (lki?.HasSubtype(c.ChosenType!) ?? source.HasSubtype(c.ChosenType!))
+                result.Add(($"double:{c.Id}", $"Double it ({c.Name})", 2));
         // "Until your next turn, if a source would deal damage to that player or a permanent that player controls, it deals double that damage instead."
         int s = 0;
         foreach (var stagger in State.DamageDoubledAgainst.Where(d => d.Victim == victim))
@@ -422,7 +430,11 @@ public sealed partial class Game
         // Lethal damage is 1 from a deathtouch source (rule 702.2c).
         int lethalBefore = target.DamagedByDeathtouch ? 0 : Math.Max(0, target.Toughness - target.Damage);
         if (source.Has(Keyword.Deathtouch) && lethalBefore > 0) lethalBefore = 1;
-        target.Damage += amount;
+        // Wither: the damage is -1/-1 counters the source's controller puts on the creature instead of marked damage (rule 120.3d).
+        // "All damage is dealt as though its source had wither."
+        bool wither = source.Has(Keyword.Wither) || State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && c.Definition.AllDamageWither);
+        if (wither) PutCounters(target, CounterKind.MinusOneMinusOne, amount, source.Controller);
+        else target.Damage += amount;
         if (source.Has(Keyword.Deathtouch)) target.DamagedByDeathtouch = true;
         if (part.Report is { } report)
         {

@@ -45,9 +45,14 @@ public static partial class CardFactory
         "Support", "Adapt", "Monstrosity", "Explore", "Connive", "Incubate", "Forage", // keyword actions: the script's effects (targets for support)
         "Prepared", "Empower Jace", // the script's "entersPrepared", "becomePrepared" and "empowerJace"
         "Exhaust", // an activated ability the script marks "onlyOnce" (rule 702.177: activate each exhaust ability only once)
+        "Companion", // the script's "companion" deck condition (revealed before the game, put into the hand for {3})
+        "Manifest", // the script's "manifest" effect (face-down 2/2; a creature card turns face up for its mana cost)
+        "Clash", // the script's "clash" effect with "ifWin" / "else"
+        "Champion", // the script's "champion" enters trigger, its "returnLinkedExiled" leaves trigger and "championed" triggers
+        "Blight", // the script's "blight" cost or effect (put N -1/-1 counters on a creature you control)
         "Blitz", // the script's "blitz" cost (with "blitzExtra", "blitzFromGraveyard")
         // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
-        "Persist", "Undying", "Dethrone", "Hideaway", "Heal", "Aftermath",
+        "Dethrone", "Hideaway", "Heal", "Aftermath",
         "Devour", "Multikicker", "Replicate", "Escalate", "Improvise", "Myriad", "Squad", "Dash", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
         // Pairing rules for two commanders (deck construction); "Partner with" also has a trigger derived below.
         "Partner", "Partner with", "Friends forever", "Choose a background", "Doctor's companion",
@@ -56,7 +61,7 @@ public static partial class CardFactory
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
     /// <remarks>Includes keywords whose rules this factory derives from rules text (Equip, Enchant).</remarks>
     public static ISet<string> SupportedKeywords { get; } =
-        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Impending", "Offspring", "Escape", "Toxic", "Vanishing", "Ravenous" }).Concat(ScriptedKeywords),
+        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Impending", "Offspring", "Evoke", "Encore", "Compleated", "Escape", "Toxic", "Vanishing", "Ravenous" }).Concat(ScriptedKeywords),
             StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Why <see cref="Create"/> finds the card unsupported (for tools): each failed requirement, by face.</summary>
@@ -121,12 +126,16 @@ public static partial class CardFactory
             Morph = KeywordLineCost(record.OracleText, MorphLine()),
             Impending = KeywordLineCost(record.OracleText, ImpendingLine()),
             Offspring = KeywordLineCost(record.OracleText, OffspringLine()),
+            Evoke = KeywordLineCost(record.OracleText, EvokeLine()) ?? (EvokeExileColor(record.OracleText) is not null ? ManaCost.Zero : null),
+            EvokeExtra = EvokeExileColor(record.OracleText) is { } evokeColor
+                ? new Engine.Abilities.ExtraCost { ExileFromHand = new Engine.Abilities.ObjectFilter(Colors: new[] { evokeColor }, Controller: Engine.Abilities.ControllerFilter.Any) } : null,
             ImpendingCount = ImpendingCount(record.OracleText),
             Escape = KeywordLineCost(record.OracleText, EscapeLine()),
             EscapeExtra = KeywordLineNumber(record.OracleText, EscapeLine()) is int escapeExiles and > 0 ? new Engine.Abilities.ExtraCost { ExileFromGraveyard = escapeExiles } : null,
             EscapesWithCounters = KeywordLineNumber(record.OracleText.Replace(record.Name, "~"), EscapesWithLine()) ?? 0,
             Toxic = KeywordLineNumber(record.OracleText, ToxicLine()) ?? 0,
             Vanishing = KeywordLineNumber(record.OracleText, VanishingLine()) ?? 0,
+            Cascade = KeywordInstances(record.OracleText, "Cascade"),
             EntersWithXCounters = record.Keywords.Contains("Ravenous", StringComparer.OrdinalIgnoreCase), // 702.156a
             WardMana = derived.WardMana,
             WardLife = derived.WardLife,
@@ -134,6 +143,7 @@ public static partial class CardFactory
         };
         if (script is not null) definition = script.ApplyTo(definition);
         if (definition.Offspring is not null) definition = definition with { Abilities = definition.Abilities.Append(OffspringTrigger).ToList() };
+        if (definition.Evoke is not null) definition = definition with { Abilities = definition.Abilities.Append(EvokeTrigger).ToList() };
         if (record.Keywords.Contains("Ravenous", StringComparer.OrdinalIgnoreCase)) definition = definition with { Abilities = definition.Abilities.Append(RavenousTrigger).ToList() };
         definition = definition with { Abilities = Engine.Abilities.AbilityDefinition.InClassLevelOrder(definition.Abilities) };
 
@@ -309,6 +319,7 @@ public static partial class CardFactory
             if (KickerLine().IsMatch(line) || FlashbackLine().IsMatch(line) || WardLine().IsMatch(line) || line == "This spell can't be countered") continue;
             if (CyclingLine().IsMatch(line)) continue;
             if (UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line) || MorphLine().IsMatch(line) || ImpendingLine().IsMatch(line) || OffspringLine().IsMatch(line)) continue;
+            if (EvokeLine().IsMatch(line) || EvokeExileLine().IsMatch(line) || EncoreLine().IsMatch(line)) continue;
             if (EscapeLine().IsMatch(line) || EscapesWithLine().IsMatch(line.Replace(record.Name, "~")) || ToxicLine().IsMatch(line) || VanishingLine().IsMatch(line)) continue;
             if (CommanderPairingLine().IsMatch(line)) continue;
             // A keyword line: "Flying" or "Flying, trample".
@@ -411,6 +422,7 @@ public static partial class CardFactory
             }
             if (CyclingAbility(line) is { } cycling) abilities.Add(cycling);
             if (UnearthAbility(line) is { } unearth) abilities.Add(unearth);
+            if (EncoreAbility(line) is { } encore) abilities.Add(encore);
             if (ForetellLine().Match(line) is { Success: true }) abilities.Add(ForetellAbility);
             if (PartnerWithAbility(line) is { } partnerWith) abilities.Add(partnerWith);
             var enchantMatch = EnchantLine().Match(line);
@@ -513,7 +525,12 @@ public static partial class CardFactory
             .FirstOrDefault(m => m.Success) is { } m ? m.Groups["n"].Value is not { Length: > 0 } n ? 1 // "with a +1/+1 counter"
             : Array.IndexOf(NumberWords, n.ToLowerInvariant()) is int i and >= 0 ? i : int.Parse(n) : null;
 
-    private static readonly string[] NumberWords = { "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten" };
+    /// <summary>Instances of a keyword on its keyword lines: "Cascade, cascade" is two (rule 702.85c), "Spells you cast have cascade" none.</summary>
+    private static int KeywordInstances(string oracleText, string keyword) =>
+        ReminderText().Replace(oracleText, "").Split('\n')
+            .Sum(l => l.Trim().TrimEnd('.').Split(',').Count(part => part.Trim().Equals(keyword, StringComparison.OrdinalIgnoreCase)));
+
+    private static readonly string[] NumberWords ={ "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten" };
 
     /// <summary>N of "Impending N—[cost]".</summary>
     private static int ImpendingCount(string oracleText) =>
@@ -542,6 +559,23 @@ public static partial class CardFactory
     /// beginning of the next end step. If it would leave the battlefield, exile it instead of putting it anywhere else. Activate only as a
     /// sorcery."
     /// </summary>
+    /// <summary>"Encore [cost]" (rule 702.141a): "[Cost], Exile this card from your graveyard: …" as a sorcery.</summary>
+    private static Engine.Abilities.ActivatedAbility? EncoreAbility(string line)
+    {
+        var m = EncoreLine().Match(line);
+        if (!m.Success) return null;
+        return new Engine.Abilities.ActivatedAbility
+        {
+            Cost = new Engine.Abilities.AbilityCost(ManaCost.Parse(m.Groups["cost"].Value), false, true) { FromGraveyard = true },
+            SorcerySpeed = true,
+            Effects = new Engine.Abilities.Effect[] { new Engine.Abilities.Encore() },
+            Text = line,
+        };
+    }
+
+    [GeneratedRegex(@"^Encore (?<cost>(\{[0-9WUBRGC/]+\})+)$")]
+    private static partial Regex EncoreLine();
+
     private static Engine.Abilities.ActivatedAbility? UnearthAbility(string line)
     {
         var m = UnearthLine().Match(line);
@@ -692,6 +726,23 @@ public static partial class CardFactory
         { "abilities": [ { "trigger": "enters", "if": { "atLeast": "offspringPaid", "value": 1 },
           "effects": [ { "copy": "self", "setPower": 1, "setToughness": 1 } ],
           "text": "Offspring — When this creature enters, if its offspring cost was paid, create a token that's a copy of it, except it's 1/1." } ] }
+        """).Abilities[0];
+
+    [GeneratedRegex(@"^Evoke (?<cost>(\{[0-9WUBRGC/]+\})+)$")]
+    private static partial Regex EvokeLine();
+
+    [GeneratedRegex(@"^Evoke—Exile an? (?<color>white|blue|black|red|green) card from your hand$")]
+    private static partial Regex EvokeExileLine();
+
+    /// <summary>The color of "Evoke—Exile a green card from your hand" (W, U, B, R or G), or null.</summary>
+    private static string? EvokeExileColor(string oracleText) =>
+        ReminderText().Replace(oracleText, "").Split('\n').Select(l => EvokeExileLine().Match(l.Trim().TrimEnd('.'))).FirstOrDefault(m => m.Success) is { } m
+            ? m.Groups["color"].Value switch { "white" => "W", "blue" => "U", "black" => "B", "red" => "R", _ => "G" } : null;
+
+    /// <summary>Evoke's trigger (rule 702.74a), added to every card with an evoke cost.</summary>
+    private static readonly Engine.Abilities.AbilityDefinition EvokeTrigger = Scripts.CardScriptParser.Parse("""
+        { "abilities": [ { "trigger": "enters", "if": "evoked", "effects": [ { "sacrificeIt": "self" } ],
+          "text": "Evoke — When this creature enters, if its evoke cost was paid, its controller sacrifices it." } ] }
         """).Abilities[0];
 
     [GeneratedRegex(@"^Escape—(?<cost>(\{[0-9WUBRGC]+\})+), Exile (?<n>[a-z]+|[0-9]+) other cards from your graveyard$")]

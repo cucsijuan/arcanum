@@ -30,7 +30,7 @@ public sealed partial class Game
         State.BlocksThisTurn.Clear();
         State.CombatsThisTurn = 0;
         State.SpellsCastThisTurnCount = 0;
-        State.PreventionShields.RemoveAll(p => p.Turn < State.TurnNumber);
+        State.PreventionShields.RemoveAll(p => p.Turn < State.TurnNumber && (p.UntilTurnOf is not { } until || until == State.ActivePlayer));
         State.DamageTripled.RemoveAll(p => p.Turn < State.TurnNumber);
         State.CantAttackThisCombat.Clear();
         State.AttackPlayerRequirements.Clear();

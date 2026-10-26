@@ -236,7 +236,7 @@ public class TokenImageTests
         Assert.Null(create.Token.ImageKey); // the client shows a text frame rather than guessing by name
     }
     [Fact]
-    public void ParsesTheMagic2010CombatVocabulary()
+    public void ParsesTheCoreSetCombatVocabulary()
     {
         var keywords = CardScriptParser.Parse("""
             { "abilities": [

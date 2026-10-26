@@ -20,6 +20,12 @@ public sealed class Player
     /// <summary>The player's cards outside the game (their sideboard, rule 400.11b): private to them.</summary>
     public List<CardId> Outside { get; } = new();
 
+    /// <summary>The companion this player revealed before the game began (rule 103.2b), if any.</summary>
+    public CardId? Companion { get; set; }
+
+    /// <summary>The player has put their companion into their hand (once during the game, rule 702.139a).</summary>
+    public bool CompanionTaken { get; set; }
+
     public ManaPool ManaPool { get; } = new();
     public int LandsPlayedThisTurn { get; set; }
 

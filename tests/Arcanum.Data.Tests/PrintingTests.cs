@@ -244,4 +244,18 @@ public class PrintingTests
         Assert.Equal("p-surge", surge.ImageKey); // no plain printing of that artwork: its own picture
         Assert.True(surge.Foil);
     }
+
+    [Fact]
+    public void AReversiblePrintingBelongsToTheCardOnItsFaces()
+    {
+        const string reversible = """
+            {"id":"p-rev","name":"Glade Cub // Glade Cub","layout":"reversible_card","set":"new","set_name":"New Set","collector_number":"301","rarity":"common","released_at":"2024-01-01","set_type":"expansion","booster":true,"lang":"en","finishes":["nonfoil","foil"],"card_faces":[{"oracle_id":"o-1","name":"Glade Cub"},{"oracle_id":"o-1","name":"Glade Cub"}]}
+            {"id":"p-mixed","name":"Glade Cub // Hive Keeper","layout":"reversible_card","set":"new","set_name":"New Set","collector_number":"302","rarity":"common","released_at":"2024-01-01","set_type":"expansion","lang":"en","card_faces":[{"oracle_id":"o-1","name":"Glade Cub"},{"oracle_id":"o-2","name":"Hive Keeper"}]}
+            """;
+        var printings = OracleJsonl.ImportPrintings(Text(reversible));
+        var cub = Assert.Single(printings["o-1"]);
+        Assert.Equal("301", cub.CollectorNumber);
+        Assert.True(cub.Booster);
+        Assert.False(printings.ContainsKey("o-2")); // two different cards: no one card to give it to
+    }
 }

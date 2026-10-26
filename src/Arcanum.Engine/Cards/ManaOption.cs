@@ -77,6 +77,9 @@ public sealed record ManaOption(IReadOnlyList<ManaType> Types, int Amount = 1, O
     /// <summary>"… When you next cast an instant or sorcery spell this turn, copy that spell": the delayed ability it creates as it resolves.</summary>
     public bool CopyNextInstantOrSorcery { get; init; }
 
+    /// <summary>"This mana can't be spent to pay generic mana costs."</summary>
+    public bool CantPayGeneric { get; init; }
+
     /// <summary>"Three times as much of that mana" for a <see cref="OneOfEach"/> or <see cref="Combination"/> ability: its mana, this many times over.</summary>
     public int Times { get; init; } = 1;
 

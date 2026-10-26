@@ -60,7 +60,10 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("handToTop", out var htt)) return new HandToTop(htt.GetInt32());
         if (e.TryGetProperty("commanderToHand", out _)) return new CommanderToHand();
         if (e.TryGetProperty("damageRandomOpponent", out var dro)) return new DamageRandomOpponent(ParseQuantity(dro));
-        if (e.TryGetProperty("addManaOneColor", out var amo1)) return new AddManaOfOneColor(ParseQuantity(amo1), e.TryGetProperty("optional", out var amop) && amop.GetBoolean());
+        if (e.TryGetProperty("addManaOneColor", out var amo1)) return new AddManaOfOneColor(ParseQuantity(amo1), e.TryGetProperty("optional", out var amop) && amop.GetBoolean())
+            {
+                OnlyFor = e.TryGetProperty("onlyFor", out var amof) ? CardScriptParser.ParseFilter(amof, ControllerFilter.Any) : null,
+            };
         if (e.TryGetProperty("rollDie", out var rd)) return new RollDie(rd.GetInt32());
         if (e.TryGetProperty("exileUntilLesserCastFree", out var eul)) return new ExileUntilLesserCastFree(ParseFilter(eul, ControllerFilter.Any));
         if (e.TryGetProperty("revealOnePerCardType", out var rop)) return new RevealOnePerCardType(rop.GetInt32());
@@ -84,6 +87,7 @@ public static partial class CardScriptParser
                 "cardTypesAmongDiscarded" => new Quantity(0, QuantityKind.CardTypesAmongDiscarded),
                 "creaturesDiedThisTurn" => new Quantity(0, QuantityKind.CreaturesDiedThisTurn),
                 "countersRemovedThisWay" => new Quantity(0, QuantityKind.CountersRemovedThisWay),
+                "spellsAndAbilitiesCounteredThisWay" => new Quantity(0, QuantityKind.SpellsAndAbilitiesCounteredThisWay),
                 "rolled" => new Quantity(0, QuantityKind.Rolled),
                 "opponentsDealtCombatDamage" => new Quantity(0, QuantityKind.OpponentsDealtCombatDamage),
                 _ => null,

@@ -31,6 +31,15 @@ public sealed record TopOfLibrary(ObjectFilter Filter) : Condition;
 /// <summary>"If it was kicked" / "if this spell was kicked".</summary>
 public sealed record WasKicked : Condition;
 
+/// <summary>"If this spell's additional cost was paid": its optional additional cost (<see cref="Cards.CardDefinition.OptionalAdditionalCost"/>).</summary>
+public sealed record AdditionalCostWasPaid : Condition;
+
+/// <summary>"If its evoke cost was paid" (rule 702.74a): the permanent was cast for its evoke cost.</summary>
+public sealed record WasEvoked : Condition;
+
+/// <summary>"If this spell was foretold": cast for its foretell cost.</summary>
+public sealed record WasForetold : Condition;
+
 /// <summary>"Activate only if this Class is level N" (rule 716.2a).</summary>
 public sealed record ClassLevelIs(int Level) : Condition;
 
@@ -51,6 +60,9 @@ public sealed record SourceHasCountersOfAnyKind(int AtLeast) : Condition;
 
 /// <summary>"As long as it's attacking".</summary>
 public sealed record SourceAttacking : Condition;
+
+/// <summary>"If a creature is attacking you" (you, not a permanent of yours).</summary>
+public sealed record CreatureAttackingYou : Condition;
 
 /// <summary>"If it's a Zombie card" / "if it was a creature card": the target at <paramref name="Index"/> matches.</summary>
 public sealed record TargetMatches(int Index, ObjectFilter Filter) : Condition;
@@ -146,7 +158,11 @@ public sealed record HasCitysBlessing : Condition;
 public sealed record AttackingCreaturesExactly(int Count) : Condition;
 
 /// <summary>"If you attacked with N or more creatures this turn".</summary>
-public sealed record AttackedWithAtLeast(int Count) : Condition;
+public sealed record AttackedWithAtLeast(int Count) : Condition
+{
+    /// <summary>"Attacked with three or more Merfolk this turn": only attackers matching this (as they are now, or as they last were).</summary>
+    public ObjectFilter? Filter { get; init; }
+}
 
 /// <summary>"If [this] and at least N other creatures attacked this combat": declared as attackers this combat (even if they left combat since).</summary>
 public sealed record SourceAndOthersAttackedThisCombat(int Others) : Condition;
@@ -330,3 +346,9 @@ public sealed record CardsExiledWithSource : Condition;
 
 /// <summary>"During the declare attackers step" (or another step).</summary>
 public sealed record DuringStep(State.Step Step) : Condition;
+
+/// <summary>"If it's your main phase": your turn, during a main phase.</summary>
+public sealed record YourMainPhase : Condition;
+
+/// <summary>"If {W}{W} was spent to cast it": at least <paramref name="Count"/> mana of that type paid for the source as it was cast.</summary>
+public sealed record ManaSpentToCast(Mana.ManaType Type, int Count) : Condition;

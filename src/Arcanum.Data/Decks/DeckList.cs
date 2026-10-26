@@ -176,6 +176,11 @@ public sealed partial class DeckList
     public List<CardDefinition> ResolveSideboard(ICardDatabase database) =>
         Sideboard.SelectMany(e => TryResolve(database, e, out var def) ? Enumerable.Repeat(WithTokenArt(database, def), e.Count) : Enumerable.Empty<CardDefinition>()).ToList();
 
+    /// <summary>
+    /// The sideboard's companions: in Commander, where there is no sideboard, the only cards waiting outside the game (rule 702.139).
+    /// </summary>
+    public List<CardDefinition> ResolveCompanions(ICardDatabase database) => ResolveSideboard(database).Where(d => d.Companion is not null).ToList();
+
     /// <summary>The commander(s), their tokens shown with this deck's pictures.</summary>
     public List<CardDefinition> ResolveCommanders(ICardDatabase database) =>
         Definitions(database, Commander).Select(d => WithTokenArt(database, d)).ToList();

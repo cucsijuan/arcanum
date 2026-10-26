@@ -54,7 +54,12 @@ public class SetGamesTests
             game.EventRaised += e => { if (e is SpellCast c) lock (cast) cast.Add(game.State.GetCard(c.Card).PrintedDefinition.Name); };
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             try { await game.RunAsync(cts.Token); }
-            catch (OperationCanceledException) { if (!game.State.IsGameOver) Console.WriteLine($"game {g}: still running after 30 s (turn {game.State.TurnNumber})"); }
+            catch (OperationCanceledException)
+            {
+                if (!game.State.IsGameOver)
+                    Console.WriteLine($"game {g}: still running after 30 s (turn {game.State.TurnNumber}), {game.Log.Count} events; last: "
+                                      + string.Join(" | ", game.Log.TakeLast(12).Select(e => e.ToString())));
+            }
             catch (Exception ex)
             {
                 var recent = string.Join(" | ", game.Log.TakeLast(6).Select(e => e.ToString()));

@@ -152,7 +152,11 @@ public sealed record CommanderToHand : HeroesEffect;
 public sealed record DamageRandomOpponent(Quantity Amount) : HeroesEffect;
 
 /// <summary>"You may add X mana of any one color."</summary>
-public sealed record AddManaOfOneColor(Quantity Count, bool Optional) : HeroesEffect;
+public sealed record AddManaOfOneColor(Quantity Count, bool Optional) : HeroesEffect
+{
+    /// <summary>"Spend this mana only to cast spells with mana value 4 or greater": the spells it can pay for.</summary>
+    public ObjectFilter? OnlyFor { get; init; }
+}
 
 /// <summary>"Roll a d20" (rule 706): the result is "rolled".</summary>
 public sealed record RollDie(int Sides) : HeroesEffect;

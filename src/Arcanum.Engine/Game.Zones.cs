@@ -186,6 +186,15 @@ public sealed partial class Game
     /// <summary>The spell resolving now whose offspring cost was paid (rule 702.175a).</summary>
     private CardId? _enteringOffspring;
 
+    /// <summary>The spell resolving now that was cast for its evoke cost (rule 702.74a).</summary>
+    private CardId? _enteringEvoked;
+
+    /// <summary>A card being put onto the battlefield face down (a manifest): face down as it enters (rule 701.40a, 708.3).</summary>
+    private CardId? _enteringFaceDown;
+
+    /// <summary>The compleated spell resolving now and how many fewer loyalty counters it enters with (rule 702.150a).</summary>
+    private (CardId Card, int Fewer)? _enteringFewerLoyalty;
+
     /// <summary>An Aura spell that enchants a player, entering attached to that player (rule 303.4f).</summary>
     private (CardId Card, PlayerId Player)? _enteringAttachedPlayer;
 
@@ -466,8 +475,10 @@ public sealed partial class Game
         // A face-down spell stays face down as it becomes a permanent (708.4); anywhere else it's turned face up and revealed (708.9).
         bool wasFaceDown = card.TurnedFaceDown;
         bool staysFaceDown = wasFaceDown && ((from == Zone.Hand && to == Zone.Stack) || (from == Zone.Stack && to == Zone.Battlefield));
+        var spentToCast = from == Zone.Stack && to == Zone.Battlefield ? card.SpentManaTypes : null; // what paid for the spell stays known (rule 601.2h)
         card.ResetStatus();
-        card.TurnedFaceDown = staysFaceDown;
+        if (spentToCast is not null) card.SpentManaTypes = spentToCast;
+        card.TurnedFaceDown = staysFaceDown || (to == Zone.Battlefield && _enteringFaceDown == id);
         if (wasFaceDown && !staysFaceDown && from is Zone.Stack or Zone.Battlefield) Emit(new CardsRevealed(lastController, new[] { id }));
         card.EnteredCastFromGraveyard = castFromGraveyard;
         card.GiftPromised = giftTo is not null;
@@ -498,6 +509,7 @@ public sealed partial class Game
         card.SquadPaid = to == Zone.Battlefield ? squadPaid : 0;
         card.Impended = to == Zone.Battlefield && _enteringImpended == id;
         card.OffspringPaid = to == Zone.Battlefield && _enteringOffspring == id;
+        card.Evoked = to == Zone.Battlefield && _enteringEvoked == id;
         card.PutOntoBattlefieldBy = to == Zone.Battlefield ? _puttingOntoBattlefieldBy : null;
         card.CastX = to == Zone.Battlefield && _enteringCastX is { } enteringX && enteringX.Card == id ? enteringX.X : 0;
         card.ClassLevel = to == Zone.Battlefield ? 1 : 0;
@@ -538,7 +550,8 @@ public sealed partial class Game
                 if (card.Definition.EntersWithCountersFrom is { } countFrom)
                     enterCounters.Add((card.Definition.EntersWithCounterKind,
                         Eval(countFrom, new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
-                if (card.Definition.Loyalty is { } loyalty) enterCounters.Add((Abilities.CounterKind.Loyalty, loyalty)); // 306.5b
+                if (card.Definition.Loyalty is { } loyalty) // 306.5b
+                    enterCounters.Add((Abilities.CounterKind.Loyalty, Math.Max(0, loyalty - (_enteringFewerLoyalty is { } fewer && fewer.Card == id ? fewer.Fewer : 0))));
                 if (card.Definition.Vanishing > 0) enterCounters.Add((Abilities.CounterKind.Time, card.Definition.Vanishing)); // 702.63a
                 if (withCounters is not null) enterCounters.AddRange(withCounters.Where(c => c.Count > 0));
                 if (from == Zone.Stack && State.FinalityOnEnter.Remove((id, card.Version - 1))) enterCounters.Add((Abilities.CounterKind.Finality, 1));
@@ -633,6 +646,8 @@ public sealed partial class Game
     {
         applied ??= new HashSet<CardId>();
         var player = State.GetPlayer(playerId);
+        // "Players can't draw cards" (draws simply don't happen, so drawing from an empty library loses nothing).
+        if (State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && c.Definition.PlayersCantDraw)) return;
         // "Each opponent can't draw more than one card each turn": a draw beyond the first doesn't happen.
         if (player.CardsDrawnThisTurn >= 1 && State.Battlefield.Select(State.GetCard)
                 .Any(c => c.HasTextAbilities && c.Definition.OpponentsDrawAtMostOne && State.OpponentsOf(c.Controller).Contains(playerId))) return;

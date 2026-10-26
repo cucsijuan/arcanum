@@ -172,7 +172,7 @@ public static class OracleJsonl
             if (string.IsNullOrWhiteSpace(line)) continue;
             using var doc = JsonDocument.Parse(line);
             var c = doc.RootElement;
-            if (Str(c, "oracle_id") is not { } oracleId) continue;
+            if ((Str(c, "oracle_id") ?? ReversibleOracleId(c)) is not { } oracleId) continue;
             if (c.TryGetProperty("digital", out var digital) && digital.ValueKind == JsonValueKind.True) continue;
             if (c.TryGetProperty("oversized", out var oversized) && oversized.ValueKind == JsonValueKind.True) continue;
             bool token = Str(c, "layout") == "token";
@@ -197,6 +197,14 @@ public static class OracleJsonl
             list.Sort((a, b) => string.CompareOrdinal(a.Released, b.Released) is var d && d != 0 ? d : CompareNumbers(a.CollectorNumber, b.CollectorNumber));
         return byCard;
     }
+
+    /// <summary>
+    /// A reversible printing (the same card on both sides, each with its own art) gives its card's oracle id on its faces only:
+    /// when both faces are the same card, that card's.
+    /// </summary>
+    private static string? ReversibleOracleId(JsonElement c) =>
+        Str(c, "layout") == "reversible_card" && c.TryGetProperty("card_faces", out var faces) && faces.ValueKind == JsonValueKind.Array
+        && faces.EnumerateArray().Select(f => Str(f, "oracle_id")).Distinct().ToList() is [{ } single] ? single : null;
 
     /// <summary>Adds the printings found by <see cref="ImportPrintings"/> to each record.</summary>
     public static IEnumerable<CardRecord> WithPrintings(IEnumerable<CardRecord> records, IReadOnlyDictionary<string, List<Printing>> printings) =>

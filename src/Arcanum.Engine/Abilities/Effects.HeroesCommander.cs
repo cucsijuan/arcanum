@@ -111,7 +111,11 @@ public sealed record ExileWithSameNameTokens(Subject What) : HeroesCommanderEffe
 public sealed record TriggeredBlockedAttackingYourOpponent(int Blockers) : Condition;
 
 /// <summary>"Return one of them …": the player chooses one object among <paramref name="Among"/>; it becomes "found" for the next effects.</summary>
-public sealed record ChooseOneOf(Subject Among) : HeroesCommanderEffect;
+public sealed record ChooseOneOf(Subject Among) : HeroesCommanderEffect
+{
+    /// <summary>Only among those matching ("you may sacrifice one of them": one still on the battlefield under your control).</summary>
+    public ObjectFilter? Filter { get; init; }
+}
 
 /// <summary>"A creature is blocking" (combat with at least one blocking creature).</summary>
 public sealed record CreatureBlocking : Condition;

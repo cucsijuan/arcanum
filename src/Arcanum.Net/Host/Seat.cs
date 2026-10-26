@@ -319,7 +319,7 @@ internal sealed class Seat : IPlayerController
         if (taps.Select(t => t.Source).Distinct().Count() != taps.Count) return "Each source can be tapped only once.";
         if (!taps.All(t => request.Sources.Any(s => s.Source == t.Source && s.Option == t.Option && s.Types.Contains(t.Type))))
             return "That source can't pay for this.";
-        var (owed, excess) = ManaPayment.Apply(request.RemainingAfterPool, ManaPayment.Produced(S, taps).ToList());
+        var (owed, excess) = ManaPayment.ApplyTaps(S, request.RemainingAfterPool, taps);
         if (owed.ManaValue != 0) return $"Payment is short by {owed}.";
         if (excess != 0 && !taps.Any(t => ManaPayment.AmountOf(S.GetCard(t.Source), t.Option) > 1)) return "That taps more mana than the cost.";
         return null;

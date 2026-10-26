@@ -12,6 +12,9 @@ public sealed record ManaUnit(ManaType Type, Core.CardId Source, Abilities.Objec
 
     /// <summary>Besides the spells it may pay for, it may pay for equip abilities only (<see cref="Cards.ManaOption.EquipOnly"/>).</summary>
     public bool EquipOnly { get; init; }
+
+    /// <summary>"This mana can't be spent to pay generic mana costs": only colored (or colorless) symbols.</summary>
+    public bool CantPayGeneric { get; init; }
 }
 
 public sealed class ManaPool

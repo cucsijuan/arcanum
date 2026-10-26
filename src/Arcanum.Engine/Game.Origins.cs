@@ -10,7 +10,7 @@ using Arcanum.Engine.Views;
 namespace Arcanum.Engine;
 
 /// <summary>
-/// Effects and rules first needed by Magic Origins cards: sweeping hands, graveyards and permanents into libraries, casting
+/// Effects and rules first needed by one set's cards: sweeping hands, graveyards and permanents into libraries, casting
 /// revealed cards while an effect resolves, naming a card and searching every zone for it, names that can't be cast, quantities
 /// about the affected or revealed object, and mana abilities that remove any number of counters.
 /// </summary>

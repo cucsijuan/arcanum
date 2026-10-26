@@ -23,7 +23,7 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("exileRandomFromOpponentsGraveyards", out _)) return new ExileRandomFromOpponentsGraveyards();
         if (e.TryGetProperty("castExiledFreeAnyNumber", out _))
             return new CastExiledFreeAnyNumber(e.TryGetProperty("ownersLoseLife", out var oll) && oll.GetBoolean());
-        if (e.TryGetProperty("chooseOneOf", out var coo)) return new ChooseOneOf(ParseSubject(coo));
+        if (e.TryGetProperty("chooseOneOf", out var coo)) return new ChooseOneOf(ParseSubject(coo)) { Filter = e.TryGetProperty("filter", out var coof) ? ParseFilter(coof, ControllerFilter.You) : null };
         if (e.TryGetProperty("exileWithSameNameTokens", out var ewsn)) return new ExileWithSameNameTokens(ParseSubject(ewsn));
         if (e.TryGetProperty("putExiledWithThis", out var pew))
             return new PutExiledWithThis(ParseFilter(pew, ControllerFilter.Any),
@@ -47,7 +47,7 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("playExiledWithThisThisTurn", out var pewt) && pewt.GetBoolean())
             return new PlayExiledWithThisThisTurn(e.TryGetProperty("costLess", out var pewc) ? pewc.GetInt32() : 0);
         if (e.TryGetProperty("becomeCopy", out var bc))
-            return new BecomeCopy(ParseSubject(bc.GetString()), e.TryGetProperty("target", out var bct) ? ParseSubject(bct.GetString()) : Subject.TargetAt(0),
+            return new BecomeCopy(ParseSubject(bc), e.TryGetProperty("target", out var bct) ? ParseSubject(bct.GetString()) : Subject.TargetAt(0),
                 e.TryGetProperty("exceptName", out var bcn) ? bcn.GetString() : null)
             {
                 Lasting = e.TryGetProperty("lasting", out var bcl) && bcl.GetBoolean(),

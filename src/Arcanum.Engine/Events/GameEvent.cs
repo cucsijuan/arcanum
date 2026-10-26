@@ -86,6 +86,16 @@ public sealed record ChosenFromHand(PlayerId Chooser, PlayerId Player, IReadOnly
 public sealed record PermanentSacrificed(CardId Card) : GameEvent;
 /// <summary>A player foraged (rule 701.61a: exiled three cards from their graveyard or sacrificed a Food).</summary>
 public sealed record Foraged(PlayerId Player) : GameEvent;
+/// <summary>A player blighted: put that many -1/-1 counters on a creature they control.</summary>
+public sealed record Blighted(PlayerId Player, CardId Card, int Count) : GameEvent;
+/// <summary>A player manifested a card: it entered the battlefield face down as a 2/2 creature.</summary>
+public sealed record Manifested(PlayerId Player, CardId Card) : GameEvent;
+/// <summary>A player revealed their companion from outside the game before the game began (rule 103.2b).</summary>
+public sealed record CompanionRevealed(PlayerId Player, CardId Card) : GameEvent;
+/// <summary>A player paid {3} and put their companion into their hand.</summary>
+public sealed record CompanionPutIntoHand(PlayerId Player, CardId Card) : GameEvent;
+/// <summary>A clash: the cards each player revealed (null: an empty library) and who won (null: nobody).</summary>
+public sealed record Clashed(PlayerId Player, PlayerId Opponent, CardId? PlayerCard, CardId? OpponentCard, PlayerId? Winner) : GameEvent;
 /// <summary>A player gave a gift they promised (rule 702.174): the giftee drew or got the gift token.</summary>
 public sealed record GiftGiven(PlayerId Giver, PlayerId Giftee, CardId Source) : GameEvent;
 /// <summary>A player spent mana to cast a spell: their total for the turn went from <see cref="Before"/> to <see cref="After"/> (expend).</summary>

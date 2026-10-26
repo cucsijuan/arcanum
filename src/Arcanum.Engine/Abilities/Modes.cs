@@ -15,7 +15,9 @@ public static class Modes
         foreach (var i in chosen)
         {
             effects.Add(new ModeEffects(targets.Count, modes[i].Effects));
-            targets.AddRange(modes[i].Targets);
+            int start = targets.Count;
+            targets.AddRange(modes[i].TargetRule == TargetRule.None ? modes[i].Targets
+                : modes[i].Targets.Select(t => t with { ModeRule = modes[i].TargetRule, ModeStart = start }));
         }
         return ability with { Modes = null, Targets = targets, Effects = effects, Text = string.Join(" / ", chosen.Select(i => modes[i].Text)) };
     }

@@ -13,7 +13,7 @@ namespace Arcanum.Engine.Tests;
 
 /// <summary>
 /// Combat requirements and restrictions (rules 506.5, 508.1c-d, 509.1a-c, 510.1d), protection from creature types, block
-/// triggers per creature, "doesn't untap during its next untap step" and enchant restrictions (Magic 2010 cards).
+/// triggers per creature, "doesn't untap during its next untap step" and enchant restrictions.
 /// </summary>
 public class CombatRequirementTests
 {

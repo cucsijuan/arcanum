@@ -288,7 +288,8 @@ public sealed partial class Game
                 Require(i >= 0 && i < 5, "Choose a color.");
                 for (int k = 0; k < n; k++)
                 {
-                    State.GetPlayer(ctx.Controller).ManaPool.Add(colors[i]);
+                    if (am.OnlyFor is { } only) State.GetPlayer(ctx.Controller).ManaPool.AddSpecial(new ManaUnit(colors[i], ctx.Source.Id, only, false, ManaRider.None));
+                    else State.GetPlayer(ctx.Controller).ManaPool.Add(colors[i]);
                     Emit(new ManaAdded(ctx.Controller, colors[i], ctx.Source.Id));
                 }
                 ctx.Source.DoneThisTurn.Add(am);
@@ -604,7 +605,8 @@ public sealed partial class Game
 
     /// <summary>
     /// "If a land or Bird you control entering the battlefield causes a triggered ability of a permanent you control to trigger, that
-    /// ability triggers an additional time": one more for each such permanent its controller controls.
+    /// ability triggers an additional time": one more for each such permanent its controller controls. Also "if a permanent entering
+    /// causes a triggered ability of a permanent you control to trigger".
     /// </summary>
     private int ExtraTriggersFromLandsAndBirds(Card source, TriggeredAbility ability, TriggerInfo? info)
     {
@@ -615,9 +617,12 @@ public sealed partial class Game
             TriggerEvent.CreatureEnters or TriggerEvent.PermanentEnters or TriggerEvent.LandEnters when info?.Subject is { } subject => State.GetCard(subject),
             _ => null,
         };
-        if (entering is null || entering.Zone != Zone.Battlefield || entering.Controller != source.Controller) return 0;
-        if (!entering.Is(CardType.Land) && !entering.HasSubtype("Bird")) return 0;
-        return Instances(source.Controller, Replacements.ExtraTriggersFromLandsAndBirdsEntering);
+        if (entering is null || entering.Zone != Zone.Battlefield) return 0;
+        // "If a permanent entering causes ...": any permanent, whoever controls it.
+        int extra = Instances(source.Controller, Replacements.ExtraTriggersFromPermanentsEntering);
+        if (entering.Controller == source.Controller && (entering.Is(CardType.Land) || entering.HasSubtype("Bird")))
+            extra += Instances(source.Controller, Replacements.ExtraTriggersFromLandsAndBirdsEntering);
+        return extra;
     }
 
     /// <summary>"You have protection from each of your opponents": nothing they control can target or damage that player (rule 702.16j).</summary>
@@ -746,6 +751,7 @@ public sealed partial class Game
         QuantityKind.Rolled => ctx.Results.Rolled,
         QuantityKind.OpponentsDealtCombatDamage => State.OpponentsOf(ctx.Controller).Count(o => State.GetPlayer(o).CombatDamageTakenThisTurn > 0),
         QuantityKind.CountersRemovedThisWay => ctx.Results.CountersRemoved,
+        QuantityKind.SpellsAndAbilitiesCounteredThisWay => ctx.Results.Countered.Count + ctx.Results.AbilitiesCountered,
         QuantityKind.FoundMatching => ctx.Results.Found.Select(State.GetCard)
             .Count(c => q.Filter is null || Matches(q.Filter with { Controller = ControllerFilter.Any }, c, c.Owner, ctx.Source, ctx.Controller)),
         _ => throw new NotSupportedException($"Quantity {q.Kind} is not implemented."),

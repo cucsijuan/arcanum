@@ -15,6 +15,8 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
     public int? SetPower { get; init; }
     public int? SetToughness { get; init; }
     public IReadOnlyList<string>? AddSubtypes { get; init; }
+    /// <summary>"Gains all creature types" (layer 4).</summary>
+    public bool AddsEveryCreatureType { get; init; }
 
     /// <summary>Replaces its subtypes ("becomes a Human Faerie Detective").</summary>
     public IReadOnlyList<string>? SetSubtypes { get; init; }
@@ -152,6 +154,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
     /// <summary>"You may play a card exiled with [this]" / "a spell from among those cards": playing one of the group ends the others' permission (0: none).</summary>
     public int Group { get; init; }
 
+    /// <summary>"A spell with mana value less than or equal to [quantity]" (evaluated for the source in <see cref="WhileControlling"/>, as cast).</summary>
+    public Abilities.Quantity? MaxManaValue { get; init; }
+
     /// <summary>"When you play a card this way": the source and its ability that triggers then.</summary>
     public (CardId Source, Abilities.TriggeredAbility Ability)? WhenPlayed { get; init; }
 
@@ -167,6 +172,12 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
 /// </summary>
 public sealed record PreventionShield(int Turn, bool CombatOnly)
 {
+    /// <summary>"Until your next turn": it lasts until that player's next turn begins, not only this turn.</summary>
+    public PlayerId? UntilTurnOf { get; init; }
+
+    /// <summary>Whether it applies on <paramref name="turn"/>.</summary>
+    public bool ActiveOn(int turn) => Turn == turn || (UntilTurnOf is not null && Turn < turn);
+
     /// <summary>"Prevent all damage that would be dealt to [it] this turn": only damage to this object.</summary>
     public (CardId Card, int Version)? ToObject { get; init; }
 
@@ -390,6 +401,9 @@ public sealed partial class GameState
     /// <summary>Spells (card, version) exiled with time counters instead of going to the graveyard as they resolve, gaining suspend.</summary>
     public Dictionary<(CardId Card, int Version), int> SuspendOnResolution { get; } = new();
 
+    /// <summary>Spells exiled with a counter of this kind instead of going to the graveyard as they resolve.</summary>
+    public Dictionary<(CardId Card, int Version), Abilities.CounterKind> ExileWithCounterOnResolution { get; } = new();
+
     /// <summary>Permanents exiled at end of combat ("exile the token at end of combat").</summary>
     public List<(CardId Card, int Version)> ExileAtEndOfCombat { get; } = new();
 
@@ -425,6 +439,9 @@ public sealed partial class GameState
 
     /// <summary>Creature spells on the stack that gain haste and a sacrifice at the beginning of the end step as they enter ("it gains haste and 'At the beginning of the end step, sacrifice this creature'").</summary>
     public HashSet<(CardId Card, int Version)> HasteAndSacrificeOnEnter { get; } = new();
+
+    /// <summary>The last turn each player created tokens ("the first time you would create one or more tokens each turn").</summary>
+    public Dictionary<PlayerId, int> TokensCreatedOnTurn { get; } = new();
 
     /// <summary>Delayed abilities waiting for a given player's next end step (and the turn they were made, so it's a later one).</summary>
     public List<(DelayedTrigger Trigger, PlayerId Whose, int MadeOnTurn, bool MadeDuringEndStep)> AtPlayersNextEndStep { get; } = new();
