@@ -231,6 +231,9 @@ public sealed partial class Game
                     // "Whenever damage from a creature is prevented this way, …"
                     if (preventing?.WhenCreatureDamagePrevented is { } whenPrevented && preventing.SourceCard is { } shieldCard && WasCreature(source))
                         AddPending(shieldCard, whenPrevented, preventing.Controller, new TriggerInfo(source.Id, source.Version, preventing.Controller));
+                    if (preventing?.WhenPrevented is { } reflexive && preventing.SourceCard is { } reflexiveCard)
+                        AddPending(reflexiveCard, reflexive, preventing.Controller, new TriggerInfo(source.Id, source.Version, SourceController(source), n));
+                    if (preventing is { NextTimeOnly: true }) State.PreventionShields.Remove(preventing);
                     return 0;
                 }) { PlainPrevention = true });
             // "If damage would be dealt to that creature this turn, prevent that damage and put that many +1/+1 counters on it."
@@ -376,6 +379,10 @@ public sealed partial class Game
             foreach (var _ in State.DamageTripled.Where(t => t.Player == controller && t.Turn == State.TurnNumber))
                 result.Add(($"triple:{controller.Value}:{i++}", "Triple it", 3));
         }
+        // "If a creature you control that entered this turn would deal damage, it deals twice that much damage instead."
+        if (creature && source.Zone == Zone.Battlefield && State.Players.Any(p => p.EnteredThisTurn.Contains((source.Id, source.Version))))
+            foreach (var c in State.PermanentsControlledBy(controller).Where(c => c.HasTextAbilities && c.Definition.DoublesDamageOfCreaturesEnteredThisTurn))
+                result.Add(($"double:{c.Id}", $"Double it ({c.Name})", 2));
         // "If a Wizard you control would deal damage to a permanent or player, it deals double that damage instead."
         bool wizard = lki is not null ? lki.HasSubtype("Wizard") : source.HasSubtype("Wizard") && source.Zone == Zone.Battlefield;
         if (wizard)
@@ -512,7 +519,8 @@ public sealed partial class Game
             DistributeCounters dc => dc.Total,
             _ => (int?)null,
         }).FirstOrDefault(t => t is not null);
-        if (TotalOf(ability.Effects.Where(e => e is not ModeEffects)) is { } total) return (total, 0, targetCount);
+        int trailing = ability.Effects.OfType<DealDamageDivided>().Select(d => d.TrailingTargets).FirstOrDefault();
+        if (TotalOf(ability.Effects.Where(e => e is not ModeEffects)) is { } total) return (total, 0, Math.Max(0, targetCount - trailing));
         var modes = ability.Effects.OfType<ModeEffects>().ToList();
         for (int i = 0; i < modes.Count; i++)
             if (TotalOf(EffectTree.All(new SpellAbility { Effects = modes[i].Effects })) is { } modeTotal)
@@ -522,7 +530,8 @@ public sealed partial class Game
 
     /// <summary>The most targets a dividing ability can have: each target gets at least 1 (rule 601.2d).</summary>
     private int? MaxTargetsForDivision(AbilityDefinition? ability, PlayerId player, CardId source) =>
-        DividedAmong(ability, 1000, player, source) is { } d ? d.Total + d.From : null;
+        ability?.Effects.OfType<DealDamageDivided>().Any(d => d.TrailingTargets > 0) == true ? null // fixed target slots cap it
+        : DividedAmong(ability, 1000, player, source) is { } d ? d.Total + d.From : null;
 
     /// <summary>
     /// The division of damage or counters among the chosen targets, announced as the spell is cast or the ability is put on the
@@ -556,9 +565,9 @@ public sealed partial class Game
     /// The announced division, by target index relative to the effect's targets. Without one (a spell or ability put on the
     /// stack some other way), it's divided now among the targets still legal.
     /// </summary>
-    private async Task<List<(int Index, int Amount)>> DivisionAtResolutionAsync(EffectContext ctx, int total, string what)
+    private async Task<List<(int Index, int Amount)>> DivisionAtResolutionAsync(EffectContext ctx, int total, string what, int trailing = 0)
     {
-        int count = ctx.Targets.Count - ctx.TargetOffset;
+        int count = Math.Max(0, ctx.Targets.Count - ctx.TargetOffset - trailing);
         if (ctx.Division is { } division)
             return Enumerable.Range(0, count).Select(i => (i, ctx.TargetOffset + i < division.Count ? division[ctx.TargetOffset + i] : 0)).ToList();
         var legal = Enumerable.Range(0, count).Where(i => ctx.TargetAt(i) is not null).ToList();

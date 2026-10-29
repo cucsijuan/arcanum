@@ -155,9 +155,29 @@ public static class PredefinedTokens
         },
     };
 
+    /// <summary>"A colorless Gold artifact token with 'Sacrifice this artifact: Add one mana of any color.'"</summary>
+    public static readonly CardDefinition Gold = new()
+    {
+        Name = "Gold",
+        Types = CardType.Artifact,
+        Subtypes = new[] { "Gold" },
+        Abilities = new AbilityDefinition[]
+        {
+            new ActivatedAbility
+            {
+                Cost = new AbilityCost(ManaCost.Zero, SacrificeSelf: true),
+                Effects = new Effect[] { new AddManaOfAnyColor(1) },
+                Text = "Sacrifice this artifact: Add one mana of any color.",
+            },
+        },
+        OracleText = "Sacrifice this artifact: Add one mana of any color.",
+        IsToken = true,
+    };
+
     public static CardDefinition? ByName(string name) => name.ToLowerInvariant() switch
     {
         "treasure" => Treasure,
+        "gold" => Gold,
         "food" => Food,
         "clue" => Clue,
         "map" => Map,

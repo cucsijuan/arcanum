@@ -169,6 +169,9 @@ public sealed record PlayerView
     /// <summary>Poison counters.</summary>
     public int Poison { get; init; }
 
+    /// <summary>Experience counters.</summary>
+    public int Experience { get; init; }
+
     /// <summary>Has no maximum hand size for the rest of the game.</summary>
     public bool NoMaximumHandSize { get; init; }
 

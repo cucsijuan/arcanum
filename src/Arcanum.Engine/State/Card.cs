@@ -134,6 +134,9 @@ public sealed class Card
     /// <summary>Times it attacked this turn.</summary>
     public int AttacksThisTurn { get; set; }
 
+    /// <summary>The latest combat (<see cref="GameState.CombatSerial"/>) it attacked a player in, and that player.</summary>
+    public (int Combat, Core.PlayerId Player)? LastPlayerAttacked { get; set; }
+
     /// <summary>Modes of its abilities already chosen ("choose one that hasn't been chosen").</summary>
     public HashSet<int> ChosenModes { get; } = new();
 
@@ -478,7 +481,7 @@ public sealed class Card
     public int BaseToughness => BaseToughnessOverride ?? Definition.Toughness ?? 0;
 
     public int Power => (BasePowerOverride ?? Definition.Power ?? 0) + PowerBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne);
-    public int Toughness => (BaseToughnessOverride ?? Definition.Toughness ?? 0) + ToughnessBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne);
+    public int Toughness => (BaseToughnessOverride ?? Definition.Toughness ?? 0) + ToughnessBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne) - CounterCount(CounterKind.MinusZeroMinusOne);
 
     public int CounterCount(CounterKind kind) => Counters.GetValueOrDefault(kind);
 
@@ -573,6 +576,35 @@ public sealed class Card
     /// <summary>Creature type chosen as it entered.</summary>
     public string? ChosenType { get; set; }
 
+    /// <summary>A mana ability as this permanent has it: colors worked out from its controller's permanents and the like.</summary>
+    private ManaOption Resolve(ManaOption o)
+    {
+        var resolved = o.ColorsAmongYourPermanents ? o with { Types = ColorsAmongYourPermanents }
+            : o.ColorsAmongLegendaryCreatureCardsInGraveyard ? o with { Types = ColorsAmongGraveyardLegends }
+            : o.CommanderIdentity ? o with { Types = CommanderIdentityTypes }
+            : o.ColorsOpponentsLandsCouldProduce ? o with { Types = OpponentsLandColors }
+            : o.TypesYourLandsCouldProduce ? o with { Types = YourLandTypes }
+            : o;
+        // "Remove any number of [kind] counters: add one mana for each": at most as many as it has now.
+        if (resolved.RemovesCounters is { } kind) resolved = resolved with { Amount = CounterCount(kind) };
+        return resolved;
+    }
+
+    /// <summary>
+    /// The mana abilities printed on this card (unresolved), for an effect that gives them to another object ("have all activated
+    /// abilities of all land cards exiled with this"): a color chosen as it entered doesn't exist for a card that isn't on the battlefield.
+    /// </summary>
+    public IEnumerable<ManaOption> PrintedManaOptions()
+    {
+        var types = Definition.ManaFromChosenColor ? Array.Empty<Mana.ManaType>() : Definition.TapForMana;
+        if (types.Count > 0 && ManaAmount > 0) yield return new ManaOption(types, ManaAmount, Definition.ManaOnlyFor, Definition.ManaOnlyForAbilitiesToo);
+        foreach (var o in Definition.ExtraManaOptions) yield return o;
+        if (Definition.Types.HasFlag(CardType.Land))
+            foreach (var (landType, mana) in BasicLandMana)
+                if (Definition.Subtypes.Contains(landType, StringComparer.OrdinalIgnoreCase) && !types.Contains(mana))
+                    yield return new ManaOption(new[] { mana });
+    }
+
     /// <summary>Its mana abilities now: printed ones (unless lost), with the chosen color, plus granted ones.</summary>
     public IReadOnlyList<ManaOption> ManaOptions
     {
@@ -595,14 +627,7 @@ public sealed class Card
                 if (types.Count > 0 && ManaAmount > 0) options.Add(new ManaOption(types, ManaAmount, Definition.ManaOnlyFor, Definition.ManaOnlyForAbilitiesToo));
                 options.AddRange(Definition.ExtraManaOptions.Select((o, i) =>
                 {
-                    var resolved = o.ColorsAmongYourPermanents ? o with { Types = ColorsAmongYourPermanents }
-                        : o.ColorsAmongLegendaryCreatureCardsInGraveyard ? o with { Types = ColorsAmongGraveyardLegends }
-                        : o.CommanderIdentity ? o with { Types = CommanderIdentityTypes }
-                        : o.ColorsOpponentsLandsCouldProduce ? o with { Types = OpponentsLandColors }
-                        : o.TypesYourLandsCouldProduce ? o with { Types = YourLandTypes }
-                        : o;
-                    // "Remove any number of [kind] counters: add one mana for each": at most as many as it has now.
-                    if (resolved.RemovesCounters is { } kind) resolved = resolved with { Amount = CounterCount(kind) };
+                    var resolved = Resolve(o);
                     // An ability that can't add mana now keeps its place (abilities are numbered) but adds none.
                     return resolved.Types.Count == 0 || InactiveManaOptions.Contains(i) ? resolved with { Amount = 0, OneOfEach = false } : resolved;
                 }));
@@ -612,7 +637,8 @@ public sealed class Card
                         if (HasSubtype(landType) && !Definition.Subtypes.Contains(landType, StringComparer.OrdinalIgnoreCase) && !types.Contains(mana))
                             options.Add(new ManaOption(new[] { mana }));
             }
-            options.AddRange(GrantedManaOptions);
+            // Granted ones read "this" as this permanent too ("have all activated abilities of all land cards exiled with this").
+            options.AddRange(GrantedManaOptions.Select(o => Resolve(o) is var r && r.Types.Count == 0 ? r with { Amount = 0, OneOfEach = false } : r));
             if (ManaMultiplier > 1)
                 for (int i = 0; i < options.Count; i++)
                     options[i] = options[i].OneOfEach || options[i].Combination ? options[i] with { Times = options[i].Times * ManaMultiplier }
@@ -694,6 +720,9 @@ public sealed class Card
 
     /// <summary>The turn a counter was last put on it, as this object (-1: never).</summary>
     public int CounterPutTurn { get; set; } = -1;
+
+    /// <summary>How many counter-placing events put counters on it during <see cref="CounterPutTurn"/>.</summary>
+    public int CounterEventsThisTurn { get; set; }
 
     /// <summary>Its blitz cost was paid (rule 702.152a): as a permanent, until it leaves the battlefield.</summary>
     public bool Blitzed { get; set; }

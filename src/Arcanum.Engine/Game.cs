@@ -152,8 +152,12 @@ public sealed partial class Game
         {
             case CardMoved { From: Zone.Battlefield, To: Zone.Graveyard } m when WasCreature(State.GetCard(m.Card)):
                 State.CreaturesDiedThisTurn++;
+                if (!State.GetCard(m.Card).Definition.IsToken) State.NontokenCreaturesDiedThisTurn++;
                 State.GetPlayer(m.LastController).CreaturesDiedThisTurn++;
                 State.GetPlayer(m.LastController).PermanentLeftThisTurn = true;
+                break;
+            case CardMoved { From: Zone.Hand, To: Zone.Graveyard } discardedOrMilled:
+                State.GetPlayer(discardedOrMilled.Owner).CardsToGraveyardFromHandOrLibraryThisTurn++;
                 break;
             case DamageDealt { TargetPlayer: { } hurtPlayer } dealt:
                 State.GetPlayer(hurtPlayer).DamageTakenThisTurn += dealt.Amount;
@@ -178,6 +182,7 @@ public sealed partial class Game
                 break;
             case CardMoved { From: Zone.Library, To: Zone.Graveyard } milled:
                 State.GetPlayer(milled.Owner).MilledThisTurn++;
+                State.GetPlayer(milled.Owner).CardsToGraveyardFromHandOrLibraryThisTurn++;
                 break;
             case CardMoved { From: Zone.Graveyard } fromGraveyard:
                 State.GetPlayer(fromGraveyard.Owner).CardLeftGraveyardThisTurn = true;
@@ -185,6 +190,10 @@ public sealed partial class Game
                 break;
             case CountersPlaced { Count: > 0 } placed:
                 var counted = State.GetCard(placed.Card);
+                if (counted.CounterPutTurn != State.TurnNumber) counted.CounterEventsThisTurn = 0;
+                // The kinds put in one placement are one event ("one or more counters"): counted once.
+                if (_lastCounterPlacement != (placed.Card, State.TurnNumber, _counterPlacements)) counted.CounterEventsThisTurn++;
+                _lastCounterPlacement = (placed.Card, State.TurnNumber, _counterPlacements);
                 counted.CounterPutTurn = State.TurnNumber;
                 if (placed.By is { } placer && counted.IsCreature) State.GetPlayer(placer).PutCounterOnCreatureThisTurn = true;
                 break;

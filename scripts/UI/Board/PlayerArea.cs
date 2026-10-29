@@ -405,6 +405,7 @@ public partial class PlayerArea : Control
         if (me.NoMaximumHandSize) AddTag("No max hand size", BoardStyle.TextDim, $"{me.Name} has no maximum hand size for the rest of the game.");
         foreach (var emblem in me.Emblems)
             AddTag($"Emblem: {emblem.Name}", new Color("e89ad8"), $"{me.Name}'s emblem{(emblem.UntilEndOfTurn ? " (until end of turn)" : "")}:\n{emblem.Text}");
+        if (me.Experience > 0) AddTag($"Experience {me.Experience}", new Color("d9b45a"), $"{me.Name} has {me.Experience} experience counter{(me.Experience == 1 ? "" : "s")}.");
         if (me.Poison > 0) AddTag($"Poison {me.Poison}/10", new Color("8fd14f"), $"{me.Name} has {me.Poison} poison counter{(me.Poison == 1 ? "" : "s")}; ten or more loses the game.");
         // Rebuilt only when they change: the board refreshes all the time, and removing controls with tooltips each time
         // floods the log with the engine's complaints.

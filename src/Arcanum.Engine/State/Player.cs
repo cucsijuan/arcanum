@@ -84,6 +84,9 @@ public sealed class Player
     /// <summary>Poison counters (ten or more: the player loses, rule 704.5c).</summary>
     public int Poison { get; set; }
 
+    /// <summary>Experience counters (rule 122.1e): they stay for the rest of the game.</summary>
+    public int Experience { get; set; }
+
     /// <summary>Spells this player cast this turn, in order.</summary>
     public List<CardId> SpellsCastThisTurn { get; } = new();
 
@@ -105,11 +108,30 @@ public sealed class Player
     /// <summary>Creatures that died under this player's control this turn.</summary>
     public int CreaturesDiedThisTurn { get; set; }
 
+    /// <summary>Tokens this player created this turn.</summary>
+    public int TokensCreatedThisTurn { get; set; }
+
+    /// <summary>"Until end of turn, if one or more tokens would be created under your control, twice that many are created": the turns of each such effect.</summary>
+    public List<int> TokenDoublingsThisTurn { get; } = new();
+
+    /// <summary>Cards put into this player's graveyard from their hand or library this turn.</summary>
+    public int CardsToGraveyardFromHandOrLibraryThisTurn { get; set; }
+
     /// <summary>Permanents this player sacrificed this turn.</summary>
     public List<Core.CardId> SacrificedThisTurn { get; } = new();
 
     /// <summary>Players this player attacked this turn (with creatures attacking them, not their planeswalkers).</summary>
     public HashSet<Core.PlayerId> PlayersAttackedThisTurn { get; } = new();
+
+    /// <summary>"During any turn you attacked with a commander": a commander attacked under this player's control this turn.</summary>
+    public bool AttackedWithCommanderThisTurn { get; set; }
+
+    /// <summary>Players this player attacked during their most recent turn that has ended.</summary>
+    public HashSet<Core.PlayerId> PlayersAttackedDuringLastTurn { get; } = new();
+
+    /// <summary>The <see cref="GameState.CombatSerial"/> of this player's current or latest combat, and of the one before it.</summary>
+    public int LatestCombat { get; set; } = -1;
+    public int PreviousCombat { get; set; } = -1;
 
     /// <summary>A permanent this player controlled left the battlefield this turn.</summary>
     public bool PermanentLeftThisTurn { get; set; }

@@ -115,6 +115,23 @@ public enum Keyword
     Undying,
     /// <summary>"Hexproof from each of its colors": opponents' sources sharing a color with it can't target it (rule 702.11d).</summary>
     HexproofFromItsColors,
+    /// <summary>"This creature can't block. When this creature attacks, sacrifice it at end of combat" (rule 702.147a).</summary>
+    Decayed,
+    /// <summary>"Whenever this creature becomes blocked by a creature without flanking, the blocking creature gets -1/-1 until end of turn" (rule 702.25a).</summary>
+    Flanking,
+    /// <summary>"Whenever this creature attacks, each other attacking creature gets +1/+0 until end of turn" (rule 702.91a).</summary>
+    BattleCry,
+    /// <summary>"Whenever this creature attacks, put a +1/+1 counter on target attacking creature with lesser power" (rule 702.134a).</summary>
+    Mentor,
+    /// <summary>"This creature enters with your choice of a +1/+1 counter on it or haste" (rule 702.136a).</summary>
+    Riot,
+    /// <summary>
+    /// "Whenever this creature attacks, for each opponent other than defending player, you may create a token that's a copy of this creature
+    /// that's tapped and attacking that player or a planeswalker they control. Exile the tokens at end of combat" (rule 702.116a).
+    /// </summary>
+    Myriad,
+    /// <summary>"Hexproof from monocolored": opponents' monocolored spells and abilities from monocolored sources can't target it (rule 702.11d).</summary>
+    HexproofFromMonocolored,
 }
 
 public static class Keywords
@@ -160,6 +177,8 @@ public static class Keywords
         Keyword.AssignsDamageByToughness => "Assigns combat damage equal to its toughness",
         Keyword.AttacksEachCombat => "Attacks each combat if able",
         Keyword.SplitSecond => "Split second",
+        Keyword.BattleCry => "Battle cry",
+        Keyword.HexproofFromMonocolored => "Hexproof from monocolored",
         Keyword.Lure => "All creatures able to block it do so",
         Keyword.CanBlockAnyNumber => "Can block any number of creatures",
         Keyword.CantAttackAlone => "Can't attack alone",

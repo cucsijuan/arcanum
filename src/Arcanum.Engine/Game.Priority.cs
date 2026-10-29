@@ -86,6 +86,16 @@ public sealed partial class Game
             var card = State.GetCard(id);
             if (card.Version != version || card.Zone != Zone.Battlefield) continue;
             var who = card.Controller;
+            // Riot (702.136a): a +1/+1 counter or haste, chosen as it enters; each instance is a separate choice (702.136b).
+            for (int riot = card.Definition.KeywordAbilities.Count(k => k == Keyword.Riot); riot > 0; riot--)
+            {
+                bool counter = await ControllerOf(who).ChooseYesNoAsync(ViewFor(who), new YesNoRequest($"Riot: {card.Name} enters with a +1/+1 counter? (No: it has haste.)", id));
+                if (counter) PutCounters(card, CounterKind.PlusOnePlusOne, 1, who);
+                else State.LastingEffects.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });
+                Emit(new ChoiceMade(card.Id, counter ? "a +1/+1 counter" : "haste"));
+            }
+            await ResolvePendingCountersAsync();
+            if (card.Definition.ChooseOnEnter == EnterChoice.None && card.Definition.Devour == 0 && card.Definition.EntersRemovingCountersFrom is null) continue;
             if (card.Definition.Devour > 0)
             {
                 // Devour: "As this enters, you may sacrifice any number of [creatures]. It enters with N +1/+1 counters for each."
@@ -142,7 +152,14 @@ public sealed partial class Game
                     Require(shown.Count <= 1 && shown.All(eligible.Contains), "Reveal one of the listed cards.");
                 }
                 if (shown.Count == 1) Emit(new CardsRevealed(who, shown.ToList()));
-                else EnterTapped(card);
+                else if (card.Definition.EnterUntappedIfControl is not { } alsoIf
+                         || !State.PermanentsControlledBy(who).Any(p => p.Id != id && Matches(alsoIf with { Controller = ControllerFilter.Any }, p, who, card, who)))
+                    EnterTapped(card);
+                if (!card.Definition.EnterAlsoChooseColor) continue;
+                var colorNames = ColorLetters.Select(l => ColorNames[Array.IndexOf(ColorLetters, l)]).ToList();
+                int colorPick = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{card.Name}: choose a color", id, colorNames, OptionKind.Color));
+                Require(colorPick >= 0 && colorPick < colorNames.Count, "Choose one of the colors.");
+                card.ChosenColor = ColorLetters[colorPick];
                 continue;
             }
             else if (card.Definition.ChooseOnEnter == EnterChoice.BeholdOrTapped)
@@ -321,15 +338,16 @@ public sealed partial class Game
                && State.PermanentsControlledBy(s.Controller).Any(p => p.HasTextAbilities && p.Definition.YourInstantsAndSorceriesHaveSplitSecond)));
         bool sorcerySpeed = playerId == State.ActivePlayer && State.Step.IsMain() && State.Stack.Count == 0;
 
-        // Cards in hand, commanders in the command zone (rule 903.8), cards with flashback in the graveyard and
+        // Cards in hand, commanders in the command zone (rule 903.8), cards with flashback or harmonize in the graveyard and
         // exiled cards the player may play this turn.
         var castable = player.Hand.Concat(player.Command)
-            .Concat(player.Graveyard.Where(id => State.GetCard(id).Definition.Flashback is not null))
+            .Concat(player.Graveyard.Where(id => State.GetCard(id).Definition is { Flashback: not null } || HarmonizeCost(State.GetCard(id)) is not null || HasGrantedFlashback(State.GetCard(id))))
             .Concat(PlayableExile(playerId))
             .Concat(State.PlayableFromGraveyard.Concat(State.FlashbackGranted)
                 .Where(p => p.Player == playerId && State.GetCard(p.Card) is { Zone: Zone.Graveyard } c && c.Version == p.Version).Select(p => p.Card))
             .Concat(OtherCastableCards(playerId))
             .Concat(player.Graveyard.Where(id => HasGraveyardCastRight(State.GetCard(id))))
+            .Concat(PlaysLandsFromGraveyard(playerId) ? player.Graveyard.Where(id => State.GetCard(id).Is(CardType.Land)) : Enumerable.Empty<CardId>())
             .Distinct().ToList(); // listed first: checking a card may look at its permissions without them (OnlyAsAdventure)
         foreach (var card in castable.Select(State.GetCard))
         {
@@ -407,13 +425,23 @@ public sealed partial class Game
     private bool CanCast(Card card, PlayerId playerId, bool sorcerySpeed)
     {
         bool timing = TimingAllows(card, playerId, sorcerySpeed);
-        if (!timing && card.Definition.FlashExtraCost is null) return false;
+        if (!timing && card.Definition.FlashExtraCost is null && card.Definition.FlashExtraCostExtra is null) return false;
         return CanBeCast(card, playerId, flashExtra: !timing);
     }
 
     /// <summary>The player can't cast spells now ("players can't cast spells this turn", "your opponents can't cast spells this turn").</summary>
+    /// <summary>"You may play lands from your graveyard" (a permanent the player controls).</summary>
+    private bool PlaysLandsFromGraveyard(PlayerId player) =>
+        State.PermanentsControlledBy(player).Any(c => c.HasTextAbilities && c.Definition.PlayLandsFromGraveyard
+                                                     && (c.Definition.PlayLandsFromGraveyardOption is not { } option || c.ChosenOption == option));
+
+    /// <summary>"Your opponents can't cast spells during your turn": a permanent of the active player says so.</summary>
+    private bool OpponentsCantCastNow(PlayerId player) =>
+        player != State.ActivePlayer && State.OpponentsOf(State.ActivePlayer).Contains(player)
+        && State.PermanentsControlledBy(State.ActivePlayer).Any(c => c.HasTextAbilities && c.Definition.OpponentsCantCastDuringYourTurn);
+
     private bool SpellsForbidden(PlayerId player) =>
-        CombatLockdown() ||
+        CombatLockdown() || OpponentsCantCastNow(player) ||
         State.SpellsForbiddenTurn == State.TurnNumber || State.SpellsForbiddenFor.Contains((player, State.TurnNumber)) || ForbiddenDuringEquippersTurn(player);
 
     /// <summary>Lands the player may play this turn.</summary>
@@ -432,6 +460,7 @@ public sealed partial class Game
     /// <summary>Whether a "spells you cast cost less" ability of <paramref name="permanent"/> applies to <paramref name="card"/>.</summary>
     private bool ReductionApplies(SpellCostReduction reduction, Card permanent, Card card, PlayerId caster) =>
         Matches(reduction.Spells with { Controller = ControllerFilter.Any }, card, caster, permanent, caster)
+        && (reduction.While is not { } holds || Holds(holds, permanent.Controller, permanent))
         && (!reduction.FirstOfTurn || !State.GetPlayer(caster).SpellsCastThisTurn.Select(State.GetCard)
             .Any(c => c.Id != card.Id && Matches(reduction.Spells with { Controller = ControllerFilter.Any, InHand = null }, c, caster, permanent, caster)))
         // The spell being cast is counted once its costs are paid, so the spells counted are those cast before it.
@@ -514,11 +543,12 @@ public sealed partial class Game
     /// <summary>The extra cost of casting from the graveyard, if the card has one.</summary>
     private ExtraCost? GraveyardCost(Card card) =>
         State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version) || card.Definition.Flashback is not null
-        || State.FlashbackGranted.Any(p => p.Card == card.Id && p.Version == card.Version)
+        || HasGrantedFlashback(card)
             ? null
             : GraveyardRightUsed(card) is { } right ? right.Extra
             : card.Definition.GraveyardCastCost
-              ?? (CastWithGraveyardArtifactsPermission(card) ? new ExtraCost(0, null, 1, GraveyardArtifactsLife(card.Owner)) : null);
+              ?? (CastWithGraveyardArtifactsPermission(card) ? new ExtraCost(0, null, 1, GraveyardArtifactsLife(card.Owner)) : null)
+              ?? OncePerTurnGraveyardPermissions(card, card.Owner).Select(p => p.Definition.GraveyardCastOncePerTurn!.Extra).FirstOrDefault(e => e is not null);
 
     /// <summary>"During your turn, you may play cards from your graveyard" (a permanent the player controls says so).</summary>
     private bool HadesPermission(PlayerId player) =>
@@ -623,6 +653,7 @@ public sealed partial class Game
         // "During your turn, you may activate equip abilities any time you could cast an instant."
         bool instantEquip = ability.IsEquip && State.ActivePlayer == player && Has(player, Replacements.EquipAtInstantSpeedOnYourTurn);
         if (ability.SorcerySpeed && !sorcerySpeed && !instantEquip) return false;
+        if (ability.TimingAsCast && (!TimingAllows(source, player, sorcerySpeed) || SpellsForbidden(player))) return false;
         if (ability.OncePerTurn && source.ActivatedThisTurn.Contains(index)) return false;
         // "Activated abilities of lands your opponents control can't be activated unless they're mana abilities."
         if (source.Is(CardType.Land) && !IsManaAbility(ability) && State.OpponentsOf(source.Controller).Any(o => State.PermanentsControlledBy(o).Any(c => (c.Replaces & Replacements.AnyManaForItsAbilities) != 0)))
@@ -721,6 +752,10 @@ public sealed partial class Game
             cost = cost.MinusGeneric((targets is not null ? targets.Select(t => t.Target.Card).OfType<CardId>()
                     : ability.Targets.SelectMany(spec => LegalTargets(spec, player, source.Id)).Select(t => t.Card).OfType<CardId>())
                 .Select(State.GetCard).Select(h => h.CounterCount(CounterKind.PlusOnePlusOne)).DefaultIfEmpty(0).Max());
+        if (ability.CostReductionPerTargetColor)
+            cost = cost.MinusGeneric((targets is not null ? targets.Select(t => t.Target.Card).OfType<CardId>()
+                    : ability.Targets.SelectMany(spec => LegalTargets(spec, player, source.Id)).Select(t => t.Card).OfType<CardId>())
+                .Select(State.GetCard).Select(h => h.Colors.Distinct().Count()).DefaultIfEmpty(0).Max());
         cost = BlackLifeRule(player, cost);
         if (!ability.IsEquip) return cost;
         if (useFreeEquip && FreeEquipAvailable(player)) return ManaCost.Zero;
@@ -918,6 +953,9 @@ public sealed partial class Game
             Require(sacrificeCounts.Contains(n), "That many can't be sacrificed and still pay for the spell.");
             choices = choices with { SacrificeAnyCount = n };
         }
+        // Harmonize (702.180b): tapping an untapped creature is an optional additional cost, announced now and paid with the rest.
+        if (choices.Way.Kind == CastingWayKind.Harmonize)
+            choices = choices with { HarmonizeTapped = await ChooseHarmonizeTapAsync(player.Id, card, choices) };
         if (card.Definition.Offspring is { } offspring && CanPayToCast(card, player.Id, choices with { OffspringPaid = true })
             && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Pay offspring {offspring} for {card.Name}?", cardId)))
             choices = choices with { OffspringPaid = true };
@@ -993,13 +1031,15 @@ public sealed partial class Game
             Require(chosenX >= 0 && chosenX <= max, $"X must be between 0 and {max}.");
             choices = choices with { X = chosenX };
         }
+        if (card.Definition.XIsSacrificeCount) choices = choices with { X = choices.SacrificeAnyCount };
         int x = choices.X;
         // "Up to N target …": N optional targets, N known now that X is announced (601.2b-c).
         if (ability is not null) ability = WithRepeatedTargets(ability, player.Id, card, null, x);
 
         // 601.2c: targets. "Costs {N} less if it targets …": when the announcements need that reduction, only targets that
-        // give it can be chosen.
-        Func<Abilities.Target, bool>? affordable = ability is { Targets.Count: 1 } && card.Definition.SelfCostReduction?.IfTargets is not null
+        // give it can be chosen; "costs {N} more if it targets …": only targets it can still be paid with.
+        Func<Abilities.Target, bool>? affordable = ability is { Targets.Count: 1 }
+                                                   && (card.Definition.SelfCostReduction?.IfTargets is not null || card.Definition.CostIncreaseIfTargetsFilter is not null)
             ? t => CanPayToCast(card, player.Id, choices, new[] { new ChosenTarget(t, VersionOf(t)) })
             : null;
         // "As though it had flash if it targets …": cast at a time only that allows, its target has to be one that does.
@@ -1036,7 +1076,7 @@ public sealed partial class Game
             else return false;
         // 601.2g-h: paying. Delve (702.66): each card exiled from the graveyard while casting pays for {1}.
         List<CardId> delved = new();
-        if (card.Definition.Delve && cost.Generic > 0)
+        if (HasDelve(card, player.Id) && cost.Generic > 0)
         {
             var graveyard = player.Graveyard.Where(id => id != cardId).ToList();
             int most = Math.Min(cost.Generic, graveyard.Count - nonMana.Sum(e => e.ExileFromGraveyard));
@@ -1051,6 +1091,7 @@ public sealed partial class Game
                 cost = cost.MinusGeneric(delved.Count);
             }
         }
+        if (choices.HarmonizeTapped is { } harmonizer) Tap(State.GetCard(harmonizer));
         // Improvise (702.126): each artifact tapped while paying pays for {1}.
         if (HasImprovise(card, player.Id) && cost.Generic > 0)
         {
@@ -1177,7 +1218,7 @@ public sealed partial class Game
         if (permissionGroup != 0) State.PlayableFromGraveyard.RemoveAll(p => p.Group == permissionGroup);
         card.CastFromExile = fromExile;
         card.GreatestPowerAsCast = State.PermanentsControlledBy(player.Id).Where(c => c.IsCreature).Select(c => c.Power).DefaultIfEmpty(0).Max();
-        if (viaArtifactsPermission || viaFinalityRight) State.FinalityOnEnter.Add((card.Id, card.Version));
+        if (viaArtifactsPermission || viaFinalityRight || (fromGraveyard && card.Definition.GraveyardCastFinality)) State.FinalityOnEnter.Add((card.Id, card.Version));
         if (oncePermission is { } once)
         {
             State.GraveyardCastsUsed.Add((once.Id, once.Version, State.TurnNumber));
@@ -1203,7 +1244,7 @@ public sealed partial class Game
         PushStack(new SpellOnStack(cardId, player.Id, targets)
         {
             Ability = ability != CastingTargets(card.Definition) ? ability : null,
-            X = x, Kicked = kicked, Flashback = flashback, GiftTo = giftTo, SacrificedForCost = costSacrificed, DiscardedForCost = costDiscarded, Division = division, KickCount = choices.KickCount, SquadCount = choices.SquadCount, Dashed = choices.Way.Kind == CastingWayKind.Dash, Blitzed = choices.Way.Kind == CastingWayKind.Blitz, Evoked = choices.Way.Kind == CastingWayKind.Evoke, CompleatedFewer = compleatedFewer,
+            X = x, Kicked = kicked, Flashback = flashback || choices.Way.Kind == CastingWayKind.Harmonize, GiftTo = giftTo, SacrificedForCost = costSacrificed, DiscardedForCost = costDiscarded, Division = division, KickCount = choices.KickCount, SquadCount = choices.SquadCount, Dashed = choices.Way.Kind == CastingWayKind.Dash, Blitzed = choices.Way.Kind == CastingWayKind.Blitz, Evoked = choices.Way.Kind == CastingWayKind.Evoke, CompleatedFewer = compleatedFewer,
             Impended = choices.Way.Kind == CastingWayKind.Impending, Escaped = choices.Way.Kind == CastingWayKind.Escape, OffspringPaid = choices.OffspringPaid, GrantedOffspringPaid = choices.GrantedOffspringPaid.Count,
         });
         Emit(new SpellCast(player.Id, cardId));
@@ -1322,6 +1363,23 @@ public sealed partial class Game
             _announcedX = announcedX.Value;
         }
         // "Up to N target …": N optional targets, N known now that X is announced (602.2b → 601.2b-c).
+        if (ability.XFromSacrificedManaValue && ability.Cost.Extra?.Sacrifice is { } xSacrifice)
+        {
+            // X is announced (601.2b): the mana value of a creature that can be sacrificed for it.
+            var values = SacrificeCandidates(player.Id, xSacrifice, source.Id).Select(c => ManaValueOf(c)).Distinct().OrderBy(v => v).ToList();
+            if (values.Count == 0) return false;
+            int pick = values.Count == 1 ? 0 : await ControllerOf(player.Id).ChooseOptionAsync(ViewFor(player.Id), new OptionRequest(
+                $"{source.Name}: choose X (the mana value of the creature to sacrifice)", source.Id, values.Select(v => $"X = {v}").ToList(), OptionKind.Other));
+            Require(pick >= 0 && pick < values.Count, "Choose one of the values.");
+            int xv = values[pick];
+            announcedX = xv;
+            int targetValue = xv + ability.TargetManaValueOffset;
+            ability = ability with
+            {
+                Targets = ability.Targets.Select(t => t with { Filter = (t.Filter ?? ObjectFilter.Anything) with { MinManaValue = targetValue, MaxManaValue = targetValue } }).ToList(),
+                Cost = ability.Cost with { Extra = ability.Cost.Extra with { Sacrifice = xSacrifice with { MinManaValue = xv, MaxManaValue = xv } } },
+            };
+        }
         ability = WithRepeatedTargets(ability, player.Id, source, null, announcedX ?? 0);
         // Equip discounts depend on the creature targeted: only creatures it can be paid for can be chosen.
         Func<Abilities.Target, bool>? affordable = ability is { IsEquip: true, Targets.Count: 1 }
@@ -1390,6 +1448,9 @@ public sealed partial class Game
         var extraCost = ability.Cost.DiscardX && x > 0 ? (ability.Cost.Extra ?? new ExtraCost()) with { Discard = x } : ability.Cost.Extra;
         if (ability.Cost.TapX) extraCost = x > 0 ? extraCost! with { TapCount = x } : extraCost! with { TapCreatures = null, TapCount = 0 };
         if (ability.Cost.SacrificeX) extraCost = x > 0 ? extraCost! with { SacrificeCount = x } : extraCost! with { Sacrifice = null, SacrificeCount = 1 };
+        if (ability.Cost.PayLifeX && x > 0) extraCost = (extraCost ?? new ExtraCost()) with { PayLife = (extraCost?.PayLife ?? 0) + x };
+        if (ability.Cost.ExileGraveyardX && x > 0) extraCost = (extraCost ?? new ExtraCost()) with { ExileFromGraveyard = (extraCost?.ExileFromGraveyard ?? 0) + x };
+        if (!CanPayExtra(player.Id, extraCost, source.Id)) return false; // more life or cards than X allows
         // What the cost will sacrifice, discard, ...: chosen first, while backing out still changes nothing.
         if (await ChooseExtraAsync(player.Id, extraCost, source.Id) is not { } extraPicks) return false;
 
@@ -1580,6 +1641,23 @@ public sealed partial class Game
     private int CommanderColorCount(PlayerId player) =>
         State.Cards.Values.Where(c => c.IsCommander && c.Owner == player).SelectMany(c => c.Definition.ColorIdentity).Distinct().Count();
 
+    /// <summary>Whether the cards can be matched one-to-one to the filters ("a Swamp and a Forest"), each card used once.</summary>
+    private bool CoversEachOnce(List<CardId> cards, IReadOnlyList<ObjectFilter> filters, PlayerId player, CardId source)
+    {
+        bool Assign(int i, HashSet<CardId> used)
+        {
+            if (i == filters.Count) return true;
+            foreach (var id in cards.Where(id => !used.Contains(id) && Matches(filters[i] with { Controller = ControllerFilter.Any }, State.GetCard(id), player, State.GetCard(source), player)))
+            {
+                used.Add(id);
+                if (Assign(i + 1, used)) return true;
+                used.Remove(id);
+            }
+            return false;
+        }
+        return Assign(0, new HashSet<CardId>());
+    }
+
     private bool CanPayExtra(PlayerId playerId, ExtraCost? extra, CardId source)
     {
         if (extra is null) return true;
@@ -1590,7 +1668,9 @@ public sealed partial class Game
         if (ExilableFromGraveyard(player, extra, source).Count < extra.ExileFromGraveyard) return false;
         if (extra.ReturnExiledWithSource is { } exiledFilter && !ExiledWith(State.GetCard(source), exiledFilter).Any()) return false;
         if (extra.Sacrifice is { } filter && SacrificeCandidates(playerId, filter, source).Count < extra.SacrificeCount) return false;
-        if (extra.ReturnToHand is { } returnFilter && ReturnCandidates(playerId, returnFilter, source).Count == 0) return false;
+        if (extra.SacrificeEachOf is { } eachOf && extra.Sacrifice is { } eachFilter
+            && !CoversEachOnce(SacrificeCandidates(playerId, eachFilter, source).Select(c => c.Id).ToList(), eachOf, playerId, source)) return false;
+        if (extra.ReturnToHand is { } returnFilter && ReturnCandidates(playerId, returnFilter, source).Count < extra.ReturnToHandCount) return false;
         if (extra.Behold is { } beholdFilter && BeholdCandidates(playerId, beholdFilter, source).Count < extra.BeholdCount) return false;
         if (extra.BeholdChooseType && BeholdTypeOptions(playerId, extra, source).Count == 0) return false;
         if (extra.TapCreatures is { } tapFilter && TapCandidates(playerId, tapFilter, source).Count < extra.TapCount) return false;
@@ -1750,9 +1830,11 @@ public sealed partial class Game
             case ExtraChoice.Return when extra.ReturnToHand is { } toReturn:
             {
                 var returnable = ReturnCandidates(playerId, toReturn, source);
-                if (returnable.Count == 1) return null; // nothing to choose: that one goes back
-                return (new CardChoiceRequest("Return a permanent to its owner's hand to pay the cost", source, Views(returnable.Select(c => c.Id)), 1, 1, CardChoicePurpose.ToHand),
-                    c => c.Count == 1 && returnable.Any(x => x.Id == c[0]), "Return one of the listed permanents.");
+                int returnCount = extra.ReturnToHandCount;
+                if (returnable.Count == returnCount) return null; // nothing to choose: those go back
+                return (new CardChoiceRequest(returnCount == 1 ? "Return a permanent to its owner's hand to pay the cost" : $"Return {returnCount} permanents to their owners' hands to pay the cost",
+                        source, Views(returnable.Select(c => c.Id)), returnCount, returnCount, CardChoicePurpose.ToHand),
+                    c => c.Count == returnCount && Distinct(c) && c.All(id => returnable.Any(x => x.Id == id)), "Return the listed permanents.");
             }
             case ExtraChoice.ExileFromHand when extra.ExileFromHand is not null:
             {
@@ -1771,7 +1853,9 @@ public sealed partial class Game
                 var candidates = SacrificeCandidates(playerId, filter, source);
                 return (new CardChoiceRequest($"Sacrifice {extra.SacrificeCount} to pay the cost", source, Views(candidates.Select(c => c.Id)),
                         extra.SacrificeCount, extra.SacrificeCount, CardChoicePurpose.Sacrifice),
-                    c => c.Count == extra.SacrificeCount && Distinct(c) && c.All(id => candidates.Any(x => x.Id == id)), "Sacrifice one of the listed permanents.");
+                    c => c.Count == extra.SacrificeCount && Distinct(c) && c.All(id => candidates.Any(x => x.Id == id))
+                         && (extra.SacrificeEachOf is not { } each || CoversEachOnce(c.ToList(), each, playerId, source)),
+                    extra.SacrificeEachOf is null ? "Sacrifice one of the listed permanents." : "Sacrifice one of each kind the cost names.");
             }
         }
         return null;
@@ -1884,6 +1968,12 @@ public sealed partial class Game
             _lastExiledForCost.AddRange(exiled);
         }
         _lastDiscardedForCost.Clear();
+        if (extra.DiscardHand)
+        {
+            var hand = State.GetPlayer(playerId).Hand.Where(id => id != source).ToList();
+            foreach (var id in hand) await DiscardCardAsync(playerId, id, causedBy);
+            _lastDiscardedForCost.AddRange(hand);
+        }
         if (extra.Discard > 0)
         {
             var chosen = await Choose(ExtraChoice.Discard);
@@ -1909,9 +1999,9 @@ public sealed partial class Game
         if (extra.ReturnToHand is { } toReturn)
         {
             var returnable = ReturnCandidates(playerId, toReturn, source);
-            var pick = returnable.Count == 1 ? new List<CardId> { returnable[0].Id } : (await Choose(ExtraChoice.Return)).ToList();
-            Require(pick.Count == 1 && returnable.Any(c => c.Id == pick[0]), "Return one of the listed permanents.");
-            await MoveCardAsync(pick[0], Zone.Hand);
+            var pick = returnable.Count == extra.ReturnToHandCount ? returnable.Select(c => c.Id).ToList() : (await Choose(ExtraChoice.Return)).ToList();
+            Require(pick.Count == extra.ReturnToHandCount && pick.All(id => returnable.Any(c => c.Id == id)), "Return the listed permanents.");
+            foreach (var id in pick) await MoveCardAsync(id, Zone.Hand);
         }
         if (extra.Blight > 0)
         {
@@ -2119,7 +2209,7 @@ public sealed partial class Game
         if (source.Is(CardType.Land) && produced.Count > 0) await AddLandManaBonusAsync(player, source, produced);
         if (option is { AddsCounter: { } addsCounter }) PutCounters(source, addsCounter, 1, player.Id);
         if (option is { ExileSelf: true }) await MoveCardAsync(source.Id, Zone.Exile);
-        if (option is { CopyNextInstantOrSorcery: true }) State.CopyNextInstantOrSorcery.Add((player.Id, State.TurnNumber, 1));
+        if (option is { CopyNextInstantOrSorcery: true }) State.CopyNextInstantOrSorcery.Add((player.Id, State.TurnNumber, 1, false));
         ManaPoolChanged();
     }
 
@@ -2171,7 +2261,7 @@ public sealed partial class Game
     /// lasts only for this cast, so a cast that's backed out of or can't be completed leaves nothing behind.
     /// <paramref name="hasteOnEnter"/> is a rider that applies only if the spell is actually cast.
     /// </summary>
-    private async Task<bool> CastNowWithoutPayingAsync(Player player, CardId cardId, bool hasteOnEnter = false, bool hasteAndSacrifice = false)
+    private async Task<bool> CastNowWithoutPayingAsync(Player player, CardId cardId, bool hasteOnEnter = false, bool hasteAndSacrifice = false, bool exileAfter = false)
     {
         var card = State.GetCard(cardId);
         if (hasteAndSacrifice) _hasteAndSacrificeCasts.Add(cardId);
@@ -2179,7 +2269,7 @@ public sealed partial class Game
         if (hasteOnEnter) card.HasteOnEnter = true;
         _castFree.Add(cardId);
         bool cast = false;
-        try { cast = await CastSpellAsync(player, cardId); }
+        try { cast = await CastSpellAsync(player, cardId, exileAfter: exileAfter); }
         finally
         {
             _castFree.Remove(cardId);
@@ -2293,6 +2383,14 @@ public sealed partial class Game
                 {
                     _spellToLibraryBottom = null;
                     await MoveCardAsync(spell.Card, Zone.Library, toBottom: true);
+                    Emit(new SpellResolved(spell.Card));
+                    break;
+                }
+                // An Omen spell (the Omen subtype on its alternative characteristics) is shuffled into its owner's library as it resolves, not exiled.
+                if (card.AsAdventure && !card.Definition.IsToken && card.PrintedDefinition.Adventure?.Subtypes.Contains("Omen") == true)
+                {
+                    await MoveCardAsync(spell.Card, Zone.Library);
+                    Shuffle(State.GetPlayer(card.Owner));
                     Emit(new SpellResolved(spell.Card));
                     break;
                 }

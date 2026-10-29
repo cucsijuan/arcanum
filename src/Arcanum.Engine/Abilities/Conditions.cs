@@ -97,6 +97,9 @@ public sealed record SourceHadCounters(CounterKind Kind) : Condition;
 /// <summary>This effect sacrificed at least one permanent of yours.</summary>
 public sealed record YouSacrificedThisWay : Condition;
 
+/// <summary>"If you do" after "you may cast that card": the effect cast a spell.</summary>
+public sealed record CastThisWay : Condition;
+
 /// <summary>This effect created at least one token so far ("When you do" after "create …").</summary>
 public sealed record CreatedThisWay : Condition;
 
@@ -224,6 +227,12 @@ public sealed record SacrificedMatches(ObjectFilter Filter) : Condition;
 /// <summary>"If they attacked you that turn": the player the trigger is about attacked the controller this turn.</summary>
 public sealed record TriggeredPlayerAttackedYou : Condition;
 
+/// <summary>"During any turn you attacked with a commander": a commander attacked under your control this turn.</summary>
+public sealed record YouAttackedWithCommanderThisTurn : Condition;
+
+/// <summary>"If any of that damage was dealt by a Warrior": one of the trigger's batch (as it last existed) matches.</summary>
+public sealed record BatchHas(ObjectFilter Filter) : Condition;
+
 /// <summary>The player the event happened to is you ("deals combat damage to you").</summary>
 public sealed record TriggeredPlayerIsYou : Condition;
 
@@ -349,6 +358,9 @@ public sealed record DuringStep(State.Step Step) : Condition;
 
 /// <summary>"If it's your main phase": your turn, during a main phase.</summary>
 public sealed record YourMainPhase : Condition;
+
+/// <summary>"During your end step".</summary>
+public sealed record YourEndStep : Condition;
 
 /// <summary>"If {W}{W} was spent to cast it": at least <paramref name="Count"/> mana of that type paid for the source as it was cast.</summary>
 public sealed record ManaSpentToCast(Mana.ManaType Type, int Count) : Condition;

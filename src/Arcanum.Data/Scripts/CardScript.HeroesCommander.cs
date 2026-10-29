@@ -22,14 +22,17 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("opponentsChooseFromYourGraveyard", out var ocg)) return new OpponentsChooseFromYourGraveyard(ParseFilter(ocg, ControllerFilter.Any));
         if (e.TryGetProperty("exileRandomFromOpponentsGraveyards", out _)) return new ExileRandomFromOpponentsGraveyards();
         if (e.TryGetProperty("castExiledFreeAnyNumber", out _))
-            return new CastExiledFreeAnyNumber(e.TryGetProperty("ownersLoseLife", out var oll) && oll.GetBoolean());
+            return new CastExiledFreeAnyNumber(e.TryGetProperty("ownersLoseLife", out var oll) && oll.GetBoolean())
+            {
+                MaxManaValue = e.TryGetProperty("maxManaValue", out var cemv) ? ParseQuantity(cemv) : null,
+            };
         if (e.TryGetProperty("chooseOneOf", out var coo)) return new ChooseOneOf(ParseSubject(coo)) { Filter = e.TryGetProperty("filter", out var coof) ? ParseFilter(coof, ControllerFilter.You) : null };
         if (e.TryGetProperty("exileWithSameNameTokens", out var ewsn)) return new ExileWithSameNameTokens(ParseSubject(ewsn));
         if (e.TryGetProperty("putExiledWithThis", out var pew))
             return new PutExiledWithThis(ParseFilter(pew, ControllerFilter.Any),
                 e.TryGetProperty("counterKinds", out var pek) ? pek.EnumerateArray().Select(k => ParseCounterKind(k.GetString())).ToList() : Array.Empty<CounterKind>());
         if (e.TryGetProperty("whenDiesThisTurn", out var wdt))
-            return new WhenDiesThisTurn(ParseSubject(wdt), EffectList(e.GetProperty("effects")), e.TryGetProperty("text", out var wdx) ? wdx.GetString()! : "When that creature dies this turn");
+            return new WhenDiesThisTurn(ParseSubject(wdt), EffectList(e.GetProperty("effects")), e.TryGetProperty("text", out var wdx) ? wdx.GetString()! : "When that creature dies this turn") { UnderYourControl = e.TryGetProperty("underYourControl", out var wdu) && wdu.GetBoolean() };
         if (e.TryGetProperty("attackTaxUntilYourNextTurn", out var atx)) return new AttackTaxUntilYourNextTurn(Arcanum.Engine.Mana.ManaCost.Parse(atx.GetString()!));
         if (e.TryGetProperty("distributeCountersFromSelf", out var dcs)) return new DistributeSourceCounters(ParseCounterKind(dcs.GetString()));
         if (e.TryGetProperty("sacrificeAllBut", out var sab))
@@ -51,6 +54,7 @@ public static partial class CardScriptParser
                 e.TryGetProperty("exceptName", out var bcn) ? bcn.GetString() : null)
             {
                 Lasting = e.TryGetProperty("lasting", out var bcl) && bcl.GetBoolean(),
+                AddLegendary = e.TryGetProperty("addLegendary", out var bcal) && bcal.GetBoolean(),
                 Keywords = e.TryGetProperty("keywords", out var bck) ? bck.EnumerateArray().Select(k => k.GetString()!).ToList() : Array.Empty<string>(),
                 KeepThisAbility = e.TryGetProperty("keepThisAbility", out var bca) && bca.GetBoolean(),
             };

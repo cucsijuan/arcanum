@@ -132,6 +132,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>"Have all activated abilities of all creature cards exiled with this creature."</summary>
     public bool GrantsExiledCreatureAbilities { get; init; }
 
+    /// <summary>"Have all activated abilities of all land cards exiled with this creature": those cards' activated and mana abilities.</summary>
+    public ObjectFilter? GrantsExiledCardAbilities { get; init; }
+
     /// <summary>Keywords the affected permanents lose ("loses flying", layer 6).</summary>
     public IReadOnlyList<Keyword>? LosesKeywords { get; init; }
 

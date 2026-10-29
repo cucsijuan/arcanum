@@ -38,6 +38,7 @@ public static partial class CardFactory
         "Revolt", "Delirium", "Battalion", "Fateful hour", "Spell mastery", "Addendum", "Regenerate", "Triple", "Populate", "Exert",
         "Secret council", "Will of the council", "Council's dilemma", "Tempting offer", "Transform",
         "Lieutenant", "Enrage", "Celebration", "Pack tactics", "Imprint", "Living weapon", "Proliferate", "Discover", "Read ahead",
+        "Endure", // a keyword action: the script's "endure" effect
         "Tiered", // the script's modes carry their additional costs (rule 702.183)
         "Meld", // the script's "meld" effect, with "meldsWith" and "meldInto"
         "Boast", "Spectacle", "Overload", "Revolt", "Eminence", "Commander ninjutsu", "Ninjutsu", // scripted (activation limits, alternative costs)
@@ -61,7 +62,7 @@ public static partial class CardFactory
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
     /// <remarks>Includes keywords whose rules this factory derives from rules text (Equip, Enchant).</remarks>
     public static ISet<string> SupportedKeywords { get; } =
-        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Impending", "Offspring", "Evoke", "Encore", "Compleated", "Escape", "Toxic", "Vanishing", "Ravenous" }).Concat(ScriptedKeywords),
+        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Impending", "Offspring", "Evoke", "Encore", "Compleated", "Escape", "Toxic", "Vanishing", "Ravenous", "Mobilize", "Harmonize", "Fabricate", "Eternalize", "Embalm", "Suspend", "Demonstrate", "Dredge" }).Concat(ScriptedKeywords),
             StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Why <see cref="Create"/> finds the card unsupported (for tools): each failed requirement, by face.</summary>
@@ -126,6 +127,8 @@ public static partial class CardFactory
             Morph = KeywordLineCost(record.OracleText, MorphLine()),
             Impending = KeywordLineCost(record.OracleText, ImpendingLine()),
             Offspring = KeywordLineCost(record.OracleText, OffspringLine()),
+            Harmonize = KeywordLineCost(record.OracleText, HarmonizeLine()),
+            Dredge = KeywordLineNumber(record.OracleText, DredgeLine()) ?? 0,
             Evoke = KeywordLineCost(record.OracleText, EvokeLine()) ?? (EvokeExileColor(record.OracleText) is not null ? ManaCost.Zero : null),
             EvokeExtra = EvokeExileColor(record.OracleText) is { } evokeColor
                 ? new Engine.Abilities.ExtraCost { ExileFromHand = new Engine.Abilities.ObjectFilter(Colors: new[] { evokeColor }, Controller: Engine.Abilities.ControllerFilter.Any) } : null,
@@ -319,7 +322,8 @@ public static partial class CardFactory
             if (KickerLine().IsMatch(line) || FlashbackLine().IsMatch(line) || WardLine().IsMatch(line) || line == "This spell can't be countered") continue;
             if (CyclingLine().IsMatch(line)) continue;
             if (UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line) || MorphLine().IsMatch(line) || ImpendingLine().IsMatch(line) || OffspringLine().IsMatch(line)) continue;
-            if (EvokeLine().IsMatch(line) || EvokeExileLine().IsMatch(line) || EncoreLine().IsMatch(line)) continue;
+            if (EvokeLine().IsMatch(line) || EvokeExileLine().IsMatch(line) || EncoreLine().IsMatch(line) || MobilizeLine().IsMatch(line) || HarmonizeLine().IsMatch(line)) continue;
+            if (FabricateLine().IsMatch(line) || EternalizeLine().IsMatch(line) || EmbalmLine().IsMatch(line) || SuspendLine().IsMatch(line) || DredgeLine().IsMatch(line) || line == "Demonstrate") continue;
             if (EscapeLine().IsMatch(line) || EscapesWithLine().IsMatch(line.Replace(record.Name, "~")) || ToxicLine().IsMatch(line) || VanishingLine().IsMatch(line)) continue;
             if (CommanderPairingLine().IsMatch(line)) continue;
             // A keyword line: "Flying" or "Flying, trample".
@@ -423,6 +427,31 @@ public static partial class CardFactory
             if (CyclingAbility(line) is { } cycling) abilities.Add(cycling);
             if (UnearthAbility(line) is { } unearth) abilities.Add(unearth);
             if (EncoreAbility(line) is { } encore) abilities.Add(encore);
+            if (MobilizeTrigger(line) is { } mobilize) abilities.Add(mobilize);
+            if (FabricateLine().Match(line) is { Success: true } fabricate)
+                abilities.Add(new Engine.Abilities.TriggeredAbility
+                {
+                    Trigger = Engine.Abilities.TriggerEvent.EntersBattlefield,
+                    Effects = new Engine.Abilities.Effect[] { new Engine.Abilities.Fabricate(int.Parse(fabricate.Groups["n"].Value)) },
+                    Text = $"{line} (When this permanent enters, put {fabricate.Groups["n"].Value} +1/+1 counters on it or create {fabricate.Groups["n"].Value} 1/1 colorless Servo artifact creature tokens.)",
+                });
+            if (ZombieCopyAbility(line) is { } zombieCopy) abilities.Add(zombieCopy);
+            if (SuspendLine().Match(line) is { Success: true } suspend)
+                abilities.Add(new Engine.Abilities.ActivatedAbility
+                {
+                    Cost = new Engine.Abilities.AbilityCost(ManaCost.Parse(suspend.Groups["cost"].Value)) { FromHand = true, ExileFromHand = true },
+                    SpecialAction = true,
+                    TimingAsCast = true,
+                    Effects = new Engine.Abilities.Effect[] { new Engine.Abilities.SuspendFromHand(int.Parse(suspend.Groups["n"].Value)) },
+                    Text = $"{line} (Rather than cast this card from your hand, pay {suspend.Groups["cost"].Value} and exile it with {suspend.Groups["n"].Value} time counters on it.)",
+                });
+            if (line == "Demonstrate")
+                abilities.Add(new Engine.Abilities.TriggeredAbility
+                {
+                    Trigger = Engine.Abilities.TriggerEvent.CastThis,
+                    Effects = new Engine.Abilities.Effect[] { new Engine.Abilities.Demonstrate() },
+                    Text = "Demonstrate (When you cast this spell, you may copy it. If you do, choose an opponent to also copy it. Players may choose new targets for their copies.)",
+                });
             if (ForetellLine().Match(line) is { Success: true }) abilities.Add(ForetellAbility);
             if (PartnerWithAbility(line) is { } partnerWith) abilities.Add(partnerWith);
             var enchantMatch = EnchantLine().Match(line);
@@ -575,6 +604,68 @@ public static partial class CardFactory
 
     [GeneratedRegex(@"^Encore (?<cost>(\{[0-9WUBRGC/]+\})+)$")]
     private static partial Regex EncoreLine();
+
+    /// <summary>"Mobilize N" (rule 702.181a): "Whenever this creature attacks, create N 1/1 red Warrior creature tokens…". "Mobilize X, where X is …" needs a script.</summary>
+    private static Engine.Abilities.TriggeredAbility? MobilizeTrigger(string line)
+    {
+        var m = MobilizeLine().Match(line);
+        if (!m.Success) return null;
+        int n = int.Parse(m.Groups["n"].Value);
+        return new Engine.Abilities.TriggeredAbility
+        {
+            Trigger = Engine.Abilities.TriggerEvent.Attacks,
+            Effects = new Engine.Abilities.Effect[] { new Engine.Abilities.Mobilize(n) },
+            Text = $"Mobilize {n} (Whenever this creature attacks, create {(n == 1 ? "a" : n.ToString())} tapped and attacking 1/1 red Warrior creature token{(n == 1 ? "" : "s")}. Sacrifice {(n == 1 ? "it" : "them")} at the beginning of the next end step.)",
+        };
+    }
+
+    [GeneratedRegex(@"^Mobilize (?<n>[0-9]+)$")]
+    private static partial Regex MobilizeLine();
+
+    [GeneratedRegex(@"^Harmonize (?<cost>(\{[0-9WUBRGCX/]+\})+)$")]
+    private static partial Regex HarmonizeLine();
+
+    [GeneratedRegex(@"^Dredge (?<n>[0-9]+)$")]
+    private static partial Regex DredgeLine();
+
+    [GeneratedRegex(@"^Fabricate (?<n>[0-9]+)$")]
+    private static partial Regex FabricateLine();
+
+    [GeneratedRegex(@"^Eternalize (?<cost>(\{[0-9WUBRGC/]+\})+)$")]
+    private static partial Regex EternalizeLine();
+
+    [GeneratedRegex(@"^Embalm (?<cost>(\{[0-9WUBRGC/]+\})+)$")]
+    private static partial Regex EmbalmLine();
+
+    [GeneratedRegex(@"^Suspend (?<n>[0-9]+)—(?<cost>(\{[0-9WUBRGC/]+\})+)$")]
+    private static partial Regex SuspendLine();
+
+    /// <summary>
+    /// "Eternalize [cost]" (rule 702.129a): "[Cost], Exile this card from your graveyard: Create a token that's a copy of it, except it's a
+    /// 4/4 black Zombie with no mana cost. Activate only as a sorcery." Embalm (702.128a) the same, except a white Zombie, its size kept.
+    /// </summary>
+    private static Engine.Abilities.ActivatedAbility? ZombieCopyAbility(string line)
+    {
+        bool eternalize = EternalizeLine().Match(line) is { Success: true };
+        var m = eternalize ? EternalizeLine().Match(line) : EmbalmLine().Match(line);
+        if (!m.Success) return null;
+        return new Engine.Abilities.ActivatedAbility
+        {
+            Cost = new Engine.Abilities.AbilityCost(ManaCost.Parse(m.Groups["cost"].Value), false, true) { FromGraveyard = true },
+            SorcerySpeed = true,
+            Effects = new Engine.Abilities.Effect[]
+            {
+                new Engine.Abilities.CreateTokenCopy(Engine.Abilities.Subject.Self, 1)
+                {
+                    SetPower = eternalize ? 4 : null, SetToughness = eternalize ? 4 : null, SetColors = new[] { eternalize ? "B" : "W" },
+                    AddSubtypes = new[] { "Zombie" }, NoManaCost = true,
+                },
+            },
+            Text = eternalize
+                ? $"{line} ({m.Groups["cost"].Value}, Exile this card from your graveyard: Create a token that's a copy of it, except it's a 4/4 black Zombie with no mana cost. Eternalize only as a sorcery.)"
+                : $"{line} ({m.Groups["cost"].Value}, Exile this card from your graveyard: Create a token that's a copy of it, except it's a white Zombie in addition to its other types and has no mana cost. Embalm only as a sorcery.)",
+        };
+    }
 
     private static Engine.Abilities.ActivatedAbility? UnearthAbility(string line)
     {

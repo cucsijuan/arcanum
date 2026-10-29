@@ -26,8 +26,11 @@ public sealed record AttackRequirement(CardId Attacker, AttackRequirementKind Ki
 /// <summary>A planeswalker that can be attacked, and the defending player who controls it.</summary>
 public sealed record AttackablePlaneswalker(CardId Planeswalker, PlayerId Controller);
 
-/// <summary>A creature that can't attack a given player; with <paramref name="Planeswalkers"/>, not their planeswalkers either.</summary>
-public sealed record AttackForbidden(CardId Attacker, PlayerId Defender, bool Planeswalkers = false);
+/// <summary>
+/// A creature that can't attack a given player; with <paramref name="Planeswalkers"/>, not their planeswalkers either; with
+/// <paramref name="OnlyPlaneswalkers"/>, only their planeswalkers ("can attack players … as though it didn't have defender").
+/// </summary>
+public sealed record AttackForbidden(CardId Attacker, PlayerId Defender, bool Planeswalkers = false, bool OnlyPlaneswalkers = false);
 
 /// <summary>
 /// Everything needed to declare attackers legally (rule 508.1): who may attack whom, the restrictions ("can't attack
@@ -70,7 +73,7 @@ public sealed record AttackRequest(IReadOnlyList<CardId> Attackers, IReadOnlyLis
     /// <summary>Whether the creature may attack that player (or, with a planeswalker, that planeswalker).</summary>
     public bool MayAttack(CardId attacker, PlayerId defender, CardId? planeswalker = null) =>
         Attackers.Contains(attacker) && Defenders.Contains(defender)
-        && (planeswalker is not { } pw ? !Forbidden.Any(f => f.Attacker == attacker && f.Defender == defender)
+        && (planeswalker is not { } pw ? !Forbidden.Any(f => f.Attacker == attacker && f.Defender == defender && !f.OnlyPlaneswalkers)
             : Planeswalkers.Any(p => p.Planeswalker == pw && p.Controller == defender)
               && !Forbidden.Any(f => f.Attacker == attacker && f.Defender == defender && f.Planeswalkers));
 

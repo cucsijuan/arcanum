@@ -75,6 +75,8 @@ public sealed partial class Game
                 var attacker = State.GetCard(d.Attacker);
                 combat.Declared.Add((attacker.Id, attacker.Version));
                 if (d.Planeswalker is null) combat.PlayersAttacked.Add((attacker.Controller, d.Defender));
+                if (d.Planeswalker is null) attacker.LastPlayerAttacked = (State.CombatSerial, d.Defender);
+                if (attacker.IsCommander) State.GetPlayer(attacker.Controller).AttackedWithCommanderThisTurn = true;
                 if (!attacker.Has(Keyword.Vigilance))
                 {
                     Tap(attacker);
@@ -131,6 +133,12 @@ public sealed partial class Game
             // "Attacks [player] this turn if able."
             foreach (var r in State.AttackPlayerRequirements.Where(r => r.Card == id && r.Version == card.Version && r.Turn == State.TurnNumber && defenders.Contains(r.Player)))
                 requirements.Add(new AttackRequirement(id, AttackRequirementKind.AttacksPlayer, r.Player));
+            // "Attacks this combat if able."
+            if (State.AttacksThisCombat.Any(r => r.Card == id && r.Version == card.Version && r.Combat == State.CombatSerial))
+                requirements.Add(new AttackRequirement(id, AttackRequirementKind.Attacks));
+            // "Attacks that player this combat if able."
+            foreach (var r in State.AttackPlayerThisCombat.Where(r => r.Card == id && r.Version == card.Version && r.Combat == State.CombatSerial && defenders.Contains(r.Player)))
+                requirements.Add(new AttackRequirement(id, AttackRequirementKind.AttacksPlayer, r.Player));
             requirements.AddRange(PlaneswalkerAttackRequirements(card, defenders));
         }
         return new AttackRequest(possible, defenders)
@@ -141,6 +149,9 @@ public sealed partial class Game
             Forbidden = possible.SelectMany(id => defenders
                     .Where(d => AttackForbidden(State.GetCard(id), d) || AttackForbiddenWithPlaneswalkers(State.GetCard(id), d))
                     .Select(d => new AttackForbidden(id, d, AttackForbiddenWithPlaneswalkers(State.GetCard(id), d))))
+                // A defender attacking only because of "can attack players who attacked you" can't attack their planeswalkers.
+                .Concat(possible.Where(id => State.GetCard(id) is var c && c.Has(Keyword.Defender) && !c.Has(Keyword.CanAttackWithDefender))
+                    .SelectMany(id => defenders.Select(d => new AttackForbidden(id, d, true, OnlyPlaneswalkers: true))))
                 .ToList(),
             CantAttackAlone = possible.Where(id => State.GetCard(id).Has(Keyword.CantAttackAlone)).ToList(),
             OneAttackerPlaneswalkers = defenders.SelectMany(d => State.PermanentsControlledBy(d).Where(p => p.Is(CardType.Planeswalker) && p.Has(Keyword.OneAttackerAtMost)).Select(p => p.Id)).ToList(),
@@ -153,8 +164,14 @@ public sealed partial class Game
     /// Restrictions that keep a creature from attacking a player and their planeswalkers alike, being about the defending
     /// player: "can't attack unless defending player controls an Island".
     /// </summary>
+    /// <summary>"Can attack players who attacked you during their last turn as though it didn't have defender."</summary>
+    private static bool AttacksDespiteDefenderSometimes(Card c) => c.HasTextAbilities && c.Definition.AttacksPlayersWhoAttackedYouDespiteDefender;
+
     private bool AttackForbiddenWithPlaneswalkers(Card attacker, PlayerId defender) =>
         attacker.CantAttackPlayersAndPlaneswalkers.Contains(defender) ||
+        // Defender lifted only against players who attacked its controller during their last turn (and never their planeswalkers' sake alone).
+        (attacker.Has(Keyword.Defender) && !attacker.Has(Keyword.CanAttackWithDefender) && AttacksDespiteDefenderSometimes(attacker)
+         && !State.GetPlayer(defender).PlayersAttackedDuringLastTurn.Contains(attacker.Controller)) ||
         State.NextCombatRules.Any(r => r.Card == attacker.Id && r.Version == attacker.Version && r.Turn == State.TurnNumber && r.Protected == defender) ||
         attacker.Definition.CantAttackUnlessDefenderControls is { } needed && attacker.HasTextAbilities
         && !State.PermanentsControlledBy(defender).Any(p => Matches(needed with { Controller = Abilities.ControllerFilter.Any }, p, defender, attacker, attacker.Controller));
@@ -191,16 +208,20 @@ public sealed partial class Game
     }
 
     private bool CanAttack(Card c) =>
-        c.IsCreature && !c.Tapped && !c.IsSummoningSick && (!c.Has(Keyword.Defender) || c.Has(Keyword.CanAttackWithDefender)) && !c.Has(Keyword.CantAttack)
+        c.IsCreature && !c.Tapped && !c.IsSummoningSick && (!c.Has(Keyword.Defender) || c.Has(Keyword.CanAttackWithDefender) || AttacksDespiteDefenderSometimes(c))
+        && !c.Has(Keyword.CantAttack)
         // "Creatures with power greater than the number of cards in your hand can't attack" (the permanent's controller's hand).
         && !State.Battlefield.Select(State.GetCard).Any(b => b.Definition.CantAttackIfPowerAboveHandSize && b.HasTextAbilities && c.Power > State.GetPlayer(b.Controller).Hand.Count);
 
     /// <summary>Evasion: flying can only be blocked by flying or reach (702.9b); "can't be blocked by ..." restrictions.</summary>
     private bool CanBlock(Card blocker, Card attacker) =>
-        !blocker.Has(Keyword.CantBlock) && !attacker.Has(Keyword.CantBeBlocked) && !ProtectedFrom(attacker, blocker)
+        !blocker.Has(Keyword.CantBlock) && !blocker.Has(Keyword.Decayed) && !attacker.Has(Keyword.CantBeBlocked) && !ProtectedFrom(attacker, blocker)
         && (!attacker.Has(Keyword.Flying) || blocker.Has(Keyword.Flying) || blocker.Has(Keyword.Reach))
         && (!blocker.Has(Keyword.CanBlockOnlyFlyers) || attacker.Has(Keyword.Flying)) // "can block only creatures with flying"
         && attacker.Has(Keyword.Shadow) == blocker.Has(Keyword.Shadow) // shadow (702.28b)
+        // "Creatures your opponents control without flying or reach can't block creatures with power 2 or less."
+        && !(attacker.Power <= 2 && !blocker.Has(Keyword.Flying) && !blocker.Has(Keyword.Reach)
+             && State.Battlefield.Select(State.GetCard).Any(p => p.HasTextAbilities && p.Definition.OpponentsGroundCantBlockSmall && State.OpponentsOf(p.Controller).Contains(blocker.Controller)))
         && !attacker.UnblockableBy.Contains(blocker.Controller)
         && !(State.Combat?.Unblockable.Contains((attacker.Id, attacker.Version)) ?? false)
         && !State.CantBlockThisTurn.Any(r => r.Turn == State.TurnNumber && Matches(r.Filter with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, null, r.Controller))

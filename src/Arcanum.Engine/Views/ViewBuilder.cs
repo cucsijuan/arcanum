@@ -48,6 +48,7 @@ public static class ViewBuilder
                 RingBearer = p.RingBearer is { } bearer && state.GetCard(bearer.Card) is { Zone: Zone.Battlefield } b && b.Version == bearer.Version ? bearer.Card : null,
                 Protected = p.Protected,
                 Poison = p.Poison,
+                Experience = p.Experience,
                 NoMaximumHandSize = p.NoMaximumHandSize,
                 Emblems = state.Emblems.Select(state.GetCard).Where(e => e.Owner == p.Id)
                     .Select(e => new EmblemView(e.Name, e.Definition.OracleText, state.EmblemsUntilEndOfTurn.Contains(e.Id))).ToList(),

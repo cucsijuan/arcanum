@@ -333,6 +333,19 @@ public sealed partial record CardDefinition
     public ManaCost? Offspring { get; init; }
 
     /// <summary>
+    /// "Harmonize [cost]" (rule 702.180): "You may cast this card from your graveyard by paying [cost] rather than its mana cost"; cast
+    /// that way, it's exiled instead of going anywhere else when it leaves the stack. As an additional cost, the caster may tap an
+    /// untapped creature they control to reduce the cost by {X}, where X is that creature's power.
+    /// </summary>
+    public ManaCost? Harmonize { get; init; }
+
+    /// <summary>
+    /// Dredge N (rule 702.52a): "If you would draw a card, you may mill N cards instead. If you do, return this card from your graveyard to your
+    /// hand." Only with at least N cards in the library (702.52b).
+    /// </summary>
+    public int Dredge { get; init; }
+
+    /// <summary>
     /// For a Class whose card-wide rules (replacement effects, damage bonuses and the like) are printed in a level section: that
     /// level (rule 716.2c). Below it the permanent has none of them. 0: they always apply.
     /// </summary>
@@ -573,6 +586,16 @@ public sealed partial record CardDefinition
     /// <summary>"You may cast this spell as though it had flash if you pay {2} more to cast it."</summary>
     public ManaCost? FlashExtraCost { get; init; }
 
+    /// <summary>"You may cast this spell as though it had flash if you [non-mana cost] as an additional cost to cast it."</summary>
+    public ExtraCost? FlashExtraCostExtra { get; init; }
+
+    /// <summary>"This spell costs {N} more to cast if it targets a [filter]": the amount, with <see cref="CostIncreaseIfTargetsFilter"/>.</summary>
+    public int CostIncreaseIfTargets { get; init; }
+    public ObjectFilter? CostIncreaseIfTargetsFilter { get; init; }
+
+    /// <summary>"You may cast [filter] spells without paying their mana costs" (a permanent's static ability).</summary>
+    public ObjectFilter? CastSpellsFree { get; init; }
+
     /// <summary>"If this card is in your opening hand, you may begin the game with it on the battlefield."</summary>
     public bool StartsOnBattlefieldFromOpeningHand { get; init; }
 
@@ -598,6 +621,9 @@ public sealed partial record CardDefinition
 
     /// <summary>"You may cast this card from your graveyard as long as [condition]" (no extra cost).</summary>
     public Condition? GraveyardCastIf { get; init; }
+
+    /// <summary>"If you do [cast it from your graveyard this way], it enters with a finality counter on it."</summary>
+    public bool GraveyardCastFinality { get; init; }
 
     /// <summary>Characteristic-defining power/toughness ("equal to the number of creatures you control").</summary>
     public Quantity? PowerFrom { get; init; }
@@ -642,6 +668,48 @@ public sealed partial record CardDefinition
 
     /// <summary>"As long as this Equipment is attached to a creature, your opponents can't cast spells during your turn."</summary>
     public bool OpponentsCantCastDuringYourTurnWhileAttached { get; init; }
+
+    /// <summary>"If a card would be put into an opponent's graveyard from anywhere, instead exile it with a void counter on it."</summary>
+    public bool OpponentsCardsExiledWithVoidCounter { get; init; }
+
+    /// <summary>"This creature can attack players who attacked you during their last turn as though it didn't have defender."</summary>
+    public bool AttacksPlayersWhoAttackedYouDespiteDefender { get; init; }
+
+    /// <summary>If you casting or copying an instant or sorcery spell causes a triggered ability of a permanent you control to trigger, it triggers an additional time.</summary>
+    public bool InstantSorceryTriggersTwice { get; init; }
+
+    /// <summary>Creatures your opponents control without flying or reach can't block creatures with power 2 or less.</summary>
+    public bool OpponentsGroundCantBlockSmall { get; init; }
+
+    /// <summary>If one or more creature tokens would be created under your control, that many 4/4 white Angel creature tokens with flying and vigilance are created instead.</summary>
+    public bool CreatureTokensBecomeAngels { get; init; }
+
+    /// <summary>X is the number of permanents sacrificed for its "sacrifice X" additional cost (announced with it).</summary>
+    public bool XIsSacrificeCount { get; init; }
+
+    /// <summary>If a creature you control that entered this turn would deal damage, it deals twice that much damage instead.</summary>
+    public bool DoublesDamageOfCreaturesEnteredThisTurn { get; init; }
+
+    /// <summary>You may play lands from your graveyard.</summary>
+    public bool PlayLandsFromGraveyard { get; init; }
+
+    /// <summary>With <see cref="PlayLandsFromGraveyard"/>: only while this option was chosen as it entered ("• Sultai — …").</summary>
+    public string? PlayLandsFromGraveyardOption { get; init; }
+
+    /// <summary>Each instant and sorcery card in your graveyard has flashback; the flashback cost is its mana cost.</summary>
+    public bool GraveyardInstantsAndSorceriesHaveFlashback { get; init; }
+
+    /// <summary>Spells can't be countered.</summary>
+    public bool SpellsCantBeCountered { get; init; }
+
+    /// <summary>Spells you cast have delve.</summary>
+    public bool YourSpellsHaveDelve { get; init; }
+
+    /// <summary>Untap all permanents you control during each other player's untap step.</summary>
+    public bool UntapDuringOthersUntapSteps { get; init; }
+
+    /// <summary>Your opponents can't cast spells during your turn.</summary>
+    public bool OpponentsCantCastDuringYourTurn { get; init; }
 
     /// <summary>"If you cast a spell this way [from the top of your library], pay life equal to its mana value rather than pay its mana cost."</summary>
     public bool LibraryTopSpellsForLife { get; init; }
@@ -741,6 +809,12 @@ public sealed partial record CardDefinition
 
     /// <summary>With <see cref="EnterChoice.RevealOrTapped"/>: the cards that may be revealed from the hand so it enters untapped.</summary>
     public ObjectFilter? EnterRevealFilter { get; init; }
+
+    /// <summary>With a reveal-or-tapped choice: "… unless you revealed a Dragon card this way or you control a Dragon" (the permanents that also do).</summary>
+    public ObjectFilter? EnterUntappedIfControl { get; init; }
+
+    /// <summary>With a reveal-or-tapped choice: "As this land enters, choose a color" as well.</summary>
+    public bool EnterAlsoChooseColor { get; init; }
 
     /// <summary>The life paid with <see cref="EnterChoice.PayLifeOrTapped"/>.</summary>
     public int EnterLife { get; init; }
@@ -918,4 +992,8 @@ public sealed partial record CardDefinition
 /// cards in your graveyard that were put there from anywhere other than the battlefield this turn"; with <see cref="EntersTapped"/>: "if you cast a
 /// spell this way, that [permanent] enters tapped". Each permanent with it gives its own permission.
 /// </summary>
-public sealed record GraveyardCastOncePerTurn(Abilities.ObjectFilter Filter, bool NotFromBattlefieldThisTurn, bool EntersTapped);
+public sealed record GraveyardCastOncePerTurn(Abilities.ObjectFilter Filter, bool NotFromBattlefieldThisTurn, bool EntersTapped)
+{
+    /// <summary>"By exiling three other cards from your graveyard in addition to paying its other costs".</summary>
+    public Abilities.ExtraCost? Extra { get; init; }
+}

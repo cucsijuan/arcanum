@@ -12,6 +12,8 @@ public sealed partial class Game
     {
         /// <summary>"If it would die this turn, exile it instead."</summary>
         ExileIfDies,
+        /// <summary>An opponent's "if a card would be put into an opponent's graveyard from anywhere, instead exile it with a void counter on it".</summary>
+        ExiledWithVoidCounter,
         /// <summary>The card's own "if it would be put into a graveyard from anywhere, shuffle it into its owner's library instead".</summary>
         ShuffleIntoLibrary,
         /// <summary>"If a creature an opponent controls would die, exile it instead" (<see cref="ZoneReplacement.By"/>).</summary>
@@ -76,6 +78,11 @@ public sealed partial class Game
                         || (!card.Definition.IsToken && (c.Replaces & (Cards.Replacements.OpponentsNontokenCreaturesExiledInsteadOfDying | Cards.Replacements.OpponentsNontokenCreaturesExiledGainTwoLife)) != 0)))
                     .Select(c => new ZoneReplacement(ZoneReplacementKind.ExiledByOpponentsPermanent, c)));
             if (State.ExileInsteadOfGraveyard.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileInsteadOfGraveyard));
+            // A card (not a token or a copy of a spell) going to the graveyard of an opponent of that permanent's controller.
+            if (!card.Definition.IsToken)
+                list.AddRange(State.Battlefield.Select(State.GetCard)
+                    .Where(c => c.HasTextAbilities && c.Definition.OpponentsCardsExiledWithVoidCounter && State.OpponentsOf(c.Controller).Contains(card.Owner))
+                    .Select(c => new ZoneReplacement(ZoneReplacementKind.ExiledWithVoidCounter, c)));
             if (State.PermanentsControlledBy(card.Owner).FirstOrDefault(c => (c.Replaces & Cards.Replacements.ExileInsteadOfYourGraveyard) != 0) is { } eld)
                 list.Add(new(ZoneReplacementKind.ExiledByOpponentsPermanent, eld) { YoursToExile = true });
             if ((card.Is(Cards.CardType.Instant) || card.Is(Cards.CardType.Sorcery))
@@ -106,6 +113,7 @@ public sealed partial class Game
     {
         ZoneReplacementKind.ExileIfDies => "Exile it (it would die this turn)",
         ZoneReplacementKind.ExileIfLeaves => "Exile it instead (it would leave the battlefield)",
+        ZoneReplacementKind.ExiledWithVoidCounter => $"Exile it with a void counter ({replacement.By!.Name}, {State.GetPlayer(replacement.By.Controller).Name})",
         ZoneReplacementKind.ShuffleIntoLibrary => $"Shuffle it into its owner's library ({card.Name})",
         ZoneReplacementKind.ExiledByOpponentsPermanent when replacement.YoursToExile => $"Exile it ({replacement.By!.Name})",
         ZoneReplacementKind.ExiledByOpponentsPermanent => $"Exile it ({replacement.By!.Name}, {State.GetPlayer(replacement.By.Controller).Name})",
@@ -524,6 +532,10 @@ public sealed partial class Game
                 card.ExiledWith = (gainer.Id, gainer.Version);
                 _pendingLifeGains.Add((gainer.Controller, 2));
             }
+        // "Instead exile it with a void counter on it": the counter is put on as it's exiled (rule 614.1c), once per such effect applied.
+        foreach (var applied in plan.Applied)
+            if (applied.Kind == ZoneReplacementKind.ExiledWithVoidCounter && to == Zone.Exile)
+                card.Counters[Abilities.CounterKind.Void] = card.CounterCount(Abilities.CounterKind.Void) + 1;
         card.FaceDown = faceDown && to == Zone.Exile;
         card.KnownTo.UnionWith(knewIt);
         NoteCommanderMove(card, to);
@@ -575,7 +587,7 @@ public sealed partial class Game
                 // "This creature enters prepared": prepared as it enters, so its enters abilities see it prepared.
                 if (card.Definition.EntersPrepared) Prepare(card, announce: false);
                 if (card.IsCreature && ExtraEnterCounters(card) is var extraCounters and > 0) enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, extraCounters));
-                if (card.Definition.ChooseOnEnter != Cards.EnterChoice.None || card.Definition.Devour > 0 || card.Definition.EntersRemovingCountersFrom is not null)
+                if (card.Definition.ChooseOnEnter != Cards.EnterChoice.None || card.Definition.Devour > 0 || card.Definition.EntersRemovingCountersFrom is not null || card.Definition.KeywordAbilities.Contains(Cards.Keyword.Riot))
                     State.PendingEnterChoices.Add((id, card.Version));
                 break;
             case Zone.Stack:
@@ -654,6 +666,26 @@ public sealed partial class Game
         // "If you would draw a card except the first one you draw in each of your draw steps …"
         bool firstInDrawStep = State.Step == Step.Draw && State.ActivePlayer == playerId && !player.DrewInDrawStep;
         if (State.Step == Step.Draw && State.ActivePlayer == playerId) player.DrewInDrawStep = true;
+        // Dredge (702.52): the player may replace the draw with a dredge of a card in their graveyard. Asked first, so that declining
+        // it lets another replacement apply and each draw that one makes can be dredged in turn (the player's order, 616.1).
+        if (depth <= 8)
+        {
+            var dredgers = player.Graveyard.Select(State.GetCard).Where(c => c.Definition.Dredge > 0 && c.Definition.Dredge <= player.Library.Count).ToList();
+            if (dredgers.Count > 0)
+            {
+                var labels = dredgers.Select(c => $"Dredge {c.Definition.Dredge}: {c.Name} (mill {c.Definition.Dredge}, return it to your hand)").Prepend("Draw a card").ToList();
+                int pick = await ControllerOf(playerId).ChooseOptionAsync(ViewFor(playerId), new Players.OptionRequest("Dredge instead of drawing?", dredgers[0].Id, labels, Players.OptionKind.Other));
+                Require(pick >= 0 && pick < labels.Count, "Choose to draw or one of the dredge cards.");
+                if (pick > 0)
+                {
+                    var dredged = dredgers[pick - 1];
+                    await ApplyAsync(new Abilities.Mill(dredged.Definition.Dredge, Abilities.Subject.You), new EffectContext(playerId, dredged, Array.Empty<ChosenTarget>(), Array.Empty<bool>()));
+                    if (dredged.Zone == Zone.Graveyard) await MoveCardAsync(dredged.Id, Zone.Hand);
+                    Emit(new Events.ChoiceMade(dredged.Id, $"{player.Name} dredges {dredged.Name}"));
+                    return;
+                }
+            }
+        }
         var doublers = depth > 8 ? new List<Card>() : State.PermanentsControlledBy(playerId).Where(c => !applied.Contains(c.Id)
             && ((!firstInDrawStep && (c.Replaces & Cards.Replacements.DrawTwoExceptFirstInDrawStep) != 0)
                 || (player.Hand.Count == 0 && (c.Replaces & Cards.Replacements.DrawTwoWithEmptyHand) != 0))).ToList();

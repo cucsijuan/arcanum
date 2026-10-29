@@ -94,6 +94,9 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
 /// </summary>
 public sealed record ControlEffect(CardId Card, int Version, PlayerId NewController, long Timestamp)
 {
+    /// <summary>With <see cref="WhileSource"/>: "for as long as [it] remains on the battlefield", whoever controls it.</summary>
+    public bool WhileSourceRemainsOnly { get; init; }
+
     public bool UntilEndOfTurn { get; init; }
 
     /// <summary>"Until the end of your next turn": ends at the cleanup of that player's first turn after the effect began.</summary>
@@ -133,6 +136,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
 
     /// <summary>Mana of any type can be spent to cast it.</summary>
     public bool AnyManaType { get; init; }
+
+    /// <summary>With <see cref="AnyManaType"/>: only "as though it were mana of any color", so a {C} still needs colorless mana.</summary>
+    public bool AnyColorOnly { get; init; }
 
     /// <summary>"Until the end of your next turn": lasts through that player's first turn after <see cref="MadeOnTurn"/>.</summary>
     public PlayerId? UntilEndOfNextTurnOf { get; init; }
@@ -204,6 +210,12 @@ public sealed record PreventionShield(int Turn, bool CombatOnly)
 
     /// <summary>"Whenever damage from a creature is prevented this way, …": triggers (about the creature) each time this shield prevents such damage.</summary>
     public Abilities.TriggeredAbility? WhenCreatureDamagePrevented { get; init; }
+
+    /// <summary>"The next time …": the shield is used up by the first damage it prevents.</summary>
+    public bool NextTimeOnly { get; init; }
+
+    /// <summary>"When damage is prevented this way, …": a reflexive trigger about the source (its controller as the player, the amount prevented).</summary>
+    public Abilities.TriggeredAbility? WhenPrevented { get; init; }
 }
 
 /// <summary>
@@ -309,7 +321,7 @@ public sealed partial class GameState
     public List<PlayableFromExile> FlashbackGranted { get; } = new();
 
     /// <summary>"When you next cast an instant or sorcery spell this turn, copy that spell" (player, turn).</summary>
-    public List<(PlayerId Player, int Turn, int Copies)> CopyNextInstantOrSorcery { get; } = new();
+    public List<(PlayerId Player, int Turn, int Copies, bool AnySpell)> CopyNextInstantOrSorcery { get; } = new();
 
     /// <summary>"Until your next turn, … damage to that player or a permanent that player controls is doubled": the player, the effect's controller and its source.</summary>
     public List<(PlayerId Victim, PlayerId Until, CardId Source)> DamageDoubledAgainst { get; } = new();
@@ -330,7 +342,10 @@ public sealed partial class GameState
     public HashSet<(CardId Card, int Version)> EntersTappedFromStack { get; } = new();
 
     /// <summary>"When that creature dies this turn, …": delayed triggers watching one creature (as that object) for the rest of the turn.</summary>
-    public List<(CardId Card, int Version, int Turn, CardId Source, PlayerId Controller, Abilities.TriggeredAbility Ability)> WhenDiesThisTurn { get; } = new();
+    public List<(CardId Card, int Version, int Turn, CardId Source, PlayerId Controller, Abilities.TriggeredAbility Ability, bool UnderControllersControl)> WhenDiesThisTurn { get; } = new();
+
+    /// <summary>"Gains harmonize until end of turn. Its harmonize cost is equal to its mana cost": cards in graveyards, as those objects.</summary>
+    public List<(CardId Card, int Version, int Turn)> HarmonizeGranted { get; } = new();
 
     /// <summary>Attack taxes on attacking a player until that player's next turn.</summary>
     public List<(PlayerId Protected, Mana.ManaCost Tax)> AttackTaxesUntilNextTurn { get; } = new();
@@ -461,6 +476,9 @@ public sealed partial class GameState
     /// <summary>Creatures that died this turn (morbid).</summary>
     public int CreaturesDiedThisTurn { get; set; }
 
+    /// <summary>Nontoken creatures that died this turn.</summary>
+    public int NontokenCreaturesDiedThisTurn { get; set; }
+
     /// <summary>Permanents sacrificed this turn by all players.</summary>
     public int PermanentsSacrificedThisTurn { get; set; }
 
@@ -472,6 +490,15 @@ public sealed partial class GameState
 
     /// <summary>"[Creature] attacks [player] this turn if able": the creature (card, version), the player and the turn.</summary>
     public List<(CardId Card, int Version, PlayerId Player, int Turn)> AttackPlayerRequirements { get; } = new();
+
+    /// <summary>"Attacks that player this combat if able": the creature, the player and the combat (<see cref="CombatSerial"/>).</summary>
+    public List<(CardId Card, int Version, PlayerId Player, int Combat)> AttackPlayerThisCombat { get; } = new();
+
+    /// <summary>"Attacks this combat if able": the creature and the combat (<see cref="CombatSerial"/>).</summary>
+    public List<(CardId Card, int Version, int Combat)> AttacksThisCombat { get; } = new();
+
+    /// <summary>Combats begun this game, numbering each one.</summary>
+    public int CombatSerial { get; set; }
 
     /// <summary>For the next combat this turn: the creature attacks if able and can't attack this player or their planeswalkers.</summary>
     public List<(CardId Card, int Version, PlayerId Protected, int Turn)> NextCombatRules { get; } = new();

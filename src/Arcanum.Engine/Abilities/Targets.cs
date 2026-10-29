@@ -93,6 +93,12 @@ public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = C
     /// <summary>"Up to X target …": this requirement is repeated X times (worked out as the ability is put on the stack), all optional and different.</summary>
     public Quantity? RepeatFrom { get; init; }
 
+    /// <summary>"Each of X target …": with <see cref="RepeatFrom"/>, exactly that many (not "up to").</summary>
+    public bool RepeatExactly { get; init; }
+
+    /// <summary>"Target cards from their graveyard": cards owned by the player chosen for this earlier target (its index).</summary>
+    public int? OwnedByTarget { get; init; }
+
     public string Describe()
     {
         if (Text is not null) return Text;

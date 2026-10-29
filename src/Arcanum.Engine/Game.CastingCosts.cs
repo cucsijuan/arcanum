@@ -17,7 +17,7 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>What a spell is cast for (rule 118.9): its mana cost or one alternative cost.</summary>
-    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown, Escape, Evoke }
+    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown, Escape, Evoke, Harmonize }
 
     /// <summary>
     /// One way to pay for casting a card: the cost it's cast for (its mana cost, or the flashback or miracle cost it's being
@@ -55,6 +55,8 @@ public sealed partial class Game
         public IReadOnlyList<Card> Spliced { get; init; } = Array.Empty<Card>();
         /// <summary>Conspire instances paid for (rule 702.78b: each is paid and copies separately).</summary>
         public int ConspireCount { get; init; }
+        /// <summary>The creature tapped for harmonize (702.180b): the spell costs {X} less, X its power.</summary>
+        public CardId? HarmonizeTapped { get; init; }
         public int X { get; init; }
     }
 
@@ -95,6 +97,13 @@ public sealed partial class Game
                 return new() { new(CastingWayKind.Blitz, blitz) };
             ways.Add(new(CastingWayKind.Blitz, blitz));
         }
+        if (card.Zone == Zone.Graveyard && HarmonizeCost(card) is { } harmonize)
+        {
+            // 702.180a: from the graveyard only with harmonize, unless something else lets it be cast from there.
+            if (!GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0 && !BlitzFromGraveyard(card))
+                return new() { new(CastingWayKind.Harmonize, harmonize) };
+            ways.Add(new(CastingWayKind.Harmonize, harmonize));
+        }
         if (card.Zone == Zone.Graveyard && card.Definition.Escape is { } escape)
         {
             // 702.138a: from the graveyard only with escape, unless something else lets it be cast from there.
@@ -107,6 +116,10 @@ public sealed partial class Game
         if (card.Zone == Zone.Hand && card.PrintedDefinition.Morph is not null) ways.Add(new(CastingWayKind.FaceDown, FaceDownCastCost)); // 702.37c
         if (card.Definition.AlternativeCost is { } alt && (alt.If is null || Holds(alt.If, caster, card))) ways.Add(new(CastingWayKind.Alternative, alt.Cost));
         if (card.Zone == Zone.Hand && Has(caster, Replacements.CastFromHandFree)) ways.Add(new(CastingWayKind.WithoutPaying, ManaCost.Zero));
+        // "You may cast Dragon spells without paying their mana costs": wherever the card can be cast from.
+        else if (State.PermanentsControlledBy(caster).Any(p => p.HasTextAbilities && p.Definition.CastSpellsFree is { } free
+                     && Matches(free with { Controller = ControllerFilter.Any }, card, caster, p, caster)))
+            ways.Add(new(CastingWayKind.WithoutPaying, ManaCost.Zero));
         // "Spells with mana value less than or equal to the number of creatures you control from your hand without paying their mana costs."
         else if (card.Zone == Zone.Hand && State.PermanentsControlledBy(caster).Any(p => p.HasTextAbilities && p.Definition.CastFromHandFreeUpTo is { } upTo
                      && ManaValueOf(card) <= Eval(upTo, new EffectContext(caster, p, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))))
@@ -125,6 +138,10 @@ public sealed partial class Game
         if (card.Zone == Zone.Command && Config.Commander is { } rules)
             cost = cost.PlusGeneric(rules.TaxPerCast * State.GetPlayer(card.Owner).CommanderCasts.GetValueOrDefault(card.Id));
         if (c.FlashExtra && card.Definition.FlashExtraCost is { } flash) cost = cost.Plus(flash);
+        // "Costs {2} more to cast if it targets a Dragon": only once targets are chosen (before that, the cheaper case is possible).
+        if (card.Definition.CostIncreaseIfTargetsFilter is { } dearer && targets is not null
+            && targets.Any(t => t.Target.Card is { } tc && State.GetCard(tc) is var tcard && Matches(dearer with { Controller = ControllerFilter.Any }, tcard, tcard.Controller, card, caster)))
+            cost = cost.PlusGeneric(card.Definition.CostIncreaseIfTargets);
         if (c.Option?.Mana is { } optionMana) cost = cost.Plus(optionMana);
         if (c.Kicked && card.Definition.Kicker is { } kicker) cost = cost.Plus(kicker);
         for (int i = 0; i < c.KickCount; i++) cost = cost.Plus(card.Definition.Multikicker!);
@@ -145,7 +162,8 @@ public sealed partial class Game
         if (card.Definition.ExtraTargetCost > 0 && targets is not null)
             cost = cost.PlusGeneric(card.Definition.ExtraTargetCost * Math.Max(0, targets.Count(t => !t.Target.IsNone) - 1));
         int genericBefore = cost.Generic;
-        cost = MinusColoredReductions(cost.MinusGeneric(CostReductionFor(card, caster, targets) + (card.Definition.SacrificeAnyNoReduction ? 0 : c.SacrificeAnyCount)), card, caster);
+        int harmonized = c.HarmonizeTapped is { } tapped ? Math.Max(0, State.GetCard(tapped).Power) : 0;
+        cost = MinusColoredReductions(cost.MinusGeneric(CostReductionFor(card, caster, targets) + (card.Definition.SacrificeAnyNoReduction ? 0 : c.SacrificeAnyCount) + harmonized), card, caster);
         // "Spend only black mana on X": the X part of the generic mana (what reductions left of it) is paid with that type only.
         if (card.Definition.XManaType is { } xType && c.X > 0 && c.Way.Mana.XCount > 0)
         {
@@ -161,21 +179,39 @@ public sealed partial class Game
                        || (card.Zone == Zone.Exile && State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType))
                        || (card.Zone == Zone.Graveyard && State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType))
                        || ExiledCastableWith(card, caster) is not null;
+        // "As though it were mana of any color": the colored symbols take any mana, a {C} still takes colorless mana.
+        if (anyType && card.Zone == Zone.Exile && !(card.Is(CardType.Creature) && Has(caster, Replacements.CreaturesFromLibraryTop))
+            && State.PlayableFromExile.Where(p => p.Card == card.Id && p.Version == card.Version && p.AnyManaType).ToList() is { Count: > 0 } perms && perms.All(p => p.AnyColorOnly)
+            && !(card.CounterCount(CounterKind.Stash) > 0 && Has(caster, Replacements.PlayStashedCards)) && ExiledCastableWith(card, caster) is null)
+        {
+            int colorless = cost.Pips.Count(p => p == ManaType.Colorless);
+            return new ManaCost(Math.Max(0, cost.ManaValue - colorless - cost.Phyrexian.Count - cost.MonoHybrid.Count - cost.PendingGenericReduction), Enumerable.Repeat(ManaType.Colorless, colorless).ToList()) { Phyrexian = cost.Phyrexian };
+        }
         // With mana of any type, a {2/W} is best paid as one mana of its color (any mana does).
         if (anyType) return new ManaCost(Math.Max(0, cost.ManaValue - cost.Phyrexian.Count - cost.MonoHybrid.Count - cost.PendingGenericReduction), Array.Empty<ManaType>()) { Phyrexian = cost.Phyrexian };
         return BlackLifeRule(caster, cost);
     }
 
+    /// <summary>
+    /// Flashback a card in a graveyard has from an effect (its cost is its mana cost): "target card gains flashback until end of turn",
+    /// or "each instant and sorcery card in your graveyard has flashback" from a permanent its owner controls.
+    /// </summary>
+    private bool HasGrantedFlashback(Card card) =>
+        card.Zone == Zone.Graveyard
+        && (State.FlashbackGranted.Any(p => p.Card == card.Id && p.Version == card.Version)
+            || ((card.Is(CardType.Instant) || card.Is(CardType.Sorcery))
+                && State.PermanentsControlledBy(card.Owner).Any(p => p.HasTextAbilities && p.Definition.GraveyardInstantsAndSorceriesHaveFlashback)));
+
     /// <summary>Cast with flashback (from the graveyard, exiled when it leaves the stack, 702.34a).</summary>
     private bool IsFlashbackCast(Card card) =>
         card.Zone == Zone.Graveyard
-        && (card.Definition.Flashback is not null || State.FlashbackGranted.Any(p => p.Card == card.Id && p.Version == card.Version))
+        && (card.Definition.Flashback is not null || HasGrantedFlashback(card))
         && !State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version);
 
     /// <summary>The non-mana costs the announcements commit to (601.2b): additional costs and those of casting from the graveyard.</summary>
     private List<ExtraCost> NonManaCastingCosts(Card card, CastingChoices c)
     {
-        var costs = new List<ExtraCost?> { card.Definition.AdditionalCost, c.Option?.Extra, c.Kicked ? card.Definition.KickerExtra : null,
+        var costs = new List<ExtraCost?> { card.Definition.AdditionalCost, c.Option?.Extra, c.Kicked ? card.Definition.KickerExtra : null, c.FlashExtra ? card.Definition.FlashExtraCostExtra : null,
             c.AdditionalCostPaid ? card.Definition.OptionalAdditionalCost : null };
         if (card.Zone == Zone.Graveyard) costs.Add(GraveyardCost(card));
         // Cast with "… by removing three counters from among creatures you control in addition to paying their other costs" (no other permission).
@@ -218,7 +254,7 @@ public sealed partial class Game
         int graveyard = player.Graveyard.Count(id => id != card.Id) - extras.Sum(e => e.ExileFromGraveyard);
         if (graveyard < 0) return false;
         if (c.ConspireCount > 0 && ConspireCandidates(card, caster).Count < 2 * c.ConspireCount) return false;
-        if (card.Definition.Delve) total = total.MinusGeneric(graveyard); // 702.66a
+        if (HasDelve(card, caster)) total = total.MinusGeneric(graveyard); // 702.66a
         if (HasConvoke(card, caster) && total.ManaValue > 0) return CanPayWithConvoke(card, caster, c, total);
         if (HasImprovise(card, caster) && total.Generic > 0)
         {
@@ -265,9 +301,16 @@ public sealed partial class Game
             .SelectMany(way => way.Kind == CastingWayKind.FaceDown
                 ? new[] { new CastingChoices(way) { FlashExtra = flashExtra } }
                 : options.Select(o => new CastingChoices(way) { Option = o, FlashExtra = flashExtra, Tier = CheapestTier(card, caster) }))
+            .Select(c => c.Way.Kind == CastingWayKind.Harmonize && !CanPayToCast(card, caster, c) && HarmonizeTaps(card, caster, c) is [var tap, ..]
+                ? c with { HarmonizeTapped = tap } : c)
             .Where(c => c.Way.Kind == CastingWayKind.FaceDown ? AsFaceDown(card, () => CanPayToCast(card, caster, c))
                 : CanPayToCast(card, caster, c) || SacrificeAnyCounts(card, caster, c).Count > 0).ToList();
     }
+
+    /// <summary>Untapped creatures the caster controls that could be tapped for harmonize (702.180b) with the spell still paid for, most powerful first.</summary>
+    private List<CardId> HarmonizeTaps(Card card, PlayerId caster, CastingChoices c) =>
+        State.PermanentsControlledBy(caster).Where(p => p.IsCreature && !p.Tapped).OrderByDescending(p => p.Power)
+            .Where(p => CanPayToCast(card, caster, c with { HarmonizeTapped = p.Id })).Select(p => p.Id).ToList();
 
     /// <summary>The numbers of permanents the caster could sacrifice for "you may sacrifice any number of …" and still pay for the spell.</summary>
     private List<int> SacrificeAnyCounts(Card card, PlayerId caster, CastingChoices c)
@@ -344,6 +387,15 @@ public sealed partial class Game
         card.Definition.CantCastDuringFirstTurns > 0 && State.ActivePlayer == caster
         && State.GetPlayer(caster).TurnsTaken <= card.Definition.CantCastDuringFirstTurns;
 
+    /// <summary>A card's harmonize cost: printed, or its mana cost while it "gains harmonize until end of turn".</summary>
+    private ManaCost? HarmonizeCost(Card card) =>
+        card.Definition.Harmonize
+        ?? (State.HarmonizeGranted.Any(g => g.Card == card.Id && g.Version == card.Version && g.Turn == State.TurnNumber) ? card.Definition.ManaCost : null);
+
+    /// <summary>Delve (702.66): printed, or given by a permanent the caster controls ("spells you cast have delve").</summary>
+    private bool HasDelve(Card spell, PlayerId caster) =>
+        spell.Definition.Delve || State.PermanentsControlledBy(caster).Any(p => p.HasTextAbilities && p.Definition.YourSpellsHaveDelve);
+
     /// <summary>Convoke (702.51): printed, or given by a permanent the caster controls ("creature spells you cast have convoke").</summary>
     private bool HasConvoke(Card spell, PlayerId caster) =>
         spell.Definition.Convoke || State.PermanentsControlledBy(caster).Any(p => p.HasTextAbilities && p.Definition.SpellsHaveConvoke is { } f
@@ -381,6 +433,7 @@ public sealed partial class Game
         }
         reserved.UnionWith(c.Improvised);
         reserved.UnionWith(c.Convoked);
+        if (c.HarmonizeTapped is { } harmonizer) reserved.Add(harmonizer);
         return reserved.Count == 0 ? usable : (source, o) => !reserved.Contains(source.Id) && usable(source, o);
     }
 
@@ -398,6 +451,7 @@ public sealed partial class Game
                 CastingWayKind.Overload => $"Cast {card.Name} for its overload cost {ways[1].Mana}?",
                 CastingWayKind.Impending => $"Cast {card.Name} for its impending cost {ways[1].Mana}?",
                 CastingWayKind.Escape => $"Cast {card.Name} for its escape cost {EscapeCostText(card)}?",
+                CastingWayKind.Harmonize => $"Cast {card.Name} for its harmonize cost {ways[1].Mana}?",
                 CastingWayKind.FaceDown => $"Cast {card.Name} face down as a 2/2 creature for {ways[1].Mana}?",
                 CastingWayKind.WithoutPaying => card.Definition.ManaCost.XCount > 0 ? $"Cast {card.Name} without paying its mana cost (X = 0)?" : $"Cast {card.Name} without paying its mana cost?",
                 _ => $"Pay {ways[1].Mana} instead of the mana cost?",
@@ -414,6 +468,7 @@ public sealed partial class Game
             CastingWayKind.Overload => $"Overload {w.Mana}",
             CastingWayKind.Impending => $"Impending {w.Mana}",
             CastingWayKind.Escape => $"Escape {EscapeCostText(card)}",
+            CastingWayKind.Harmonize => $"Harmonize {w.Mana}",
             CastingWayKind.FaceDown => $"Face down for {w.Mana}",
             CastingWayKind.WithoutPaying => "Without paying its mana cost",
             _ => $"Pay {w.Mana} instead of the mana cost",

@@ -52,6 +52,9 @@ public abstract record AbilityDefinition
     /// <summary>"Choose one or more" / "choose one or both": fewer modes than <see cref="ModeCount"/> may be picked.</summary>
     public bool UpToModes { get; init; }
 
+    /// <summary>"You may choose two": exactly <see cref="ModeCount"/> modes or none, and with none the ability does nothing (603.3c).</summary>
+    public bool MayChooseModes { get; init; }
+
     /// <summary>"Choose one that hasn't been chosen": each mode can be chosen only once for this object.</summary>
     public bool ModesOncePerObject { get; init; }
 
@@ -75,6 +78,9 @@ public abstract record AbilityDefinition
 
     /// <summary>"Any number of target creature cards with total mana value 6 or less": the chosen targets' total mana value is at most this.</summary>
     public int? TargetsTotalManaValueAtMost { get; init; }
+
+    /// <summary>"Any number of target creature cards with total power 10 or less".</summary>
+    public int? TargetsTotalPowerAtMost { get; init; }
 
     /// <summary>What this spell does when kicked, when that changes its targets ("instead any number of target creatures").</summary>
     public AbilityDefinition? WhenKicked { get; init; }
@@ -141,6 +147,12 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>"Discard X cards" as a cost: X is announced (rule 601.2b) and that many cards are discarded.</summary>
     public bool DiscardX { get; init; }
 
+    /// <summary>"Pay X life": X as announced for the ability's other costs (rule 601.2b via 602.2b).</summary>
+    public bool PayLifeX { get; init; }
+
+    /// <summary>"Exile X cards from your graveyard": X as announced.</summary>
+    public bool ExileGraveyardX { get; init; }
+
     /// <summary>"Sacrifice X Squirrels" as a cost: X is announced and that many matching permanents (<see cref="Extra"/>'s filter) are sacrificed.</summary>
     public bool SacrificeX { get; init; }
 
@@ -198,6 +210,9 @@ public sealed record ActivatedAbility : AbilityDefinition
     /// <summary>A special action (rule 116), not an activated ability: done at once when the costs are paid, without using the stack.</summary>
     public bool SpecialAction { get; init; }
 
+    /// <summary>Only when its card could begin to be cast from where it is (suspend, rule 702.62a): the card's own timing, flash included.</summary>
+    public bool TimingAsCast { get; init; }
+
     /// <summary>"Activate only once each turn."</summary>
     public bool OncePerTurn { get; init; }
 
@@ -218,6 +233,16 @@ public sealed record ActivatedAbility : AbilityDefinition
 
     /// <summary>"This ability costs {1} less to activate for each +1/+1 counter on the creature it targets."</summary>
     public bool CostReductionPerTargetCounter { get; init; }
+
+    /// <summary>"This ability costs {1} less to activate for each color of the creature it targets" (before targets are chosen, the best legal one).</summary>
+    public bool CostReductionPerTargetColor { get; init; }
+
+    /// <summary>
+    /// "Sacrifice a creature you control with mana value X: return target creature card with mana value X plus 1": X is announced first (rule 601.2b),
+    /// then the sacrifice must have mana value X and the target mana value X plus <see cref="TargetManaValueOffset"/>.
+    /// </summary>
+    public bool XFromSacrificedManaValue { get; init; }
+    public int TargetManaValueOffset { get; init; }
 
     /// <summary>"This ability costs {N} less to activate if [condition]."</summary>
     public Condition? CostReductionIf { get; init; }
@@ -254,6 +279,9 @@ public sealed record SpellCostReduction(ObjectFilter Spells, int Amount) : Abili
 
     /// <summary>Those spells can also be cast as though they had flash.</summary>
     public bool GrantsFlash { get; init; }
+
+    /// <summary>Only while this holds for its controller ("during your turn, spells you cast cost …").</summary>
+    public Condition? While { get; init; }
 
     /// <summary>"Costs {U} less": the amount is of this color's mana, not generic (rule 118.7c).</summary>
     public Mana.ManaType? Color { get; init; }
@@ -431,6 +459,8 @@ public enum TriggerEvent
     CombatDamageToYou,
     /// <summary>"When one or more of your opponents are dealt combat damage during your turn": once per combat damage step.</summary>
     OpponentsDealtCombatDamageDuringYourTurn,
+    /// <summary>"Whenever your opponents are dealt combat damage" (any turn): once per combat damage step; batch: the creatures that dealt it.</summary>
+    OpponentsDealtCombatDamage,
     /// <summary>"Whenever the final chapter ability of a Saga you control resolves".</summary>
     FinalChapterResolved,
     /// <summary>"Whenever the Ring tempts you".</summary>
@@ -447,6 +477,8 @@ public enum TriggerEvent
     YouAttackPlayer,
     /// <summary>"When you attack enchanted opponent or a planeswalker they control or when they attack you or a planeswalker you control."</summary>
     AttackBetweenYouAndEnchanted,
+    /// <summary>"Whenever enchanted player is attacked" (the player, not their planeswalkers; triggered player: the attacking player).</summary>
+    EnchantedPlayerAttacked,
     /// <summary>"Whenever this creature deals damage to a [filter]" (subject: the creature dealt damage).</summary>
     DealsDamageToCreature,
     /// <summary>"Whenever a [filter] is dealt excess noncombat damage" (amount: the excess).</summary>
@@ -528,6 +560,8 @@ public enum TriggerEvent
     EndOfCombat,
     /// <summary>"When this creature becomes renowned" (rule 702.112b: it goes from not renowned to renowned on the battlefield, whatever made it).</summary>
     BecomesRenowned,
+    /// <summary>"When this creature becomes monstrous" (rule 701.37b: its monstrosity ability resolved and made it monstrous).</summary>
+    BecomesMonstrous,
     /// <summary>"Whenever a [filter] creature becomes renowned" (subject: that creature; the observer sees itself too).</summary>
     CreatureBecomesRenowned,
     /// <summary>"Whenever a [filter] creature becomes blocked": once per attacker as it becomes blocked (rule 509.3c; subject: that attacker).</summary>
@@ -582,6 +616,18 @@ public sealed record TriggeredAbility : AbilityDefinition
 
     /// <summary>For <see cref="TriggerEvent.CountersPlaced"/>: once for each counter ("whenever a +1/+1 counter is put on …"), not once per event.</summary>
     public bool PerCounter { get; init; }
+
+    /// <summary>"If it's the first time counters have been put on that creature this turn" (counters-placed triggers).</summary>
+    public bool FirstCountersThisTurn { get; init; }
+
+    /// <summary>Becomes-the-target triggers: "a creature you control or a creature spell you control" (spells on the stack too).</summary>
+    public bool SpellsToo { get; init; }
+
+    /// <summary>Put-into-your-graveyard triggers: only cards that came from this zone ("from your library").</summary>
+    public State.Zone? FromZone { get; init; }
+
+    /// <summary>A batched trigger whose amount is the total of the batch ("that much damage" from one or more creatures).</summary>
+    public bool SumBatchAmounts { get; init; }
 
     /// <summary>"This ability triggers only once each turn."</summary>
     public bool OncePerTurn { get; init; }
@@ -677,6 +723,12 @@ public sealed record ObjectFilter(
     bool DealtCombatDamageToYou = false,
     bool MaxManaValueTriggerAmount = false)
 {
+    /// <summary>"With mana value less than or equal to the amount of life you lost this turn" (the ability's controller).</summary>
+    public bool MaxManaValueLifeLostThisTurn { get; init; }
+
+    /// <summary>"A goaded creature": goaded by anyone (rule 701.15).</summary>
+    public bool Goaded { get; init; }
+
     /// <summary>Power at most that of the object the ability is about ("with power less than or equal to the amassed Army's power").</summary>
     public bool MaxPowerTriggered { get; init; }
 

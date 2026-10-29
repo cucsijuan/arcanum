@@ -3,6 +3,40 @@ namespace Arcanum.Engine.Abilities;
 
 public enum QuantityKind
 {
+    /// <summary>The total toughness of creatures the controller controls.</summary>
+    TotalToughness,
+    /// <summary>The life the controller lost this turn.</summary>
+    LifeLostThisTurn,
+    /// <summary>Counters of every kind on the source.</summary>
+    CountersOnSource,
+    /// <summary>Tokens the controller created this turn.</summary>
+    TokensCreatedThisTurn,
+    /// <summary>Nontoken creatures that died this turn (any controller).</summary>
+    NontokenCreaturesDiedThisTurn,
+    /// <summary>Times the controller cast their commanders from the command zone this game.</summary>
+    CommanderCasts,
+    /// <summary>Different kinds of counters among creatures the controller controls.</summary>
+    CounterKindsAmongYourCreatures,
+    /// <summary>Cards put into the controller's graveyard from their hand or library this turn.</summary>
+    CardsToGraveyardFromHandOrLibraryThisTurn,
+    /// <summary>Half the affected player's life, rounded up.</summary>
+    AffectedHalfLifeRoundedUp,
+    /// <summary>Cards in all graveyards.</summary>
+    CardsInAllGraveyards,
+    /// <summary>+1/+1 counters on the object the trigger is about (as it last existed, if it left).</summary>
+    TriggeredPlusOneCounters,
+    /// <summary>Creatures attacking the affected player (not their planeswalkers).</summary>
+    AttackersOfAffectedPlayer,
+    /// <summary>The toughness of the creatures destroyed this way, as they last existed.</summary>
+    DestroyedToughness,
+    /// <summary>The controller's experience counters.</summary>
+    ExperienceCounters,
+    /// <summary>The number of targets of the spell the trigger is about.</summary>
+    TriggeredSpellTargets,
+    /// <summary>The greatest toughness among the controller's creatures other than the source.</summary>
+    GreatestOtherToughness,
+    /// <summary>The targets of the spell the trigger is about that are permanents or players.</summary>
+    TriggeredSpellPermanentOrPlayerTargets,
     /// <summary>A printed number.</summary>
     Fixed,
     /// <summary>The value chosen for X when the spell was cast (or the ability activated).</summary>
@@ -131,6 +165,10 @@ public enum QuantityKind
     OpponentsCreaturesExiledThisTurn,
     /// <summary>Card types among the cards exiled with the source (as it is now).</summary>
     CardTypesExiledWithSource,
+    /// <summary>Cards exiled with the source (as it is now): "if three or more cards have been exiled with this artifact".</summary>
+    CardsExiledWithSource,
+    /// <summary>"The number of differently named tokens you control".</summary>
+    DifferentlyNamedTokens,
     /// <summary>Opponents who lost life this turn ("for each opponent who lost life this turn").</summary>
     OpponentsWhoLostLifeThisTurn,
     /// <summary>Opponents with <see cref="Quantity.Value"/> or fewer cards in hand ("for each opponent who has one or fewer cards in hand").</summary>

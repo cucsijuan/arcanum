@@ -24,7 +24,7 @@ public sealed partial class Game
         if (filter.InZone is { } zone && obj.Zone != zone) return false;
         if (filter.NotInZone is { } notZone && obj.Zone == notZone) return false;
         if (filter.HasFlashback && obj.Definition.Flashback is null && obj.Definition.FlashbackExtra is null
-            && !State.FlashbackGranted.Any(f => f.Card == obj.Id && f.Version == obj.Version)) return false;
+            && !HasGrantedFlashback(obj)) return false;
         if (filter.PowerNotEqualToughness && power == toughness) return false;
         if (filter.NotOwnedByYou && obj.Owner == sourceController) return false;
         if (filter.OwnedByYou && obj.Owner != sourceController) return false;

@@ -66,6 +66,15 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
 
     /// <summary>"Exile a green card from your hand": one matching card other than the spell being cast, revealed as it is exiled.</summary>
     public ObjectFilter? ExileFromHand { get; init; }
+
+    /// <summary>"Discard your hand": every card in the hand (an empty hand pays it too).</summary>
+    public bool DiscardHand { get; init; }
+
+    /// <summary>"Return two lands you control to their owner's hand": how many permanents matching <see cref="ReturnToHand"/>.</summary>
+    public int ReturnToHandCount { get; init; } = 1;
+
+    /// <summary>"Sacrifice a Swamp and a Forest": with <see cref="Sacrifice"/> (matching any of them), one different permanent for each of these.</summary>
+    public IReadOnlyList<ObjectFilter>? SacrificeEachOf { get; init; }
 }
 
 /// <summary>

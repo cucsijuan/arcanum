@@ -96,7 +96,11 @@ public sealed record OpponentGraveyardAtLeast(int Count) : Condition;
 public sealed record AttackTaxUntilYourNextTurn(Mana.ManaCost Tax) : HeroesCommanderEffect;
 
 /// <summary>"When that creature dies this turn, [effects]": a delayed triggered ability (rule 603.7) about that object; "triggered" is the card it became.</summary>
-public sealed record WhenDiesThisTurn(Subject What, IReadOnlyList<Effect> Effects, string Text) : HeroesCommanderEffect;
+public sealed record WhenDiesThisTurn(Subject What, IReadOnlyList<Effect> Effects, string Text) : HeroesCommanderEffect
+{
+    /// <summary>"When it dies under your control this turn": only if the ability's controller controlled it as it died.</summary>
+    public bool UnderYourControl { get; init; }
+}
 
 /// <summary>
 /// "You may put a [filter] card exiled with [this] onto the battlefield under your control [with a finality counter on it]": one card, chosen
@@ -133,7 +137,11 @@ public sealed record ExileRandomFromOpponentsGraveyards : HeroesCommanderEffect;
 /// "You may cast any number of spells from among cards exiled this way without paying their mana costs. Then each player who owns a spell you
 /// cast this way loses life equal to its mana value" (with <see cref="OwnersLoseLife"/>).
 /// </summary>
-public sealed record CastExiledFreeAnyNumber(bool OwnersLoseLife) : HeroesCommanderEffect;
+public sealed record CastExiledFreeAnyNumber(bool OwnersLoseLife) : HeroesCommanderEffect
+{
+    /// <summary>"Spells with mana value X or less".</summary>
+    public Quantity? MaxManaValue { get; init; }
+}
 
 /// <summary>
 /// "Becomes a copy of [target] until end of turn, except its name is [ExceptName]": lasts until cleanup (rule 707). With <see cref="Lasting"/>
@@ -145,6 +153,9 @@ public sealed record BecomeCopy(Subject What, Subject Target, string? ExceptName
     public bool Lasting { get; init; }
     public IReadOnlyList<string> Keywords { get; init; } = Array.Empty<string>();
     public bool KeepThisAbility { get; init; }
+
+    /// <summary>"And it's legendary in addition to its other types".</summary>
+    public bool AddLegendary { get; init; }
 }
 
 /// <summary>

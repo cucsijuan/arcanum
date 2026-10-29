@@ -10,13 +10,26 @@ public sealed partial class Game
     private bool _endTurnRequested;
     private int _extraCombats;
 
+    /// <summary>Additional combat phases, each followed by an additional main phase, to come right after the current main phase.</summary>
+    private int _extraCombatsAfterMain;
+
     /// <summary>Additional end steps still to come after this one, and how many end steps this turn has had ("if it's the first end step of the turn").</summary>
     private int _extraEndSteps, _endStepsThisTurn;
+
+    /// <summary>The player whose turn ran last, whose attacks become "during their last turn".</summary>
+    private Core.PlayerId? _previousTurnPlayer;
 
     private async Task RunTurnAsync(bool skipDraw)
     {
         State.TurnNumber++;
         var active = State.GetPlayer(State.ActivePlayer);
+        if (_previousTurnPlayer is { } previous)
+        {
+            var last = State.GetPlayer(previous).PlayersAttackedDuringLastTurn;
+            last.Clear();
+            last.UnionWith(State.GetPlayer(previous).PlayersAttackedThisTurn);
+        }
+        _previousTurnPlayer = State.ActivePlayer;
         // "Until your next turn": those emblems of the player whose turn begins end now.
         foreach (var emblem in State.EmblemsUntilOwnersNextTurn.Where(e => State.GetCard(e).Owner == State.ActivePlayer).ToList())
         {
@@ -26,6 +39,7 @@ public sealed partial class Game
         }
         active.LandsPlayedThisTurn = 0;
         State.CreaturesDiedThisTurn = 0;
+        State.NontokenCreaturesDiedThisTurn = 0;
         State.PermanentsSacrificedThisTurn = 0;
         State.BlocksThisTurn.Clear();
         State.CombatsThisTurn = 0;
@@ -39,7 +53,10 @@ public sealed partial class Game
         foreach (var player in State.Players)
         {
             player.CreaturesDiedThisTurn = 0;
+            player.TokensCreatedThisTurn = 0;
+            player.CardsToGraveyardFromHandOrLibraryThisTurn = 0;
             player.PlayersAttackedThisTurn.Clear();
+            player.AttackedWithCommanderThisTurn = false;
             player.SacrificedThisTurn.Clear();
             player.PermanentLeftThisTurn = false;
             player.EnteredThisTurn.Clear();
@@ -113,6 +130,7 @@ public sealed partial class Game
         _skipCombatDamageSteps = false;
         _endTurnRequested = false;
         _extraCombats = 0;
+        _extraCombatsAfterMain = 0;
         _extraEndSteps = 0;
         _endStepsThisTurn = 0;
         var order = StepExtensions.TurnOrder.ToList();
@@ -147,6 +165,14 @@ public sealed partial class Game
             }
             if (step == Step.End) _endStepsThisTurn++;
             await RunStepAsync(step);
+            // "An additional combat phase after this phase followed by an additional main phase": inserted after this main phase.
+            if (step.IsMain() && _extraCombatsAfterMain > 0 && !_endTurnRequested)
+            {
+                var combat = StepExtensions.TurnOrder.SkipWhile(s => s != Step.BeginCombat).TakeWhile(s => s != Step.PostcombatMain).ToList();
+                for (; _extraCombatsAfterMain > 0; _extraCombatsAfterMain--)
+                    order.InsertRange(index + 1, combat.Append(Step.PostcombatMain));
+                _skipCombatDamageSteps = false;
+            }
             // "There is an additional end step after this step" (rule 500.8).
             if (step == Step.End && _extraEndSteps > 0 && !_endTurnRequested)
             {
@@ -184,6 +210,15 @@ public sealed partial class Game
                     if (State.GetCard(skip.Card).Controller == State.ActivePlayer) exerted.Add(State.GetCard(skip.Card));
                     State.SkipNextUntap.Remove(skip);
                 }
+                // "Untap all permanents you control during each other player's untap step": not its controller's own untap step, so
+                // "doesn't untap during its controller's untap step" doesn't stop it; a stun counter still replaces the untap (122.1d).
+                foreach (var other in State.ApnapOrder().Where(p => p != State.ActivePlayer).ToList())
+                    if (State.PermanentsControlledBy(other).Any(c => c.HasTextAbilities && c.Definition.UntapDuringOthersUntapSteps))
+                        foreach (var permanent in State.PermanentsControlledBy(other).Where(c => c.Tapped && !c.Has(Cards.Keyword.CantBecomeUntapped)).ToList())
+                        {
+                            if (permanent.CounterCount(Abilities.CounterKind.Stun) > 0) RemoveCountersFrom(permanent, Abilities.CounterKind.Stun, 1);
+                            else Untap(permanent);
+                        }
                 foreach (var permanent in State.PermanentsControlledBy(State.ActivePlayer).Where(c => c.Tapped && !(c.Definition.DoesntUntap && c.HasTextAbilities) && !c.Has(Cards.Keyword.DoesntUntap) && !exerted.Contains(c)).ToList())
                 {
                     // A stun counter is removed instead of untapping (rule 122.1d).
@@ -213,6 +248,9 @@ public sealed partial class Game
             case Step.BeginCombat:
                 State.Combat = new CombatState();
                 State.CombatsThisTurn++;
+                State.CombatSerial++;
+                State.GetPlayer(State.ActivePlayer).PreviousCombat = State.GetPlayer(State.ActivePlayer).LatestCombat;
+                State.GetPlayer(State.ActivePlayer).LatestCombat = State.CombatSerial;
                 break;
             case Step.DeclareAttackers:
                 await DeclareAttackersAsync();

@@ -381,6 +381,8 @@ Class cards are described with the other card frames above.
 | Effect | Example |
 |--------|---------|
 | Amass | `{ "amass": 2, "type": "Goblin", "who": "targetController" }` (count can be a quantity) |
+| Endure | `{ "endure": 2, "what": "self" }` (`what` is any subject, default `"self"`; the count can be a quantity) |
+| Mobilize | `{ "mobilize": 2 }` (count can be a quantity; see the Mobilize bullet below) |
 | Recruit | `{ "recruit": true }` (draw, discard, a 1/1 white Human Soldier if a nonland card was discarded) |
 | Attach something | `{ "attach": "created", "to": "target" }`, `{ "attach": { "choose": filter }, "to": "target" }` (chosen, optional) |
 | Cards milled this way to hand | `{ "takeMilled": filter }` (all) / `{ "takeMilled": filter, "count": 2 }` (up to) |
@@ -1563,6 +1565,18 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - **Encore**: read from the rules text ("Encore {cost}"), no script. Activated from the graveyard as a sorcery, and the card
   is exiled as the cost is paid. For each opponent, one token copy attacks that opponent this turn if able, with haste (not
   copiable values). Each is sacrificed at the next end step.
+- **Endure N**: effect `{ "endure": N, "what": subject }` (`what` defaults to `"self"`). The controller of each permanent chosen
+  by the subject is asked yes or no: yes puts N +1/+1 counters on it; no, or when it can't have counters, creates an N/N white
+  Spirit token. Endure 0 does nothing. If the permanent ("self" or "triggered") has left the battlefield, the ability's controller
+  creates the token. The rules text "Endure N" is not read; the card needs the script.
+- **Mobilize N**: read from the rules text ("Mobilize 2"), no script. It is a trigger "whenever this creature attacks" that
+  creates N 1/1 red Warrior tokens tapped and attacking (the controller chooses what each one attacks), sacrificed at the
+  beginning of the next end step. For "Mobilize X, where X is …", the script needs the trigger `"attacks"` with the effect
+  `{ "mobilize": quantity }` (the quantity is X).
+- **Harmonize**: read from the rules text ("Harmonize {cost}"), no script. The card can be cast from the graveyard for that cost
+  only, unless something else lets it be cast from there. As it is cast, the caster may tap an untapped creature they control;
+  the spell costs {X} less, X being that creature's power. That creature is tapped as the cost is paid, and its mana can't
+  pay for the spell. The spell is exiled when it leaves the stack.
 - **Compleated**: a keyword read from the card data, no script. The permanent enters with two fewer loyalty counters for
   each of its own Phyrexian symbols paid with life. Life pays the symbols that other effects made Phyrexian first.
 - **Clash**: effect `{ "clash": true, "ifWin": [ … ], "else": [ … ] }`. The controller chooses an opponent, and both reveal
@@ -1579,3 +1593,184 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   timing, they may pay {3} to put it into their hand (a button on the board). In Commander, one companion may wait in the
   sideboard, within the color identity; the deck check warns when the deck misses the condition. Commander games pass the
   companions as the cards outside the game.
+
+## Keywords, costs, triggers, conditions, quantities and special effects
+
+### Keywords read from the card data or rules text
+- **Decayed**, **Flanking**, **Battle cry**, **Mentor** and **Hexproof from monocolored**: keywords read from the card data, no
+  script. Decayed: it can't block; when it attacks, it is sacrificed at end of combat (a trigger). Flanking: each blocker without
+  flanking gets -1/-1 until end of turn (one trigger per blocker). Battle cry: when it attacks, each other attacking creature gets
+  +1/+0 (one trigger per instance). Mentor: when it attacks, a +1/+1 counter goes on target attacking creature with lesser power.
+  Hexproof from monocolored: opponents' monocolored spells and abilities from monocolored sources can't target it.
+- **Riot**: a keyword read from the card data, no script. As it enters, its controller answers yes (a +1/+1 counter) or no
+  (haste). One answer for each instance.
+- **Fabricate N**: read from the rules text, no script. When it enters, its controller may put N +1/+1 counters on it; if not,
+  N 1/1 colorless Servo artifact creature tokens are created (effect `Fabricate`, see Endure above for the same choice).
+- **Eternalize {cost}** and **Embalm {cost}**: read from the rules text, no script. Activated from the graveyard as a sorcery; the
+  card is exiled as the cost is paid. The token copy has no mana cost. Eternalize: a 4/4 black Zombie. Embalm: a white Zombie,
+  its size kept.
+- **Suspend N—{cost}**: read from the rules text, no script. Cast from the hand for the suspend cost, rather than its mana cost: the
+  card is exiled with N time counters and is suspended. Only when the card could be cast from where it is now, with its own
+  timing (flash included).
+- **Dredge N**: read from the rules text, no script. When its controller would draw a card, they may mill N cards instead and
+  return this card from their graveyard to their hand. Only with at least N cards in the library. The player is asked before the
+  draw; declining lets another draw replacement apply.
+- **Demonstrate**: read from the rules text, no script. When its controller casts it, they may copy it; if they do, an opponent
+  they choose also copies it. Each copy may have new targets chosen.
+- **Omen**: an Adventure whose spell half has the Omen type. As the spell resolves, it is shuffled into its owner's library, not
+  exiled.
+- **Myriad**: `"myriad": true` (see above). Its tokens are exiled at end of combat.
+
+### Costs
+- `life:X`: "Pay X life", with X announced with the other costs.
+- `discardHand`: "Discard your hand". An empty hand pays it too.
+- `discard:creature`: discard a creature card from the hand (any card type name works in place of `creature`).
+- `exileGraveyardCards:X`: exile X cards from your graveyard, X announced. Add a type to choose the kind: `exileGraveyardCards:X:creature`.
+- `returnPermanent:land*2`: return two lands you control to their owner's hand (the number after `*`).
+- `sacrificeEach:Swamp+Forest`: sacrifice one of each named subtype, each a different permanent.
+- `returnToHand`: return this permanent to its owner's hand as the cost.
+- `discardThis` (activated from the hand, e.g. channel): see "Discard this card" above.
+- `"costReductionPerTargetColor": true` on an activated ability: it costs {1} less to activate for each color of the creature
+  it targets. The cost shown before targets are chosen uses the best legal target.
+- `"xFromSacrificedManaValue": {"targetOffset": 1}` on an activated ability: "Sacrifice a creature you control with mana value X:
+  return target creature card with mana value X plus 1". X is announced first, then the sacrificed permanent's mana value must
+  be X and the target's must be X plus the offset (the offset defaults to 0).
+- Counter kinds `-0/-1`, `rally` and `void` (for `addCounters`, `removeCounters` and the rest). Experience counters belong to
+  the player, not to a card: the effect `"getExperienceCounter": true` adds one, the quantity `experience` counts them. The board
+  shows them on the player's side.
+
+### Triggers
+- `enchantedPlayerAttacked`: "whenever enchanted player is attacked", for an Aura that enchants a player. The triggered player is
+  the attacking player. Planeswalkers of that player don't count.
+- `opponentsDealtCombatDamage`: any turn, when an opponent is dealt combat damage. It triggers once per combat damage step; its
+  batch is the creatures that dealt the damage. (The "during your turn" variant is `opponentsDealtCombatDamageDuringYourTurn`.)
+- `becomesMonstrous`: when the permanent becomes monstrous (its monstrosity ability resolved).
+- Trigger options, on the ability object next to `trigger`:
+  - `"spellsToo": true`: a becomes-the-target trigger also counts creature spells you control on the stack ("a creature you
+    control or a creature spell you control").
+  - `"fromZone": "library"`: a put-into-graveyard trigger only counts cards that came from that zone.
+  - `"sumAmounts": true`: a batched trigger's amount is the total of the batch (`"triggerAmount"` reads it).
+  - `"firstCountersThisTurn": true`: a counters-placed trigger only fires the first time counters are put on that creature this turn.
+
+### Conditions
+- `{ "batchHas": filter }`: the trigger's batch (as it last existed) has a card or permanent matching the filter, e.g. "if any of
+  that damage was dealt by a Warrior".
+- `"castThisWay"`: true when an earlier effect of the same ability cast a spell ("if you do", after "you may cast that card").
+  The `castFromGraveyard` effect sets it.
+- `"youAttackedWithCommanderThisTurn"`: during any turn you attacked with a commander (a commander attacked under your control
+  this turn).
+- `"yourEndStep"`: during your end step.
+- `{ "not": … }` inside an effect's `if` is judged with what the effect knows: the triggered player and the results of the
+  earlier effects.
+
+### Quantities
+Numbers in effects can also be these strings:
+- `"totalToughness"`: the total toughness of the creatures you control.
+- `"lifeLost"`: the life you lost this turn.
+- `"countersOnSelf"`: the counters of every kind on the source.
+- `"tokensCreatedThisTurn"`, `"nontokenCreaturesDiedThisTurn"` (any controller), `"cardsToGraveyardFromHandOrLibraryThisTurn"`.
+- `"commanderCasts"`: the times you cast a commander from the command zone this game.
+- `"counterKindsAmongYourCreatures"`: the different kinds of counters among the creatures you control.
+- `"affectedHalfLife"`: half the affected player's life, rounded up. `"attackersOfAffectedPlayer"`: the creatures attacking that
+  player (not their planeswalkers).
+- `"cardsInAllGraveyards"`: the cards in all graveyards.
+- `"triggeredPlusOneCounters"`: the +1/+1 counters on the trigger's object, as it last existed.
+- `"destroyedToughness"`: the toughness of the creatures destroyed this way, as they last existed.
+- `"triggeredSpellTargets"`, `"triggeredSpellPermanentOrPlayerTargets"`: the targets of the spell the trigger is about (all, or the
+  permanents and players among them).
+- `"greatestOtherToughness"`: the greatest toughness among your creatures other than the source.
+- `"experience"`: your experience counters. `"cardsExiledWithSource"`: the cards exiled with the source, as it is now.
+- `"differentlyNamedTokens"`: the number of differently named tokens you control.
+
+### Tokens
+- `"Gold"` (a predefined token name, like `"Treasure"`): a colorless Gold artifact token, "Sacrifice this artifact: Add one mana
+  of any color."
+
+### Targets
+- `"distinctFrom": n` on a target: this target must be different from the other targets from slot n on (not from the earlier
+  ones). "Tap two target permanents" after other targets is one use.
+- `"countOf": quantity` on a repeated target: "each of X target …", exactly that many (not "up to").
+- `"upTo": n` on a target: up to that many targets. `n` can be a number (such as 100) or a quantity.
+- `"ownedByTarget": "target"` (or `"target2"`): a target card in a graveyard that is owned by the player chosen for that earlier
+  target.
+
+### Effects and options
+- `divideDamage` with `"notAmongLast": n`: the last n targets are not part of the division (for example "Tap two target permanents"
+  after the damage targets).
+- `become` with `"addColors": ["B"]`: the object is that color in addition to its other colors.
+- `returnFromGraveyard` with `"differentNames": true` (no two chosen cards share a name) or `"tapped": true` (they enter tapped).
+- `returnExiledWithThis` with `"to": "battlefield"`: the cards exiled with the source return to the battlefield at once, under their
+  owners' control, instead of to the hand.
+- `lookAtTop` with `"rest": "hand"`: the cards not put elsewhere go into the hand.
+- `exileTopPlayable` with `"anyColorMana": true`: you may spend mana as though it were mana of any color to cast those cards; a
+  {C} symbol still needs colorless mana. `"while": condition` limits the play permission to while the condition holds.
+- `castFromHandFree` with `"lesserSharingTypeWithTriggered": true`: the spell cast free has a lesser mana value and shares a card
+  type with the triggering spell.
+- `youCantCastSpellsThisTurn`: "You can't cast additional spells this turn." (flag)
+- `doubleTokensThisTurn`: until end of turn, each time tokens would be created under your control, twice that many are created
+  instead (flag).
+- `mayChooseModes`: on a modal ability with `"chooseCount": 2`, "you may choose two": exactly that many modes, or none. With none,
+  the ability does nothing.
+- `"exiledCardAbilities": filter` (a static ability, `"static"` object): the affected permanents have the activated and mana
+  abilities of the cards exiled with the source.
+
+### Special effects of the set's cards
+Each is one flag or one value, in the effect list. Where each one runs is in docs/engine-map.md.
+- `castFromGraveyardFree`: filter. The controller may cast one matching spell card from their graveyard without paying its mana
+  cost, as the effect resolves. `"maxManaValue"` (quantity) and `"exileAfter": true` ("if it would be put into your graveyard,
+  exile it instead") are optional.
+- `exilesCreatureAndGraveyard`: subject. Each such player exiles a creature they control, then exiles their graveyard. The
+  player chooses the creature.
+- `exileRandomFromGraveyardPlayable`: flag. Exile a random card from your graveyard; you may play it this turn.
+- `searchOneOfEachColor`: a list of colors, with `"to": "graveyard"` (default: hand). One card of each color is searched for, each
+  one chosen separately; then the library is shuffled.
+- `graveyardToLibraryTop`: number. Put that many cards from your graveyard on top of your library, in the order you choose.
+- `lookTopToHandOrGraveyard`: filter. Look at the top card: if it matches, you may reveal it and put it into your hand; if not
+  put into your hand, you may put it into your graveyard.
+- `preventNextFromChosenSource`: `{ "effects": [ … ], "text": "…" }`. The next damage from a source you choose to you this turn is
+  prevented; the effects run as a reflexive trigger about that source.
+- `counterPerColorWinOnFive`: filter. For each color, put a +1/+1 counter on a permanent you control of that color that matches the
+  filter. Putting counters on five of them this way wins the game.
+- `exiledCopyAttackingEachOpponent`: flag. For each opponent, a tapped token copy of the card exiled with the source attacks that
+  opponent. At your next end step those tokens are sacrificed.
+- `opponentChoosesFromYourGraveyard`: filter. You pick an opponent, who chooses a matching card from your graveyard; it goes to your
+  hand.
+- `handBottomExileOfThree`: flag. Look at the top three cards: one goes to your hand, one to the bottom of the library, one is
+  exiled and playable this turn. Fewer cards fill the slots in that order.
+- `eachKeepsTotalPowerAtMost`: number. Each player chooses any number of creatures they control with total power N or less; then
+  they sacrifice all other creatures they control.
+- `attackRandomOpponentNotAttackedLastCombat`: flag. The creature attacks a random opponent it didn't attack in your last combat, if
+  able. If there is no such opponent, it is tapped.
+- `playOpponentsExiledWithCounterFree`: a counter kind. Choose an exiled card an opponent owns with that counter; you may play it this
+  turn without paying its mana cost.
+- `opponentShufflesOneCastRestFree`: flag. An opponent chooses one of the cards found and exiled; it is shuffled into your library.
+  You may cast the other cards without paying their mana costs, one at a time, in any order.
+
+### Card-wide flags
+- `"canAttackPlayersWhoAttackedYou": true`: the creature can attack players who attacked you during their last turn as though it
+  didn't have defender. It can't attack their planeswalkers this way.
+- `"opponentsCardsExiledWithVoid": true`: a card that would be put into an opponent's graveyard from anywhere is exiled with a
+  void counter on it instead (not a token, not a spell copy).
+- `"opponentsCantCastDuringYourTurn": true`: your opponents can't cast spells during your turn.
+- `"untapDuringOthersUntapSteps": true`: untap all permanents you control during each other player's untap step. A stun counter
+  still stops that untap.
+- `"yourSpellsHaveDelve": true`: spells you cast have delve.
+- `"spellsCantBeCountered": true`: spells can't be countered.
+- `"playLandsFromGraveyard": true`: you may play lands from your graveyard. With `"playLandsFromGraveyardOption"`, only while the
+  option chosen as it entered applies.
+- `"graveyardInstantsAndSorceriesHaveFlashback": true`: each instant and sorcery card in your graveyard has flashback; the flashback
+  cost is its mana cost.
+- `"creatureTokensBecomeAngels": true`: if one or more creature tokens would be created under your control, that many 4/4 white
+  Angel creature tokens with flying and vigilance are created instead.
+- `"instantSorceryTriggersTwice": true`: when you cast or copy an instant or sorcery, a triggered ability of a permanent you control
+  that it causes to trigger triggers one more time.
+- `"opponentsGroundCantBlockSmall": true`: creatures your opponents control without flying or reach can't block creatures with
+  power 2 or less.
+- `"xIsSacrificeCount": true`: X is the number of permanents sacrificed for a "sacrifice X" additional cost (announced with it).
+- `"doublesDamageOfCreaturesEnteredThisTurn": true`: a creature you control that entered this turn deals twice that much damage.
+- `"castSpellsFree": filter`: you may cast spells matching the filter without paying their mana costs.
+- `"costIncreaseIfTargets": { "amount": 2, "filter": filter }`: the spell costs {2} more to cast if it targets a matching object. It
+  applies only once targets are chosen.
+- `"enterUntappedIfControl": filter`: with a reveal-or-tapped choice as it enters, the permanents matching the filter that you
+  control let it enter untapped instead. `"enterAlsoChooseColor": true` adds "choose a color as it enters" to that choice.
+- `"graveyardCastFinality": true`: a permanent cast from the graveyard this way enters with a finality counter on it.

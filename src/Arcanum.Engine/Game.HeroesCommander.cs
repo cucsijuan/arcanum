@@ -73,6 +73,7 @@ public sealed partial class Game
                     PutCounters(card, CounterKind.PlusOnePlusOne, Eval(monstrosity.Count, ctx), ctx.Controller);
                     card.Monstrous = true;
                     Emit(new ChoiceMade(card.Id, "became monstrous"));
+                    Queue(card.Id, TriggerEvent.BecomesMonstrous, card.Controller, new TriggerInfo(card.Id, card.Version, card.Controller));
                 }
                 break;
             case Explore explore:
@@ -191,7 +192,7 @@ public sealed partial class Game
             case WhenDiesThisTurn wd:
                 foreach (var card in CardsFor(wd.What, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
                     State.WhenDiesThisTurn.Add((card.Id, card.Version, State.TurnNumber, ctx.Source.Id, ctx.Controller,
-                        new TriggeredAbility { Trigger = TriggerEvent.Dies, Effects = wd.Effects, Text = wd.Text }));
+                        new TriggeredAbility { Trigger = TriggerEvent.Dies, Effects = wd.Effects, Text = wd.Text }, wd.UnderYourControl));
                 break;
             case PutExiledWithThis pew:
             {
@@ -271,9 +272,10 @@ public sealed partial class Game
             case CastExiledFreeAnyNumber cef:
             {
                 var cast = new List<(Card Card, PlayerId Owner, int ManaValue)>();
+                int maxValue = cef.MaxManaValue is { } maxQuantity ? Eval(maxQuantity, ctx) : int.MaxValue; // worked out once, as the effect begins
                 while (true)
                 {
-                    var castable = ctx.Results.Exiled.Select(State.GetCard).Where(c => c.Zone == Zone.Exile && !c.Is(CardType.Land) && cast.All(x => x.Card != c)
+                    var castable = ctx.Results.Exiled.Select(State.GetCard).Where(c => c.Zone == Zone.Exile && !c.Is(CardType.Land) && cast.All(x => x.Card != c) && ManaValueOf(c) <= maxValue
                         && HasLegalTargets(CastingTargets(c.Definition), ctx.Controller, c.Id)).ToList();
                     if (castable.Count == 0) break;
                     var pick = await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller), new CardChoiceRequest(
@@ -368,6 +370,7 @@ public sealed partial class Game
                 copiable = copiable with
                 {
                     Name = becomeCopy.ExceptName ?? copiable.Name,
+                    Supertypes = becomeCopy.AddLegendary ? copiable.Supertypes | Supertype.Legendary : copiable.Supertypes,
                     Keywords = copiable.Keywords.Concat(becomeCopy.Keywords.Where(k => !copiable.Keywords.Contains(k))).ToList(),
                     Abilities = becomeCopy.KeepThisAbility && ctx.Ability is { } self ? copiable.Abilities.Append(self).ToList() : copiable.Abilities,
                 };
@@ -683,6 +686,7 @@ public sealed partial class Game
         QuantityKind.OpponentsControlling => State.OpponentsOf(ctx.Controller).Count(o => State.PermanentsControlledBy(o)
             .Any(c => Matches((q.Filter ?? ObjectFilter.Anything) with { Controller = ControllerFilter.Any }, c, o, ctx.Source, ctx.Controller))),
         QuantityKind.SacrificedManaValue => ctx.Results.Sacrificed.Select(State.GetCard).Sum(c => c.LastKnownInfo?.ManaValue ?? ManaValueOf(c)),
+        QuantityKind.TriggeredPlusOneCounters => TriggeredCounters(ctx).GetValueOrDefault(CounterKind.PlusOnePlusOne),
         QuantityKind.TriggeredCounterCount => ctx.Trigger is { Subject: { } about } info
             ? (State.GetCard(about) is var c && c.Version == info.SubjectVersion && c.Zone == Zone.Battlefield ? c.Counters.Values.Sum()
                 : (c.LastKnownOf(info.SubjectVersion) ?? c.LastKnownInfo)?.Counters.Values.Sum() ?? 0) : 0,
