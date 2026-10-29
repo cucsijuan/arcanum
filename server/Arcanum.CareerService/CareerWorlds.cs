@@ -19,6 +19,21 @@ public sealed class CareerWorlds(IConfiguration configuration, ILogger<CareerWor
     private readonly object _lock = new();
     private (string Content, DateTime Season, CareerWorld World)? _current;
 
+    /// <summary>
+    /// Builds the world of the newest content there is (the one players sync with), so no player waits for it: at start,
+    /// and again when its season changed.
+    /// </summary>
+    public void Warm()
+    {
+        if (!Directory.Exists(_contentDir)) return;
+        var newest = Directory.GetDirectories(_contentDir)
+            .SelectMany(module => Directory.GetDirectories(module).Select(version => (Id: Path.GetFileName(module), Version: Path.GetFileName(version), Time: Directory.GetLastWriteTimeUtc(version))))
+            .OrderByDescending(c => c.Time).FirstOrDefault();
+        if (newest.Id is null) return;
+        try { For($"{newest.Id} {newest.Version}"); }
+        catch (Exception e) { log.LogWarning("Career world {Id} {Version} couldn't be built: {Message}", newest.Id, newest.Version, e.Message); }
+    }
+
     /// <summary>The world of a content ("id version"), or null when the service doesn't have that content.</summary>
     public CareerWorld? For(string content)
     {

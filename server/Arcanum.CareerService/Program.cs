@@ -22,7 +22,8 @@ builder.Services.AddSingleton(services =>
     // The sealing key never leaves this machine (deploy/setup.sh makes it); the game has its public key (CareerSeals.PublicKeys).
     var config = builder.Configuration;
     var key = ECDsa.Create();
-    key.ImportFromPem(File.ReadAllText(config["Career:SealKeyFile"] ?? "/etc/arcanum-career/seal-key.pem"));
+    key.ImportFromPem(File.ReadAllText(config["Career:SealKeyFile"]
+        ?? Path.Combine(Environment.GetEnvironmentVariable("CREDENTIALS_DIRECTORY") ?? "/etc/arcanum-career", "seal-key.pem")));
     var worlds = services.GetRequiredService<CareerWorlds>();
     return new CareerChecker(worlds.For, config["Career:Game"] ?? throw new InvalidOperationException("Career:Game (the game version) isn't set."),
         DateTime.Parse(config["Career:ImportBefore"] ?? "2026-11-01T00:00:00Z", null, System.Globalization.DateTimeStyles.AdjustToUniversal),
@@ -57,6 +58,10 @@ app.MapPost("/auth/discord", async (DiscordCodeRequest request, DiscordAuth disc
 app.MapPost("/auth/discord/refresh", async (DiscordRefreshRequest request, DiscordAuth discord, CancellationToken cancel) =>
         await discord.Refresh(request, cancel))
     .RequireRateLimiting("auth");
+
+// The career world takes a while to build on a small machine: built at start and kept current in the background.
+var warm = new Timer(_ => app.Services.GetRequiredService<CareerWorlds>().Warm(), null, TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(5));
+app.Lifetime.ApplicationStopping.Register(() => warm.Dispose());
 
 // One sync at a time per player, so two devices can't both build on the same seal.
 var syncing = new ConcurrentDictionary<string, SemaphoreSlim>();

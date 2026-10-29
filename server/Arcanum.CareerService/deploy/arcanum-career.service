@@ -1,5 +1,6 @@
 # systemd unit for the career service: /etc/systemd/system/arcanum-career.service
-# Secrets (Discord__ClientSecret=...) go in /etc/arcanum-career/secrets.env, readable only by root.
+# Secrets (Discord__ClientSecret=...) go in /etc/arcanum-career/secrets.env, readable only by root; the careers' sealing
+# key is /etc/arcanum-career/seal-key.pem (setup.sh makes it).
 [Unit]
 Description=Arcanum career service
 After=network-online.target
@@ -10,6 +11,10 @@ User=arcanum
 WorkingDirectory=/opt/arcanum-career
 ExecStart=/usr/bin/dotnet /opt/arcanum-career/Arcanum.CareerService.dll
 EnvironmentFile=/etc/arcanum-career/secrets.env
+# The game version whose career rules this build runs (deploy.sh writes it: Career__Game=…).
+EnvironmentFile=-/etc/arcanum-career/game.env
+# The sealing key stays readable by root only; systemd hands the service a copy ($CREDENTIALS_DIRECTORY).
+LoadCredential=seal-key.pem:/etc/arcanum-career/seal-key.pem
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
 StateDirectory=arcanum-career

@@ -111,6 +111,7 @@ public sealed partial class CareerService
 
     private void SetCheck(string status, bool differs)
     {
+        if (status != CheckStatus) GD.Print($"Career: {status}");
         CheckStatus = status;
         CheckedCareerDiffers = differs;
         CloudChanged?.Invoke();

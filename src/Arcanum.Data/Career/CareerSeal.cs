@@ -21,6 +21,7 @@ public static class CareerSeals
     /// <summary>The service's public keys by id (SubjectPublicKeyInfo, base64). A retired key stays listed while seals made with it may exist.</summary>
     public static IReadOnlyDictionary<string, string> PublicKeys { get; } = new Dictionary<string, string>
     {
+        ["k1"] = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAECk7RhDzI/pcPgzbSkRDEpZr53ZOncg66v+QrjVHEgMw5X10wXiCfq1vB0AI7zcWMa/ibUvqAqehTCm3xtBrAsQ==",
     };
 
     /// <summary>The hash of the journal's first <paramref name="count"/> actions: each step hashes the previous one with the next action's JSON.</summary>
