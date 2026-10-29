@@ -87,6 +87,7 @@ public sealed class BotController : IPlayerController
     /// <summary>The color or creature type most common among the bot's own visible cards.</summary>
     public Task<int> ChooseOptionAsync(GameView view, OptionRequest request)
     {
+        if (request.Suggested is { } suggested) return Task.FromResult(suggested);
         if (request.Kind == OptionKind.CardName) return Task.FromResult(ChooseCardName(view, request));
         if (request.Kind == OptionKind.Other && CostChoice(view, request) is { } way) return Task.FromResult(way);
         // A card type to have protection from: creatures are what attacks and blocks.
@@ -1238,7 +1239,7 @@ public sealed class BotController : IPlayerController
     /// that would hurt our own permanent or us: one we had to target because nothing else was legal; and to an optional
     /// sacrifice that isn't worth its payoff (see <see cref="PaymentWorthIt"/>).
     /// </summary>
-    public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) =>
+    public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) => request.Suggested is { } suggested ? Task.FromResult(suggested) :
         // Asked only when the full cost can be paid too: a card with morph is cast face up then (face down only when that's all it can afford),
         // and a card with evoke is cast to stay rather than evoked.
         Task.FromResult(!EndsALoop(view, request) && !request.Prompt.Contains(" face down as a 2/2", StringComparison.Ordinal)

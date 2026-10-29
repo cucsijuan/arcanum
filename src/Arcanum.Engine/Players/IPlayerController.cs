@@ -64,7 +64,11 @@ public enum OptionKind
 }
 
 /// <summary>Choose one of <see cref="Options"/>.</summary>
-public sealed record OptionRequest(string Prompt, CardId? Source, IReadOnlyList<string> Options, OptionKind Kind);
+public sealed record OptionRequest(string Prompt, CardId? Source, IReadOnlyList<string> Options, OptionKind Kind)
+{
+    /// <summary>The option the asker suggests to the computer (a game mode's question); null: the computer decides.</summary>
+    public int? Suggested { get; init; }
+}
 
 /// <summary>Choose a number from <see cref="Min"/> to <see cref="Max"/>.</summary>
 public sealed record NumberRequest(string Prompt, CardId? Source, int Min, int Max)

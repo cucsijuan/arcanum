@@ -29,6 +29,9 @@ public sealed class LobbyClient
     public ClientIdentity Identity { get; private set; }
 
     public int Seat { get; private set; } = -1;
+
+    /// <summary>The script of the host's game mode (a plugin), once joined; null for none.</summary>
+    public string? Mode { get; private set; }
     public LobbyState? State { get; private set; }
     public string? RejectedReason { get; private set; }
     public bool Started { get; private set; }
@@ -55,6 +58,7 @@ public sealed class LobbyClient
             {
                 case Joined j:
                     Seat = j.Seat;
+                    Mode = j.Mode;
                     Identity = Identity with { Token = j.Token };
                     Changed?.Invoke();
                     break;

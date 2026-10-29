@@ -8,6 +8,10 @@ with a clean, modern board.
 Arcanum is a rules engine and client; it ships no card content. Card data sources, card ability scripts,
 formats and sample decks come from a content module installed at runtime (see `docs/card-scripts.md`).
 
+## Game modes
+Game modes are Lua plugins that add rules to a game and are shared with the players of online games. See
+[docs/game-modes.md](docs/game-modes.md).
+
 ## Status
 Early development. See [docs/roadmap.md](docs/roadmap.md) for milestones and what comes next.
 

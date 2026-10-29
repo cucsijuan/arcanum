@@ -70,6 +70,7 @@ public static class EventLogFormatter
             PlayerLost l => $"{P(l.Player)} loses ({l.Reason}).",
             GameEnded { Winner: { } w } => $"{P(w)} wins the game!",
             GameEnded => "The game is a draw.",
+            ModeAnnounced m => $"{m.Mode}: {m.Text}",
             TimeCalled t => $"Time! The round is over: this turn and {t.AdditionalTurns} more turns, then the game is a draw.",
             _ => null,
         };

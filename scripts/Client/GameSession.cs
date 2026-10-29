@@ -95,9 +95,10 @@ public sealed class GameSession : IBoardSession
 
     /// <summary>A game for any number of seats (people on this device and/or the computer).</summary>
     /// <param name="commander">Use commander rules (command zone, tax, commander damage).</param>
+    /// <param name="mode">A game mode (plugin) adding its rules and settings.</param>
     public static GameSession CreateMatch(ulong seed, IReadOnlyList<Seat> seats, Action<Game>? setup, int startingLife,
-        AutoPassPolicy? policy, bool confirmManaPayment, bool commander) =>
-        new(new GameConfig
+        AutoPassPolicy? policy, bool confirmManaPayment, bool commander, Arcanum.Data.GameModes.GameModeScript? mode = null) =>
+        new(WithMode(mode, new GameConfig
             {
                 Seed = seed,
                 StartingLife = startingLife,
@@ -106,8 +107,10 @@ public sealed class GameSession : IBoardSession
                 CardNames = App.Instance?.Cards?.Names,
                 NonbasicLandNames = App.Instance?.Cards?.NonbasicLandNames,
                 CreatureCardNames = App.Instance?.Cards?.CreatureCardNames,
-            },
+            }),
             seats, policy ?? new AutoPassPolicy(), replay: null, setup) { ConfirmManaPayment = confirmManaPayment };
+
+    private static GameConfig WithMode(Arcanum.Data.GameModes.GameModeScript? mode, GameConfig config) => mode?.ApplyTo(config) ?? config;
 
     public int PlayerCount => _seats.Count;
 

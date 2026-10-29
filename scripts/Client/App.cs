@@ -13,6 +13,9 @@ public sealed record MatchSetup(IReadOnlyList<GameSession.Seat> Seats, int Start
     /// <summary>A game that is part of an event: who won is reported back, and the game ends with a way back to it.</summary>
     public EventHook? Event { get; init; }
 
+    /// <summary>The game mode (a plugin) whose rules the game adds; null for none.</summary>
+    public Arcanum.Data.GameModes.GameModeScript? Mode { get; init; }
+
     /// <summary>What the player's Discord activity calls this game ("Modern match", an event's name); null: the event hook's title.</summary>
     public string? Label { get; init; }
 
@@ -142,6 +145,7 @@ public partial class App : Node
                 foreach (var error in errors) GD.PushWarning($"Format: {error}");
             }
             if (Formats.Count == 0) Formats.Add(FormatRules.Casual);
+            LoadGameModes();
             if (loaded) Career.Init(Module!, Cards!);
             ContentStatus = loaded ? $"{Cards!.Count:N0} cards ready" : "No content module: generic demo only";
             ContentProgress?.Invoke(ContentStatus);
@@ -157,6 +161,37 @@ public partial class App : Node
     }
 
     public override void _ExitTree() => Presence.Stop();
+
+    /// <summary>Folder where players put game modes of their own (modes/*.lua).</summary>
+    public static string UserModesDir => ProjectSettings.GlobalizePath("user://modes");
+
+    /// <summary>
+    /// Game modes (plugins) become formats: the game's own examples (res://modes), the content module's, then the
+    /// player's (user://modes). A mode whose id is taken already is left out.
+    /// </summary>
+    private void LoadGameModes()
+    {
+        var errors = new List<string>();
+        var sources = new List<(string File, string Source)>();
+        if (DirAccess.Open("res://modes") is { } dir)
+            foreach (var file in dir.GetFiles().Where(f => f.EndsWith(".lua")).Order())
+                sources.Add(($"res://modes/{file}", Godot.FileAccess.GetFileAsString($"res://modes/{file}")));
+        foreach (var folder in new[] { Module is null ? null : Path.Combine(Module.Directory, "modes"), UserModesDir })
+            if (folder is not null && Directory.Exists(folder))
+                foreach (var file in Directory.EnumerateFiles(folder, "*.lua").Order())
+                    sources.Add((file, File.ReadAllText(file)));
+        foreach (var (file, source) in sources)
+        {
+            try
+            {
+                var mode = Arcanum.Data.GameModes.GameModeScript.Parse(source, Formats);
+                if (Formats.Any(f => f.Id == mode.Id)) errors.Add($"{file}: the id \"{mode.Id}\" is taken already");
+                else Formats.Add(mode.Format);
+            }
+            catch (FormatException e) { errors.Add($"{file}: {e.Message}"); }
+        }
+        foreach (var error in errors) GD.PushWarning($"Game mode: {error}");
+    }
 
     public FormatRules FormatById(string id) => Formats.FirstOrDefault(f => f.Id == id) ?? Formats[0];
 

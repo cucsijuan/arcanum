@@ -45,6 +45,28 @@ public partial class OnlineService : Node
 
     public NetSession? Session { get; private set; }
     public LobbyClient? Lobby => _lobbyClient;
+
+    private (string Source, FormatRules? Format) _lobbyMode;
+
+    /// <summary>
+    /// The deck rules of the host's game mode (a plugin the host sent, which this player may not have), or null when the
+    /// lobby has no mode or its script can't be read here.
+    /// </summary>
+    public FormatRules? LobbyModeFormat
+    {
+        get
+        {
+            if (_lobbyClient?.Mode is not { } source) return null;
+            if (_lobbyMode.Source != source)
+            {
+                FormatRules? format = null;
+                try { format = Arcanum.Data.GameModes.GameModeScript.Parse(source, App.Instance.Formats).Format; }
+                catch (FormatException e) { GD.PushWarning($"The host's game mode can't be read: {e.Message}"); }
+                _lobbyMode = (source, format);
+            }
+            return _lobbyMode.Format;
+        }
+    }
     public LobbyHost? HostedLobby => _lobby;
     public bool IsHosting => _lobby is not null || _resumed is not null || _resumedEvent is not null;
 
@@ -73,9 +95,15 @@ public partial class OnlineService : Node
     /// <summary>Opens a lobby on <paramref name="port"/>; this device's player takes seat 0 (their deck is chosen in the lobby, or given here).</summary>
     public void Host(string name, FormatRules format, int players, int port, DeckInfo? deck = null)
     {
+        if (format.Mode is { } mode && (players < mode.MinPlayers || players > mode.MaxPlayers))
+        {
+            Status?.Invoke(mode.MinPlayers == mode.MaxPlayers ? $"{mode.Name} is for {mode.MinPlayers} players."
+                : $"{mode.Name} is for {mode.MinPlayers} to {mode.MaxPlayers} players.");
+            return;
+        }
         Leave();
         var settings = new LobbySettings(format.Name, format.Commander, format.StartingLife, players, Version, ContentId);
-        _lobby = new LobbyHost(settings, list => CheckDeck(list, format));
+        _lobby = new LobbyHost(settings, list => CheckDeck(list, format), mode: format.Mode);
         _hostFormat = format;
         _lobby.Changed += () => Changed?.Invoke();
         try
@@ -92,7 +120,7 @@ public partial class OnlineService : Node
         _loopback = new InMemoryListener();
         _lobby.AddListener(_tcp);
         _lobby.AddListener(_loopback);
-        _save = new HostedSave { Format = format.Id, Port = _port };
+        _save = new HostedSave { Format = format.Id, Mode = format.Mode?.Source, Port = _port };
         ListAddresses();
         OpenRouterPort();
         JoinLobby(_loopback.Connect(), new ClientIdentity(name, _lobby.HostToken, Version, ContentId, OwnPlaymat));
@@ -189,6 +217,21 @@ public partial class OnlineService : Node
         }
         if (save is null || save.Seats.Count < 2) return false;
         var format = App.Instance.FormatById(save.Format);
+        // The mode as it was when the game started (the file may have changed since), so the answers replay the same game.
+        Arcanum.Data.GameModes.GameModeScript? mode = null;
+        if (save.Mode is { } source)
+        {
+            try
+            {
+                mode = Arcanum.Data.GameModes.GameModeScript.Parse(source, App.Instance.Formats);
+            }
+            catch (FormatException e)
+            {
+                Status?.Invoke($"The saved game can't be resumed: its game mode can't be read ({e.Message}).");
+                return false;
+            }
+            format = mode.Format;
+        }
         var seats = new List<HostSeat>();
         foreach (var seat in save.Seats)
         {
@@ -207,6 +250,7 @@ public partial class OnlineService : Node
             Seed = save.Seed, StartingLife = format.StartingLife, Commander = format.Commander ? new CommanderRules() : null, CardNames = options.CardNames, NonbasicLandNames = options.NonbasicLandNames,
             CreatureCardNames = options.CreatureCardNames,
         };
+        if (mode is not null) config = mode.ApplyTo(config);
         var game = new GameHost(config, seats, options);
         try
         {
@@ -615,6 +659,9 @@ public partial class OnlineService : Node
     {
         public ulong Seed { get; set; }
         public string Format { get; set; } = "casual";
+
+        /// <summary>The game mode's script (a plugin), as the game started with it; null for none.</summary>
+        public string? Mode { get; set; }
         public int Port { get; set; } = DefaultPort;
         public List<SeatSetup> Seats { get; set; } = new();
         public List<RecordedAnswer> Answers { get; set; } = new();

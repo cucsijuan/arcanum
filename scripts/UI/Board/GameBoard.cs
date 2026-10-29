@@ -171,10 +171,11 @@ public partial class GameBoard : Control
         return policy;
     }
 
-    private Func<ulong, GameSession> MatchFactory(IReadOnlyList<GameSession.Seat> seats, int life, bool commander, Action<Arcanum.Engine.Game>? setup) =>
+    private Func<ulong, GameSession> MatchFactory(IReadOnlyList<GameSession.Seat> seats, int life, bool commander, Action<Arcanum.Engine.Game>? setup,
+        Arcanum.Data.GameModes.GameModeScript? mode = null) =>
         seed =>
         {
-            var session = GameSession.CreateMatch(seed, seats, setup, life, PolicyFromSettings(), Settings.Current.ConfirmManaPayment, commander);
+            var session = GameSession.CreateMatch(seed, seats, setup, life, PolicyFromSettings(), Settings.Current.ConfirmManaPayment, commander, mode);
             // The computer's hand stays hidden; with only people at the table it's the players' choice.
             session.RevealAll = !seats.Any(s => s.IsBot) && Settings.Current.RevealHandsInHotseat;
             return session;
@@ -184,7 +185,7 @@ public partial class GameBoard : Control
     {
         _match = match;
         var setup = match.Sandbox ? SandboxSetup() : null;
-        _newSession = MatchFactory(match.Seats, match.StartingLife, match.Commander, setup);
+        _newSession = MatchFactory(match.Seats, match.StartingLife, match.Commander, setup, match.Mode);
     }
 
     /// <summary>Hotseat with the module's sample decks; falls back to generic cards if they can't be built.</summary>
@@ -209,7 +210,9 @@ public partial class GameBoard : Control
             seats.Add(new GameSession.Seat(bot ? "Computer" : Settings.Current.PlayerNames.ElementAtOrDefault(index) ?? $"Player {index + 1}", deck, bot));
         }
         var setup = OS.GetEnvironment("ARCANUM_SANDBOX") == "1" ? SandboxSetup() : null;
-        _newSession = MatchFactory(seats, 20, commander: false, setup);
+        // ARCANUM_MODE=<id>: played with that game mode (quick testing of plugins without the menus).
+        var mode = App.Instance.Formats.FirstOrDefault(f => f.Id == OS.GetEnvironment("ARCANUM_MODE"))?.Mode;
+        _newSession = MatchFactory(seats, mode?.Format.StartingLife ?? 20, commander: false, setup, mode);
     }
 
     /// <summary>
@@ -2462,6 +2465,11 @@ public partial class GameBoard : Control
                 AnnounceTurn(t);
                 if (_session is GameSession { Game.TimeCalledAt: { } called } && t.TurnNumber > called)
                     _announcer.Enqueue(new($"Additional turn {t.TurnNumber - called} of {Arcanum.Engine.Game.AdditionalTurns}", null, 1.5));
+                break;
+            case ModeAnnounced m:
+                // The game mode speaks to everyone: not a player's action, so always shown and held.
+                _announcer.Enqueue(new($"{m.Mode}\n{m.Text}", null, 3));
+                Hold(3);
                 break;
             case TimeCalled tc:
                 _announcer.Enqueue(new($"Time! The round is over.\nThis turn is turn 0, then {tc.AdditionalTurns} more turns; if nobody has won by then, the game is a draw.", null, 3.5));

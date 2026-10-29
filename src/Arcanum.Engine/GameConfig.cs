@@ -5,7 +5,7 @@ using Arcanum.Engine.Players;
 
 namespace Arcanum.Engine;
 
-/// <summary>Rule parameters for a game. Game-mode plugins (M13) will produce these too.</summary>
+/// <summary>Rule parameters for a game.</summary>
 public sealed record GameConfig
 {
     public ulong Seed { get; init; }
@@ -37,6 +37,12 @@ public sealed record GameConfig
 
     /// <summary>The names among <see cref="CardNames"/> of creature cards ("choose a creature card name"). Null: those the chooser knows of.</summary>
     public IReadOnlyList<string>? CreatureCardNames { get; init; }
+
+    /// <summary>
+    /// Makes the game mode adding its own rules to the game (a plugin); null for none. Each game makes its own (a game
+    /// played again from the start, to undo or resume, starts with a fresh mode).
+    /// </summary>
+    public Func<GameModes.IGameMode>? Mode { get; init; }
 }
 
 /// <param name="Commanders">The player's commander(s) in a commander game; they start in the command zone.</param>

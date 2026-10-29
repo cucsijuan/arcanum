@@ -238,7 +238,7 @@ public partial class OnlineScreen : Control
         if (_lobbyDecksFor == formatName) return _lobbyDecks;
         _lobbyDecksFor = formatName;
         _lobbyDecks.Clear();
-        var format = App.Instance.Formats.FirstOrDefault(f => f.Name == formatName);
+        var format = App.Instance.Online.LobbyModeFormat ?? App.Instance.Formats.FirstOrDefault(f => f.Name == formatName);
         _lobbyDecks.AddRange(format is null || App.Instance.Cards is not { } cards ? _decks
             : _decks.Where(d => Arcanum.Data.Formats.DeckValidator.Validate(App.Instance.Decks.Load(d).Deck, format, cards)
                 .All(i => i.Severity != Arcanum.Data.Formats.IssueSeverity.Error)));
@@ -419,6 +419,7 @@ public partial class OnlineScreen : Control
         box.AddThemeConstantOverride("separation", 12);
         var state = lobby.State;
         box.AddChild(MenuKit.SectionTitle(state is null ? "Joining…" : $"Lobby · {state.Event ?? state.Format}"));
+        if (Online.LobbyModeFormat is { Description.Length: > 0 } mode) box.AddChild(MenuKit.Hint($"Game mode: {mode.Description}"));
 
         if (Online.IsHosting && Online.PublishedLobby is { } published)
         {

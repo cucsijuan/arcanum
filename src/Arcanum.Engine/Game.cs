@@ -136,6 +136,7 @@ public sealed partial class Game
             RecomputeContinuousEffects();
         CollectTriggers(e);
         NoteKnowledge(e);
+        if (_mode is not null) _modeEvents.Enqueue(e);
         EventRaised?.Invoke(e);
     }
 
@@ -230,6 +231,7 @@ public sealed partial class Game
         var startingPlayer = Config.StartingPlayer ?? new PlayerId(Rng.Next(State.Players.Count));
         Emit(new GameStarted(startingPlayer, Config.Seed));
         State.ActivePlayer = startingPlayer;
+        BeginMode();
         await RevealCompanionsAsync();
 
         foreach (var player in State.Players) Shuffle(player);
@@ -257,6 +259,9 @@ public sealed partial class Game
                     foreach (var h in chosen) await MoveCardAsync(h, Zone.Exile);
                 }
             }
+        await DeliverModeEventsAsync();
+        await RunModeAsync((m, h) => m.StartAsync(h));
+        await DeliverModeEventsAsync();
 
         bool firstTurn = true;
         var regular = State.ActivePlayer; // whose turn it is in the normal turn order

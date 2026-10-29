@@ -35,7 +35,8 @@ public class GenericRepositoryTests
         var sep = Path.DirectorySeparatorChar;
         var found = new List<string>();
         var files = new[] { "src", "scripts", "tests" }.SelectMany(top => Directory.EnumerateFiles(Path.Combine(root, top), "*.cs", SearchOption.AllDirectories))
-            .Concat(Directory.EnumerateFiles(Path.Combine(root, "docs"), "*.md", SearchOption.AllDirectories));
+            .Concat(Directory.EnumerateFiles(Path.Combine(root, "docs"), "*.md", SearchOption.AllDirectories))
+            .Concat(Directory.Exists(Path.Combine(root, "modes")) ? Directory.EnumerateFiles(Path.Combine(root, "modes"), "*.lua") : Array.Empty<string>());
         foreach (var file in files)
         {
             if (Path.GetFullPath(file) == self || file.Contains($"{sep}bin{sep}") || file.Contains($"{sep}obj{sep}")) continue;

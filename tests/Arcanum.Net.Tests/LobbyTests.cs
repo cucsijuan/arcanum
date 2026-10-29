@@ -68,6 +68,36 @@ public class LobbyTests
     }
 
     [Fact]
+    public void TheHostSendsItsGameModeAndPlaysWithIt()
+    {
+        var mode = Arcanum.Data.GameModes.GameModeScript.Parse("""
+            mode { id = "long-life", name = "Long Life", game = { startingLife = 33 } }
+            function on_start(game) game.announce("welcome") end
+            """);
+        var clock = new FakeClock();
+        var lobby = new LobbyHost(new LobbySettings(mode.Name, false, 33, 2, "1", "c"), Check, clock.Func, mode);
+        var listener = new InMemoryListener();
+        lobby.AddListener(listener);
+        var host = new LobbyClient(listener.Connect(), Identity("Host", lobby.HostToken), clock.Func);
+        var guest = new LobbyClient(listener.Connect(), Identity("Guest"), clock.Func);
+        host.SubmitDeck("Red-green", List(NetTable.RedGreen()));
+        guest.SubmitDeck("Red-green", List(NetTable.RedGreen()));
+        for (int i = 0; i < 5; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(50));
+            lobby.Poll();
+            host.Poll();
+            guest.Poll();
+        }
+        Assert.Equal(mode.Source, guest.Mode);
+        Assert.Equal(mode.Hash, Arcanum.Data.GameModes.GameModeScript.Parse(guest.Mode!).Hash);
+
+        var game = lobby.Start(5, new HostOptions { Clock = clock.Func });
+        Assert.Equal(33, game.Game.Config.StartingLife);
+        Assert.NotNull(game.Game.Config.Mode);
+    }
+
+    [Fact]
     public void PlayersJoinChooseDecksAndPlayWithTheComputer()
     {
         var clock = new FakeClock();

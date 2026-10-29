@@ -57,17 +57,26 @@ public sealed partial class Game
         State.PriorityPlayer = null;
     }
 
-    /// <summary>State-based actions and pending triggers, repeated until neither applies (rule 117.5).</summary>
+    /// <summary>
+    /// State-based actions and pending triggers, repeated until neither applies (rule 117.5). A game mode sees what happened
+    /// and makes its own checks after the state-based actions; when it changes anything they are checked again.
+    /// </summary>
     private async Task SettleBeforePriorityAsync()
     {
+        bool modeChanged;
+        int modeRepeats = 0;
         do
         {
             await ResolveEnterChoicesAsync();
             await CheckStateBasedActionsAsync();
             if (State.IsGameOver) return;
             await OfferCommanderReturnsAsync();
+            modeChanged = await DeliverModeEventsAsync();
+            modeChanged |= await ModeCheckAsync();
+            if (State.IsGameOver) return;
+            if (modeChanged && ++modeRepeats == MaxModeRepeats) StopMode($"it changed the game {MaxModeRepeats} times in a row");
         }
-        while (await PutPendingTriggersOnStackAsync());
+        while (await PutPendingTriggersOnStackAsync() | modeChanged);
     }
 
     private static readonly string[] ColorNames = { "White", "Blue", "Black", "Red", "Green" };

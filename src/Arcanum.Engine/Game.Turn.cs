@@ -274,9 +274,12 @@ public sealed partial class Game
             case Step.Cleanup:
                 // Normally no player gets priority in the cleanup step (514.3). If state-based actions apply or abilities
                 // trigger during it, they're handled and players get priority; then another cleanup step follows (514.3a).
+                await ModeStepAsync(step);
                 for (int rounds = 0; rounds < 20 && !State.IsGameOver; rounds++)
                 {
                     await CleanupAsync();
+                    await DeliverModeEventsAsync();
+                    await ModeCheckAsync();
                     bool anything = _pendingTriggers.Count > 0 || await ApplyStateBasedActionsOnceAsync();
                     if (!anything) break;
                     await RunPriorityAsync();
@@ -286,6 +289,7 @@ public sealed partial class Game
                 break;
         }
 
+        if (step != Step.Cleanup) await ModeStepAsync(step);
         if (givesPriority && !State.IsGameOver) await RunPriorityAsync();
 
         if (step == Step.EndCombat) State.Combat = null;

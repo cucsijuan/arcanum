@@ -124,3 +124,6 @@ public sealed record GameEnded(PlayerId? Winner) : GameEvent;
 /// not over by then is a draw.
 /// </summary>
 public sealed record TimeCalled(int TurnNumber, int AdditionalTurns) : GameEvent;
+
+/// <summary>The game mode (see <see cref="GameModes.IGameMode"/>) tells the players something, or that it stopped working.</summary>
+public sealed record ModeAnnounced(string Mode, string Text) : GameEvent;

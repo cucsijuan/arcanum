@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using Arcanum.Data.GameModes;
 using Arcanum.Engine;
 using Arcanum.Engine.Cards;
 using Arcanum.Net.Host;
@@ -44,9 +45,13 @@ public sealed class LobbyHost
     private readonly List<IConnectionListener> _listeners = new();
     private readonly List<Peer> _greeting = new();
 
-    public LobbyHost(LobbySettings settings, Func<string, DeckCheck> checkDeck, Func<DateTime>? clock = null)
+    private readonly GameModeScript? _mode;
+
+    /// <param name="mode">The game mode (plugin) the game is played with: sent to every player who joins, run by the host.</param>
+    public LobbyHost(LobbySettings settings, Func<string, DeckCheck> checkDeck, Func<DateTime>? clock = null, GameModeScript? mode = null)
     {
         _settings = settings;
+        _mode = mode;
         _checkDeck = checkDeck;
         _clock = clock ?? (() => DateTime.UtcNow);
         _slots = Enumerable.Range(0, settings.Seats).Select(_ => new Slot()).ToList();
@@ -144,6 +149,7 @@ public sealed class LobbyHost
             NonbasicLandNames = options.NonbasicLandNames,
             CreatureCardNames = options.CreatureCardNames,
         };
+        if (_mode is not null) config = _mode.ApplyTo(config);
         var seats = _slots.Select(s => new HostSeat(s.Name, s.Deck!.Deck, s.Deck.Commanders, s.Kind == LobbySeatKind.Computer, Sideboard: s.Deck.Sideboard, Token:
             s.Kind == LobbySeatKind.Person ? s.Token : null)).ToList();
         Game = new GameHost(config, seats, options with { Version = _settings.Version, Content = _settings.Content });
@@ -252,7 +258,7 @@ public sealed class LobbyHost
         slot.Peer = peer;
         slot.Kind = LobbySeatKind.Person;
         slot.Name = hello.Name.Trim() is { Length: > 0 } name ? name[..Math.Min(name.Length, 32)] : $"Player {_slots.IndexOf(slot) + 1}";
-        peer.Send(new Joined(_slots.IndexOf(slot), slot.Token));
+        peer.Send(new Joined(_slots.IndexOf(slot), slot.Token, _mode?.Source));
         Broadcast();
     }
 

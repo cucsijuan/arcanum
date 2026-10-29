@@ -57,8 +57,11 @@ public sealed record Heartbeat : NetMessage;
 
 // ------------------------------------------------------------------ lobby (before the game)
 
-/// <summary>A player took <paramref name="Seat"/>; <paramref name="Token"/> lets them back in if they drop.</summary>
-public sealed record Joined(int Seat, string Token) : NetMessage;
+/// <summary>
+/// A player took <paramref name="Seat"/>; <paramref name="Token"/> lets them back in if they drop. <paramref name="Mode"/>:
+/// the script of the game mode the host plays (a plugin), so the player sees its rules and deck rules.
+/// </summary>
+public sealed record Joined(int Seat, string Token, string? Mode = null) : NetMessage;
 
 public enum LobbySeatKind { Open, Person, Computer }
 

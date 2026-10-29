@@ -4,6 +4,11 @@
     <ProjectReference Include="..\Arcanum.Engine\Arcanum.Engine.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Lua interpreter for game-mode plugins (BSD-3-Clause), pure .NET: no native library per platform. -->
+    <PackageReference Include="MoonSharp" Version="2.0.0" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

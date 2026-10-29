@@ -43,6 +43,9 @@ public sealed record FormatRules
 
     public string Description { get; init; } = "";
 
+    /// <summary>The game mode these are the deck rules of (a plugin, modes/*.lua); null for a plain format.</summary>
+    public GameModes.GameModeScript? Mode { get; init; }
+
     public static FormatRules Parse(string json)
     {
         using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });

@@ -156,6 +156,10 @@ public partial class PlaySetup : Control
         _start.Text = "Start game";
         _format = App.Instance.Formats.FirstOrDefault(f => f.Id == id && !f.Limited) ?? App.Instance.Formats.FirstOrDefault(f => !f.Limited) ?? FormatRules.Casual;
         _modeInfo.Text = _format.Description;
+        // A game mode says how many may play it.
+        int min = _format.Mode?.MinPlayers ?? 2, max = _format.Mode?.MaxPlayers ?? 4;
+        for (int i = 0; i < _playerCount.ItemCount; i++) _playerCount.SetItemDisabled(i, i + 2 < min || i + 2 > max);
+        if (PlayerCount < min || PlayerCount > max) _playerCount.Select(Math.Clamp(PlayerCount, min, Math.Min(max, 4)) - 2);
 
         var keep = _seats.Select(seat => Selected(_seats.IndexOf(seat))?.Name).ToList();
         _decks.Clear();
@@ -384,7 +388,7 @@ public partial class PlaySetup : Control
             seats.Add(new GameSession.Seat(_seats[i].Name.Text is { Length: > 0 } n ? n : $"Player {i + 1}", definitions, bot, commanders,
                 format.Commander ? deck.ResolveCompanions(cards) : deck.ResolveSideboard(cards)));
         }
-        App.Instance.PendingMatch = new MatchSetup(seats, format.StartingLife, format.Commander, _sandbox.ButtonPressed) { Label = $"{format.Name} match" };
+        App.Instance.PendingMatch = new MatchSetup(seats, format.StartingLife, format.Commander, _sandbox.ButtonPressed) { Label = $"{format.Name} match", Mode = format.Mode };
         App.Instance.GoTo(App.GameBoardScene);
     }
 }
