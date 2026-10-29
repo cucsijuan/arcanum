@@ -25,6 +25,9 @@ public sealed class CareerSave
     /// <summary>The career service's seal on the start of the journal (null: never checked).</summary>
     public CareerSeal? Seal { get; set; }
 
+    /// <summary>The game versions the career was played with, oldest first (empty for careers from before they were noted).</summary>
+    public List<CareerVersion> Versions { get; set; } = new();
+
     private static readonly byte[] Header = "ARCCAR1"u8.ToArray();
 
     private static readonly JsonSerializerOptions Options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };

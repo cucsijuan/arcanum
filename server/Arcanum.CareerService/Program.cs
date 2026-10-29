@@ -27,7 +27,10 @@ builder.Services.AddSingleton(services =>
     var worlds = services.GetRequiredService<CareerWorlds>();
     return new CareerChecker(worlds.For, config["Career:Game"] ?? throw new InvalidOperationException("Career:Game (the game version) isn't set."),
         DateTime.Parse(config["Career:ImportBefore"] ?? "2026-11-01T00:00:00Z", null, System.Globalization.DateTimeStyles.AdjustToUniversal),
-        key, config["Career:SealKeyId"] ?? "k1", onlineResult: services.GetRequiredService<EventDesk>().Check);
+        key, config["Career:SealKeyId"] ?? "k1", onlineResult: services.GetRequiredService<EventDesk>().Check,
+        // The version checked before this one, and since when this one is (deploy.sh writes both when the version changes).
+        previousGame: config["Career:PreviousGame"],
+        switchedAt: config["Career:Since"] is { } since ? DateTime.Parse(since, null, System.Globalization.DateTimeStyles.AdjustToUniversal) : default);
 });
 builder.Services.AddRateLimiter(options =>
 {

@@ -281,6 +281,11 @@ public partial class MainMenu : Control
         title.HorizontalAlignment = HorizontalAlignment.Center;
         box.AddChild(title);
         box.AddChild(BoardStyle.MakeLabel(isGame ? $"You have {Updater.GameVersion}." : $"You have {App.Instance.Module?.Manifest.Version}.", 15, BoardStyle.TextDim));
+        // The career's latest actions are best checked by the career service with the version they were played with.
+        var career = App.Instance.Career;
+        bool needsCheck = isGame && career.HasCareer && !career.IsChecked && career.CheckStatus.Length > 0;
+        if (needsCheck)
+            box.AddChild(BoardStyle.MakeLabel("Your career has actions the career service hasn't checked yet: updating checks them first when it can.", 15, UiArt.Gold));
         var notes = new RichTextLabel { Text = PlainNotes(release.Notes), FitContent = true, ScrollActive = false, CustomMinimumSize = new Vector2(560, 0) };
         notes.AddThemeFontSizeOverride("normal_font_size", 14);
         notes.AddThemeColorOverride("default_color", BoardStyle.Text);
@@ -324,6 +329,11 @@ public partial class MainMenu : Control
                 foreach (var b in buttons.GetChildren().OfType<Button>()) b.Disabled = true;
                 try
                 {
+                    if (needsCheck)
+                    {
+                        status.Text = "Checking your career with the career service first…";
+                        await career.SyncAsync();
+                    }
                     var zip = await Updater.DownloadAsync(release, p => Callable.From(() => status.Text = $"Downloading… {p:P0}").CallDeferred());
                     if (isGame)
                     {

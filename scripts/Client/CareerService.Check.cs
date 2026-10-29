@@ -52,8 +52,10 @@ public sealed partial class CareerService
         for (int attempt = 0; attempt < 2; attempt++)
         {
             var actions = save.Journal.Skip(checkedCount).ToList();
+            // The states kept at version changes go only for the actions not checked yet.
+            var versions = save.Versions.Select(v => v.From > checkedCount ? v : v with { Before = null }).ToList();
             var request = new CareerSyncRequest(_contentId, OnlineService.Version, checkedCount, CareerSeals.Hash(save.Journal, checkedCount), actions,
-                checkedCount == 0 ? save.State : null);
+                checkedCount == 0 ? save.State : null, versions);
             using var reply = await http.PostAsJsonAsync("career/sync", request, Web);
             if (!reply.IsSuccessStatusCode)
             {
@@ -66,6 +68,7 @@ public sealed partial class CareerService
             {
                 case CareerSyncStatus.Ok when genuine is not null:
                     save.Seal = genuine;
+                    DropCheckedVersionStates(save);
                     Write();
                     SetCheck("Checked by the career service.", differs: false);
                     return true;
@@ -73,7 +76,7 @@ public sealed partial class CareerService
                     checkedCount = genuine.Count; // another device's sync checked more of this same career: build on it
                     continue;
                 case CareerSyncStatus.Rejected:
-                    if (genuine is not null) { save.Seal = genuine; Write(); }
+                    if (genuine is not null) { save.Seal = genuine; DropCheckedVersionStates(save); Write(); }
                     SetCheck($"The career service doesn't accept this career's latest actions: {response.Reason} You can go back to the checked career.", differs: true);
                     return genuine is not null;
                 case CareerSyncStatus.Unsupported:
@@ -99,7 +102,8 @@ public sealed partial class CareerService
         var profile = await reply.Content.ReadFromJsonAsync<CareerProfile>(Web);
         if (profile is null || profile.Seal.Count != profile.Journal.Count || !CareerSeals.Covers(profile.Seal, profile.Journal)) return false;
         if (LocalBundle() is { } local) Backup(local, "unchecked");
-        _save = new CareerSave { Content = _contentId, Journal = profile.Journal, State = profile.State, Seal = profile.Seal };
+        _save = new CareerSave { Content = _contentId, Journal = profile.Journal, State = profile.State, Seal = profile.Seal,
+            Versions = { new CareerVersion(profile.Journal.Count, OnlineService.Version, _contentId) } };
         Write();
         _events = null;
         Problem = null;
@@ -107,6 +111,13 @@ public sealed partial class CareerService
         SetCheck("Checked by the career service.", differs: false);
         SyncSoon();
         return true;
+    }
+
+    /// <summary>The states kept at version changes the service has checked past are no longer needed.</summary>
+    private static void DropCheckedVersionStates(CareerSave save)
+    {
+        for (int i = 0; i < save.Versions.Count; i++)
+            if (save.Versions[i] is { Before: not null } v && v.From <= save.Seal!.Count) save.Versions[i] = v with { Before = null };
     }
 
     private void SetCheck(string status, bool differs)

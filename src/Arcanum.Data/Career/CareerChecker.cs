@@ -30,6 +30,8 @@ public sealed class CareerChecker
     private readonly string _keyId;
     private readonly Func<DateTime> _clock;
     private readonly Func<string, FinishEvent, string?> _onlineResult;
+    private readonly string? _previousGame;
+    private readonly DateTime _switchedAt;
 
     /// <param name="worldFor">The career world of a content ("id version"), or null when the service doesn't have it.</param>
     /// <param name="game">The game version whose rules this service runs.</param>
@@ -37,13 +39,19 @@ public sealed class CareerChecker
     /// Careers started before this (when the service began checking careers) are taken as they are when their journal no
     /// longer replays: the rules and content they were played with changed since.
     /// </param>
+    /// <param name="previousGame">
+    /// The game version this service checked before <paramref name="switchedAt"/>: actions played with it before then that
+    /// today's rules don't accept are taken as that version computed them (the state the game kept when it updated).
+    /// </param>
     /// <param name="onlineResult">
     /// Checks a player's result of an online table against the result the service confirmed: null when it is that one,
     /// otherwise why not. Without it no online result is accepted.
     /// </param>
     public CareerChecker(Func<string, CareerWorld?> worldFor, string game, DateTime importBefore, ECDsa key, string keyId, Func<DateTime>? clock = null,
-        Func<string, FinishEvent, string?>? onlineResult = null)
+        Func<string, FinishEvent, string?>? onlineResult = null, string? previousGame = null, DateTime switchedAt = default)
     {
+        _previousGame = previousGame;
+        _switchedAt = switchedAt;
         _onlineResult = onlineResult ?? ((_, _) => "Online results can't be checked here.");
         _worldFor = worldFor;
         _game = game;
@@ -71,14 +79,15 @@ public sealed class CareerChecker
         if (stored is null || request.Base != stored.Seal.Count || request.BaseHash != stored.Seal.Hash)
             return (new(CareerSyncStatus.Conflict, stored?.Seal), null);
         if (request.Actions.Count == 0) return (new(CareerSyncStatus.Ok, stored.Seal), null);
-        return Continue(player, stored, request.Actions, world);
+        return Continue(player, stored, request.Actions, request.Versions ?? Array.Empty<CareerVersion>(), world);
     }
 
     /// <summary>A career the service hasn't seen: its whole journal is replayed (or, for an older career, taken as it is).</summary>
     private (CareerSyncResponse, CheckedCareer?) First(string player, CareerSyncRequest request, CareerWorld world)
     {
         var start = (StartCareer)request.Actions[0];
-        var (state, applied, reason) = ApplyAll(player, new CareerState(), request.Actions, world);
+        var versions = request.Versions ?? Array.Empty<CareerVersion>();
+        var (state, applied, reason, jumps) = ApplyAll(player, new CareerState(), request.Actions, 0, versions, world);
         if (reason is not null && start.Utc < _importBefore && request.State is { } theirs && request.Actions.All(a => a.Utc <= _clock() + ClockSkew))
         {
             // Played before the service checked careers, with rules and content that have changed since: taken as it is.
@@ -87,21 +96,18 @@ public sealed class CareerChecker
         }
         if (applied == 0) return (new(CareerSyncStatus.Rejected, null, reason), null);
         var accepted = request.Actions.Take(applied).ToList();
-        if (reason is not null) state = Replay(accepted, world);
+        if (reason is not null) state = Rerun(new CareerState(), accepted, jumps, world);
         var (response, store) = Sealed(player, accepted, state);
         return reason is null ? (response, store) : (response with { Status = CareerSyncStatus.Rejected, Reason = reason }, store);
     }
 
-    private (CareerSyncResponse, CheckedCareer?) Continue(string player, CheckedCareer stored, IReadOnlyList<CareerAction> actions, CareerWorld world)
+    private (CareerSyncResponse, CheckedCareer?) Continue(string player, CheckedCareer stored, IReadOnlyList<CareerAction> actions, IReadOnlyList<CareerVersion> versions,
+        CareerWorld world)
     {
-        var (state, applied, reason) = ApplyAll(player, Copy(stored.State), actions, world);
+        var (state, applied, reason, jumps) = ApplyAll(player, Copy(stored.State), actions, stored.Seal.Count, versions, world);
         if (applied == 0) return (new(CareerSyncStatus.Rejected, stored.Seal, reason), null);
-        if (reason is not null)
-        {
-            // The action that failed may have changed the state halfway: apply the good ones again from the stored state.
-            state = Copy(stored.State);
-            foreach (var action in actions.Take(applied)) CareerRules.Apply(state, action, world);
-        }
+        // The action that failed may have changed the state halfway: apply the good ones again from the stored state.
+        if (reason is not null) state = Rerun(Copy(stored.State), actions.Take(applied).ToList(), jumps, world);
         var journal = stored.Journal.Concat(actions.Take(applied)).ToList();
         var hash = actions.Take(applied).Aggregate(stored.Seal.Hash, CareerSeals.Extend);
         var seal = CareerSeals.Sign(player, journal.Count, hash, _keyId, _key);
@@ -109,27 +115,76 @@ public sealed class CareerChecker
         return (new(reason is null ? CareerSyncStatus.Ok : CareerSyncStatus.Rejected, seal, reason), store);
     }
 
-    /// <summary>Applies the actions in order until one doesn't hold; returns the state, how many held, and why the next didn't.</summary>
-    private (CareerState State, int Applied, string? Reason) ApplyAll(string player, CareerState state, IReadOnlyList<CareerAction> actions, CareerWorld world)
+    /// <summary>
+    /// Where the state was taken as the previous game version had it: at action <see cref="At"/> (local), the state
+    /// becomes <see cref="State"/> and checking goes on from action <see cref="To"/>.
+    /// </summary>
+    private sealed record Jump(int At, int To, CareerState State);
+
+    /// <summary>
+    /// Applies the actions (the first is the journal's action <paramref name="first"/>) in order until one doesn't hold;
+    /// returns the state, how many held, why the next didn't, and where the previous version's state was taken instead.
+    /// </summary>
+    private (CareerState State, int Applied, string? Reason, List<Jump> Jumps) ApplyAll(string player, CareerState state, IReadOnlyList<CareerAction> actions, int first,
+        IReadOnlyList<CareerVersion> versions, CareerWorld world)
     {
         var limit = _clock() + ClockSkew;
+        var jumps = new List<Jump>();
         for (int i = 0; i < actions.Count; i++)
         {
             var action = actions[i];
-            if (action.Utc > limit) return (state, i, $"Action {i + 1} ({Name(action)}) is dated in the future.");
+            if (action.Utc > limit) return (state, i, $"Action {i + 1} ({Name(action)}) is dated in the future.", jumps);
             // An online result is the one the service confirmed for that table, nothing the player says.
             if (action is FinishEvent { Table: not null } online && _onlineResult(player, online) is { } wrong)
-                return (state, i, $"Action {i + 1} (FinishEvent) isn't the table's confirmed result: {wrong}");
+                return (state, i, $"Action {i + 1} (FinishEvent) isn't the table's confirmed result: {wrong}", jumps);
             try
             {
                 CareerRules.Apply(state, action, world);
             }
             catch (Exception e) when (e is CareerRuleException or KeyNotFoundException or InvalidOperationException or ArgumentException or FormatException)
             {
-                return (state, i, $"Action {i + 1} ({Name(action)}) doesn't hold: {e.Message}");
+                // Played with the previous version before the service changed to this one: taken as that version computed
+                // it, up to the next version change (whose state the game kept), and checked on from there.
+                if (PreviousVersionUntil(first + i, action, versions) is { } next && next.From - first <= actions.Count)
+                {
+                    int to = next.From - first;
+                    state = Copy(next.Before!);
+                    jumps.Add(new Jump(i, to, next.Before!));
+                    i = to - 1;
+                    continue;
+                }
+                return (state, i, $"Action {i + 1} ({Name(action)}) doesn't hold: {e.Message}", jumps);
             }
         }
-        return (state, actions.Count, null);
+        return (state, actions.Count, null, jumps);
+    }
+
+    /// <summary>
+    /// The version change after the journal's action <paramref name="index"/> when that action was played with the previous
+    /// game version before the service changed (and the game kept the state at the change); otherwise null.
+    /// </summary>
+    private CareerVersion? PreviousVersionUntil(int index, CareerAction action, IReadOnlyList<CareerVersion> versions)
+    {
+        if (_previousGame is null || action.Utc >= _switchedAt) return null;
+        var played = versions.LastOrDefault(v => v.From <= index);
+        if (played?.Game != _previousGame) return null;
+        return versions.FirstOrDefault(v => v.From > index && v.Before is not null && v.Game != _previousGame);
+    }
+
+    /// <summary>Applies the actions that held again from <paramref name="state"/>, taking the previous version's state where it was taken.</summary>
+    private static CareerState Rerun(CareerState state, IReadOnlyList<CareerAction> actions, IReadOnlyList<Jump> jumps, CareerWorld world)
+    {
+        for (int i = 0; i < actions.Count; i++)
+        {
+            if (jumps.FirstOrDefault(j => j.At == i) is { } jump)
+            {
+                state = Copy(jump.State);
+                i = jump.To - 1;
+                continue;
+            }
+            CareerRules.Apply(state, actions[i], world);
+        }
+        return state;
     }
 
     private (CareerSyncResponse, CheckedCareer?) Sealed(string player, List<CareerAction> journal, CareerState state)
@@ -137,8 +192,6 @@ public sealed class CareerChecker
         var seal = CareerSeals.Sign(player, journal.Count, CareerSeals.Hash(journal, journal.Count), _keyId, _key);
         return (new(CareerSyncStatus.Ok, seal), new CheckedCareer(journal, state, seal));
     }
-
-    private static CareerState Replay(IEnumerable<CareerAction> journal, CareerWorld world) => CareerRules.Replay(journal, world);
 
     private static string Name(CareerAction action) => action.GetType().Name;
 

@@ -157,6 +157,10 @@ public sealed partial class CareerService
     {
         var world = World ?? throw new CareerRuleException("The installed content has no career.");
         var save = _save ?? (action is StartCareer ? new CareerSave() : throw new CareerRuleException("No career."));
+        // A new game version or content from here on: the state as the earlier one left it is kept, for the career service.
+        if (action is StartCareer) save.Versions.Clear();
+        if (save.Versions.LastOrDefault() is not { } last || last.Game != OnlineService.Version || last.Content != _contentId)
+            save.Versions.Add(new CareerVersion(save.Journal.Count, OnlineService.Version, _contentId, save.Journal.Count > 0 ? CareerChecker.Copy(save.State) : null));
         var result = CareerRules.Apply(save.State, action, world);
         save.Journal.Add(action);
         save.Content = _contentId;

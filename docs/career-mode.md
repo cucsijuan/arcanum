@@ -355,15 +355,28 @@ developer runs. That is the career service (built in C5, below).
 - **Everything random is derived, not stored.** Booster contents, store stock, opponents and offers come from
   `hash(profile seed, day, counter)`. The service recomputes them, so a journal can't claim a different booster.
 - **Sync** (`POST /career/sync`): the client sends the actions after the seal it has (its count and hash), with the
-  content and game versions. The service applies them with the rules and its own clock, and seals every action up to
-  the first that doesn't hold. Actions dated more than 5 minutes ahead of its clock are refused, and so is more than
-  20,000 actions in one sync. The answer is one of: `Ok` (all checked); `Conflict` (the service has another journal; its
+  content and game versions, and the versions the career was played with (*Versions of a career*, below). The service
+  applies them with the rules and its own clock, and seals every action up to the first that doesn't hold. Actions
+  dated more than 5 minutes ahead of its clock are refused, and so is more than 20,000 actions in one sync. The answer is one of: `Ok` (all checked); `Conflict` (the service has another journal; its
   seal comes back); `Rejected` (the reason, and the seal of the part that held); `Unsupported` (another game version, or
   content the service doesn't have). Syncs of one player run one at a time.
 - **Careers the service hasn't seen** are replayed from their first action. A career that starts before
   `Career:ImportBefore` (`appsettings.json`, 2026-12-01) and no longer replays with today's rules and content is taken
   as the game sent it, its state included. A new career (its first action differs from the checked one's) replaces the
   checked one.
+- **Versions of a career:** the game notes a `CareerVersion` (`Arcanum.Data/Career/CareerSeal.cs`) whenever the game
+  version or the content differs from the last action's. It holds the journal action it starts at, the game version and
+  the content. Every change after the first also keeps a copy of the state before that action (`Before`), as the earlier
+  version left it. The game drops a kept state once the service has sealed past its change (`DropCheckedVersionStates`),
+  and a sync sends only the versions after the checked count, with their states.
+- **Game version changes:** the service checks with the rules of its own game version (`Career:Game`). An action that
+  doesn't hold with them is still accepted when it was played with the previous version (`Career:PreviousGame`) and is
+  dated before the change (`Career:Since`): the service takes the state the game kept at the next change of version and
+  checks on from there. Actions in between are taken as the previous version computed them. Other failures are rejected
+  as before. This applies to careers the service hasn't seen and to checked ones. The reason: the same seed can give
+  other cards after a rules or content change, so actions played offline before an update would otherwise be refused.
+  The kept state is the game's own, so this is a small window of trust, like the import of careers older than the
+  service (`CareerChecker.ApplyAll`).
 - **Rollback/duplication:** a sync must build on the seal the service has. A seal from another device or a restored
   backup gives `Conflict`; the game builds on a newer genuine seal of the same career, and otherwise reports the career
   as differing. An older copy is never accepted again.
@@ -373,6 +386,8 @@ developer runs. That is the career service (built in C5, below).
 - **Refused syncs:** the service keeps the reason (`refused` table), not the journal. The game keeps playing its local
   career and offers *go back to the checked career*, which keeps the local files in a backup zip
   (`TakeCheckedCareerAsync`).
+- **Game updates:** the update dialog warns when the career has actions the service hasn't checked. Before it downloads
+  the update, it syncs the career (`SyncAsync`) and goes on with the download after the attempt, whatever its result.
 - **What can't be verified:** the result of an offline match against a bot (the game ran only on the player's device).
   The answer is bounds instead of proofs: offline rewards are capped by the rules (2 dailies, decaying practice, ante
   only against stakes of the same tier), so the most a cheater gets offline is what a player who wins every game would
@@ -394,7 +409,7 @@ career rules library as the game, without a second copy in another language).
 | Data | SQLite `career.db` in the service's state folder (`/var/lib/arcanum-career`): `careers` (per player: the checked career, journal, state and seal, compressed), `refused` (the reason of each refused sync; no journal), and for online events `checkins`, `seated`, `tables` (each table and its host's report) and `results` (each person's own result) |
 | Keys | ECDSA P-256 sealing key, `/etc/arcanum-career/seal-key.pem`, readable by root only, made once by `setup.sh` on the machine and never copied off it; systemd gives the service a copy (`LoadCredential`). Its public key (base64, SubjectPublicKeyInfo) is in `CareerSeals.PublicKeys` under the key id `k1`, which each seal names, so a key can be rotated (a retired key stays listed) |
 | HTTPS | Reverse proxy with automatic certificates (Caddy, `deploy/Caddyfile`) on a domain or free subdomain (`arcanum-career.duckdns.org`); the season files are served from `/srv/arcanum-career`, everything else goes to the service on `127.0.0.1:5080`; only ports 80/443 open in the VM's security list and firewall |
-| Running | systemd unit `arcanum-career.service` with restart (`server/Arcanum.CareerService/deploy`): `setup.sh` once on the machine (packages, user, sealing key, Caddy); `deploy.sh [user@host]` builds and copies the service over SSH, writes the game version it checks (`Career__Game`, from `project.godot`) and restarts it; `publish-content.sh <module dir>` puts a content module version on the machine; `publish-season.sh` checks and puts a season file. Secrets in `/etc/arcanum-career/secrets.env` on the machine only (`Discord__ClientSecret=…`). Later a GitHub Actions workflow does the deploy |
+| Running | systemd unit `arcanum-career.service` with restart (`server/Arcanum.CareerService/deploy`): `setup.sh` once on the machine (packages, user, sealing key, Caddy); `deploy.sh [user@host]` builds and copies the service over SSH, writes the game version it checks (`Career__Game`, from `project.godot`; when the version changes, also `Career__PreviousGame` and `Career__Since`) and restarts it; `publish-content.sh <module dir>` puts a content module version on the machine; `publish-season.sh` checks and puts a season file. Secrets in `/etc/arcanum-career/secrets.env` on the machine only (`Discord__ClientSecret=…`). Later a GitHub Actions workflow does the deploy |
 | Content and world | `/var/lib/arcanum-career/content/<module id>/<version>/` holds the module and the game's compact card data (`cards.jsonl.gz`). `CareerWorlds` builds the career world of the newest content at start and every 5 minutes (so the first sync doesn't wait), keeps one world (rebuilt when the season file changes) |
 | Backups | not set up yet. Planned: a daily copy of the SQLite file off the VM (losing it means players fall back to their last checked career, not to nothing) |
 | Limits | rate limits per address (the address Caddy passes on): 30 requests a minute for careers and events, 10 a minute for sign-ins; at most 20,000 actions in one sync |
@@ -408,6 +423,10 @@ Notes:
   boosters. `publish-content.sh` puts each version on the machine; a sync for a version it doesn't have gets `Unsupported`.
 - Game version: the service checks careers only for the game version it runs (`Career__Game`). Redeploy it after each
   game release, so careers of that release are checked. Syncs from another version get `Unsupported` until then.
+  `deploy.sh` writes `/etc/arcanum-career/game.env` with `Career__Game`. When the version differs from the one in that
+  file, it also writes `Career__PreviousGame` (the version deployed before; empty on the first deploy) and `Career__Since` (the
+  UTC time of the deploy). A redeploy of the same version leaves the file as it is. The two take part in the game version
+  change rule (see *The career service that seals careers*).
 
 Without the service, the options would be:
 

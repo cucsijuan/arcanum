@@ -147,4 +147,35 @@ public partial class CareerTests
         Assert.Equal(CareerSeals.Hash(stored.Journal, 4), CareerSeals.Hash(back.Journal, 4));
         Assert.Equal(stored.State.Cash, back.State.Cash);
     }
+
+    [Theory]
+    [InlineData("9.9.8", 1, true)]   // the previous version, before the service changed: taken as it computed it
+    [InlineData("9.9.7", 1, false)]  // an older version: checked with today's rules
+    [InlineData("9.9.8", -1, false)] // dated after the service changed
+    public void ActionsOfThePreviousVersionAreTakenAsItComputedThem(string playedWith, int hoursAfterChange, bool accepted)
+    {
+        var journal = PlayedJournal();
+        var changed = T0.AddMinutes(30).AddHours(hoursAfterChange);
+        journal.Add(new OpenBooster(T0.AddMinutes(29), "old-set")); // the previous version had this set; today's content doesn't
+        var before = CareerRules.Replay(journal.Take(4), World());
+        before.Cash = 4321; // as the previous version left it
+        journal.Add(new StartDaily(T0.AddHours(3), "cash"));
+        var versions = new List<CareerVersion> { new(0, playedWith, Content), new(5, Game, Content, before) };
+        var checker = new CareerChecker(c => c == Content ? World() : null, Game, DateTime.MinValue, SealKey, "t1", () => T0.AddDays(2),
+            previousGame: "9.9.8", switchedAt: changed);
+        var (_, stored) = checker.Check("player", null, Sync(journal.Take(2).ToList()));
+        var (response, next) = checker.Check("player", stored, Sync(journal.Skip(2).ToList(), 2, stored!.Seal.Hash) with { Versions = versions });
+        if (accepted)
+        {
+            Assert.Equal(CareerSyncStatus.Ok, response.Status);
+            Assert.Equal(6, response.Seal!.Count);
+            Assert.Equal(4321, next!.State.Cash);
+            Assert.Equal(2, next.State.DailiesPlayed); // the day's first daily, then the one checked after the change
+        }
+        else
+        {
+            Assert.Equal(CareerSyncStatus.Rejected, response.Status);
+            Assert.Equal(4, response.Seal!.Count);
+        }
+    }
 }

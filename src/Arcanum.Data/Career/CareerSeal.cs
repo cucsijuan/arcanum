@@ -76,7 +76,20 @@ public static class CareerSeals
 /// </summary>
 /// <param name="Content">The content module and its version ("id version").</param>
 /// <param name="Game">The game's version: the rules the actions were checked with.</param>
-public sealed record CareerSyncRequest(string Content, string Game, int Base, string BaseHash, IReadOnlyList<CareerAction> Actions, CareerState? State = null);
+/// <param name="Versions">
+/// The game versions the career was played with (see <see cref="CareerVersion"/>), with the state at the start of each
+/// version change after <paramref name="Base"/>.
+/// </param>
+public sealed record CareerSyncRequest(string Content, string Game, int Base, string BaseHash, IReadOnlyList<CareerAction> Actions, CareerState? State = null,
+    IReadOnlyList<CareerVersion>? Versions = null);
+
+/// <summary>
+/// From the journal's action <paramref name="From"/> on, the career was played with this game version and content. A
+/// change of version keeps the state as the earlier version had it then (<paramref name="Before"/>): actions of the
+/// previous version that the new rules no longer give the same result for (a booster from the same seed, say) are taken
+/// as that version computed them.
+/// </summary>
+public sealed record CareerVersion(int From, string Game, string Content, CareerState? Before = null);
 
 /// <summary>The service's answer to a sync.</summary>
 /// <param name="Status">
