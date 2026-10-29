@@ -3,4 +3,11 @@
     <TargetFramework>net8.0</TargetFramework>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The career rules: the same code the game runs. -->
+    <ProjectReference Include="..\..\src\Arcanum.Data\Arcanum.Data.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+  </ItemGroup>
 </Project>

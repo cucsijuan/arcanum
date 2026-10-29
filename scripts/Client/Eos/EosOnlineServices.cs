@@ -21,7 +21,7 @@ namespace Arcanum.Client.Eos;
 /// hosted lobbies are listed in the service's lobby directory, and players reach the host with peer-to-peer connections that
 /// fall back to the service's relays when a direct path isn't possible. Every SDK call runs on one thread of its own.
 /// </summary>
-internal sealed class EosOnlineServices : IOnlineServices, IPacketLink, ICloudStorage
+internal sealed class EosOnlineServices : IOnlineServices, IPacketLink, ICloudStorage, IIdentityTokens
 {
     private const string SocketName = "ArcanumGame";
     private const string BucketPrefix = "arcanum:";
@@ -359,6 +359,17 @@ internal sealed class EosOnlineServices : IOnlineServices, IPacketLink, ICloudSt
     {
         public Result Result { get; } = result;
     }
+
+    // ------------------------------------------------------------------ the player's ID token
+
+    /// <summary>The signed-in player's EOS Connect ID token, which the career service checks to know who is asking.</summary>
+    public Task<string?> IdTokenAsync(CancellationToken cancel = default) => WithSignIn(() => OnEos<string?>(done =>
+    {
+        if (_user is null) { done.TrySetResult(null); return; }
+        var options = new CopyIdTokenOptions { LocalUserId = _user };
+        var result = _platform!.GetConnectInterface().CopyIdToken(ref options, out var token);
+        done.TrySetResult(result == Result.Success && token is { } t ? t.JsonWebToken.ToString() : null);
+    }));
 
     // ------------------------------------------------------------------ the player's files
 

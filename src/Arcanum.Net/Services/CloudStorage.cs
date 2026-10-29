@@ -12,3 +12,13 @@ public interface ICloudStorage
 
     Task WriteAsync(string name, byte[] data, CancellationToken cancel = default);
 }
+
+/// <summary>
+/// Proof of who the player is for a service of the game's own (the career service): the online services' signed ID
+/// token for the signed-in player.
+/// </summary>
+public interface IIdentityTokens
+{
+    /// <summary>A current ID token (a JWT), or null when the player isn't signed in.</summary>
+    Task<string?> IdTokenAsync(CancellationToken cancel = default);
+}

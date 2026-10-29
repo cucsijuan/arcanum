@@ -13,7 +13,7 @@ namespace Arcanum.Client;
 /// in user://career/career.sav) and the career's own decks (user://career/decks, built from the collection).
 /// Every change goes through <see cref="Do"/>, which checks it with <see cref="CareerRules"/> and saves.
 /// </summary>
-public sealed class CareerService
+public sealed partial class CareerService
 {
     /// <summary>Where the career lives: user://career, or ARCANUM_CAREER_DIR (test runs that must not touch the player's career).</summary>
     private static string Folder => OS.GetEnvironment("ARCANUM_CAREER_DIR") is { Length: > 0 } dir ? dir : "user://career";
@@ -273,6 +273,12 @@ public sealed class CareerService
                 break;
         }
         SetCloud($"Saved to the cloud ({DateTime.Now:HH:mm}).");
+        // The career service checks what's new; its seal then goes to the cloud too.
+        try { if (await CheckOnce()) _syncAgain = true; }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidDataException)
+        {
+            SetCheck($"Not checked by the career service: {e.GetBaseException().Message}", differs: false);
+        }
     }
 
     private void SetCloud(string status)

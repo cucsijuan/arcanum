@@ -670,7 +670,9 @@ public static partial class CareerRules
         if (state.Pending is not null) throw new CareerRuleException("Finish your match first.");
         var e = world.Event(enter.Event, state.Day) ?? throw new CareerRuleException("There is no such event.");
         if (Start(e, state.Day) is not { } start) throw new CareerRuleException($"{e.Name} isn't today.");
-        if (e.Online is { PvpOnly: true }) throw new CareerRuleException($"{e.Name} is played online only.");
+        if (enter.Online && e.Online is null) throw new CareerRuleException($"{e.Name} isn't played online.");
+        if (enter.Online && e.Kind == Commander) throw new CareerRuleException($"{e.Name} can't be played online yet.");
+        if (e.Online is { PvpOnly: true } && !enter.Online) throw new CareerRuleException($"{e.Name} is played online only.");
         if (Played(state, e, state.Day)) throw new CareerRuleException($"You already played {e.Name} today.");
         if (Tier(state, world) < e.MinTier) throw new CareerRuleException($"{e.Name} needs a {world.Content.Tiers[Math.Min(e.MinTier, world.Content.Tiers.Count - 1)].Name}'s reputation.");
         if (e.Invitational && !IsQualified(state, e, state.Day)) throw new CareerRuleException($"{e.Name} is by invitation: you aren't qualified for it.");
@@ -697,7 +699,7 @@ public static partial class CareerRules
             default: throw new CareerRuleException("That's no way to pay this entry.");
         }
         var seed = (ulong)CareerRandom.For(state.Seed, "event:" + e.Id, start.DayNumber).NextInt64();
-        state.Event = new EventEntry(e.Id, state.Day, seed, set, deck) { Start = start };
+        state.Event = new EventEntry(e.Id, state.Day, seed, set, deck) { Start = start, Online = enter.Online };
         state.EventsPlayed.Add($"{start.DayNumber}:{e.Id}");
         if (e.Invitational) state.Qualified.Remove(e.Id);
         if (state.EventsPlayed.Count > 100) state.EventsPlayed.RemoveAt(0);
@@ -709,7 +711,11 @@ public static partial class CareerRules
     {
         var entry = state.Event ?? throw new CareerRuleException("You aren't in an event.");
         var e = world.Event(entry.Id, entry.Day) ?? throw new CareerRuleException("There is no such event.");
-        int players = e.Kind == Commander ? e.Players : Attendance(e, entry.Seed);
+        if (finish.Table is not null && !entry.Online) throw new CareerRuleException("This event wasn't entered to play online.");
+        if (finish.Table is not null && (finish.Players < 2 || finish.Players > Math.Max(e.Players, e.PlayersMax)))
+            throw new CareerRuleException("That table can't be.");
+        // Online, the table's seats; against the computer, the run's attendance.
+        int players = finish.Table is not null ? finish.Players : e.Kind == Commander ? e.Players : Attendance(e, entry.Seed);
         int rounds = e.Kind == Commander ? e.Rounds : SwissRounds(e, players) + PlayoffRounds(e, players);
         if (finish.Wins + finish.Losses + finish.Draws > rounds || finish.Place < 1 || finish.Place > players)
             throw new CareerRuleException("That result can't be.");
@@ -736,7 +742,8 @@ public static partial class CareerRules
         // "Play N daily drafts": once for each time the event is played through.
         foreach (var challenge in WeekChallenges(state, world, state.Day).Where(c => c.Kind == "playEvent" && c.Event == e.Id))
             AdvanceChallenge(state, world, finish.Utc, challenge);
-        var prize = PrizeFor(e, finish.Wins, finish.Place, players: players);
+        // Online prizes when another person played at the table; against the computer, an online event's offline share.
+        var prize = PrizeFor(e, finish.Wins, finish.Place, online: finish.Table is not null && finish.Pvp, players: players);
         var won = new List<string>();
         if (prize is not null)
         {
@@ -756,7 +763,7 @@ public static partial class CareerRules
                 won.Add($"an invitation to {target.Name} ({next:MMMM d})");
             }
         }
-        state.Note(finish.Utc, $"{e.Name}: {Ordinal(finish.Place)} of {e.Players}, {finish.Wins}-{finish.Losses}{(finish.Draws > 0 ? $"-{finish.Draws}" : "")}"
+        state.Note(finish.Utc, $"{e.Name}{(finish.Table is not null ? " (online)" : "")}: {Ordinal(finish.Place)} of {(finish.Table is not null ? players : e.Players)}, {finish.Wins}-{finish.Losses}{(finish.Draws > 0 ? $"-{finish.Draws}" : "")}"
             + (won.Count > 0 ? $"; won {string.Join(", ", won)}." : "."));
         return new CareerResult(pool, prize?.Cash ?? 0);
     }

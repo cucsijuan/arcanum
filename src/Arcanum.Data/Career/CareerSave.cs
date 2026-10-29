@@ -22,6 +22,9 @@ public sealed class CareerSave
     public List<CareerAction> Journal { get; set; } = new();
     public CareerState State { get; set; } = new();
 
+    /// <summary>The career service's seal on the start of the journal (null: never checked).</summary>
+    public CareerSeal? Seal { get; set; }
+
     private static readonly byte[] Header = "ARCCAR1"u8.ToArray();
 
     private static readonly JsonSerializerOptions Options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };

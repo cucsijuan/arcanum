@@ -90,6 +90,9 @@ public sealed class SalePost
 public sealed record EventEntry(string Id, DateOnly Day, ulong Seed, string Set = "", string Deck = "")
 {
     public DateOnly Start { get; init; } = Day;
+
+    /// <summary>Entered to play online (checking in with the career service for a table).</summary>
+    public bool Online { get; init; }
 }
 
 /// <summary>Something that happened in the career, newest last (shown on the hub).</summary>

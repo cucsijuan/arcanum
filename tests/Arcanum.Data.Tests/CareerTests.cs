@@ -9,7 +9,7 @@ using Arcanum.Data.Limited;
 namespace Arcanum.Data.Tests;
 
 /// <summary>Career rules: starting, daily matches, the store, boosters, the clock and saves.</summary>
-public class CareerTests
+public partial class CareerTests
 {
     private static string Card(int i, string type = "Creature — Bear") =>
         $$"""{"oracle_id":"o-{{i}}","name":"Card {{i}}","layout":"normal","mana_cost":"{1}","type_line":"{{type}}","oracle_text":"","power":"1","toughness":"1"}""";

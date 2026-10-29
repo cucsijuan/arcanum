@@ -1016,6 +1016,15 @@ public partial class CareerScreen : Control
             notes.AddChild(CareerStyle.Text($"{note.Utc.ToLocalTime():MMM d, HH:mm}  {note.Text}", 18, CareerStyle.InkDim, wrap: true));
         page.AddChild(Scrolled(notes));
         if (Career.CloudStatus.Length > 0) page.AddChild(CareerStyle.Text(Career.CloudStatus, 18, CareerStyle.InkDim, wrap: true));
+        if (Career.CheckStatus.Length > 0) page.AddChild(CareerStyle.Text(Career.CheckStatus, 18, CareerStyle.InkDim, wrap: true));
+        if (Career.CheckedCareerDiffers)
+        {
+            var back = CareerStyle.Button("Go back to the checked career", () => MenuKit.Modal(this, "Go back to the checked career?",
+                "The career here is replaced by the one the career service checked; this one is kept as a backup file.", null,
+                ("Keep this one", () => { }), ("Go back", async () => { if (!await Career.TakeCheckedCareerAsync()) MenuKit.Modal(this, "The checked career couldn't be fetched", "Try again later.", null, ("OK", () => { })); Refresh(); })), 16);
+            back.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
+            page.AddChild(back);
+        }
         var end = CareerStyle.Button("End this career", () => MenuKit.Modal(this, "End this career?", "Your cards, cash and career decks are gone for good (the save is kept as a backup file).", null,
             ("Keep playing", () => { }), ("End it", () => { Career.Abandon(); Refresh(); })), 16);
         end.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;

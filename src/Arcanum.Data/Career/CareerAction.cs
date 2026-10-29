@@ -59,14 +59,20 @@ public sealed record BuyPrecon(DateTime Utc, string Deck) : CareerAction(Utc);
 /// <summary>Opens an unopened booster of a set; its cards come from the career seed and the number of boosters opened.</summary>
 public sealed record OpenBooster(DateTime Utc, string Set, string? Kind = null) : CareerAction(Utc);
 
-/// <summary>Enters today's event, paying with "cash", "boosters" or "tokens"; a constructed event takes the deck list played.</summary>
-public sealed record EnterEvent(DateTime Utc, string Event, string Pay, string? Deck = null) : CareerAction(Utc);
+/// <summary>
+/// Enters today's event, paying with "cash", "boosters" or "tokens"; a constructed event takes the deck list played.
+/// <paramref name="Online"/>: to play it online, at a table the career service makes of the players who check in.
+/// </summary>
+public sealed record EnterEvent(DateTime Utc, string Event, string Pay, string? Deck = null, bool Online = false) : CareerAction(Utc);
 
 /// <summary>
 /// The event entered is over: the player's record, their place among the players, and in a draft the cards they
-/// drafted (they keep them).
+/// drafted (they keep them). Played online: <paramref name="Table"/> is the career service's table, whose confirmed
+/// result this must be (the service checks it), <paramref name="Players"/> its seats, and <paramref name="Pvp"/> whether
+/// another person played at it (then the prizes are the online ones).
 /// </summary>
-public sealed record FinishEvent(DateTime Utc, int Wins, int Losses, int Draws, int Place, IReadOnlyList<string>? Pool = null) : CareerAction(Utc);
+public sealed record FinishEvent(DateTime Utc, int Wins, int Losses, int Draws, int Place, IReadOnlyList<string>? Pool = null,
+    string? Table = null, int Players = 0, bool Pvp = false) : CareerAction(Utc);
 
 /// <summary>Takes one of today's offers at the store (its index among them).</summary>
 public sealed record TakeOffer(DateTime Utc, int Offer) : CareerAction(Utc);
