@@ -116,8 +116,9 @@ Default week (illustrative):
 
 Offline, events are always PvE. An event with `online` (start times UTC, check-in minutes, `pvpOnly`, `offlineScale`)
 is also played online at those times (empty seats get computer players); unless it's PvP only, it can be played
-against the computer any time of its day for `offlineScale` of the prizes. Until online events exist (C5) the game
-plays them offline at that share, and PvP-only ones show as online only.
+against the computer any time of its day for `offlineScale` of the prizes. Only draft events can be entered online
+for now. A player who entered online can also play it against the computer at once, for that share (not for PvP-only
+events, which show as online only).
 
 **Prerelease:** when the content module gains a new set, a sealed prerelease event for it runs for a week. A natural
 hook: new content → new event.
@@ -217,7 +218,8 @@ shows them and the pointer's position; Ctrl+click copies a point).
   journals that went apart ask the player which to keep, and the other is kept as a backup zip in the career's folder.
   Ending a career ends the cloud's too. Needs the product's encryption key (`EOS_ENCRYPTION_KEY`) and a client policy
   with Player Data Storage; without a Discord sign-in the career stays on the device.
-- **Leaderboards / Stats:** rank per format, event wins, season standings.
+- **Leaderboards:** the career service's rank and this month's points, from online matches (see *Scheduled online
+  events*). Per format, event wins and season standings aren't built yet (C6).
 - **Server time:** dailies and event windows use the service's time when online (learned from the season download's
   answer); offline uses the local clock but never goes backwards from the last time seen.
 
@@ -289,14 +291,42 @@ than in the drop. Their art and finishes are the real ones (printings with their
 
 ### Scheduled online events
 
-- During the event window players **check in**; at fixed start times (e.g. every 30 minutes) the checked-in players are
-  paired into pods/Swiss events. Missing seats are filled with bots; matches against bots pay the PvE scale.
-- PvE choice: the player can enter the same event against bots only, any time in the window, for the reduced prizes.
-- PvP-only events (configured) don't offer that.
+Built (C5) for draft events with an `online` spec. Other kinds can't be entered online yet (constructed and Commander
+online come later).
+
+- **Entering:** *Register online* on the event's forum post. It needs a career the career service has checked (see
+  *Trust*). The entry is an `EnterEvent` with `Online`.
+- **Check-in:** from `online.checkIn` minutes before each start (default 30) until the start, for the start's time
+  in `online.starts` (UTC, `HH:mm`). `POST /events/checkin` takes the event, the day and the name the player plays under
+  (32 characters at most). A start that has begun can't be checked in for.
+- **Seating:** the first request for the table after the start (`GET /events/table`) seats everyone checked in for that
+  start, once. The people fill the fewest tables of `players` seats (at least 2), shared out evenly in check-in order;
+  names are made unique at a table. Each table gets a random seed (the event's boosters and pairings), kept with it.
+  Before the start the answer is the number checked in. Someone who wasn't checked in for that start gets no table
+  (`missed`).
+- **Host:** the first person of a table hosts it. When no lobby code is posted by the start, the next person hosts,
+  one more for each 10 minutes that pass (`OnlineEvents.HostAt`). Only the host can post the code
+  (`POST /events/tables/{id}/code`).
+- **Lobby:** the host's game opens an unlisted lobby (not in the browser) and posts its invite code. The others get the
+  table from `GET /events/tables/{id}` and join the lobby under their seat's name. The host's game starts the event when
+  everyone of the table is in, or 5 minutes after it opened the lobby. Empty seats get computer players.
+- **Results:** when the event ends, each device keeps its own result (record, place, cards drafted) and reports it
+  (`POST /events/tables/{id}/result`). The host also reports every seat and every match of the table once
+  (`POST /events/tables/{id}/report`). A seat's result is confirmed when the host's report and the person's own report
+  agree. The host's seat is confirmed once another person's result at the table is; alone at a table, the host's
+  report is the result.
+- **Into the career:** the confirmed result is written as a `FinishEvent` that names the table, its seats and whether
+  another person played (`Pvp`). The career service seals it only when it is that confirmed result.
+- **Prizes:** the online prizes are paid only when another person played at the table. A table of one pays the offline
+  share.
+- **Leaving without a result** (missed start, or the player leaves) is last place with no record.
+- **Against the computer:** the same event can be played against the computer at once for the offline share, unless it
+  is PvP only (`pvpOnly`).
+- **Standings:** online results count for the rank and this month's points (see *Leaderboards*).
 - The online regional championship (design, see *Circuit*) uses two fixed time slots, each with a 30-minute check-in
   before its start, and plays on two days in the player's slot.
 
-### Trust — the main open decision
+### Trust
 
 The game is open source and written in C#, so the client can be read and modified. Two consequences:
 
@@ -307,34 +337,48 @@ The game is open source and written in C#, so the client can be read and modifie
   and can be extracted from the assemblies. It stops casual save editing (worth having), nothing more.
 
 Anything that must be trusted needs a signer the player doesn't control: a key that never leaves a machine the
-developer runs.
+developer runs. That is the career service (built in C5, below).
 
-#### Design: a small career service that signs the profile
+#### The career service that seals careers
 
-- **What it is:** a small .NET web service with a private signing key, on the developer's server (see *Career service
-  hosting*).
-  The client proves who it is with its EOS Connect ID token (the service verifies it against EOS's public keys).
-- **Profile = signed snapshot + journal.** The profile stored in Player Data Storage (and encrypted on disk for offline
-  play) is the last snapshot signed by the service plus a journal of what happened since: day started, daily played
-  (opponent, result), booster bought, booster opened, card sold, ante won/lost, event entered/finished. The public key
-  ships in the game, so the client itself can tell a signed snapshot from a tampered one.
+- **What it is:** a small .NET web service (`server/Arcanum.CareerService`) with a sealing key, on the developer's server
+  (see *Career service hosting*). It runs the career rules of `Arcanum.Data` (`CareerChecker`), the same code the game
+  runs. The client proves who it is with its EOS Connect ID token, and the service verifies it.
+- **The seal** (`CareerSeal`, `Arcanum.Data/Career/CareerSeal.cs`): the player, how many journal actions the service has
+  checked (`Count`), a hash that chains those actions (SHA-256 of the previous hash and the next action's JSON), and an
+  ECDSA P-256 signature of the player, count and hash (`arcanum-career-seal-v1`). The game carries the public keys
+  (`CareerSeals.PublicKeys`, key id `k1`), so it can tell a genuine seal from a made-up one. A career is *checked* when
+  its seal covers the whole journal.
+- **Profile = seal + journal.** The service keeps the career it checked (journal, the state it gives, the seal). A new
+  device or a career that went apart takes that profile (`GET /career/profile`). Player Data Storage holds the game's
+  copy, which is not trusted on its own.
 - **Everything random is derived, not stored.** Booster contents, store stock, opponents and offers come from
   `hash(profile seed, day, counter)`. The service recomputes them, so a journal can't claim a different booster.
-- **Sync when back online:** the client uploads snapshot + journal; the service replays the journal on the snapshot
-  with the same rules code (a shared .NET library) and checks the limits against *its* clock: no more than 2 dailies
-  per real day elapsed, prices and rewards as the rules say, fees paid, opened boosters match their seed. Accepted →
-  it returns a new signed snapshot (journal folds into it). Rejected → the profile goes back to the last signed
-  snapshot; the bad journal is kept for review.
-- **Rollback/duplication:** the service keeps, per player, the hash and counter of the last snapshot it signed; an
-  older snapshot (restored backup, a second device) is refused or merged, never accepted twice.
+- **Sync** (`POST /career/sync`): the client sends the actions after the seal it has (its count and hash), with the
+  content and game versions. The service applies them with the rules and its own clock, and seals every action up to
+  the first that doesn't hold. Actions dated more than 5 minutes ahead of its clock are refused, and so is more than
+  20,000 actions in one sync. The answer is one of: `Ok` (all checked); `Conflict` (the service has another journal; its
+  seal comes back); `Rejected` (the reason, and the seal of the part that held); `Unsupported` (another game version, or
+  content the service doesn't have). Syncs of one player run one at a time.
+- **Careers the service hasn't seen** are replayed from their first action. A career that starts before
+  `Career:ImportBefore` (`appsettings.json`, 2026-12-01) and no longer replays with today's rules and content is taken
+  as the game sent it, its state included. A new career (its first action differs from the checked one's) replaces the
+  checked one.
+- **Rollback/duplication:** a sync must build on the seal the service has. A seal from another device or a restored
+  backup gives `Conflict`; the game builds on a newer genuine seal of the same career, and otherwise reports the career
+  as differing. An older copy is never accepted again.
+- **Online results** are checked against the table's result the service confirmed (see *Scheduled online events*): a
+  `FinishEvent` naming a table is sealed only when it is that confirmed result, so the prize is the rules' prize for it.
+  The result never comes from the player's word alone.
+- **Refused syncs:** the service keeps the reason (`refused` table), not the journal. The game keeps playing its local
+  career and offers *go back to the checked career*, which keeps the local files in a backup zip
+  (`TakeCheckedCareerAsync`).
 - **What can't be verified:** the result of an offline match against a bot (the game ran only on the player's device).
   The answer is bounds instead of proofs: offline rewards are capped by the rules (2 dailies, decaying practice, ante
   only against stakes of the same tier), so the most a cheater gets offline is what a player who wins every game would
   get. Cheating offline = playing perfectly, which is acceptable.
-- **Online prizes** (PvP and PvE online events) are granted by the service directly from the event's result: confirmed
-  by both players now, by the dedicated host later. They never go through the client's journal.
-- **Offline-only players** never need the service; their profile is simply "unverified" and can't enter online events
-  until a sync accepts it.
+- **Offline-only players** never need the service; their career is simply not checked, and it can't check in for an
+  online event until a sync seals all of it.
 
 #### Career service hosting
 
@@ -343,26 +387,29 @@ career rules library as the game, without a second copy in another language).
 
 | Piece | Choice |
 |---|---|
-| Machine | Always Free compute VM `VM.Standard.E2.1.Micro` (x86, 1 GB RAM + 2 GB swap; Ampere had no capacity), Ubuntu 24.04; ASP.NET runtime from Ubuntu's packages, service built for `linux-x64` |
+| Machine | Always Free compute VM `VM.Standard.E2.1.Micro` (x86, 1 GB RAM + 2 GB swap; Ampere had no capacity), Ubuntu 24.04; ASP.NET runtime (`aspnetcore-runtime-8.0`) from Ubuntu's packages, service built for `linux-x64`; about 420 MB in use with the career world warm |
 | Service | ASP.NET minimal API in its own project (e.g. `server/Arcanum.CareerService`), referencing `Arcanum.Data` for the career rules |
-| Endpoints | `POST /career/sync` (snapshot + journal → new signed snapshot or rejection), `GET /career/profile` (last signed snapshot, for a new install), `POST /career/prize` (online event results), `POST /auth/discord` (OAuth code → Discord tokens, keeps the client secret), `POST /auth/discord/refresh`, `GET /health` (also the service's clock) |
-| Auth | EOS Connect ID token in each request, verified against EOS's public keys; the player id comes from the token, never from the body |
-| Data | SQLite: per player the last snapshot hash, counter and signed snapshot; rejected journals for review |
-| Keys | Ed25519 signing key in a file readable only by the service user, outside the repo; public key compiled into the game; a key id in each signature so the key can be rotated |
-| HTTPS | Reverse proxy with automatic certificates (Caddy) on a domain or free subdomain; only ports 80/443 open in the VM's security list and firewall |
-| Running | systemd unit with restart (`server/Arcanum.CareerService/deploy`: `setup.sh` once on the machine, `deploy.sh` builds and copies over SSH); secrets in `/etc/arcanum-career/secrets.env` on the machine only (`Discord__ClientSecret=…`). Later a GitHub Actions workflow does the deploy |
-| Backups | daily copy of the SQLite file off the VM (losing it means players fall back to their last signed snapshot, not to nothing) |
-| Limits | rate limit per player and per address; journal size cap |
+| Endpoints | `POST /career/sync` (actions → checked and sealed, or refused), `GET /career/profile` (the checked career, for a new install); online events: `POST /events/checkin`, `GET /events/table` (the player's table for a start, seated on first ask after it), `GET /events/tables/{id}`, `POST /events/tables/{id}/code` (host's lobby code), `POST /events/tables/{id}/report` (host's report of the table), `POST /events/tables/{id}/result` (each person's own result), `GET /leaderboard/{rank\|month}`; `POST /auth/discord` (OAuth code → Discord tokens, keeps the client secret), `POST /auth/discord/refresh`, `GET /health` (also the service's clock). The season files are static files, `GET /career/season/<module id>.json`, served by Caddy |
+| Auth | EOS Connect ID token in each request (`Authorization: Bearer`), RS256, keys from EOS's JWKS (fetched again at most once a minute for an unknown key id); expiry, issuer, product and deployment ids (`Eos` in `appsettings.json`) are checked; the player id is the token's subject, never from the body |
+| Data | SQLite `career.db` in the service's state folder (`/var/lib/arcanum-career`): `careers` (per player: the checked career, journal, state and seal, compressed), `refused` (the reason of each refused sync; no journal), and for online events `checkins`, `seated`, `tables` (each table and its host's report) and `results` (each person's own result) |
+| Keys | ECDSA P-256 sealing key, `/etc/arcanum-career/seal-key.pem`, readable by root only, made once by `setup.sh` on the machine and never copied off it; systemd gives the service a copy (`LoadCredential`). Its public key (base64, SubjectPublicKeyInfo) is in `CareerSeals.PublicKeys` under the key id `k1`, which each seal names, so a key can be rotated (a retired key stays listed) |
+| HTTPS | Reverse proxy with automatic certificates (Caddy, `deploy/Caddyfile`) on a domain or free subdomain (`arcanum-career.duckdns.org`); the season files are served from `/srv/arcanum-career`, everything else goes to the service on `127.0.0.1:5080`; only ports 80/443 open in the VM's security list and firewall |
+| Running | systemd unit `arcanum-career.service` with restart (`server/Arcanum.CareerService/deploy`): `setup.sh` once on the machine (packages, user, sealing key, Caddy); `deploy.sh [user@host]` builds and copies the service over SSH, writes the game version it checks (`Career__Game`, from `project.godot`) and restarts it; `publish-content.sh <module dir>` puts a content module version on the machine; `publish-season.sh` checks and puts a season file. Secrets in `/etc/arcanum-career/secrets.env` on the machine only (`Discord__ClientSecret=…`). Later a GitHub Actions workflow does the deploy |
+| Content and world | `/var/lib/arcanum-career/content/<module id>/<version>/` holds the module and the game's compact card data (`cards.jsonl.gz`). `CareerWorlds` builds the career world of the newest content at start and every 5 minutes (so the first sync doesn't wait), keeps one world (rebuilt when the season file changes) |
+| Backups | not set up yet. Planned: a daily copy of the SQLite file off the VM (losing it means players fall back to their last checked career, not to nothing) |
+| Limits | rate limits per address (the address Caddy passes on): 30 requests a minute for careers and events, 10 a minute for sign-ins; at most 20,000 actions in one sync |
 
 Notes:
 - Always Free instances that sit idle can be reclaimed by Oracle; check the current idle rules when setting it up
   (upgrading the account to pay-as-you-go keeps it free within the limits and avoids reclaiming).
 - The client must keep working when the service is down: it plays offline and syncs later.
 - The same machine can later run the dedicated headless host (M14+) for official PvP events.
-- Card content: the service needs the content module (set boosters, card list) to re-derive boosters; it downloads the
-  same module version the client reports and refuses unknown versions.
+- Card content: the service needs the content module version the client reports (set boosters, card list) to re-derive
+  boosters. `publish-content.sh` puts each version on the machine; a sync for a version it doesn't have gets `Unsupported`.
+- Game version: the service checks careers only for the game version it runs (`Career__Game`). Redeploy it after each
+  game release, so careers of that release are checked. Syncs from another version get `Unsupported` until then.
 
-Without the service (until it exists), options are:
+Without the service, the options would be:
 
 1. **Casual trust:** compressed save sealed with an HMAC on disk (and later in Player Data Storage): it stops casual editing, online
    results confirmed by both players, leaderboards "best effort".
@@ -475,8 +522,8 @@ Entry fees and prizes for the qualifier and the championship are set in the modu
 | Remote config + cloud save | `scripts/Client/CareerService.cs`, `scripts/Client/Eos` | season download and server time from the career service; Player Data Storage |
 | Accounts: Discord sign-in, linking/unlinking, Settings → Account | `scripts/Client/Eos`, career service (`/auth/discord` code exchange) | replaces Device ID login |
 | Career rules library (journal replay, derived randomness, limits) | `Arcanum.Data/Career` | the same code runs in the client and in the career service |
-| Career service (sign/verify profiles, online prizes) | `server/Arcanum.CareerService` | ASP.NET on the Oracle Cloud VM; private key only there; EOS ID token check; per-player last-snapshot hash |
-| Scheduled online events | `Arcanum.Net` + client | check-in, pairing into existing event/lobby hosts, bot fill, result confirmation |
+| Career service (checks and seals careers, online tables, leaderboards) | `server/Arcanum.CareerService` (`Program.cs`, `CareerStore.cs`, `EventDesk.cs`, `EosIdentity.cs`, `CareerWorlds.cs`); `Arcanum.Data/Career/CareerChecker.cs`, `CareerSeal.cs` | ASP.NET on the Oracle Cloud VM; sealing key only there; EOS ID token check; per-player checked career |
+| Scheduled online events | rules in `Arcanum.Data/Career/OnlineEvents.cs`; tables in `server/Arcanum.CareerService/EventDesk.cs`; client in `scripts/Client/CareerService.Online.cs`, the table's lobby in `scripts/Client/OnlineService.CareerTable.cs`, screens in `scripts/UI/Career/EventScreen.Online.cs` and `CareerScreen.Standings.cs` | check-in, seating, host, confirmed results, ranks and monthly points |
 
 ## Milestones
 
@@ -486,7 +533,7 @@ Entry fees and prizes for the qualifier and the championship are set in the modu
 | C2 | **Grind and life** (done): practice with decaying rewards, ante matches, challenges, opponent roster with tiers and rivals, trades with opponents, opportunity offers, reputation tiers | the store feels alive from day to day |
 | C3 | **Offline calendar** (done): weekly events from the module's default schedule (draft night, commander night, Saturday tournament, monthly championship) against bots, prizes and qualification tokens, in-game card prices reacting to results | a full in-game month has a shape |
 | C4 | **Accounts and remote config** (done): Discord sign-in (replacing Device ID) and account linking screen; Title Storage season file, server time, cached config, cloud save; developer tool to validate a season file before publishing | changing the season file changes next week's events without a release |
-| C5 | **Online events:** career service (profile sync and signing, online prizes), check-in windows, pairing, bot fill, PvE option at reduced prizes, result confirmation, leaderboards and rank | two players meet in a scheduled draft night online |
+| C5 | **Online events** (done, in testing): career service (checks and seals careers, EOS Connect sign-in), check-in for draft events, tables seated by the service, the first checked-in player hosts an unlisted lobby, results confirmed by host and player, online prizes only for confirmed results, bot fill, PvE option at reduced prizes, rank and monthly standings. Not in C5: online constructed and Commander events (later: the service will hand each table the decks entered, which the career journal already holds) | two players meet in a scheduled draft night online |
 | C6 | **The circuit** (in progress): offline regional qualifier and offline regional championship done, see *Circuit*. The official table, tournament mat, broadcast overlay and round clock are done. To do: the online regional championship (slots, check-in; needs C5), the international tournament, PvP-only events, season standings and end-of-season rewards; constructed big events once the dedicated server exists | a season can be won |
 
 C1–C3 are fully useful without any online part, so the mode can ship early as an offline career.
@@ -501,8 +548,8 @@ set's set booster's reprint-list slot (see the roadmap's backlog).
 ## Decisions to take
 
 1. ~~Trust model~~ decided: signed profile + journal, verified by the career service on an Oracle Cloud Always Free VM.
-2. Who hosts scheduled PvP events before a dedicated server exists: the first checked-in player, or the developer runs a
-   headless host for them.
+2. ~~Who hosts scheduled PvP events~~ decided: the first checked-in player of each table hosts (the next person after 10
+   minutes without a lobby). A dedicated server comes later (M14+).
 3. ~~Starting kit~~ decided: one preconstructed deck of the player's choice + 3 boosters of the featured set.
 4. ~~Banking dailies~~ decided: not banked; 2 per real day, unplayed ones are lost.
 5. ~~Flavor location~~ decided: store, regulars, opponent decks per tier, news and the default calendar live in the

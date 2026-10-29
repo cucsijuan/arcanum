@@ -253,6 +253,31 @@ collection shows one scene at a time; cards not owned are drawn grey (`CardNode.
 | Greyed card | `scripts/UI/Board/CardNode.cs`, `shaders/rounded_card.gdshader` |
 | Tests | `tests/Arcanum.Data.Tests/SetPackTests.cs` |
 
+## Career service and online career events
+
+The career rules run in the game and in the career service (`CareerRules.Replay`, through `CareerChecker`). The
+service seals a career's checked actions, and online career events run through it. Product rules are in
+[career-mode.md](career-mode.md).
+
+| Piece | Where |
+|-------|-------|
+| Sync: replay of new actions, seal up to the first that fails, import of older careers (`CareerChecker`) | `src/Arcanum.Data/Career/CareerChecker.cs` |
+| Seal: hash chain, ECDSA P-256 signature, public keys, sync request and response (`CareerSeal`, `CareerSeals`) | `src/Arcanum.Data/Career/CareerSeal.cs` |
+| Online event rules: check-in times, seating, hosts, confirmed results, ranks and points (`OnlineEvents`, `OnlineTable`, `TableReport`) | `src/Arcanum.Data/Career/OnlineEvents.cs` |
+| Online entry and result (`EnterEvent.Online`; `FinishEvent` with `Table`, `Players`, `Pvp`); online prizes | `src/Arcanum.Data/Career/CareerAction.cs`, `src/Arcanum.Data/Career/CareerRules.cs` (`Enter`, `Finish`) |
+| Service endpoints | `server/Arcanum.CareerService/Program.cs` |
+| Service: online tables, host reports, results, leaderboards (SQLite) | `server/Arcanum.CareerService/EventDesk.cs` |
+| Service: checked careers (SQLite) | `server/Arcanum.CareerService/CareerStore.cs` |
+| Service: EOS Connect ID token check | `server/Arcanum.CareerService/EosIdentity.cs` |
+| Service: career world per content version, built at start | `server/Arcanum.CareerService/CareerWorlds.cs` |
+| Service: systemd unit, Caddy, deploy scripts | `server/Arcanum.CareerService/deploy/` |
+| Client: sync and checked status | `scripts/Client/CareerService.Check.cs` |
+| Client: check-in, table, result, leaderboards | `scripts/Client/CareerService.Online.cs` |
+| Client: the table's unlisted lobby, started when its people are in | `scripts/Client/OnlineService.CareerTable.cs` |
+| Client: EOS ID token (`IdTokenAsync`, `IIdentityTokens`) | `scripts/Client/OnlineService.Directory.cs`, `scripts/Client/Eos/EosOnlineServices.cs` |
+| Client: online event screen and standings | `scripts/UI/Career/EventScreen.Online.cs`, `scripts/UI/Career/CareerScreen.Standings.cs` |
+| Tests | `tests/Arcanum.Data.Tests/CareerSealTests.cs`, `tests/Arcanum.Data.Tests/OnlineEventsTests.cs` |
+
 ## Adding a mechanic
 
 1. Read the rule in the comprehensive rules and decide the exact behaviour, choices and UI it implies (no approximations).
