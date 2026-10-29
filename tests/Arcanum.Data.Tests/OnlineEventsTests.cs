@@ -45,6 +45,8 @@ public partial class CareerTests
         static IEnumerable<string> Seating(IEnumerable<OnlineTable> ts) => ts.SelectMany(t => t.People.Select(p => $"{t.Id}:{t.Seed}:{p.Player}"));
         Assert.Equal(Seating(tables), Seating(OnlineEvents.Seat(draft, Wednesday, start, people.AsEnumerable().Reverse().ToList(), 8, 99)));
         Assert.Single(OnlineEvents.Seat(draft, Wednesday, start, people.Take(8).ToList(), 8, 99));
+        var twins = OnlineEvents.Seat(draft, Wednesday, start, new[] { Person("a", 1) with { Name = "Ana" }, Person("b", 2) with { Name = "ana" } }, 8, 99);
+        Assert.Equal(new[] { "Ana", "ana 2" }, twins[0].People.Select(p => p.Name));
 
         // A host who doesn't open the lobby in time hands it to the next person.
         var table = tables[0];

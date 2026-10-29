@@ -578,6 +578,8 @@ public partial class OnlineService : Node
     public override void _Process(double delta)
     {
         _lobby?.Poll();
+        PollCareerTable();
+        NoteEventFinished();
         _resumed?.Poll();
         _resumedEvent?.Poll();
         _lobbyClient?.Poll();
@@ -618,6 +620,7 @@ public partial class OnlineService : Node
     public void Leave()
     {
         UnpublishHostedLobby();
+        DropCareerTable();
         _eventClient?.Close();
         _eventClient = null;
         EventSession = null;

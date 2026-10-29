@@ -30,6 +30,18 @@ public partial class OnlineService
     /// <summary>The online event this device takes part in (the Limited screen shows it).</summary>
     public NetEventSession? EventSession { get; private set; }
 
+    /// <summary>The online event this device took part in ended (its last state, and this player's seat): raised once.</summary>
+    public event Action<LimitedEvent, int>? EventFinished;
+
+    private NetEventSession? _finishedSession;
+
+    private void NoteEventFinished()
+    {
+        if (EventSession is not { Current: { Stage: EventStage.Finished } done } session || _finishedSession == session) return;
+        _finishedSession = session;
+        EventFinished?.Invoke(done, session.Seat);
+    }
+
     private EventHost? HostedEvent => _lobby?.Event ?? _resumedEvent;
 
     // ------------------------------------------------------------------ hosting

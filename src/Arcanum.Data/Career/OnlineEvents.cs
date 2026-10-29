@@ -28,8 +28,8 @@ public sealed record TableReport(IReadOnlyList<TableResult> Results, IReadOnlyLi
 /// <summary>One person's report of their own result at a table.</summary>
 public sealed record OwnResult(int Wins, int Losses, int Draws, int Place);
 
-/// <summary>A table as a player sees it: the table, and their result once confirmed.</summary>
-public sealed record TableView(OnlineTable Table, TableResult? Confirmed, bool Reported);
+/// <summary>A table as a player sees it: the table, their seat at it (in its people's order), and their result once confirmed.</summary>
+public sealed record TableView(OnlineTable Table, int Seat, TableResult? Confirmed, bool Reported);
 
 /// <summary>A row of a leaderboard.</summary>
 public sealed record LeaderboardRow(int Rank, string Name, int Score, bool Mine);
@@ -75,12 +75,21 @@ public static class OnlineEvents
         for (int t = 0; t < count; t++)
         {
             int size = ordered.Count / count + (t < ordered.Count % count ? 1 : 0);
-            var at = ordered.GetRange(next, size);
+            // Names are told apart at a table (the host matches the lobby's seats to the people by name).
+            var at = ordered.GetRange(next, size).Select((p, i) => p with { Name = Unique(p.Name, ordered.GetRange(next, i).Select(q => q.Name)) }).ToList();
             next += size;
             var tableSeed = (ulong)CareerRandom.For(seed, $"table:{e.Id}:{start:O}", t).NextInt64();
             tables.Add(new OnlineTable($"{e.Id}-{start:yyyyMMddHHmm}-{t + 1}", e.Id, day, start, seats, tableSeed, at, at[0].Player));
         }
         return tables;
+    }
+
+    private static string Unique(string name, IEnumerable<string> taken)
+    {
+        var used = taken.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!used.Contains(name)) return name;
+        for (int n = 2; ; n++)
+            if (!used.Contains($"{name} {n}")) return $"{name} {n}";
     }
 
     /// <summary>

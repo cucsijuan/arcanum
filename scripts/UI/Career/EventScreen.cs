@@ -109,6 +109,11 @@ public partial class EventScreen : Control
             Leave();
             return;
         }
+        if (entry.Online && Career.Online is { } online)
+        {
+            ShowOnline(spec, entry, online);
+            return;
+        }
         if (running is not { } ev)
         {
             ShowPod(spec, entry);

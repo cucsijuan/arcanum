@@ -163,7 +163,8 @@ public sealed class EventDesk
         var host = OnlineEvents.HostAt(found.Table, now);
         var table = found.Table with { Host = host };
         var own = Own(db, table.Id);
-        return new TableView(table, OnlineEvents.Confirmed(found.Table, found.Report, own, player), own.ContainsKey(player) || (found.Report is not null && player == found.Table.Host));
+        return new TableView(table, table.People.ToList().FindIndex(p => p.Player == player), OnlineEvents.Confirmed(found.Table, found.Report, own, player),
+            own.ContainsKey(player) || (found.Report is not null && player == found.Table.Host));
     }
 
     private void Save(SqliteConnection db, OnlineTable table) =>

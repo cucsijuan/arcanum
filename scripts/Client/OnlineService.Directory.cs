@@ -133,7 +133,7 @@ public partial class OnlineService
 
     private LobbyListing ListingOf(LobbyHost lobby, string id, string code) =>
         new(id, lobby.State.Seats.FirstOrDefault()?.Name ?? "Host", lobby.Settings.Format, lobby.Settings.Commander, lobby.Settings.Seats,
-            lobby.State.Seats.Count(s => s.Kind == LobbySeatKind.Open), Version, ContentId, code, Listed: true, lobby.Settings.Event);
+            lobby.State.Seats.Count(s => s.Kind == LobbySeatKind.Open), Version, ContentId, code, Listed: !_unlisted, lobby.Settings.Event);
 
     private async void UpdatePublishedLobby()
     {

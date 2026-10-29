@@ -25,7 +25,7 @@ public partial class CareerScreen : Control
 {
     private enum Place { Room, Store }
 
-    public enum WebPage { Matches, Practice, Challenges, Events, Market, Cards, Chat, Forum }
+    public enum WebPage { Matches, Practice, Challenges, Events, Market, Cards, Chat, Forum, Standings }
 
     private const string Kit = "res://ui-art/kit/career/";
     private static readonly Vector2 TileSize = new(150, 210);
@@ -500,7 +500,7 @@ public partial class CareerScreen : Control
         nav.AddThemeConstantOverride("separation", 18);
         // Selling moved: to the store at its counter, to other players on the forum.
         var current = _webPage is WebPage.Practice or WebPage.Events or WebPage.Chat or WebPage.Market ? WebPage.Forum : _webPage;
-        foreach (var (p, text) in new[] { (WebPage.Matches, "Daily matches"), (WebPage.Forum, World.Content.Forum.Name), (WebPage.Challenges, "Challenges"), (WebPage.Cards, "My log") })
+        foreach (var (p, text) in new[] { (WebPage.Matches, "Daily matches"), (WebPage.Forum, World.Content.Forum.Name), (WebPage.Challenges, "Challenges"), (WebPage.Standings, "Standings"), (WebPage.Cards, "My log") })
         {
             var link = CareerStyle.LinkButton(text, p == current);
             link.Pressed += () => { _webPage = p; _forumThread = null; ShowWebPage(); };
@@ -523,6 +523,7 @@ public partial class CareerScreen : Control
             case WebPage.Challenges: ChallengesPage(content); break;
             case WebPage.Market: ForumPage(content); break;
             case WebPage.Cards: CardsPage(content); break;
+            case WebPage.Standings: StandingsPage(content); break;
             default: MatchesPage(content); break;
         }
     }

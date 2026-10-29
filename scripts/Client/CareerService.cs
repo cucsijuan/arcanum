@@ -74,6 +74,7 @@ public sealed partial class CareerService
         MakeWorld(content, ReadSeason() ?? module.LoadSeason(seasonErrors));
         foreach (var error in seasonErrors) GD.PushWarning($"Career: {error}");
         _contentId = $"{module.Manifest.Id} {module.Manifest.Version}";
+        App.Instance.Online.EventFinished += OnOnlineEventFinished;
         Load();
         UpdateSeason();
     }
@@ -427,6 +428,7 @@ public sealed partial class CareerService
     {
         if (!HasCareer || State.Event is not { } entry || World!.Event(entry.Id, entry.Day) is not { } spec) return null;
         if (spec.Kind == CareerRules.Commander) return (spec, entry, null);
+        if (entry.Online && Online is not null) return (spec, entry, null); // at a table online: no event runs here
         Events.Load();
         if (Events.Current is null) Begin(spec, entry);
         // An event of several days is over when its last day is: the rounds left unplayed are lost (the player is dropped).
@@ -458,8 +460,19 @@ public sealed partial class CareerService
 
     private void Begin(EventSpec spec, EventEntry entry)
     {
+        var me = new EventSeat { Name = Settings.PlayerName, IsHuman = true, Deck = spec.Kind == CareerRules.Constructed ? DeckList.Parse(entry.Deck) : null };
+        var (ev, random) = BuildEvent(spec, entry, new[] { me }, CareerRules.Attendance(spec, entry.Seed), entry.Seed);
+        Events.Begin(ev, random);
+    }
+
+    /// <summary>
+    /// An event's seats and rounds: <paramref name="people"/> first, then the computer's players (the store's regulars,
+    /// then visitors) up to <paramref name="players"/>; everything random comes from <paramref name="seed"/>.
+    /// </summary>
+    private (LimitedEvent Event, Random Random) BuildEvent(EventSpec spec, EventEntry entry, IReadOnlyList<EventSeat> people, int players, ulong seed)
+    {
         var world = World!;
-        var random = new Random((int)(entry.Seed & 0x7FFFFFFF));
+        var random = new Random((int)(seed & 0x7FFFFFFF));
         // The regulars come first (in a random order), then visitors.
         var regulars = world.Content.Opponents.OrderBy(_ => random.Next()).ToList();
         var visitors = world.Content.Visitors.OrderBy(_ => random.Next()).ToList();
@@ -467,7 +480,7 @@ public sealed partial class CareerService
         var names = world.Content.Visitors.Select(v => v.Split(' ', 2)).Where(p => p.Length == 2).ToList();
         visitors.AddRange(names.SelectMany(a => names.Where(b => b != a).Select(b => $"{a[0]} {b[1]}"))
             .Except(world.Content.Visitors).Distinct().OrderBy(_ => random.Next()).ToList());
-        var seats = new List<EventSeat> { new() { Name = Settings.PlayerName, IsHuman = true, Deck = spec.Kind == CareerRules.Constructed ? DeckList.Parse(entry.Deck) : null } };
+        var seats = people.ToList();
         // The computer players bring decks legal in the event's format (any of theirs when none is).
         var format = spec.Kind == CareerRules.Constructed ? world.FormatOf(spec) : null;
         List<string> Legal(IReadOnlyList<string> names)
@@ -477,15 +490,15 @@ public sealed partial class CareerService
             return legal.Count > 0 ? legal : names.ToList();
         }
         var preconDecks = Legal(world.Content.Precons.Select(p => p.Deck).ToList());
-        int players = CareerRules.Attendance(spec, entry.Seed);
-        for (int i = 1; i < players; i++)
+        for (int i = people.Count; i < players; i++)
         {
             DeckList? deck = null;
             string name;
             double skill = VisitorSkill;
-            if (i - 1 < regulars.Count)
+            int c = i - people.Count; // the computer's c-th player
+            if (c < regulars.Count)
             {
-                var regular = regulars[i - 1];
+                var regular = regulars[c];
                 name = regular.Name;
                 skill = DraftSkill(regular);
                 if (spec.Kind == CareerRules.Constructed)
@@ -499,7 +512,7 @@ public sealed partial class CareerService
             }
             else
             {
-                int v = i - 1 - regulars.Count;
+                int v = c - regulars.Count;
                 name = v < visitors.Count ? visitors[v] : $"Visitor {v + 1}";
                 if (spec.Kind == CareerRules.Constructed && preconDecks.Count > 0)
                     deck = world.Deck(preconDecks[random.Next(preconDecks.Count)]);
@@ -510,17 +523,20 @@ public sealed partial class CareerService
         {
             Mode = spec.Kind == CareerRules.Draft ? LimitedMode.Draft : LimitedMode.Sealed,
             Source = spec.Kind == CareerRules.Draft ? "set:" + entry.Set : "constructed:" + spec.Id,
-            BestOf = spec.BestOf, Seed = (int)(entry.Seed & 0x7FFFFFFF), RoundsTotal = CareerRules.SwissRounds(spec, players), Seats = seats,
+            BestOf = spec.BestOf, Seed = (int)(seed & 0x7FFFFFFF), RoundsTotal = CareerRules.SwissRounds(spec, players), Seats = seats,
             TopCut = CareerRules.PlayoffRounds(spec, players) > 0 ? spec.TopCut : 0, CutAfter = spec.CutAfter, CutPoints = spec.CutPoints, RoundMinutes = spec.RoundMinutes,
             BoostersPerPlayer = spec.Kind == CareerRules.Draft ? world.Sets[entry.Set].BoostersPerPlayer : 0,
         };
-        Events.Begin(ev, random);
+        return (ev, random);
     }
 
     /// <summary>The player's record in the running event: wins, losses, draws (byes are wins).</summary>
-    public static (int Wins, int Losses, int Draws) Record(LimitedEvent ev)
+    public static (int Wins, int Losses, int Draws) Record(LimitedEvent ev) => Record(ev, ev.HumanSeat);
+
+    /// <summary>A seat's record in an event: wins, losses, draws (byes are wins).</summary>
+    public static (int Wins, int Losses, int Draws) Record(LimitedEvent ev, int me)
     {
-        int me = ev.HumanSeat, wins = 0, losses = 0, draws = 0;
+        int wins = 0, losses = 0, draws = 0;
         foreach (var m in ev.Rounds.SelectMany(r => r).Where(m => m.Done && m.Involves(me)))
         {
             if (m.SeatB is null) { wins++; continue; }

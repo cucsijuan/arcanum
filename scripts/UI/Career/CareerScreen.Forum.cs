@@ -307,7 +307,8 @@ public partial class CareerScreen
             body.AddChild(CareerStyle.Text("It's by invitation, and you aren't qualified for it.", 19, CareerStyle.Bad, wrap: true));
             return;
         }
-        if (e.Online is { PvpOnly: true }) { body.AddChild(CareerStyle.Text("It's played online only.", 19, CareerStyle.InkDim)); return; }
+        bool online = e.Online is not null && e.Kind == CareerRules.Draft;
+        if (e.Online is { PvpOnly: true } && !online) { body.AddChild(CareerStyle.Text("It's played online only.", 19, CareerStyle.InkDim)); return; }
         if (CareerRules.Tier(State, World) < e.MinTier) { body.AddChild(CareerStyle.Text("Your reputation isn't high enough yet.", 19, CareerStyle.Bad)); return; }
 
         (DeckList Deck, List<string> Problems)? deck = null;
@@ -323,22 +324,30 @@ public partial class CareerScreen
         links.AddThemeConstantOverride("h_separation", 20);
         void Way(string pay, string price, bool can)
         {
-            var link = CareerStyle.LinkButton($"Register ({price}) and Go to LGS", size: 20);
-            link.Disabled = !can || deck is { Problems.Count: > 0 };
-            link.Pressed += () =>
+            // An online event: at a table online with people (the career service seats them), and, unless it's online
+            // only, at the store against the computer.
+            if (online) links.AddChild(Link($"Register online ({price})", async () => await Career.EnterOnlineAsync(e, pay)));
+            if (e.Online is not { PvpOnly: true }) links.AddChild(Link($"Register ({price}) and Go to LGS", () => { Career.Enter(e, pay, deck?.Deck); return Task.CompletedTask; }));
+
+            Button Link(string text, Func<Task> enter)
             {
-                try
+                var link = CareerStyle.LinkButton(text, size: 20);
+                link.Disabled = !can || deck is { Problems.Count: > 0 };
+                link.Pressed += async () =>
                 {
-                    Career.Enter(e, pay, deck?.Deck);
-                    App.Instance.GoTo(App.EventScene);
-                }
-                catch (CareerRuleException x)
-                {
-                    MenuKit.Toast(this, x.Message);
-                    Refresh();
-                }
-            };
-            links.AddChild(link);
+                    try
+                    {
+                        await enter();
+                        App.Instance.GoTo(App.EventScene);
+                    }
+                    catch (CareerRuleException x)
+                    {
+                        MenuKit.Toast(this, x.Message);
+                        Refresh();
+                    }
+                };
+                return link;
+            }
         }
         Way(CareerRules.PayCash, CareerRules.Money(e.Entry), State.Cash >= e.Entry);
         if (e.Kind == CareerRules.Draft && e.EntryBoosters > 0)

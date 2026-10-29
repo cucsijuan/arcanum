@@ -671,7 +671,7 @@ public static partial class CareerRules
         var e = world.Event(enter.Event, state.Day) ?? throw new CareerRuleException("There is no such event.");
         if (Start(e, state.Day) is not { } start) throw new CareerRuleException($"{e.Name} isn't today.");
         if (enter.Online && e.Online is null) throw new CareerRuleException($"{e.Name} isn't played online.");
-        if (enter.Online && e.Kind == Commander) throw new CareerRuleException($"{e.Name} can't be played online yet.");
+        if (enter.Online && e.Kind != Draft) throw new CareerRuleException($"{e.Name} can't be played online yet (only drafts are).");
         if (e.Online is { PvpOnly: true } && !enter.Online) throw new CareerRuleException($"{e.Name} is played online only.");
         if (Played(state, e, state.Day)) throw new CareerRuleException($"You already played {e.Name} today.");
         if (Tier(state, world) < e.MinTier) throw new CareerRuleException($"{e.Name} needs a {world.Content.Tiers[Math.Min(e.MinTier, world.Content.Tiers.Count - 1)].Name}'s reputation.");
