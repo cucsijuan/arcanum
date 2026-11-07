@@ -33,6 +33,14 @@ public partial class OnlineService
     /// <summary>The online event this device took part in ended (its last state, and this player's seat): raised once.</summary>
     public event Action<LimitedEvent, int>? EventFinished;
 
+    /// <summary>
+    /// The first day of a two-day online event is over (this player's seat token, the event, their seat, when the
+    /// second day begins): raised once.
+    /// </summary>
+    public event Action<string, LimitedEvent, int, DateTime>? EventDayOver;
+
+    private NetEventSession? _dayOverSession;
+
     private NetEventSession? _finishedSession;
 
     private void NoteEventFinished()
@@ -110,6 +118,9 @@ public partial class OnlineService
             Option = card => LimitedService.Option(card, LimitedService.RatingsFor(ev.Source)),
             AutoBuild = pool => LimitedService.AutoBuild(pool, ev.Source),
             CheckDeck = (deck, pool) => DeckValidator.ValidateLimited(deck, LimitedService.Format, pool, cards)
+                .FirstOrDefault(i => i.Severity == IssueSeverity.Error)?.Message,
+            // A constructed event (a career one is in its format): deck changes between games only with the sideboard.
+            CheckSideboarding = (deck, registered) => DeckValidator.ValidateSideboarding(deck, registered, App.Instance.Career.ConstructedFormat ?? FormatRules.Casual)
                 .FirstOrDefault(i => i.Severity == IssueSeverity.Error)?.Message,
             Cards = deck => deck.Resolve(cards).Item1,
             Strength = LimitedService.DeckStrength,
@@ -209,6 +220,11 @@ public partial class OnlineService
     private void OnEventInfo(EventInfo info)
     {
         if (info.Stage == EventStage.Finished && !IsHosting) ForgetSeat();
+        if (info.NextDay is { } nextDay && EventSession is { Current: { } ev } session && _dayOverSession != session && _eventIdentity is { } me)
+        {
+            _dayOverSession = session;
+            EventDayOver?.Invoke(me.Token, ev, info.You, nextDay);
+        }
         if (info.GameToken is not { } token || token == _gameToken) return;
         // A game of this player's match begins: join it on its own connection.
         _gameToken = token;

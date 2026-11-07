@@ -130,6 +130,22 @@ public partial class App : Node
                 GetTree().Quit();
             };
         }
+        // ARCANUM_SHOTS=<folder>[,seconds]: saves a numbered picture of the screen every so often (default 20 s) while
+        // playing on (long test runs).
+        if (OS.GetEnvironment("ARCANUM_SHOTS") is { Length: > 0 } shots)
+        {
+            var parts = shots.Split(',');
+            double every = parts.Length > 1 && double.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 20;
+            System.IO.Directory.CreateDirectory(parts[0]);
+            var timer = new Godot.Timer { WaitTime = every, Autostart = true };
+            int taken = 0;
+            timer.Timeout += async () =>
+            {
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                GetViewport().GetTexture().GetImage().SavePng(System.IO.Path.Combine(parts[0], $"{++taken:D4}.png"));
+            };
+            AddChild(timer);
+        }
         Content.Progress += message =>
         {
             ContentStatus = message;

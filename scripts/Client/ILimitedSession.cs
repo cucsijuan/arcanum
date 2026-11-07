@@ -26,6 +26,9 @@ public interface ILimitedSession
 
     bool IsOnline { get; }
 
+    /// <summary>A constructed event's format (its decks' sizes when sideboarding), or null.</summary>
+    Arcanum.Data.Formats.FormatRules? ConstructedFormat => null;
+
     /// <summary>Seconds left for what the player must do now (pick, build, sideboard), or -1 when nothing is timed.</summary>
     int SecondsLeft { get; }
 

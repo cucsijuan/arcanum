@@ -13,6 +13,19 @@ public partial class TurnGlow : Control
     private const float Peak = 0.26f;
     private Color _color = Colors.White;
     private Tween? _pulse;
+    private Side? _open;
+
+    /// <summary>A side left without glow (the area's side on a tournament mat's band), or null.</summary>
+    public Side? Open
+    {
+        get => _open;
+        set
+        {
+            if (_open == value) return;
+            _open = value;
+            QueueRedraw();
+        }
+    }
 
     public TurnGlow()
     {
@@ -53,7 +66,18 @@ public partial class TurnGlow : Control
             float inset = i * 2 + 1;
             var rect = new Rect2(inset, inset, Size.X - inset * 2, Size.Y - inset * 2);
             if (rect.Size.X <= 0 || rect.Size.Y <= 0) break;
-            DrawRect(rect, new Color(_color, Peak * fade * fade), filled: false, width: 2);
+            var color = new Color(_color, Peak * fade * fade);
+            if (_open is not { } open)
+            {
+                DrawRect(rect, color, filled: false, width: 2);
+                continue;
+            }
+            // The other three sides, running out to the edge on the open one.
+            float l = rect.Position.X, r = rect.End.X, t = rect.Position.Y, btm = rect.End.Y;
+            var points = open == Side.Bottom
+                ? new[] { new Vector2(l, Size.Y), new Vector2(l, t), new Vector2(r, t), new Vector2(r, Size.Y) }
+                : new[] { new Vector2(l, 0), new Vector2(l, btm), new Vector2(r, btm), new Vector2(r, 0) };
+            DrawPolyline(points, color, 2);
         }
     }
 }

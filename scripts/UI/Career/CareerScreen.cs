@@ -141,6 +141,22 @@ public partial class CareerScreen : Control
 
     private static Texture2D? Picture(string file) => ResourceLoader.Exists(Kit + file) ? GD.Load<Texture2D>(Kit + file) : null;
 
+    /// <summary>Testing (ARCANUM_CAREER_PAGE=online:&lt;event id&gt;): registers online for today's run of the event, with the first deck.</summary>
+    private async void EnterOnlineForTest(EventSpec e)
+    {
+        try
+        {
+            await Career.EnterOnlineAsync(e, e.Kind == CareerRules.Draft && e.EntryBoosters > 0 ? CareerRules.PayBoosters : CareerRules.PayCash,
+                e.Kind == CareerRules.Draft ? null : Career.Decks.Load(Career.Decks.List(null)
+                    .First(d => (d.FormatId == CareerRules.Commander) == (e.Kind == CareerRules.Commander))).Deck);
+            App.Instance.GoTo(App.EventScene);
+        }
+        catch (CareerRuleException problem)
+        {
+            GD.PrintErr($"Online entry: {problem.Message}");
+        }
+    }
+
     /// <summary>
     /// Testing: ARCANUM_CAREER_START=&lt;starting deck&gt; starts a career when there is none; ARCANUM_CAREER_PAGE=&lt;page&gt; opens
     /// store, boosters, precons, counter, a website page (Matches, Practice, Challenges, Events, Market, Cards), opening
@@ -176,6 +192,10 @@ public partial class CareerScreen : Control
                     today.Kind == CareerRules.Draft ? null : Career.Decks.Load(Career.Decks.List(null)
                         .First(d => (d.FormatId == CareerRules.Commander) == (today.Kind == CareerRules.Commander))).Deck);
                 App.Instance.GoTo(App.EventScene);
+                return true;
+            case var online when online.StartsWith("online:")
+                                 && CareerRules.EventsOn(World, CareerRules.DayOf(Career.Now)).FirstOrDefault(e => e.Id == online[7..]) is { Online: not null } onlineEvent:
+                EnterOnlineForTest(onlineEvent);
                 return true;
             case var buy when buy.StartsWith("buy:"):
                 var precon = World.Deck(test[4..]);
@@ -993,7 +1013,9 @@ public partial class CareerScreen : Control
         var times = online.Starts.Select(t => TimeOnly.TryParseExact(t, "HH:mm", out var utc)
             ? day.ToDateTime(utc, DateTimeKind.Utc).ToLocalTime().ToString("HH:mm") : t);
         var when = $" Online at {string.Join(", ", times)} (your time; online play is coming soon)";
-        return online.PvpOnly ? when + ", online only." : $"{when}; against the computer it pays {online.OfflineScale:0%} of the prizes.";
+        return online.PvpOnly ? when + ", online only."
+            : online.Prizes.Count > 0 ? $"{when}; online against people it pays its online prizes."
+            : $"{when}; against the computer it pays {online.OfflineScale:0%} of the prizes.";
     }
 
     private void CardsPage(VBoxContainer page)

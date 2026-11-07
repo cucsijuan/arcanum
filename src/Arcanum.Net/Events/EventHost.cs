@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Arcanum.Bots.Limited;
 using Arcanum.Data.Decks;
+using Arcanum.Data.Formats;
 using Arcanum.Data.Limited;
 using Arcanum.Engine;
 using Arcanum.Engine.Cards;
@@ -26,6 +27,12 @@ public sealed class EventRules
 
     /// <summary>Why a deck can't be played with this pool, or null.</summary>
     public required Func<DeckList, IReadOnlyList<PoolCard>, string?> CheckDeck { get; init; }
+
+    /// <summary>
+    /// A constructed event: why a deck changed between games can't be played with the cards registered (main deck and
+    /// sideboard), or null. Without it, constructed decks can't be changed.
+    /// </summary>
+    public Func<DeckList, DeckList, string?>? CheckSideboarding { get; init; }
 
     /// <summary>The cards of a deck, for a game.</summary>
     public required Func<DeckList, IReadOnlyList<CardDefinition>> Cards { get; init; }
@@ -54,14 +61,24 @@ public sealed record EventOptions
 
     /// <summary>Options of each game (grace period, computer pace, versions).</summary>
     public HostOptions Games { get; init; } = new();
+
+    /// <summary>
+    /// An event of two days: after this many rounds the day is over (the cut by record applied) and no round is paired
+    /// until the event is resumed on <see cref="NextDay"/> (see <see cref="EventHost.DayEnded"/>). 0: one day.
+    /// </summary>
+    public int DayEndsAfter { get; init; }
+
+    /// <summary>When the next day's rounds begin (UTC), told to the players.</summary>
+    public DateTime? NextDay { get; init; }
 }
 
 /// <summary>
-/// Runs a draft or sealed event for players connected to this host: the draft (everyone picks at once; when a pick's
-/// time runs out, the computer picks for that player), deck building from each pool (timed; an unfinished deck is
-/// built automatically), then Swiss rounds whose games run side by side, each in its own <see cref="GameHost"/>.
-/// Players only ever see their own boosters, pool and deck. Everything happens on the thread that calls
-/// <see cref="Poll"/>.
+/// Runs a draft, sealed or constructed event for players connected to this host: the draft (everyone picks at once;
+/// when a pick's time runs out, the computer picks for that player), deck building from each pool (timed; an unfinished
+/// deck is built automatically), then Swiss rounds whose games run side by side, each in its own <see cref="GameHost"/>,
+/// and the playoff of a top cut. A constructed event, every seat with its deck, starts at the first round. Swiss rounds
+/// with a time limit end on time (<see cref="LimitedEvent.RoundMinutes"/>). Players only ever see their own boosters,
+/// pool and deck. Everything happens on the thread that calls <see cref="Poll"/>.
 /// </summary>
 public sealed class EventHost
 {
@@ -109,15 +126,31 @@ public sealed class EventHost
 
     private bool IsPerson(int seat) => _ev.Seats[seat].IsHuman;
 
+    /// <summary>The people of a match who aren't at the table (not connected to the event).</summary>
+    private List<int> Away(EventMatch match) =>
+        new[] { match.SeatA, match.SeatB ?? -1 }.Where(s => s >= 0 && IsPerson(s) && _peers[s] is null).ToList();
+
     /// <summary>The event changed (to save it, or redraw the host's screen).</summary>
     public event Action? Changed;
+
+    /// <summary>The day's rounds are over (<see cref="EventOptions.DayEndsAfter"/>): save the event to resume it the next day.</summary>
+    public event Action? DayEnded;
+
+    /// <summary>The day's rounds are over and the event waits for the next day.</summary>
+    public bool DayOver { get; private set; }
 
     public void AddListener(IConnectionListener listener) => _listeners.Add(listener);
 
     /// <summary>Opens the boosters: the draft begins, or (sealed) everyone gets their pool.</summary>
     public void Start()
     {
-        if (_ev.Mode == LimitedMode.Draft)
+        if (_ev.Seats.All(s => s.Deck is not null))
+        {
+            // Constructed: everyone brought a deck.
+            _ev.Stage = EventStage.Playing;
+            NextRound();
+        }
+        else if (_ev.Mode == LimitedMode.Draft)
         {
             _ev.Stage = EventStage.Drafting;
             _draft = new DraftSession(_rules.Boosters(null), _ev.Seats.Count, _ev.BoostersPerPlayer, _random);
@@ -226,8 +259,17 @@ public sealed class EventHost
                 try
                 {
                     var list = DeckList.Parse(deck.List);
-                    _problems[seat] = _rules.CheckDeck(list, _ev.Seats[seat].Pool);
-                    if (_problems[seat] is null || _ev.Stage == EventStage.Building) _ev.Seats[seat].Deck = list;
+                    if (_ev.Seats[seat].Registered is { } registered)
+                    {
+                        // Sideboarding a constructed deck: only with the cards registered.
+                        _problems[seat] = _rules.CheckSideboarding is { } check ? check(list, registered) : "Decks can't be changed in this event.";
+                        if (_problems[seat] is null) _ev.Seats[seat].Deck = DeckValidator.WithSideboardFrom(list, registered);
+                    }
+                    else
+                    {
+                        _problems[seat] = _rules.CheckDeck(list, _ev.Seats[seat].Pool);
+                        if (_problems[seat] is null || _ev.Stage == EventStage.Building) _ev.Seats[seat].Deck = list;
+                    }
                 }
                 catch (FormatException e)
                 {
@@ -324,7 +366,8 @@ public sealed class EventHost
     {
         while (true)
         {
-            if (_ev.Rounds.Count >= _ev.RoundsTotal)
+            // The Swiss rounds, then the playoff of a top cut.
+            if (_ev.Complete)
             {
                 _ev.Stage = EventStage.Finished;
                 return;
@@ -332,7 +375,17 @@ public sealed class EventHost
             var round = _ev.PairNextRound(_random);
             foreach (var match in round.Where(m => !m.Done))
             {
-                if (IsPerson(match.SeatA) || IsPerson(match.SeatB!.Value)) StartGame(match);
+                if (IsPerson(match.SeatA) || IsPerson(match.SeatB!.Value))
+                {
+                    // A person who isn't at the table yet: the match waits for them (see LimitedEvent.SeatCall).
+                    if (Away(match).Count > 0)
+                    {
+                        match.Waiting = true;
+                        match.Due = Now;
+                        match.Started ??= Now; // the round's clock runs all the same
+                    }
+                    else StartGame(match);
+                }
                 else
                     while (!match.Done) // two computer players: settled by their decks' strength
                     {
@@ -344,7 +397,8 @@ public sealed class EventHost
         }
     }
 
-    private void StartGame(EventMatch match, ulong? seed = null, string?[]? tokens = null, IReadOnlyList<RecordedAnswer>? replay = null)
+    /// <param name="timeCalled">A game being resumed whose round's time had been called (at that turn).</param>
+    private void StartGame(EventMatch match, ulong? seed = null, string?[]? tokens = null, IReadOnlyList<RecordedAnswer>? replay = null, int? timeCalled = null)
     {
         var order = new[] { match.SeatA, match.SeatB!.Value };
         tokens ??= order.Select(s => IsPerson(s) ? Tokens.New() : null).ToArray();
@@ -355,6 +409,10 @@ public sealed class EventHost
         _games.Add(new ActiveGame { Match = match, Host = host, Seed = seed.Value, Tokens = tokens });
         _between.Remove(match);
         foreach (var s in order) _ready[s] = false;
+        // The round's clock runs from the match's first game.
+        match.Started ??= Now;
+        // Before the game runs, so a resumed game ends where it would have.
+        if (timeCalled is { } turn) host.Game.CallTime(turn);
         host.Start();
         MarkChanged();
     }
@@ -363,6 +421,8 @@ public sealed class EventHost
     {
         foreach (var game in _games.ToList())
         {
+            // The round's time is up: the end-of-match procedure begins (the turn in progress, then the additional turns).
+            if (game.Host.Game.TimeCalledAt is null && _ev.TimeUp(game.Match, Now)) game.Host.Game.CallTime();
             game.Host.Poll();
             if (game.Host.Running is not { IsCompleted: true } run) continue;
             var match = game.Match;
@@ -370,7 +430,7 @@ public sealed class EventHost
             game.Host.Poll(); // last views out
             game.Host.Close();
             _games.Remove(game);
-            _ev.RecordGame(match, winner);
+            _ev.RecordGame(match, winner, _ev.TimeUp(match, Now));
             if (!match.Done)
             {
                 _between[match] = Now + _options.SideboardTime;
@@ -379,13 +439,59 @@ public sealed class EventHost
             MarkChanged();
         }
 
-        // The next game of a match starts when both players are ready (or when sideboarding time is up).
+        // Matches waiting for a late player: a game loss after the seat call, a match loss when they don't show up.
+        foreach (var match in _ev.Rounds.LastOrDefault()?.Where(m => m.Waiting).ToList() ?? new())
+        {
+            var away = Away(match);
+            if (away.Count == 0)
+            {
+                match.Waiting = false;
+                if (!match.Done) StartGame(match);
+                MarkChanged();
+            }
+            else if (Now >= match.Due!.Value + LimitedEvent.NoShowAfter)
+            {
+                _ev.NoShow(match, away);
+                MarkChanged();
+            }
+            else if (Now >= match.Due!.Value + LimitedEvent.SeatCall && match.Late.Count == 0 && !match.Done)
+            {
+                _ev.GiveGameLoss(match, away);
+                MarkChanged();
+            }
+        }
+
+        // The next game of a match starts when both players are ready (or when sideboarding time is up); none once the
+        // round's time is up: the match ends with the games played.
         foreach (var (match, until) in _between.ToList())
-            if ((_ready[match.SeatA] && _ready[match.SeatB!.Value]) || Now >= until)
+            if (_ev.TimeUp(match, Now))
+            {
+                _ev.EndOnTime(match);
+                _between.Remove(match);
+                MarkChanged();
+            }
+            else if ((_ready[match.SeatA] && _ready[match.SeatB!.Value]) || Now >= until)
                 StartGame(match);
 
-        if (_games.Count == 0 && _between.Count == 0 && _ev.Rounds.LastOrDefault()?.All(m => m.Done) != false)
+        if (_games.Count == 0 && _between.Count == 0 && _ev.Rounds.LastOrDefault()?.All(m => m.Done && !m.Waiting) != false)
         {
+            if (_options.DayEndsAfter > 0 && _ev.Rounds.Count == _options.DayEndsAfter && !_ev.IsPlayoff(_ev.Rounds.Count - 1))
+            {
+                // The end of the day: the cut is known now, the rounds go on the next day.
+                if (DayOver) return;
+                _ev.ApplyCut();
+                // Nobody left to play the next day (every person was cut): the computer players' rounds are settled now.
+                if (Enumerable.Range(0, _ev.Seats.Count).All(s => !IsPerson(s) || _ev.Dropped.Contains(s)))
+                {
+                    NextRound();
+                    MarkChanged();
+                    return;
+                }
+                DayOver = true;
+                MarkChanged();
+                DayEnded?.Invoke();
+                return;
+            }
             NextRound();
             MarkChanged();
         }
@@ -419,9 +525,10 @@ public sealed class EventHost
         return new EventInfo(seat, Title, _ev.Mode, _ev.Source, _ev.BestOf, _ev.RoundsTotal, _ev.Stage,
             _ev.Seats.Select((s, i) => new EventSeatInfo(s.Name, !s.IsHuman, !s.IsHuman || _peers[i] is not null, Ready(i))).ToList(),
             _ev.Rounds.Select(r => (IReadOnlyList<MatchInfo>)r.Select(m => new MatchInfo(m.SeatA, m.SeatB, m.WinsA, m.WinsB, m.Draws, m.Done,
-                _games.Any(g => g.Match == m))).ToList()).ToList(),
+                _games.Any(g => g.Match == m), m.Started, m.Waiting, m.Due, m.Late.Count > 0 ? m.Late.ToList() : null, m.BothLost)).ToList()).ToList(),
             draft, _ev.Stage == EventStage.Drafting ? Array.Empty<PoolCard>() : me.Pool.ToList(), me.Deck?.Export(), _problems[seat], _ready[seat],
-            seconds, token);
+            seconds, token, _ev.TopCut, _ev.CutAfter, _ev.CutPoints, _ev.RoundMinutes, _ev.Dropped.ToList(), me.Registered?.Export(),
+            DayOver ? _options.NextDay : null);
     }
 
     /// <summary>Shown to players: "Draft · Foundations" and so on.</summary>
@@ -445,10 +552,14 @@ public sealed class EventHost
                 ["seed"] = g.Seed,
                 ["tokens"] = new JsonArray(g.Tokens.Select(t => (JsonNode?)JsonValue.Create(t)).ToArray()),
                 ["answers"] = JsonSerializer.SerializeToNode(g.Host.Answers),
+                ["timeCalled"] = g.Host.Game.TimeCalledAt,
             }).ToArray()),
         };
         return root.ToJsonString();
     }
+
+    /// <summary>The seat a token belongs to, or -1.</summary>
+    public int SeatOf(string token) => Array.FindIndex(_tokens, t => t is not null && Tokens.Same(t, token));
 
     /// <summary>Resumes a saved event: the draft, deck building or rounds go on; games in progress are replayed.</summary>
     public static EventHost Restore(string json, EventRules rules, EventOptions? options = null)
@@ -474,12 +585,12 @@ public sealed class EventHost
                     var match = ev.Rounds[g!["round"]!.GetValue<int>()][g["match"]!.GetValue<int>()];
                     var gameTokens = g["tokens"]!.AsArray().Select(t => t?.GetValue<string>()).ToArray();
                     var answers = g["answers"].Deserialize<List<RecordedAnswer>>() ?? new();
-                    host.StartGame(match, g["seed"]!.GetValue<ulong>(), gameTokens, answers);
+                    host.StartGame(match, g["seed"]!.GetValue<ulong>(), gameTokens, answers, g["timeCalled"]?.GetValue<int>());
                     resumed.Add(match);
                 }
                 // Matches of this round between games: the next game starts after the usual wait.
                 foreach (var match in ev.Rounds.LastOrDefault() ?? new List<EventMatch>())
-                    if (!match.Done && !resumed.Contains(match)) host._between[match] = host.Now + host._options.SideboardTime;
+                    if (!match.Done && !match.Waiting && !resumed.Contains(match)) host._between[match] = host.Now + host._options.SideboardTime;
                 break;
         }
         return host;

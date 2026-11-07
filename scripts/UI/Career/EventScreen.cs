@@ -94,6 +94,18 @@ public partial class EventScreen : Control
         Show();
     }
 
+    /// <summary>Changes the constructed deck with its sideboard before the next game of the match, on the desk.</summary>
+    private static void Sideboard(EventSeat seat, DeckList registered, FormatRules format)
+    {
+        DeckDesk.Building = DeckDesk.Sideboarding(seat.Deck!, registered, format, deck =>
+        {
+            seat.Deck = deck;
+            Service.DeckEdited();
+            App.Instance.GoTo(App.EventScene);
+        });
+        App.Instance.GoTo(App.DeckDeskScene);
+    }
+
     private static void Leave()
     {
         CareerScreen.OpenOn = nameof(CareerScreen.WebPage.Events);
@@ -277,6 +289,8 @@ public partial class EventScreen : Control
                         deck => { seat.Deck = deck; Service.DeckEdited(); App.Instance.GoTo(App.EventScene); }) { Ratings = DraftGrades.ForPlayer(Service) };
                     App.Instance.GoTo(App.DeckDeskScene);
                 }, 20));
+            else if (ev.Seats[me].Registered is { } registered && match.WinsA + match.WinsB + match.Draws > 0)
+                actions.AddChild(CareerStyle.Button("Sideboard", () => Sideboard(ev.Seats[me], registered, Career.World!.FormatOf(spec)), 20));
             actions.AddChild(CareerStyle.Button("Drop out", () => MenuKit.Modal(this, "Drop out?", "You concede this match and leave the event. The others play it out, and you keep your place in the final standings.", null,
                 ("Keep playing", () => { }), ("Drop", () =>
                 {

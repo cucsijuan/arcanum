@@ -120,6 +120,9 @@ app.MapGet("/events/tables/{id}", async (HttpRequest http, string id, EosIdentit
 app.MapPost("/events/tables/{id}/code", async (HttpRequest http, string id, CodeRequest request, EosIdentity eos, EventDesk desk, CancellationToken cancel) =>
         await PlayerOf(http, eos, cancel) is { } player ? desk.Code(player, id, request.Code, DateTime.UtcNow) : Results.Unauthorized())
     .RequireRateLimiting("career");
+app.MapPost("/events/tables/{id}/day", async (HttpRequest http, string id, DaySave request, EosIdentity eos, EventDesk desk, CancellationToken cancel) =>
+        await PlayerOf(http, eos, cancel) is { } player ? desk.SaveDay(player, id, request.Save) : Results.Unauthorized())
+    .RequireRateLimiting("career");
 app.MapPost("/events/tables/{id}/report", async (HttpRequest http, string id, TableReport report, EosIdentity eos, EventDesk desk, CancellationToken cancel) =>
         await PlayerOf(http, eos, cancel) is { } player ? desk.Report(player, id, report) : Results.Unauthorized())
     .RequireRateLimiting("career");

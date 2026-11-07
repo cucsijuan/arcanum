@@ -345,8 +345,14 @@ public sealed record OnlineSpec
     /// <summary>Only online: no version against the computer.</summary>
     public bool PvpOnly { get; init; }
 
-    /// <summary>The share of the prizes the version against the computer pays (0 to 1).</summary>
+    /// <summary>The share of the prizes the version against the computer pays (0 to 1); unused with <see cref="Prizes"/>.</summary>
     public double OfflineScale { get; init; } = 0.5;
+
+    /// <summary>
+    /// The prizes played online against people, when they are their own: the event's prizes are then the version against
+    /// the computer's, as they are (online pays more without the offline prizes changing).
+    /// </summary>
+    public IReadOnlyList<PrizeSpec> Prizes { get; init; } = Array.Empty<PrizeSpec>();
 }
 
 /// <summary>A prize for a place (1 = first; <see cref="Place"/> covers places up to it) or for a number of match wins.</summary>
@@ -357,7 +363,17 @@ public sealed record PrizeSpec(int Place = 0, int Wins = -1, int Cash = 0, int B
 
     /// <summary>Only when the event had at least this many players (the next prize that fits applies otherwise).</summary>
     public int MinPlayers { get; init; }
+
+    /// <summary>Boosters of a given set and kind (collector boosters, say), besides <see cref="Boosters"/> of the event's set.</summary>
+    public IReadOnlyList<SealedPrize> Sealed { get; init; } = Array.Empty<SealedPrize>();
 }
+
+/// <summary>
+/// Boosters a prize gives: <paramref name="Set"/> is a set code, "featured" (the week's featured set) or "event" (a draft's
+/// set; the featured set for other events), <paramref name="Kind"/> the booster kind ("" for play or draft boosters,
+/// "collector", "set").
+/// </summary>
+public sealed record SealedPrize(string Set = "featured", string Kind = "", int Count = 1);
 
 /// <param name="Deck">Module deck name.</param>
 /// <param name="Price">Price in cents; 0 uses the store's default.</param>

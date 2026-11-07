@@ -858,7 +858,11 @@ public partial class LimitedScreen : Control
         var ev = Session.Current!;
         int human = Session.Seat;
         bool finished = ev.Stage == EventStage.Finished;
-        _title.Text = finished ? "Event results" : $"Round {ev.Rounds.Count} of {ev.RoundsTotal}";
+        _title.Text = finished ? "Event results"
+            : ev.IsPlayoff(ev.Rounds.Count - 1) ? LimitedService.RoundName(ev, ev.Rounds.Count - 1)
+            : $"Round {ev.Rounds.Count} of {ev.RoundsTotal}" + (ev.TopCut > 1 ? $", then the top {ev.TopCut}" : "");
+        // A big event (a regional championship's hall): only the player's matches and the playoff's are listed.
+        bool big = ev.Seats.Count > BigEvent;
 
         var body = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         body.AddThemeConstantOverride("separation", 20);
@@ -877,6 +881,20 @@ public partial class LimitedScreen : Control
             matchBox.AddChild(MenuKit.SectionTitle($"Your match: {ev.Seats[human].Name} vs {ev.Seats[opponent].Name}" + (colors.Length > 0 ? $" ({colors})" : "")));
             matchBox.AddChild(BoardStyle.MakeLabel($"Games: {match.WinsOf(human)} – {match.WinsOf(opponent)}" + (match.Draws > 0 ? $" ({match.Draws} drawn)" : "")
                                                  + (ev.BestOf > 1 ? $" · best of {ev.BestOf}" : ""), 16));
+            // Tardiness: a game loss after the seat call, a match loss when the player doesn't show up.
+            foreach (var seat in match.Late)
+                matchBox.AddChild(BoardStyle.MakeLabel(seat == human ? "You came late: a game loss." : $"{ev.Seats[seat].Name} came late: a game loss.", 16, BoardStyle.TextDim));
+            if (match is { Waiting: true, Due: { } due })
+            {
+                var away = BoardStyle.MakeLabel($"{ev.Seats[opponent].Name} isn't at the table."
+                    + (match.Late.Count == 0 ? $" Not here by {(due + LimitedEvent.SeatCall).ToLocalTime():HH:mm:ss}, a game loss;" : "")
+                    + $" not here by {(due + LimitedEvent.NoShowAfter).ToLocalTime():HH:mm:ss}, a match loss.", 16, BoardStyle.ActiveBorder);
+                away.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                matchBox.AddChild(away);
+            }
+            if (ev.Deadline(match) is { } deadline) matchBox.AddChild(RoundClock(deadline));
+            else if (ev.RoundMinutes > 0 && !ev.IsPlayoff(ev.Rounds.Count - 1))
+                matchBox.AddChild(BoardStyle.MakeLabel($"Rounds are {ev.RoundMinutes} minutes: the clock starts with your first game.", 15, BoardStyle.TextDim));
             var actions = new HBoxContainer();
             actions.AddThemeConstantOverride("separation", 12);
             int next = match.WinsA + match.WinsB + match.Draws + 1;
@@ -902,12 +920,44 @@ public partial class LimitedScreen : Control
                 };
                 actions.AddChild(play);
             }
-            var edit = BoardStyle.MakeButton(ev.BestOf > 1 && match.WinsA + match.WinsB + match.Draws > 0 ? "Sideboard" : "Edit deck", 16);
-            edit.CustomMinimumSize = new Vector2(150, 52);
-            edit.Pressed += () => { _editingDuringEvent = true; Show(); };
-            edit.Disabled = Session.GameInProgress;
-            actions.AddChild(edit);
+            bool played = match.WinsA + match.WinsB + match.Draws > 0;
+            if (ev.Seats[human].Registered is { } registered)
+            {
+                // A constructed deck changes between games only with its sideboard.
+                if (played && Session.ConstructedFormat is { } format)
+                {
+                    var side = BoardStyle.MakeButton("Sideboard", 16);
+                    side.CustomMinimumSize = new Vector2(150, 52);
+                    side.Disabled = Session.GameInProgress;
+                    side.Pressed += () =>
+                    {
+                        var seat = ev.Seats[human];
+                        Arcanum.UI.Career.DeckDesk.Building = Arcanum.UI.Career.DeckDesk.Sideboarding(seat.Deck ?? registered, registered, format, deck =>
+                        {
+                            seat.Deck = deck;
+                            Session.DeckEdited();
+                            App.Instance.GoTo(App.LimitedScene);
+                        });
+                        App.Instance.GoTo(App.DeckDeskScene);
+                    };
+                    actions.AddChild(side);
+                }
+            }
+            else
+            {
+                var edit = BoardStyle.MakeButton(ev.BestOf > 1 && played ? "Sideboard" : "Edit deck", 16);
+                edit.CustomMinimumSize = new Vector2(150, 52);
+                edit.Pressed += () => { _editingDuringEvent = true; Show(); };
+                edit.Disabled = Session.GameInProgress;
+                actions.AddChild(edit);
+            }
             matchBox.AddChild(actions);
+        }
+        else if (!finished && ev.Dropped.Contains(human))
+        {
+            matchBox.AddChild(MenuKit.SectionTitle(ev.CutAfter > 0 && ev.Rounds.Count > ev.CutAfter && ev.Points(human) < ev.CutPoints
+                ? $"You didn't make the cut ({ev.CutPoints} points after round {ev.CutAfter}). The others play on."
+                : "You're out of the event. The others play on."));
         }
         else if (!finished)
         {
@@ -941,8 +991,10 @@ public partial class LimitedScreen : Control
         roundsBox.AddThemeConstantOverride("separation", 6);
         for (int r = ev.Rounds.Count - 1; r >= 0; r--)
         {
-            roundsBox.AddChild(BoardStyle.MakeLabel($"Round {r + 1}", 15, BoardStyle.TextDim, bold: true));
-            foreach (var m in ev.Rounds[r])
+            var shown = ev.Rounds[r].Where(m => !big || ev.IsPlayoff(r) || m.Involves(human)).ToList();
+            if (shown.Count == 0) continue;
+            roundsBox.AddChild(BoardStyle.MakeLabel(LimitedService.RoundName(ev, r), 15, BoardStyle.TextDim, bold: true));
+            foreach (var m in shown)
             {
                 string text = m.SeatB is not { } b
                     ? $"{ev.Seats[m.SeatA].Name} has a bye"
@@ -955,11 +1007,14 @@ public partial class LimitedScreen : Control
         var right = new VBoxContainer { CustomMinimumSize = new Vector2(420, 0) };
         right.AddThemeConstantOverride("separation", 6);
         right.AddChild(MenuKit.SectionTitle("Standings"));
-        int rank = 1;
+        int rank = 0;
         foreach (var s in ev.Standings())
         {
+            // A big event: the top of the standings and the player's row.
+            if (++rank > StandingsShown && s != human) continue;
+            if (rank > StandingsShown) right.AddChild(BoardStyle.MakeLabel("…", 15, BoardStyle.TextDim));
             var row = new HBoxContainer();
-            var name = BoardStyle.MakeLabel($"{rank++}. {ev.Seats[s].Name}  {DeckColors(ev.Seats[s].Deck)}", 15, s == human ? BoardStyle.Playable : BoardStyle.Text);
+            var name = BoardStyle.MakeLabel($"{rank}. {ev.Seats[s].Name}  {DeckColors(ev.Seats[s].Deck)}", 15, s == human ? BoardStyle.Playable : BoardStyle.Text);
             name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             row.AddChild(name);
             row.AddChild(BoardStyle.MakeLabel($"{Record(ev, s)} · {ev.Points(s)} pts", 15, BoardStyle.TextDim));
@@ -973,6 +1028,28 @@ public partial class LimitedScreen : Control
             right.AddChild(close);
         }
         body.AddChild(MenuKit.Card(right, 14));
+    }
+
+    /// <summary>An event with more players than this lists only the player's matches and the playoff's.</summary>
+    private const int BigEvent = 16;
+
+    /// <summary>The standings' rows shown (the player's own is always shown).</summary>
+    private const int StandingsShown = 32;
+
+    /// <summary>The time left in the player's match, counting down; "Time!" once it is up.</summary>
+    private static Label RoundClock(DateTime deadline)
+    {
+        var clock = BoardStyle.MakeLabel("", 16);
+        void Tick()
+        {
+            var left = deadline - DateTime.UtcNow;
+            clock.Text = left > TimeSpan.Zero ? $"Round time left: {(int)left.TotalMinutes:00}:{left.Seconds:00}" : "Time! No new game begins in this match.";
+        }
+        Tick();
+        var timer = new Godot.Timer { WaitTime = 1, Autostart = true };
+        timer.Timeout += Tick;
+        clock.AddChild(timer);
+        return clock;
     }
 
     private static string Record(LimitedEvent ev, int seat)

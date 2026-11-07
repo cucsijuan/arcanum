@@ -62,16 +62,20 @@ public sealed class NetEventSession : ILimitedSession
     private LimitedEvent Build(EventInfo info) => new()
     {
         Mode = info.Mode, Source = info.Source, BestOf = info.BestOf, RoundsTotal = info.RoundsTotal, Stage = info.Stage,
+        TopCut = info.TopCut, CutAfter = info.CutAfter, CutPoints = info.CutPoints, RoundMinutes = info.RoundMinutes,
+        Dropped = new SortedSet<int>(info.Dropped ?? Array.Empty<int>()),
         Seats = info.Seats.Select((s, i) => new EventSeat
         {
             Name = s.Name,
             IsHuman = i == info.You,
             Pool = i == info.You ? info.Pool.ToList() : new List<PoolCard>(),
             Deck = i == info.You ? _deck : null,
+            Registered = i == info.You && info.Registered is { } registered ? DeckList.Parse(registered) : null,
         }).ToList(),
         Rounds = info.Rounds.Select(r => r.Select(m => new EventMatch
         {
-            SeatA = m.A, SeatB = m.B, WinsA = m.WinsA, WinsB = m.WinsB, Draws = m.Draws, Done = m.Done,
+            SeatA = m.A, SeatB = m.B, WinsA = m.WinsA, WinsB = m.WinsB, Draws = m.Draws, Done = m.Done, Started = m.Started,
+            Waiting = m.Waiting, Due = m.Due, Late = m.Late?.ToList() ?? new(), BothLost = m.BothLost,
         }).ToList()).ToList(),
     };
 
@@ -84,6 +88,9 @@ public sealed class NetEventSession : ILimitedSession
         : null;
 
     public bool IsOnline => true;
+
+    /// <summary>The career event entered online, when it is a constructed one.</summary>
+    public FormatRules? ConstructedFormat => App.Instance.Career.ConstructedFormat;
 
     public int SecondsLeft => _info is { SecondsLeft: >= 0 } info
         ? Math.Max(0, info.SecondsLeft - (int)(DateTime.UtcNow - _receivedAt).TotalSeconds)

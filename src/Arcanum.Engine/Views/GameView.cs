@@ -226,6 +226,9 @@ public sealed record GameView
     /// <summary>The monarch (rule 724), if there is one.</summary>
     public PlayerId? Monarch { get; init; }
 
+    /// <summary>The turn in progress when the round's time was called (a tournament round's end-of-match procedure), or null.</summary>
+    public int? TimeCalledAt { get; init; }
+
     /// <summary>Whether the creature may attack that player, as far as restrictions go.</summary>
     public bool MayAttack(CardId attacker, PlayerId defender) => !AttackRestrictions.Any(r => r.Attacker == attacker && r.Defender == defender);
     public required PlayerId? Winner { get; init; }

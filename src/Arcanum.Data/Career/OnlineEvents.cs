@@ -7,11 +7,16 @@ public sealed record CheckIn(string Player, string Name, DateTime Utc);
 /// <summary>
 /// A table of an online event, made by the career service at the start time: the people checked in at it (in their
 /// seat order; the computer takes the other seats), its seed (the event's boosters and pairings), the player who hosts
-/// it and, once they have opened the lobby, its invite code.
+/// it and, once they have opened the lobby, its invite code. A constructed event's table also has the deck each person
+/// entered with (from their checked career), which only its host is given. An event of two days goes on the next day in
+/// the same slot (<see cref="Round"/> 2), from the first day's save, hosted again (the code is the new lobby's).
 /// </summary>
 public sealed record OnlineTable(string Id, string Event, DateOnly Day, DateTime Start, int Seats, ulong Seed, IReadOnlyList<CheckIn> People, string Host,
-    string? Code = null)
+    string? Code = null, IReadOnlyList<string>? Decks = null, int Round = 1)
 {
+    /// <summary>When the table's current day of play starts: the start, a day later for the second day.</summary>
+    public DateTime DayStart => Start.AddDays(Round - 1);
+
     /// <summary>Another person played at it: its results pay the online prizes and count for the rank.</summary>
     public bool Pvp => People.Count >= 2;
 }
@@ -29,7 +34,9 @@ public sealed record TableReport(IReadOnlyList<TableResult> Results, IReadOnlyLi
 public sealed record OwnResult(int Wins, int Losses, int Draws, int Place);
 
 /// <summary>A table as a player sees it: the table, their seat at it (in its people's order), and their result once confirmed.</summary>
-public sealed record TableView(OnlineTable Table, int Seat, TableResult? Confirmed, bool Reported);
+/// <param name="Resume">The second day: the first day's save, for the player who hosts the second day (to resume the event).</param>
+/// <param name="HostResult">The host's report of this player's result, once the table is reported (for a player who wasn't there at its end).</param>
+public sealed record TableView(OnlineTable Table, int Seat, TableResult? Confirmed, bool Reported, string? Resume = null, TableResult? HostResult = null);
 
 /// <summary>A row of a leaderboard.</summary>
 public sealed record LeaderboardRow(int Rank, string Name, int Score, bool Mine);
@@ -60,6 +67,9 @@ public static class OnlineEvents
     /// <summary>The next start not begun yet at <paramref name="now"/>, or null.</summary>
     public static DateTime? NextStart(EventSpec e, DateOnly day, DateTime now) =>
         Starts(e, day).Where(s => s > now).Select(s => (DateTime?)s).FirstOrDefault();
+
+    /// <summary>A table's seats: the event's attendance (drawn from the start's seed when it has a range, as offline), at least 2.</summary>
+    public static int Seats(EventSpec e, ulong seed) => Math.Max(2, CareerRules.Attendance(e, seed));
 
     /// <summary>
     /// Seats the people checked in for a start: as few tables as hold them at <paramref name="seats"/> each, the people
@@ -99,7 +109,7 @@ public static class OnlineEvents
     public static string HostAt(OnlineTable table, DateTime now)
     {
         if (table.Code is not null) return table.Host;
-        int late = now <= table.Start ? 0 : (int)((now - table.Start).Ticks / HostWait.Ticks);
+        int late = now <= table.DayStart ? 0 : (int)((now - table.DayStart).Ticks / HostWait.Ticks);
         return table.People[late % table.People.Count].Player;
     }
 

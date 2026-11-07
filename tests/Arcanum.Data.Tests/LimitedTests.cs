@@ -405,4 +405,109 @@ public class LimitedTests
         var small = DeckValidator.ValidateLimited(DeckList.Parse("30 Forest"), format, pool, db);
         Assert.Contains(small, i => i.Message.Contains("at least 40"));
     }
+
+    private static readonly DeckList Registered = DeckList.Parse("""
+        4 Ember Hound
+        4 Quiet Grove
+        52 Mountain
+        Sideboard
+        3 Glass Shard
+        2 Mountain
+        """);
+
+    [Fact]
+    public void SideboardingSwapsOnlyRegisteredCards()
+    {
+        var format = new FormatRules { Id = "standard", Name = "Standard" };
+        var swapped = DeckList.Parse("4 Ember Hound\n3 Glass Shard\n1 Quiet Grove\n52 Mountain");
+        Assert.Empty(DeckValidator.ValidateSideboarding(swapped, Registered, format));
+        // Basic lands aren't free: only the copies brought.
+        var extraLand = DeckList.Parse("4 Ember Hound\n4 Quiet Grove\n55 Mountain");
+        Assert.Contains(DeckValidator.ValidateSideboarding(extraLand, Registered, format), i => i.Message.Contains("55 copies of Mountain"));
+        var stranger = DeckList.Parse("4 Ember Hound\n4 Quiet Grove\n51 Mountain\n1 Odd Relic");
+        Assert.Contains(DeckValidator.ValidateSideboarding(stranger, Registered, format), i => i.Message.Contains("Odd Relic isn't in your deck"));
+        // The cards left out are the sideboard: more than 15 is too many.
+        var thin = DeckList.Parse("4 Ember Hound\n4 Quiet Grove\n36 Mountain");
+        var issues = DeckValidator.ValidateSideboarding(thin, Registered, format);
+        Assert.Contains(issues, i => i.Message.Contains("at least 60"));
+        Assert.Contains(issues, i => i.Message.Contains("Sideboard has 21 cards"));
+    }
+
+    [Fact]
+    public void ASideboardedDeckKeepsTheRestOfTheRegisteredCardsBesideIt()
+    {
+        var swapped = DeckValidator.WithSideboardFrom(DeckList.Parse("4 Ember Hound\n3 Glass Shard\n1 Quiet Grove\n52 Mountain"), Registered);
+        var side = swapped.Sideboard.GroupBy(e => e.Name).ToDictionary(g => g.Key, g => g.Sum(e => e.Count));
+        Assert.Equal(new Dictionary<string, int> { ["Quiet Grove"] = 3, ["Mountain"] = 2 }, side);
+
+        var seat = new EventSeat { Name = "A", IsHuman = true, Deck = swapped, Registered = Registered };
+        Assert.Equal(5, seat.SideboardFromPool().Main.Sum(e => e.Count));
+    }
+
+    [Fact]
+    public void AConstructedEventKeepsTheRegisteredDecksWhenSaved()
+    {
+        var ev = new LimitedEvent
+        {
+            Mode = LimitedMode.Sealed, Source = "constructed:test", BoostersPerPlayer = 0,
+            Seats = new List<EventSeat> { new() { Name = "A", IsHuman = true, Deck = Registered, Registered = Registered } },
+        };
+        var loaded = LimitedEvent.FromJson(ev.ToJson());
+        Assert.Equal(Registered.Export(), loaded.Seats[0].Registered!.Export());
+
+        // Saved before decks were registered: the deck it has is the one brought.
+        var old = LimitedEvent.FromJson(ev.ToJson().Replace("\"registered\"", "\"unused\""));
+        Assert.Equal(Registered.Export(), old.Seats[0].Registered!.Export());
+    }
+
+    [Fact]
+    public void PlayersLateToTheSameMatchEachLoseAGameAndBothLoseTheMatchWhenNeitherShowsUp()
+    {
+        var ev = new LimitedEvent
+        {
+            Mode = LimitedMode.Sealed, Source = "constructed:test", BoostersPerPlayer = 0, BestOf = 3, RoundsTotal = 3,
+            Seats = Enumerable.Range(0, 2).Select(i => new EventSeat { Name = $"P{i}", IsHuman = true }).ToList(),
+        };
+        var late = new EventMatch { SeatA = 0, SeatB = 1 };
+        ev.Rounds.Add(new List<EventMatch> { late });
+        ev.GiveGameLoss(late, new[] { 0, 1 });
+        Assert.Equal((1, 1), (late.WinsA, late.WinsB)); // each wins the game the other lost
+        Assert.False(late.Done);
+
+        ev.NoShow(late, new[] { 0, 1 });
+        Assert.True(late.Done && late.BothLost);
+        Assert.Equal(0, ev.Points(0)); // a loss for each, not a draw
+        Assert.Equal(0, ev.Points(1));
+        Assert.Equal(new[] { 0, 1 }, ev.Dropped);
+        var loaded = LimitedEvent.FromJson(ev.ToJson());
+        Assert.True(loaded.Rounds[0][0].BothLost);
+        Assert.Equal(new[] { 0, 1 }, loaded.Rounds[0][0].Late);
+        Assert.Equal(0, loaded.Points(0));
+    }
+
+    [Fact]
+    public void WhenNeitherPlayerOfAPlayoffMatchShowsUpTheNextOpponentGoesOnWithoutPlaying()
+    {
+        var ev = new LimitedEvent
+        {
+            Mode = LimitedMode.Sealed, Source = "constructed:test", BoostersPerPlayer = 0, BestOf = 3, RoundsTotal = 0, TopCut = 4,
+            Seats = Enumerable.Range(0, 4).Select(i => new EventSeat { Name = $"P{i}", IsHuman = true }).ToList(),
+        };
+        var semifinals = ev.PairNextRound(new Random(1));
+        var away = semifinals[0];
+        var played = semifinals[1];
+        ev.NoShow(away, new[] { away.SeatA, away.SeatB!.Value });
+        Assert.True(away.Done && away.BothLost);
+        ev.RecordGame(played, played.SeatA);
+        ev.RecordGame(played, played.SeatA);
+
+        var final = ev.PairNextRound(new Random(1)).Single();
+        Assert.True(final.Done); // nobody to play: the other semifinal's winner takes the final
+        Assert.True(final.WinsOf(played.SeatA) > final.WinsOf(away.SeatA));
+        Assert.True(ev.Complete);
+        var standings = ev.Standings();
+        Assert.Equal(played.SeatA, standings[0]);
+        // Everyone else is out in the semifinals (those who never came lost theirs), in their Swiss order.
+        Assert.Equal(ev.SwissStandings().Where(s => s != played.SeatA), standings.Skip(1));
+    }
 }

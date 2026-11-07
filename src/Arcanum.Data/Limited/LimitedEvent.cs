@@ -24,12 +24,30 @@ public sealed class EventSeat
     /// <summary>Every card the player opened or drafted.</summary>
     public List<PoolCard> Pool { get; init; } = new();
 
-    /// <summary>The deck built from the pool (null until built). Cards of the pool not in it form the sideboard.</summary>
+    /// <summary>
+    /// The deck built from the pool (null until built). Cards of the pool not in it form the sideboard. In a constructed
+    /// event: the deck brought, its sideboard in its Sideboard section (changed between games, see <see cref="Registered"/>).
+    /// </summary>
     public DeckList? Deck { get; set; }
 
-    /// <summary>The cards of the pool not in the deck (its sideboard in limited play, rule 100.4b), as a deck list's main part.</summary>
+    /// <summary>
+    /// A constructed event's deck as it was registered, main deck and sideboard (null in limited events): between games
+    /// the deck may only change with these cards (<see cref="Formats.DeckValidator.ValidateSideboarding"/>).
+    /// </summary>
+    public DeckList? Registered { get; set; }
+
+    /// <summary>
+    /// The sideboard, as a deck list's main part: in limited play the cards of the pool not in the deck (rule 100.4b),
+    /// in a constructed event the deck's sideboard (rule 100.4a).
+    /// </summary>
     public DeckList SideboardFromPool()
     {
+        if (Registered is not null)
+        {
+            var side = new DeckList();
+            side.Main.AddRange(Deck?.Sideboard ?? Registered.Sideboard);
+            return side;
+        }
         var left = new DeckList();
         var inDeck = (Deck?.Main ?? new List<DeckEntry>()).GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.Sum(e => e.Count), StringComparer.OrdinalIgnoreCase);
@@ -55,6 +73,18 @@ public sealed class EventMatch
     /// <summary>When the match's first game began (UTC): its round's clock runs from then (see <see cref="LimitedEvent.RoundMinutes"/>).</summary>
     public DateTime? Started { get; set; }
 
+    /// <summary>Waiting for a player who isn't at the table (see <see cref="LimitedEvent.SeatCall"/>); due since <see cref="Due"/>.</summary>
+    public bool Waiting { get; set; }
+
+    /// <summary>When the match was due to begin (UTC), for a match that waited for a late player.</summary>
+    public DateTime? Due { get; set; }
+
+    /// <summary>The seats that got a game loss for being late.</summary>
+    public List<int> Late { get; init; } = new();
+
+    /// <summary>Neither player showed up: a match loss for each.</summary>
+    public bool BothLost { get; set; }
+
     public bool Involves(int seat) => SeatA == seat || SeatB == seat;
 
     public int? Opponent(int seat) => SeatA == seat ? SeatB : SeatB == seat ? SeatA : null;
@@ -72,6 +102,9 @@ public sealed class LimitedEvent
 
     /// <summary>"set:abc" for a set's boosters, "cube:Name" for a cube.</summary>
     public required string Source { get; init; }
+
+    /// <summary>A constructed event: everyone brings a deck ("constructed:" source, no boosters).</summary>
+    public bool IsConstructed => Source.StartsWith("constructed:", StringComparison.Ordinal);
 
     /// <summary>A cube's card list (empty for sets).</summary>
     public List<PoolCard> CubeCards { get; init; } = new();
@@ -125,9 +158,9 @@ public sealed class LimitedEvent
 
     private IEnumerable<EventMatch> SwissMatches(int seat) => Rounds.Take(RoundsTotal).SelectMany(r => r).Where(m => m.Done && m.Involves(seat));
 
-    private static bool Won(EventMatch m, int seat) => m.SeatB is null || m.WinsOf(seat) > m.WinsOf(m.Opponent(seat)!.Value);
+    private static bool Won(EventMatch m, int seat) => m.SeatB is null || !m.BothLost && m.WinsOf(seat) > m.WinsOf(m.Opponent(seat)!.Value);
 
-    private static bool Drew(EventMatch m, int seat) => m.SeatB is not null && m.WinsOf(seat) == m.WinsOf(m.Opponent(seat)!.Value);
+    private static bool Drew(EventMatch m, int seat) => m.SeatB is not null && !m.BothLost && m.WinsOf(seat) == m.WinsOf(m.Opponent(seat)!.Value);
 
     /// <summary>Match points in the Swiss rounds (3 a win or a bye, 1 a draw), as pairings and standings use them.</summary>
     public int Points(int seat) => SwissMatches(seat).Sum(m => Won(m, seat) ? 3 : Drew(m, seat) ? 1 : 0);
@@ -181,6 +214,58 @@ public sealed class LimitedEvent
     }
 
     /// <summary>
+    /// Tardiness: a player who isn't at the table when the match is due gets a game loss once <see cref="SeatCall"/> has
+    /// passed (the time to take one's seat after the pairings are posted), and a match loss, leaving the event, when still
+    /// away <see cref="NoShowAfter"/> after it was due.
+    /// </summary>
+    public static readonly TimeSpan SeatCall = TimeSpan.FromMinutes(1), NoShowAfter = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Game losses for the players late to a match: the opponent wins that game; when both are late each loses a game,
+    /// so each wins one.
+    /// </summary>
+    public void GiveGameLoss(EventMatch match, IReadOnlyCollection<int> late)
+    {
+        match.Late.AddRange(late);
+        if (late.Count == 1)
+        {
+            RecordGame(match, match.Opponent(late.First()));
+            return;
+        }
+        match.WinsA++;
+        match.WinsB++;
+        bool decided = match.WinsA >= WinsNeeded && match.WinsB >= WinsNeeded || match.WinsA + match.WinsB + match.Draws >= BestOf;
+        if (decided && !IsPlayoff(Rounds.FindIndex(r => r.Contains(match)))) match.Done = true;
+    }
+
+    /// <summary>
+    /// The players still away <see cref="NoShowAfter"/> after the match was due: a match loss (the opponent wins it, or
+    /// neither wins when both are away; in the playoff, then, the next round's opponent goes on without playing), and they
+    /// leave the event.
+    /// </summary>
+    public void NoShow(EventMatch match, IReadOnlyCollection<int> away)
+    {
+        match.Waiting = false;
+        if (away.Count == 2)
+        {
+            match.BothLost = true;
+            match.Done = true;
+            foreach (var seat in away) Dropped.Add(seat);
+            return;
+        }
+        foreach (var seat in away)
+            if (!match.Done) Drop(seat);
+            else Dropped.Add(seat);
+    }
+
+    /// <summary>The cut by record, once its rounds are played: seats with fewer than <see cref="CutPoints"/> match points are out.</summary>
+    public void ApplyCut()
+    {
+        if (CutAfter > 0 && Rounds.Count == CutAfter)
+            foreach (var seat in Enumerable.Range(0, Seats.Count).Where(s => Points(s) < CutPoints)) Dropped.Add(seat);
+    }
+
+    /// <summary>
     /// Pairs the next round. Swiss: seats sorted by points (ties at random), each paired with the highest-placed seat it
     /// hasn't played yet; with an odd number, the lowest-placed seat that hasn't had a bye gets one. After the Swiss
     /// rounds, the playoff: the top of the standings seeded 1 against 8, 4 against 5, 2 against 7, 3 against 6, then the
@@ -189,8 +274,7 @@ public sealed class LimitedEvent
     public List<EventMatch> PairNextRound(Random random)
     {
         if (Rounds.Count >= RoundsTotal) return PairPlayoffRound();
-        if (CutAfter > 0 && Rounds.Count == CutAfter)
-            foreach (var seat in Enumerable.Range(0, Seats.Count).Where(s => Points(s) < CutPoints)) Dropped.Add(seat);
+        ApplyCut();
         var opponents = Enumerable.Range(0, Seats.Count).Select(_ => new HashSet<int?>()).ToList();
         foreach (var m in Rounds.SelectMany(r => r))
         {
@@ -241,8 +325,18 @@ public sealed class LimitedEvent
         }
         else
         {
-            var winners = Rounds[^1].Select(m => Won(m, m.SeatA) ? m.SeatA : m.SeatB!.Value).ToList();
-            for (int i = 0; i + 1 < winners.Count; i += 2) round.Add(new EventMatch { SeatA = winners[i], SeatB = winners[i + 1] });
+            // A match both players lost keeps its place in the bracket: its first seat stands in, out of the event, and
+            // the next opponent wins without playing (both standing in: neither goes on).
+            var winners = Rounds[^1].Select(m => m.BothLost ? (Seat: m.SeatA, Gone: true) : (Seat: Won(m, m.SeatA) ? m.SeatA : m.SeatB!.Value, Gone: false)).ToList();
+            for (int i = 0; i + 1 < winners.Count; i += 2)
+            {
+                var (a, b) = (winners[i], winners[i + 1]);
+                var match = new EventMatch { SeatA = a.Seat, SeatB = b.Seat };
+                if (a.Gone && b.Gone) match.BothLost = match.Done = true;
+                else if (a.Gone) (match.WinsB, match.Done) = (WinsNeeded, true);
+                else if (b.Gone) (match.WinsA, match.Done) = (WinsNeeded, true);
+                round.Add(match);
+            }
         }
         Rounds.Add(round);
         return round;
@@ -257,11 +351,13 @@ public sealed class LimitedEvent
         var swiss = SwissStandings();
         if (Rounds.Count <= RoundsTotal) return swiss;
         var reached = new Dictionary<int, int>(); // seat → playoff rounds won (+1 for the champion's last)
+        var lost = new HashSet<int>(); // out in a match both players lost: only standing in after it
         for (int r = RoundsTotal; r < Rounds.Count; r++)
             foreach (var m in Rounds[r])
             {
-                reached[m.SeatA] = r - RoundsTotal + (m.Done && Won(m, m.SeatA) ? 1 : 0);
-                reached[m.SeatB!.Value] = r - RoundsTotal + (m.Done && Won(m, m.SeatB.Value) ? 1 : 0);
+                foreach (var seat in new[] { m.SeatA, m.SeatB!.Value }.Where(s => !lost.Contains(s)))
+                    reached[seat] = r - RoundsTotal + (m.Done && Won(m, seat) ? 1 : 0);
+                if (m.BothLost) lost.UnionWith(new[] { m.SeatA, m.SeatB.Value });
             }
         var rank = swiss.Select((s, i) => (s, i)).ToDictionary(x => x.s, x => x.i);
         return reached.Keys.OrderByDescending(s => reached[s]).ThenBy(s => rank[s])
@@ -337,6 +433,7 @@ public sealed class LimitedEvent
                 if (!seat.IsHuman) w.WriteNumber("skill", seat.Skill);
                 WriteCards(w, "pool", seat.Pool);
                 if (seat.Deck is not null) w.WriteString("deck", seat.Deck.Export());
+                if (seat.Registered is not null) w.WriteString("registered", seat.Registered.Export());
                 w.WriteEndObject();
             }
             w.WriteEndArray();
@@ -369,6 +466,15 @@ public sealed class LimitedEvent
                     w.WriteNumber("draws", m.Draws);
                     w.WriteBoolean("done", m.Done);
                     if (m.Started is { } started) w.WriteString("started", started.ToString("O"));
+                    if (m.Waiting) w.WriteBoolean("waiting", true);
+                    if (m.Due is { } due) w.WriteString("due", due.ToString("O"));
+                    if (m.Late.Count > 0)
+                    {
+                        w.WriteStartArray("late");
+                        foreach (var seat in m.Late) w.WriteNumberValue(seat);
+                        w.WriteEndArray();
+                    }
+                    if (m.BothLost) w.WriteBoolean("bothLost", true);
                     w.WriteEndObject();
                 }
                 w.WriteEndArray();
@@ -406,6 +512,7 @@ public sealed class LimitedEvent
                 Skill = s.TryGetProperty("skill", out var skill) ? skill.GetDouble() : EventSeat.DefaultSkill,
                 Pool = ReadCards(s, "pool"),
                 Deck = s.TryGetProperty("deck", out var deck) ? DeckList.Parse(deck.GetString()!) : null,
+                Registered = s.TryGetProperty("registered", out var registered) ? DeckList.Parse(registered.GetString()!) : null,
             }).ToList(),
             Rounds = e.GetProperty("rounds").EnumerateArray().Select(r => r.EnumerateArray().Select(m => new EventMatch
             {
@@ -417,6 +524,10 @@ public sealed class LimitedEvent
                 Done = m.GetProperty("done").GetBoolean(),
                 Started = m.TryGetProperty("started", out var started)
                     ? DateTime.Parse(started.GetString()!, null, System.Globalization.DateTimeStyles.RoundtripKind) : null,
+                Waiting = m.TryGetProperty("waiting", out var waiting) && waiting.GetBoolean(),
+                Due = m.TryGetProperty("due", out var due) ? DateTime.Parse(due.GetString()!, null, System.Globalization.DateTimeStyles.RoundtripKind) : null,
+                Late = m.TryGetProperty("late", out var late) ? late.EnumerateArray().Select(x => x.GetInt32()).ToList() : new(),
+                BothLost = m.TryGetProperty("bothLost", out var bothLost) && bothLost.GetBoolean(),
             }).ToList()).ToList(),
         };
         if (e.TryGetProperty("draft", out var d))
@@ -424,6 +535,9 @@ public sealed class LimitedEvent
                 d.GetProperty("pick").GetInt32(),
                 d.GetProperty("packs").EnumerateArray().Select(ReadCardArray).ToList(),
                 d.GetProperty("picks").EnumerateArray().Select(ReadCardArray).ToList());
+        // A constructed event saved before decks were registered: the deck it has is the one brought.
+        if (ev.IsConstructed)
+            foreach (var seat in ev.Seats.Where(s => s.Registered is null && s.Deck is not null)) seat.Registered = DeckList.Parse(seat.Deck!.Export());
         return ev;
     }
 

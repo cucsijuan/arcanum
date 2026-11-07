@@ -156,6 +156,49 @@ public static class DeckValidator
         return issues;
     }
 
+    /// <summary>
+    /// A constructed deck changed between the games of a match (rule 100.4a): its main deck made only of the cards
+    /// <paramref name="registered"/> holds, main deck and sideboard together (basic lands too, no more copies than
+    /// registered), at least the format's minimum size, and the cards left out at most a sideboard's.
+    /// </summary>
+    public static List<DeckIssue> ValidateSideboarding(DeckList deck, DeckList registered, FormatRules format)
+    {
+        var issues = new List<DeckIssue>();
+        int main = deck.Main.Sum(e => e.Count);
+        if (main < format.MinDeckSize) issues.Add(new(IssueSeverity.Error, $"Deck has {main} cards; {format.Name} needs at least {format.MinDeckSize}."));
+        var available = Counts(registered.Main.Concat(registered.Sideboard));
+        foreach (var (name, copies) in Counts(deck.Main))
+        {
+            int have = available.GetValueOrDefault(name);
+            if (copies > have)
+                issues.Add(new(IssueSeverity.Error, have == 0 ? $"{name} isn't in your deck or sideboard." : $"{copies} copies of {name}; your deck and sideboard have {have}.", name));
+        }
+        int side = available.Values.Sum() - main;
+        if (side > format.SideboardMax) issues.Add(new(IssueSeverity.Error, $"Sideboard has {side} cards; at most {format.SideboardMax}."));
+        return issues;
+    }
+
+    /// <summary>
+    /// The deck with its sideboard made of the cards of <paramref name="registered"/> (main deck and sideboard) its
+    /// main deck leaves out.
+    /// </summary>
+    public static DeckList WithSideboardFrom(DeckList deck, DeckList registered)
+    {
+        var result = DeckList.Parse(deck.Export());
+        result.Sideboard.Clear();
+        var used = Counts(deck.Main);
+        foreach (var entry in registered.Main.Concat(registered.Sideboard))
+        {
+            int take = Math.Min(entry.Count, used.GetValueOrDefault(entry.Name));
+            used[entry.Name] = used.GetValueOrDefault(entry.Name) - take;
+            if (entry.Count - take > 0) result.Sideboard.Add(entry with { Count = entry.Count - take });
+        }
+        return result;
+    }
+
+    private static Dictionary<string, int> Counts(IEnumerable<DeckEntry> entries) =>
+        entries.GroupBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.First().Name, g => g.Sum(e => e.Count), StringComparer.OrdinalIgnoreCase);
+
     private static void ValidateCommanders(DeckList deck, FormatRules format, CardDatabase cards, List<DeckIssue> issues)
     {
         var commanders = deck.Commander.Select(e => cards.Find(e.Name)).OfType<CardEntry>().ToList();

@@ -121,4 +121,69 @@ public partial class CareerTests
         Assert.Contains("confirmed result", bad.Reason);
         Assert.Equal(2, stored!.Journal.Count);
     }
+
+    private const string ConstructedOnlineSeason = """
+        { "changes": [ { "from": "2026-10-12", "events": [
+            { "id": "hall", "name": "Big championship", "when": "Wednesday", "kind": "constructed", "players": 128, "playersMax": 256, "rounds": 14,
+              "entry": 100, "prizes": [{ "place": 1, "boosters": 8 }], "online": { "starts": ["18:00"] } },
+            { "id": "pods", "name": "Commander pods", "when": "Wednesday", "kind": "commander", "players": 4, "rounds": 1, "entry": 100,
+              "online": { "starts": ["18:00"] } } ] } ] }
+        """;
+
+    [Fact]
+    public void AConstructedEventIsEnteredOnlineWithAPlayableDeck()
+    {
+        var world = World(season: ConstructedOnlineSeason);
+        var at = Wednesday.ToDateTime(new TimeOnly(17, 40), DateTimeKind.Utc);
+        var state = new CareerState();
+        CareerRules.Apply(state, new StartCareer(T0, 42, "sixty"), world);
+        Assert.Contains("Choose a deck", Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(at, "hall", CareerRules.PayCash, Online: true), world)).Message);
+        Assert.Contains("can't be played online", Assert.Throws<CareerRuleException>(() => CareerRules.Apply(state, new EnterEvent(at, "pods", CareerRules.PayCash, Sixty, Online: true), world)).Message);
+        CareerRules.Apply(state, new EnterEvent(at, "hall", CareerRules.PayCash, Sixty, Online: true), world);
+        Assert.True(state.Event!.Online);
+        Assert.Equal(Sixty, state.Event.Deck);
+        // A table as big as the event's attendance.
+        CareerRules.Apply(state, new FinishEvent(at.AddHours(9), 10, 4, 0, 12, Table: "t", Players: 200, Pvp: true), world);
+        Assert.Null(state.Event);
+    }
+
+    [Fact]
+    public void ABigEventsTableHasItsAttendanceOfSeats()
+    {
+        var hall = World(season: ConstructedOnlineSeason).Event("hall", Wednesday)!;
+        var seats = Enumerable.Range(0, 50).Select(seed => OnlineEvents.Seats(hall, (ulong)seed * 7919)).ToList();
+        Assert.All(seats, n => Assert.InRange(n, 128, 256));
+        Assert.True(seats.Distinct().Count() > 1);
+        var draft = World(season: OnlineSeason).Event("draft", Wednesday)!;
+        Assert.Equal(8, OnlineEvents.Seats(draft, 12345));
+    }
+
+    [Fact]
+    public void AnEventWithOnlinePrizesOfItsOwnPaysThemOnlineAndItsOwnAgainstTheComputer()
+    {
+        var e = new EventSpec("hall", "Hall", "Wednesday", CareerRules.Constructed, Prizes: new[] { new PrizeSpec(Place: 1, Boosters: 6) })
+        {
+            Online = new OnlineSpec { Starts = new[] { "18:00" }, Prizes = new[] { new PrizeSpec(Place: 1, Boosters: 9) } },
+        };
+        Assert.Equal(9, CareerRules.PrizeFor(e, 3, 1, online: true)!.Boosters);
+        Assert.Equal(6, CareerRules.PrizeFor(e, 3, 1, online: false)!.Boosters); // not scaled down: the event's own prizes
+    }
+
+    [Fact]
+    public void APrizeCanGiveBoostersOfAnotherKind()
+    {
+        var world = World(season: """
+            { "changes": [ { "from": "2026-10-12", "events": [
+                { "id": "hall", "name": "Big championship", "when": "Wednesday", "kind": "constructed", "players": 8, "rounds": 3, "entry": 100,
+                  "prizes": [{ "place": 1, "sealed": [{ "set": "featured", "count": 2 }] }] } ] } ] }
+            """);
+        var at = Wednesday.ToDateTime(new TimeOnly(17, 40), DateTimeKind.Utc);
+        var state = new CareerState();
+        CareerRules.Apply(state, new StartCareer(T0, 42, "sixty"), world);
+        CareerRules.Apply(state, new EnterEvent(at, "hall", CareerRules.PayCash, Sixty), world);
+        var key = CareerRules.SealedKey(world.FeaturedSet(Wednesday), null);
+        int before = state.Sealed.GetValueOrDefault(key);
+        CareerRules.Apply(state, new FinishEvent(at.AddHours(3), 3, 0, 0, 1), world);
+        Assert.Equal(before + 2, state.Sealed.GetValueOrDefault(key));
+    }
 }

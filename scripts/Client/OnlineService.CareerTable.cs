@@ -5,6 +5,7 @@ using Arcanum.Net.Events;
 using Arcanum.Net.Client;
 using Arcanum.Net.Lobby;
 using Arcanum.Net.Protocol;
+using Arcanum.Net.Services;
 
 namespace Arcanum.Client;
 
@@ -18,7 +19,9 @@ public partial class OnlineService
     /// <summary>How long a table's host waits for its people before starting without the missing ones.</summary>
     public static readonly TimeSpan TableWait = TimeSpan.FromMinutes(5);
 
-    private sealed record CareerTableSetup(OnlineTable Table, Func<IReadOnlyList<EventSeat>, LimitedEvent> Build, DateTime Since);
+    /// <param name="Build">Makes the event from the table's people (null: a second day, resumed from its save).</param>
+    /// <param name="DayEndsAfter">A two-day event: the rounds of its first day (0: one day), and when the second begins.</param>
+    private sealed record CareerTableSetup(OnlineTable Table, Func<IReadOnlyList<EventSeat>, LimitedEvent>? Build, DateTime Since, int DayEndsAfter = 0, DateTime? NextDay = null);
 
     private CareerTableSetup? _careerTable;
     private bool _unlisted;
@@ -30,7 +33,7 @@ public partial class OnlineService
     /// Opens the lobby of a career table this player hosts. <paramref name="build"/> makes the event from the table's
     /// people in their order (seats of the computer follow them).
     /// </summary>
-    public void HostCareerTable(OnlineTable table, string title, Func<IReadOnlyList<EventSeat>, LimitedEvent> build)
+    public void HostCareerTable(OnlineTable table, string title, Func<IReadOnlyList<EventSeat>, LimitedEvent> build, int dayEndsAfter = 0, DateTime? nextDay = null)
     {
         Leave();
         var settings = new LobbySettings("Limited", false, 20, table.Seats, Version, ContentId, Event: title);
@@ -43,7 +46,7 @@ public partial class OnlineService
         }
         _lobby.AddListener(_tcp!);
         _lobby.AddListener(_loopback!);
-        _careerTable = new CareerTableSetup(table, build, DateTime.UtcNow);
+        _careerTable = new CareerTableSetup(table, build, DateTime.UtcNow, dayEndsAfter, nextDay);
         _unlisted = true;
         ListAddresses();
         OpenRouterPort();
@@ -52,10 +55,83 @@ public partial class OnlineService
         PublishHostedLobby();
     }
 
+    /// <summary>
+    /// The second day of a two-day event at a career table this player hosts now: the event goes on from the first
+    /// day's save (no lobby to fill), this player back in their seat with its token; the others come back with theirs
+    /// through the invite code the service passes on.
+    /// </summary>
+    public bool ResumeCareerTable(OnlineTable table, string title, string save, string name, string token)
+    {
+        Leave();
+        EventHost host;
+        try
+        {
+            var ev = LimitedEvent.FromJson(System.Text.Json.Nodes.JsonNode.Parse(save)!["event"]!.ToJsonString());
+            host = EventHost.Restore(save, Rules(ev), EventOptions());
+        }
+        catch (Exception e)
+        {
+            Status?.Invoke($"The first day can't be resumed: {e.Message}");
+            return false;
+        }
+        if (host.SeatOf(token) < 0)
+        {
+            Status?.Invoke("Your seat isn't in the first day's save.");
+            return false;
+        }
+        var settings = new LobbySettings("Limited", false, 20, table.Seats, Version, ContentId, Event: title);
+        _lobby = new LobbyHost(settings, _ => new DeckCheck(Array.Empty<Arcanum.Engine.Cards.CardDefinition>(), null, null));
+        _lobby.Changed += () => Changed?.Invoke();
+        if (!Listen(0))
+        {
+            _lobby = null;
+            return false;
+        }
+        _lobby.AddListener(_tcp!);
+        _lobby.AddListener(_loopback!);
+        _lobby.ResumeEvent(host);
+        _careerTable = new CareerTableSetup(table, null, DateTime.UtcNow);
+        _unlisted = true;
+        ListAddresses();
+        OpenRouterPort();
+        PublishHostedLobby();
+        StartEventSession(new EventClient(_loopback!.Connect(), new ClientIdentity(name, token, Version, ContentId, OwnPlaymat), greet: true));
+        return true;
+    }
+
+    /// <summary>Back into a career table's event on its second day, hosted by another player: found by its invite code, the seat by its token.</summary>
+    public async void RejoinCareerTable(string name, string code, string token)
+    {
+        Leave();
+        if (!InviteCode.TryParse(code, out var parsed)) return;
+        try
+        {
+            await SignedInAsync();
+            if (await Services.Lobbies.FindByCodeAsync(parsed) is not { } listing)
+            {
+                Status?.Invoke("The table's lobby isn't open (yet).");
+                return;
+            }
+            _route = listing;
+            _address = listing.Address ?? "";
+            _port = listing.Port;
+            var connection = await Services.Network.ConnectAsync(listing);
+            StartEventSession(new EventClient(connection, new ClientIdentity(name, token, Version, ContentId, OwnPlaymat), greet: true));
+        }
+        catch (Exception e)
+        {
+            _route = null;
+            Status?.Invoke($"Couldn't get back to the table: {e.Message}");
+        }
+    }
+
+    /// <summary>The first day of the hosted table's two-day event, saved to go on the next day (null: none).</summary>
+    public string? HostedTableSave => _careerTable is not null ? HostedEvent?.Save() : null;
+
     /// <summary>Every frame: starts the hosted table's event once its people are in (or the wait is over).</summary>
     private void PollCareerTable()
     {
-        if (_careerTable is not { } setup || _lobby is not { Event: null, Game: null } lobby) return;
+        if (_careerTable is not { Build: { } build } setup || _lobby is not { Event: null, Game: null } lobby) return;
         var state = lobby.State;
         var present = state.Seats.Where(s => s.Kind == LobbySeatKind.Person && s.Connected).Select(s => s.Name).ToHashSet();
         bool everyone = setup.Table.People.All(p => present.Contains(p.Name));
@@ -73,9 +149,9 @@ public partial class OnlineService
             tokens.Add(taken?.Token);
         }
         while (tokens.Count < setup.Table.Seats) tokens.Add(null);
-        var ev = setup.Build(seats);
+        var ev = build(seats);
         var title = state.Event ?? "Event";
-        lobby.StartEvent(_ => new EventHost(ev, tokens, Rules(ev), EventOptions()) { Title = title });
+        lobby.StartEvent(_ => new EventHost(ev, tokens, Rules(ev), EventOptions() with { DayEndsAfter = setup.DayEndsAfter, NextDay = setup.NextDay }) { Title = title });
         UpdatePublishedLobby();
     }
 

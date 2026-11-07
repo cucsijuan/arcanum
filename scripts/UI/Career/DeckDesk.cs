@@ -32,6 +32,35 @@ public partial class DeckDesk : Control
     {
         /// <summary>The set's draft statistics, to show on the cards (null: none, or the player doesn't see them).</summary>
         public DraftRatings? Ratings { get; init; }
+
+        /// <summary>The line above the mat saying what to build.</summary>
+        public string Hint { get; init; } = "Build your deck from the cards you drafted: 40 cards or more, basic lands are free.";
+
+        /// <summary>The button that puts <see cref="AutoBuild"/>'s deck on the desk.</summary>
+        public string AutoLabel { get; init; } = "Build for me";
+
+        /// <summary>The copies of each basic land the deck may have (sideboarding a constructed deck); null: basic lands are free.</summary>
+        public IReadOnlyDictionary<string, int>? Basics { get; init; }
+    }
+
+    /// <summary>
+    /// Sideboarding a constructed deck between the games of a match: the cards on the mat are the deck and sideboard
+    /// registered, basic lands only the copies brought; <paramref name="keep"/> gets the deck with its new sideboard.
+    /// </summary>
+    public static PoolBuild Sideboarding(DeckList deck, DeckList registered, FormatRules format, Action<DeckList> keep)
+    {
+        var all = registered.Main.Concat(registered.Sideboard).ToList();
+        var pool = all.SelectMany(e => Enumerable.Repeat(new PoolCard(e.Name, e.Set ?? "", e.Number ?? "", "", e.Foil, e.Surge), e.Count)).ToList();
+        var basics = LimitedService.Basics.Values.ToDictionary(n => n, n => all.Where(e => e.Name.Equals(n, StringComparison.OrdinalIgnoreCase)).Sum(e => e.Count));
+        List<string> Problems(DeckList d) => DeckValidator.ValidateSideboarding(d, registered, format).Where(i => i.Severity == IssueSeverity.Error).Select(i => i.Message).ToList();
+        // Leaving with a deck that can't be played keeps the one there was.
+        void Kept(DeckList d) => keep(Problems(d).Count == 0 ? DeckValidator.WithSideboardFrom(d, registered) : deck);
+        return new PoolBuild(pool, deck, Problems, () => DeckList.Parse(registered.Export()), Kept, Kept)
+        {
+            Hint = $"Sideboarding: swap cards between your deck and sideboard ({format.MinDeckSize}+ cards in the deck, at most {format.SideboardMax} beside it).",
+            AutoLabel = "As registered",
+            Basics = basics,
+        };
     }
 
     /// <summary>Set before opening the desk to build from a pool (an event's); null builds career decks.</summary>
@@ -297,9 +326,9 @@ public partial class DeckDesk : Control
         }
         if (_pool is { } pool)
         {
-            row.AddChild(CareerStyle.Text("Build your deck from the cards you drafted: 40 cards or more, basic lands are free.", 20, new Color(1f, 0.95f, 0.85f)));
+            row.AddChild(CareerStyle.Text(pool.Hint, 20, new Color(1f, 0.95f, 0.85f)));
             row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-            row.AddChild(CareerStyle.Button("Build for me", () => { _deck = pool.AutoBuild(); Refresh(); }, 20));
+            row.AddChild(CareerStyle.Button(pool.AutoLabel, () => { _deck = pool.AutoBuild(); Refresh(); }, 20));
             var done = CareerStyle.Button("Done", () =>
             {
                 if (pool.Problems(_deck) is [var first, ..]) MenuKit.Toast(this, first);
@@ -1158,12 +1187,14 @@ public partial class DeckDesk : Control
             _columns.AddChild(box);
         }
 
-        // Basic lands are free.
+        // Basic lands are free (sideboarding a constructed deck: only the copies brought).
         foreach (var child in _basics.GetChildren()) child.QueueFree();
-        _basics.AddChild(CareerStyle.Text("Basic lands (free):", 18, new Color(1f, 0.95f, 0.85f)));
+        var limit = _pool?.Basics;
+        _basics.AddChild(CareerStyle.Text(limit is null ? "Basic lands (free):" : "Basic lands:", 18, new Color(1f, 0.95f, 0.85f)));
         foreach (var (color, name) in LimitedService.Basics)
         {
             int count = InDeck(name);
+            if (limit is not null && limit.GetValueOrDefault(name) == 0 && count == 0) continue;
             var (bg, fg) = BoardStyle.PipColors(ColorLetter(color));
             var cell = new HBoxContainer();
             cell.AddThemeConstantOverride("separation", 2);
@@ -1174,7 +1205,9 @@ public partial class DeckDesk : Control
             chip.AddChild(label);
             chip.TooltipText = name;
             cell.AddChild(chip);
-            cell.AddChild(CareerStyle.Button("+", () => { DeckList.Adjust(_deck.Main, name, 1); Dirty(); Refresh(); }, 18));
+            var add = CareerStyle.Button("+", () => { DeckList.Adjust(_deck.Main, name, 1); Dirty(); Refresh(); }, 18);
+            add.Disabled = limit is not null && count >= limit.GetValueOrDefault(name);
+            cell.AddChild(add);
             _basics.AddChild(cell);
         }
 

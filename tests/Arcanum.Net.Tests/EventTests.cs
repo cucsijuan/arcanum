@@ -3,6 +3,7 @@ using Arcanum.Bots;
 using Arcanum.Bots.Limited;
 using Arcanum.Cards;
 using Arcanum.Data.Decks;
+using Arcanum.Data.Formats;
 using Arcanum.Data.Limited;
 using Arcanum.Engine.Cards;
 using Arcanum.Engine.Core;
@@ -51,8 +52,11 @@ public class EventTests
         return null;
     }
 
+    private static readonly FormatRules Constructed = new() { Id = "test", Name = "Test", MinDeckSize = 40, SideboardMax = 15 };
+
     private static EventRules Rules(int boosterSize) => new()
     {
+        CheckSideboarding = (deck, registered) => DeckValidator.ValidateSideboarding(deck, registered, Constructed).Select(i => i.Message).FirstOrDefault(),
         Boosters = _ => new TestBoosters(boosterSize),
         Option = p => new DraftOption(Cards[p.Name], p.Rarity),
         AutoBuild = AutoBuild,
@@ -227,5 +231,265 @@ public class EventTests
         var info = resumed.InfoFor(0);
         Assert.Equal(8, info.Draft!.Pack.Count);
         Assert.Equal(ev.InfoFor(0).Draft!.Pack, info.Draft.Pack);
+    }
+
+    /// <summary>A constructed deck brought to an event: a pool's deck with two spells beside it.</summary>
+    private static DeckList Brought(int seed)
+    {
+        var random = new Random(seed);
+        var deck = AutoBuild(new TestBoosters(45).Open(random));
+        deck.Sideboard.Add(new DeckEntry(2, Spells[random.Next(Spells.Length)]));
+        return deck;
+    }
+
+    private static LimitedEvent ConstructedEvent(int seats, int people, int rounds, int topCut, int bestOf = 1, int roundMinutes = 0) => new()
+    {
+        Mode = LimitedMode.Sealed, Source = "constructed:test", BoostersPerPlayer = 0, RoundsTotal = rounds, TopCut = topCut, BestOf = bestOf,
+        RoundMinutes = roundMinutes, Seed = 5,
+        Seats = Enumerable.Range(0, seats).Select(i => Brought(i) is var deck
+            ? new EventSeat { Name = $"P{i}", IsHuman = i < people, Deck = deck, Registered = DeckList.Parse(deck.Export()) } : null!).ToList(),
+    };
+
+    private static void Run(EventHost ev, IReadOnlyList<Attendee> people, InMemoryListener listener, FakeClock clock, Action? each = null)
+    {
+        for (int step = 0; step < 400_000 && ev.Event.Stage != EventStage.Finished; step++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(250));
+            ev.Poll();
+            foreach (var p in people)
+            {
+                p.Client.Poll();
+                if (p.Client.Event is { } info) Act(p, info, listener, clock);
+                p.Game?.Poll();
+            }
+            each?.Invoke();
+        }
+    }
+
+    private static List<Attendee> Attend(EventHost ev, InMemoryListener listener, FakeClock clock, int people) =>
+        Enumerable.Range(0, people).Select(i => new Attendee
+        {
+            Client = new EventClient(listener.Connect(), new ClientIdentity($"t{i}", $"t{i}", "1", "c"), greet: true, clock.Func), Seat = i,
+        }).ToList();
+
+    [Fact]
+    public void AConstructedEventPlaysItsSwissRoundsThenThePlayoff()
+    {
+        var clock = new FakeClock();
+        var listener = new InMemoryListener();
+        var options = new EventOptions { Clock = clock.Func, Games = new HostOptions { Version = "1", Content = "c" } };
+        var spec = ConstructedEvent(seats: 8, people: 1, rounds: 3, topCut: 4);
+        var brought = spec.Seats.Select(s => s.Deck!.Export()).ToList();
+        var ev = new EventHost(spec, spec.Seats.Select((s, i) => s.IsHuman ? $"t{i}" : null).ToList(), Rules(12), options);
+        ev.AddListener(listener);
+        ev.Start();
+        Assert.Equal(EventStage.Playing, ev.Event.Stage); // no deck building: everyone brought a deck
+
+        var people = Attend(ev, listener, clock, 1);
+        Run(ev, people, listener, clock);
+
+        Assert.Equal(EventStage.Finished, ev.Event.Stage);
+        Assert.Equal(3 + 2, ev.Event.Rounds.Count); // the Swiss rounds, then the semifinals and the final
+        Assert.Single(ev.Event.Rounds[^1]);
+        Assert.Equal(brought, ev.Event.Seats.Select(s => s.Deck!.Export()).ToList()); // the decks brought, not built from a pool
+    }
+
+    [Fact]
+    public void ARoundEndsOnTime()
+    {
+        var clock = new FakeClock();
+        var listener = new InMemoryListener();
+        var options = new EventOptions { Clock = clock.Func, Games = new HostOptions { Version = "1", Content = "c" } };
+        var spec = ConstructedEvent(seats: 2, people: 2, rounds: 1, topCut: 0, bestOf: 3, roundMinutes: 1);
+        var ev = new EventHost(spec, new[] { "t0", "t1" }, Rules(12), options);
+        ev.AddListener(listener);
+        ev.Start();
+        var people = Attend(ev, listener, clock, 2);
+        var match = ev.Event.Rounds.Single().Single();
+        bool called = false;
+        Run(ev, people, listener, clock, () => called |= people[0].Game?.View is { } view && view.TimeCalledAt is not null);
+
+        Assert.True(match.Done);
+        Assert.NotNull(match.Started);
+        Assert.True(match.WinsA < 2 && match.WinsB < 2); // a minute isn't enough for a match: time ended it
+        Assert.True(called);
+    }
+
+    [Fact]
+    public void AConstructedDeckChangesBetweenGamesOnlyWithItsSideboard()
+    {
+        var clock = new FakeClock();
+        var listener = new InMemoryListener();
+        var options = new EventOptions { Clock = clock.Func, Games = new HostOptions { Version = "1", Content = "c" } };
+        var spec = ConstructedEvent(seats: 2, people: 1, rounds: 1, topCut: 0, bestOf: 3);
+        var ev = new EventHost(spec, new[] { "t0", null }, Rules(12), options);
+        ev.AddListener(listener);
+        ev.Start();
+        var me = ev.Event.Seats[0];
+        var registered = me.Registered!;
+        var match = ev.Event.Rounds.Single().Single();
+        var person = Attend(ev, listener, clock, 1).Single();
+        void Step()
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(250));
+            ev.Poll();
+            person.Client.Poll();
+            person.Game?.Poll();
+        }
+        // The first game, then sideboarding before the second.
+        for (int step = 0; step < 200_000 && (match.WinsA + match.WinsB + match.Draws == 0 || person.Client.Event?.GameToken is not null); step++)
+        {
+            Step();
+            if (person.Game is null && person.Client.Event is { } info) Act(person, info, listener, clock);
+        }
+        Assert.False(match.Done);
+        void Submit(DeckList deck)
+        {
+            person.Client.SubmitDeck("side", deck.Export());
+            for (int i = 0; i < 4; i++) Step();
+        }
+
+        // In: a sideboard card for one of the deck's spells.
+        var swapped = DeckList.Parse(registered.Export());
+        swapped.Sideboard.Clear();
+        var outCard = swapped.Main.First(e => Spells.Contains(e.Name) && e.Name != registered.Sideboard[0].Name);
+        DeckList.Adjust(swapped.Main, outCard.Name, -1, null, null);
+        DeckList.Adjust(swapped.Main, registered.Sideboard[0].Name, 1, null, null);
+        var stranger = DeckList.Parse(swapped.Export());
+        DeckList.Adjust(stranger.Main, "Mountain", 30, null, null);
+
+        Submit(stranger);
+        Assert.NotNull(ev.InfoFor(0).DeckProblem);
+        Assert.Equal(registered.Export(), me.Deck!.Export()); // refused: the deck as it was
+        Submit(swapped);
+        Assert.Null(ev.InfoFor(0).DeckProblem);
+        Assert.Contains(me.Deck!.Sideboard, e => e.Name == outCard.Name);
+        Assert.Equal(registered.Main.Concat(registered.Sideboard).Sum(e => e.Count), me.Deck.Main.Concat(me.Deck.Sideboard).Sum(e => e.Count));
+    }
+
+    [Fact]
+    public void ATwoDayEventStopsAfterTheFirstDayAndGoesOnFromItsSave()
+    {
+        var clock = new FakeClock();
+        var listener = new InMemoryListener();
+        var nextDay = clock.Func().AddDays(1);
+        var games = new HostOptions { Version = "1", Content = "c" };
+        var spec = ConstructedEvent(seats: 8, people: 1, rounds: 4, topCut: 0);
+        var day1 = new EventHost(new LimitedEvent
+        {
+            Mode = spec.Mode, Source = spec.Source, BoostersPerPlayer = 0, RoundsTotal = 4, CutAfter = 2, CutPoints = 3, Seed = 5, Seats = spec.Seats,
+        }, spec.Seats.Select((s, i) => s.IsHuman ? $"t{i}" : null).ToList(), Rules(12),
+            new EventOptions { Clock = clock.Func, Games = games, DayEndsAfter = 2, NextDay = nextDay });
+        bool ended = false;
+        day1.DayEnded += () => ended = true;
+        day1.AddListener(listener);
+        day1.Start();
+        var people = Attend(day1, listener, clock, 1);
+        for (int step = 0; step < 400_000 && !day1.DayOver; step++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(250));
+            day1.Poll();
+            people[0].Client.Poll();
+            if (people[0].Client.Event is { } info) Act(people[0], info, listener, clock);
+            people[0].Game?.Poll();
+        }
+        Assert.True(ended);
+        for (int i = 0; i < 20; i++) day1.Poll(); // stays put
+        Assert.Equal(2, day1.Event.Rounds.Count);
+        Assert.Equal(nextDay, day1.InfoFor(0).NextDay);
+        // The cut is known at the end of the day: everyone without a win is out.
+        Assert.All(Enumerable.Range(0, 8).Where(s => day1.Event.Points(s) < 3), s => Assert.Contains(s, day1.Event.Dropped));
+
+        // The next day, on another host: the player comes back with their seat's token.
+        clock.Advance(TimeSpan.FromHours(20));
+        var day2 = EventHost.Restore(day1.Save(), Rules(12), new EventOptions { Clock = clock.Func, Games = games });
+        Assert.Equal(0, day2.SeatOf("t0"));
+        var listener2 = new InMemoryListener();
+        day2.AddListener(listener2);
+        var back = Attend(day2, listener2, clock, 1);
+        Run(day2, back, listener2, clock);
+        Assert.Equal(EventStage.Finished, day2.Event.Stage);
+        Assert.Equal(4, day2.Event.Rounds.Count);
+        Assert.All(day2.Event.Rounds.Skip(2).SelectMany(r => r), m => Assert.DoesNotContain(m.SeatA, day1.Event.Dropped));
+    }
+
+    [Fact]
+    public void ATwoDayEventWithNoPersonLeftAfterTheCutEndsOnTheFirstDay()
+    {
+        var clock = new FakeClock();
+        var games = new HostOptions { Version = "1", Content = "c" };
+        var spec = ConstructedEvent(seats: 8, people: 1, rounds: 4, topCut: 0);
+        var host = new EventHost(new LimitedEvent
+        {
+            Mode = spec.Mode, Source = spec.Source, BoostersPerPlayer = 0, RoundsTotal = 4, CutAfter = 2, CutPoints = 3, Seed = 5, Seats = spec.Seats,
+        }, spec.Seats.Select((s, i) => s.IsHuman ? $"t{i}" : null).ToList(), Rules(12),
+            new EventOptions { Clock = clock.Func, Games = games, DayEndsAfter = 2, NextDay = clock.Func().AddDays(1) });
+        bool ended = false;
+        host.DayEnded += () => ended = true;
+        host.Start();
+        host.Event.Drop(0); // the only person leaves: the computer players' rounds needn't wait for the next day
+        for (int step = 0; step < 1000 && host.Event.Stage != EventStage.Finished; step++)
+        {
+            clock.Advance(TimeSpan.FromSeconds(1));
+            host.Poll();
+        }
+        Assert.False(ended);
+        Assert.False(host.DayOver);
+        Assert.Equal(EventStage.Finished, host.Event.Stage);
+        Assert.Equal(4, host.Event.Rounds.Count);
+    }
+
+    [Fact]
+    public void APlayerWhoDoesntShowUpLosesTheMatchAndLeavesTheEvent()
+    {
+        var clock = new FakeClock();
+        var listener = new InMemoryListener();
+        var options = new EventOptions { Clock = clock.Func, Games = new HostOptions { Version = "1", Content = "c" } };
+        var spec = ConstructedEvent(seats: 8, people: 1, rounds: 3, topCut: 0, bestOf: 3);
+        var ev = new EventHost(spec, spec.Seats.Select((s, i) => s.IsHuman ? $"t{i}" : null).ToList(), Rules(12), options);
+        ev.AddListener(listener);
+        ev.Start();
+        var match = ev.Event.Rounds[0].Single(m => m.Involves(0));
+        int opponent = match.Opponent(0)!.Value;
+        Assert.True(match.Waiting);
+
+        // After the seat call, a game loss; ten minutes after the match was due, the match.
+        clock.Advance(LimitedEvent.SeatCall + TimeSpan.FromSeconds(1));
+        ev.Poll();
+        Assert.Equal((0, 1), (match.WinsOf(0), match.WinsOf(opponent)));
+        Assert.Equal(new[] { 0 }, match.Late);
+        Assert.False(match.Done);
+        clock.Advance(LimitedEvent.NoShowAfter);
+        ev.Poll();
+        Assert.True(match.Done);
+        Assert.Equal(2, match.WinsOf(opponent));
+        Assert.Contains(0, ev.Event.Dropped);
+        Run(ev, Array.Empty<Attendee>(), listener, clock);
+        Assert.Equal(EventStage.Finished, ev.Event.Stage);
+        Assert.Equal(0, ev.Event.Points(0));
+    }
+
+    [Fact]
+    public void APlayerWhoComesLateLosesAGameAndPlaysOn()
+    {
+        var clock = new FakeClock();
+        var listener = new InMemoryListener();
+        var options = new EventOptions { Clock = clock.Func, Games = new HostOptions { Version = "1", Content = "c" } };
+        var spec = ConstructedEvent(seats: 8, people: 1, rounds: 3, topCut: 0, bestOf: 3);
+        var ev = new EventHost(spec, spec.Seats.Select((s, i) => s.IsHuman ? $"t{i}" : null).ToList(), Rules(12), options);
+        ev.AddListener(listener);
+        ev.Start();
+        var match = ev.Event.Rounds[0].Single(m => m.Involves(0));
+        int opponent = match.Opponent(0)!.Value;
+        clock.Advance(TimeSpan.FromMinutes(3));
+        ev.Poll();
+
+        var people = Attend(ev, listener, clock, 1);
+        Run(ev, people, listener, clock);
+        Assert.Equal(EventStage.Finished, ev.Event.Stage);
+        Assert.Equal(new[] { 0 }, match.Late);
+        Assert.True(match.WinsOf(opponent) >= 1);
+        Assert.True(match.WinsA + match.WinsB + match.Draws >= 2); // the late player played on after the game loss
+        Assert.DoesNotContain(0, ev.Event.Dropped);
     }
 }

@@ -27,29 +27,19 @@ public partial class TournamentMat : Control
     /// <summary>The band's thickness against the crest's.</summary>
     private const float BandScale = 0.42f;
 
-    private readonly Panel _shadow = new() { MouseFilter = MouseFilterEnum.Ignore };
-    private readonly Control _band = new() { MouseFilter = MouseFilterEnum.Ignore };
-    private readonly TextureRect _shield = new() { MouseFilter = MouseFilterEnum.Ignore, ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered };
-    private readonly Label[] _name = { new(), new() };
+    private readonly StyleBoxFlat _shadow, _cloth;
+    private readonly Texture2D? _shieldArt = ResourceLoader.Exists(Shield) ? GD.Load<Texture2D>(Shield) : null;
+    private readonly Font _font = ResourceLoader.Exists(FontPath) ? GD.Load<Font>(FontPath) : ThemeDB.FallbackFont;
+    private readonly string[] _name = { "", "" };
     private float _line = 0.5f;
 
     public TournamentMat()
     {
         MouseFilter = MouseFilterEnum.Ignore;
-        var shadow = new StyleBoxFlat { BgColor = Colors.Black, ShadowColor = new Color(0, 0, 0, 0.6f), ShadowSize = 8, ShadowOffset = new Vector2(2, 4) };
-        shadow.SetCornerRadiusAll(Radius);
-        _shadow.AddThemeStyleboxOverride("panel", shadow);
-        _shadow.SetAnchorsPreset(LayoutPreset.FullRect);
-        AddChild(_shadow);
-        // The cloth's rounded shape clips the band at the mat's edges.
-        var cloth = new Panel { MouseFilter = MouseFilterEnum.Ignore, ClipChildren = ClipChildrenMode.AndDraw };
-        var style = new StyleBoxFlat { BgColor = Cloth, BorderColor = Stitch };
-        style.SetCornerRadiusAll(Radius);
-        cloth.AddThemeStyleboxOverride("panel", style);
-        cloth.SetAnchorsPreset(LayoutPreset.FullRect);
-        AddChild(cloth);
-        cloth.AddChild(_band);
-        _band.Draw += DrawBand;
+        _shadow = new StyleBoxFlat { BgColor = Colors.Black, ShadowColor = new Color(0, 0, 0, 0.6f), ShadowSize = 8, ShadowOffset = new Vector2(2, 4) };
+        _shadow.SetCornerRadiusAll(Radius);
+        _cloth = new StyleBoxFlat { BgColor = Cloth, BorderColor = Stitch };
+        _cloth.SetCornerRadiusAll(Radius);
         var edge = new Panel { MouseFilter = MouseFilterEnum.Ignore };
         var stitched = new StyleBoxFlat { DrawCenter = false, BorderColor = Stitch };
         stitched.SetBorderWidthAll(3);
@@ -59,71 +49,59 @@ public partial class TournamentMat : Control
         edge.OffsetLeft = edge.OffsetTop = 6;
         edge.OffsetRight = edge.OffsetBottom = -6;
         AddChild(edge);
-        if (ResourceLoader.Exists(Shield)) _shield.Texture = GD.Load<Texture2D>(Shield);
-        AddChild(_shield);
-        var font = ResourceLoader.Exists(FontPath) ? GD.Load<Font>(FontPath) : null;
-        foreach (var label in _name)
-        {
-            label.MouseFilter = MouseFilterEnum.Ignore;
-            label.HorizontalAlignment = HorizontalAlignment.Center;
-            label.VerticalAlignment = VerticalAlignment.Center;
-            if (font is not null) label.AddThemeFontOverride("font", font);
-            label.AddThemeColorOverride("font_color", Colors.White);
-            label.AddThemeColorOverride("font_outline_color", Colors.Black);
-            AddChild(label);
-        }
-        Resized += Layout;
+        Resized += QueueRedraw;
     }
 
     /// <summary>Shows the event's name on the crest: its first word above, the rest below.</summary>
     public void SetName(string name)
     {
         var words = name.ToUpperInvariant().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-        _name[0].Text = words.ElementAtOrDefault(0) ?? "";
-        _name[1].Text = words.ElementAtOrDefault(1) ?? "";
-        Layout();
+        _name[0] = words.ElementAtOrDefault(0) ?? "";
+        _name[1] = words.ElementAtOrDefault(1) ?? "";
+        QueueRedraw();
     }
 
     /// <summary>Where the band crosses the mat, from its top (in pixels): the line between the two players' halves.</summary>
     public void SetLine(float y)
     {
         _line = y;
-        Layout();
+        QueueRedraw();
     }
 
     /// <summary>The crest and band keep their size against the table (the board), whatever the mat's.</summary>
     private float Scale => (GetParent() as Control is { Size.Y: > 0 } table ? table.Size.Y : Size.Y) / Reference;
 
-    private void Layout()
+    /// <summary>
+    /// The cloth, the band and the crest, in that order, in one drawing (a cloth that clipped the band as a child drew
+    /// it in a pass of its own, over the crest). The band crosses the mat's middle, clear of its rounded corners.
+    /// </summary>
+    public override void _Draw()
     {
-        float k = Scale;
-        _band.Position = Vector2.Zero;
-        _band.Size = Size;
-        _band.QueueRedraw();
+        var all = new Rect2(Vector2.Zero, Size);
+        DrawStyleBox(_shadow, all);
+        DrawStyleBox(_cloth, all);
+        float k = Scale, band = k * BandScale, y = _line - Bands.Sum(b => b.Size) * band / 2;
+        foreach (var (size, color) in Bands)
+        {
+            DrawRect(new Rect2(0, y, Size.X, size * band), color);
+            y += size * band;
+        }
         // The crest: the shield centered on the band, the name's two lines centered on the shield.
         float height = 286 * k;
-        float width = _shield.Texture is { } t ? height * t.GetWidth() / t.GetHeight() : height * 0.8f;
-        _shield.Size = new Vector2(width, height);
-        _shield.Position = new Vector2((Size.X - width) / 2, _line - height / 2);
-        int size = Math.Max(8, (int)(height * 0.30f));
+        if (_shieldArt is { } art)
+        {
+            float width = height * art.GetWidth() / art.GetHeight();
+            DrawTextureRect(art, new Rect2((Size.X - width) / 2, _line - height / 2, width, height), false);
+        }
+        int fontSize = Math.Max(8, (int)(height * 0.30f)), outline = Math.Max(3, (int)(height * 0.05f));
         float step = height * 0.24f;
         for (int i = 0; i < _name.Length; i++)
         {
-            var label = _name[i];
-            label.AddThemeFontSizeOverride("font_size", size);
-            label.AddThemeConstantOverride("outline_size", Math.Max(3, (int)(height * 0.05f)));
-            label.Size = new Vector2(Size.X, size * 1.2f);
-            label.Position = new Vector2(0, _line + (i - 0.5f) * step - label.Size.Y / 2 + height * 0.02f);
-        }
-    }
-
-    private void DrawBand()
-    {
-        float k = Scale * BandScale, total = Bands.Sum(b => b.Size) * k, y = _line - total / 2;
-        foreach (var (size, color) in Bands)
-        {
-            _band.DrawRect(new Rect2(0, y, Size.X, size * k), color);
-            y += size * k;
+            if (_name[i].Length == 0) continue;
+            float middle = _line + (i - 0.5f) * step + height * 0.02f;
+            var baseline = new Vector2(0, middle + (_font.GetAscent(fontSize) - _font.GetDescent(fontSize)) / 2);
+            DrawStringOutline(_font, baseline, _name[i], HorizontalAlignment.Center, Size.X, fontSize, outline, Colors.Black);
+            DrawString(_font, baseline, _name[i], HorizontalAlignment.Center, Size.X, fontSize, Colors.White);
         }
     }
 }

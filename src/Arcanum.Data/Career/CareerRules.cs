@@ -564,6 +564,12 @@ public static partial class CareerRules
 
     private static readonly string[] Ordinals = { "first", "second", "third", "fourth" };
 
+    /// <summary>Whether an event's "when" is one <see cref="Happens"/> understands.</summary>
+    public static bool ValidWhen(string when) =>
+        when.Equals("daily", StringComparison.OrdinalIgnoreCase) || DateOnly.TryParseExact(when, "yyyy-MM-dd", out _)
+        || Enum.TryParse<DayOfWeek>(when, true, out _)
+        || Ordinals.Prepend("last").Any(o => when.StartsWith(o, StringComparison.OrdinalIgnoreCase) && Enum.TryParse<DayOfWeek>(when[o.Length..], true, out _));
+
     /// <summary>
     /// Whether an event starts on a day: its "when" is "daily", a day of the week, a weekday of the month ("firstFriday",
     /// "thirdSaturday", "lastSunday") or a date (2026-10-24); and the month is one of its months.
@@ -654,13 +660,18 @@ public static partial class CareerRules
     public static PrizeSpec? PrizeFor(EventSpec e, int wins, int place, bool online = false, int players = int.MaxValue) =>
         PrizesOf(e, online).FirstOrDefault(p => players >= p.MinPlayers && (p.Wins >= 0 ? wins >= p.Wins : p.Place == 0 || place <= p.Place));
 
-    /// <summary>An event's prizes: an online event's version against the computer pays its share (counts rounded down).</summary>
+    /// <summary>
+    /// An event's prizes: an online event's version against the computer pays its share (counts rounded down), unless
+    /// the event has prizes of its own for online play (then it pays those online and its prizes against the computer).
+    /// </summary>
     public static IReadOnlyList<PrizeSpec> PrizesOf(EventSpec e, bool online = false) =>
-        e.Online is { } o && !online
+        e.Online is { Prizes.Count: > 0 } own ? (online ? own.Prizes : e.Prizes)
+        : e.Online is { } o && !online
             ? e.Prizes.Select(p => p with
             {
                 Cash = (int)Math.Round(p.Cash * o.OfflineScale), Boosters = (int)Math.Floor(p.Boosters * o.OfflineScale),
                 Tokens = (int)Math.Floor(p.Tokens * o.OfflineScale), Reputation = (int)Math.Round(p.Reputation * o.OfflineScale),
+                Sealed = p.Sealed.Count == 0 ? p.Sealed : p.Sealed.Select(s => s with { Count = (int)Math.Floor(s.Count * o.OfflineScale) }).Where(s => s.Count > 0).ToList(),
             }).ToList()
             : e.Prizes;
 
@@ -671,7 +682,7 @@ public static partial class CareerRules
         var e = world.Event(enter.Event, state.Day) ?? throw new CareerRuleException("There is no such event.");
         if (Start(e, state.Day) is not { } start) throw new CareerRuleException($"{e.Name} isn't today.");
         if (enter.Online && e.Online is null) throw new CareerRuleException($"{e.Name} isn't played online.");
-        if (enter.Online && e.Kind != Draft) throw new CareerRuleException($"{e.Name} can't be played online yet (only drafts are).");
+        if (enter.Online && e.Kind is not (Draft or Constructed)) throw new CareerRuleException($"{e.Name} can't be played online yet (only drafts and constructed events are).");
         if (e.Online is { PvpOnly: true } && !enter.Online) throw new CareerRuleException($"{e.Name} is played online only.");
         if (Played(state, e, state.Day)) throw new CareerRuleException($"You already played {e.Name} today.");
         if (Tier(state, world) < e.MinTier) throw new CareerRuleException($"{e.Name} needs a {world.Content.Tiers[Math.Min(e.MinTier, world.Content.Tiers.Count - 1)].Name}'s reputation.");
@@ -754,6 +765,12 @@ public static partial class CareerRules
             state.Reputation += prize.Reputation;
             if (prize.Cash > 0) won.Add(Money(prize.Cash));
             if (prize.Boosters > 0) won.Add($"{prize.Boosters} {world.SetName(set)} booster{(prize.Boosters == 1 ? "" : "s")}");
+            foreach (var item in prize.Sealed)
+            {
+                var key = SealedKey(PrizeSet(item, e, entry, world), item.Kind);
+                state.AddSealed(key, item.Count);
+                won.Add($"{item.Count} {world.BoosterName(key)}{(item.Count == 1 ? "" : "s")}");
+            }
             if (prize.Tokens > 0) won.Add($"{prize.Tokens} qualification token{(prize.Tokens == 1 ? "" : "s")}");
             // An invitation to the next run of the event it qualifies for (after this run's last day).
             if (prize.Qualifies.Length > 0 && NextStart(world, prize.Qualifies, LastDay(e, entry.Start)) is { } next
@@ -767,6 +784,12 @@ public static partial class CareerRules
             + (won.Count > 0 ? $"; won {string.Join(", ", won)}." : "."));
         return new CareerResult(pool, prize?.Cash ?? 0);
     }
+
+    /// <summary>The set of a prize's boosters: its own, or the event's ("event": a draft's set) or the week's featured one.</summary>
+    public static string PrizeSet(SealedPrize item, EventSpec e, EventEntry entry, CareerWorld world) =>
+        (item.Set.Equals("event", StringComparison.OrdinalIgnoreCase) && e.Kind == Draft ? entry.Set
+            : item.Set.Equals("event", StringComparison.OrdinalIgnoreCase) || item.Set.Equals("featured", StringComparison.OrdinalIgnoreCase) ? world.FeaturedSet(entry.Day)
+            : item.Set).ToLowerInvariant();
 
     public static string Ordinal(int n) => n + (n % 100 is 11 or 12 or 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
 

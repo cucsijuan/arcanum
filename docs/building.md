@@ -75,11 +75,14 @@ Environment variables useful while developing and testing:
 | `ARCANUM_SUGGEST=1` | With `ARCANUM_OPEN_DECK`: the deck builder opens on the suggestions (commander decks, and decks in a format the module's deck search covers); with `ARCANUM_OPEN=career ARCANUM_CAREER_PAGE=decks`, the career deck desk does, for the first career deck |
 | `ARCANUM_DESK_FORMATS=<id>,<id>,...` | With `ARCANUM_OPEN=career ARCANUM_CAREER_PAGE=decks`: switches the first career deck's format to each id in turn (half a second apart) |
 | `ARCANUM_OPEN=career` | The main menu opens the career at once; `ARCANUM_CAREER_PAGE=<page>` then opens a page (`decks`, `event`, `enter` enters today's first event, paying with boosters for a draft that takes them, else cash; the full list is in `CareerScreen.cs`) |
+| `ARCANUM_CAREER_PAGE=online:<event id>` | With `ARCANUM_OPEN=career`: registers online for today's run of that event and opens it. The deck is a commander deck for commander events, the first other deck for constructed events, none for drafts (paid with boosters for a draft that takes them, else cash) |
+| `ARCANUM_CAREER_AUTO=online` | On an online event's screen, checks in as soon as check-in opens (once per run) |
 | `ARCANUM_CAREER_TABLE=<n>` | Every career match and event is played at the store's n-th table (from 1) |
 | `ARCANUM_CAREER_MATS=<mine>,<theirs>` | Career matches show those playmat ids on the two seats (`none` for no playmat) |
 | `ARCANUM_MODULE_PATH=<dir>` | Use a content module from this folder |
 | `ARCANUM_UPDATE_FROM=<version>` | The update check runs as if the game were that version (shows the update dialog; outside an exported build it offers the download page) |
 | `ARCANUM_OPEN=online` | The main menu opens the online screen at once (exported builds can't be given a scene) |
+| `ARCANUM_SHOTS=<folder>[,seconds]` | Saves a numbered picture of the screen (`0001.png`, `0002.png`…) every 20 s, or every `seconds`, while the game plays on. Unlike `ARCANUM_SHOT` it doesn't quit (long test runs) |
 
 Online play can be tested with two instances on one machine (run `res://scenes/online/Online.tscn`; add
 `ARCANUM_AUTOPLAY=1` so the players play themselves):
@@ -93,6 +96,12 @@ Online play can be tested with two instances on one machine (run `res://scenes/o
 | `ARCANUM_ONLINE_BROWSE=1` | Joins the first lobby the lobby browser finds |
 | `ARCANUM_ONLINE_DECK=<n>` | Deck to bring (n-th in the list) |
 | `ARCANUM_ONLINE_REJOIN=1` | Gets back into the online game this device last joined |
+
+Online career events can be tested with a local career service (`ARCANUM_CAREER_SERVICE=http://127.0.0.1:<port>`). Give each
+instance its own `HOME` (its own user data and device account; add `ARCANUM_EOS_DEVICE=1`). The game draws nothing while
+the desktop is locked or the windows are hidden, so screenshots come out blank: run each instance in its own virtual
+compositor, e.g. `kwin_wayland --virtual --xwayland --width 1280 --height 720 --socket <name> --exit-with-session <script>`,
+with the game started with `--display-driver x11`.
 
 ## Online play
 A player hosts from the Online screen and gives the others an address. The host listens on TCP port 47013 (by

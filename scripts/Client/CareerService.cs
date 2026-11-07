@@ -75,6 +75,7 @@ public sealed partial class CareerService
         foreach (var error in seasonErrors) GD.PushWarning($"Career: {error}");
         _contentId = $"{module.Manifest.Id} {module.Manifest.Version}";
         App.Instance.Online.EventFinished += OnOnlineEventFinished;
+        App.Instance.Online.EventDayOver += OnOnlineDayOver;
         Load();
         UpdateSeason();
     }
@@ -413,6 +414,9 @@ public sealed partial class CareerService
         () => EnteredEvent is { RoundMinutes: > 0 } or { TournamentMat: true } ? EnteredEvent!.Name : null,
         () => EnteredEvent?.Name);
 
+    /// <summary>The format of the constructed event entered, or null.</summary>
+    public Arcanum.Data.Formats.FormatRules? ConstructedFormat => EnteredEvent is { Kind: CareerRules.Constructed } e ? World!.FormatOf(e) : null;
+
     /// <summary>The event entered, if any (without loading or setting up its running event).</summary>
     private EventSpec? EnteredEvent => HasCareer && State.Event is { } entry ? World!.Event(entry.Id, entry.Day) : null;
 
@@ -523,6 +527,8 @@ public sealed partial class CareerService
             }
             seats.Add(new EventSeat { Name = name, Deck = deck, Skill = skill });
         }
+        // A constructed event's decks are registered as brought: between games they change only with these cards.
+        foreach (var seat in seats.Where(s => s.Deck is not null && spec.Kind == CareerRules.Constructed)) seat.Registered = DeckList.Parse(seat.Deck!.Export());
         var ev = new LimitedEvent
         {
             Mode = spec.Kind == CareerRules.Draft ? LimitedMode.Draft : LimitedMode.Sealed,

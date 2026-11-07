@@ -2,6 +2,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Arcanum.Data.Career;
+using Arcanum.Data.Decks;
 using Arcanum.Data.Limited;
 using Godot;
 
@@ -24,6 +25,103 @@ public sealed partial class CareerService
         /// <summary>The player's result at the table and the cards they drafted, kept when the event ended.</summary>
         public OwnResult? Result { get; set; }
         public List<string>? Pool { get; set; }
+
+        /// <summary>A two-day event's first day is over: the player's seat token (to get back in), when the second day begins, and whether they're out (the cut).</summary>
+        public string? SeatToken { get; set; }
+        public DateTime? NextDay { get; set; }
+        public bool Out { get; set; }
+    }
+
+    /// <summary>
+    /// The first day of the two-day event at the table is over: the player keeps their seat's token to come back the
+    /// next day (unless they missed the cut), and its host sends the first day's save to the career service, which
+    /// hands it to whoever hosts the second day.
+    /// </summary>
+    private async void OnOnlineDayOver(string token, LimitedEvent ev, int seat, DateTime nextDay)
+    {
+        if (Online is not { Table: { } id, SeatToken: null } online) return;
+        online.SeatToken = token;
+        online.NextDay = nextDay;
+        online.Out = ev.Dropped.Contains(seat);
+        SaveOnline(online);
+        if (App.Instance.Online.HostedTable?.Id == id && App.Instance.Online.HostedTableSave is { } save)
+            for (int attempt = 0; attempt < 30; attempt++)
+            {
+                try
+                {
+                    using var service = await ServiceAsync();
+                    if (service is not null)
+                    {
+                        using var reply = await service.Http.PostAsJsonAsync($"events/tables/{Uri.EscapeDataString(id)}/day", new { save }, Web);
+                        if (reply.IsSuccessStatusCode) break;
+                        GD.Print($"Career: the first day couldn't be saved: {await ErrorOf(reply)}");
+                    }
+                }
+                catch (Exception e) when (e is System.Net.Http.HttpRequestException or TaskCanceledException)
+                {
+                    GD.Print($"Career: the first day couldn't be saved yet: {e.Message}");
+                }
+                await Task.Delay(TimeSpan.FromSeconds(10));
+            }
+        App.Instance.Online.Leave();
+        App.Instance.GoTo(App.EventScene);
+    }
+
+    /// <summary>
+    /// A player who wasn't at the table when its event ended (out at the cut, or away): their result is the one the
+    /// host reported for them, reported back as theirs.
+    /// </summary>
+    public async Task<string?> AdoptHostResultAsync(TableView view)
+    {
+        if (Online is not { Result: null } online || view.HostResult is not { } row) return null;
+        online.Result = new OwnResult(row.Wins, row.Losses, row.Draws, row.Place);
+        online.Pool ??= new List<string>();
+        SaveOnline(online);
+        return await ReportTableAsync(view);
+    }
+
+    /// <summary>
+    /// How a game of the career event entered online looks on the board, as offline: the event's table, a big
+    /// tournament's mat with its crest, and the broadcast overlay with the round's clock and the players' plates (this
+    /// player's first). Null when no such game is being played.
+    /// </summary>
+    public MatchSetup? OnlineEventLook()
+    {
+        if (EnteredEvent is not { } spec || State.Event is not { Online: true } || App.Instance.Online.EventSession is not { Current: { } ev } session) return null;
+        int me = session.Seat;
+        int round = ev.Rounds.FindLastIndex(r => r.Any(m => m.Involves(me) && m.SeatB is not null));
+        if (round < 0) return null;
+        var match = ev.Rounds[round].First(m => m.Involves(me));
+        int opponent = match.Opponent(me)!.Value;
+        BroadcastPlate Plate(int seat)
+        {
+            var (w, l, d) = Record(ev, seat, match);
+            return new BroadcastPlate(ev.Seats[seat].Name, d > 0 ? $"{w}-{l}-{d}" : $"{w}-{l}", match.WinsOf(seat));
+        }
+        return new MatchSetup(Array.Empty<GameSession.Seat>(), 20)
+        {
+            Label = $"{spec.Name} · {LimitedService.RoundName(ev, round)}",
+            Table = EventTable(spec),
+            TournamentMat = spec.TournamentMat ? spec.Name : null,
+            Broadcast = spec.RoundMinutes > 0 || spec.TournamentMat
+                ? new RoundBroadcast(spec.Name, LimitedService.RoundName(ev, round), ev.Deadline(match), new[] { Plate(me), Plate(opponent) }, ev.BestOf)
+                : null,
+        };
+    }
+
+    /// <summary>A seat's record in the matches before <paramref name="current"/> (byes are wins).</summary>
+    private static (int Wins, int Losses, int Draws) Record(LimitedEvent ev, int seat, EventMatch current)
+    {
+        int wins = 0, losses = 0, draws = 0;
+        foreach (var m in ev.Rounds.SelectMany(r => r).Where(m => m != current && m.Done && m.Involves(seat)))
+        {
+            if (m.SeatB is null) { wins++; continue; }
+            int mine = m.WinsOf(seat), theirs = m.WinsOf(m.Opponent(seat)!.Value);
+            if (mine > theirs) wins++;
+            else if (mine < theirs) losses++;
+            else draws++;
+        }
+        return (wins, losses, draws);
     }
 
     /// <summary>The online event this device played ended: its result is kept and reported to the career service.</summary>
@@ -66,12 +164,12 @@ public sealed partial class CareerService
     }
 
     /// <summary>Enters today's event to play it online, then lets the career service check the entry (check-in needs it).</summary>
-    public async Task EnterOnlineAsync(EventSpec spec, string pay)
+    public async Task EnterOnlineAsync(EventSpec spec, string pay, DeckList? deck = null)
     {
         Events.Abandon();
         if (File.Exists(PodPath)) File.Delete(PodPath);
         _pod = null;
-        Do(new EnterEvent(Now, spec.Id, pay, Online: true));
+        Do(new EnterEvent(Now, spec.Id, pay, deck?.Export(), Online: true));
         SaveOnline(new OnlineEntry());
         await SyncAsync();
     }
@@ -147,8 +245,30 @@ public sealed partial class CareerService
     public void HostTable(TableView view)
     {
         if (CurrentEvent() is not var (spec, entry, _)) return;
-        App.Instance.Online.HostCareerTable(view.Table, $"{spec.Name} · online table",
-            people => BuildEvent(spec, entry, people, view.Table.Seats, view.Table.Seed).Event);
+        // A two-day event: its first day ends with the cut (or halfway through the Swiss rounds) and goes on the next day.
+        int dayEnds = spec.Days > 1 ? spec.CutAfter > 0 ? spec.CutAfter : (CareerRules.SwissRounds(spec, view.Table.Seats) + 1) / 2 : 0;
+        App.Instance.Online.HostCareerTable(view.Table, $"{spec.Name} · online table", people =>
+        {
+            // A constructed event: each person plays the deck the career service has for them (from their checked career).
+            if (spec.Kind == CareerRules.Constructed)
+                people = people.Select((seat, i) => view.Table.Decks?.ElementAtOrDefault(i) is { Length: > 0 } deck
+                    ? new EventSeat { Name = seat.Name, IsHuman = seat.IsHuman, Deck = DeckList.Parse(deck) } : seat).ToList();
+            return BuildEvent(spec, entry, people, view.Table.Seats, view.Table.Seed).Event;
+        }, dayEnds, spec.Days > 1 ? view.Table.Start.AddDays(1) : null);
+    }
+
+    /// <summary>The second day: this player hosts it now, going on from the first day's save.</summary>
+    public bool ResumeTable(TableView view)
+    {
+        if (CurrentEvent() is not var (spec, _, _) || Online is not { SeatToken: { } token } || view.Resume is not { } save) return false;
+        return App.Instance.Online.ResumeCareerTable(view.Table, $"{spec.Name} · online table", save, view.Table.People[view.Seat].Name, token);
+    }
+
+    /// <summary>The second day, hosted by another player: back into this player's seat through the table's invite code.</summary>
+    public void RejoinTable(TableView view)
+    {
+        if (view.Table.Code is not { } code || Online is not { SeatToken: { } token }) return;
+        App.Instance.Online.RejoinCareerTable(view.Table.People[view.Seat].Name, code, token);
     }
 
     /// <summary>Tells the service the hosted table's invite code (once the lobby is published); true when it took it.</summary>

@@ -275,16 +275,23 @@ public partial class CareerScreen
         if (e.EntryBoosters > 0) entry.Add($"{e.EntryBoosters} boosters of the set");
         if (e.EntryTokens > 0) entry.Add($"{e.EntryTokens} qualification token{(e.EntryTokens == 1 ? "" : "s")}");
         yield return "Entry: " + string.Join(" or ", entry);
-        var prizes = CareerRules.PrizesOf(e).Select(p => (p.Wins >= 0 ? $"{p.Wins} wins" : p.Place switch { 0 => "everyone else", 1 => "1st", _ => $"top {p.Place}" })
+        List<string> Prizes(IReadOnlyList<PrizeSpec> list) => list.Select(p => (p.Wins >= 0 ? $"{p.Wins} wins" : p.Place switch { 0 => "everyone else", 1 => "1st", _ => $"top {p.Place}" })
             + (p.MinPlayers > 0 ? $" (with {p.MinPlayers}+ players)" : "") + ": "
             + string.Join(", ", new[]
             {
                 p.Cash > 0 ? CareerRules.Money(p.Cash) : null, p.Boosters > 0 ? $"{p.Boosters} booster{(p.Boosters == 1 ? "" : "s")}" : null,
+                p.Sealed.Count > 0 ? string.Join(", ", p.Sealed.Select(b => $"{b.Count} {World.BoosterName(CareerRules.SealedKey(
+                    b.Set.Equals("event", StringComparison.OrdinalIgnoreCase) && e.Kind == CareerRules.Draft ? CareerRules.EventSet(World, e, day)
+                    : b.Set.Equals("featured", StringComparison.OrdinalIgnoreCase) || b.Set.Equals("event", StringComparison.OrdinalIgnoreCase) ? World.FeaturedSet(day) : b.Set, b.Kind))}{(b.Count == 1 ? "" : "s")}")) : null,
                 p.Tokens > 0 ? $"{p.Tokens} token{(p.Tokens == 1 ? "" : "s")}" : null,
                 p.Qualifies.Length > 0 ? $"an invitation to {World.Event(p.Qualifies, day)?.Name ?? p.Qualifies}" : null,
                 p.Reputation > 0 ? $"{p.Reputation} reputation" : null,
             }.OfType<string>())).ToList();
-        if (prizes.Count > 0) yield return "Prizes: " + string.Join(" · ", prizes);
+        // An event with online prizes of its own lists both.
+        bool both = e.Online is { Prizes.Count: > 0 };
+        var prizes = Prizes(CareerRules.PrizesOf(e));
+        if (prizes.Count > 0) yield return (both ? "Prizes against the computer: " : "Prizes: ") + string.Join(" · ", prizes);
+        if (both) yield return "Prizes online against people: " + string.Join(" · ", Prizes(CareerRules.PrizesOf(e, online: true)));
         if (e.MinTier > 0) yield return $"For {World.Content.Tiers[Math.Min(e.MinTier, World.Content.Tiers.Count - 1)].Name}s and up";
         if (OnlineText(e, day) is { Length: > 0 } online) yield return online.Trim();
     }
@@ -307,7 +314,7 @@ public partial class CareerScreen
             body.AddChild(CareerStyle.Text("It's by invitation, and you aren't qualified for it.", 19, CareerStyle.Bad, wrap: true));
             return;
         }
-        bool online = e.Online is not null && e.Kind == CareerRules.Draft;
+        bool online = e.Online is not null && e.Kind is CareerRules.Draft or CareerRules.Constructed;
         if (e.Online is { PvpOnly: true } && !online) { body.AddChild(CareerStyle.Text("It's played online only.", 19, CareerStyle.InkDim)); return; }
         if (CareerRules.Tier(State, World) < e.MinTier) { body.AddChild(CareerStyle.Text("Your reputation isn't high enough yet.", 19, CareerStyle.Bad)); return; }
 
@@ -326,7 +333,7 @@ public partial class CareerScreen
         {
             // An online event: at a table online with people (the career service seats them), and, unless it's online
             // only, at the store against the computer.
-            if (online) links.AddChild(Link($"Register online ({price})", async () => await Career.EnterOnlineAsync(e, pay)));
+            if (online) links.AddChild(Link($"Register online ({price})", async () => await Career.EnterOnlineAsync(e, pay, deck?.Deck)));
             if (e.Online is not { PvpOnly: true }) links.AddChild(Link($"Register ({price}) and Go to LGS", () => { Career.Enter(e, pay, deck?.Deck); return Task.CompletedTask; }));
 
             Button Link(string text, Func<Task> enter)

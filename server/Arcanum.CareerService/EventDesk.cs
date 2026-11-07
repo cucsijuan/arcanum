@@ -15,6 +15,9 @@ public sealed record TableResponse(string Status, int CheckedIn, TableView? Tabl
 
 public sealed record CodeRequest(string Code);
 
+/// <summary>A two-day event's first day, as its host saved it.</summary>
+public sealed record DaySave(string Save);
+
 /// <summary>
 /// Online career events at the service (see <see cref="OnlineEvents"/> for the rules): check-in for a start, the tables
 /// made when it starts, their lobby codes, the host's report and each person's own result, and the leaderboards made
@@ -39,6 +42,9 @@ public sealed class EventDesk
             CREATE TABLE IF NOT EXISTS tables (id TEXT PRIMARY KEY, start TEXT NOT NULL, data TEXT NOT NULL, report TEXT);
             CREATE TABLE IF NOT EXISTS results (tableid TEXT NOT NULL, player TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY (tableid, player));
             """);
+        // A two-day event's first day, saved by its host (a column added after the first tables were made).
+        using var columns = CareerStore.Command(db, "SELECT COUNT(*) FROM pragma_table_info('tables') WHERE name = 'saved'");
+        if (Convert.ToInt32(columns.ExecuteScalar()) == 0) CareerStore.Execute(db, "ALTER TABLE tables ADD COLUMN saved TEXT");
     }
 
     private static string Utc(DateTime time) => time.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
@@ -82,8 +88,14 @@ public sealed class EventDesk
                     while (rows.Read()) people.Add(new CheckIn(rows.GetString(0), rows.GetString(1), DateTime.Parse(rows.GetString(2), null, System.Globalization.DateTimeStyles.AdjustToUniversal)));
                 var seed = BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(8));
                 using var tx = db.BeginTransaction();
-                foreach (var table in OnlineEvents.Seat(e, day, start, people, Math.Max(2, e.Players), seed))
+                foreach (var seatedTable in OnlineEvents.Seat(e, day, start, people, OnlineEvents.Seats(e, seed), seed))
+                {
+                    // A constructed event: the deck each person entered with, as their checked career has it.
+                    var table = e.Kind == CareerRules.Constructed
+                        ? seatedTable with { Decks = seatedTable.People.Select(p => _store.Career(db, p.Player)?.State.Event?.Deck ?? "").ToList() }
+                        : seatedTable;
                     CareerStore.Execute(db, "INSERT INTO tables (id, start, data) VALUES ($i, $s, $d)", ("$i", table.Id), ("$s", Utc(start)), ("$d", JsonSerializer.Serialize(table, Json)));
+                }
                 CareerStore.Execute(db, "INSERT INTO seated (event, start) VALUES ($e, $s)", ("$e", ev), ("$s", Utc(start)));
                 tx.Commit();
             }
@@ -108,6 +120,21 @@ public sealed class EventDesk
         if (found.Table is not { } table || OnlineEvents.HostAt(table, now) != player) return Results.BadRequest(new { error = "You don't host this table." });
         if (code.Length is < 4 or > 16) return Results.BadRequest(new { error = "That's no invite code." });
         Save(db, table with { Code = code, Host = player });
+        return Results.Ok();
+    }
+
+    /// <summary>
+    /// The host's save of a two-day event's first day: the table goes on the next day in the same slot, hosted again
+    /// (its host first, as on the first day) from this save.
+    /// </summary>
+    public IResult SaveDay(string player, string id, string save)
+    {
+        using var db = _store.Open();
+        var found = Tables(db, "id = $i", ("$i", id)).FirstOrDefault();
+        if (found.Table is not { Code: not null, Round: 1 } table || table.Host != player) return Results.BadRequest(new { error = "You don't host this table's first day." });
+        if (save.Length is 0 or > 8_000_000) return Results.BadRequest(new { error = "That's no saved event." });
+        CareerStore.Execute(db, "UPDATE tables SET saved = $v WHERE id = $i", ("$v", save), ("$i", id));
+        Save(db, table with { Round = 2, Code = null, Host = table.People[0].Player });
         return Results.Ok();
     }
 
@@ -161,10 +188,20 @@ public sealed class EventDesk
     private TableView View(SqliteConnection db, (OnlineTable Table, TableReport? Report) found, string player, DateTime now)
     {
         var host = OnlineEvents.HostAt(found.Table, now);
-        var table = found.Table with { Host = host };
+        // The people's decks are hidden information: only the host, who runs the event, gets them.
+        var table = found.Table with { Host = host, Decks = player == host ? found.Table.Decks : null };
         var own = Own(db, table.Id);
-        return new TableView(table, table.People.ToList().FindIndex(p => p.Player == player), OnlineEvents.Confirmed(found.Table, found.Report, own, player),
-            own.ContainsKey(player) || (found.Report is not null && player == found.Table.Host));
+        int seat = table.People.ToList().FindIndex(p => p.Player == player);
+        // The second day's host resumes the event from the first day's save.
+        string? resume = null;
+        if (table is { Round: 2, Code: null } && player == host && now >= table.DayStart)
+        {
+            using var read = CareerStore.Command(db, "SELECT saved FROM tables WHERE id = $i", ("$i", table.Id));
+            resume = read.ExecuteScalar() as string;
+        }
+        return new TableView(table, seat, OnlineEvents.Confirmed(found.Table, found.Report, own, player),
+            own.ContainsKey(player) || (found.Report is not null && player == found.Table.Host), resume,
+            found.Report?.Results.FirstOrDefault(r => r.Seat == seat));
     }
 
     private void Save(SqliteConnection db, OnlineTable table) =>

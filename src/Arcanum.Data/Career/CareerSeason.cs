@@ -72,9 +72,9 @@ public sealed record CareerSeason
                 known.Add(e.Id);
                 string where = $"{at}, event '{e.Id}'";
                 bool date = DateOnly.TryParseExact(e.When, "yyyy-MM-dd", out var day);
-                if (!date && !e.When.Equals("lastSunday", StringComparison.OrdinalIgnoreCase) && !e.When.Equals("daily", StringComparison.OrdinalIgnoreCase)
-                    && !Enum.TryParse<DayOfWeek>(e.When, true, out _))
-                    problems.Add($"{where}: \"when\" must be \"daily\", a day of the week, \"lastSunday\" or a date (2026-10-24).");
+                if (!CareerRules.ValidWhen(e.When))
+                    problems.Add($"{where}: \"when\" must be \"daily\", a day of the week, a weekday of the month (\"thirdSaturday\", \"lastSunday\") or a date (2026-10-24).");
+                if (e.Months.Any(m => m is < 1 or > 12)) problems.Add($"{where}: its months must be 1 to 12.");
                 if (date && (day < change.From || change.Until is { } until && day > until)) problems.Add($"{where}: its date is outside the change's days.");
                 if (e.Kind is not (CareerRules.Draft or CareerRules.Constructed or CareerRules.Commander)) problems.Add($"{where}: unknown kind '{e.Kind}'.");
                 if (e.Kind == CareerRules.Draft && !e.Set.Equals("featured", StringComparison.OrdinalIgnoreCase) && !Sold(e.Set))
@@ -86,8 +86,20 @@ public sealed record CareerSeason
                 }
                 if (e.Kind == CareerRules.Commander && e.Decks.Count == 0) problems.Add($"{where}: Commander events need the computer players' \"decks\".");
                 foreach (var deck in e.Decks.Where(d => !decks.Contains(d))) problems.Add($"{where}: there is no deck '{deck}'.");
-                if (e.Players < 2 || e.Rounds < 0 || e.BestOf < 1 || e.Entry < 0) // 0 rounds: Swiss rounds by attendance problems.Add($"{where}: players, rounds, best of or entry make no sense.");
+                // 0 rounds: Swiss rounds by attendance.
+                if (e.Players < 2 || e.Rounds < 0 || e.BestOf < 1 || e.Entry < 0) problems.Add($"{where}: players, rounds, best of or entry make no sense.");
                 if (e.Prizes.Count == 0) problems.Add($"{where}: it has no prizes.");
+                foreach (var item in e.Prizes.Concat(e.Online?.Prizes ?? Array.Empty<PrizeSpec>()).SelectMany(p => p.Sealed))
+                {
+                    bool own = !item.Set.Equals("featured", StringComparison.OrdinalIgnoreCase) && !item.Set.Equals("event", StringComparison.OrdinalIgnoreCase);
+                    if (item.Count < 1) problems.Add($"{where}: a prize gives at least one booster of a kind.");
+                    if (own && !(sets.TryGetValue(item.Set, out var set) && set.BoosterOf(string.IsNullOrEmpty(item.Kind) ? null : item.Kind) is not null))
+                        problems.Add($"{where}: there are no '{item.Set}' {(item.Kind.Length > 0 ? item.Kind + " " : "")}boosters to give.");
+                    // The featured set changes week to week: every set that can be featured must have that kind.
+                    if (!own && item.Kind.Length > 0)
+                        foreach (var code in content.Featured.Where(c => !(sets.TryGetValue(c, out var f) && f.BoosterOf(item.Kind) is not null)))
+                            problems.Add($"{where}: '{code}' can be featured but has no {item.Kind} boosters to give.");
+                }
                 if (e.Online is { } online)
                 {
                     if (online.Starts.Count == 0) problems.Add($"{where}: an online event needs its start times.");

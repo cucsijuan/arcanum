@@ -119,6 +119,7 @@ public sealed partial class Game
                 .SelectMany(c => State.OpponentsOf(player).Where(d => AttackForbidden(c, d) || AttackForbiddenWithPlaneswalkers(c, d)).Select(d => new AttackRestrictionView(c.Id, d))).ToList(),
             Monarch = State.Monarch,
             AttackRequest = player == State.ActivePlayer ? _attackRequest : null,
+            TimeCalledAt = TimeCalledAt,
         };
 
     private IPlayerController ControllerOf(PlayerId player) => _controllers[player.Value];

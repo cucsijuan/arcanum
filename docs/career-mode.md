@@ -86,7 +86,7 @@ Every event is defined by data (built-in default schedule in the content module,
 | `format` | constructed events: a module format id (`standard`, `modern`…); empty: any cards (casual). Commander events use the Commander format |
 | `set` | set code for limited events / featured set |
 | `entry` | cash, boosters, or a qualification token |
-| `prizes` | by place or by record (3-0, 2-1…): cash, boosters, promo, qualification token, rank points, reputation; `minPlayers` (only with that attendance); `qualifies` (an event id: invites the player to that event's next run) |
+| `prizes` | by place or by record (3-0, 2-1…): cash, boosters, promo, qualification token, rank points, reputation; `sealed` (boosters of another set or kind: `set` a code, `featured` or `event`; `kind`; `count`); `minPlayers` (only with that attendance); `qualifies` (an event id: invites the player to that event's next run) |
 | `minTier` | reputation tier required |
 | `modes` | `pve`, `pvp`, or both; `pveRewardScale` (e.g. 0.5) |
 | `rounds`, `bestOf`, `podSize` | Swiss rounds, Bo1/Bo3, Commander pod of 4. `rounds: 0`: rounds by attendance (2 for up to 4 players, 3 up to 8, 4 up to 16, 5 up to 32, 6 up to 64, 7 up to 128, 8 up to 226, 9 up to 409, 10 beyond) |
@@ -101,6 +101,12 @@ An event's format decides which decks it takes. Entering checks the player's dec
 the same check when a journal is replayed). The computer players bring module decks legal in the format, any of their
 own when none is.
 
+Between the games of a match in a constructed event, the deck may change only with the cards it was registered with
+(rule 100.4a). The registered deck is the main deck and sideboard as entered; basic lands are free. The main deck keeps
+the format's minimum size, and the sideboard holds at most the format's sideboard maximum. The games use the deck's
+sideboard section. The event screen's *Sideboard* button opens the deck desk for this (offline and online). Leaving the
+desk with a deck that doesn't fit keeps the previous one.
+
 Default week (illustrative):
 
 | Day | Event | Entry | Notes |
@@ -111,14 +117,14 @@ Default week (illustrative):
 | Saturday | Weekly tournament | $20 | constructed, Swiss, rank points |
 | Last Sunday | Monthly championship | $25 | local, any cards, open to any reputation, no qualification; first place $150 and 5 boosters; earns the money for the regional qualifier |
 | First weekend, monthly (Friday to Sunday) | Regional qualifier | entry fee (`career/career.json`) | offline, three days; the winner (and the finalist with 33 or more players) is invited to the regional championship; see *Circuit* |
-| Third weekend of March, June, September, December (Saturday and Sunday) | Regional championship | entry fee (`career/career.json`) | by invitation; offline, two days; 14 Swiss rounds with a cut after round 8; online slots are design (C6, see *Circuit*) |
+| Third weekend of March, June, September, December (Saturday and Sunday) | Regional championship | entry fee (`career/career.json`) | by invitation; offline, two days; 14 Swiss rounds with a cut after round 8; the online version is built (C6, see *Circuit*) |
 | Seasonal | International tournament | qualification token | PvP only (config); not built yet (C6) |
 
 Offline, events are always PvE. An event with `online` (start times UTC, check-in minutes, `pvpOnly`, `offlineScale`)
 is also played online at those times (empty seats get computer players); unless it's PvP only, it can be played
-against the computer any time of its day for `offlineScale` of the prizes. Only draft events can be entered online
-for now. A player who entered online can also play it against the computer at once, for that share (not for PvP-only
-events, which show as online only).
+against the computer any time of its day for `offlineScale` of the prizes. Draft and constructed events can be entered
+online (Commander events can't yet). A player who entered online can also play it against the computer at once, for
+that share (not for PvP-only events, which show as online only).
 
 **Prerelease:** when the content module gains a new set, a sealed prerelease event for it runs for a week. A natural
 hook: new content → new event.
@@ -164,8 +170,11 @@ shows them and the pointer's position; Ctrl+click copies a point).
   band across the line between the two players (outside in: black, white, black, then red, the same on both sides). Its
   crest in the middle is the shield picture (`kit/career/tournament-shield.png`) with the event's name in front, the
   first word above and the rest below, in Bebas Neue (OFL, `fonts/bebas-neue`), white with a black outline. The crest is
-  drawn at runtime, so any event name fits. The event screen shows this table too. The table an event is played at comes
-  from `CareerService.EventTable`; the board draws the mat from `MatchSetup.TournamentMat` (`TournamentMat.cs`).
+  drawn at runtime, so any event name fits. The mat's cloth, band and crest are one drawing, in that order, so the band
+  never covers the crest. At this table the turn border and glow of each player's area leave out their side along the
+  line between the players, so they don't cross the crest. The event screen shows this table too. The table an event
+  is played at comes from `CareerService.EventTable`; the board draws the mat from `MatchSetup.TournamentMat`
+  (`TournamentMat.cs`).
 - **The broadcast overlay:** on the games of an event with `roundMinutes` or `tournamentMat` (`BroadcastOverlay.cs`). A
   clock tab sits on the line between the two players, at the right edge of the mat, with the event's name above it. The
   tab shows the round's name ("Round 3", or "Quarterfinals" in the playoff) and the time left (mm:ss). After time is
@@ -291,16 +300,17 @@ than in the drop. Their art and finishes are the real ones (printings with their
 
 ### Scheduled online events
 
-Built (C5) for draft events with an `online` spec. Other kinds can't be entered online yet (constructed and Commander
-online come later).
+Built (C5) for draft events and constructed events (not Commander) with an `online` spec.
 
 - **Entering:** *Register online* on the event's forum post. It needs a career the career service has checked (see
   *Trust*). The entry is an `EnterEvent` with `Online`.
 - **Check-in:** from `online.checkIn` minutes before each start (default 30) until the start, for the start's time
   in `online.starts` (UTC, `HH:mm`). `POST /events/checkin` takes the event, the day and the name the player plays under
-  (32 characters at most). A start that has begun can't be checked in for.
+  (32 characters at most). A start that has begun can't be checked in for. The event screen refreshes itself when
+  check-in opens or closes, so its check-in button appears and goes without leaving the screen.
 - **Seating:** the first request for the table after the start (`GET /events/table`) seats everyone checked in for that
-  start, once. The people fill the fewest tables of `players` seats (at least 2), shared out evenly in check-in order;
+  start, once. The people fill the fewest tables of the event's attendance seats (`OnlineEvents.Seats`: drawn from the
+  seed as offline, at least 2), shared out evenly in check-in order;
   names are made unique at a table. Each table gets a random seed (the event's boosters and pairings), kept with it.
   Before the start the answer is the number checked in. Someone who wasn't checked in for that start gets no table
   (`missed`).
@@ -318,12 +328,41 @@ online come later).
 - **Into the career:** the confirmed result is written as a `FinishEvent` that names the table, its seats and whether
   another person played (`Pvp`). The career service seals it only when it is that confirmed result.
 - **Prizes:** the online prizes are paid only when another person played at the table. A table of one pays the offline
-  share.
+  share. An event with its own `online.prizes` pays those online, and its `prizes` against the computer, unscaled.
+  Without them, the online prizes are the event's `prizes`, and the offline share is `offlineScale` of them. Sealed
+  boosters (`sealed`) are paid like the other prizes.
+- **Constructed:** the deck is the one the player entered with (their checked career's deck). The service puts each
+  person's deck on the table (`OnlineTable.Decks`), and only the host receives the decks, since they are hidden
+  information.
+- **Round clock:** the host's game keeps the round's time. When the time is up, the host calls time on each game in
+  progress (the same procedure as *Round time*), and no new game begins between games. The call is saved with the game
+  and re-applied when a resumed game runs.
+- **Tardiness:** when a round is paired, a match with a person who isn't at the table (not connected to the event) waits
+  for them. The seat call is 1 minute, the time to take one's seat after the pairings are posted. After it, the late
+  player gets a game loss: the opponent wins that game. If both are late, each loses a game, so each wins one. A player
+  who arrives within 10 minutes of the match being due plays the match on from there. A player still away 10 minutes
+  after it was due gets a match loss, and leaves the event (dropped). The opponent wins the match. If both are away,
+  each gets a match loss, with 0 points, not a draw (`BothLost`); in the playoff neither goes on, and the next round's
+  opponent wins that match without playing. This applies to every round, on both days. The round's
+  clock runs from when the match was due. A player who disconnects in the middle of a game is still played by the
+  computer after the game's grace time, as before. The waiting, the due time, the late seats and the double loss are
+  saved with the event (`waiting`, `due`, `late`, `bothLost` on each match), so a resumed event keeps them. The event
+  screen tells the player who isn't at the table, with the times of the seat call and of the match loss, and tells who
+  came late.
+- **Two days:** an event with `days` above 1 plays its first day's rounds (the cut round, or half the Swiss rounds,
+  rounded up). Then the cut applies and the event pauses. The host posts the day's save to the service
+  (`POST /events/tables/{id}/day`), and the table is kept for the next day in the same slot. If nobody is left in the
+  event after the cut, the host doesn't pause: the computer players' remaining rounds are settled at once, so everyone's
+  final place is known that day. On the second day the service hands the save to one person: the first of the table,
+  and the next one for each 10 minutes that pass since the day began (`OnlineEvents.HostAt`). That person can be someone
+  who was cut: they resume the event for the players still in it and post a new invite code. The others return to the
+  table with the seat token they kept from the first day. Someone out at the cut, or away at the end, takes the host's
+  reported result for their seat (`TableView.HostResult`) and reports it as their own, so it is confirmed.
 - **Leaving without a result** (missed start, or the player leaves) is last place with no record.
 - **Against the computer:** the same event can be played against the computer at once for the offline share, unless it
   is PvP only (`pvpOnly`).
 - **Standings:** online results count for the rank and this month's points (see *Leaderboards*).
-- The online regional championship (design, see *Circuit*) uses two fixed time slots, each with a 30-minute check-in
+- The online regional championship (built, see *Circuit*) uses two fixed time slots, each with a 30-minute check-in
   before its start, and plays on two days in the player's slot.
 
 ### Trust
@@ -463,8 +502,9 @@ constructed included, instead of option 2. The risk is accepted for now; see *Ci
 
 ## Circuit: qualifying events (C6)
 
-Part implemented: the offline regional qualifier and the offline regional championship. The online championship (time
-slots, check-in) and the international tournament are design, not built yet. The qualification chain:
+Built: the offline regional qualifier, the offline regional championship, and the online regional championship (time
+slots, check-in, two days; see *Scheduled online events*). The international tournament is design, not built yet. The
+qualification chain:
 
 ```
 regional qualifier → regional championship → international tournament
@@ -484,7 +524,9 @@ Entry fees and prizes for the qualifier and the championship are set in the modu
 
 ### Regional championship
 
-- Offline only, against computer players, for now.
+- Offline against computer players, and online against people (the online version is the same event, with the same
+  name and crest, entered online). It goes online with a season change from a date, so careers that played earlier keep
+  the prizes they earned.
 - Played at the big tournaments' table (`tournamentMat`): one tournament mat for both players, with the event's name on
   its crest (see *Look*).
 - Runs the third weekend of March, June, September and December, Saturday and Sunday (a run of two days).
@@ -494,7 +536,7 @@ Entry fees and prizes for the qualifier and the championship are set in the modu
   *Round time*).
 - Prizes are cash, boosters and reputation. No one qualifies for the international tournament yet, since that event
   doesn't exist yet.
-- **Online (design):** two fixed time slots (for example one for Europe and Africa, one for the Americas), each with a
+- **Online (built):** two fixed time slots (for example one for Europe and Africa, one for the Americas), each with a
   30-minute check-in before its start. Empty seats get computer players, as in *Scheduled online events*. Day 2 is the
   next day in the same slot, for the players who make the cut.
 - **Online qualification (design):** offline grants less qualification than online. For example, only the champion
@@ -511,6 +553,7 @@ Entry fees and prizes for the qualifier and the championship are set in the modu
 - If time runs out during a game, the end-of-match procedure starts (the game's `CallTime`). The turn in progress is
   turn 0, then 5 additional turns follow (extra turns count among them). A game not over after them is a draw. The
   board announces "Time!" and each additional turn. The match then ends with the games played, and the event goes on.
+- Online, the host's game keeps the clock, as described under *Scheduled online events* (Round clock).
 
 ### Multi-day runs
 
@@ -571,8 +614,8 @@ Entry fees and prizes for the qualifier and the championship are set in the modu
 | C2 | **Grind and life** (done): practice with decaying rewards, ante matches, challenges, opponent roster with tiers and rivals, trades with opponents, opportunity offers, reputation tiers | the store feels alive from day to day |
 | C3 | **Offline calendar** (done): weekly events from the module's default schedule (draft night, commander night, Saturday tournament, monthly championship) against bots, prizes and qualification tokens, in-game card prices reacting to results | a full in-game month has a shape |
 | C4 | **Accounts and remote config** (done): Discord sign-in (replacing Device ID) and account linking screen; Title Storage season file, server time, cached config, cloud save; developer tool to validate a season file before publishing | changing the season file changes next week's events without a release |
-| C5 | **Online events** (done, in testing): career service (checks and seals careers, EOS Connect sign-in), check-in for draft events, tables seated by the service, the first checked-in player hosts an unlisted lobby, results confirmed by host and player, online prizes only for confirmed results, bot fill, PvE option at reduced prizes, rank and monthly standings. Not in C5: online constructed and Commander events (later: the service will hand each table the decks entered, which the career journal already holds) | two players meet in a scheduled draft night online |
-| C6 | **The circuit** (in progress): offline regional qualifier and offline regional championship done, see *Circuit*. The official table, tournament mat, broadcast overlay and round clock are done. To do: the online regional championship (slots, check-in; needs C5), the international tournament, PvP-only events, season standings and end-of-season rewards; constructed big events once the dedicated server exists | a season can be won |
+| C5 | **Online events** (done, in testing): career service (checks and seals careers, EOS Connect sign-in), check-in for draft events, tables seated by the service, the first checked-in player hosts an unlisted lobby, results confirmed by host and player, online prizes only for confirmed results, bot fill, PvE option at reduced prizes, rank and monthly standings. Constructed events online too, with each table's decks from the service (the career journal holds them). Not yet: online Commander events | two players meet in a scheduled draft night online |
+| C6 | **The circuit** (in progress, online championship in testing): offline regional qualifier and offline regional championship done, and the online regional championship built (slots, check-in, two days, see *Circuit*). The official table, tournament mat, broadcast overlay and round clock are done. To do: the international tournament, PvP-only events, season standings and end-of-season rewards; constructed big events once the dedicated server exists | a season can be won |
 
 C1–C3 are fully useful without any online part, so the mode can ship early as an offline career.
 

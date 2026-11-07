@@ -322,6 +322,8 @@ public partial class GameBoard : Control
     private void StartOnline(NetSession online)
     {
         _online = online;
+        // A game of a career event played online looks as it does offline (the event's table, mat and overlay).
+        if (App.Instance.Online.EventSession is not null && App.Instance.Career.OnlineEventLook() is { } look) _match = look;
         if (_newGameItem is not null) _newGameItem.Visible = false;
         online.SeatChanged += OnSeatChanged;
         online.Notice += text => Arcanum.UI.Menu.MenuKit.Toast(this, text);
@@ -399,10 +401,21 @@ public partial class GameBoard : Control
         _broadcast.Visible = false;
         if (session is GameSession local && _match?.Broadcast is { } broadcast)
             _broadcast.Show(broadcast, () => local.Game.State.TurnNumber, () => local.Game.TimeCalledAt, () => local.Game.CallTime());
+        else if (session is NetSession net && _match?.Broadcast is { } online)
+            // Online the host calls time; the overlay follows the game's view.
+            _broadcast.Show(online, () => net.Client.View?.TurnNumber ?? 0, () => net.Client.View?.TimeCalledAt, () => { });
         _session.Start();
     }
 
     private DateTimeOffset _sessionStart = DateTimeOffset.UtcNow;
+
+    /// <summary>The turn the round's time was called at (the host calls it online), or null.</summary>
+    private int? TimeCalledAt => _session switch
+    {
+        GameSession local => local.Game.TimeCalledAt,
+        NetSession net => net.Client.View?.TimeCalledAt,
+        _ => null,
+    };
 
     /// <summary>The player's Discord activity: which game ("Modern match", an event's name), its turn and their life, and since when.</summary>
     private void ShowPresence(GameView view)
@@ -816,6 +829,7 @@ public partial class GameBoard : Control
         }
         // A big tournament: one mat under both players' playmat places, its band on the line between them.
         _tournamentMat.Visible = shared is not null;
+        foreach (var area in _areas) area.OpenEdge = shared is not null;
         // The overlay's clock sits on the line between the players, at the right of the mats.
         _broadcast.Place(divider, shared is null ? span.End.X : 0);
         if (shared is null) return;
@@ -2463,7 +2477,7 @@ public partial class GameBoard : Control
         {
             case TurnBegan t:
                 AnnounceTurn(t);
-                if (_session is GameSession { Game.TimeCalledAt: { } called } && t.TurnNumber > called)
+                if (TimeCalledAt is { } called && t.TurnNumber > called)
                     _announcer.Enqueue(new($"Additional turn {t.TurnNumber - called} of {Arcanum.Engine.Game.AdditionalTurns}", null, 1.5));
                 break;
             case ModeAnnounced m:

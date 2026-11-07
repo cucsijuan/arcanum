@@ -169,6 +169,20 @@ public sealed class LobbyHost
     /// Starts the limited event: <paramref name="create"/> makes it from the seats as set up now; every player's
     /// connection carries the event from then on.
     /// </summary>
+    /// <summary>
+    /// Goes on with an event saved earlier (the next day of a two-day event): its players come back with their seats'
+    /// tokens; nothing in the lobby is needed.
+    /// </summary>
+    public Events.EventHost ResumeEvent(Events.EventHost resumed)
+    {
+        Event = resumed;
+        foreach (var listener in _listeners) Event.AddListener(listener);
+        foreach (var slot in _slots) slot.Peer?.Close();
+        foreach (var peer in _greeting) peer.Close();
+        _greeting.Clear();
+        return Event;
+    }
+
     public Events.EventHost StartEvent(Func<IReadOnlyList<SeatSetup>, Events.EventHost> create)
     {
         if (StartProblem is { } problem) throw new InvalidOperationException(problem);

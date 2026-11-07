@@ -213,7 +213,8 @@ own ratings only.
 | `RatingsFor`, `Ratings`, `Option`, `RatingsForPlayer` (player's "Build for me" uses them only then) | `scripts/Client/LimitedService.cs` |
 | Career opponent skill (`DraftSkill`, `VisitorSkill`), `DraftRatingsForPlayers` (the switch for players) | `scripts/Client/CareerService.cs` |
 | Grade strip, tooltip and credit line on cards | `scripts/UI/Career/DraftGrades.cs`, shown in `scripts/UI/Career/EventScreen.cs` and `scripts/UI/Career/DeckDesk.cs` |
-| Career table mats (`TableMat` overlays, picture playmats via `Playmat.Picture`, `ApplyPlaymats`, mat rects from the table's JSON; one shared tournament mat via `MatchSetup.TournamentMat`) | `scripts/UI/Board/Playmat.cs`, `scripts/UI/Board/TournamentMat.cs`, `scripts/UI/Board/GameBoard.cs` |
+| Career table mats (`TableMat` overlays, picture playmats via `Playmat.Picture`, `ApplyPlaymats`, mat rects from the table's JSON; one shared tournament mat via `MatchSetup.TournamentMat`; its cloth, band and crest drawn in one `_Draw`) | `scripts/UI/Board/Playmat.cs`, `scripts/UI/Board/TournamentMat.cs`, `scripts/UI/Board/GameBoard.cs` |
+| Turn border and glow left open along the line between the players on a tournament mat (`PlayerArea.OpenEdge`, `TurnGlow.Open`, set by `GameBoard` when the mat is shared) | `scripts/UI/Board/PlayerArea.TurnGlow.cs`, `scripts/UI/Board/TurnGlow.cs`, `scripts/UI/Board/GameBoard.cs` |
 | Broadcast overlay on the board (clock tab, player plates, round name; `MatchSetup.Broadcast`, `RoundBroadcast`, `BroadcastPlate`; calls time on the game at the deadline) | `scripts/UI/Board/BroadcastOverlay.cs`, `scripts/UI/Board/GameBoard.cs`, data in `scripts/Client/App.cs` |
 | Tests | `tests/Arcanum.Data.Tests/DraftRatingsTests.cs`, `tests/Arcanum.Engine.Tests/LimitedBotTests.cs` |
 
@@ -265,6 +266,9 @@ service seals a career's checked actions, and online career events run through i
 | Seal: hash chain, ECDSA P-256 signature, public keys, sync request and response (`CareerSeal`, `CareerSeals`) | `src/Arcanum.Data/Career/CareerSeal.cs` |
 | Online event rules: check-in times, seating, hosts, confirmed results, ranks and points (`OnlineEvents`, `OnlineTable`, `TableReport`) | `src/Arcanum.Data/Career/OnlineEvents.cs` |
 | Online entry and result (`EnterEvent.Online`; `FinishEvent` with `Table`, `Players`, `Pvp`); online prizes | `src/Arcanum.Data/Career/CareerAction.cs`, `src/Arcanum.Data/Career/CareerRules.cs` (`Enter`, `Finish`) |
+| Constructed sideboarding between games (rule 100.4a: `EventSeat.Registered`, `ValidateSideboarding`, `WithSideboardFrom`) | `src/Arcanum.Data/Formats/FormatRules.cs`, `src/Arcanum.Data/Limited/LimitedEvent.cs`; the desk in `scripts/UI/Career/DeckDesk.cs` (`Sideboarding`) |
+| Online event host: rounds, round clock (`Game.CallTime`, `EndOnTime`), day end and cut (`DayOver`, `DayEnded`, `LimitedEvent.ApplyCut`), playoff, `EventOptions.DayEndsAfter` | `src/Arcanum.Net/Events/EventHost.cs`, `src/Arcanum.Net/Protocol/EventMessages.cs` (`EventInfo`, `MatchInfo`); the career table's setup in `scripts/Client/OnlineService.CareerTable.cs` |
+| Tardiness in hosted events (seat call, game loss, no-show, both lost; `Away`, the waiting block in `Poll`; `LimitedEvent.SeatCall`, `NoShowAfter`, `GiveGameLoss`, `NoShow`; match fields `Waiting`, `Due`, `Late`, `BothLost`, saved as `waiting`, `due`, `late`, `bothLost`) | `src/Arcanum.Data/Limited/LimitedEvent.cs`, `src/Arcanum.Net/Events/EventHost.cs`; the event screen in `scripts/UI/Menu/LimitedScreen.cs`; the match's fields reach players in `MatchInfo` (`src/Arcanum.Net/Protocol/EventMessages.cs`) |
 | Service endpoints | `server/Arcanum.CareerService/Program.cs` |
 | Service: online tables, host reports, results, leaderboards (SQLite) | `server/Arcanum.CareerService/EventDesk.cs` |
 | Service: checked careers (SQLite) | `server/Arcanum.CareerService/CareerStore.cs` |
