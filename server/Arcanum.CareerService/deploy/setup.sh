@@ -1,5 +1,6 @@
 #!/bin/sh
-# First-time setup of the career service's machine (Ubuntu 24.04): run there with sudo, next to the Caddyfile and the unit.
+# First-time setup of the career service's machine (Ubuntu 24.04): run there with sudo, next to the Caddyfile, the unit and
+# arcanum-set-game.sh. Then backup-setup.sh and deploy-user-setup.sh from a computer with access.
 set -eu
 apt-get update
 apt-get install -y aspnetcore-runtime-8.0 caddy
@@ -14,6 +15,7 @@ if [ ! -f /etc/arcanum-career/seal-key.pem ]; then
 fi
 echo "Public key for CareerSeals.PublicKeys:"
 openssl pkey -in /etc/arcanum-career/seal-key.pem -pubout -outform DER | base64 -w0; echo
+install -m 755 arcanum-set-game.sh /usr/local/sbin/arcanum-set-game
 install -m 644 arcanum-career.service /etc/systemd/system/arcanum-career.service
 install -m 644 Caddyfile /etc/caddy/Caddyfile
 systemctl daemon-reload

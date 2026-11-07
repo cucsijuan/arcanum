@@ -1,0 +1,49 @@
+name: Deploy career service
+
+# Builds the career service and installs it on its machine (server/Arcanum.CareerService/deploy/deploy.sh) as the
+# deploy user. The release workflow runs it after a tag's release is published, so the service checks the new game
+# version; it can also be run by hand (Actions → Deploy career service → Run workflow) on a tag.
+# The key and the machine's host key are secrets of the career-service environment, which only tags may use:
+# CAREER_DEPLOY_KEY (private key of the deploy user) and CAREER_KNOWN_HOSTS (the line deploy-user-setup.sh prints).
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: career-service
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: career-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Deploy only tagged versions
+        run: |
+          version=$(sed -n 's/^config\/version="\(.*\)"/\1/p' project.godot)
+          if [ "$GITHUB_REF_TYPE" != tag ] || [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "The service is deployed from a version tag (project.godot says $version, ref $GITHUB_REF_NAME)" >&2
+            exit 1
+          fi
+
+      - name: SSH key
+        env:
+          CAREER_DEPLOY_KEY: ${{ secrets.CAREER_DEPLOY_KEY }}
+          CAREER_KNOWN_HOSTS: ${{ secrets.CAREER_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$CAREER_DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$CAREER_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: sh server/Arcanum.CareerService/deploy/deploy.sh deploy@arcanum-career.duckdns.org

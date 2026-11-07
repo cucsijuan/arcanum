@@ -120,3 +120,11 @@ jobs:
           notes="docs/releases/$GITHUB_REF_NAME.md"
           if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
           gh release create "$GITHUB_REF_NAME" "$NAME-linux.zip" "$NAME-windows.zip" --title "Arcanum $GITHUB_REF_NAME" "$@"
+
+  # The career service checks careers for the game version they were played with: once the release is out, the
+  # service is updated to this version (deploy-service.yml).
+  deploy-service:
+    needs: release
+    if: github.ref_type == 'tag'
+    uses: ./.github/workflows/deploy-service.yml
+    secrets: inherit
