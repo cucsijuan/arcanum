@@ -1,0 +1,10 @@
+# Runs arcanum-backup.service every day at 04:00 UTC (the puller fetches at 04:30): /etc/systemd/system/arcanum-backup.timer
+[Unit]
+Description=Daily Arcanum career database backup
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -6,6 +6,8 @@ here=$(dirname "$0")
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 dotnet publish "$here/.." -c Release -r linux-x64 --self-contained false -o "$out"
+# A copy of the careers before the new build touches them (backup-setup.sh installs it; skipped where it isn't set up).
+ssh "$host" 'if systemctl cat arcanum-backup.service >/dev/null 2>&1; then sudo systemctl start arcanum-backup.service; fi'
 rsync -az --delete --rsync-path="sudo -u arcanum rsync" "$out/" "$host:/opt/arcanum-career/"
 # The career rules of this build are the game version's: careers are checked only for that version.
 game=$(sed -n 's/^config\/version="\(.*\)"/\1/p' "$here/../../../project.godot")

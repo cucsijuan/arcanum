@@ -1,0 +1,14 @@
+# systemd unit for the career database's backup: /etc/systemd/system/arcanum-backup.service (run daily by
+# arcanum-backup.timer, and by deploy.sh before each deploy). backup-setup.sh installs it.
+[Unit]
+Description=Arcanum career database backup
+
+[Service]
+Type=oneshot
+User=arcanum
+ExecStart=/usr/local/bin/career-backup
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/arcanum-career
