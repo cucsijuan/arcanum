@@ -132,6 +132,11 @@ public enum Keyword
     Myriad,
     /// <summary>"Hexproof from monocolored": opponents' monocolored spells and abilities from monocolored sources can't target it (rule 702.11d).</summary>
     HexproofFromMonocolored,
+    /// <summary>
+    /// "Whenever you cast a spell, you may pay {W/B}. If you do, each opponent loses 1 life and you gain life equal to the total life
+    /// lost this way" (rule 702.101a).
+    /// </summary>
+    Extort,
 }
 
 public static class Keywords

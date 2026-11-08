@@ -642,11 +642,25 @@ public sealed partial class Game
             _ => null,
         };
         if (dying is null || !WasCreature(dying)) return 0;
-        // Its own "when this dies": as it last existed (the value the layers last gave it on the battlefield).
-        if (source.Zone == Zone.Battlefield || dying == source) return source.DyingTriggerBonus;
         if (State.Emblems.Contains(source.Id)) return State.PermanentsControlledBy(source.Owner).Sum(c => c.DyingTriggerBonus);
-        return 0;
+        // A permanent's ability: on the battlefield, or as it last existed there (its own "when this dies", or one that left with it).
+        bool onBattlefield = source.Zone == Zone.Battlefield;
+        // A card's ability that works from its graveyard isn't a permanent's.
+        if (!onBattlefield && (source.LastKnownInfo is null || dying != source && _lookBack?.Contains(source.Id) != true)) return 0;
+        var controller = onBattlefield ? source.Controller : source.LastKnownInfo!.Controller;
+        // Its own "when this dies": as it last existed (the value the layers last gave it on the battlefield).
+        int bonus = onBattlefield || dying == source ? source.DyingTriggerBonus : 0;
+        return bonus + YourDyingTriggersExtra(controller);
     }
+
+    /// <summary>
+    /// "If a creature dying causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time":
+    /// each such permanent the player controls, also one that left the battlefield in the same event (rule 603.10a looks back in time).
+    /// </summary>
+    private int YourDyingTriggersExtra(PlayerId controller) =>
+        State.PermanentsControlledBy(controller).Count(c => c.HasTextAbilities && c.Definition.YourDyingTriggersExtra)
+        + (_lookBack ?? new List<CardId>()).Select(State.GetCard)
+            .Count(c => c.Zone != Zone.Battlefield && c.LastKnownInfo is { } lki && lki.Controller == controller && c.Definition.YourDyingTriggersExtra);
 
     /// <summary>Cards about to enter melded, by object (card, version): the other card of the pair.</summary>
     private readonly Dictionary<(CardId Card, int Version), Card> _pendingMeld = new();

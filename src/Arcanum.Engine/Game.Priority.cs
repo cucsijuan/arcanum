@@ -2203,6 +2203,12 @@ public sealed partial class Game
                 player.ManaPool.Add(ManaType.Green);
                 Emit(new ManaAdded(player.Id, ManaType.Green, source.Id));
             }
+        if (source.ExtraBlack > 0 && produced.Count > 0 && option is not { Types: [ManaType.Black], Combination: false })
+            for (int i = 0; i < source.ExtraBlack; i++)
+            {
+                player.ManaPool.Add(ManaType.Black);
+                Emit(new ManaAdded(player.Id, ManaType.Black, source.Id));
+            }
         if (source.Definition.SacrificeForMana) await SacrificePermanentAsync(source.Id);
         // "Whenever you tap a nonland permanent for mana, add one mana of any type that permanent produced" (a triggered mana ability, 605.1b).
         if (!source.Is(CardType.Land) && produced.Count > 0)

@@ -423,6 +423,11 @@ public enum TriggerEvent
     BecomesBlocked,
     /// <summary>"Whenever you scry" (amount: cards looked at).</summary>
     YouScry,
+    /// <summary>
+    /// "Whenever you commit a crime" (rule 700.13): you cast a spell, activate an ability or put a triggered ability on the stack
+    /// that targets an opponent, something an opponent controls or a card in an opponent's graveyard; once for each.
+    /// </summary>
+    YouCommitCrime,
     /// <summary>"Whenever you surveil."</summary>
     YouSurveil,
     /// <summary>"Whenever you scry or surveil": one event for either.</summary>

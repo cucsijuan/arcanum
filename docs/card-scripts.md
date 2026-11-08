@@ -1774,3 +1774,23 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
 - `"enterUntappedIfControl": filter`: with a reveal-or-tapped choice as it enters, the permanents matching the filter that you
   control let it enter untapped instead. `"enterAlsoChooseColor": true` adds "choose a color as it enters" to that choice.
 - `"graveyardCastFinality": true`: a permanent cast from the graveyard this way enters with a finality counter on it.
+
+## Sacrifice deck vocabulary
+
+- Keyword `Extort` (rule 702.101a) needs no script: it is read from the card data. Whenever its controller casts a spell, they may
+  pay {W/B}. If they do, each opponent loses 1 life and they gain life equal to the total life lost this way. One trigger per
+  permanent with it, for each spell its controller casts.
+- Trigger `"youCommitCrime"` (rule 700.13): you cast a spell, activate an ability or put a triggered ability on the stack that
+  targets an opponent, a permanent or spell an opponent controls, or a card in an opponent's graveyard. It triggers once per spell
+  or ability; a copy of a spell isn't cast. `"fromGraveyard": true` makes it work from the graveyard.
+- Card-wide `"yourSwampsExtraBlack": true`: "Whenever you tap a Swamp for mana, add an additional {B}." Like `yourForestsExtraGreen`.
+- Condition `{ "opponentLifeAtMost": 10 }`: an opponent has that much life or less. Often a static's `"while"`.
+- Effect option `"devotionToThatColor": true` on `{ "addManaAnyColor": 1 }`: adds mana of the chosen color equal to your devotion
+  to that color (rule 700.5).
+- Effect `{ "opponentsMaySacrificeSharingType": { "loseLife": 2, "draw": 1 } }`: after this ability sacrificed a permanent (`"it"` is
+  the last one sacrificed this way, as with `"if": "youSacrificed"`), each opponent in turn order may choose a permanent they control
+  that shares a card type with it. The chosen permanents are sacrificed together. For each opponent who doesn't choose, that player
+  loses `loseLife` life and you draw `draw` cards.
+- Card-wide `"yourDyingTriggersExtra": true`: "If a creature dying causes a triggered ability of a permanent you control to trigger,
+  that ability triggers an additional time." It counts each such permanent you control, including one that left the battlefield in
+  the same event (rule 603.10a). An ability that works from a graveyard isn't a permanent's, so it doesn't get the extra trigger.

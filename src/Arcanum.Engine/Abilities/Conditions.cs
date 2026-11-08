@@ -248,6 +248,9 @@ public sealed record YouControlGreatestPower : Condition;
 /// <summary>"If you have two or more opponents".</summary>
 public sealed record OpponentsAtLeast(int Count) : Condition;
 
+/// <summary>"As long as an opponent has N or less life".</summary>
+public sealed record OpponentLifeAtMost(int Life) : Condition;
+
 /// <summary>"If [option] gets more votes": strictly more than each other option.</summary>
 public sealed record MoreVotes(int Option) : Condition;
 

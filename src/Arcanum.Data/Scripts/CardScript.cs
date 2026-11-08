@@ -54,6 +54,8 @@ public sealed record CardScript(
     public bool ManaAlsoChosenColor { get; init; }
     public bool EnchantedLandExtraGreen { get; init; }
     public bool YourForestsExtraGreen { get; init; }
+    public bool YourSwampsExtraBlack { get; init; }
+    public bool YourDyingTriggersExtra { get; init; }
     public bool OpponentsDrawAtMostOne { get; init; }
     public bool YourCreaturesAreEveryType { get; init; }
     public ManaCost? CreatureSpellsGainOffspring { get; init; }
@@ -294,6 +296,8 @@ public sealed record CardScript(
         ManaAlsoChosenColor = ManaAlsoChosenColor,
         EnchantedLandExtraGreen = EnchantedLandExtraGreen,
         YourForestsExtraGreen = YourForestsExtraGreen,
+        YourSwampsExtraBlack = YourSwampsExtraBlack,
+        YourDyingTriggersExtra = YourDyingTriggersExtra,
         OpponentsDrawAtMostOne = OpponentsDrawAtMostOne,
         YourCreaturesAreEveryType = YourCreaturesAreEveryType,
         CreatureSpellsGainOffspring = CreatureSpellsGainOffspring,
@@ -666,6 +670,8 @@ public static partial class CardScriptParser
             ManaAlsoChosenColor = Bool(root, "manaAlsoChosenColor"),
             EnchantedLandExtraGreen = Bool(root, "enchantedLandExtraGreen"),
             YourForestsExtraGreen = Bool(root, "yourForestsExtraGreen"),
+            YourSwampsExtraBlack = Bool(root, "yourSwampsExtraBlack"),
+            YourDyingTriggersExtra = Bool(root, "yourDyingTriggersExtra"),
             OpponentsDrawAtMostOne = Bool(root, "opponentsDrawAtMostOne"),
             YourCreaturesAreEveryType = Bool(root, "yourCreaturesAreEveryType"),
             CreatureSpellsGainOffspring = root.TryGetProperty("creatureSpellsGainOffspring", out var csgo) ? ManaCost.Parse(csgo.GetString()!) : null,
@@ -1277,6 +1283,7 @@ public static partial class CardScriptParser
         "dealtNoncombatDamage" => TriggerEvent.DealtNoncombatDamage,
         "becomesBlocked" => TriggerEvent.BecomesBlocked,
         "youScry" => TriggerEvent.YouScry,
+        "youCommitCrime" => TriggerEvent.YouCommitCrime,
         "youSurveil" => TriggerEvent.YouSurveil,
         "youScryOrSurveil" => TriggerEvent.YouScryOrSurveil,
         "youActivateLoyaltyAbility" => TriggerEvent.YouActivateLoyaltyAbility,
@@ -1648,6 +1655,7 @@ public static partial class CardScriptParser
         if (c.TryGetProperty("enteredThisTurn", out var ett)) return new EnteredThisTurn(ParseFilter(ett, ControllerFilter.Any), c.TryGetProperty("count", out var etc2) ? etc2.GetInt32() : 1);
         if (c.TryGetProperty("moreVotes", out var mvo)) return new MoreVotes(mvo.GetInt32());
         if (c.TryGetProperty("opponents", out var opc)) return new OpponentsAtLeast(opc.GetInt32());
+        if (c.TryGetProperty("opponentLifeAtMost", out var olam)) return new OpponentLifeAtMost(olam.GetInt32());
         if (c.TryGetProperty("spellsCastLastTurn", out var sclt)) return new SpellsCastLastTurn(sclt.GetInt32());
         if (c.TryGetProperty("playerLostLife", out var pll)) return new TurnHappened(TurnEvent.PlayerLostLife, pll.GetInt32());
         if (c.TryGetProperty("opponentGraveyard", out var ogy)) return new OpponentGraveyardAtLeast(ogy.GetInt32());
@@ -2205,6 +2213,8 @@ public static partial class CardScriptParser
                 NotLegendary = Flag("notLegendary"), EachOtherPlayer = Flag("eachOtherPlayer"), CounteredThisWay = Flag("counteredThisWay"),
                 SpellsGain = e.TryGetProperty("spellsGain", out var csg) ? csg.EnumerateArray().Select(k => ParseKeyword(k.GetString()!)).ToList() : null,
             };
+        if (e.TryGetProperty("opponentsMaySacrificeSharingType", out var omst))
+            return new OpponentsMaySacrificeSharingType(omst.TryGetProperty("loseLife", out var oml) ? oml.GetInt32() : 0, omst.TryGetProperty("draw", out var omd) ? omd.GetInt32() : 0);
         if (e.TryGetProperty("addManaAnyColor", out _))
             return new AddManaOfAnyColor(Int("addManaAnyColor"))
             {
@@ -2212,6 +2222,7 @@ public static partial class CardScriptParser
                 CommanderIdentity = Flag("commanderIdentity"),
                 Rider = Str("rider") is { } amr ? Enum.Parse<ManaRider>(amr, ignoreCase: true) : ManaRider.None,
                 SourceBecomesThatColor = Flag("sourceBecomesThatColor"),
+                DevotionToThatColor = Flag("devotionToThatColor"),
             };
         if (e.TryGetProperty("incubate", out _)) return new Incubate(Qty("incubate"));
         if (e.TryGetProperty("putExiledWithThisIntoGraveyard", out _))

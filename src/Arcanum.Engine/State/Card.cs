@@ -203,6 +203,9 @@ public sealed class Card
     /// <summary>Additional {G} whenever this land is tapped for mana ("whenever enchanted land is tapped for mana, its controller adds an additional {G}", "whenever you tap a Forest for mana, add an additional {G}").</summary>
     internal int ExtraGreen { get; set; }
 
+    /// <summary>Additional {B} whenever this land (a Swamp) is tapped for mana ("whenever you tap a Swamp for mana, add an additional {B}").</summary>
+    internal int ExtraBlack { get; set; }
+
     /// <summary>"If you tap a permanent for mana, it produces three times as much of that mana instead": 3 to the power of such effects.</summary>
     internal int ManaMultiplier { get; set; } = 1;
 
@@ -657,6 +660,10 @@ public sealed class Card
                 for (int i = 0; i < options.Count; i++)
                     if (options[i].Produces > 0 && options[i].Types.Count == 1 && options[i].Types[0] == Mana.ManaType.Green && !options[i].Combination)
                         options[i] = options[i] with { Amount = options[i].Amount + ExtraGreen };
+            if (ExtraBlack > 0)
+                for (int i = 0; i < options.Count; i++)
+                    if (options[i].Produces > 0 && options[i].Types.Count == 1 && options[i].Types[0] == Mana.ManaType.Black && !options[i].Combination)
+                        options[i] = options[i] with { Amount = options[i].Amount + ExtraBlack };
             return options;
         }
     }

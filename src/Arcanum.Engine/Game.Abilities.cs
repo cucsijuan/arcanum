@@ -329,6 +329,7 @@ public sealed partial class Game
         State.Stack.Add(item);
         if (item is SpellOnStack pushed) _spellsOnStack[(pushed.Card, State.GetCard(pushed.Card).Version)] = pushed;
         QueueBecameTarget(item, item.Targets.Select(t => t.Target.Card).OfType<CardId>());
+        QueueCrime(item);
         if (item is SpellOnStack)
             foreach (var aimed in item.Targets.Select(t => t.Target.Card).Where(c => c is not null).Distinct().Select(c => State.GetCard(c!.Value)).Where(c => c.Zone == Zone.Battlefield).ToList())
                 QueueObservers(TriggerEvent.BecomesTargetOfSpell, aimed, aimed.Controller);
@@ -367,6 +368,23 @@ public sealed partial class Game
                 for (int copies = 1 + ExtraTriggersFor(warded); copies > 0; copies--) _pendingTriggers.Add(new PendingTrigger(warded.Id, ward, warded.Controller));
             }
         }
+    }
+
+    /// <summary>
+    /// Committing a crime (rule 700.13): a spell cast, or an ability activated or put on the stack, that targets an opponent of its
+    /// controller, a permanent or spell an opponent controls, or a card in an opponent's graveyard. A copy isn't cast.
+    /// </summary>
+    private void QueueCrime(StackItem item)
+    {
+        if (item is SpellOnStack spell && State.GetCard(spell.Card).Definition.IsToken) return;
+        var opponents = State.OpponentsOf(item.Controller).ToHashSet();
+        bool crime = item.Targets.Any(t => t.Target.Player is { } p ? opponents.Contains(p)
+            : t.Target.Card is { } c && State.GetCard(c) is var aimed
+              && (aimed.Zone is Zone.Battlefield or Zone.Stack ? opponents.Contains(aimed.Controller) : aimed.Zone == Zone.Graveyard && opponents.Contains(aimed.Owner)));
+        if (!crime) return;
+        foreach (var (observer, abilities) in Observers().Where(o => o.Card.Controller == item.Controller).ToList())
+            foreach (var ability in abilities.Where(a => a.Trigger == TriggerEvent.YouCommitCrime))
+                AddPending(observer.Id, ability, observer.Controller, new TriggerInfo(Player: item.Controller));
     }
 
     /// <summary>
@@ -2111,6 +2129,35 @@ public sealed partial class Game
                 }
                 break;
             }
+            case OpponentsMaySacrificeSharingType share:
+            {
+                if (ctx.Results.Sacrificed.Count == 0) break;
+                var gone = State.GetCard(ctx.Results.Sacrificed[^1]);
+                var types = (gone.LastKnownInfo?.Types ?? gone.Types)
+                    & (CardType.Artifact | CardType.Creature | CardType.Enchantment | CardType.Land | CardType.Planeswalker | CardType.Battle);
+                var chosen = new List<CardId>();
+                var refused = new List<PlayerId>();
+                foreach (var opponent in State.ApnapOrder().Where(State.OpponentsOf(ctx.Controller).Contains).ToList())
+                {
+                    var options = State.PermanentsControlledBy(opponent).Where(c => (c.Types & types) != 0 && CanBeSacrificedBy(c, opponent)).ToList();
+                    var picked = options.Count == 0 ? new List<CardId>()
+                        : await ControllerOf(opponent).ChooseCardsAsync(ViewFor(opponent), new CardChoiceRequest(
+                            $"Sacrifice a permanent that shares a card type with {gone.Name}? (Otherwise you lose {share.LifeLoss} life and its controller draws a card.)",
+                            ctx.Source.Id, options.Select(c => ViewBuilder.Card(State, c.Id, opponent)).ToList(), 0, 1, CardChoicePurpose.Sacrifice));
+                    Require(picked.Count <= 1 && picked.All(id => options.Any(c => c.Id == id)), "Choose among the listed permanents.");
+                    if (picked.Count == 1) chosen.Add(picked[0]);
+                    else refused.Add(opponent);
+                }
+                BeginSimultaneous();
+                foreach (var id in chosen) await SacrificePermanentAsync(id);
+                EndSimultaneous();
+                foreach (var opponent in refused)
+                {
+                    ChangeLife(opponent, -share.LifeLoss);
+                    await DrawAsync(ctx.Controller, share.Draw);
+                }
+                break;
+            }
             case AddManaOfAnyColor anyColor:
                 foreach (var adder in anyColor.Who is { } manaWho ? PlayersFor(manaWho, ctx).ToList() : new List<PlayerId> { ctx.Controller })
                 {
@@ -2125,7 +2172,8 @@ public sealed partial class Game
                         State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(ctx.Source.Id, ctx.Source.Version, 0, 0, Array.Empty<Keyword>())
                             { SetColors = new[] { ColorLetters[Array.IndexOf(allColors, type)] }, Timestamp = NewTimestamp() });
                     if (anyColor.SourceBecomesThatColor) RecomputeContinuousEffects();
-                    for (int n = 0; n < anyColor.Count; n++)
+                    int count = anyColor.DevotionToThatColor ? DevotionTo(adder, new[] { ColorLetters[Array.IndexOf(allColors, type)] }) : anyColor.Count;
+                    for (int n = 0; n < count; n++)
                     {
                         if (anyColor.Rider != ManaRider.None) State.GetPlayer(adder).ManaPool.AddSpecial(new ManaUnit(type, ctx.Source.Id, null, true, anyColor.Rider));
                         else State.GetPlayer(adder).ManaPool.Add(type);
@@ -5905,6 +5953,7 @@ public sealed partial class Game
                     ? Matches(et.Filter with { Controller = ControllerFilter.Any }, c, c.Controller, source, controller)
                     : c.LastKnownInfo is { } lki && lki.Version == e.Version && Matches(et.Filter with { Controller = ControllerFilter.Any }, c, lki.Controller, source, controller, lastKnown: true))) >= et.AtLeast,
             OpponentsAtLeast oa => State.OpponentsOf(controller).Count() >= oa.Count,
+            OpponentLifeAtMost ol => State.OpponentsOf(controller).Any(o => State.GetPlayer(o).Life <= ol.Life),
             NoMonarch => State.Monarch is null,
             ResolvedThisTurn r => source is not null && (r.Exactly ? source.ResolvedThisTurn.Values.DefaultIfEmpty(0).Max() == r.Times : source.ResolvedThisTurn.Values.DefaultIfEmpty(0).Max() >= r.Times),
             FullParty => PartySize(controller) == 4,
@@ -6520,6 +6569,9 @@ public sealed partial class Game
             card.ExtraGreen = !card.Is(CardType.Land) ? 0
                 : battlefield.Count(a => a.AttachedTo == card.Id && a.HasTextAbilities && a.Definition.EnchantedLandExtraGreen)
                   + (card.HasSubtype("Forest") ? battlefield.Count(c => c.Controller == card.Controller && c.HasTextAbilities && c.Definition.YourForestsExtraGreen) : 0);
+        foreach (var card in battlefield)
+            card.ExtraBlack = card.Is(CardType.Land) && card.HasSubtype("Swamp")
+                ? battlefield.Count(c => c.Controller == card.Controller && c.HasTextAbilities && c.Definition.YourSwampsExtraBlack) : 0;
         foreach (var card in battlefield.Where(c => c.Definition.ExtraManaOptions.Count > 0))
         {
             card.InactiveManaOptions.Clear();
@@ -7065,6 +7117,8 @@ public sealed partial class Game
                     if (mine && !spell.IsCreature && observer.Has(Keyword.Prowess))
                         for (int instances = 1 + (observer.HasTextAbilities ? observer.Definition.ExtraProwess : 0); instances > 0; instances--)
                             for (int copies = 1 + ExtraTriggersFor(observer) + InstantSorceryExtraTriggers(observer, spell, c.Player); copies > 0; copies--) _pendingTriggers.Add(new PendingTrigger(observer.Id, ProwessTrigger, c.Player));
+                    if (mine && observer.Has(Keyword.Extort))
+                        for (int copies = 1 + ExtraTriggersFor(observer) + InstantSorceryExtraTriggers(observer, spell, c.Player); copies > 0; copies--) _pendingTriggers.Add(new PendingTrigger(observer.Id, ExtortTrigger, c.Player));
                     foreach (var ability in observer.Abilities.OfType<TriggeredAbility>())
                     {
                         var filter = (ability.Filter ?? new ObjectFilter()) with { Controller = ControllerFilter.Any };
@@ -7702,6 +7756,17 @@ public sealed partial class Game
             new PumpUntilEndOfTurn(new Quantity(0, QuantityKind.OpponentsAttackedThisCombat), new Quantity(0, QuantityKind.OpponentsAttackedThisCombat), Subject.Self),
         },
         Text = "Melee: this creature gets +1/+1 until end of turn for each opponent you attacked with a creature this combat.",
+    };
+
+    private static readonly TriggeredAbility ExtortTrigger = new()
+    {
+        Trigger = TriggerEvent.YouCastSpell,
+        Effects = new Effect[]
+        {
+            new MayPay("Pay {W/B} to extort (each opponent loses 1 life and you gain that much)?", Mana.ManaCost.Parse("{W/B}"), null,
+                new Effect[] { new LoseLife(1, new Subject(SubjectKind.EachOpponent)), new GainLife(new Quantity(0, QuantityKind.LifeLostThisWay), new Subject(SubjectKind.You)) }),
+        },
+        Text = "Extort: you may pay {W/B}. If you do, each opponent loses 1 life and you gain life equal to the total life lost this way.",
     };
 
     private static readonly TriggeredAbility ExaltedTrigger = new()

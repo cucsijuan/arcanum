@@ -1091,6 +1091,13 @@ public sealed record CopySpell(Subject What, Quantity Count) : Effect
 }
 
 /// <summary>Add one mana of any color (the controller chooses).</summary>
+/// <summary>
+/// "Each opponent may sacrifice a permanent of their choice that shares a card type with it. For each opponent who doesn't, that
+/// player loses <paramref name="LifeLoss"/> life and you draw <paramref name="Draw"/> cards": "it" is the permanent this ability
+/// sacrificed. The opponents choose in turn order and sacrifice together.
+/// </summary>
+public sealed record OpponentsMaySacrificeSharingType(int LifeLoss, int Draw) : Effect;
+
 public sealed record AddManaOfAnyColor(int Count = 1) : Effect
 {
     /// <summary>The player who adds the mana (and chooses its color): "target player adds one mana of any color". Default: you.</summary>
@@ -1104,6 +1111,9 @@ public sealed record AddManaOfAnyColor(int Count = 1) : Effect
 
     /// <summary>"This creature becomes that color until end of turn."</summary>
     public bool SourceBecomesThatColor { get; init; }
+
+    /// <summary>"Add an amount of mana of that color equal to your devotion to that color" (instead of <see cref="Count"/>).</summary>
+    public bool DevotionToThatColor { get; init; }
 }
 
 /// <summary>Put cards exiled by this permanent ("with it") into their owners' hands.</summary>

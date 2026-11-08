@@ -212,6 +212,12 @@ public sealed partial record CardDefinition
     /// <summary>"Whenever you tap a Forest for mana, add an additional {G}."</summary>
     public bool YourForestsExtraGreen { get; init; }
 
+    /// <summary>"If a creature dying causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time."</summary>
+    public bool YourDyingTriggersExtra { get; init; }
+
+    /// <summary>"Whenever you tap a Swamp for mana, add an additional {B}."</summary>
+    public bool YourSwampsExtraBlack { get; init; }
+
     /// <summary>"Each opponent can't draw more than one card each turn."</summary>
     public bool OpponentsDrawAtMostOne { get; init; }
 
