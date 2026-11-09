@@ -125,7 +125,8 @@ public sealed partial class Game
             // "Each of those creatures attacks that combat if able."
             if (State.NextCombatRules.Any(r => r.Card == id && r.Version == card.Version && r.Turn == State.TurnNumber)) requirements.Add(new AttackRequirement(id, AttackRequirementKind.Attacks));
             // Each goad: "attacks each combat if able and attacks a player other than [the goader] if able" (701.15b-c).
-            foreach (var goader in State.Goads.Concat(State.GoadsForever).Where(g => g.Card == id && g.Version == card.Version).Select(g => g.Goader).Concat(card.StaticGoaders).Distinct())
+            foreach (var goader in State.Goads.Concat(State.GoadsForever).Where(g => g.Card == id && g.Version == card.Version).Select(g => g.Goader).Concat(card.StaticGoaders)
+                         .Concat(State.OpponentsCreaturesMustAttackOthers.Where(p => State.OpponentsOf(p).Contains(card.Controller))).Distinct())
             {
                 requirements.Add(new AttackRequirement(id, AttackRequirementKind.Attacks));
                 requirements.Add(new AttackRequirement(id, AttackRequirementKind.AttacksPlayerOtherThan, goader));
@@ -186,6 +187,8 @@ public sealed partial class Game
         foreach (var c in State.PermanentsControlledBy(defender))
             if (c.Definition.AttackTax is { } tax && c.HasTextAbilities && (c.Definition.AttackTaxIf is not { } cond || Holds(cond, defender, c))
                 && !(planeswalker is not null && c.Definition.AttackTaxPlayerOnly)) total = total.Plus(tax);
+            else if (c.Definition.AttackTaxFrom is { } taxFrom && c.HasTextAbilities)
+                total = total.PlusGeneric(Math.Max(0, Eval(taxFrom, new EffectContext(defender, c, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
         // "Until your next turn, creatures can't attack you unless their controller pays {2} for each of those creatures" (the player only).
         if (planeswalker is null)
             foreach (var temporary in State.AttackTaxesUntilNextTurn.Where(t => t.Protected == defender)) total = total.Plus(temporary.Tax);

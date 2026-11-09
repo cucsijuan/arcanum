@@ -66,15 +66,17 @@ public sealed partial class Game
     /// battlefield once it left (rule 608.2h); a card that came back since is a new object whose counters don't count (rule 400.7).
     /// Without an object version (a static ability, a spell), the card as it is, or as it last existed on the battlefield.
     /// </summary>
-    private static int SourceCounterCount(EffectContext ctx, Abilities.CounterKind kind)
+    private static int SourceCounterCount(EffectContext ctx, Abilities.CounterKind? kind)
     {
+        int Of(IReadOnlyDictionary<Abilities.CounterKind, int>? counters) =>
+            counters is null ? 0 : kind is { } k ? counters.GetValueOrDefault(k) : counters.Values.Where(n => n > 0).Sum();
         var source = ctx.Source;
         if (ctx.Results.FollowedSourceVersion is null && ctx.SourceLeftVersion is { } left)
-            return source.LastKnownOf(left)?.Counters.GetValueOrDefault(kind) ?? 0;
+            return Of(source.LastKnownOf(left)?.Counters);
         if (ExpectedSourceVersion(ctx) is not { } version)
-            return source.Zone == Zone.Battlefield || source.LastKnownInfo is null ? source.CounterCount(kind) : source.LastKnownInfo.Counters.GetValueOrDefault(kind);
-        if (source.Version == version) return source.CounterCount(kind);
-        return source.LastKnownOf(version)?.Counters.GetValueOrDefault(kind) ?? 0;
+            return Of(source.Zone == Zone.Battlefield || source.LastKnownInfo is null ? source.Counters : source.LastKnownInfo.Counters);
+        if (source.Version == version) return Of(source.Counters);
+        return Of(source.LastKnownOf(version)?.Counters);
     }
 
     /// <summary>

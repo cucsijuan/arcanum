@@ -15,6 +15,9 @@ public sealed record DamageBonus(ObjectFilter Sources, int Amount)
 
     /// <summary>Only damage to an opponent of the bonus's controller or a permanent an opponent controls.</summary>
     public bool ToOpponentsOnly { get; init; }
+
+    /// <summary>Only damage to an opponent (a player, not their permanents).</summary>
+    public bool ToOpponentPlayersOnly { get; init; }
 }
 
 /// <summary>

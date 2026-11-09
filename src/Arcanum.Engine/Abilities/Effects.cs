@@ -35,6 +35,9 @@ public sealed record ExileIt(Subject What) : Effect
     /// <summary>"Exile it with a [kind] counter on it."</summary>
     public CounterKind? WithCounter { get; init; }
 
+    /// <summary>"You may play that card from exile this turn": the effect's controller may play each card exiled this way this turn.</summary>
+    public bool PlayableThisTurn { get; init; }
+
     /// <summary>"All other ...": skip tokens this spell or ability created.</summary>
     public bool ExceptCreatedThisWay { get; init; }
 
@@ -92,6 +95,12 @@ public sealed record CounterSpell(Subject What) : Effect
     public Quantity? UnlessPaysGeneric { get; init; }
 
     /// <summary>"If that spell is countered this way, exile it instead of putting it into its owner's graveyard."</summary>
+    /// <summary>"If they do, surveil 2": what happens when the controller pays.</summary>
+    public IReadOnlyList<Effect>? IfPaid { get; init; }
+
+    /// <summary>Exiled instead of going to the graveyard (any spell), and its caster's opponent may cast it free while it stays exiled.</summary>
+    public bool ExilePlayable { get; init; }
+
     public bool ExileIfCountered { get; init; }
 }
 
@@ -140,7 +149,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
-    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story, Flood, Supply, Coin, Hoofprint, Ingredient, Acorn, Growth, Dream, Tower, Decayed, MinusZeroMinusOne, Rally, Experience, Void }
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story, Flood, Supply, Coin, Hoofprint, Ingredient, Acorn, Growth, Dream, Tower, Decayed, MinusZeroMinusOne, Rally, Experience, Void, Possession, Nest, Rev, Slumber }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect
@@ -178,6 +187,11 @@ public sealed record MayDo(string Prompt, IReadOnlyList<Effect> Effects) : Effec
 /// <summary>Put cards (from a graveyard, usually) onto the battlefield; "under your control" unless <paramref name="UnderOwnersControl"/>.</summary>
 public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool UnderOwnersControl = false) : Effect
 {
+    /// <summary>"Return it to the battlefield face down" (a 2/2 creature, or <see cref="FaceDownAs"/>); with <see cref="FaceDownChoice"/> its controller chooses face up or face down.</summary>
+    public bool FaceDown { get; init; }
+    public bool FaceDownChoice { get; init; }
+    public Cards.CardDefinition? FaceDownAs { get; init; }
+
     /// <summary>"Each of them is a 1/1 Spirit …": its base power and toughness from now on.</summary>
     public int? SetPower { get; init; }
     public int? SetToughness { get; init; }
@@ -365,6 +379,8 @@ public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = fa
     /// <summary>"Except it's a 3/3 black Wraith with menace" / "except it's a Food artifact … and it loses all other card types".</summary>
     public int? SetPower { get; init; }
     public int? SetToughness { get; init; }
+    /// <summary>"A red Balloon in addition to its other colors": colors added to the copied ones.</summary>
+    public IReadOnlyList<string>? AddColors { get; init; }
     public IReadOnlyList<string>? SetColors { get; init; }
     public CardType? SetTypes { get; init; }
     public IReadOnlyList<string>? SetSubtypes { get; init; }
@@ -446,6 +462,9 @@ public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, St
 
     /// <summary>The cards taken onto the battlefield enter tapped.</summary>
     public bool Tapped { get; init; }
+
+    /// <summary>"Exile one of those cards … You may play the exiled card this turn."</summary>
+    public bool PlayableThisTurn { get; init; }
 
     /// <summary>"Then shuffle": the rest stay and the library is shuffled.</summary>
     public bool RestShuffled { get; init; }
@@ -658,6 +677,10 @@ public sealed record AddMana(IReadOnlyList<Mana.ManaType> Types) : Effect
 {
     /// <summary>"Add {R} for each …": the mana is added this many times.</summary>
     public Quantity? Times { get; init; }
+
+    /// <summary>"Spend this mana only to cast Room spells and unlock doors": the spells it may pay for, and whether it may pay to unlock a door.</summary>
+    public ObjectFilter? OnlyFor { get; init; }
+    public bool ForUnlock { get; init; }
 }
 
 /// <summary>The subject (a creature) deals damage equal to its power to the other subject ("bite").</summary>
@@ -887,6 +910,12 @@ public sealed record ExileTopPlayable(int Count, bool ChooseOne = true, bool Unt
 
     /// <summary>"You may cast spells from among them": lands can't be played.</summary>
     public bool CastOnly { get; init; }
+
+    /// <summary>"You may cast permanent spells from among them" (with <see cref="CastOnly"/>).</summary>
+    public bool PermanentsOnly { get; init; }
+
+    /// <summary>"Exile the bottom card of each opponent's library" instead of the top.</summary>
+    public bool FromBottom { get; init; }
 }
 
 /// <summary>Divide damage as you choose among the chosen targets (at least 1 to each, rule 601.2d).</summary>
@@ -1040,7 +1069,11 @@ public sealed record Piles(int Count) : Effect
 public sealed record WinGame : Effect;
 
 /// <summary>"Untap up to N lands."</summary>
-public sealed record UntapUpTo(int Count, ObjectFilter Filter) : Effect;
+public sealed record UntapUpTo(int Count, ObjectFilter Filter) : Effect
+{
+    /// <summary>"Untap up to X lands, where X is …" (worked out as it resolves, instead of <see cref="Count"/>).</summary>
+    public Quantity? CountFrom { get; init; }
+}
 
 /// <summary>Give players poison counters.</summary>
 public sealed record AddPoison(int Count, Subject Who) : Effect
@@ -1201,6 +1234,9 @@ public sealed record CounterUnlessPays(int StackObject, Mana.ManaCost Mana, int 
 
     /// <summary>A non-mana cost instead ("Ward—Discard an enchantment, instant, or sorcery card").</summary>
     public ExtraCost? Extra { get; init; }
+
+    /// <summary>What happens when the controller pays ("If they do, surveil 2").</summary>
+    public IReadOnlyList<Effect>? IfPaid { get; init; }
 }
 
 /// <summary>"When you do, …": creates a reflexive triggered ability (with its own targets) if <see cref="If"/> shows the action before it happened.</summary>
@@ -1225,6 +1261,9 @@ public sealed record Amass(Quantity Count, string Subtype, CardDefinition Token,
 
 /// <summary>Recruit: the player draws a card, then discards a card; if a nonland card was discarded, they create <paramref name="Token"/> (a 1/1 white Human Soldier).</summary>
 public sealed record Recruit(CardDefinition Token, Subject Who) : Effect;
+
+/// <summary>"Then attach this Aura to another one of your opponents chosen at random" (an Aura that enchants a player).</summary>
+public sealed record AttachToRandomOtherOpponent : Effect;
 
 /// <summary>Attach Auras or Equipment (<paramref name="What"/>) to a permanent (<paramref name="To"/>).</summary>
 public sealed record Attach(Subject What, Subject To) : Effect;
@@ -1269,7 +1308,11 @@ public sealed record ExileUncastEntering(ObjectFilter Filter) : Effect;
 public sealed record RevealTopPutOntoBattlefield(Subject Who, ObjectFilter Filter) : Effect;
 
 /// <summary>"Exile all but the bottom [N] card(s) of target player's library": every card of each subject player's library but the bottom <paramref name="Keep"/> goes to exile.</summary>
-public sealed record ExileLibraryAllButBottom(Subject Who, int Keep) : Effect;
+public sealed record ExileLibraryAllButBottom(Subject Who, int Keep) : Effect
+{
+    /// <summary>"Exiles all but the bottom six cards of their library face down."</summary>
+    public bool FaceDown { get; init; }
+}
 
 /// <summary>
 /// "It can't have counters put on it for as long as this permanent remains on the battlefield" (for a player: "that player can't get
@@ -1365,7 +1408,11 @@ public sealed record ChooseCreatureType : Effect;
 public sealed record RevealTopPutRandom(int Count, ObjectFilter Filter, State.Zone To) : Effect;
 
 /// <summary>Search your hand and/or library for a matching card and put it into <paramref name="To"/>; shuffle.</summary>
-public sealed record SearchHandOrLibrary(ObjectFilter Filter, State.Zone To) : Effect;
+public sealed record SearchHandOrLibrary(ObjectFilter Filter, State.Zone To) : Effect
+{
+    /// <summary>"Search your graveyard, hand, and/or library."</summary>
+    public bool AlsoGraveyard { get; init; }
+}
 
 /// <summary>Add mana in any combination of colors, spendable only on spells matching <paramref name="OnlyFor"/>.</summary>
 public sealed record AddManaInAnyCombination(Quantity Count, ObjectFilter? OnlyFor) : Effect
@@ -1477,7 +1524,31 @@ public sealed record OpponentChooses(string Prompt, IReadOnlyList<Effect> IfYes,
 public sealed record CastCopyOfExiled(Subject What) : Effect
 {
     public Mana.ManaCost? Cost { get; init; }
+
+    /// <summary>"You may cast the copy" paying its own mana cost (not free).</summary>
+    public bool PayManaCost { get; init; }
 }
+
+/// <summary>
+/// "Mill two cards. If two cards that share a card type were milled this way, draw a card and repeat this process" (until they don't, or the
+/// library runs out).
+/// </summary>
+public sealed record MillTwoWhileSharingType : Effect;
+
+/// <summary>"Until your next turn, creatures your opponents control attack each combat if able and attack a player other than you if able."</summary>
+public sealed record OpponentsCreaturesMustAttackOthers : Effect;
+
+/// <summary>"Turn that creature face up" (an effect: no cost, rule 708.8).</summary>
+public sealed record TurnFaceUpFree(Subject What) : Effect;
+
+/// <summary>"Each player puts a [filter] card from their graveyard onto the battlefield" (each chooses one; they enter at the same time).</summary>
+public sealed record EachPlayerReanimates(ObjectFilter Filter) : Effect;
+
+/// <summary>"Shards you control become copies of it until the next end step" (it: a card, wherever it is).</summary>
+public sealed record ShardsBecomeCopies(Subject Of) : Effect;
+
+/// <summary>The end of a copy effect "until the next end step": the permanent has the copiable values it had before (<see cref="Previous"/>).</summary>
+public sealed record RevertCopy(Cards.CardDefinition? Previous) : Effect;
 
 /// <summary>"Choose a player with the most life or tied for most life. [Subject] can't be blocked by creatures that player controls this turn."</summary>
 public sealed record UnblockableByMostLifePlayer(Subject What) : Effect;
@@ -1505,6 +1576,9 @@ public sealed record PlayerMayPay(Subject Who, Quantity Generic, IReadOnlyList<E
 /// </summary>
 public sealed record PreventDamageThisTurn(bool CombatOnly, Subject? DealtBy = null, ObjectFilter? Sources = null, bool ToYou = false) : Effect
 {
+    /// <summary>"For each 1 damage prevented this way, …" (any damage the shield prevents; the amount is that damage).</summary>
+    public IReadOnlyList<Effect>? WhenPrevented { get; init; }
+
     /// <summary>"Until your next turn, prevent all damage that would be dealt to you".</summary>
     public bool UntilYourNextTurn { get; init; }
 
@@ -1831,6 +1905,9 @@ public sealed record StunVotedCreatures : Effect;
 /// <summary>"For each [option] vote, the voter chooses a creature they control. You gain control of each creature chosen this way, and they gain 'This creature can't attack its owner.'"</summary>
 public sealed record VotersGiveCreatures(int Option) : Effect;
 
+/// <summary>"For each [option] vote, choose a permanent owned by the voter and gain control of it."</summary>
+public sealed record GainVotersPermanents(int Option) : Effect;
+
 /// <summary>"You can't attack that player this turn".</summary>
 public sealed record CantAttackPlayerThisTurn(Subject Player) : Effect;
 
@@ -1874,6 +1951,119 @@ public sealed record ReturnWithCounter(CounterKind Kind) : Effect;
 /// </summary>
 /// <summary>"[Who] manifests the top card of their library" (rule 701.40a), <see cref="Count"/> times.</summary>
 public sealed record Manifest(Subject Who, int Count = 1) : Effect;
+
+/// <summary>
+/// "[Who] manifests dread" (rule 701.62a; you without <see cref="Who"/>): look at the top two cards of your library, manifest one of them and put the other into your graveyard.
+/// The manifested permanent is the effect's created object ("that creature").
+/// </summary>
+public sealed record ManifestDread(Subject? Who = null) : Effect
+{
+    /// <summary>"Manifest dread X times".</summary>
+    public Quantity? Times { get; init; }
+}
+
+/// <summary>
+/// "Unlock a locked door of a Room you control" (no <see cref="Room"/>: chosen, not targeted), or of <see cref="Room"/> (a target);
+/// with <see cref="OrLock"/>, "lock or unlock a door of target Room you control".
+/// </summary>
+public sealed record UnlockADoor(Subject? Room = null, bool OrLock = false) : Effect;
+
+/// <summary>
+/// "Reveal the top X cards of your library. Put any number of [filter] cards with different powers from among them into your hand. Put the
+/// rest on the bottom of your library in a random order."
+/// </summary>
+public sealed record RevealTopTakeDifferentPowers(Quantity Count, ObjectFilter Filter) : Effect;
+
+/// <summary>
+/// "[…] if this is the first time this ability has resolved this turn. If it's the second time, […]": the effects of the case for this
+/// resolution of the source's ability this turn (the first list the first time, …; none past the last).
+/// </summary>
+public sealed record NthResolutionThisTurn(IReadOnlyList<IReadOnlyList<Effect>> Cases) : Effect
+{
+    /// <summary>"Otherwise, …": the effects past the last case.</summary>
+    public IReadOnlyList<Effect>? Otherwise { get; init; }
+}
+
+/// <summary>"Each creature deals [N] damage to its controller."</summary>
+public sealed record EachCreatureDamagesController(int Amount) : Effect;
+
+/// <summary>"Return [N] [filter] cards at random from your graveyard to the battlefield."</summary>
+public sealed record ReanimateRandom(int Count, ObjectFilter Filter) : Effect;
+
+/// <summary>"Manifest a card from your hand" (rule 701.40a).</summary>
+public sealed record ManifestFromHand : Effect;
+
+/// <summary>"Starting with the next opponent in turn order, each player chooses a creature you don't control. Destroy the chosen creatures."</summary>
+public sealed record EachPlayerChoosesYourOpponentsCreatureToDestroy : Effect;
+
+/// <summary>"Look at the top three cards of your library. Put one of those cards into your hand, one on top of your library, and one on the bottom."</summary>
+public sealed record HandTopBottom : Effect;
+
+/// <summary>"Choose odd or even" as the effect resolves (the source remembers the choice).</summary>
+public sealed record ChooseParityNow : Effect;
+
+/// <summary>"Look at the top N cards of [player]'s library, then put them back in any order" (the effect's controller orders them).</summary>
+public sealed record ReorderTopOf(Subject Who, int Count) : Effect;
+
+/// <summary>"Choose a card at random in your graveyard. If it's a creature card, put it onto the battlefield. Otherwise, put it into your hand."</summary>
+public sealed record RandomGraveyardCardBack : Effect;
+
+/// <summary>"You may play that card this turn": the cards the cost exiled.</summary>
+public sealed record ExiledForCostPlayableThisTurn : Effect;
+
+/// <summary>"Choose an opponent at random. This creature attacks that player this combat if able."</summary>
+public sealed record AttacksRandomOpponent : Effect;
+
+/// <summary>
+/// "You may exile any number of cards from your graveyard with four or more card types among them. If you do, put a permanent card from among
+/// them onto the battlefield with a finality counter on it."
+/// </summary>
+public sealed record ExileGraveyardWithTypesReturnOne(int CardTypes) : Effect;
+
+/// <summary>
+/// "Choose target permanent card in your graveyard. You may sacrifice a permanent that shares a card type with the chosen card. If you do, return
+/// the chosen card from your graveyard to the battlefield and it gains 'If this permanent would leave the battlefield, exile it instead …'."
+/// </summary>
+public sealed record SacrificeSharingTypeToReturnTarget : Effect;
+
+/// <summary>
+/// "Reveal the top card of your library. You may cast it without paying its mana cost if it's a spell with lesser mana value [than the triggering
+/// spell]. If you don't cast it, put that card into your hand."
+/// </summary>
+public sealed record RevealTopCastIfLesser : Effect;
+
+/// <summary>
+/// "Exile the top eight cards of your library. You may put a land card from among them onto the battlefield. Until end of turn, for each nonland
+/// card type, you may cast a spell of that type from among the exiled cards without paying its mana cost."
+/// </summary>
+public sealed record ExileTopCastOnePerType(int Count) : Effect;
+
+/// <summary>
+/// "Exile all creatures. Each player creates a 0/0 green and blue Fractal creature token and puts a number of +1/+1 counters on it equal to the
+/// total power of creatures they controlled that were exiled this way."
+/// </summary>
+public sealed record ExileAllCreaturesFractals(Cards.CardDefinition Token) : Effect;
+
+/// <summary>"Whenever a creature dies this turn, [effects]": a delayed trigger of the source until end of turn (rule 603.7).</summary>
+public sealed record WheneverCreatureDiesThisTurn(TriggeredAbility Ability) : Effect;
+
+/// <summary>"For each permanent chosen this way, its controller may exile it."</summary>
+public sealed record ControllersMayExile(Subject What) : Effect;
+
+/// <summary>"Its controller may sacrifice it. If they don't, …" (the target): <see cref="Otherwise"/> with that player as the trigger's player.</summary>
+public sealed record UnlessSacrificesTarget(Subject Target, IReadOnlyList<Effect> Otherwise) : Effect;
+
+/// <summary>
+/// "That player chooses one of those creatures": the controller of the first two targets chooses one; <see cref="Effects"/> then happen with the
+/// chosen one as "target" and the other as "target2" ("deals 5 damage to that creature, and the other can't block this turn").
+/// </summary>
+public sealed record TargetControllerChoosesOne(IReadOnlyList<Effect> Effects) : Effect;
+
+/// <summary>"Reveal target face-down permanent. If it's a creature card, you may turn it face up."</summary>
+public sealed record RevealFaceDown(Subject What) : Effect;
+
+/// <summary>"[Who] can't gain life for the rest of the game."</summary>
+public sealed record CantGainLifeForRestOfGame(Subject Who) : Effect;
 
 public sealed record Clash(IReadOnlyList<Effect> IfWin, IReadOnlyList<Effect>? Else = null) : Effect;
 

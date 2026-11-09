@@ -29,7 +29,7 @@ public sealed partial class Game
         foreach (var player in State.LivingPlayers)
         {
             if (CantLose(player.Id)) continue;
-            if (player.Life <= 0) losers.Add((player.Id, "life total 0 or less"));                                  // 704.5a
+            if (player.Life <= 0 && !HasRule(player.Id, Cards.ExtraRules.NoLossForZeroLife)) losers.Add((player.Id, "life total 0 or less")); // 704.5a
             else if (player.AttemptedDrawFromEmptyLibrary) losers.Add((player.Id, "drew from an empty library"));    // 704.5b
             else if (player.Poison >= 10) losers.Add((player.Id, "ten poison counters"));                            // 704.5c
             else if (CommanderDamageLoss(player)) losers.Add((player.Id, "21 combat damage from a commander"));      // 704.6c

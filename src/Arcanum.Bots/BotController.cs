@@ -358,6 +358,8 @@ public sealed class BotController : IPlayerController
             // A face-down creature it can turn face up: before combat, so it attacks as what it really is.
             if (view.Step == Step.PrecombatMain && legal.OfType<TurnFaceUp>().FirstOrDefault() is { } faceUp) return faceUp;
             if (BestSpell(view, legal, mainPhase: true) is { } spell) return spell;
+            // Mana left after its spells: a locked door of one of its Rooms.
+            if (legal.OfType<UnlockDoor>().FirstOrDefault() is { } unlock) return unlock;
             if (LoyaltyAbility(view, legal) is { } loyalty) return loyalty;
             if (view.Step == Step.PrecombatMain && Equip(view, legal) is { } equip) return equip;
             if (view.Step == Step.PostcombatMain && UsefulActivation(view, legal) is { } ping) return ping;

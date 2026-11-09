@@ -48,6 +48,9 @@ public static partial class CardFactory
         "Exhaust", // an activated ability the script marks "onlyOnce" (rule 702.177: activate each exhaust ability only once)
         "Companion", // the script's "companion" deck condition (revealed before the game, put into the hand for {3})
         "Manifest", // the script's "manifest" effect (face-down 2/2; a creature card turns face up for its mana cost)
+        "Manifest dread", // the script's "manifestDread" effect (rule 701.62)
+        "Retrace", // the script's "graveyardCastCost": discard a land card (rule 702.81)
+        "Eerie", "Survival", // ability words: the script's "youFullyUnlockRoom" / "yourSecondMainPhase" triggers
         "Clash", // the script's "clash" effect with "ifWin" / "else"
         "Champion", // the script's "champion" enters trigger, its "returnLinkedExiled" leaves trigger and "championed" triggers
         "Blight", // the script's "blight" cost or effect (put N -1/-1 counters on a creature you control)
@@ -62,7 +65,7 @@ public static partial class CardFactory
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
     /// <remarks>Includes keywords whose rules this factory derives from rules text (Equip, Enchant).</remarks>
     public static ISet<string> SupportedKeywords { get; } =
-        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Impending", "Offspring", "Evoke", "Encore", "Compleated", "Escape", "Toxic", "Vanishing", "Ravenous", "Mobilize", "Harmonize", "Fabricate", "Eternalize", "Embalm", "Suspend", "Demonstrate", "Dredge" }).Concat(ScriptedKeywords),
+        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Megamorph", "Impending", "Offspring", "Evoke", "Encore", "Compleated", "Escape", "Toxic", "Vanishing", "Ravenous", "Mobilize", "Harmonize", "Fabricate", "Eternalize", "Embalm", "Suspend", "Demonstrate", "Dredge" }).Concat(ScriptedKeywords),
             StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Why <see cref="Create"/> finds the card unsupported (for tools): each failed requirement, by face.</summary>
@@ -124,7 +127,8 @@ public static partial class CardFactory
             Kicker = derived.Kicker,
             Flashback = derived.Flashback,
             Foretell = ForetellCost(record.OracleText),
-            Morph = KeywordLineCost(record.OracleText, MorphLine()),
+            Morph = KeywordLineCost(record.OracleText, MorphLine()) ?? KeywordLineCost(record.OracleText, MegamorphLine()),
+            Megamorph = KeywordLineCost(record.OracleText, MegamorphLine()) is not null,
             Impending = KeywordLineCost(record.OracleText, ImpendingLine()),
             Offspring = KeywordLineCost(record.OracleText, OffspringLine()),
             Harmonize = KeywordLineCost(record.OracleText, HarmonizeLine()),
@@ -321,7 +325,7 @@ public static partial class CardFactory
             if (EntersTappedLine().IsMatch(line)) continue;
             if (KickerLine().IsMatch(line) || FlashbackLine().IsMatch(line) || WardLine().IsMatch(line) || line == "This spell can't be countered") continue;
             if (CyclingLine().IsMatch(line)) continue;
-            if (UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line) || MorphLine().IsMatch(line) || ImpendingLine().IsMatch(line) || OffspringLine().IsMatch(line)) continue;
+            if (UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line) || MorphLine().IsMatch(line) || MegamorphLine().IsMatch(line) || ImpendingLine().IsMatch(line) || OffspringLine().IsMatch(line)) continue;
             if (EvokeLine().IsMatch(line) || EvokeExileLine().IsMatch(line) || EncoreLine().IsMatch(line) || MobilizeLine().IsMatch(line) || HarmonizeLine().IsMatch(line)) continue;
             if (FabricateLine().IsMatch(line) || EternalizeLine().IsMatch(line) || EmbalmLine().IsMatch(line) || SuspendLine().IsMatch(line) || DredgeLine().IsMatch(line) || line == "Demonstrate") continue;
             if (EscapeLine().IsMatch(line) || EscapesWithLine().IsMatch(line.Replace(record.Name, "~")) || ToxicLine().IsMatch(line) || VanishingLine().IsMatch(line)) continue;
@@ -808,6 +812,9 @@ public static partial class CardFactory
 
     [GeneratedRegex(@"^Morph (?<cost>(\{[0-9WUBRGC]+\})+)$")]
     private static partial Regex MorphLine();
+
+    [GeneratedRegex(@"^Megamorph (?<cost>(\{[0-9WUBRGC]+\})+)$")]
+    private static partial Regex MegamorphLine();
 
     [GeneratedRegex(@"^Offspring (?<cost>(\{[0-9WUBRGC]+\})+)$")]
     private static partial Regex OffspringLine();

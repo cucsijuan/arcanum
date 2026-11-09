@@ -90,6 +90,12 @@ public sealed record Foraged(PlayerId Player) : GameEvent;
 public sealed record Blighted(PlayerId Player, CardId Card, int Count) : GameEvent;
 /// <summary>A player manifested a card: it entered the battlefield face down as a 2/2 creature.</summary>
 public sealed record Manifested(PlayerId Player, CardId Card) : GameEvent;
+/// <summary>A player manifested dread (rule 701.62a): looked at the top two cards, manifested one and put the rest into their graveyard.</summary>
+public sealed record ManifestedDread(PlayerId Player, CardId? Card, IReadOnlyList<CardId> ToGraveyard) : GameEvent;
+/// <summary>A player unlocked a door of a Room (rule 709.5): <paramref name="Door"/> 0 is the left one; <paramref name="Fully"/> when both are unlocked now.</summary>
+public sealed record DoorUnlocked(CardId Card, PlayerId Player, int Door, bool Fully, string DoorName) : GameEvent;
+/// <summary>A door of a Room became locked.</summary>
+public sealed record DoorLocked(CardId Card, PlayerId Player, int Door, string DoorName) : GameEvent;
 /// <summary>A player revealed their companion from outside the game before the game began (rule 103.2b).</summary>
 public sealed record CompanionRevealed(PlayerId Player, CardId Card) : GameEvent;
 /// <summary>A player paid {3} and put their companion into their hand.</summary>

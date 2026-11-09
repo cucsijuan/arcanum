@@ -73,6 +73,9 @@ public abstract record AbilityDefinition
     /// <summary>One more mode may be chosen if this holds as it is cast ("if you control a Wizard, you may choose two instead").</summary>
     public Condition? ExtraModeIf { get; init; }
 
+    /// <summary>"Choose one. If [this holds], choose one or more instead": any number of the modes, at least one.</summary>
+    public Condition? AllModesIf { get; init; }
+
     /// <summary>A rule tying the targets together.</summary>
     public TargetRule TargetRule { get; init; }
 
@@ -581,6 +584,32 @@ public enum TriggerEvent
     DiesOrExiled,
     /// <summary>"When a [type] is championed with this creature" (rule 702.72): the trigger is about the exiled card.</summary>
     Championed,
+    /// <summary>"When you unlock this door" (rule 709.5): the door the ability is printed on became unlocked, also as a Room spell cast as it enters.</summary>
+    YouUnlockThisDoor,
+    /// <summary>"Whenever you fully unlock a Room": a door of a Room you control became unlocked and both its doors are unlocked now.</summary>
+    YouFullyUnlockRoom,
+    /// <summary>"At the beginning of your second main phase": the second main phase of each of your turns (rule 505.1).</summary>
+    YourSecondMainPhase,
+    /// <summary>"Whenever you manifest dread" (rule 701.62).</summary>
+    YouManifestDread,
+    /// <summary>"Whenever a [filter] creature dies or is put into exile" from the battlefield (as it last existed).</summary>
+    CreatureDiesOrExiled,
+    /// <summary>"Whenever this becomes the target of a spell an opponent controls" (player: that opponent).</summary>
+    BecomesTargetOfOpponentSpell,
+    /// <summary>"Whenever a player draws a card" (subject player: the drawer).</summary>
+    AnyPlayerDraws,
+    /// <summary>"When this is put into a graveyard from anywhere" (it triggers from the graveyard).</summary>
+    ThisPutIntoGraveyard,
+    /// <summary>"Whenever one or more [filter] creatures you control attack a player": once per player attacked (that player).</summary>
+    YourCreaturesAttackPlayer,
+    /// <summary>"Whenever enchanted player is dealt damage" (amount: that damage).</summary>
+    EnchantedPlayerDealtDamage,
+    /// <summary>"Whenever enchanted player casts a [filter] spell" (player: the caster).</summary>
+    EnchantedPlayerCastsSpell,
+    /// <summary>"When this permanent is turned face up" (rule 708.8).</summary>
+    TurnedFaceUp,
+    /// <summary>"Whenever a [filter] permanent you control is turned face up" (subject: that permanent; the observer sees itself too).</summary>
+    YourPermanentTurnedFaceUp,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -591,6 +620,9 @@ public sealed record TriggeredAbility : AbilityDefinition
 
     /// <summary>For cast triggers: the spell may instead target an opponent ("a spell that targets an opponent or a creature an opponent controls").</summary>
     public bool SpellTargetsOpponent { get; init; }
+
+    /// <summary>With <see cref="SpellTargets"/>: "a spell that targets only a single [filter]" (one target in all, matching).</summary>
+    public bool SpellTargetsOnlyOne { get; init; }
 
     /// <summary>For "creatures attack one of your opponents": only attacks on the player, not on their planeswalkers.</summary>
     public bool PlayersOnly { get; init; }
@@ -636,6 +668,9 @@ public sealed record TriggeredAbility : AbilityDefinition
 
     /// <summary>"This ability triggers only once each turn."</summary>
     public bool OncePerTurn { get; init; }
+
+    /// <summary>"This ability triggers only once" (for as long as the object stays where it is).</summary>
+    public bool OnlyOnce { get; init; }
 
     /// <summary>For spell-cast triggers: only spells that target the source ("a spell that targets this creature").</summary>
     public bool TargetsSource { get; init; }
@@ -733,6 +768,21 @@ public sealed record ObjectFilter(
 
     /// <summary>"A goaded creature": goaded by anyone (rule 701.15).</summary>
     public bool Goaded { get; init; }
+
+    /// <summary>"A card with two or more card types."</summary>
+    public bool TwoOrMoreCardTypes { get; init; }
+
+    /// <summary>"A Room card that doesn't have the same name as a Room you control" (the filter's controller's Rooms).</summary>
+    public bool NotNamedLikeYourRooms { get; init; }
+
+    /// <summary>"Each creature with power of the chosen quality": its power has the parity the source chose.</summary>
+    public bool PowerParityChosen { get; init; }
+
+    /// <summary>"Other than enchanted creature": not the object the source is attached to.</summary>
+    public bool NotAttachedToSource { get; init; }
+
+    /// <summary>"A face-down permanent" (true) or a face-up one (false; rule 708).</summary>
+    public bool? FaceDown { get; init; }
 
     /// <summary>Power at most that of the object the ability is about ("with power less than or equal to the amassed Army's power").</summary>
     public bool MaxPowerTriggered { get; init; }
@@ -932,6 +982,9 @@ public sealed record ObjectFilter(
     public IReadOnlyList<string>? NotSubtypes { get; init; }
 
     public static readonly ObjectFilter Anything = new(Controller: ControllerFilter.Any);
+
+    /// <summary>Matches no object: mana "spent only to turn permanents face up" pays for no spell.</summary>
+    public static readonly ObjectFilter Nothing = new(Controller: ControllerFilter.Any, Name: "\0");
 
     public static readonly ObjectFilter YourCreatures = new(Cards.CardType.Creature);
 }

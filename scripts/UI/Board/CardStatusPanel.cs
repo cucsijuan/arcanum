@@ -85,6 +85,8 @@ public partial class CardStatusPanel : VBoxContainer
             if (attachments.Count > 0) yield return ($"Attached: {string.Join(", ", attachments)}", State);
             if (c.AttacksEachCombat) yield return ("Attacks each combat if able", Neutral);
             if (c.ClassLevel > 0) yield return ($"Level {c.ClassLevel}", Gained);
+            if (c.DoorsUnlocked is { } doors && c.SplitHalves is { Count: 2 } halves)
+                for (int d = 0; d < 2; d++) yield return ($"{(doors[d] ? "Unlocked" : "Locked")}: {halves[d]}", doors[d] ? Gained : Neutral);
             if (c.Prepared) yield return ($"Prepared: {Player(c.Controller)} may cast a copy of {c.PrepareName} {c.PrepareCost}", Gained);
             if (c.UnblockableBy.Count > 0) yield return ($"Can't be blocked by {string.Join(", ", c.UnblockableBy.Select(Player))}", Gained);
         }

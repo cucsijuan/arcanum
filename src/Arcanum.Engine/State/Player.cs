@@ -53,6 +53,13 @@ public sealed class Player
     /// <summary>"You have no maximum hand size for the rest of the game."</summary>
     public bool NoMaximumHandSize { get; set; }
 
+    /// <summary>The last turn a permanent entered the battlefield face down under their control, and the last turn they turned one face up.</summary>
+    public int FaceDownEnteredTurn { get; set; } = -1;
+    public int TurnedFaceUpTurn { get; set; } = -1;
+
+    /// <summary>"They can't gain life for the rest of the game."</summary>
+    public bool CantGainLifeForRestOfGame { get; set; }
+
     /// <summary>Additional lands this player may play this turn ("you may play an additional land this turn").</summary>
     public int ExtraLandsThisTurn { get; set; }
 

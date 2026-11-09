@@ -29,6 +29,9 @@ public sealed record ActivateAbility(CardId Source, int Index) : PlayerAction;
 /// </summary>
 public sealed record TurnFaceUp(CardId Card, bool ForManaCost = false) : PlayerAction;
 
+/// <summary>Unlock a locked door of a Room you control (0 the left door, 1 the right), a special action paying that door's mana cost (rules 709.5, 116.2m).</summary>
+public sealed record UnlockDoor(CardId Card, int Door) : PlayerAction;
+
 /// <summary>Pay {3} and put your companion from outside the game into your hand (a special action, rules 702.139a, 116.2g).</summary>
 public sealed record PutCompanionIntoHand(CardId Card) : PlayerAction;
 

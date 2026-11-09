@@ -14,10 +14,12 @@ public sealed class Card
     public CardDefinition PrintedDefinition { get; }
 
     /// <summary>Its characteristics now: those of its Adventure while it is cast as one (rule 715.3), otherwise the printed card's.</summary>
-    public CardDefinition Definition => TurnedFaceDown ? FaceDownCreature : EffectCopy ?? CopiedDefinition ?? (MeldPartner is not null && PrintedDefinition.MeldResult is { } melded ? melded
+    public CardDefinition Definition => TurnedFaceDown ? FaceDownAs ?? FaceDownCreature : EffectCopy ?? CopiedDefinition ?? (MeldPartner is not null && PrintedDefinition.MeldResult is { } melded ? melded
         : Transformed && BackFaceDefinition is { } back ? back
         : AsAdventure && PrintedDefinition.Adventure is { } adventure ? adventure
         : CastHalf is { } half && PrintedDefinition.SplitHalves is { } halves ? halves[half]
+        : Zone == Zone.Battlefield && PrintedDefinition.IsRoom ? PrintedDefinition.AsRoom(UnlockedDoors)
+        : Zone != Zone.Battlefield && PrintedDefinition.CreatureOffBattlefield is not null ? PrintedDefinition.AsOffBattlefield()
         : PrintedDefinition);
 
     /// <summary>
@@ -93,6 +95,18 @@ public sealed class Card
     /// <summary>A split card being cast as (or on the stack as) one of its halves (rule 709.3).</summary>
     public int? CastHalf { get; set; }
 
+    /// <summary>As a spell: what its behold cost chose or revealed ("the creature you chose or the card you revealed"), with its version then.</summary>
+    public IReadOnlyList<(CardId Card, int Version)> Beheld { get; set; } = Array.Empty<(CardId, int)>();
+
+    /// <summary>The turn its counted ability last resolved, and how many times it has that turn ("the first time this ability has resolved this turn").</summary>
+    public (int Turn, int Count) Resolutions { get; set; } = (-1, 0);
+
+    /// <summary>A Room's unlocked doors (rule 709.5): bit 0 the left door, bit 1 the right one. Not a copiable value.</summary>
+    public int UnlockedDoors { get; set; }
+
+    /// <summary>Whether this Room's door (0 left, 1 right) is unlocked.</summary>
+    public bool IsUnlocked(int door) => (UnlockedDoors & (1 << door)) != 0;
+
     /// <summary>It is being cast, or is on the stack, as its Adventure (rule 715.3).</summary>
     public bool AsAdventure { get; set; }
 
@@ -142,6 +156,9 @@ public sealed class Card
 
     /// <summary>Activated abilities with "Activate only once" already used.</summary>
     public HashSet<int> ActivatedEver { get; } = new();
+
+    /// <summary>Its "triggers only once" abilities that have triggered since it last changed zones.</summary>
+    public HashSet<Abilities.TriggeredAbility> TriggeredEver { get; } = new();
 
     /// <summary>Card name chosen as it entered.</summary>
     public string? ChosenName { get; set; }
@@ -206,6 +223,12 @@ public sealed class Card
     /// <summary>Additional {B} whenever this land (a Swamp) is tapped for mana ("whenever you tap a Swamp for mana, add an additional {B}").</summary>
     internal int ExtraBlack { get; set; }
 
+    /// <summary>
+    /// One more mana of a type it produced whenever this land is tapped for mana, for each tapped permanent saying so ("whenever a player taps
+    /// a land for mana, if this creature is tapped, that player adds one mana of any type that land produced").
+    /// </summary>
+    internal int ExtraWhileWatchersTapped { get; set; }
+
     /// <summary>"If you tap a permanent for mana, it produces three times as much of that mana instead": 3 to the power of such effects.</summary>
     internal int ManaMultiplier { get; set; } = 1;
 
@@ -222,6 +245,9 @@ public sealed class Card
     public bool Manifested { get; set; }
 
     /// <summary>The characteristics of a face-down spell or permanent (rule 708.2a).</summary>
+    /// <summary>A face-down permanent with other characteristics than a 2/2 creature ("face down … It's a Forest land").</summary>
+    internal CardDefinition? FaceDownAs { get; set; }
+
     public static readonly CardDefinition FaceDownCreature = new() { Name = "Face-down creature", Types = CardType.Creature, Power = 2, Toughness = 2 };
 
     /// <summary>
@@ -388,6 +414,9 @@ public sealed class Card
     /// <summary>An effect gave it all creature types ("gains all creature types until end of turn", layer 4).</summary>
     internal bool EffectEveryCreatureType { get; set; }
 
+    /// <summary>"Creatures you control are the chosen type in addition to their other types", also as a spell and a card outside the battlefield.</summary>
+    internal IReadOnlyCollection<string> ChosenCreatureTypes { get; set; } = Array.Empty<string>();
+
     /// <summary>The source whose "put onto the battlefield" effect put this permanent there ("if it wasn't put onto the battlefield with this ability").</summary>
     public CardId? PutOntoBattlefieldBy { get; set; }
 
@@ -495,7 +524,8 @@ public sealed class Card
     /// <summary>Has this subtype (changelings have every creature type).</summary>
     public bool HasSubtype(string subtype) =>
         ((SubtypesOverride ?? Definition.Subtypes).Contains(subtype, StringComparer.OrdinalIgnoreCase) || GrantedSubtypes.Contains(subtype)
-         || ((Has(Keyword.Changeling) || ((EveryCreatureType || EffectEveryCreatureType) && IsCreature)) && !NonCreatureSubtypes.Contains(subtype)))
+         || ((Has(Keyword.Changeling) || ((EveryCreatureType || EffectEveryCreatureType) && IsCreature)) && !NonCreatureSubtypes.Contains(subtype))
+         || (IsCreature && ChosenCreatureTypes.Contains(subtype, StringComparer.OrdinalIgnoreCase)))
         && (TypesOverride is null || SubtypeFitsTypes(subtype));
 
     /// <summary>
@@ -538,7 +568,7 @@ public sealed class Card
 
     /// <summary>Its subtypes now, after effects that change them (without the every-creature-type of changeling).</summary>
     public IReadOnlyList<string> CurrentSubtypes =>
-        (SubtypesOverride ?? Definition.Subtypes).Concat(GrantedSubtypes).Distinct(StringComparer.OrdinalIgnoreCase)
+        (SubtypesOverride ?? Definition.Subtypes).Concat(GrantedSubtypes).Concat(IsCreature ? ChosenCreatureTypes : Array.Empty<string>()).Distinct(StringComparer.OrdinalIgnoreCase)
         .Where(t => TypesOverride is null || SubtypeFitsTypes(t)).ToList();
 
     /// <summary>Abilities it has from effects (not printed).</summary>
@@ -664,6 +694,11 @@ public sealed class Card
                 for (int i = 0; i < options.Count; i++)
                     if (options[i].Produces > 0 && options[i].Types.Count == 1 && options[i].Types[0] == Mana.ManaType.Black && !options[i].Combination)
                         options[i] = options[i] with { Amount = options[i].Amount + ExtraBlack };
+            // Of a single type, the additional mana can only be that type: part of the same activation here; others get it as they are tapped.
+            if (ExtraWhileWatchersTapped > 0)
+                for (int i = 0; i < options.Count; i++)
+                    if (options[i].Produces > 0 && options[i].Types.Count == 1 && !options[i].Combination)
+                        options[i] = options[i] with { Amount = options[i].Amount + ExtraWhileWatchersTapped };
             return options;
         }
     }
@@ -855,12 +890,15 @@ public sealed class Card
         LoyaltyActivatedThisTurn = false;
         ChosenModes.Clear();
         ActivatedEver.Clear();
+        TriggeredEver.Clear();
         ChosenName = null;
         AttacksThisTurn = 0;
         HasDealtDamage = false;
         HasDealtCombatDamage = false;
         AsAdventure = false;
         CastHalf = null;
+        UnlockedDoors = 0;
+        Resolutions = (-1, 0);
         OnAdventure = false;
         PreparedCopy = null;
         PreparedSpellOf = null;
@@ -880,6 +918,7 @@ public sealed class Card
         ReadAheadChapter = 0;
         FaceDown = false;
         TurnedFaceDown = false;
+        FaceDownAs = null;
         Manifested = false;
         KnownTo.Clear();
         Uncounterable = false;

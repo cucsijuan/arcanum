@@ -129,6 +129,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>"Has all activated abilities of all [filter] cards in your graveyard."</summary>
     public ObjectFilter? GrantsGraveyardAbilities { get; init; }
 
+    /// <summary>"Has all activated abilities of [filter] creatures you control that don't have the same name as this creature."</summary>
+    public ObjectFilter? GrantsYourCreaturesAbilities { get; init; }
+
     /// <summary>"Have all activated abilities of all creature cards exiled with this creature."</summary>
     public bool GrantsExiledCreatureAbilities { get; init; }
 

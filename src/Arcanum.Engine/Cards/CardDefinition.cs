@@ -391,6 +391,9 @@ public sealed partial record CardDefinition
 
     /// <summary>Morph [cost] (702.37): may be cast face down as a 2/2 creature for {3}, and turned face up for this cost.</summary>
     public ManaCost? Morph { get; init; }
+
+    /// <summary>Megamorph (702.37b): <see cref="Morph"/> is its megamorph cost; turned face up for it, it gets a +1/+1 counter.</summary>
+    public bool Megamorph { get; init; }
     public int ImpendingCount { get; init; }
 
     /// <summary>
@@ -465,6 +468,9 @@ public sealed partial record CardDefinition
     public bool FlashbackExilesX { get; init; }
     public Quantity? FlashbackReduction { get; init; }
 
+    /// <summary>"Unlock costs you pay cost {N} less" (a static ability of a permanent): N.</summary>
+    public int UnlockCostsLess { get; init; }
+
     /// <summary>A split card (rule 709): its two halves; the second may be an aftermath half (cast only from a graveyard, then exiled).</summary>
     public IReadOnlyList<CardDefinition>? SplitHalves { get; init; }
     public bool Aftermath { get; init; }
@@ -502,6 +508,9 @@ public sealed partial record CardDefinition
     /// <summary>"Except it's a Bird in addition to its other types and it has flying": subtypes and keywords the copy also has (rule 707.9b).</summary>
     public IReadOnlyList<string>? EntersAsCopyAddSubtypes { get; init; }
     public IReadOnlyList<string>? EntersAsCopyAddKeywords { get; init; }
+
+    /// <summary>"Except … it has '[ability]'": abilities the copy also has (rule 707.9b).</summary>
+    public IReadOnlyList<Abilities.AbilityDefinition>? EntersAsCopyAddAbilities { get; init; }
 
     /// <summary>"You may cast creature spells [matching this] from the top of your library."</summary>
     public ObjectFilter? LibraryTopCastFilter { get; init; }
@@ -783,6 +792,9 @@ public sealed partial record CardDefinition
     /// <summary>Only while this holds ("as long as this attacked this turn").</summary>
     public Abilities.Condition? LibraryTopPlayIf { get; init; }
 
+    /// <summary>"You may cast spells from the top of your library by sacrificing a nonland permanent in addition to paying their other costs."</summary>
+    public Abilities.ExtraCost? LibraryTopExtraCost { get; init; }
+
     /// <summary>"You may have this creature enter as a copy of any [filter] on the battlefield" (rule 707.2, 614.1c).</summary>
     public ObjectFilter? EntersAsCopyOf { get; init; }
 
@@ -852,6 +864,9 @@ public sealed partial record CardDefinition
     /// <summary>"Creatures can't attack you unless their controller pays [cost] for each of those creatures" (while <see cref="AttackTaxIf"/> holds).</summary>
     public ManaCost? AttackTax { get; init; }
     public Condition? AttackTaxIf { get; init; }
+
+    /// <summary>"Unless their controller pays {X} for each of those creatures, where X is …": the generic tax, worked out now.</summary>
+    public Abilities.Quantity? AttackTaxFrom { get; init; }
 
     /// <summary>"Creatures can't block unless their controller pays [cost] for each of those creatures" (while <see cref="BlockTaxIf"/> holds).</summary>
     public ManaCost? BlockTax { get; init; }

@@ -133,7 +133,7 @@ public sealed partial class Game
         TrackTurnHistory(e);
         // Continuous effects are always current (rule 611.3a): conditions like "as long as it's untapped" or
         // "as long as you have 30 or more life" change with these events.
-        if (e is PermanentTapped or PermanentUntapped or CountersPlaced or LifeChanged or ControlChanged or AttacksDeclared or AttackerDeclared or BlockerDeclared)
+        if (e is PermanentTapped or PermanentUntapped or CountersPlaced or LifeChanged or ControlChanged or AttacksDeclared or AttackerDeclared or BlockerDeclared or SpellCast)
             RecomputeContinuousEffects();
         CollectTriggers(e);
         NoteKnowledge(e);
@@ -154,6 +154,7 @@ public sealed partial class Game
         {
             case CardMoved { From: Zone.Battlefield, To: Zone.Graveyard } m when WasCreature(State.GetCard(m.Card)):
                 State.CreaturesDiedThisTurn++;
+                State.CreatureDeathsThisTurn.Add(m.Card);
                 if (!State.GetCard(m.Card).Definition.IsToken) State.NontokenCreaturesDiedThisTurn++;
                 State.GetPlayer(m.LastController).CreaturesDiedThisTurn++;
                 State.GetPlayer(m.LastController).PermanentLeftThisTurn = true;

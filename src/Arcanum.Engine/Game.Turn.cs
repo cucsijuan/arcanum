@@ -39,6 +39,7 @@ public sealed partial class Game
         }
         active.LandsPlayedThisTurn = 0;
         State.CreaturesDiedThisTurn = 0;
+        State.CreatureDeathsThisTurn.Clear();
         State.NontokenCreaturesDiedThisTurn = 0;
         State.PermanentsSacrificedThisTurn = 0;
         State.BlocksThisTurn.Clear();
@@ -100,6 +101,7 @@ public sealed partial class Game
         State.LastTurnOf[active.Id] = State.TurnNumber;
         active.TurnsTaken++;
         State.Goads.RemoveAll(g => g.Goader == active.Id); // "until your next turn"
+        State.OpponentsCreaturesMustAttackOthers.RemoveAll(p => p == active.Id);
         State.LastingEffects.RemoveAll(e => e.UntilTurnOf == active.Id);
         State.AttackTaxesUntilNextTurn.RemoveAll(t => t.Protected == active.Id);
         active.Protected = false; // "protection from everything until your next turn"
@@ -212,9 +214,12 @@ public sealed partial class Game
                 }
                 // "Untap all permanents you control during each other player's untap step": not its controller's own untap step, so
                 // "doesn't untap during its controller's untap step" doesn't stop it; a stun counter still replaces the untap (122.1d).
+                // "Untap each creature you control during each other player's untap step": creatures only.
                 foreach (var other in State.ApnapOrder().Where(p => p != State.ActivePlayer).ToList())
-                    if (State.PermanentsControlledBy(other).Any(c => c.HasTextAbilities && c.Definition.UntapDuringOthersUntapSteps))
-                        foreach (var permanent in State.PermanentsControlledBy(other).Where(c => c.Tapped && !c.Has(Cards.Keyword.CantBecomeUntapped)).ToList())
+                    if (State.PermanentsControlledBy(other).Any(c => c.HasTextAbilities && c.Definition.UntapDuringOthersUntapSteps)
+                        || HasRule(other, Cards.ExtraRules.UntapYourCreaturesDuringOthersUntap))
+                        foreach (var permanent in State.PermanentsControlledBy(other).Where(c => c.Tapped && !c.Has(Cards.Keyword.CantBecomeUntapped)
+                                     && (c.IsCreature || State.PermanentsControlledBy(other).Any(s => s.HasTextAbilities && s.Definition.UntapDuringOthersUntapSteps))).ToList())
                         {
                             if (permanent.CounterCount(Abilities.CounterKind.Stun) > 0) RemoveCountersFrom(permanent, Abilities.CounterKind.Stun, 1);
                             else Untap(permanent);
@@ -310,12 +315,23 @@ public sealed partial class Game
         ManaPoolChanged();
     }
 
+    /// <summary>The number of card types among cards in the player's graveyard.</summary>
+    private int CardTypesIn(Core.PlayerId player) =>
+        new[] { Cards.CardType.Artifact, Cards.CardType.Battle, Cards.CardType.Creature, Cards.CardType.Enchantment, Cards.CardType.Instant, Cards.CardType.Kindred,
+                Cards.CardType.Land, Cards.CardType.Planeswalker, Cards.CardType.Sorcery }
+            .Count(t => State.GetPlayer(player).Graveyard.Any(id => State.GetCard(id).Definition.Is(t)));
+
     private async Task CleanupAsync()
     {
         var active = State.GetPlayer(State.ActivePlayer);
         // "Your maximum hand size is five" (the smallest such limit; no maximum hand size wins, rule 402.2).
         int maxHand = State.PermanentsControlledBy(active.Id).Where(c => c.HasTextAbilities && c.Definition.YourMaximumHandSize is not null)
-            .Select(c => c.Definition.YourMaximumHandSize!.Value).DefaultIfEmpty(Config.MaxHandSize).Min();
+            .Select(c => c.Definition.YourMaximumHandSize!.Value)
+            // "Delirium — … each opponent's maximum hand size is equal to seven minus the number of those card types."
+            .Concat(State.Battlefield.Select(State.GetCard).Where(c => c.HasTextAbilities && State.OpponentsOf(c.Controller).Contains(active.Id)
+                        && (c.Definition.ExtraRules & Cards.ExtraRules.OpponentsHandSizeSevenMinusCardTypes) != 0 && CardTypesIn(c.Controller) >= 4)
+                .Select(c => 7 - CardTypesIn(c.Controller)))
+            .DefaultIfEmpty(Config.MaxHandSize).Min();
         int excess = Has(active.Id, Cards.Replacements.NoMaximumHandSize) || active.NoMaximumHandSize ? 0 : active.Hand.Count - maxHand;
         if (excess > 0)
         {

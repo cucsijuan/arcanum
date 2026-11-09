@@ -25,6 +25,7 @@ public static partial class CardScriptParser
             return new ExileTop(ParseQuantity(ext), e.TryGetProperty("who", out var exw) ? ParseSubject(exw) : Subject.You)
             {
                 PlayableDuringLoreTurns = e.TryGetProperty("playableDuringLoreTurns", out var pdl) && pdl.GetBoolean(),
+                Linked = e.TryGetProperty("linked", out var etl) && etl.GetBoolean(),
             };
         if (e.TryGetProperty("nextCreatureSpell", out var ncs))
             return new NextCreatureSpell(ncs.TryGetProperty("haste", out var nh) && nh.GetBoolean(), ncs.TryGetProperty("counters", out var nc) ? nc.GetInt32() : 0)

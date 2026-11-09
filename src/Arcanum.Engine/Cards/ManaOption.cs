@@ -71,6 +71,12 @@ public sealed record ManaOption(IReadOnlyList<ManaType> Types, int Amount = 1, O
     /// <summary>"Spend this mana only to cast an Equipment spell or activate an equip ability": besides <see cref="OnlyFor"/> spells, equip abilities only.</summary>
     public bool EquipOnly { get; init; }
 
+    /// <summary>"…, unlock a door, or turn a permanent face up": besides <see cref="OnlyFor"/> spells, it may pay to unlock doors.</summary>
+    public bool ForUnlock { get; init; }
+
+    /// <summary>"Spend this mana only to turn permanents face up": besides <see cref="OnlyFor"/> spells (<see cref="Abilities.ObjectFilter.Nothing"/>: none), it may pay for that.</summary>
+    public bool ForFaceUp { get; init; }
+
     /// <summary>"{T}, Exile this artifact: Add {U}": exiling its source is part of the cost.</summary>
     public bool ExileSelf { get; init; }
 

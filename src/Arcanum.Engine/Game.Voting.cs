@@ -126,4 +126,22 @@ public sealed partial class Game
         }
         RecomputeContinuousEffects();
     }
+
+    /// <summary>For each such vote, the spell's controller chooses a permanent the voter owns (wherever its control is) and gains control of it.</summary>
+    private async Task GainVotersPermanentsAsync(GainVotersPermanents gain, EffectContext ctx)
+    {
+        var who = ctx.Controller;
+        foreach (var (voter, _) in VotesIn(ctx).Where(v => v.Choice == gain.Option.ToString()).ToList())
+        {
+            var options = State.Battlefield.Select(State.GetCard).Where(c => c.Owner == voter).ToList();
+            if (options.Count == 0) continue;
+            var pick = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest(
+                $"{ctx.Source.Name}: choose a permanent {State.GetPlayer(voter).Name} owns to gain control of", ctx.Source.Id,
+                options.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 1, 1, CardChoicePurpose.Keep));
+            Require(pick.Count == 1 && options.Any(c => c.Id == pick[0]), "Choose one of that player's permanents.");
+            var card = State.GetCard(pick[0]);
+            State.ControlEffects.Add(new ControlEffect(card.Id, card.Version, who, NewTimestamp()) { MadeOnTurn = State.TurnNumber });
+            RecomputeContinuousEffects();
+        }
+    }
 }

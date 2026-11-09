@@ -303,6 +303,28 @@ public enum QuantityKind
     TriggeredPowerToughnessDifference,
     /// <summary>"The difference between the chosen creatures' powers" (two chosen this way).</summary>
     ChosenPowerDifference,
+    /// <summary>"The number of unlocked doors among Rooms you control" (rule 709.5).</summary>
+    YourUnlockedDoors,
+    /// <summary>The number of different names among unlocked doors of Rooms you control.</summary>
+    YourUnlockedDoorNames,
+    /// <summary>"The number of card types among cards in your graveyard."</summary>
+    CardTypesInYourGraveyard,
+    /// <summary>"The number of counters on this" (every kind).</summary>
+    SourceCountersAll,
+    /// <summary>"The power of the creature you chose or the card you revealed" (a behold cost): as it is, or as it last was if it moved.</summary>
+    BeheldPower,
+    /// <summary>"The greatest power among [filter] cards in your graveyard" (0 without one).</summary>
+    GreatestPowerInYourGraveyard,
+    /// <summary>The X of the source spell on the stack ("when you cast this spell, … X …").</summary>
+    SourceSpellX,
+    /// <summary>"The total amount of life your opponents lost this turn" / "for each 1 life your opponents have lost this turn".</summary>
+    OpponentsLifeLostThisTurn,
+    /// <summary>"The total mana value of permanents destroyed this way" (as they last existed).</summary>
+    DestroyedManaValue,
+    /// <summary>"The number of card types among those cards" (the trigger's batch).</summary>
+    CardTypesAmongBatch,
+    /// <summary>"If one or more of the chosen permanents are still on the battlefield, … up to that many": the targets still on the battlefield.</summary>
+    TargetsOnBattlefield,
 }
 
 /// <summary>

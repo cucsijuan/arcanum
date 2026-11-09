@@ -179,10 +179,14 @@ public sealed partial class Game
         }
     }
 
-    /// <summary>Whether a card (in a hand, library or graveyard) has this name: a split card has both its halves' names.</summary>
+    /// <summary>
+    /// Whether a card has this name: a split card has both its halves' names, except a Room on the battlefield, which has those of its
+    /// unlocked doors (709.5c).
+    /// </summary>
     private static bool HasName(Card card, string name) =>
         string.Equals(card.Name, name, StringComparison.OrdinalIgnoreCase)
-        || (card.PrintedDefinition.SplitHalves?.Any(h => string.Equals(h.Name, name, StringComparison.OrdinalIgnoreCase)) ?? false);
+        || (card.PrintedDefinition.SplitHalves?.Where((_, i) => !(card.Zone == Zone.Battlefield && card.PrintedDefinition.IsRoom) || card.IsUnlocked(i))
+            .Any(h => string.Equals(h.Name, name, StringComparison.OrdinalIgnoreCase)) ?? false);
 
     /// <summary>
     /// The names offered for "choose a [kind] card name": the game's card database (<see cref="GameConfig.CreatureCardNames"/> for

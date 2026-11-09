@@ -8,7 +8,11 @@ public abstract record Condition;
 public sealed record AttackedThisTurn : Condition;
 
 /// <summary>"If a creature died this turn" (morbid).</summary>
-public sealed record CreatureDiedThisTurn : Condition;
+public sealed record CreatureDiedThisTurn : Condition
+{
+    /// <summary>"If a non-Zombie creature died this turn": the dead creature, as it last existed, matches this.</summary>
+    public ObjectFilter? Filter { get; init; }
+}
 
 /// <summary>"If you gained life this turn" / "if you gained N or more life this turn".</summary>
 public sealed record GainedLifeThisTurn(int AtLeast = 1) : Condition;
@@ -92,7 +96,7 @@ public sealed record TriggeredWasAttacking : Condition;
 public sealed record SourceWasSubtype(string Subtype) : Condition;
 
 /// <summary>The source had counters of a kind when it was last on the battlefield.</summary>
-public sealed record SourceHadCounters(CounterKind Kind) : Condition;
+public sealed record SourceHadCounters(CounterKind? Kind) : Condition;
 
 /// <summary>This effect sacrificed at least one permanent of yours.</summary>
 public sealed record YouSacrificedThisWay : Condition;
@@ -250,6 +254,36 @@ public sealed record OpponentsAtLeast(int Count) : Condition;
 
 /// <summary>"As long as an opponent has N or less life".</summary>
 public sealed record OpponentLifeAtMost(int Life) : Condition;
+
+/// <summary>"A player has N or less life" (any player, you included).</summary>
+public sealed record APlayerLifeAtMost(int Life) : Condition;
+
+/// <summary>"If you discarded a card this way" (the resolving effect made its controller discard).</summary>
+public sealed record YouDiscardedThisWay : Condition;
+
+/// <summary>"As long as this [permanent] entered this turn."</summary>
+public sealed record SourceEnteredThisTurn : Condition;
+
+/// <summary>"If you control a prime number of lands" (2, 3, 5, 7, …).</summary>
+public sealed record PrimeLandCount : Condition;
+
+/// <summary>Coven: "if you control three or more creatures with different powers".</summary>
+public sealed record Coven : Condition;
+
+/// <summary>"If two cards that share all their card types were milled this way."</summary>
+public sealed record MilledShareAllTypes : Condition;
+
+/// <summary>"As long as [this]'s power is even" (or odd with <paramref name="Odd"/>).</summary>
+public sealed record SourcePowerParity(bool Odd) : Condition;
+
+/// <summary>"If a permanent entered the battlefield face down under your control this turn or you turned a permanent face up this turn."</summary>
+public sealed record FaceDownActivityThisTurn : Condition;
+
+/// <summary>"Whenever an opponent loses life for the first time during each of their turns": the life-losing player's first loss this turn, on their turn.</summary>
+public sealed record TriggeredPlayerFirstLossOnTheirTurn : Condition;
+
+/// <summary>"If defending player controls a [filter]" (the player this attacking source attacks).</summary>
+public sealed record DefendingPlayerControls(ObjectFilter Filter) : Condition;
 
 /// <summary>"If [option] gets more votes": strictly more than each other option.</summary>
 public sealed record MoreVotes(int Option) : Condition;

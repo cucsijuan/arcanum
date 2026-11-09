@@ -75,6 +75,9 @@ public static class ViewBuilder
         Zone.Hand => state.OpponentsOf(card.Owner).Any(o => Revealing(state, o, Cards.Replacements.OpponentsPlayWithHandsRevealed)),
         Zone.Library => state.GetPlayer(card.Owner).Library is { Count: > 0 } library && library[0] == card.Id
                         && Revealing(state, card.Owner, Cards.Replacements.PlayWithTopCardRevealed),
+        // "You may look at face-down creatures your opponents control any time."
+        Zone.Battlefield => card.TurnedFaceDown && card.IsCreature && state.OpponentsOf(viewer).Contains(card.Controller) && !state.GetPlayer(viewer).HasLost
+                            && state.PermanentsControlledBy(viewer).Any(c => c.HasTextAbilities && (c.Definition.ExtraRules & Cards.ExtraRules.LookAtOpponentsFaceDownCreatures) != 0),
         _ => false,
     };
 
@@ -128,7 +131,7 @@ public static class ViewBuilder
             Controller = card.Controller,
             Zone = card.Zone,
             IsHidden = false,
-            Name = card.Name,
+            Name = card.Name.Length == 0 && card.PrintedDefinition.IsRoom ? "Room (both doors locked)" : card.Name, // a fully locked Room has no name
             ManaCost = card.Definition.ManaCost.ToString(),
             Types = card.Types,
             Power = card.Definition.Power is null && card.Definition.PowerFrom is null ? null : card.Power,
@@ -184,6 +187,7 @@ public static class ViewBuilder
             ClassLevel = card.Zone == Zone.Battlefield && card.HasSubtype("Class") ? card.ClassLevel : 0,
             PreparedSpellOf = card.PreparedSpellOf,
             SplitHalves = card.PrintedDefinition.SplitHalves?.Select(h => $"{h.Name} {h.ManaCost}").ToList(),
+            DoorsUnlocked = card.Zone == Zone.Battlefield && !faceDown && card.PrintedDefinition.IsRoom ? new[] { card.IsUnlocked(0), card.IsUnlocked(1) } : null,
             Transformed = card.Transformed,
             IsBackFace = card.Transformed && !card.IsCopy && card.IsDoubleFaced,
             FaceDown = faceDown,

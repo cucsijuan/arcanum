@@ -54,6 +54,9 @@ public sealed record ExileTop(Quantity Count, Subject Who) : HeroesEffect
 {
     /// <summary>"During any turn you put a lore counter on this Saga, you may play that card."</summary>
     public bool PlayableDuringLoreTurns { get; init; }
+
+    /// <summary>The cards are exiled with the source ("cards exiled with this enchantment", rule 607.2).</summary>
+    public bool Linked { get; init; }
 }
 
 /// <summary>

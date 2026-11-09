@@ -112,6 +112,9 @@ public sealed record CardView
     /// <summary>A split card's halves: names and mana costs.</summary>
     public IReadOnlyList<string>? SplitHalves { get; init; }
 
+    /// <summary>A Room on the battlefield: whether each door (left, right) is unlocked (rule 709.5); null for anything else.</summary>
+    public IReadOnlyList<bool>? DoorsUnlocked { get; init; }
+
     /// <summary>A double-faced permanent with its back face up (rule 701.27g).</summary>
     public bool Transformed { get; init; }
 

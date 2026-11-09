@@ -71,6 +71,10 @@ public sealed partial class Game
         // modify that life gain (rule 616.1), which may need choices.
         var gained = lifelink ?? new Dictionary<PlayerId, int>();
         foreach (var part in final) ApplyDamage(part, gained);
+        // "Prevent that damage and each opponent mills that many cards": the mills the prevention asked for.
+        foreach (var (miller, count) in _preventedDamageMills.ToList())
+            await ApplyAsync(new Mill(new Quantity(count), Subject.EachOpponent), new EffectContext(miller.Controller, miller, Array.Empty<ChosenTarget>(), Array.Empty<bool>()));
+        _preventedDamageMills.Clear();
         // "Whenever [this] deals damage": once per damage event, with the total it dealt in it.
         foreach (var bySource in final.GroupBy(p => p.Source.Id))
         {
@@ -210,6 +214,9 @@ public sealed partial class Game
         return (amount > 0 ? part with { Amount = amount, Applied = applied } : null, redirected);
     }
 
+    /// <summary>Mills owed by "prevent that damage and each opponent mills that many cards", done once the damage event is over.</summary>
+    private readonly List<(Card Controller, int Count)> _preventedDamageMills = new();
+
     /// <summary>The replacement and prevention effects that apply to this part of a damage event.</summary>
     private List<DamageModifier> DamageModifiers(DamagePart part, Dictionary<int, int>? redirectAllowance, List<DamagePart> redirected,
         HashSet<string> applied, Action<int> notePrevented)
@@ -245,6 +252,15 @@ public sealed partial class Game
                         if (counted.Zone == Zone.Battlefield) PutCounters(counted, CounterKind.PlusOnePlusOne, n, shield.Controller);
                         return 0;
                     }));
+            // "If a source you control would deal damage to an opponent, prevent that damage and each opponent mills that many cards."
+            if (part.ToPlayer is { } milled && State.OpponentsOf(SourceController(source)).Contains(milled))
+                foreach (var skinner in State.PermanentsControlledBy(SourceController(source)).Where(c => c.HasTextAbilities && (c.Definition.ExtraRules & ExtraRules.YourDamageToOpponentsMillsInstead) != 0))
+                    Add(new DamageModifier("preventMill", $"preventMill:{skinner.Id}", $"Prevent it; each opponent mills that many cards ({skinner.Name})", n =>
+                    {
+                        notePrevented(n);
+                        _preventedDamageMills.Add((skinner, n));
+                        return 0;
+                    }) { PlainPrevention = true });
             // "If a source an opponent controls would deal damage to you, prevent 1 of that damage."
             if (part.ToPlayer is { } player && State.OpponentsOf(player).Contains(SourceController(source)))
                 foreach (var seraph in State.PermanentsControlledBy(player).Where(c => (c.Replaces & Replacements.PreventOneDamageFromOpponentsSources) != 0))
@@ -296,7 +312,7 @@ public sealed partial class Game
         // "Prevent N of that damage" to you, and "that much damage plus N" (each instance once, rule 614.5).
         foreach (var extra in DamageToYouReductionsFor(part, preventable, notePrevented).Concat(DamageBonusesFor(part))) Add(extra);
         // Replacement effects that double or triple it.
-        foreach (var (id, label, factor) in DamageMultipliers(source, part.ToCard, part.ToPlayer))
+        foreach (var (id, label, factor) in DamageMultipliers(source, part.ToCard, part.ToPlayer, part.Combat))
             Add(new DamageModifier($"x{factor}", id, label, n => n * factor));
         return list;
     }
@@ -359,7 +375,7 @@ public sealed partial class Game
     }
 
     /// <summary>Effects that double or triple damage (one entry per instance): an id, a label and the factor (rule 614).</summary>
-    private List<(string Id, string Label, int Factor)> DamageMultipliers(Card source, Card? targetCard, PlayerId? targetPlayer)
+    private List<(string Id, string Label, int Factor)> DamageMultipliers(Card source, Card? targetCard, PlayerId? targetPlayer, bool combat = false)
     {
         var result = new List<(string, string, int)>();
         var victim = targetPlayer ?? targetCard!.Controller;
@@ -391,6 +407,12 @@ public sealed partial class Game
         // "Double all damage that sources you control of the chosen type would deal."
         foreach (var c in State.PermanentsControlledBy(controller).Where(c => c.HasTextAbilities && c.Definition.DoublesDamageOfChosenType && c.ChosenType is not null))
             if (lki?.HasSubtype(c.ChosenType!) ?? source.HasSubtype(c.ChosenType!))
+                result.Add(($"double:{c.Id}", $"Double it ({c.Name})", 2));
+        // "Delirium — If a source you control would deal noncombat damage to a permanent or player while there are four or more card types
+        // among cards in your graveyard, it deals double that damage instead."
+        if (!combat)
+            foreach (var c in State.PermanentsControlledBy(controller).Where(c => c.HasTextAbilities && (c.Definition.ExtraRules & ExtraRules.YourNoncombatDamageDoubledWithDelirium) != 0
+                         && Holds(new CardTypesInGraveyard(4), controller, c)))
                 result.Add(($"double:{c.Id}", $"Double it ({c.Name})", 2));
         // "Until your next turn, if a source would deal damage to that player or a permanent that player controls, it deals double that damage instead."
         int s = 0;
@@ -467,6 +489,8 @@ public sealed partial class Game
     /// </summary>
     private void RemoveCountersFrom(Card card, CounterKind kind, int count)
     {
+        // "Stun counters can't be removed from permanents your opponents control."
+        if (kind == CounterKind.Stun && card.Zone == Zone.Battlefield && State.OpponentsOf(card.Controller).Any(p => HasRule(p, ExtraRules.OpponentsStunCountersStay))) return;
         int removed = Math.Min(count, card.CounterCount(kind));
         if (removed <= 0) return;
         card.Counters[kind] = card.CounterCount(kind) - removed;

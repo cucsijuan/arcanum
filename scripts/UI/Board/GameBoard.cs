@@ -1111,7 +1111,7 @@ public partial class GameBoard : Control
             case PriorityDecision p:
                 foreach (var action in p.Legal)
                 {
-                    var id = action switch { PlayLand l => l.Card, CastSpell c => c.Card, ActivateAbility a => a.Source, TurnFaceUp t => t.Card, _ => (CardId?)null };
+                    var id = action switch { PlayLand l => l.Card, CastSpell c => c.Card, ActivateAbility a => a.Source, TurnFaceUp t => t.Card, UnlockDoor u => u.Card, _ => (CardId?)null };
                     if (id is { } cardId) (FindCard(cardId) ?? PileCard(cardId))?.SetHighlight(CardHighlight.Playable);
                 }
                 break;
@@ -1308,6 +1308,7 @@ public partial class GameBoard : Control
                         ActivateManaAbility m => $"Add {{{m.Type.ToSymbol()}}}",
                         TurnFaceUp { ForManaCost: true } => $"Turn face up for {card?.FaceDownCard?.ManaCost} ({card?.FaceDownCard?.Name})",
                         TurnFaceUp => $"Turn face up ({card?.FaceDownCard?.Name})",
+                        UnlockDoor u when card?.SplitHalves is { } doors && u.Door < doors.Count => $"Unlock {doors[u.Door]}",
                         ActivateAbility a when card is not null && a.Index < card.AbilityTexts.Count => Shorten(card.AbilityTexts[a.Index]),
                         _ => "Activate",
                     };
@@ -1952,7 +1953,7 @@ public partial class GameBoard : Control
 
     private static List<PlayerAction> SourceActions(PriorityDecision p, CardId source) =>
         p.Legal.Where(a => a is ActivateAbility aa && aa.Source == source || a is ActivateManaAbility m && m.Source == source
-                           || a is CastSpell c && c.Card == source || a is PlayLand l && l.Card == source || a is TurnFaceUp t && t.Card == source).ToList();
+                           || a is CastSpell c && c.Card == source || a is PlayLand l && l.Card == source || a is TurnFaceUp t && t.Card == source || a is UnlockDoor u && u.Card == source).ToList();
 
     private static string Shorten(string text) => text.Length <= 28 ? text : text[..27] + "\u2026";
 
@@ -2542,7 +2543,16 @@ public partial class GameBoard : Control
                 _announcer.Enqueue(new($"{PlayerName(ch.Player)} puts their companion {ev.Name(ch.Card)} into their hand", ViewOf(ev, ch.Card), 1.5));
                 break;
             case Manifested mf:
-                _announcer.Enqueue(new($"{PlayerName(mf.Player)} manifests the top card of their library", ViewOf(ev, mf.Card), 1.5));
+                _announcer.Enqueue(new($"{PlayerName(mf.Player)} manifests a card face down", ViewOf(ev, mf.Card), 1.5));
+                break;
+            case ManifestedDread md when md.ToGraveyard.Count > 0:
+                _announcer.Enqueue(new($"{PlayerName(md.Player)} manifests dread and puts {string.Join(", ", md.ToGraveyard.Select(ev.Name))} into their graveyard", ViewOf(ev, md.ToGraveyard[0]), 1.5));
+                break;
+            case DoorUnlocked du:
+                _announcer.Enqueue(new($"{PlayerName(du.Player)} unlocks {du.DoorName}{(du.Fully ? ": the Room is fully unlocked" : "")}", ViewOf(ev, du.Card), 1.5));
+                break;
+            case DoorLocked dl:
+                _announcer.Enqueue(new($"{PlayerName(dl.Player)} locks {dl.DoorName}", ViewOf(ev, dl.Card), 1.5));
                 break;
             case Clashed cl:
                 _announcer.Enqueue(new($"{PlayerName(cl.Player)} clashes with {PlayerName(cl.Opponent)}: {(cl.PlayerCard is { } mine ? ev.Name(mine) : "no card")} vs {(cl.OpponentCard is { } theirs ? ev.Name(theirs) : "no card")} — {(cl.Winner is { } w ? $"{PlayerName(w)} wins" : "nobody wins")}",

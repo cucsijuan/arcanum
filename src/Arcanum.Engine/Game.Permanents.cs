@@ -13,7 +13,12 @@ public sealed partial class Game
         if (card.Tapped) return;
         card.Tapped = true;
         Emit(new PermanentTapped(card.Id));
+        if (WatchesLandsWhileTapped(card)) RecomputeContinuousEffects();
     }
+
+    /// <summary>"If this creature is tapped": lands' mana abilities change as it taps and untaps.</summary>
+    private static bool WatchesLandsWhileTapped(Card card) =>
+        card.HasTextAbilities && (card.Definition.ExtraRules & Cards.ExtraRules.LandsTappedAddOneAndDamageWhileTapped) != 0;
 
     /// <summary>
     /// Untaps a permanent that is tapped, announcing it. Nothing happens if it is already untapped. A permanent with a stun counter
@@ -29,6 +34,7 @@ public sealed partial class Game
         }
         card.Tapped = false;
         Emit(new PermanentUntapped(card.Id));
+        if (WatchesLandsWhileTapped(card)) RecomputeContinuousEffects();
     }
 
     /// <summary>

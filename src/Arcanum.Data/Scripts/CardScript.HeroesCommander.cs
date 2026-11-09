@@ -71,6 +71,7 @@ public static partial class CardScriptParser
             {
                 "colorsAmongYourPermanents" => new Quantity(0, QuantityKind.ColorsAmongYourPermanents),
                 "cardTypesInAllGraveyards" => new Quantity(0, QuantityKind.CardTypesInAllGraveyards),
+                "cardTypesInGraveyard" => new Quantity(0, QuantityKind.CardTypesInYourGraveyard),
                 "counterKindsOnSelf" => new Quantity(0, QuantityKind.CounterKindsOnSource),
                 "playersWhoLostLifeThisTurn" => new Quantity(0, QuantityKind.PlayersWhoLostLifeThisTurn),
                 "opponentsWhoLostLifeThisTurn" => new Quantity(0, QuantityKind.OpponentsWhoLostLifeThisTurn),

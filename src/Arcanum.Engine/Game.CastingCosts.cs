@@ -17,7 +17,7 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>What a spell is cast for (rule 118.9): its mana cost or one alternative cost.</summary>
-    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown, Escape, Evoke, Harmonize }
+    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown, Escape, Evoke, Harmonize, RuleAlternative, FreeFromExile, LifeOncePerTurn }
 
     /// <summary>
     /// One way to pay for casting a card: the cost it's cast for (its mana cost, or the flashback or miracle cost it's being
@@ -59,6 +59,45 @@ public sealed partial class Game
         public CardId? HarmonizeTapped { get; init; }
         public int X { get; init; }
     }
+
+    private static readonly ManaCost FiveColors = ManaCost.Parse("{W}{U}{B}{R}{G}");
+
+    /// <summary>"Each enchantment card in your graveyard has escape. The escape cost is equal to the card's mana cost plus exile three other cards from your graveyard."</summary>
+    private ManaCost? GrantedEscape(Card card) =>
+        card.Zone == Zone.Graveyard && card.Is(CardType.Enchantment) && HasRule(card.Owner, ExtraRules.GraveyardEnchantmentsHaveEscape) ? card.Definition.ManaCost : null;
+
+    /// <summary>The permanent whose "cast spells from the top of your library by [cost]" is the only permission letting the card be cast from there.</summary>
+    private Card? LibraryTopCostHolder(Card card, PlayerId caster)
+    {
+        if (State.GetPlayer(caster).Library.FirstOrDefault() != card.Id) return null;
+        var holders = State.PermanentsControlledBy(caster).Where(p => p.HasTextAbilities && p.Definition.LibraryTopPlay is { } plays
+            && (p.Definition.LibraryTopPlayIf is not { } playIf || Holds(playIf, caster, p)) && Matches(plays with { Controller = ControllerFilter.Any }, card, caster, p, caster)).ToList();
+        bool otherPermission = holders.Any(h => h.Definition.LibraryTopExtraCost is null) || LibraryTopPermissions(caster).Any()
+            || ((Has(caster, Replacements.CreaturesFromLibraryTop) || Has(caster, Replacements.CastCreaturesFromLibraryTop)) && card.Is(CardType.Creature));
+        return otherPermission ? null : holders.FirstOrDefault(h => h.Definition.LibraryTopExtraCost is not null);
+    }
+
+    /// <summary>The permanents whose "once each turn, pay {0} for a spell you cast from exile" was used, by turn.</summary>
+    private readonly HashSet<(CardId Source, int Version, int Turn)> _freeFromExileUsed = new();
+
+    /// <summary>A permanent of the caster's that still lets them pay {0} for a spell cast from exile this turn.</summary>
+    private Card? FreeFromExileSource(PlayerId caster) =>
+        State.PermanentsControlledBy(caster).FirstOrDefault(c => c.HasTextAbilities && (c.Definition.ExtraRules & ExtraRules.FreeFromExileOncePerTurn) != 0
+            && !_freeFromExileUsed.Contains((c.Id, c.Version, State.TurnNumber)));
+
+    /// <summary>A permanent of the caster's that still lets them cast this card by paying life equal to its mana value this turn.</summary>
+    private Card? LifeOncePerTurnSource(Card card, PlayerId caster) =>
+        State.ActivePlayer != caster ? null
+        : State.PermanentsControlledBy(caster).FirstOrDefault(c => c.HasTextAbilities && !_freeFromExileUsed.Contains((c.Id, c.Version, State.TurnNumber))
+            && (((c.Definition.ExtraRules & ExtraRules.LifeCastFromHandOncePerTurn) != 0 && card.Zone == Zone.Hand)
+                || ((c.Definition.ExtraRules & ExtraRules.LifeCastEnchantmentOncePerTurn) != 0 && card.Is(CardType.Enchantment))));
+
+    /// <summary>"Once during each of your turns, cast a spell from your hand or the top of your library without paying its mana cost": a permanent still offering it.</summary>
+    private Card? FreeFromHandOrTopSource(Card card, PlayerId caster) =>
+        State.ActivePlayer == caster && (card.Zone == Zone.Hand || State.GetPlayer(caster).Library.FirstOrDefault() == card.Id)
+            ? State.PermanentsControlledBy(caster).FirstOrDefault(c => c.HasTextAbilities && (c.Definition.ExtraRules & ExtraRules.FreeFromHandOrTopOncePerTurn) != 0
+                && !_freeFromExileUsed.Contains((c.Id, c.Version, State.TurnNumber)))
+            : null;
 
     /// <summary>The ways the card can be cast for right now (118.9), whether or not they can be paid.</summary>
     private List<CastingWay> CastingWays(Card card, PlayerId caster)
@@ -104,7 +143,7 @@ public sealed partial class Game
                 return new() { new(CastingWayKind.Harmonize, harmonize) };
             ways.Add(new(CastingWayKind.Harmonize, harmonize));
         }
-        if (card.Zone == Zone.Graveyard && card.Definition.Escape is { } escape)
+        if (card.Zone == Zone.Graveyard && (card.Definition.Escape ?? GrantedEscape(card)) is { } escape)
         {
             // 702.138a: from the graveyard only with escape, unless something else lets it be cast from there.
             if (!GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0 && !BlitzFromGraveyard(card))
@@ -115,6 +154,13 @@ public sealed partial class Game
         if (card.Definition.Impending is { } impending) ways.Add(new(CastingWayKind.Impending, impending)); // 702.176a
         if (card.Zone == Zone.Hand && card.PrintedDefinition.Morph is not null) ways.Add(new(CastingWayKind.FaceDown, FaceDownCastCost)); // 702.37c
         if (card.Definition.AlternativeCost is { } alt && (alt.If is null || Holds(alt.If, caster, card))) ways.Add(new(CastingWayKind.Alternative, alt.Cost));
+        // "You may pay {W}{U}{B}{R}{G} rather than pay the mana cost for spells you cast."
+        if (HasRule(caster, ExtraRules.YourSpellsForFiveColors)) ways.Add(new(CastingWayKind.RuleAlternative, FiveColors));
+        // "Once each turn, you may pay {0} rather than pay the mana cost for a spell you cast from exile."
+        if (card.Zone == Zone.Exile && FreeFromExileSource(caster) is not null) ways.Add(new(CastingWayKind.FreeFromExile, ManaCost.Zero));
+        if (FreeFromHandOrTopSource(card, caster) is not null) ways.Add(new(CastingWayKind.FreeFromExile, ManaCost.Zero));
+        // "Once during each of your turns, you may cast a spell from your hand / an enchantment spell by paying life equal to its mana value."
+        if (LifeOncePerTurnSource(card, caster) is not null) ways.Add(new(CastingWayKind.LifeOncePerTurn, ManaCost.Zero, card.ManaValue));
         if (card.Zone == Zone.Hand && Has(caster, Replacements.CastFromHandFree)) ways.Add(new(CastingWayKind.WithoutPaying, ManaCost.Zero));
         // "You may cast Dragon spells without paying their mana costs": wherever the card can be cast from.
         else if (State.PermanentsControlledBy(caster).Any(p => p.HasTextAbilities && p.Definition.CastSpellsFree is { } free
@@ -219,11 +265,14 @@ public sealed partial class Game
             && !State.PlayableFromExile.Any(p => p.Card == card.Id && p.Version == card.Version && p.Player == card.Owner))
             costs.Add(holder.Definition.CastExiledWithThisExtra);
         if (c.Way.Kind == CastingWayKind.Alternative) costs.Add(card.Definition.AlternativeCost?.Extra);
+        // Cast from the top of the library through a permission with an additional cost (and no other permission for it).
+        if (card.Zone == Zone.Library && LibraryTopCostHolder(card, card.Owner) is { } pit) costs.Add(pit.Definition.LibraryTopExtraCost);
         if (c.Way.Kind == CastingWayKind.WithoutPaying && _castFreeExtra.TryGetValue(card.Id, out var freeExtra)) costs.Add(freeExtra);
         if (c.SacrificeAnyCount > 0 && card.Definition.CastSacrificeAny is { } sacrificeAny) costs.Add(new ExtraCost(Sacrifice: sacrificeAny, SacrificeCount: c.SacrificeAnyCount));
         if (c.Way.Kind == CastingWayKind.Blitz) costs.Add(card.Definition.BlitzExtra);
         if (c.Way.Kind == CastingWayKind.Evoke && card.Definition.Evoke is { } ownEvoke && ownEvoke.Equals(c.Way.Mana)) costs.Add(card.Definition.EvokeExtra); // not a granted evoke
-        if (c.Way.Kind == CastingWayKind.Escape) costs.Add(card.Definition.EscapeExtra);
+        // A granted escape costs "plus exile three other cards from your graveyard".
+        if (c.Way.Kind == CastingWayKind.Escape) costs.Add(card.Definition.Escape is not null ? card.Definition.EscapeExtra : new ExtraCost { ExileFromGraveyard = 3 });
         // A non-mana escalate cost, once for each mode beyond the first (702.120a).
         if (card.Definition.EscalateExtra is { } escalate && c.EscalatedModes > 0)
             costs.Add(escalate with
@@ -272,8 +321,39 @@ public sealed partial class Game
         State.PermanentsControlledBy(caster).Where(a => a.Is(CardType.Artifact) && !a.Tapped && a.Id != card.Id)
             .OrderBy(a => a.ManaOptions.Count > 0 ? 1 : 0).ToList();
 
-    private bool CanPayCastingMana(Card card, PlayerId caster, CastingChoices c, ManaCost mana) =>
-        LifeAffordable(caster, mana).Any(m => m.Variants().Any(v => ManaPayment.FindPlan(State, caster, v, usable: SpellManaUsable(card, caster, c), unitUsable: UnitUsableFor(card, isAbility: false)) is not null));
+    private bool CanPayCastingMana(Card card, PlayerId caster, CastingChoices c, ManaCost mana) => TapCostReserveFor(card, caster, c, mana) is not null;
+
+    /// <summary>
+    /// The permanents to keep untapped while paying the mana so an additional cost "tap N untapped [creatures and/or lands] you control" can
+    /// still be paid after it (601.2g-h): those that add no mana first, then the first set of mana sources the mana can be paid without.
+    /// Null when no such set leaves the mana payable.
+    /// </summary>
+    private HashSet<CardId>? TapCostReserveFor(Card card, PlayerId caster, CastingChoices c, ManaCost mana)
+    {
+        var usable = SpellManaUsable(card, caster, c);
+        bool Payable(HashSet<CardId> reserved) => LifeAffordable(caster, mana).Any(m => m.Variants().Any(v => ManaPayment.FindPlan(State, caster, v,
+            usable: reserved.Count == 0 ? usable : (s, o) => !reserved.Contains(s.Id) && usable(s, o), unitUsable: UnitUsableFor(card, isAbility: false)) is not null));
+        var tapping = new[] { card.Definition.AdditionalCost, c.Option?.Extra }.Where(e => e?.TapCreatures is not null && e.TapCount > 0).ToList();
+        if (tapping.Count == 0) return Payable(new HashSet<CardId>()) ? new HashSet<CardId>() : null;
+        var candidates = tapping.SelectMany(e => TapCandidates(caster, e!.TapCreatures!, card.Id)).DistinctBy(x => x.Id).ToList();
+        int needed = tapping.Sum(e => e!.TapCount) - candidates.Count(x => x.ManaOptions.Count == 0);
+        var sources = candidates.Where(x => x.ManaOptions.Count > 0).Select(x => x.Id).ToList();
+        if (needed <= 0) return Payable(new HashSet<CardId>()) ? new HashSet<CardId>() : null;
+        foreach (var set in Combinations(sources, needed))
+            if (Payable(set)) return set;
+        return null;
+    }
+
+    private static IEnumerable<HashSet<CardId>> Combinations(IReadOnlyList<CardId> items, int k, int start = 0)
+    {
+        if (k == 0) { yield return new HashSet<CardId>(); yield break; }
+        for (int i = start; i <= items.Count - k; i++)
+            foreach (var rest in Combinations(items, k - 1, i + 1))
+            {
+                rest.Add(items[i]);
+                yield return rest;
+            }
+    }
 
     /// <summary>
     /// The mana costs a player could pay this cost with: each way of paying its Phyrexian symbols with life they can pay (rules 107.4f, 119.4).

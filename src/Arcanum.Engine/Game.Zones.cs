@@ -34,6 +34,8 @@ public sealed partial class Game
         ExileInsteadOfDying,
         /// <summary>A permanent with a finality counter that would be put into a graveyard from the battlefield is exiled instead (rule 122.1h).</summary>
         Finality,
+        /// <summary>An opponent's "if a card would be put into an opponent's graveyard from anywhere, exile it instead" (<see cref="ZoneReplacement.By"/>; linked to it with <see cref="Cards.ExtraRules.OpponentsCardsExiledWithThis"/>).</summary>
+        ExiledInsteadOfOpponentsGraveyard,
     }
 
     /// <summary>One replacement effect that would modify where a card goes (rule 614.1a).</summary>
@@ -83,7 +85,15 @@ public sealed partial class Game
                 list.AddRange(State.Battlefield.Select(State.GetCard)
                     .Where(c => c.HasTextAbilities && c.Definition.OpponentsCardsExiledWithVoidCounter && State.OpponentsOf(c.Controller).Contains(card.Owner))
                     .Select(c => new ZoneReplacement(ZoneReplacementKind.ExiledWithVoidCounter, c)));
-            if (State.PermanentsControlledBy(card.Owner).FirstOrDefault(c => (c.Replaces & Cards.Replacements.ExileInsteadOfYourGraveyard) != 0) is { } eld)
+            // "If a card [you didn't control] would be put into an opponent's graveyard from anywhere, exile it instead."
+            if (!card.Definition.IsToken)
+                list.AddRange(State.Battlefield.Select(State.GetCard)
+                    .Where(c => c.HasTextAbilities && State.OpponentsOf(c.Controller).Contains(card.Owner)
+                                && ((c.Definition.ExtraRules & Cards.ExtraRules.OpponentsCardsExiledInsteadOfGraveyard) != 0
+                                    || ((c.Definition.ExtraRules & Cards.ExtraRules.OpponentsCardsExiledWithThis) != 0
+                                        && (from is Zone.Battlefield or Zone.Stack ? card.Controller : card.Owner) != c.Controller)))
+                    .Select(c => new ZoneReplacement(ZoneReplacementKind.ExiledInsteadOfOpponentsGraveyard, c)));
+            if (PermanentsAndEmblemsOf(card.Owner).FirstOrDefault(c => (c.Replaces & Cards.Replacements.ExileInsteadOfYourGraveyard) != 0) is { } eld)
                 list.Add(new(ZoneReplacementKind.ExiledByOpponentsPermanent, eld) { YoursToExile = true });
             if ((card.Is(Cards.CardType.Instant) || card.Is(Cards.CardType.Sorcery))
                 && State.Battlefield.Any(b => (State.GetCard(b).Replaces & Cards.Replacements.ExileInstantsAndSorceries) != 0))
@@ -123,6 +133,7 @@ public sealed partial class Game
         ZoneReplacementKind.ExileUncastEntering => "Exile it (it would enter the battlefield without being cast)",
         ZoneReplacementKind.ExileInsteadOfDying => $"Exile it ({card.Name} would die)",
         ZoneReplacementKind.Finality => $"Exile it ({card.Name} has a finality counter)",
+        ZoneReplacementKind.ExiledInsteadOfOpponentsGraveyard => $"Exile it ({replacement.By!.Name}, {State.GetPlayer(replacement.By.Controller).Name})",
         _ => "Put it into the command zone",
     };
 
@@ -199,6 +210,9 @@ public sealed partial class Game
 
     /// <summary>A card being put onto the battlefield face down (a manifest): face down as it enters (rule 701.40a, 708.3).</summary>
     private CardId? _enteringFaceDown;
+
+    /// <summary>The characteristics the card entering face down has, if not a 2/2 creature ("it's a Forest land").</summary>
+    private Cards.CardDefinition? _enteringFaceDownAs;
 
     /// <summary>The compleated spell resolving now and how many fewer loyalty counters it enters with (rule 702.150a).</summary>
     private (CardId Card, int Fewer)? _enteringFewerLoyalty;
@@ -388,6 +402,7 @@ public sealed partial class Game
         if (entering.CopyGetsVanishingIfNone > 0 && values.Vanishing == 0) values = values with { Vanishing = entering.CopyGetsVanishingIfNone };
         if (entering.EntersAsCopyAddSubtypes is { } extraSubtypes) values = values with { Subtypes = values.Subtypes.Concat(extraSubtypes).Distinct().ToList() };
         if (entering.EntersAsCopyAddKeywords is { } extraKeywords) values = values with { Keywords = values.Keywords.Concat(extraKeywords).Distinct().ToList() };
+        if (entering.EntersAsCopyAddAbilities is { } extraAbilities) values = values with { Abilities = values.Abilities.Concat(extraAbilities).ToList() };
         return entering.EntersAsCopyWithHaste ? values with { Keywords = values.Keywords.Append("Haste").Distinct().ToList() } : values;
     }
 
@@ -484,9 +499,13 @@ public sealed partial class Game
         bool wasFaceDown = card.TurnedFaceDown;
         bool staysFaceDown = wasFaceDown && ((from == Zone.Hand && to == Zone.Stack) || (from == Zone.Stack && to == Zone.Battlefield));
         var spentToCast = from == Zone.Stack && to == Zone.Battlefield ? card.SpentManaTypes : null; // what paid for the spell stays known (rule 601.2h)
+        // A Room spell becomes a Room with the door that was cast unlocked; put onto the battlefield any other way, its doors are locked (709.5e).
+        int? castDoor = from == Zone.Stack && to == Zone.Battlefield && card.PrintedDefinition.IsRoom ? card.CastHalf : null;
         card.ResetStatus();
+        if (castDoor is { } door) card.UnlockedDoors = 1 << door;
         if (spentToCast is not null) card.SpentManaTypes = spentToCast;
         card.TurnedFaceDown = staysFaceDown || (to == Zone.Battlefield && _enteringFaceDown == id);
+        if (to == Zone.Battlefield && _enteringFaceDown == id) card.FaceDownAs = _enteringFaceDownAs;
         if (wasFaceDown && !staysFaceDown && from is Zone.Stack or Zone.Battlefield) Emit(new CardsRevealed(lastController, new[] { id }));
         card.EnteredCastFromGraveyard = castFromGraveyard;
         card.GiftPromised = giftTo is not null;
@@ -536,6 +555,11 @@ public sealed partial class Game
         foreach (var applied in plan.Applied)
             if (applied.Kind == ZoneReplacementKind.ExiledWithVoidCounter && to == Zone.Exile)
                 card.Counters[Abilities.CounterKind.Void] = card.CounterCount(Abilities.CounterKind.Void) + 1;
+        // Exiled instead by a permanent that keeps what it exiles this way ("cards exiled with Valgavoth").
+        foreach (var applied in plan.Applied)
+            if (applied is { Kind: ZoneReplacementKind.ExiledInsteadOfOpponentsGraveyard, By: { } keeper } && to == Zone.Exile
+                && (keeper.Definition.ExtraRules & Cards.ExtraRules.OpponentsCardsExiledWithThis) != 0)
+                card.ExiledWith = (keeper.Id, keeper.Version);
         card.FaceDown = faceDown && to == Zone.Exile;
         card.KnownTo.UnionWith(knewIt);
         NoteCommanderMove(card, to);
@@ -620,6 +644,11 @@ public sealed partial class Game
         RecomputeContinuousEffects();
         int leavingVersion = card.Version - 1;
         Emit(new CardMoved(id, card.Owner, from, to, lastController));
+        if (to == Zone.Battlefield && card.TurnedFaceDown) State.GetPlayer(card.Controller).FaceDownEnteredTurn = State.TurnNumber;
+        // The door a Room spell was cast as is unlocked as it enters: "when you unlock this door" triggers (709.5e).
+        if (to == Zone.Battlefield && card.PrintedDefinition.IsRoom)
+            for (int door = 0; door < 2; door++)
+                if (card.IsUnlocked(door)) Emit(new DoorUnlocked(id, card.Controller, door, Fully: false, card.PrintedDefinition.SplitHalves![door].Name));
         if (plan.Applied.Any(r => r.Kind == ZoneReplacementKind.CommandZone)) Emit(new CommanderReturned(id, card.Owner));
         AnnounceEnterCounters(card, placedCounters);
         // "Shuffle it into its owner's library": that library is shuffled even if the card went elsewhere instead.
@@ -736,7 +765,7 @@ public sealed partial class Game
             await MoveCardAsync(top, Zone.Hand);
             Emit(new CardDrawn(playerId, top));
             // Miracle: the first card a player draws in a turn may be revealed as it's drawn (702.94a).
-            if (State.GetCard(top).Definition.Miracle is not null && player.CardsDrawnThisTurn == 1 && State.GetCard(top).Zone == Zone.Hand)
+            if (MiracleCost(State.GetCard(top)) is not null && player.CardsDrawnThisTurn == 1 && State.GetCard(top).Zone == Zone.Hand)
                 _pendingTriggers.Add(new PendingTrigger(top, MiracleTrigger, playerId, new TriggerInfo(top, State.GetCard(top).Version, playerId)));
         }
     }

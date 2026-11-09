@@ -66,6 +66,9 @@ public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = C
     /// <summary>The controller must be the player the trigger event was about ("that player controls").</summary>
     public bool ControlledByTriggeredPlayer { get; init; }
 
+    /// <summary>"Another target player": not the player the trigger is about (the spell's caster).</summary>
+    public bool NotTriggeredPlayer { get; init; }
+
     /// <summary>"Target creature that's attacking that player": attacking the player the trigger is about (not a planeswalker).</summary>
     public bool AttackingTriggeredPlayer { get; init; }
 
@@ -80,6 +83,9 @@ public sealed record TargetSpec(TargetKind Kind, ControllerFilter Controller = C
 
     /// <summary>A target the spell has only if a gift was promised as it was cast ("if the gift was promised, return target …").</summary>
     public bool OnlyIfGiftPromised { get; init; }
+
+    /// <summary>"If you cast this spell during your main phase, you may [also target] …": the target exists only then.</summary>
+    public bool OnlyIfCastDuringYourMainPhase { get; init; }
 
     /// <summary>A target the spell has only when the gift wasn't promised ("Counter target creature spell. If the gift was promised, instead counter target spell.").</summary>
     public bool OnlyIfGiftNotPromised { get; init; }
@@ -236,6 +242,8 @@ public enum SubjectKind
     SourceOwner,
     /// <summary>Each player other than the source's owner ("each other player", after "its owner").</summary>
     PlayersOtherThanSourceOwner,
+    /// <summary>The owners of the cards exiled with the source ("the exiled card's owner").</summary>
+    ExiledWithSourceOwners,
 }
 
 public sealed record Subject(SubjectKind Kind, int Index = 0, ObjectFilter? Filter = null)

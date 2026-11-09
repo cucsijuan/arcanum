@@ -82,6 +82,7 @@ public sealed partial class Game
                         await MoveCardAsync(id, Zone.Exile);
                         if (State.GetCard(id).Zone != Zone.Exile) continue;
                         ctx.Results.Exiled.Add(id);
+                        if (et.Linked) State.GetCard(id).ExiledWith = (ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version);
                         if (et.PlayableDuringLoreTurns)
                             State.PlayableFromExile.Add(new PlayableFromExile(id, State.GetCard(id).Version, ctx.Controller, int.MaxValue)
                             {
@@ -693,7 +694,7 @@ public sealed partial class Game
     {
         if (source.Zone != Zone.Battlefield) return 0;
         bool fromAttack = ability.Trigger is TriggerEvent.Attacks or TriggerEvent.CreatureAttacks or TriggerEvent.YouAttack or TriggerEvent.YouAttackPlayer or TriggerEvent.YouAttackWithMatching
-                              or TriggerEvent.CreaturesAttackOpponent or TriggerEvent.PlayerAttacks or TriggerEvent.EquippedAttacks
+                              or TriggerEvent.CreaturesAttackOpponent or TriggerEvent.PlayerAttacks or TriggerEvent.EquippedAttacks or TriggerEvent.YourCreaturesAttackPlayer
                           || (ability.Trigger == TriggerEvent.AttacksOrBlocks && info?.Defender is not null);
         if (!fromAttack) return 0;
         return State.PermanentsControlledBy(source.Controller).Count(c => c.HasTextAbilities && c.Definition.ExtraTriggersFromAttacking

@@ -532,6 +532,7 @@ public static class CardSearch
             "hybrid" => new Is(c => CostsOf(c.Entry.Record).Any(cost => Regex.IsMatch(cost, @"\{[^}P]*/[^}P]*\}"))),
             "phyrexian" => new Is(c => CostsOf(c.Entry.Record).Any(cost => Regex.IsMatch(cost, @"\{[^}]*P\}"))),
             "commander" => new Is(c => (FrontType(c.Entry.Record) is var t && t.Contains("Legendary") && t.Contains("Creature"))
+                                       || (FrontType(c.Entry.Record).Contains("Legendary") && OracleTexts(c.Entry).Any(o => Has(o, "isn't on the battlefield, it's a")))
                                        || OracleTexts(c.Entry).Any(o => Has(o, "can be your commander"))),
             "brawler" => new Is(c => FrontType(c.Entry.Record) is var t && t.Contains("Legendary") && (t.Contains("Creature") || t.Contains("Planeswalker"))),
             "companion" => new Is(c => OracleTexts(c.Entry).Any(o => o.Contains("Companion —"))),

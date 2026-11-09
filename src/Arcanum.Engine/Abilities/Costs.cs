@@ -22,6 +22,9 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
     /// <summary>"Behold a [filter]": choose one you control or reveal one from your hand (rule 701.4).</summary>
     public ObjectFilter? Behold { get; init; }
 
+    /// <summary>"Exile a creature you control": one permanent you control matching this, exiled and linked to the permanent the spell becomes (rule 607.2).</summary>
+    public ObjectFilter? ExileYouControl { get; init; }
+
     /// <summary>"Behold a [filter] and exile it": the beheld card is exiled, linked to the permanent the spell becomes (rule 607.2).</summary>
     public bool BeholdExile { get; init; }
 

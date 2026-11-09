@@ -26,7 +26,9 @@ public sealed partial class Game
     /// </summary>
     private async Task GainLifeAsync(PlayerId player, int amount)
     {
-        if (amount <= 0 || State.GetPlayer(player).HasLost || State.GetPlayer(player).LifeCantChange) return;
+        if (amount <= 0 || State.GetPlayer(player).HasLost || State.GetPlayer(player).LifeCantChange || State.GetPlayer(player).CantGainLifeForRestOfGame) return;
+        // "Enchanted player can't gain life."
+        if (State.Battlefield.Select(State.GetCard).Any(c => c.AttachedPlayer == player && c.HasTextAbilities && (c.Definition.ExtraRules & ExtraRules.EnchantedPlayerCantGainLife) != 0)) return;
         if (State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && (c.Definition.PlayersCantGainLife || (c.Definition.OpponentsCantGainLife && c.Controller != player)))) return;
         var applied = new HashSet<string>();
         bool loss = false;
@@ -108,6 +110,7 @@ public sealed partial class Game
                 if (!Matches(b.Sources, source, controller, c, c.Controller, lastKnown: SourceLeftBattlefield(source))) continue;
                 if (b.NoncombatOnly && part.Combat) continue;
                 if (b.ToOpponentsOnly && !State.OpponentsOf(c.Controller).Contains(part.ToPlayer ?? part.ToCard!.Controller)) continue;
+                if (b.ToOpponentPlayersOnly && !(part.ToPlayer is { } hurt && State.OpponentsOf(c.Controller).Contains(hurt))) continue;
                 int n = b.Amount;
                 yield return new DamageModifier($"plus{n}", $"bonus:{c.Id.Value}:{i}", $"That much plus {n} ({c.Name})", d => d + n);
             }

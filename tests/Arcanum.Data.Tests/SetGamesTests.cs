@@ -63,7 +63,9 @@ public class SetGamesTests
             catch (Exception ex)
             {
                 var recent = string.Join(" | ", game.Log.TakeLast(6).Select(e => e.ToString()));
-                errors.Add($"game {g} turn {game.State.TurnNumber}: {ex.GetType().Name}: {ex.Message}\n   {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}\n   recent: {recent}");
+                var stack = string.Join("\n   ", (ex.StackTrace ?? "").Split('\n').Take(8).Select(l => l.Trim()));
+                var onStack = string.Join(", ", game.State.Stack.OfType<Arcanum.Engine.State.SpellOnStack>().Select(sp => game.State.GetCard(sp.Card).Name));
+                errors.Add($"game {g} turn {game.State.TurnNumber}: {ex.GetType().Name}: {ex.Message}\n   {stack}\n   stack: {onStack}\n   recent: {recent}");
             }
             // A legal action that came to nothing without the bot backing out of it is an engine error too.
             errors.AddRange(game.FailedActions.Select(f => $"game {g}: chosen action came to nothing: {f}"));

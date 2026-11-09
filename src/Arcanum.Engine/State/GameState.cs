@@ -160,6 +160,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
     /// <summary>"You may play a card exiled with [this]" / "a spell from among those cards": playing one of the group ends the others' permission (0: none).</summary>
     public int Group { get; init; }
 
+    /// <summary>What the group's permission is ("an artifact spell"), when a card can use one of several groups.</summary>
+    public string? GroupLabel { get; init; }
+
     /// <summary>"A spell with mana value less than or equal to [quantity]" (evaluated for the source in <see cref="WhileControlling"/>, as cast).</summary>
     public Abilities.Quantity? MaxManaValue { get; init; }
 
@@ -171,6 +174,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
 
     /// <summary>"You may cast it from your graveyard as an Adventure": only as its Adventure (rule 715.3).</summary>
     public bool AdventureOnly { get; init; }
+
+    /// <summary>"You may cast permanent spells from among them": only a permanent card (with <see cref="CastOnly"/>).</summary>
+    public bool PermanentsOnly { get; init; }
 }
 
 /// <summary>
@@ -476,6 +482,9 @@ public sealed partial class GameState
     /// <summary>Creatures that died this turn (morbid).</summary>
     public int CreaturesDiedThisTurn { get; set; }
 
+    /// <summary>The creatures that died this turn (each as it last existed on the battlefield).</summary>
+    public List<CardId> CreatureDeathsThisTurn { get; } = new();
+
     /// <summary>Nontoken creatures that died this turn.</summary>
     public int NontokenCreaturesDiedThisTurn { get; set; }
 
@@ -514,6 +523,12 @@ public sealed partial class GameState
 
     /// <summary>Goads that last for the rest of the game.</summary>
     public List<(CardId Card, int Version, PlayerId Goader)> GoadsForever { get; } = new();
+
+    /// <summary>"Until your next turn, creatures your opponents control attack each combat if able and attack a player other than you if able": the players with such an effect.</summary>
+    public List<PlayerId> OpponentsCreaturesMustAttackOthers { get; } = new();
+
+    /// <summary>"Whenever a creature dies this turn, …": delayed triggers of a source for the turn they were made in.</summary>
+    public List<(CardId Source, PlayerId Controller, Abilities.TriggeredAbility Ability, int Turn)> CreatureDiesThisTurnTriggers { get; } = new();
 
 
     /// <summary>Damage prevention shields that last this turn.</summary>
