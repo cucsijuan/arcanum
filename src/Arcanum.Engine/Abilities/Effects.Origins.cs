@@ -5,7 +5,7 @@ namespace Arcanum.Engine.Abilities;
 public abstract record OriginsEffect : Effect;
 
 /// <summary>
-/// "Each player shuffles their hand and graveyard into their library" (Fresh Start) / "… all cards from their hand and all
+/// "Each player shuffles their hand and graveyard into their library" / "… all cards from their hand and all
 /// permanents they own into their library, then draws that many cards" (Grand Aurora): every card moves at once (one event,
 /// tokens included and then gone), each library is shuffled, and with <see cref="DrawThatMany"/> each player draws as many cards
 /// as they put into their library this way (tokens counted).
@@ -33,6 +33,9 @@ public sealed record RevealTopCastFree(Subject Whose, int Count, ObjectFilter Fi
 
     /// <summary>The revealed cards not cast go to their owner's graveyard (otherwise they stay on top of the library).</summary>
     public bool RestToGraveyard { get; init; }
+
+    /// <summary>"Exile the top N cards … Then put the rest on the bottom of your library in a random order": the cards are exiled, cast from exile.</summary>
+    public bool ExileRestToBottom { get; init; }
 }
 
 /// <summary>

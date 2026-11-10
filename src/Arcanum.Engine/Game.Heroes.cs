@@ -75,13 +75,29 @@ public sealed partial class Game
                     ctx.Source.ChosenCreature = (ctx.Results.Chosen[0], State.GetCard(ctx.Results.Chosen[0]).Version);
                 if (ctx.Results.ChosenPlayer is { } chosenPlayer) ctx.Source.ChosenPlayer = chosenPlayer;
                 break;
+            case ExileTop { UntilTotalManaValue: > 0 } until:
+                foreach (var player in PlayersFor(until.Who, ctx).ToList())
+                {
+                    var library = State.GetPlayer(player).Library;
+                    for (int total = 0; total < until.UntilTotalManaValue && library.Count > 0;)
+                    {
+                        var top = State.GetCard(library[0]);
+                        await MoveCardAsync(top.Id, Zone.Exile);
+                        if (top.Zone != Zone.Exile) break;
+                        ctx.Results.Exiled.Add(top.Id);
+                        total += ManaValueOf(top);
+                    }
+                }
+                break;
             case ExileTop et:
+                BeginSimultaneous(); // "exile the top N cards": one event
                 foreach (var player in PlayersFor(et.Who, ctx).ToList())
                     foreach (var id in State.GetPlayer(player).Library.Take(Math.Max(0, Eval(et.Count, ctx with { AffectedPlayer = player }))).ToList())
                     {
                         await MoveCardAsync(id, Zone.Exile);
                         if (State.GetCard(id).Zone != Zone.Exile) continue;
                         ctx.Results.Exiled.Add(id);
+                        if (et.OwnerMayPlayUntilEndOfTheirNextTurn) OwnerMayPlayUntilEndOfTheirNextTurn(State.GetCard(id));
                         if (et.Linked) State.GetCard(id).ExiledWith = (ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version);
                         if (et.PlayableDuringLoreTurns)
                             State.PlayableFromExile.Add(new PlayableFromExile(id, State.GetCard(id).Version, ctx.Controller, int.MaxValue)
@@ -89,10 +105,18 @@ public sealed partial class Game
                                 LoreSource = (ctx.Source.Id, ExpectedSourceVersion(ctx) ?? ctx.Source.Version),
                             });
                     }
+                EndSimultaneous();
                 break;
             case DoubleDamageToPlayerUntilYourNextTurn dd:
                 foreach (var player in PlayersFor(dd.Who, ctx).ToList()) State.DamageDoubledAgainst.Add((player, ctx.Controller, ctx.Source.Id));
                 break;
+            case EachDealsDamageEqualToPower { ToItself: true } each:
+            {
+                var parts = CardsFor(each.Sources, ctx).Where(c => c.IsCreature && c.Power > 0)
+                    .Select(c => new DamagePart(c, c, null, c.Power, false) { Report = ctx.Results }).ToList();
+                if (parts.Count > 0) await DealDamageEventAsync(parts);
+                break;
+            }
             case EachDealsDamageEqualToPower each:
             {
                 var to = CardsFor(each.To, ctx).FirstOrDefault();
@@ -549,10 +573,12 @@ public sealed partial class Game
             }
         }
         Emit(new CardsRevealed(ctx.Controller, exiled));
-        if (hit is not null && HasLegalTargets(CastingTargets(hit.Definition), ctx.Controller, hit.Id)
+        if (hit is not null && eu.UntilEndOfTurn)
+            State.PlayableFromExile.Add(new PlayableFromExile(hit.Id, hit.Version, ctx.Controller, State.TurnNumber, WithoutPaying: true) { CastOnly = true });
+        else if (hit is not null && HasLegalTargets(CastingTargets(hit.Definition), ctx.Controller, hit.Id)
             && await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast {hit.Name} without paying its mana cost?", hit.Id)))
             await CastNowWithoutPayingAsync(player, hit.Id);
-        var rest = exiled.Where(id => State.GetCard(id).Zone == Zone.Exile).ToList();
+        var rest = exiled.Where(id => State.GetCard(id).Zone == Zone.Exile && !(eu.UntilEndOfTurn && id == hit?.Id)).ToList();
         Rng.Shuffle(rest);
         foreach (var id in rest) await MoveCardAsync(id, Zone.Library, toBottom: true);
     }
@@ -694,7 +720,7 @@ public sealed partial class Game
     {
         if (source.Zone != Zone.Battlefield) return 0;
         bool fromAttack = ability.Trigger is TriggerEvent.Attacks or TriggerEvent.CreatureAttacks or TriggerEvent.YouAttack or TriggerEvent.YouAttackPlayer or TriggerEvent.YouAttackWithMatching
-                              or TriggerEvent.CreaturesAttackOpponent or TriggerEvent.PlayerAttacks or TriggerEvent.EquippedAttacks or TriggerEvent.YourCreaturesAttackPlayer
+                              or TriggerEvent.CreaturesAttackOpponent or TriggerEvent.PlayerAttacks or TriggerEvent.PlayerAttacksYourOpponent or TriggerEvent.CreaturesAttackMatching or TriggerEvent.EquippedAttacks or TriggerEvent.YourCreaturesAttackPlayer
                           || (ability.Trigger == TriggerEvent.AttacksOrBlocks && info?.Defender is not null);
         if (!fromAttack) return 0;
         return State.PermanentsControlledBy(source.Controller).Count(c => c.HasTextAbilities && c.Definition.ExtraTriggersFromAttacking

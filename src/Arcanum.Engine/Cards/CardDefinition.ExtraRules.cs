@@ -58,6 +58,14 @@ public enum ExtraRules : long
     HandEnchantmentsHaveMiracle = 16777216,
     /// <summary>"Whenever a player taps a land for mana, if this creature is tapped, that player adds one mana of any type that land produced. Then that land deals 1 damage to that player."</summary>
     LandsTappedAddOneAndDamageWhileTapped = 33554432,
+    /// <summary>"Each instant and sorcery card in your hand has miracle {2}."</summary>
+    HandInstantsAndSorceriesHaveMiracleTwo = 67108864,
+    /// <summary>"Once during each of your turns, you may cast an instant or sorcery spell from your hand without paying its mana cost."</summary>
+    FreeInstantOrSorceryFromHandOncePerTurn = 134217728,
+    /// <summary>"If an effect causes you to discard a card, discard it, but you may put it on top of your library instead of into your graveyard."</summary>
+    EffectDiscardsMayGoOnTop = 268435456,
+    /// <summary>"You can't cast permanent spells."</summary>
+    YouCantCastPermanentSpells = 536870912,
 }
 
 public sealed partial record CardDefinition

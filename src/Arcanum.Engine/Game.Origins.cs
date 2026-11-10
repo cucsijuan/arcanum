@@ -102,14 +102,22 @@ public sealed partial class Game
             var library = State.GetPlayer(p).Library;
             var revealed = library.Take(rc.Count).ToList();
             if (revealed.Count == 0) continue;
-            Emit(new CardsRevealed(p, revealed));
+            var zone = Zone.Library;
+            if (rc.ExileRestToBottom)
+            {
+                BeginSimultaneous();
+                foreach (var id in revealed) await MoveCardAsync(id, Zone.Exile);
+                EndSimultaneous();
+                zone = Zone.Exile;
+            }
+            else Emit(new CardsRevealed(p, revealed));
             // Cast while this resolves, from among the revealed cards still in the library (rule 608.2g): timing doesn't matter,
             // everything else about casting does (targets, "can't cast" effects, additional costs).
             var backedOut = new HashSet<CardId>();
             for (int cast = 0; cast < casts;)
             {
                 var castable = revealed.Select(State.GetCard)
-                    .Where(c => c.Zone == Zone.Library && !backedOut.Contains(c.Id) && !c.Is(CardType.Land)
+                    .Where(c => c.Zone == zone && !backedOut.Contains(c.Id) && !c.Is(CardType.Land)
                                 && Matches(rc.Filter with { Controller = ControllerFilter.Any }, c, p, ctx.Source, ctx.Controller) && CastableFreeNow(c, ctx.Controller))
                     .ToList();
                 if (castable.Count == 0) break;
@@ -121,6 +129,12 @@ public sealed partial class Game
                 Require(pick.Count == 1 && castable.Any(c => c.Id == pick[0]), "Choose one of the revealed cards.");
                 if (await CastNowWithoutPayingAsync(caster, pick[0])) cast++;
                 else backedOut.Add(pick[0]);
+            }
+            if (rc.ExileRestToBottom)
+            {
+                var rest = revealed.Where(id => State.GetCard(id).Zone == Zone.Exile).ToList();
+                Rng.Shuffle(rest);
+                foreach (var id in rest) await MoveCardAsync(id, Zone.Library, toBottom: true);
             }
             // "Then that player puts the rest into their graveyard."
             if (rc.RestToGraveyard)

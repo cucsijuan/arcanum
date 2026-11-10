@@ -38,6 +38,18 @@ public sealed record ExileIt(Subject What) : Effect
     /// <summary>"You may play that card from exile this turn": the effect's controller may play each card exiled this way this turn.</summary>
     public bool PlayableThisTurn { get; init; }
 
+    /// <summary>"Until the end of your next turn, you may cast that card": the effect's controller may cast it (not play a land).</summary>
+    public bool CastableUntilEndOfNextTurn { get; init; }
+
+    /// <summary>"Its owner may play it until the end of their next turn."</summary>
+    public bool OwnerMayPlayUntilEndOfTheirNextTurn { get; init; }
+
+    /// <summary>
+    /// "You may cast it this turn, and mana of any type can be spent to cast that spell. If that spell would be put into a graveyard, exile it
+    /// instead."
+    /// </summary>
+    public bool CastThisTurnAnyManaExileInstead { get; init; }
+
     /// <summary>"All other ...": skip tokens this spell or ability created.</summary>
     public bool ExceptCreatedThisWay { get; init; }
 
@@ -110,6 +122,9 @@ public sealed record PumpUntilEndOfTurn(Quantity Power, Quantity Toughness, Subj
     /// <summary>Keywords it loses until end of turn ("loses indestructible").</summary>
     public IReadOnlyList<Keyword>? LoseKeywords { get; init; }
 
+    /// <summary>"… and can't have [those keywords]": the loss applies after every grant, whatever its timestamp.</summary>
+    public bool CantHaveLostKeywords { get; init; }
+
     /// <summary>Lasts as long as the source stays on the battlefield instead of until end of turn.</summary>
     public bool WhileSourceRemains { get; init; }
 
@@ -135,6 +150,15 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
     /// <summary>"Tapped and attacking" with the defending player or planeswalker chosen by the token's controller (rule 508.4).</summary>
     public bool AttackingChosenDefender { get; init; }
 
+    /// <summary>"Tapped and attacking that opponent": attacking the trigger's defending player.</summary>
+    public bool AttackingTriggerDefender { get; init; }
+
+    /// <summary>"For each opponent, create [tokens] that attack that opponent this turn if able."</summary>
+    public bool ForEachOpponentMustAttack { get; init; }
+
+    /// <summary>"An Aura token … attached to target creature": the Aura token enters attached to the first of these it can enchant.</summary>
+    public Subject? AttachTo { get; init; }
+
     /// <summary>"Sacrifice that token at end of combat".</summary>
     public bool SacrificeAtEndOfCombat { get; init; }
 
@@ -149,7 +173,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
-    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story, Flood, Supply, Coin, Hoofprint, Ingredient, Acorn, Growth, Dream, Tower, Decayed, MinusZeroMinusOne, Rally, Experience, Void, Possession, Nest, Rev, Slumber }
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story, Flood, Supply, Coin, Hoofprint, Ingredient, Acorn, Growth, Dream, Tower, Decayed, MinusZeroMinusOne, Rally, Experience, Void, Possession, Nest, Rev, Slumber, Study }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect
@@ -229,6 +253,9 @@ public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool 
 
     /// <summary>"If it would leave the battlefield, exile it instead of putting it anywhere else" (rule 614.1a), for as long as it stays.</summary>
     public bool ExileIfLeaves { get; init; }
+
+    /// <summary>"It's a 1/1 Spirit creature … in addition to its other types": card types it gets.</summary>
+    public CardType AddTypes { get; init; }
 }
 
 /// <summary>
@@ -237,6 +264,9 @@ public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool 
 /// </summary>
 public sealed record SearchLibrary(ObjectFilter Filter, int Count, State.Zone To, bool Tapped = false) : Effect
 {
+    /// <summary>"Put it into your hand or graveyard": the searcher chooses, for each card found, instead of <see cref="To"/>.</summary>
+    public bool HandOrGraveyard { get; init; }
+
     /// <summary>"Onto the battlefield … with a stun counter on it": the counter it enters with.</summary>
     public CounterKind? EntersWithCounter { get; init; }
 
@@ -349,6 +379,9 @@ public sealed record ExileAndReturnAtEndStep(Subject What, bool UnderYourControl
 /// <summary>Create token copies of a permanent, optionally with haste and "sacrifice it at the beginning of the next end step".</summary>
 public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = false, bool SacrificeAtEndStep = false) : Effect
 {
+    /// <summary>"Target player creates a token that's a copy of …": the player who creates it (default: you).</summary>
+    public Subject? For { get; init; }
+
     /// <summary>For a copy of "exiled": the card most recently exiled by this effect only.</summary>
     public bool OnlyLastExiled { get; init; }
 
@@ -445,6 +478,9 @@ public enum RestOrder
 /// <summary>Look at the top cards of your library; take up to <paramref name="Take"/> matching ones, the rest go to the bottom (or graveyard).</summary>
 public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, State.Zone TakeTo, bool RestToGraveyard = false) : Effect
 {
+    /// <summary>"Put all land cards revealed this way onto the battlefield tapped and put all creature cards revealed this way into your hand": taken lands go onto the battlefield tapped instead.</summary>
+    public bool LandsToBattlefieldTapped { get; init; }
+
     /// <summary>"And the rest into your hand."</summary>
     public bool RestToHand { get; init; }
 
@@ -492,6 +528,9 @@ public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, St
 
     /// <summary>The taken card may go onto the battlefield if it's the player's turn; otherwise (or if they don't) into their hand.</summary>
     public bool BattlefieldIfYourTurnElseHand { get; init; }
+
+    /// <summary>"Any number of [filter] cards with total mana value N or less": chosen one at a time among those that still fit.</summary>
+    public int MaxTotalManaValue { get; init; }
 }
 
 /// <summary>"[Player] reveals their hand; you choose a [filter] card from it; they discard it."</summary>
@@ -587,7 +626,11 @@ public sealed record GrantHarmonize(Subject What) : Effect;
 /// "The next time a source of your choice would deal damage to you this turn, prevent that damage. When damage is prevented this way, [effects]"
 /// (the reflexive ability is about that source: its controller is the triggered player and the amount prevented the trigger amount).
 /// </summary>
-public sealed record PreventNextFromChosenSource(IReadOnlyList<Effect> WhenPrevented, string Text) : Effect;
+public sealed record PreventNextFromChosenSource(IReadOnlyList<Effect> WhenPrevented, string Text) : Effect
+{
+    /// <summary>"If damage is prevented this way, …": part of the prevention effect (done right after the damage event), not a reflexive trigger.</summary>
+    public bool Immediately { get; init; }
+}
 
 /// <summary>
 /// "For each color, put a +1/+1 counter on a [filter] you control of that color. If you put +1/+1 counters on five [of them] this way, you win the game."
@@ -787,6 +830,9 @@ public sealed record CopyNextInstantOrSorcery : Effect
 
     /// <summary>"Copy the next spell you cast this turn": any spell, not only an instant or sorcery.</summary>
     public bool AnySpell { get; init; }
+
+    /// <summary>"Copy it for each time you've cast your commander from the command zone this game" (counted as the copies are made).</summary>
+    public bool PerCommanderCast { get; init; }
 }
 
 /// <summary>Exile the top card of each player's library; you may cast any number of spells from among them without paying their mana costs.</summary>
@@ -799,7 +845,11 @@ public sealed record ReturnAtNextEndStepWithOneFewer(CounterKind Kind) : Effect;
 public sealed record DestroyManaValueXOfDamagedPlayers : Effect;
 
 /// <summary>Add mana that stays until end of turn.</summary>
-public sealed record AddManaUntilEndOfTurn(IReadOnlyList<Mana.ManaType> Types) : Effect;
+public sealed record AddManaUntilEndOfTurn(IReadOnlyList<Mana.ManaType> Types) : Effect
+{
+    /// <summary>"Add {R} for each card in target opponent's hand": the mana, this many times.</summary>
+    public Quantity? Times { get; init; }
+}
 
 /// <summary>Choose cards (not targeted) from your graveyard and put them into <paramref name="To"/> ("return an instant or sorcery card from your graveyard to your hand").</summary>
 public sealed record ReturnFromGraveyard(ObjectFilter? Filter, int Count, State.Zone To, bool UpTo = false) : Effect
@@ -995,7 +1045,11 @@ public sealed record Become(Subject What, int? Power = null, int? Toughness = nu
 public sealed record DestroySameName(Subject What) : Effect;
 
 /// <summary>Distribute N +1/+1 counters among the chosen targets (at least one each).</summary>
-public sealed record DistributeCounters(int Total) : Effect;
+public sealed record DistributeCounters(int Total) : Effect
+{
+    /// <summary>"Distribute X +1/+1 counters": the total worked out as the division is announced.</summary>
+    public Quantity? TotalFrom { get; init; }
+}
 
 /// <summary>Reveal cards from the top of your library until a matching card; put it into <paramref name="To"/>, the rest on the bottom in a random order.</summary>
 public sealed record RevealUntil(ObjectFilter Filter, State.Zone To) : Effect
@@ -1026,6 +1080,12 @@ public sealed record RevealUntil(ObjectFilter Filter, State.Zone To) : Effect
 
     /// <summary>The card found goes onto the battlefield instead when it also matches this ("if its mana value is less than or equal to …").</summary>
     public ObjectFilter? BattlefieldIf { get; init; }
+
+    /// <summary>"You may put that card onto the battlefield. If you don't, put it into your hand."</summary>
+    public bool MayBattlefield { get; init; }
+
+    /// <summary>With castFree: "exile that card and put the rest on the bottom": the card revealed stays exiled if it isn't cast.</summary>
+    public bool HitStaysExiled { get; init; }
 
     /// <summary>"Then shuffles all other cards revealed this way into their library" (instead of the bottom in a random order).</summary>
     public bool RestShuffled { get; init; }
@@ -1121,6 +1181,12 @@ public sealed record CopySpell(Subject What, Quantity Count) : Effect
 
     /// <summary>"Copy the spell countered this way": the spells an earlier counter effect of the same spell or ability countered.</summary>
     public bool CounteredThisWay { get; init; }
+
+    /// <summary>
+    /// "The copy gains haste and 'At the beginning of the end step, sacrifice this token.'" (a copy of a permanent spell): the token it
+    /// becomes keeps both from that effect, not as copiable values (rule 707.10f).
+    /// </summary>
+    public bool GainsHasteAndSacrifice { get; init; }
 }
 
 /// <summary>Add one mana of any color (the controller chooses).</summary>
@@ -1181,6 +1247,9 @@ public sealed record PlayableFromGraveyardThisTurn(Subject What) : Effect
 
     /// <summary>"If that spell would be put into your graveyard, exile it instead": a spell cast with this permission gets that replacement.</summary>
     public bool ExileInstead { get; init; }
+
+    /// <summary>"[Filter] cards in your graveyard gain 'You may cast this card from your graveyard' until end of turn": those cards there now.</summary>
+    public ObjectFilter? EachInYourGraveyard { get; init; }
 }
 
 /// <summary>"You lose the game."</summary>
@@ -1516,6 +1585,12 @@ public sealed record TapAnyNumber(ObjectFilter Filter) : Effect;
 
 /// <summary>An opponent chooses: <paramref name="IfYes"/> when they agree to <paramref name="Prompt"/>, otherwise <paramref name="IfNo"/>.</summary>
 public sealed record OpponentChooses(string Prompt, IReadOnlyList<Effect> IfYes, IReadOnlyList<Effect> IfNo) : Effect;
+
+/// <summary>
+/// Paradigm's delayed ability (rule 702.192a): "create a copy of this object in exile. You may cast the copy without paying its mana
+/// cost." An uncast copy ceases to exist (rule 707.10a).
+/// </summary>
+public sealed record CastParadigmCopy(Cards.CardDefinition Spell) : Effect;
 
 /// <summary>
 /// Exile the target card, copy it, and you may cast the copy without paying its mana cost — or, with <see cref="Cost"/>, "by paying [cost]
@@ -2094,6 +2169,9 @@ public sealed record DiscardAnyNumber : Effect
 {
     /// <summary>"Discard up to two cards": at most this many.</summary>
     public int? Max { get; init; }
+
+    /// <summary>"Target player discards any number of cards": the player who discards (default: you).</summary>
+    public Subject? Who { get; init; }
 }
 
 /// <summary>"For each creature your opponents control, create a [token]. Each of those tokens fights a different one of those creatures" (the fights deal their damage at once).</summary>

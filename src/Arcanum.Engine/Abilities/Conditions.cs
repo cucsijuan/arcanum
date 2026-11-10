@@ -131,6 +131,21 @@ public sealed record SourceIs(ObjectFilter Filter) : Condition;
 /// <summary>A quantity is at least <paramref name="AtLeast"/> ("if at least one creature card was exiled this way").</summary>
 public sealed record QuantityAtLeast(Quantity Quantity, int AtLeast) : Condition;
 
+/// <summary>
+/// Increment (rule 702.191a): "if this permanent is a creature and the amount of mana spent to cast that spell is greater than this
+/// creature's power or this creature's toughness" — the spell of the cast trigger.
+/// </summary>
+public sealed record IncrementHolds : Condition;
+
+/// <summary>The X the source was cast with is at least <paramref name="AtLeast"/> (0 if it wasn't cast): "if X is 3 or more" as it enters.</summary>
+public sealed record CastXAtLeast(int AtLeast) : Condition;
+
+/// <summary>Echo (rule 702.30a): "if this permanent came under your control since the beginning of your last upkeep".</summary>
+public sealed record EchoDue : Condition;
+
+/// <summary>"If one or more cards were put into exile this turn" (any cards, from anywhere).</summary>
+public sealed record CardsExiledThisTurn(int AtLeast) : Condition;
+
 /// <summary>"If you cast it" (from anywhere).</summary>
 public sealed record WasCast : Condition;
 
@@ -240,6 +255,21 @@ public sealed record BatchHas(ObjectFilter Filter) : Condition;
 /// <summary>The player the event happened to is you ("deals combat damage to you").</summary>
 public sealed record TriggeredPlayerIsYou : Condition;
 
+/// <summary>"If that opponent has more life than another of your opponents" (that opponent: the trigger's defending player).</summary>
+public sealed record DefenderHasMoreLifeThanAnotherOpponent : Condition;
+
+/// <summary>"If a player has one or fewer cards in hand": some player has at most that many.</summary>
+public sealed record AnyPlayerHandAtMost(int Count) : Condition;
+
+/// <summary>"If that ability's activation cost contains {X}" (the activated ability the trigger is about, by its stack object).</summary>
+public sealed record TriggeredAbilityCostHasX : Condition;
+
+/// <summary>"If an Equipment is put onto the battlefield this way": a card the effect found (took, revealed) matches the filter.</summary>
+public sealed record FoundHas(ObjectFilter Filter) : Condition;
+
+/// <summary>"If an opponent has cast a [blue or black] spell this turn" (the spell's characteristics as it is now, or last were on the stack).</summary>
+public sealed record OpponentCastSpellThisTurn(ObjectFilter Filter) : Condition;
+
 /// <summary>The card the trigger is about is still in a graveyard, as the same object ("you may exile that card from your graveyard").</summary>
 public sealed record TriggeredInGraveyard : Condition;
 
@@ -282,6 +312,12 @@ public sealed record FaceDownActivityThisTurn : Condition;
 /// <summary>"Whenever an opponent loses life for the first time during each of their turns": the life-losing player's first loss this turn, on their turn.</summary>
 public sealed record TriggeredPlayerFirstLossOnTheirTurn : Condition;
 
+/// <summary>"Whenever you lose life for the first time each turn": the trigger's life loss is all that player lost this turn.</summary>
+public sealed record TriggeredPlayerFirstLossThisTurn : Condition;
+
+/// <summary>"If a modified creature died under your control this turn".</summary>
+public sealed record ModifiedCreatureDiedThisTurn : Condition;
+
 /// <summary>"If defending player controls a [filter]" (the player this attacking source attacks).</summary>
 public sealed record DefendingPlayerControls(ObjectFilter Filter) : Condition;
 
@@ -296,6 +332,9 @@ public sealed record EnteredThisTurn(ObjectFilter Filter, int AtLeast = 1) : Con
 
 /// <summary>"If it isn't renowned" / "a renowned creature": the source is renowned.</summary>
 public sealed record SourceRenowned : Condition;
+
+/// <summary>"Solved": the source is a solved Case (rule 719.3).</summary>
+public sealed record SourceSolved : Condition;
 
 /// <summary>"If this creature isn't prepared" (with not): the source is prepared.</summary>
 public sealed record SourcePrepared : Condition;

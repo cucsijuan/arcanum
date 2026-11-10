@@ -234,6 +234,9 @@ public sealed record ActivatedAbility : AbilityDefinition
     /// <summary>"This ability costs {1} less to activate for each [filter] you control."</summary>
     public ObjectFilter? CostReductionPer { get; init; }
 
+    /// <summary>"This ability costs {1} less to activate for each page counter on this artifact": the counter kind on the source.</summary>
+    public CounterKind? CostReductionPerSourceCounter { get; init; }
+
     /// <summary>"This ability costs {1} less to activate for each +1/+1 counter on the creature it targets."</summary>
     public bool CostReductionPerTargetCounter { get; init; }
 
@@ -291,6 +294,9 @@ public sealed record SpellCostReduction(ObjectFilter Spells, int Amount) : Abili
 
     /// <summary>Eminence: it also works while its card is in the command zone.</summary>
     public bool FromCommandZone { get; init; }
+
+    /// <summary>"Spells you cast that target a creature cost {2} less": only spells with a target matching this filter.</summary>
+    public ObjectFilter? IfTargets { get; init; }
 }
 
 public enum TriggerEvent
@@ -392,6 +398,8 @@ public enum TriggerEvent
     PermanentEnters,
     /// <summary>"Whenever a [filter] card leaves your graveyard".</summary>
     LeavesGraveyard,
+    /// <summary>"Whenever one or more cards are put into exile from your library and/or your graveyard" (with <c>batched</c>; filter controller: the owner).</summary>
+    ExiledFromLibraryOrGraveyard,
     /// <summary>"At the beginning of your first main phase" (precombat main).</summary>
     YourPrecombatMain,
     /// <summary>"When this is put into a graveyard from the battlefield" (any permanent, not only creatures).</summary>
@@ -459,7 +467,7 @@ public enum TriggerEvent
     CardPutIntoGraveyardNotFromBattlefield,
     /// <summary>A card matching the filter is put into your graveyard from anywhere (with "batched": "one or more").</summary>
     CardPutIntoYourGraveyard,
-    /// <summary>"Whenever equipped creature attacks" (an Equipment's own ability): the creature is "triggered".</summary>
+    /// <summary>"Whenever equipped/enchanted creature attacks" (an Equipment's or Aura's own ability): the creature is "triggered".</summary>
     EquippedAttacks,
     /// <summary>"Whenever equipped creature deals combat damage to a player" (an Equipment's own ability): amount, that player.</summary>
     EquippedCombatDamageToPlayer,
@@ -528,6 +536,13 @@ public enum TriggerEvent
     CreaturesAttackOpponent,
     /// <summary>"Whenever a player attacks you" / "whenever a player attacks" (player: the attacking player).</summary>
     PlayerAttacks,
+    /// <summary>
+    /// "Whenever a player attacks one of your opponents": once for each opponent attacked by creatures of the attacking player
+    /// (player: the attacking player; defender: that opponent).
+    /// </summary>
+    PlayerAttacksYourOpponent,
+    /// <summary>"Whenever one or more creatures [filter] attack" (any player's): once per declaration with a matching attacker (amount: how many).</summary>
+    CreaturesAttackMatching,
     /// <summary>"Whenever you activate an ability that isn't a mana ability" (amount: the ability's stack object).</summary>
     YouActivateNonManaAbility,
     /// <summary>"At the beginning of the upkeep of enchanted creature's controller" (that player is the triggered player).</summary>
@@ -952,8 +967,29 @@ public sealed record ObjectFilter(
     /// <summary>Mana value at most the mana spent to cast the source ("with mana value less than or equal to the amount of mana spent to cast this creature").</summary>
     public bool MaxManaValueSpentOnSource { get; init; }
 
+    /// <summary>"Monocolored": exactly one color.</summary>
+    public bool Monocolored { get; init; }
+
+    /// <summary>"With mana value less than or equal to the number of colors of mana spent to cast this creature."</summary>
+    public bool MaxManaValueColorsSpentOnSource { get; init; }
+
+    /// <summary>"With mana value X or less, where X is the amount of life you gained this turn" (the ability's controller).</summary>
+    public bool MaxManaValueLifeGainedThisTurn { get; init; }
+
     /// <summary>Mana value X or less, X being the resolving spell's ("with mana value X or less").</summary>
     public bool MaxManaValueX { get; init; }
+
+    /// <summary>Mana value X or less, X being the one the source permanent was cast with ("when this creature enters, destroy … with mana value X or less").</summary>
+    public bool MaxManaValueSourceX { get; init; }
+
+    /// <summary>"That's enchanted by an Aura you control" (you: the source's controller).</summary>
+    public bool EnchantedByYours { get; init; }
+
+    /// <summary>"[An Aura] that's attached to a creature".</summary>
+    public bool AttachedToCreature { get; init; }
+
+    /// <summary>A spell on the stack that targets a permanent matching this ("an Aura spell that targets a modified permanent you control").</summary>
+    public ObjectFilter? TargetsMatching { get; init; }
 
     /// <summary>A spell or ability on the stack with the ability's controller among its targets ("spell that targets you").</summary>
     public bool TargetsYou { get; init; }

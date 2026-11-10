@@ -51,7 +51,7 @@ public sealed partial class Game
             // costs are paid as attackers are declared; a declaration whose costs aren't paid is illegal and is made again.
             var total = Mana.ManaCost.Zero;
             foreach (var d in declared)
-                if (AttackTax(d.Defender, d.Planeswalker) is { } tax) total = total.Plus(tax);
+                if (AttackTax(d.Defender, d.Planeswalker, d.Attacker) is { } tax) total = total.Plus(tax);
             if (total.ManaValue > 0
                 && !(Payable(active, total, null) && await PayManaAsync(State.GetPlayer(active), declared[0].Attacker, total, null)))
             {
@@ -61,7 +61,7 @@ public sealed partial class Game
                     return;
                 }
                 // A controller that keeps declaring attacks it won't pay for gets no taxed attacks.
-                declared = declared.Where(d => AttackTax(d.Defender, d.Planeswalker) is null).ToList();
+                declared = declared.Where(d => AttackTax(d.Defender, d.Planeswalker, d.Attacker) is null).ToList();
                 var untaxed = request.WithoutTaxedDefenders();
                 if (!untaxed.IsLegal(declared, out _)) declared = untaxed.Complete(declared);
             }
@@ -181,7 +181,7 @@ public sealed partial class Game
     /// The total cost to attack <paramref name="defender"/> (or <paramref name="planeswalker"/>, one they control) with one creature, or null
     /// when that attack is free. Some taxes are only on attacking the player ("creatures can't attack you unless …").
     /// </summary>
-    private Mana.ManaCost? AttackTax(PlayerId defender, CardId? planeswalker = null)
+    private Mana.ManaCost? AttackTax(PlayerId defender, CardId? planeswalker = null, CardId? attacker = null)
     {
         var total = Mana.ManaCost.Zero;
         foreach (var c in State.PermanentsControlledBy(defender))
@@ -192,7 +192,28 @@ public sealed partial class Game
         // "Until your next turn, creatures can't attack you unless their controller pays {2} for each of those creatures" (the player only).
         if (planeswalker is null)
             foreach (var temporary in State.AttackTaxesUntilNextTurn.Where(t => t.Protected == defender)) total = total.Plus(temporary.Tax);
+        if (attacker is { } one) total = total.PlusGeneric(AttackerTax(defender, State.GetCard(one)));
         return total.ManaValue > 0 ? total : null;
+    }
+
+    /// <summary>The part of attacking <paramref name="defender"/> (or a planeswalker they control) that depends on the creature: {X} for each permanent saying "unless its controller pays {X}, where X is the number of counters on that creature".</summary>
+    private int AttackerTax(PlayerId defender, Card attacker) =>
+        attacker.Counters.Values.Sum() is var counters and > 0
+            ? State.PermanentsControlledBy(defender).Count(c => c.HasTextAbilities && c.Definition.AttackTaxPerCounter) * counters
+            : 0;
+
+    /// <summary>The creatures of the player whose attacks cost something of their own (<see cref="AttackerTax"/>).</summary>
+    private IReadOnlyList<AttackerTaxView> AttackerTaxesFor(PlayerId player) =>
+        State.PermanentsControlledBy(player).Where(c => c.IsCreature)
+            .SelectMany(c => State.OpponentsOf(player).Select(d => new AttackerTaxView(c.Id, d, AttackerTax(d, c))))
+            .Where(t => t.Generic > 0).ToList();
+
+    /// <summary>The generic mana the player can pay now, up to 30 (what attack costs of single creatures can add up to).</summary>
+    private int GenericBudget(PlayerId player)
+    {
+        int n = 0;
+        while (n < 30 && Payable(player, new Mana.ManaCost(n + 1, Array.Empty<Mana.ManaType>()), null)) n++;
+        return n;
     }
 
     /// <summary>What attacking each opponent costs the player, and how many creatures they can pay for now.</summary>
@@ -254,6 +275,7 @@ public sealed partial class Game
         if (player.Life - amount < 1 && Has(playerId, Cards.Replacements.DamageCantReduceYourLifeBelowOne)
             && State.PermanentsControlledBy(playerId).Any(c => c.IsCreature))
             return Math.Max(0, player.Life - 1);
+        if (player.Life - amount < 1 && player.DamageCantReduceLifeBelowOneTurn == State.TurnNumber) return Math.Max(0, player.Life - 1);
         return amount;
     }
 

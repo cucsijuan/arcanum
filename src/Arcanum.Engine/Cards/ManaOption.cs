@@ -86,6 +86,12 @@ public sealed record ManaOption(IReadOnlyList<ManaType> Types, int Amount = 1, O
     /// <summary>"This mana can't be spent to pay generic mana costs."</summary>
     public bool CantPayGeneric { get; init; }
 
+    /// <summary>"Spend this mana only on costs that contain {X}".</summary>
+    public bool XCostsOnly { get; init; }
+
+    /// <summary>"… When you next cast a [filter] spell this turn, [ability]": the delayed ability its activation creates (the spell is what it is about).</summary>
+    public (Abilities.ObjectFilter Spells, Abilities.TriggeredAbility Ability)? WhenNextCast { get; init; }
+
     /// <summary>"Three times as much of that mana" for a <see cref="OneOfEach"/> or <see cref="Combination"/> ability: its mana, this many times over.</summary>
     public int Times { get; init; } = 1;
 

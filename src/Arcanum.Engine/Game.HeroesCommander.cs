@@ -364,7 +364,20 @@ public sealed partial class Game
                 break;
             case BecomeCopy becomeCopy:
             {
-                var target = CardsFor(becomeCopy.Target, ctx).FirstOrDefault(c => c.Zone == Zone.Battlefield);
+                Card? target;
+                if (becomeCopy.MayChooseAmong is { } among)
+                {
+                    var choices = CardsFor(becomeCopy.Target, ctx).Distinct()
+                        .Where(c => Matches(among with { Controller = ControllerFilter.Any }, c, c.Owner, ctx.Source, ctx.Controller, lastKnown: c.Zone != Zone.Battlefield)).ToList();
+                    if (choices.Count == 0) break;
+                    var picked = await ControllerOf(ctx.Controller).ChooseCardsAsync(ViewFor(ctx.Controller), new CardChoiceRequest(
+                        $"{ctx.Source.Name}: you may have it become a copy of one of these cards until end of turn", ctx.Source.Id,
+                        choices.Select(c => ViewBuilder.Card(State, c.Id, ctx.Controller, reveal: true)).ToList(), 0, 1, CardChoicePurpose.Keep));
+                    if (picked.Count == 0) break;
+                    Require(picked.Count == 1 && choices.Any(c => c.Id == picked[0]), "Choose one of the cards.");
+                    target = State.GetCard(picked[0]);
+                }
+                else target = CardsFor(becomeCopy.Target, ctx).FirstOrDefault(c => c.Zone == Zone.Battlefield);
                 if (target is null) break;
                 var copiable = target.Definition;
                 copiable = copiable with
@@ -685,6 +698,11 @@ public sealed partial class Game
         QuantityKind.EnteredThisTurnCount => State.GetPlayer(ctx.Controller).EnteredThisTurn.Select(e => (Card: State.GetCard(e.Card), e.Version))
             .Count(e => e.Card.Version == e.Version && e.Card.Zone == Zone.Battlefield
                         && Matches((q.Filter ?? ObjectFilter.Anything) with { Controller = ControllerFilter.Any }, e.Card, e.Card.Controller, ctx.Source, ctx.Controller)),
+        QuantityKind.EnteredThisTurnEver => State.GetPlayer(ctx.Controller).EnteredThisTurn.Select(e => (Card: State.GetCard(e.Card), e.Version))
+            .Count(e => e.Card.Version == e.Version && e.Card.Zone == Zone.Battlefield
+                ? Matches((q.Filter ?? ObjectFilter.Anything) with { Controller = ControllerFilter.Any }, e.Card, e.Card.Controller, ctx.Source, ctx.Controller)
+                : e.Card.Version != e.Version && e.Card.LastKnownInfo is not null
+                  && Matches((q.Filter ?? ObjectFilter.Anything) with { Controller = ControllerFilter.Any }, e.Card, e.Card.LastKnownInfo.Controller, ctx.Source, ctx.Controller, lastKnown: true)),
         QuantityKind.OpponentsControlling => State.OpponentsOf(ctx.Controller).Count(o => State.PermanentsControlledBy(o)
             .Any(c => Matches((q.Filter ?? ObjectFilter.Anything) with { Controller = ControllerFilter.Any }, c, o, ctx.Source, ctx.Controller))),
         QuantityKind.SacrificedManaValue => ctx.Results.Sacrificed.Select(State.GetCard).Sum(c => c.LastKnownInfo?.ManaValue ?? ManaValueOf(c)),
@@ -708,8 +726,9 @@ public sealed partial class Game
     /// <summary>The permanents whose unused once-per-turn permission lets <paramref name="caster"/> cast this graveyard card now.</summary>
     private List<Card> OncePerTurnGraveyardPermissions(Card card, PlayerId caster)
     {
-        if (card.Zone != Zone.Graveyard || card.Owner != caster || State.ActivePlayer != caster || card.Is(CardType.Land)) return new();
+        if (card.Zone != Zone.Graveyard || card.Owner != caster || State.ActivePlayer != caster) return new();
         return State.PermanentsControlledBy(caster).Where(p => p.HasTextAbilities && p.Definition.GraveyardCastOncePerTurn is { } permission
+                && (!card.Is(CardType.Land) || permission.Lands)
                 && !State.GraveyardCastsUsed.Contains((p.Id, p.Version, State.TurnNumber))
                 && Matches(permission.Filter with { Controller = ControllerFilter.Any }, card, caster, p, caster)
                 && (!permission.NotFromBattlefieldThisTurn || (card.ZoneChangedTurn == State.TurnNumber && card.EnteredFrom != Zone.Battlefield)))
@@ -737,6 +756,7 @@ public sealed partial class Game
     {
         TurnEvent.YouPutCounterOnCreature => State.GetPlayer(ctx.Controller).PutCounterOnCreatureThisTurn,
         TurnEvent.CounterPutOnSource => ctx.Source.Zone == Zone.Battlefield && ctx.Source.CounterPutTurn == State.TurnNumber,
+        TurnEvent.YouPutCounterOnSource => ctx.Source.Zone == Zone.Battlefield && ctx.Source.CounterPutTurn == State.TurnNumber && ctx.Source.CounterPuttersThisTurn.Contains(ctx.Controller),
         TurnEvent.CardLeftYourGraveyard => State.GetPlayer(ctx.Controller).CardsLeftGraveyardThisTurn >= Math.Max(1, th.AtLeast),
         TurnEvent.YouLostLife => State.GetPlayer(ctx.AffectedPlayer ?? ctx.Controller).LifeLostThisTurn >= th.AtLeast,
         TurnEvent.PlayerLostLife => State.Players.Any(p => p.LifeLostThisTurn >= th.AtLeast),

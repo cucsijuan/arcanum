@@ -57,6 +57,15 @@ public sealed record ExileTop(Quantity Count, Subject Who) : HeroesEffect
 
     /// <summary>The cards are exiled with the source ("cards exiled with this enchantment", rule 607.2).</summary>
     public bool Linked { get; init; }
+
+    /// <summary>
+    /// "Exile cards from the top of your library until you exile cards with total mana value N or greater": one at a time, in place of
+    /// <see cref="Count"/>, until the total reaches N or the library is empty.
+    /// </summary>
+    public int UntilTotalManaValue { get; init; }
+
+    /// <summary>"Its owner may play it until the end of their next turn."</summary>
+    public bool OwnerMayPlayUntilEndOfTheirNextTurn { get; init; }
 }
 
 /// <summary>
@@ -82,7 +91,11 @@ public sealed record UnattachAtNextEndStep : HeroesEffect;
 public sealed record DoubleDamageToPlayerUntilYourNextTurn(Subject Who) : HeroesEffect;
 
 /// <summary>"Each other Bird you control deals damage equal to its power to [it]": all at once, one damage event.</summary>
-public sealed record EachDealsDamageEqualToPower(Subject Sources, Subject To) : HeroesEffect;
+public sealed record EachDealsDamageEqualToPower(Subject Sources, Subject To) : HeroesEffect
+{
+    /// <summary>"Each creature deals damage to itself equal to its power" (<see cref="To"/> is ignored).</summary>
+    public bool ToItself { get; init; }
+}
 
 /// <summary>"Double [its] power until end of turn" / "triple [its] power and toughness": +X/+0 or +2X/+2Y (rule 701.10d-e).</summary>
 public sealed record MultiplyPower(Subject What, int Factor, bool Toughness) : HeroesEffect;
@@ -168,7 +181,11 @@ public sealed record RollDie(int Sides) : HeroesEffect;
 /// "Exile cards from the top of your library until you exile a [filter] card with lesser mana value [than the triggering spell]. You may cast that
 /// card without paying its mana cost. Put the rest on the bottom of your library in a random order."
 /// </summary>
-public sealed record ExileUntilLesserCastFree(ObjectFilter Filter) : HeroesEffect;
+public sealed record ExileUntilLesserCastFree(ObjectFilter Filter) : HeroesEffect
+{
+    /// <summary>"Until end of turn, you may cast that card without paying its mana cost" (it stays exiled) rather than casting it now.</summary>
+    public bool UntilEndOfTurn { get; init; }
+}
 
 /// <summary>"Reveal the top N cards. For each card type, you may put a card of that type from among them into your hand. The rest on the bottom in a random order."</summary>
 public sealed record RevealOnePerCardType(int Count) : HeroesEffect;

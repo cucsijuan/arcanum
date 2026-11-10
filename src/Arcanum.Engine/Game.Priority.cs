@@ -301,14 +301,26 @@ public sealed partial class Game
     /// the cards they can see or have seen — so the list never gives away a hidden card. <paramref name="first"/> come first.
     /// </summary>
     /// <param name="nonbasicLand">"Choose a nonbasic land card name": only names of nonbasic land cards.</param>
-    private async Task<string?> ChooseCardNameAsync(PlayerId who, CardId? source, string prompt, IReadOnlyList<string>? first = null, bool nonbasicLand = false)
+    private async Task<string?> ChooseCardNameAsync(PlayerId who, CardId? source, string prompt, IReadOnlyList<string>? first = null, bool nonbasicLand = false,
+        bool landOnly = false)
     {
-        var names = CardNameOptions(who, first, nonbasicLand);
+        var names = landOnly ? LandCardNameOptions(who) : CardNameOptions(who, first, nonbasicLand);
         if (names.Count == 0) return null;
         int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest(prompt, source, names, OptionKind.CardName));
         Require(i >= 0 && i < names.Count, "Choose one of the names.");
         return names[i];
     }
+
+    /// <summary>The names of every basic land card (rule 205.4c: the basic supertype; snow ones included).</summary>
+    private static readonly string[] BasicLandCardNames =
+    {
+        "Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes",
+        "Snow-Covered Plains", "Snow-Covered Island", "Snow-Covered Swamp", "Snow-Covered Mountain", "Snow-Covered Forest", "Snow-Covered Wastes",
+    };
+
+    /// <summary>The names offered for "choose a land card name": the nonbasic land names, then the basic ones.</summary>
+    private List<string> LandCardNameOptions(PlayerId who) =>
+        CardNameOptions(who, null, nonbasicLand: true).Concat(BasicLandCardNames).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     /// <summary>The card names offered to <paramref name="who"/> for "choose a card name".</summary>
     private List<string> CardNameOptions(PlayerId who, IReadOnlyList<string>? first, bool nonbasicLand = false)
@@ -406,6 +418,14 @@ public sealed partial class Game
                         : ability.Cost.FromHand == (permanent.Zone == Zone.Hand) && permanent.Zone != Zone.Command)
                     && !ability.OnlyOpponents && !splitSecond && CanActivate(permanent, ability, i, playerId, sorcerySpeed))
                     actions.Add(new ActivateAbility(permanent.Id, i));
+        }
+        // Activated abilities of the player's emblems work from the command zone (rule 114.4): "pay 1 life: add {C}" until end of turn.
+        foreach (var emblem in State.Emblems.Select(State.GetCard).Where(e => e.Owner == playerId).ToList())
+        {
+            var abilities = emblem.Abilities;
+            for (int i = 0; i < abilities.Count; i++)
+                if (abilities[i] is ActivatedAbility ability && !splitSecond && CanActivate(emblem, ability, i, playerId, sorcerySpeed))
+                    actions.Add(new ActivateAbility(emblem.Id, i));
         }
         // "Only your opponents may activate this ability": abilities of opponents' permanents this player may activate.
         foreach (var permanent in State.OpponentsOf(playerId).SelectMany(State.PermanentsControlledBy))
@@ -543,7 +563,7 @@ public sealed partial class Game
         foreach (var id in player.Graveyard)
             if (OncePerTurnGraveyardPermissions(State.GetCard(id), playerId).Any()) yield return id;
         foreach (var id in player.Graveyard)
-            if (State.GetCard(id).Definition.GraveyardCastCost is not null || State.GetCard(id).PrintedDefinition.SplitHalves?.Any(h => h.Aftermath) == true
+            if (State.GetCard(id).Definition.GraveyardCastCost is not null || State.GetCard(id).Definition.GraveyardAlternativeCost is not null || State.GetCard(id).PrintedDefinition.SplitHalves?.Any(h => h.Aftermath) == true
                 || (State.GetCard(id).Definition.GraveyardCastIf is { } castIf && Holds(castIf, playerId, State.GetCard(id)))) yield return id;
         // Cards that went on an adventure (rule 715.4).
         foreach (var id in player.Exile)
@@ -650,6 +670,7 @@ public sealed partial class Game
         State.PlayableFromExile.Where(p => p.Player == player && p.UntilTurn >= State.TurnNumber
                                            && State.GetCard(p.Card) is { Zone: Zone.Exile } c && c.Version == p.Version
                                            && (!p.PermanentsOnly || c.Definition.Types.IsPermanent())
+                                           && !(p.LaterTurnOnly && State.TurnNumber <= p.MadeOnTurn)
                                            && (p.While is not { } condition || Holds(condition, player, null))
                                            && (p.LoreSource is not { } lore || State.LoreCounterTurns.Contains((lore.Card, lore.Version, State.TurnNumber)))
                                            && (p.WhileControlling is not { } held || State.GetCard(held.Card) is { Zone: Zone.Battlefield } holder && holder.Version == held.Version && holder.Controller == player)
@@ -703,7 +724,7 @@ public sealed partial class Game
             needed = TapForManaReduced(needed, State.PermanentsControlledBy(player).Count(c => c.IsCreature && !c.Tapped && c.Id != source.Id && c.ManaOptions.Count == 0));
         return LifeAffordable(player, needed)
             .Any(m => m.Variants().Any(v => ManaPayment.FindPlan(State, player, v, exclude: ability.Cost.Tap ? source.Id : null,
-                usable: AbilityManaUsable(source, ability, player), unitUsable: UnitUsableFor(source, isAbility: true, ability.IsEquip)) is not null));
+                usable: AbilityManaUsable(source, ability, player), unitUsable: UnitUsableFor(source, isAbility: true, ability.IsEquip, ability.Cost.Mana?.XCount > 0)) is not null));
     }
 
     /// <summary>A cost with up to <paramref name="creatures"/> of its mana symbols paid by tapping creatures instead (generic first, then colored).</summary>
@@ -731,7 +752,7 @@ public sealed partial class Game
     /// </summary>
     private ManaPayment.OptionUsable AbilityManaUsable(Card source, ActivatedAbility ability, PlayerId player)
     {
-        var usable = UsableFor(source, isAbility: true, ability.IsEquip);
+        var usable = UsableFor(source, isAbility: true, ability.IsEquip, ability.Cost.Mana?.XCount > 0);
         var reserved = new HashSet<CardId>();
         if (ability.Cost.Extra is { } extra)
         {
@@ -771,6 +792,7 @@ public sealed partial class Game
                     cost = cost.MinusGeneric(r.Amount);
         if (ability.CostReductionPer is { } per)
             cost = cost.MinusGeneric(State.Battlefield.Select(State.GetCard).Count(c => Matches(per, c, c.Controller, source, player)));
+        if (ability.CostReductionPerSourceCounter is { } perCounter) cost = cost.MinusGeneric(source.CounterCount(perCounter));
         if (ability.CostReductionIf is { } reduceIf && Holds(reduceIf, player, source)) cost = cost.MinusGeneric(ability.CostReductionAmount);
         // "Costs {1} less for each +1/+1 counter on the creature it targets" (before targets are chosen, the best legal one).
         if (ability.CostReductionPerTargetCounter)
@@ -831,8 +853,19 @@ public sealed partial class Game
                 // A land played from the graveyard uses up that type's permission, unless a permission without that limit covers it.
                 if (State.GetCard(play.Card).Zone == Zone.Graveyard && !Has(playerId, Replacements.LandsFromGraveyard) && !PlaysLandsFromGraveyard(playerId)
                     && !(HasRule(playerId, ExtraRules.PlayForestsFromGraveyard) && State.GetCard(play.Card).HasSubtype("Forest"))) player.GraveyardTypesUsedThisTurn |= CardType.Land;
+                // Played with a once-per-turn permission ("play a land from your graveyard or cast …"), when nothing else lets it be played.
+                var landPermission = State.GetCard(play.Card).Zone == Zone.Graveyard && !Has(playerId, Replacements.LandsFromGraveyard) && !PlaysLandsFromGraveyard(playerId)
+                                     && !HadesPermission(playerId) && !Has(playerId, Replacements.PermanentsFromGraveyard)
+                                     && !(HasRule(playerId, ExtraRules.PlayForestsFromGraveyard) && State.GetCard(play.Card).HasSubtype("Forest"))
+                    ? OncePerTurnGraveyardPermissions(State.GetCard(play.Card), playerId).FirstOrDefault() : null;
+                if (landPermission is not null) State.GraveyardCastsUsed.Add((landPermission.Id, landPermission.Version, State.TurnNumber));
                 // It enters under the control of the player who played it, whoever owns it (rule 110.2).
                 await MoveCardAsync(play.Card, Zone.Battlefield, controller: playerId);
+                if (landPermission?.Definition.GraveyardCastOncePerTurn?.Grants is { } landGrants && State.GetCard(play.Card) is { Zone: Zone.Battlefield } playedLand)
+                    State.LastingEffects.Add(new UntilEndOfTurnEffect(playedLand.Id, playedLand.Version, 0, 0, Array.Empty<Keyword>())
+                    {
+                        Abilities = landGrants.Select(a => BindGranter(a, playerId)).ToList(), Timestamp = NewTimestamp(),
+                    });
                 Emit(new LandPlayed(playerId, play.Card));
                 return true;
 
@@ -913,6 +946,7 @@ public sealed partial class Game
         if (!await CastAsItIsAsync(player, card, exileAfter, withPriority))
         {
             if (card.Zone != Zone.Stack) card.TurnedFaceDown = false; // a face-down cast backed out of
+            if (card.Zone != Zone.Stack) card.Bestowed = false;
             card.AsAdventure = false;
             card.CastHalf = null;
             return false;
@@ -940,6 +974,7 @@ public sealed partial class Game
         bool viaFinalityRight = fromGraveyard && card.Definition.Flashback is null && !State.PlayableFromGraveyard.Any(p => p.Card == cardId && p.Version == card.Version)
                                 && GraveyardRightUsed(card) is { Finality: true };
         bool exiledInsteadOfGraveyard = CastWithExilingPermission(card);
+        bool bottomInsteadOfGraveyard = card.Zone == Zone.Exile && State.PlayableFromExile.Any(pe => pe.Card == card.Id && pe.Version == card.Version && pe.BottomInsteadOfGraveyard);
         if (card.Zone == Zone.Hand) card.CastFromHand = true;
 
         // 601.2b: announcements, each one only if what's been announced so far can still be paid with it.
@@ -952,6 +987,8 @@ public sealed partial class Game
         var way = await ChooseCastingWayAsync(player.Id, card, payable.Select(c => c.Way).Distinct().ToList());
         // Cast face down: from here on it's the face-down spell (702.37c, 708.4), known only to its caster.
         if (way.Kind == CastingWayKind.FaceDown) card.TurnedFaceDown = true;
+        // Cast bestowed: from here on it's an Aura spell with enchant creature (702.103b), so its target is a creature.
+        if (way.Kind == CastingWayKind.Bestow) card.Bestowed = true;
         // Additional cost with alternatives: the caster picks one that can be paid.
         var withWay = payable.Where(c => c.Way == way).ToList();
         int pick = 0;
@@ -1015,6 +1052,11 @@ public sealed partial class Game
             if (CanPayToCast(card, player.Id, choices with { ConspireCount = choices.ConspireCount + 1 })
                 && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Conspire: tap two untapped creatures that share a color with {card.Name} to copy it?", cardId)))
                 choices = choices with { ConspireCount = choices.ConspireCount + 1 };
+        // Casualty N (702.153): you may sacrifice a creature with power N or greater, for each instance.
+        foreach (int n in CasualtyInstances(card, player.Id))
+            if (CanPayToCast(card, player.Id, choices with { CasualtyPaid = choices.CasualtyPaid.Append(n).ToList() })
+                && await ControllerOf(player.Id).ChooseYesNoAsync(ViewFor(player.Id), new YesNoRequest($"Casualty {n}: sacrifice a creature with power {n} or greater to copy {card.Name}?", cardId)))
+                choices = choices with { CasualtyPaid = choices.CasualtyPaid.Append(n).ToList() };
         bool kicked = choices.Kicked || choices.KickCount > 0;
         // Modes.
         var ability = choices.Way.Kind == CastingWayKind.Overload && card.Definition.Overloaded is { } overloaded ? overloaded : CastingTargets(card.Definition);
@@ -1031,7 +1073,37 @@ public sealed partial class Game
             }
             // Tiered (702.183a): only the modes whose additional cost can be paid with everything announced so far.
             var tiers = ability.Modes?.Any(m => m.Cost is not null) == true ? ability.Modes : null;
-            if (tiers is not null)
+            if (tiers is not null && ability.ModeCount > 1)
+            {
+                // Spree (702.172): one or more modes, each adding its cost; a mode is offered only while the total can be paid.
+                var picks = new List<int>();
+                var total = ManaCost.Zero;
+                while (true)
+                {
+                    var sprees = Enumerable.Range(0, tiers.Count)
+                        .Where(i => !picks.Contains(i) && tiers[i].Targets.All(spec => IsUpTo(spec) || LegalTargets(spec, player.Id, cardId).Any())
+                                    && CanPayToCast(card, player.Id, choices with { Tier = total.Plus(tiers[i].Cost ?? ManaCost.Zero) }))
+                        .ToList();
+                    if (sprees.Count == 0) break;
+                    var request = new ModeRequest(cardId, $"{card.Name}: choose {(picks.Count == 0 ? "a mode" : "another mode, or stop")}", tiers.Select(m => m.Text).ToList(), sprees, picks.Count == 0 ? 1 : 0, 1, picks.Count == 0);
+                    var answer = await ControllerOf(player.Id).ChooseModesAsync(ViewFor(player.Id), request);
+                    if (answer is null)
+                    {
+                        Require(picks.Count == 0, "Modes must be chosen.");
+                        _playerCancels++;
+                        return false;
+                    }
+                    if (answer.Count == 0) { Require(picks.Count > 0, "Choose at least one mode."); break; }
+                    Require(answer.Count == 1 && sprees.Contains(answer[0]), "Choose one of the possible modes.");
+                    picks.Add(answer[0]);
+                    total = total.Plus(tiers[answer[0]].Cost ?? ManaCost.Zero);
+                }
+                if (picks.Count == 0) return false;
+                ability = ability.WithModes(picks.OrderBy(i => i).ToList());
+                choices = choices with { Tier = total };
+                tiers = null;
+            }
+            else if (tiers is not null)
                 ability = ability with { Modes = tiers.Where(m => CanPayToCast(card, player.Id, choices with { Tier = m.Cost ?? ManaCost.Zero })).ToList() };
             ability = await ChooseModesAsync(player.Id, ability, cardId, canCancel: true);
             if (ability is null) return false;
@@ -1088,7 +1160,7 @@ public sealed partial class Game
         IReadOnlyList<ChosenTarget>? targets;
         // "Costs {1} more for each target beyond the first": no more targets than can be paid for.
         int? maxTargets = null;
-        if (card.Definition.ExtraTargetCost > 0)
+        if (card.Definition.ExtraTargetCost > 0 || card.Definition.ExtraTargetCostMana is not null)
         {
             static IReadOnlyList<ChosenTarget> Some(int n) => Enumerable.Repeat(new ChosenTarget(Abilities.Target.Of(new PlayerId(0)), 0), n).ToList();
             int most = 1;
@@ -1100,7 +1172,10 @@ public sealed partial class Game
         finally { _announcedX = -1; }
         if (targets is null) return false;
         // 601.2d: how damage or counters are divided among the targets.
-        var division = await ChooseDivisionAsync(player.Id, ability, cardId, targets);
+        _announcedX = x;
+        IReadOnlyList<int>? division;
+        try { division = await ChooseDivisionAsync(player.Id, ability, cardId, targets); }
+        finally { _announcedX = -1; }
 
         // 601.2f: the total cost, locked in.
         var cost = TotalCastingCost(card, player.Id, choices, targets);
@@ -1162,7 +1237,7 @@ public sealed partial class Game
         var spellUsable = SpellManaUsable(card, player.Id, choices);
         var keptForTap = TapCostReserveFor(card, player.Id, choices, cost) ?? new HashSet<CardId>();
         var paidMana = await PayManaTapsAsync(player, cardId, cost, exclude: null,
-            keptForTap.Count == 0 ? spellUsable : (s, o) => !keptForTap.Contains(s.Id) && spellUsable(s, o), UnitUsableFor(card, isAbility: false));
+            keptForTap.Count == 0 ? spellUsable : (s, o) => !keptForTap.Contains(s.Id) && spellUsable(s, o), UnitUsableFor(card, isAbility: false, costHasX: card.Definition.ManaCost.XCount > 0));
         if (paidMana is null) return false;
         // Compleated (702.150a): two fewer loyalty counters for each of its own Phyrexian symbols paid with life. Symbols only made
         // Phyrexian by another effect take the life first: the payer says which symbol each payment is for (601.2h).
@@ -1223,6 +1298,8 @@ public sealed partial class Game
             : new List<CardId>();
 
         if (card.Zone == Zone.Command) player.CommanderCasts[cardId] = player.CommanderCasts.GetValueOrDefault(cardId) + 1;
+        var commanderScrySources = card.IsCommander && card.Owner == player.Id
+            ? paidMana.SpecialSpent.Where(u => u.Rider == ManaRider.ScryCommanderCasts).Select(u => u.Source).ToList() : new List<CardId>();
         // "If you spend this mana to cast your commander, it enters with a number of additional +1/+1 counters on it equal to the
         // number of times it's been cast from the command zone this game" (this cast included), for each such mana spent.
         int commanderBonus = card.IsCommander && card.Owner == player.Id
@@ -1246,6 +1323,7 @@ public sealed partial class Game
         if (castFromExileAs is { } exiledAs && card.Zone == Zone.Stack && State.LastingEffects.RemoveAll(e => e.UntilCastFromExile == exiledAs) > 0) RecomputeContinuousEffects();
         // "If that spell would be put into your graveyard, exile it instead" (the permission it was cast with).
         if (exiledInsteadOfGraveyard && card.Zone == Zone.Stack) State.ExileInsteadOfGraveyard.Add((card.Id, card.Version));
+        if (bottomInsteadOfGraveyard && card.Zone == Zone.Stack) State.BottomInsteadOfGraveyard.Add((card.Id, card.Version));
         if (commanderBonus > 0 && card.Zone == Zone.Stack)
             State.ExtraCountersOnEnter[(card.Id, card.Version)] = State.ExtraCountersOnEnter.GetValueOrDefault((card.Id, card.Version)) + commanderBonus;
         if (nextCreature.Sum(n => n.Counters) is var nextCounters and > 0)
@@ -1267,6 +1345,7 @@ public sealed partial class Game
         {
             State.GraveyardCastsUsed.Add((once.Id, once.Version, State.TurnNumber));
             if (once.Definition.GraveyardCastOncePerTurn!.EntersTapped && card.Zone == Zone.Stack) State.EntersTappedFromStack.Add((card.Id, card.Version));
+            if (once.Definition.GraveyardCastOncePerTurn.Grants is { } grants && card.Zone == Zone.Stack) State.AbilitiesOnEnter[(card.Id, card.Version)] = grants;
         }
         card.ManaSpent = cost.ManaValue;
         card.SpentManaTypes = paidMana.Types;
@@ -1285,7 +1364,7 @@ public sealed partial class Game
             _freeFromExileUsed.Add((lifeSource.Id, lifeSource.Version, State.TurnNumber));
         // The card is on the stack now: the permission used is the one for the zone it was cast from.
         if (choices.Way.Kind == CastingWayKind.FreeFromExile && (card.CastFromExile ? FreeFromExileSource(player.Id)
-                : State.PermanentsControlledBy(player.Id).FirstOrDefault(c => c.HasTextAbilities && (c.Definition.ExtraRules & ExtraRules.FreeFromHandOrTopOncePerTurn) != 0
+                : State.PermanentsControlledBy(player.Id).FirstOrDefault(c => c.HasTextAbilities && OffersFreeCast(c, fromHand, card)
                     && !_freeFromExileUsed.Contains((c.Id, c.Version, State.TurnNumber)))) is { } freeSource)
             _freeFromExileUsed.Add((freeSource.Id, freeSource.Version, State.TurnNumber));
         card.AdditionalCostPaid = choices.AdditionalCostPaid;
@@ -1298,9 +1377,10 @@ public sealed partial class Game
         PushStack(new SpellOnStack(cardId, player.Id, targets)
         {
             Ability = ability != CastingTargets(card.Definition) ? ability : null,
-            X = x, Kicked = kicked, Flashback = flashback || choices.Way.Kind == CastingWayKind.Harmonize, GiftTo = giftTo, SacrificedForCost = costSacrificed, DiscardedForCost = costDiscarded, Division = division, KickCount = choices.KickCount, SquadCount = choices.SquadCount, Dashed = choices.Way.Kind == CastingWayKind.Dash, Blitzed = choices.Way.Kind == CastingWayKind.Blitz, Evoked = choices.Way.Kind == CastingWayKind.Evoke, CompleatedFewer = compleatedFewer,
+            X = x, Kicked = kicked, Flashback = flashback || choices.Way.Kind == CastingWayKind.Harmonize, GiftTo = giftTo, SacrificedForCost = costSacrificed, DiscardedForCost = costDiscarded, Division = division, KickCount = choices.KickCount, SquadCount = choices.SquadCount, Dashed = choices.Way.Kind == CastingWayKind.Dash, Warped = choices.Way.Kind == CastingWayKind.Warp, Blitzed = choices.Way.Kind == CastingWayKind.Blitz, Evoked = choices.Way.Kind == CastingWayKind.Evoke, CompleatedFewer = compleatedFewer,
             Impended = choices.Way.Kind == CastingWayKind.Impending, Escaped = choices.Way.Kind == CastingWayKind.Escape, OffspringPaid = choices.OffspringPaid, GrantedOffspringPaid = choices.GrantedOffspringPaid.Count,
         });
+        player.SpellManaValuesThisTurn.Add(ManaValueOf(card));
         Emit(new SpellCast(player.Id, cardId));
         foreach (var castThis in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.Trigger == TriggerEvent.CastThis))
             AddPending(cardId, castThis, player.Id, new TriggerInfo(cardId, card.Version, player.Id, ManaValueOf(card)));
@@ -1317,6 +1397,10 @@ public sealed partial class Game
             _pendingTriggers.Add(new PendingTrigger(cardId, ReplicateTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, choices.ReplicateCount)));
         for (int i = 0; i < choices.ConspireCount; i++)
             _pendingTriggers.Add(new PendingTrigger(cardId, ConspireTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, 1)));
+        for (int i = 0; i < card.Definition.Gravestorm; i++) // each instance triggers separately (702.69b)
+            _pendingTriggers.Add(new PendingTrigger(cardId, GravestormTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id)));
+        foreach (int _ in choices.CasualtyPaid) // "When you cast this spell, if a casualty cost was paid for it, copy it" (one for each paid)
+            _pendingTriggers.Add(new PendingTrigger(cardId, CasualtyTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, 1)));
         if (card.PaidWithTreasure) player.TreasureSpellsThisTurn++;
         int cascades = card.Definition.Cascade
             + (card.PaidWithTreasure && player.TreasureSpellsThisTurn == 1
@@ -1328,6 +1412,7 @@ public sealed partial class Game
             _pendingTriggers.Add(new PendingTrigger(cardId, CascadeTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id, card.ManaValue)));
         foreach (var source in copySources) QueueCopyThatSpell(source, player.Id, card);
         foreach (var source in scrySources) _pendingTriggers.Add(new PendingTrigger(source, ScryOneForSharedType, player.Id));
+        foreach (var source in commanderScrySources) _pendingTriggers.Add(new PendingTrigger(source, ScryCommanderCastsTrigger, player.Id, new TriggerInfo(cardId, card.Version, player.Id)));
         return true;
     }
 
@@ -1360,6 +1445,25 @@ public sealed partial class Game
     private static readonly TriggeredAbility ConspireTrigger = StormTrigger with
     {
         Text = "Conspire: copy this spell. You may choose new targets for the copy.",
+    };
+
+    private static readonly TriggeredAbility GravestormTrigger = new()
+    {
+        Trigger = TriggerEvent.YouCastSpell,
+        Effects = new Effect[] { new CopySpell(Subject.Triggered, new Quantity(0, QuantityKind.PermanentsPutIntoGraveyardThisTurn)) },
+        Text = "Gravestorm: copy this spell for each permanent put into a graveyard from the battlefield this turn. You may choose new targets for the copies.",
+    };
+
+    private static readonly TriggeredAbility CasualtyTrigger = StormTrigger with
+    {
+        Text = "Casualty: copy this spell. You may choose new targets for the copy.",
+    };
+
+    private static readonly TriggeredAbility ScryCommanderCastsTrigger = new()
+    {
+        Trigger = TriggerEvent.YouCastSpell,
+        Effects = new Effect[] { new Scry(0) { CountFrom = new Quantity(0, QuantityKind.TriggeredCommanderCasts) } },
+        Text = "That mana was spent to cast your commander: scry X, where X is the number of times it's been cast from the command zone this game.",
     };
 
     private static readonly TriggeredAbility ScryOneForSharedType = new()
@@ -1539,7 +1643,7 @@ public sealed partial class Game
                 cost = TapForManaReduced(cost, tapped!.Count);
             }
         }
-        if (await PayManaTapsAsync(player, source.Id, cost, exclude, AbilityManaUsable(source, ability, player.Id), UnitUsableFor(source, isAbility: true, ability.IsEquip)) is null) return false;
+        if (await PayManaTapsAsync(player, source.Id, cost, exclude, AbilityManaUsable(source, ability, player.Id), UnitUsableFor(source, isAbility: true, ability.IsEquip, ability.Cost.Mana?.XCount > 0)) is null) return false;
         if (ability.Cost.Tap)
         {
             Tap(source);
@@ -1654,14 +1758,16 @@ public sealed partial class Game
         LifeAffordable(player, cost).Any(m => m.Variants().Any(v => ManaPayment.FindPlan(State, player, v, exclude, usable) is not null));
 
     /// <summary>Which restricted mana in the pool can pay for a spell (or an ability of <paramref name="use"/>).</summary>
-    private Func<ManaUnit, bool> UnitUsableFor(Card? use, bool isAbility, bool isEquip = false) => unit =>
-        unit.OnlyFor is not { } only
+    private Func<ManaUnit, bool> UnitUsableFor(Card? use, bool isAbility, bool isEquip = false, bool costHasX = false) => unit =>
+        unit.XCostsOnly ? costHasX
+        : unit.OnlyFor is not { } only
         || (isAbility && isEquip && unit.EquipOnly)
         || (use is not null && (!isAbility || (unit.AbilitiesToo && !unit.EquipOnly)) && Matches(only with { Controller = ControllerFilter.Any }, use, use.Controller, null, use.Controller));
 
     /// <summary>Which mana abilities can pay for a spell (or an ability of <paramref name="use"/>): restricted mana only for what it allows.</summary>
-    private ManaPayment.OptionUsable UsableFor(Card? use, bool isAbility, bool isEquip = false) => (source, option) =>
-        option.OnlyFor is not { } only
+    private ManaPayment.OptionUsable UsableFor(Card? use, bool isAbility, bool isEquip = false, bool costHasX = false) => (source, option) =>
+        option.XCostsOnly ? costHasX
+        : option.OnlyFor is not { } only
         || (isAbility && isEquip && option.EquipOnly)
         || (use is not null && (!isAbility || (option.AbilitiesToo && !option.EquipOnly))
             && Matches(only with { Controller = ControllerFilter.Any }, use, use.Controller, source, source.Controller));
@@ -2155,8 +2261,8 @@ public sealed partial class Game
         await PayManaTapsAsync(player, source, cost, exclude, null, null) is not null;
 
     /// <summary>Paying to unlock a door (<paramref name="unlock"/>) or turn a permanent face up: unrestricted mana, or mana that may be spent on that.</summary>
-    private static ManaPayment.OptionUsable SpecialActionOptions(bool unlock) => (_, option) => option.OnlyFor is null || (unlock ? option.ForUnlock : option.ForFaceUp);
-    private static Func<ManaUnit, bool> SpecialActionUnits(bool unlock) => unit => unit.OnlyFor is null || (unlock ? unit.ForUnlock : unit.ForFaceUp);
+    private static ManaPayment.OptionUsable SpecialActionOptions(bool unlock) => (_, option) => !option.XCostsOnly && (option.OnlyFor is null || (unlock ? option.ForUnlock : option.ForFaceUp));
+    private static Func<ManaUnit, bool> SpecialActionUnits(bool unlock) => unit => !unit.XCostsOnly && (unit.OnlyFor is null || (unlock ? unit.ForUnlock : unit.ForFaceUp));
 
     private async Task<bool> PayForSpecialActionAsync(Player player, CardId source, ManaCost cost, bool unlock) =>
         await PayManaTapsAsync(player, source, cost, null, SpecialActionOptions(unlock), SpecialActionUnits(unlock)) is not null;
@@ -2267,9 +2373,9 @@ public sealed partial class Game
         bool snow = (source.Supertypes & Supertype.Snow) != 0;
         foreach (var type in produced)
         {
-            if (onlyFor is not null || rider != ManaRider.None || snow || option is { CantPayGeneric: true })
+            if (onlyFor is not null || rider != ManaRider.None || snow || option is { CantPayGeneric: true } || option is { XCostsOnly: true })
                 player.ManaPool.AddSpecial(new ManaUnit(type, source.Id, onlyFor, option?.AbilitiesToo ?? false, rider)
-                    { Snow = snow, EquipOnly = option?.EquipOnly ?? false, ForUnlock = option?.ForUnlock ?? false, ForFaceUp = option?.ForFaceUp ?? false, CantPayGeneric = option?.CantPayGeneric ?? false });
+                    { Snow = snow, EquipOnly = option?.EquipOnly ?? false, ForUnlock = option?.ForUnlock ?? false, ForFaceUp = option?.ForFaceUp ?? false, CantPayGeneric = option?.CantPayGeneric ?? false, XCostsOnly = option?.XCostsOnly ?? false });
             else player.ManaPool.Add(type);
             Emit(new ManaAdded(player.Id, type, tap.Source));
         }
@@ -2332,6 +2438,8 @@ public sealed partial class Game
         if (option is { AddsCounter: { } addsCounter }) PutCounters(source, addsCounter, 1, player.Id);
         if (option is { ExileSelf: true }) await MoveCardAsync(source.Id, Zone.Exile);
         if (option is { CopyNextInstantOrSorcery: true }) State.CopyNextInstantOrSorcery.Add((player.Id, State.TurnNumber, 1, false));
+        if (option?.WhenNextCast is { } whenNext)
+            State.WhenNextCast.Add((new DelayedTrigger(source.Id, whenNext.Ability, player.Id, 0) { SourceVersion = source.Version }, whenNext.Spells, State.TurnNumber));
         ManaPoolChanged();
     }
 
@@ -2407,13 +2515,9 @@ public sealed partial class Game
         int total = 0;
         if (card.Definition.SelfCostReduction is { AmountFrom: { } amountFrom })
             total += Math.Max(0, Eval(amountFrom, new EffectContext(caster, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>())));
-        if (card.Definition.SelfCostReduction is { IfTargets: { } wanted } byTarget)
+        if (card.Definition.SelfCostReduction is { IfTargets: not null } byTarget)
         {
-            // Before targets are chosen, assume the best case when some legal target qualifies.
-            var candidates = targets?.Where(t => t.Target.Card is not null).Select(t => State.GetCard(t.Target.Card!.Value))
-                             ?? (CastingTargets(card.Definition)?.Targets.SelectMany(spec => LegalTargets(spec, caster, card.Id))
-                                 .Where(t => t.Card is not null).Select(t => State.GetCard(t.Card!.Value)) ?? Enumerable.Empty<Card>());
-            if (candidates.Any(c => Matches(wanted with { Controller = ControllerFilter.Any }, c, c.Controller, card, caster))) total += byTarget.Amount;
+            if (ReducedByTargets(card, caster, targets)) total += byTarget.Amount;
         }
         else if (card.Definition.SelfCostReduction is { } self)
         {
@@ -2436,7 +2540,7 @@ public sealed partial class Game
                 .Select(c => (Card: c, Abilities: c.Definition.Abilities.Where(x => x is SpellCostReduction { FromCommandZone: true }))));
         foreach (var (permanent, abilities) in reducers)
             foreach (var reduction in abilities.OfType<SpellCostReduction>().Where(r => r.Color is null))
-                if (ReductionApplies(reduction, permanent, card, caster))
+                if (ReductionApplies(reduction, permanent, card, caster) && (reduction.IfTargets is not { } wantedTarget || ReducedByTargets(card, caster, targets, wantedTarget)))
                     total += ReductionAmount(reduction, permanent, caster);
         return total;
     }
@@ -2446,9 +2550,24 @@ public sealed partial class Game
             ? Math.Max(0, Eval(from, new EffectContext(caster, permanent, Array.Empty<ChosenTarget>(), Array.Empty<bool>())))
             : reduction.Amount;
 
-    /// <summary>A spell's cost after the "costs {U} less" abilities of the caster's permanents (rule 118.7c).</summary>
-    private ManaCost MinusColoredReductions(ManaCost cost, Card card, PlayerId caster)
+    /// <summary>
+    /// "Costs less to cast if it targets a [filter]": the chosen targets qualify, or, before targets are chosen, some legal target does
+    /// (the best case).
+    /// </summary>
+    private bool ReducedByTargets(Card card, PlayerId caster, IReadOnlyList<ChosenTarget>? targets, ObjectFilter? filter = null)
     {
+        if ((filter ?? card.Definition.SelfCostReduction?.IfTargets) is not { } wanted) return false;
+        var candidates = targets?.Where(t => t.Target.Card is not null).Select(t => State.GetCard(t.Target.Card!.Value))
+                         ?? (CastingTargets(card.Definition)?.Targets.SelectMany(spec => LegalTargets(spec, caster, card.Id))
+                             .Where(t => t.Card is not null).Select(t => State.GetCard(t.Card!.Value)) ?? Enumerable.Empty<Card>());
+        return candidates.Any(c => Matches(wanted with { Controller = ControllerFilter.Any }, c, c.Controller, card, caster));
+    }
+
+    /// <summary>A spell's cost after the "costs {U} less" abilities of the caster's permanents and of the spell itself (rule 118.7c).</summary>
+    private ManaCost MinusColoredReductions(ManaCost cost, Card card, PlayerId caster, IReadOnlyList<ChosenTarget>? targets)
+    {
+        // "This spell costs {1}{U} less to cast if it targets an instant or sorcery spell": the colored part.
+        if (card.Definition.SelfCostReduction is { Color: { } own, IfTargets: not null } && ReducedByTargets(card, caster, targets)) cost = cost.MinusColored(own, 1);
         foreach (var permanent in State.PermanentsControlledBy(caster))
             foreach (var reduction in permanent.Abilities.OfType<SpellCostReduction>())
                 if (reduction.Color is { } color && ReductionApplies(reduction, permanent, card, caster))
@@ -2472,11 +2591,27 @@ public sealed partial class Game
                 var discard = spell.Flashback ? Zone.Exile : Zone.Graveyard; // flashback: exiled whenever it leaves the stack
                 if ((spell.Ability ?? card.Definition.Spell) is SpellAbility { ExileAfterResolving: true }) discard = Zone.Exile;
                 _exileResolvingSpell = null;
-                if ((spell.Ability ?? CastingTargets(card.Definition)) is { } effect && !await ApplyResolutionAsync(item, effect, card))
+                // A bestowed Aura spell whose target is illegal ceases to be bestowed and resolves as a creature spell (702.103e).
+                bool unbestowed = false;
+                if (card.Bestowed && item.Targets.Count > 0 && card.Definition.EnchantTarget is { } bestowedEnchant
+                    && !IsStillLegal(item.Targets[0], bestowedEnchant, item.Controller, card.Id))
+                {
+                    card.Bestowed = false; // now a creature spell: no target to check, nothing to attach to
+                    unbestowed = true;
+                }
+                if (!unbestowed && (spell.Ability ?? CastingTargets(card.Definition)) is { } effect && !await ApplyResolutionAsync(item, effect, card))
                 {
                     await MoveCardAsync(spell.Card, discard);
                     Emit(new FizzledOnResolution(spell.Card));
                     break;
+                }
+                // Paradigm (rule 702.192a): the first time a spell its controller controls with this name resolves, the delayed ability for the
+                // rest of the game, copying this object as it is now; then "exile this spell".
+                bool firstOfItsName = State.ResolvedSpellNames.Add((spell.Controller, card.Name));
+                if (card.Definition.Paradigm)
+                {
+                    if (firstOfItsName) State.Paradigms.Add(new ParadigmTrigger(card.Id, spell.Controller, card.Definition));
+                    discard = Zone.Exile;
                 }
                 if (card.Zone != Zone.Stack) break; // the spell moved itself (shuffled away, exiled...)
                 if (_exileResolvingSpell == card.Id) discard = Zone.Exile;
@@ -2556,6 +2691,14 @@ public sealed partial class Game
                     State.AtNextEndStepEffects.Add((card.Id, spell.Controller, card.Id, card.Version, new Effect[] { new ReturnToHand(Subject.Triggered) }, null, null));
                 }
                 if (card.Zone == Zone.Battlefield && spell.Blitzed) Blitzed(card, spell.Controller);
+                // Warp (702.185a): the permanent is exiled at the beginning of the next end step; its owner may cast it from exile on a later turn.
+                if (card.Zone == Zone.Battlefield && spell.Warped)
+                    State.AtNextEndStepEffects.Add((card.Id, spell.Controller, card.Id, card.Version, new Effect[] { new WarpExile() }, null, null));
+                if (_copiesGainHasteAndSacrifice.Remove(card.Id) && card.Zone == Zone.Battlefield)
+                    State.LastingEffects.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste })
+                    {
+                        Abilities = new AbilityDefinition[] { BindGranter(SacrificeThisAtEndStep, spell.Controller) }, Timestamp = NewTimestamp(),
+                    });
                 if (card.Zone == Zone.Battlefield && hasteOnEnter)
                     State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });
                 if (card.Zone == Zone.Battlefield && State.HasteAndSacrificeOnEnter.Remove((spell.Card, castVersion)))
@@ -2584,7 +2727,7 @@ public sealed partial class Game
         if (!card.Types.IsPermanent()) return null;
         var counters = new List<(CounterKind Kind, int Count)>();
         if (spell.Impended) counters.Add((CounterKind.Time, card.Definition.ImpendingCount));
-        if (card.Definition.EntersWithXCounters && spell.X > 0) counters.Add((CounterKind.PlusOnePlusOne, spell.X * card.Definition.XCountersMultiplier));
+        if (card.Definition.EntersWithXCounters && spell.X > 0) counters.Add((card.Definition.EntersWithCounterKind, spell.X * card.Definition.XCountersMultiplier));
         if (spell.Escaped && card.Definition.EscapesWithCounters > 0) counters.Add((CounterKind.PlusOnePlusOne, card.Definition.EscapesWithCounters));
         // "That creature enters with N additional +1/+1 counters on it" (from abilities that saw it cast).
         if (State.ExtraCountersOnEnter.Remove((spell.Card, card.Version), out var extra) && extra > 0) counters.Add((CounterKind.PlusOnePlusOne, extra));

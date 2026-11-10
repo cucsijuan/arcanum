@@ -43,6 +43,7 @@ public sealed partial class Game
         var toGraveyard = new List<Card>();
         var died = new List<Card>();
         var unattach = new List<Card>();
+        var bestowedUnattach = new List<Card>();
 
         foreach (var card in permanents)
         {
@@ -53,8 +54,17 @@ public sealed partial class Game
                     // "Enchant player" / "Enchant opponent": a player still in the game, an opponent if it says so, without protection from it.
                     ? card.AttachedPlayer is { } enchanted && !State.GetPlayer(enchanted).HasLost && !State.GetPlayer(enchanted).Protected
                       && (enchant.Controller != Abilities.ControllerFilter.Opponent || State.OpponentsOf(card.Controller).Contains(enchanted))
+                    // "Enchant creature put onto the battlefield with this Aura": only that creature (Animate-style Auras).
+                    : card.Animated is { } animated && animated.AuraVersion == card.Version
+                      ? card.AttachedTo == animated.Creature && State.GetCard(animated.Creature) is { Zone: Zone.Battlefield, IsCreature: true } back && back.Version == animated.CreatureVersion
+                    // "Enchant creature card in a graveyard": attached to such a card while it stays there.
+                    : enchant.Kind == Abilities.TargetKind.GraveyardCard
+                      ? card.AttachedTo is { } buried && State.GetCard(buried) is { Zone: Zone.Graveyard } g
+                        && (enchant.Filter is not { } gf || Matches(gf with { Controller = Abilities.ControllerFilter.Any }, g, g.Owner, card, card.Controller))
                     : card.AttachedTo is { } host && State.GetCard(host) is { Zone: Zone.Battlefield } h && CanEnchant(card, enchant, h);
-                if (!legal) toGraveyard.Add(card);
+                // A bestowed Aura that is unattached or attached illegally becomes unattached and ceases to be bestowed: a creature again (702.103f).
+                if (!legal && card.Bestowed) bestowedUnattach.Add(card);
+                else if (!legal) toGraveyard.Add(card);
             }
             else if (card.AttachedTo is { } equipped && (State.GetCard(equipped) is not { Zone: Zone.Battlefield, IsCreature: true } eq || ProtectedFrom(eq, card)))
             {
@@ -91,6 +101,10 @@ public sealed partial class Game
         var worlds = permanents.Where(c => (c.Supertypes & Supertype.World) != 0).ToList();
         if (worlds.Count > 1) toGraveyard.AddRange(worlds.Take(worlds.Count - 1));
 
+        // 704.5y: of the Roles one player controls on the same permanent, only the newest stays.
+        foreach (var roles in permanents.Where(c => c.HasSubtype("Role") && c.AttachedTo is not null).GroupBy(c => (c.AttachedTo, c.Controller)))
+            toGraveyard.AddRange(roles.OrderBy(r => r.Timestamp).SkipLast(1).Where(r => !toGraveyard.Contains(r)));
+
         // +1/+1 and -1/-1 counters on the same permanent cancel out (704.5q).
         foreach (var card in permanents)
         {
@@ -101,6 +115,13 @@ public sealed partial class Game
             any = true;
         }
 
+        foreach (var card in bestowedUnattach)
+        {
+            card.AttachedTo = null;
+            card.Bestowed = false;
+            any = true;
+        }
+        if (bestowedUnattach.Count > 0) RecomputeContinuousEffects();
         foreach (var card in unattach)
         {
             // Unattached because what it was attached to left: remember that object ("an Equipment that was attached to it").

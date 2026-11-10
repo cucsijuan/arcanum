@@ -17,7 +17,7 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>What a spell is cast for (rule 118.9): its mana cost or one alternative cost.</summary>
-    private enum CastingWayKind { ManaCost, Dash, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown, Escape, Evoke, Harmonize, RuleAlternative, FreeFromExile, LifeOncePerTurn }
+    private enum CastingWayKind { ManaCost, Dash, Warp, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown, Escape, Evoke, Harmonize, RuleAlternative, FreeFromExile, LifeOncePerTurn, Bestow }
 
     /// <summary>
     /// One way to pay for casting a card: the cost it's cast for (its mana cost, or the flashback or miracle cost it's being
@@ -55,6 +55,9 @@ public sealed partial class Game
         public IReadOnlyList<Card> Spliced { get; init; } = Array.Empty<Card>();
         /// <summary>Conspire instances paid for (rule 702.78b: each is paid and copies separately).</summary>
         public int ConspireCount { get; init; }
+
+        /// <summary>The casualty costs paid (the N of each instance paid, rule 702.153b).</summary>
+        public IReadOnlyList<int> CasualtyPaid { get; init; } = Array.Empty<int>();
         /// <summary>The creature tapped for harmonize (702.180b): the spell costs {X} less, X its power.</summary>
         public CardId? HarmonizeTapped { get; init; }
         public int X { get; init; }
@@ -92,12 +95,20 @@ public sealed partial class Game
             && (((c.Definition.ExtraRules & ExtraRules.LifeCastFromHandOncePerTurn) != 0 && card.Zone == Zone.Hand)
                 || ((c.Definition.ExtraRules & ExtraRules.LifeCastEnchantmentOncePerTurn) != 0 && card.Is(CardType.Enchantment))));
 
-    /// <summary>"Once during each of your turns, cast a spell from your hand or the top of your library without paying its mana cost": a permanent still offering it.</summary>
+    /// <summary>
+    /// "Once during each of your turns, cast a spell from your hand or the top of your library without paying its mana cost" (or "an instant
+    /// or sorcery spell from your hand"): a permanent still offering it for this card.
+    /// </summary>
     private Card? FreeFromHandOrTopSource(Card card, PlayerId caster) =>
         State.ActivePlayer == caster && (card.Zone == Zone.Hand || State.GetPlayer(caster).Library.FirstOrDefault() == card.Id)
-            ? State.PermanentsControlledBy(caster).FirstOrDefault(c => c.HasTextAbilities && (c.Definition.ExtraRules & ExtraRules.FreeFromHandOrTopOncePerTurn) != 0
+            ? State.PermanentsControlledBy(caster).FirstOrDefault(c => c.HasTextAbilities && OffersFreeCast(c, card.Zone == Zone.Hand, card)
                 && !_freeFromExileUsed.Contains((c.Id, c.Version, State.TurnNumber)))
             : null;
+
+    /// <summary>Whether the permanent's once-per-turn free cast covers this card cast from the hand (or the top of the library).</summary>
+    private static bool OffersFreeCast(Card permanent, bool fromHand, Card card) =>
+        (permanent.Definition.ExtraRules & ExtraRules.FreeFromHandOrTopOncePerTurn) != 0
+        || (fromHand && (permanent.Definition.ExtraRules & ExtraRules.FreeInstantOrSorceryFromHandOncePerTurn) != 0 && (card.Is(CardType.Instant) || card.Is(CardType.Sorcery)));
 
     /// <summary>The ways the card can be cast for right now (118.9), whether or not they can be paid.</summary>
     private List<CastingWay> CastingWays(Card card, PlayerId caster)
@@ -124,6 +135,7 @@ public sealed partial class Game
         }
         var ways = new List<CastingWay> { new(CastingWayKind.ManaCost, card.Definition.ManaCost) };
         if (card.Zone == Zone.Hand && card.Definition.Dash is { } dash) ways.Add(new(CastingWayKind.Dash, dash)); // 702.109a
+        if (card.Zone == Zone.Hand && card.Definition.Warp is { } warp) ways.Add(new(CastingWayKind.Warp, warp)); // 702.185a
         if (card.Definition.Evoke is { } evoke) ways.Add(new(CastingWayKind.Evoke, evoke)); // an alternative cost (702.74a)
         // "Gain evoke {N} as you cast them": one more evoke cost per permanent granting it.
         if (card.Zone == Zone.Hand && card.Types.IsPermanent())
@@ -150,8 +162,16 @@ public sealed partial class Game
                 return new() { new(CastingWayKind.Escape, escape) };
             ways.Add(new(CastingWayKind.Escape, escape));
         }
+        if (card.Zone == Zone.Graveyard && card.Definition.GraveyardAlternativeCost is { } fromGraveyard)
+        {
+            // Only that way from the graveyard, unless something else lets it be cast from there.
+            if (!GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0 && !BlitzFromGraveyard(card))
+                return new() { new(CastingWayKind.Alternative, fromGraveyard) };
+            ways.Add(new(CastingWayKind.Alternative, fromGraveyard));
+        }
         if (card.Definition.Overload is { } overload) ways.Add(new(CastingWayKind.Overload, overload)); // 702.96a
         if (card.Definition.Impending is { } impending) ways.Add(new(CastingWayKind.Impending, impending)); // 702.176a
+        if (card.PrintedDefinition.Bestow is { } bestow && !card.TurnedFaceDown) ways.Add(new(CastingWayKind.Bestow, bestow)); // 702.103a
         if (card.Zone == Zone.Hand && card.PrintedDefinition.Morph is not null) ways.Add(new(CastingWayKind.FaceDown, FaceDownCastCost)); // 702.37c
         if (card.Definition.AlternativeCost is { } alt && (alt.If is null || Holds(alt.If, caster, card))) ways.Add(new(CastingWayKind.Alternative, alt.Cost));
         // "You may pay {W}{U}{B}{R}{G} rather than pay the mana cost for spells you cast."
@@ -207,9 +227,11 @@ public sealed partial class Game
         // "Costs {1} more for each target beyond the first": before targets are chosen, as if it had one.
         if (card.Definition.ExtraTargetCost > 0 && targets is not null)
             cost = cost.PlusGeneric(card.Definition.ExtraTargetCost * Math.Max(0, targets.Count(t => !t.Target.IsNone) - 1));
+        if (card.Definition.ExtraTargetCostMana is { } strive && targets is not null)
+            for (int extra = targets.Count(t => !t.Target.IsNone) - 1; extra > 0; extra--) cost = cost.Plus(strive);
         int genericBefore = cost.Generic;
         int harmonized = c.HarmonizeTapped is { } tapped ? Math.Max(0, State.GetCard(tapped).Power) : 0;
-        cost = MinusColoredReductions(cost.MinusGeneric(CostReductionFor(card, caster, targets) + (card.Definition.SacrificeAnyNoReduction ? 0 : c.SacrificeAnyCount) + harmonized), card, caster);
+        cost = MinusColoredReductions(cost.MinusGeneric(CostReductionFor(card, caster, targets) + (card.Definition.SacrificeAnyNoReduction ? 0 : c.SacrificeAnyCount) + harmonized), card, caster, targets);
         // "Spend only black mana on X": the X part of the generic mana (what reductions left of it) is paid with that type only.
         if (card.Definition.XManaType is { } xType && c.X > 0 && c.Way.Mana.XCount > 0)
         {
@@ -268,6 +290,8 @@ public sealed partial class Game
         // Cast from the top of the library through a permission with an additional cost (and no other permission for it).
         if (card.Zone == Zone.Library && LibraryTopCostHolder(card, card.Owner) is { } pit) costs.Add(pit.Definition.LibraryTopExtraCost);
         if (c.Way.Kind == CastingWayKind.WithoutPaying && _castFreeExtra.TryGetValue(card.Id, out var freeExtra)) costs.Add(freeExtra);
+        // Casualty N: "sacrifice a creature with power N or greater", once for each instance paid.
+        foreach (int n in c.CasualtyPaid) costs.Add(new ExtraCost(Sacrifice: new ObjectFilter(CardType.Creature, MinPower: n)));
         if (c.SacrificeAnyCount > 0 && card.Definition.CastSacrificeAny is { } sacrificeAny) costs.Add(new ExtraCost(Sacrifice: sacrificeAny, SacrificeCount: c.SacrificeAnyCount));
         if (c.Way.Kind == CastingWayKind.Blitz) costs.Add(card.Definition.BlitzExtra);
         if (c.Way.Kind == CastingWayKind.Evoke && card.Definition.Evoke is { } ownEvoke && ownEvoke.Equals(c.Way.Mana)) costs.Add(card.Definition.EvokeExtra); // not a granted evoke
@@ -332,7 +356,7 @@ public sealed partial class Game
     {
         var usable = SpellManaUsable(card, caster, c);
         bool Payable(HashSet<CardId> reserved) => LifeAffordable(caster, mana).Any(m => m.Variants().Any(v => ManaPayment.FindPlan(State, caster, v,
-            usable: reserved.Count == 0 ? usable : (s, o) => !reserved.Contains(s.Id) && usable(s, o), unitUsable: UnitUsableFor(card, isAbility: false)) is not null));
+            usable: reserved.Count == 0 ? usable : (s, o) => !reserved.Contains(s.Id) && usable(s, o), unitUsable: UnitUsableFor(card, isAbility: false, costHasX: card.Definition.ManaCost.XCount > 0)) is not null));
         var tapping = new[] { card.Definition.AdditionalCost, c.Option?.Extra }.Where(e => e?.TapCreatures is not null && e.TapCount > 0).ToList();
         if (tapping.Count == 0) return Payable(new HashSet<CardId>()) ? new HashSet<CardId>() : null;
         var candidates = tapping.SelectMany(e => TapCandidates(caster, e!.TapCreatures!, card.Id)).DistinctBy(x => x.Id).ToList();
@@ -454,7 +478,10 @@ public sealed partial class Game
 
     /// <summary>"Your opponents can't cast noncreature spells this turn."</summary>
     private bool NoncreatureForbidden(Card card, PlayerId caster) =>
-        !card.Is(CardType.Creature) && State.NoncreatureSpellsForbiddenFor.Contains((caster, State.TurnNumber));
+        !card.Is(CardType.Creature) && State.NoncreatureSpellsForbiddenFor.Contains((caster, State.TurnNumber))
+        // "You can't cast permanent spells."
+        || (card.Is(CardType.Creature) || card.Is(CardType.Artifact) || card.Is(CardType.Enchantment) || card.Is(CardType.Planeswalker) || card.Is(CardType.Battle))
+           && HasRule(caster, Cards.ExtraRules.YouCantCastPermanentSpells);
 
     /// <summary>"You can't cast this spell during your first, second, or third turns of the game."</summary>
     /// <summary>The permanent letting <paramref name="caster"/> cast this card exiled with it ("as long as …, you may cast the exiled card"), if any.</summary>
@@ -482,6 +509,16 @@ public sealed partial class Game
             && Matches(f with { Controller = ControllerFilter.Any }, spell, caster, p, caster));
 
     /// <summary>Conspire instances (702.78b): printed, plus one from each permanent the caster controls that gives the spell conspire.</summary>
+    /// <summary>The casualty instances the spell has as it's cast: its own and those its caster's permanents give it (each with its N).</summary>
+    private List<int> CasualtyInstances(Card spell, PlayerId caster)
+    {
+        var instances = new List<int>();
+        if (spell.Definition.Casualty > 0) instances.Add(spell.Definition.Casualty);
+        foreach (var p in State.PermanentsControlledBy(caster).Where(p => p.HasTextAbilities && p.Definition.SpellsHaveCasualty is not null))
+            if (Matches(p.Definition.SpellsHaveCasualty! with { Controller = ControllerFilter.Any }, spell, caster, p, caster)) instances.Add(p.Definition.SpellsHaveCasualtyN);
+        return instances;
+    }
+
     private int ConspireInstances(Card spell, PlayerId caster) =>
         (spell.Definition.Conspire ? 1 : 0) + State.PermanentsControlledBy(caster).Count(p => p.HasTextAbilities && p.Definition.SpellsHaveConspire is { } f
             && Matches(f with { Controller = ControllerFilter.Any }, spell, caster, p, caster));
@@ -496,7 +533,7 @@ public sealed partial class Game
     /// </summary>
     private ManaPayment.OptionUsable SpellManaUsable(Card card, PlayerId caster, CastingChoices c)
     {
-        var usable = UsableFor(card, isAbility: false);
+        var usable = UsableFor(card, isAbility: false, costHasX: card.Definition.ManaCost.XCount > 0);
         var reserved = new HashSet<CardId>();
         foreach (var extra in new[] { card.Definition.AdditionalCost, c.Option?.Extra })
         {
@@ -526,10 +563,12 @@ public sealed partial class Game
             var question = ways[1].Kind switch
             {
                 CastingWayKind.Dash => $"Cast {card.Name} for its dash cost {ways[1].Mana}?",
+                CastingWayKind.Warp => $"Cast {card.Name} for its warp cost {ways[1].Mana} (exiled at the next end step, castable from exile on a later turn)?",
                 CastingWayKind.Blitz => $"Cast {card.Name} for its blitz cost {BlitzCostText(card)}?",
                 CastingWayKind.Evoke => $"Cast {card.Name} for its evoke cost {EvokeCostText(card, ways[1].Mana)} (it's sacrificed when it enters)?",
                 CastingWayKind.Overload => $"Cast {card.Name} for its overload cost {ways[1].Mana}?",
                 CastingWayKind.Impending => $"Cast {card.Name} for its impending cost {ways[1].Mana}?",
+                CastingWayKind.Bestow => $"Cast {card.Name} bestowed (as an Aura) for {ways[1].Mana}?",
                 CastingWayKind.Escape => $"Cast {card.Name} for its escape cost {EscapeCostText(card)}?",
                 CastingWayKind.Harmonize => $"Cast {card.Name} for its harmonize cost {ways[1].Mana}?",
                 CastingWayKind.FaceDown => $"Cast {card.Name} face down as a 2/2 creature for {ways[1].Mana}?",
@@ -542,11 +581,13 @@ public sealed partial class Game
         {
             CastingWayKind.ManaCost => $"Pay its mana cost {w.Mana}",
             CastingWayKind.Dash => $"Dash {w.Mana}",
+            CastingWayKind.Warp => $"Warp {w.Mana}",
             CastingWayKind.Blitz => $"Blitz {BlitzCostText(card)}",
             CastingWayKind.Evoke => $"Evoke {EvokeCostText(card, w.Mana)}",
             CastingWayKind.Foretold => $"Foretell cost {w.Mana}",
             CastingWayKind.Overload => $"Overload {w.Mana}",
             CastingWayKind.Impending => $"Impending {w.Mana}",
+            CastingWayKind.Bestow => $"Bestow {w.Mana}",
             CastingWayKind.Escape => $"Escape {EscapeCostText(card)}",
             CastingWayKind.Harmonize => $"Harmonize {w.Mana}",
             CastingWayKind.FaceDown => $"Face down for {w.Mana}",

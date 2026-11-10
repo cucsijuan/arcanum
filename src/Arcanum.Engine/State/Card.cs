@@ -20,7 +20,14 @@ public sealed class Card
         : CastHalf is { } half && PrintedDefinition.SplitHalves is { } halves ? halves[half]
         : Zone == Zone.Battlefield && PrintedDefinition.IsRoom ? PrintedDefinition.AsRoom(UnlockedDoors)
         : Zone != Zone.Battlefield && PrintedDefinition.CreatureOffBattlefield is not null ? PrintedDefinition.AsOffBattlefield()
+        : Bestowed && PrintedDefinition.Bestow is not null ? PrintedDefinition.AsBestowed()
         : PrintedDefinition);
+
+    /// <summary>
+    /// A spell cast bestowed, or the Aura it became (rule 702.103b): an Aura with enchant creature, not a creature. It ceases to be bestowed if
+    /// its target is illegal as it resolves (702.103e) or it becomes unattached (702.103f).
+    /// </summary>
+    public bool Bestowed { get; internal set; }
 
     /// <summary>
     /// A double-faced permanent with its back face up (rule 701.27g: a "transformed permanent"). Only a permanent can be
@@ -345,6 +352,18 @@ public sealed class Card
     internal HashSet<Core.PlayerId> ProtectedFromPlayers { get; } = new();
     internal bool ProtectedFromRingBearers { get; set; }
 
+    /// <summary>"Enchanted creature has protection from the chosen color. This effect doesn't remove this Aura": each color and the Aura that gives it.</summary>
+    internal List<(string Color, CardId Aura)> AuraColorProtections { get; } = new();
+
+    /// <summary>
+    /// An Aura that returned the card it enchanted from a graveyard ("enchant creature put onto the battlefield with this Aura"): this Aura's
+    /// version then, and the creature (card, version).
+    /// </summary>
+    public (int AuraVersion, CardId Creature, int CreatureVersion)? Animated { get; set; }
+
+    /// <summary>A token copy of a card that wasn't on the battlefield (an exiled card): that card and its version then ("return the exiled card").</summary>
+    public (CardId Card, int Version)? CopiedFromCard { get; set; }
+
     /// <summary>It is its controller's Ring-bearer (kept current by the engine).</summary>
     internal bool IsRingBearerNow { get; set; }
 
@@ -401,6 +420,12 @@ public sealed class Card
     /// attached to something; 0 until the engine assigns one.
     /// </summary>
     public long Timestamp { get; internal set; }
+
+    /// <summary>"Permanents you control gain hexproof from blue and from black until end of turn": the colors, and the turn.</summary>
+    public (int Turn, IReadOnlyList<string> Colors) HexproofFromColorsThisTurn { get; set; } = (-1, Array.Empty<string>());
+
+    /// <summary>When it last came under its current controller's control (it entered, or its control changed): for echo (rule 702.30a).</summary>
+    public long ControlStamp { get; set; }
 
     /// <summary>Its impending cost was paid as it was cast (rule 702.176a).</summary>
     public bool Impended { get; set; }
@@ -630,7 +655,7 @@ public sealed class Card
     public IEnumerable<ManaOption> PrintedManaOptions()
     {
         var types = Definition.ManaFromChosenColor ? Array.Empty<Mana.ManaType>() : Definition.TapForMana;
-        if (types.Count > 0 && ManaAmount > 0) yield return new ManaOption(types, ManaAmount, Definition.ManaOnlyFor, Definition.ManaOnlyForAbilitiesToo);
+        if (types.Count > 0 && ManaAmount > 0) yield return new ManaOption(types, ManaAmount, Definition.ManaOnlyFor, Definition.ManaOnlyForAbilitiesToo) { XCostsOnly = Definition.ManaOnlyForXCosts };
         foreach (var o in Definition.ExtraManaOptions) yield return o;
         if (Definition.Types.HasFlag(CardType.Land))
             foreach (var (landType, mana) in BasicLandMana)
@@ -657,7 +682,7 @@ public sealed class Card
                     : Definition.ManaAlsoChosenColor && ChosenColor is { } also && Mana.ManaTypeExtensions.TryParse(also[0], out var alsoType)
                         ? Definition.TapForMana.Append(alsoType).Distinct().ToList()
                     : Definition.TapForMana;
-                if (types.Count > 0 && ManaAmount > 0) options.Add(new ManaOption(types, ManaAmount, Definition.ManaOnlyFor, Definition.ManaOnlyForAbilitiesToo));
+                if (types.Count > 0 && ManaAmount > 0) options.Add(new ManaOption(types, ManaAmount, Definition.ManaOnlyFor, Definition.ManaOnlyForAbilitiesToo) { XCostsOnly = Definition.ManaOnlyForXCosts });
                 options.AddRange(Definition.ExtraManaOptions.Select((o, i) =>
                 {
                     var resolved = Resolve(o);
@@ -763,11 +788,17 @@ public sealed class Card
     /// <summary>The turn a counter was last put on it, as this object (-1: never).</summary>
     public int CounterPutTurn { get; set; } = -1;
 
+    /// <summary>The players who put counters on it during <see cref="CounterPutTurn"/>.</summary>
+    public HashSet<PlayerId> CounterPuttersThisTurn { get; } = new();
+
     /// <summary>How many counter-placing events put counters on it during <see cref="CounterPutTurn"/>.</summary>
     public int CounterEventsThisTurn { get; set; }
 
     /// <summary>Its blitz cost was paid (rule 702.152a): as a permanent, until it leaves the battlefield.</summary>
     public bool Blitzed { get; set; }
+
+    /// <summary>A Case that became solved (rule 719.3): its "Solved —" abilities work, until it leaves the battlefield.</summary>
+    public bool Solved { get; set; }
 
     /// <summary>Its evoke cost was paid (rule 702.74a): as a permanent, until it leaves the battlefield.</summary>
     public bool Evoked { get; set; }
@@ -843,6 +874,7 @@ public sealed class Card
         GrantedSubtypes.Clear();
         GrantedAbilities.Clear();
         Timestamp = 0;
+        HexproofFromColorsThisTurn = (-1, Array.Empty<string>());
         Impended = false;
         TypesOverride = null;
         GrantedTypes = 0;
@@ -873,6 +905,7 @@ public sealed class Card
         Renowned = false;
         Monstrous = false;
         Blitzed = false;
+        Solved = false;
         OffspringPaid = false;
         ClassLevel = 0;
         CounterPutTurn = -1;
@@ -910,6 +943,7 @@ public sealed class Card
         ForetoldTurn = -1;
         ManaSpent = 0;
         SpentManaTypes = Array.Empty<Mana.ManaType>();
+        Bestowed = false;
         FormerHost = null;
         PaidWithTreasure = false;
         GiftPromised = false;

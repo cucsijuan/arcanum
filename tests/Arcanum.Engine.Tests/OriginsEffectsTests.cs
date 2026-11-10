@@ -189,12 +189,12 @@ public class OriginsEffectsTests
         Assert.Contains(after!, a => a is CastSpell c && c.Card == bolt2);
     }
 
-    // ------------------------------------------------------------------ Fresh Start, Grand Aurora
+    // ------------------------------------------------------------------ Restart Note, Grand Aurora
 
     [Fact]
     public async Task DaysUndoingShufflesHandsAndGraveyardsAwayDrawsSevenAndEndsYourTurn()
     {
-        var undoing = Make("Fresh Start", "Sorcery", """
+        var undoing = Make("Restart Note", "Sorcery", """
             { "spell": { "effects": [{ "shuffleIntoLibraries": "everyone", "hand": true, "graveyard": true }, { "draw": 7, "who": "everyone" },
                                      { "if": "yourTurn", "then": [{ "endTurn": true }] }] } }
             """, "{1}");
@@ -207,7 +207,7 @@ public class OriginsEffectsTests
         var spell = s.InHand(P0, undoing);
         int moved = 0;
         s.Game.EventRaised += e => { if (e is CardMoved { To: Zone.Library }) moved++; };
-        Script(s, Cast(s, "Fresh Start"));
+        Script(s, Cast(s, "Restart Note"));
         await s.RunUntilTurn();
         Assert.Equal(Zone.Library, s.Card(dead).Zone == Zone.Hand ? Zone.Library : s.Card(dead).Zone); // shuffled in (maybe drawn again)
         Assert.Empty(s.Game.State.GetPlayer(P0).Graveyard);

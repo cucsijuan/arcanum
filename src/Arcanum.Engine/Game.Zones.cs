@@ -20,6 +20,8 @@ public sealed partial class Game
         ExiledByOpponentsPermanent,
         /// <summary>A spell cast with "if it would be put into a graveyard, exile it instead".</summary>
         ExileInsteadOfGraveyard,
+        /// <summary>A spell cast with "if that spell would be put into a graveyard, put it on the bottom of its owner's library instead".</summary>
+        BottomInsteadOfGraveyard,
         /// <summary>A permanent that exiles instants and sorceries that would be put into a graveyard.</summary>
         ExileInstantsAndSorceries,
         /// <summary>A commander that would be put into a hand or library may go to the command zone instead (903.9b).</summary>
@@ -51,6 +53,9 @@ public sealed partial class Game
     /// <summary>Where a card goes once every replacement effect that modifies its zone change has been applied.</summary>
     private sealed record MovePlan(Zone To, bool Shuffle, IReadOnlyList<ZoneReplacement> Applied);
 
+    /// <summary>Linked exiles leaving exile now that go back to a hand, not the battlefield (cards exiled from a hand).</summary>
+    private readonly HashSet<CardId> _linkedReturnToHand = new();
+
     /// <summary>Moves already decided (as the card moves, or ahead for cards leaving at the same time), by card and version: the requested zone and the plan.</summary>
     private readonly Dictionary<(CardId Card, int Version), (Zone Requested, MovePlan Plan)> _movePlans = new();
 
@@ -80,6 +85,7 @@ public sealed partial class Game
                         || (!card.Definition.IsToken && (c.Replaces & (Cards.Replacements.OpponentsNontokenCreaturesExiledInsteadOfDying | Cards.Replacements.OpponentsNontokenCreaturesExiledGainTwoLife)) != 0)))
                     .Select(c => new ZoneReplacement(ZoneReplacementKind.ExiledByOpponentsPermanent, c)));
             if (State.ExileInsteadOfGraveyard.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.ExileInsteadOfGraveyard));
+            if (State.BottomInsteadOfGraveyard.Contains((card.Id, card.Version))) list.Add(new(ZoneReplacementKind.BottomInsteadOfGraveyard));
             // A card (not a token or a copy of a spell) going to the graveyard of an opponent of that permanent's controller.
             if (!card.Definition.IsToken)
                 list.AddRange(State.Battlefield.Select(State.GetCard)
@@ -113,7 +119,7 @@ public sealed partial class Game
 
     private static Zone Destination(ZoneReplacement replacement) => replacement.Kind switch
     {
-        ZoneReplacementKind.ShuffleIntoLibrary => Zone.Library,
+        ZoneReplacementKind.ShuffleIntoLibrary or ZoneReplacementKind.BottomInsteadOfGraveyard => Zone.Library,
         ZoneReplacementKind.CommandZone => Zone.Command,
         ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard => Zone.Battlefield,
         _ => Zone.Exile,
@@ -128,6 +134,7 @@ public sealed partial class Game
         ZoneReplacementKind.ExiledByOpponentsPermanent when replacement.YoursToExile => $"Exile it ({replacement.By!.Name})",
         ZoneReplacementKind.ExiledByOpponentsPermanent => $"Exile it ({replacement.By!.Name}, {State.GetPlayer(replacement.By.Controller).Name})",
         ZoneReplacementKind.ExileInsteadOfGraveyard => "Exile it (the effect it was cast with)",
+        ZoneReplacementKind.BottomInsteadOfGraveyard => "Put it on the bottom of its owner's library (the effect it was cast with)",
         ZoneReplacementKind.ExileInstantsAndSorceries => "Exile it (instants and sorceries are exiled)",
         ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard => $"Put it onto the battlefield ({card.Name}: an opponent made you discard it)",
         ZoneReplacementKind.ExileUncastEntering => "Exile it (it would enter the battlefield without being cast)",
@@ -272,7 +279,8 @@ public sealed partial class Game
         // A permanent that enters with counters its controller must order replacement effects for (rule 616.1): asked as it
         // enters, so the counters are on it before it is announced, as in every other case.
         var ordered = await OrderEnterCountersAsync(move.Card, move.EnterCounters);
-        foreach (var returning in FinishMove(move, ordered)) await MoveCardAsync(returning, Zone.Battlefield, controller: State.GetCard(returning).Owner);
+        foreach (var returning in FinishMove(move, ordered))
+            await MoveCardAsync(returning, _linkedReturnToHand.Remove(returning) ? Zone.Hand : Zone.Battlefield, controller: State.GetCard(returning).Owner);
         await GainPendingLifeAsync();
     }
 
@@ -311,7 +319,8 @@ public sealed partial class Game
             }
         }
         var move = BeginMove(id, to, toBottom, controller, attachTo, kicked, castFromHand, wasCast, timesKicked, squadPaid, tapped, faceDown, transformed);
-        foreach (var returning in FinishMove(move, null)) MoveCard(returning, Zone.Battlefield, controller: State.GetCard(returning).Owner);
+        foreach (var returning in FinishMove(move, null))
+            MoveCard(returning, _linkedReturnToHand.Remove(returning) ? Zone.Hand : Zone.Battlefield, controller: State.GetCard(returning).Owner);
     }
 
     /// <summary>
@@ -463,6 +472,11 @@ public sealed partial class Game
         foreach (var applied in plan.Applied)
         {
             if (applied.Kind == ZoneReplacementKind.ExileInsteadOfGraveyard) State.ExileInsteadOfGraveyard.Remove((id, card.Version));
+            if (applied.Kind == ZoneReplacementKind.BottomInsteadOfGraveyard)
+            {
+                State.BottomInsteadOfGraveyard.Remove((id, card.Version));
+                toBottom = true;
+            }
             // "If a creature an opponent controls would die, exile it instead. When you do, …"
             if (applied is { Kind: ZoneReplacementKind.ExiledByOpponentsPermanent, By: { } replacer, YoursToExile: false })
                 Queue(replacer.Id, Abilities.TriggerEvent.CreatureExiledInstead, replacer.Controller);
@@ -499,11 +513,14 @@ public sealed partial class Game
         bool wasFaceDown = card.TurnedFaceDown;
         bool staysFaceDown = wasFaceDown && ((from == Zone.Hand && to == Zone.Stack) || (from == Zone.Stack && to == Zone.Battlefield));
         var spentToCast = from == Zone.Stack && to == Zone.Battlefield ? card.SpentManaTypes : null; // what paid for the spell stays known (rule 601.2h)
+        // Cast bestowed, it's a bestowed Aura spell on the stack, and the bestowed Aura it becomes as it resolves (702.103b).
+        bool staysBestowed = card.Bestowed && (to == Zone.Stack || (from == Zone.Stack && to == Zone.Battlefield));
         // A Room spell becomes a Room with the door that was cast unlocked; put onto the battlefield any other way, its doors are locked (709.5e).
         int? castDoor = from == Zone.Stack && to == Zone.Battlefield && card.PrintedDefinition.IsRoom ? card.CastHalf : null;
         card.ResetStatus();
         if (castDoor is { } door) card.UnlockedDoors = 1 << door;
         if (spentToCast is not null) card.SpentManaTypes = spentToCast;
+        card.Bestowed = staysBestowed;
         card.TurnedFaceDown = staysFaceDown || (to == Zone.Battlefield && _enteringFaceDown == id);
         if (to == Zone.Battlefield && _enteringFaceDown == id) card.FaceDownAs = _enteringFaceDownAs;
         if (wasFaceDown && !staysFaceDown && from is Zone.Stack or Zone.Battlefield) Emit(new CardsRevealed(lastController, new[] { id }));
@@ -572,6 +589,12 @@ public sealed partial class Game
                 card.AttachedPlayer = _enteringAttachedPlayer is { } enchanting && enchanting.Card == id ? enchanting.Player : null;
                 // Replacement effects that modify how the permanent enters (rule 614.1c).
                 if (tapped || card.Definition.EntersTapped || (from == Zone.Stack && State.EntersTappedFromStack.Remove((id, card.Version - 1)))) card.Tapped = true;
+                // "If you do, it gains '…'" (cast with a permission that grants abilities): for as long as it stays on the battlefield.
+                if (from == Zone.Stack && State.AbilitiesOnEnter.Remove((id, card.Version - 1), out var gainedOnEnter))
+                    State.LastingEffects.Add(new UntilEndOfTurnEffect(id, card.Version, 0, 0, Array.Empty<Cards.Keyword>())
+                    {
+                        Abilities = gainedOnEnter.Select(a => BindGranter(a, card.Controller)).ToList(), Timestamp = NewTimestamp(),
+                    });
                 if (card.Definition.EntersTappedUnless is { } unless && !Holds(unless, card.Controller, card)) card.Tapped = true;
                 if (card.IsCreature && OpponentsCreaturesEnterTapped(card.Controller)) card.Tapped = true;
                 // "Lands you control enter untapped" (it wins over "enters tapped": its controller applies it last, rule 616.1).
@@ -584,8 +607,8 @@ public sealed partial class Game
                     && (card.Definition.EntersWithCountersIf is not { } cond || Holds(cond, card.Controller, card)))
                     enterCounters.Add((card.Definition.EntersWithCounterKind, card.Definition.EntersWithCounters));
                 if (card.Definition.EntersWithCountersFrom is { } countFrom)
-                    enterCounters.Add((card.Definition.EntersWithCounterKind,
-                        Eval(countFrom, new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
+                    enterCounters.Add((card.Definition.EntersWithCounterKind, // X is the X it was cast with (rule 107.3m)
+                        Math.Max(0, Eval(countFrom, new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>(), card.CastX)))));
                 if (card.Definition.Loyalty is { } loyalty) // 306.5b
                     enterCounters.Add((Abilities.CounterKind.Loyalty, Math.Max(0, loyalty - (_enteringFewerLoyalty is { } fewer && fewer.Card == id ? fewer.Fewer : 0))));
                 if (card.Definition.Vanishing > 0) enterCounters.Add((Abilities.CounterKind.Time, card.Definition.Vanishing)); // 702.63a
@@ -661,7 +684,11 @@ public sealed partial class Game
             {
                 State.LinkedExiles.Remove(link);
                 var exiled = State.GetCard(link.Exiled);
-                if (exiled.Zone == Zone.Exile && exiled.Version == link.ExiledVersion) returning.Add(link.Exiled);
+                if (exiled.Zone == Zone.Exile && exiled.Version == link.ExiledVersion)
+                {
+                    returning.Add(link.Exiled);
+                    if (link.ToHand) _linkedReturnToHand.Add(link.Exiled);
+                }
             }
 
         // A token that leaves the battlefield ceases to exist (rule 111.7, 704.5d), as does a copy of a spell that leaves the stack (704.5e).

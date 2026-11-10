@@ -102,11 +102,20 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>"[Affected creatures] can't attack you" (the source's controller).</summary>
     public bool CantAttackYou { get; init; }
 
+    /// <summary>"[Affected creatures] can't attack you or planeswalkers you control" (the source's controller).</summary>
+    public bool CantAttackYouOrPlaneswalkers { get; init; }
+
     /// <summary>"Enchanted creature is goaded" (by the source's controller, rule 701.15).</summary>
     public bool Goads { get; init; }
 
     /// <summary>"Have protection from Ring-bearers".</summary>
     public bool ProtectionFromRingBearers { get; init; }
+
+    /// <summary>"Has protection from creatures" (rule 702.16): from sources of these card types.</summary>
+    public Cards.CardType ProtectionFromTypes { get; init; }
+
+    /// <summary>"Has protection from the chosen color. This effect doesn't remove this Aura" (the source's chosen color).</summary>
+    public bool ProtectionFromChosenColor { get; init; }
 
     /// <summary>The ability works while its card is in its owner's graveyard ("As long as this card is in your graveyard, …").</summary>
     public bool FromGraveyard { get; init; }

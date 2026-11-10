@@ -352,6 +352,13 @@ public sealed partial record CardDefinition
     public int Dredge { get; init; }
 
     /// <summary>
+    /// Paradigm (rule 702.192a): "If this is the first time a spell you control with this spell's name has resolved this game, at the
+    /// beginning of each of your precombat main phases for the rest of the game, create a copy of this object in exile. You may cast the
+    /// copy without paying its mana cost" and "Exile this spell."
+    /// </summary>
+    public bool Paradigm { get; init; }
+
+    /// <summary>
     /// For a Class whose card-wide rules (replacement effects, damage bonuses and the like) are printed in a level section: that
     /// level (rule 716.2c). Below it the permanent has none of them. 0: they always apply.
     /// </summary>
@@ -382,6 +389,9 @@ public sealed partial record CardDefinition
 
     /// <summary>Dash (702.109): cast for this cost, it gains haste and returns to its owner's hand at the next end step.</summary>
     public ManaCost? Dash { get; init; }
+
+    /// <summary>Warp (702.185): cast from the hand for this cost, it's exiled at the next end step and its owner may cast it from exile on a later turn.</summary>
+    public ManaCost? Warp { get; init; }
 
     /// <summary>
     /// Impending N—[cost] (702.176): cast for this cost, it enters with N time counters, isn't a creature while it has one, and at the
@@ -419,6 +429,16 @@ public sealed partial record CardDefinition
 
     /// <summary>"Each noncreature spell you cast has conspire": the spells this permanent gives conspire.</summary>
     public Abilities.ObjectFilter? SpellsHaveConspire { get; init; }
+
+    /// <summary>
+    /// Casualty N (rule 702.153a): "As an additional cost to cast this spell, you may sacrifice a creature with power N or greater" and "When
+    /// you cast this spell, if a casualty cost was paid for it, copy it." 0: none.
+    /// </summary>
+    public int Casualty { get; init; }
+
+    /// <summary>"Each instant and sorcery spell you cast has casualty 1": the spells (and <see cref="SpellsHaveCasualtyN"/>).</summary>
+    public Abilities.ObjectFilter? SpellsHaveCasualty { get; init; }
+    public int SpellsHaveCasualtyN { get; init; } = 1;
 
     /// <summary>"[Filter] permanent spells you cast from your hand gain evoke [cost] as you cast them" (with <see cref="GrantedEvokeCost"/>).</summary>
     public Abilities.ObjectFilter? SpellsFromHandGainEvoke { get; init; }
@@ -463,6 +483,9 @@ public sealed partial record CardDefinition
     /// <summary>"This spell costs {N} more to cast for each target beyond the first" (rule 601.2f).</summary>
     public int ExtraTargetCost { get; init; }
 
+    /// <summary>Strive (rule 702.112): "this spell costs {2}{R} more to cast for each target beyond the first".</summary>
+    public ManaCost? ExtraTargetCostMana { get; init; }
+
     /// <summary>Flashback with more than mana: "Flashback—{1}{U}, Pay 3 life"; "Exile X cards from your graveyard" (X is the number exiled); a reduction of the flashback cost.</summary>
     public ExtraCost? FlashbackExtra { get; init; }
     public bool FlashbackExilesX { get; init; }
@@ -498,6 +521,12 @@ public sealed partial record CardDefinition
 
     /// <summary>Its <see cref="AttackTax"/> is only on attacking its controller, not their planeswalkers ("creatures can't attack you unless …").</summary>
     public bool AttackTaxPlayerOnly { get; init; }
+
+    /// <summary>
+    /// "Each creature with one or more counters on it can't attack you or planeswalkers you control unless its controller pays {X},
+    /// where X is the number of counters on that creature."
+    /// </summary>
+    public bool AttackTaxPerCounter { get; init; }
 
     /// <summary>Its <see cref="EntersAsCopyOf"/> lasts until end of turn.</summary>
     public bool EntersAsCopyUntilEndOfTurn { get; init; }
@@ -634,6 +663,9 @@ public sealed partial record CardDefinition
     /// <summary>Extra cost to cast it from your graveyard ("by removing six counters from among creatures you control").</summary>
     public ExtraCost? GraveyardCastCost { get; init; }
 
+    /// <summary>"You may cast this card from your graveyard by paying {2}{W} rather than paying its mana cost."</summary>
+    public Mana.ManaCost? GraveyardAlternativeCost { get; init; }
+
     /// <summary>"You may cast this card from your graveyard as long as [condition]" (no extra cost).</summary>
     public Condition? GraveyardCastIf { get; init; }
 
@@ -677,6 +709,9 @@ public sealed partial record CardDefinition
 
     /// <summary>"If one or more +1/+1 counters would be put on a creature you control, that many plus one +1/+1 counters are put on it instead."</summary>
     public bool CreaturePlusOneCountersPlusOne { get; init; }
+
+    /// <summary>"If one or more +1/+1 counters would be put on [another creature / a permanent / an artifact or creature] you control, that many plus one … instead."</summary>
+    public Abilities.ObjectFilter? PlusOneCountersPlusOneOn { get; init; }
 
     /// <summary>"Once during each of your turns, you may cast a [filter] spell from your graveyard" (and its riders).</summary>
     public GraveyardCastOncePerTurn? GraveyardCastOncePerTurn { get; init; }
@@ -822,6 +857,12 @@ public sealed partial record CardDefinition
     /// <summary>Cascade instances (rule 702.85).</summary>
     public int Cascade { get; init; }
 
+    /// <summary>
+    /// Gravestorm instances (rule 702.69): "When you cast this spell, copy it for each permanent that was put into a graveyard from the
+    /// battlefield this turn" (counted as the ability resolves).
+    /// </summary>
+    public int Gravestorm { get; init; }
+
     /// <summary>Its color identity (rule 903.4): W, U, B, R, G. Empty: the colors of its mana cost.</summary>
     public IReadOnlyList<string> ColorIdentity { get; init; } = Array.Empty<string>();
 
@@ -892,6 +933,9 @@ public sealed partial record CardDefinition
 
     /// <summary>Its restricted mana (<see cref="ManaOnlyFor"/>) may also pay for abilities of matching sources.</summary>
     public bool ManaOnlyForAbilitiesToo { get; init; }
+
+    /// <summary>The mana of its <see cref="TapForMana"/> ability may be spent only on costs that contain {X}.</summary>
+    public bool ManaOnlyForXCosts { get; init; }
 
     /// <summary>
     /// For an adventurer card (rule 715): its Adventure, an instant or sorcery the card can be cast as instead. After
@@ -999,8 +1043,11 @@ public sealed partial record CardDefinition
 
     private IReadOnlyList<string>? _colorList;
 
-    /// <summary>Colors: the explicit <see cref="Colors"/>, otherwise those of the mana cost's colored symbols.</summary>
-    public IReadOnlyList<string> ColorList => _colorList ??= Colors.Count > 0 ? Colors : ManaCost.Colors();
+    /// <summary>Colors: none with devoid, otherwise the explicit <see cref="Colors"/>, otherwise those of the mana cost's colored symbols.</summary>
+    public IReadOnlyList<string> ColorList => _colorList ??= Devoid ? Array.Empty<string>() : Colors.Count > 0 ? Colors : ManaCost.Colors();
+
+    /// <summary>Devoid (rule 702.114a): "This object is colorless", a characteristic-defining ability that works in every zone.</summary>
+    public bool Devoid { get; init; }
 
     private IReadOnlySet<Keyword>? _parsedKeywords;
 
@@ -1017,4 +1064,10 @@ public sealed record GraveyardCastOncePerTurn(Abilities.ObjectFilter Filter, boo
 {
     /// <summary>"By exiling three other cards from your graveyard in addition to paying its other costs".</summary>
     public Abilities.ExtraCost? Extra { get; init; }
+
+    /// <summary>"You may play a land … or cast …": land cards matching the filter may be played this way too.</summary>
+    public bool Lands { get; init; }
+
+    /// <summary>"If you do, it gains '…'": abilities the permanent played or cast this way has (for as long as it stays on the battlefield).</summary>
+    public IReadOnlyList<Abilities.AbilityDefinition>? Grants { get; init; }
 }

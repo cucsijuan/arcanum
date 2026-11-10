@@ -115,6 +115,8 @@ public sealed partial class Game
         ViewBuilder.Build(State, player, revealAll, Config.Commander?.TaxPerCast ?? 0) with
         {
             AttackTaxes = AttackTaxesFor(player),
+            AttackerTaxes = AttackerTaxesFor(player),
+            AttackTaxBudget = State.ActivePlayer == player && AttackerTaxesFor(player).Count > 0 ? GenericBudget(player) : 0,
             AttackRestrictions = State.PermanentsControlledBy(player).Where(c => c.IsCreature)
                 .SelectMany(c => State.OpponentsOf(player).Where(d => AttackForbidden(c, d) || AttackForbiddenWithPlaneswalkers(c, d)).Select(d => new AttackRestrictionView(c.Id, d))).ToList(),
             Monarch = State.Monarch,
@@ -145,6 +147,16 @@ public sealed partial class Game
     private void TrackTurnHistory(GameEvent e)
     {
         // Every damage event, whatever it was dealt to (the switch below takes only the first matching case).
+        if (e is CardMoved { To: Zone.Exile } exiled && !State.GetCard(exiled.Card).Definition.IsToken) State.CardsPutIntoExileThisTurn++;
+        if (e is CardMoved { To: Zone.Battlefield } arrived) State.GetCard(arrived.Card).ControlStamp = NewTimestamp();
+        if (e is ControlChanged newControl) State.GetCard(newControl.Card).ControlStamp = NewTimestamp();
+        if (e is StepBegan { Step: Step.Upkeep } upkeep)
+        {
+            var upkeeper = State.GetPlayer(upkeep.ActivePlayer);
+            upkeeper.PreviousUpkeepStamp = upkeeper.UpkeepStamp;
+            upkeeper.UpkeepStamp = NewTimestamp();
+        }
+        if (e is CardMoved { From: Zone.Battlefield, To: Zone.Graveyard }) State.PermanentsPutIntoGraveyardThisTurn++;
         if (e is DamageDealt damage)
         {
             LogDamage(damage);
@@ -193,7 +205,8 @@ public sealed partial class Game
                 break;
             case CountersPlaced { Count: > 0 } placed:
                 var counted = State.GetCard(placed.Card);
-                if (counted.CounterPutTurn != State.TurnNumber) counted.CounterEventsThisTurn = 0;
+                if (counted.CounterPutTurn != State.TurnNumber) { counted.CounterEventsThisTurn = 0; counted.CounterPuttersThisTurn.Clear(); }
+                if (placed.By is { } putter) counted.CounterPuttersThisTurn.Add(putter);
                 // The kinds put in one placement are one event ("one or more counters"): counted once.
                 if (_lastCounterPlacement != (placed.Card, State.TurnNumber, _counterPlacements)) counted.CounterEventsThisTurn++;
                 _lastCounterPlacement = (placed.Card, State.TurnNumber, _counterPlacements);
@@ -210,6 +223,7 @@ public sealed partial class Game
                 break;
             case CardDrawn d:
                 State.GetPlayer(d.Player).CardsDrawnThisTurn++;
+                State.GetPlayer(d.Player).DrawnThisTurn.Add(d.Card);
                 break;
             case LifeChanged l when l.NewLife < l.OldLife:
                 State.GetPlayer(l.Player).LifeLostThisTurn += l.OldLife - l.NewLife;
@@ -282,6 +296,23 @@ public sealed partial class Game
                 {
                     regular = State.NextLivingPlayer(regular);
                     State.ActivePlayer = regular;
+                }
+                // "Skips their next turn": that turn doesn't happen, and the next one is picked the same way (rule 614.10).
+                while (State.GetPlayer(State.ActivePlayer).TurnsToSkip > 0 && !State.IsGameOver)
+                {
+                    State.GetPlayer(State.ActivePlayer).TurnsToSkip--;
+                    Emit(new TurnSkipped(State.ActivePlayer));
+                    State.ExtraTurns.RemoveAll(p => State.GetPlayer(p).HasLost);
+                    if (State.ExtraTurns.Count > 0)
+                    {
+                        State.ActivePlayer = State.ExtraTurns[^1];
+                        State.ExtraTurns.RemoveAt(State.ExtraTurns.Count - 1);
+                    }
+                    else
+                    {
+                        regular = State.NextLivingPlayer(regular);
+                        State.ActivePlayer = regular;
+                    }
                 }
             }
             await RunTurnAsync(skipDraw: firstTurn && (Config.StartingPlayerSkipsDraw ?? !IsMultiplayer));

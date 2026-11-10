@@ -75,6 +75,10 @@ public sealed partial class Game
         foreach (var (miller, count) in _preventedDamageMills.ToList())
             await ApplyAsync(new Mill(new Quantity(count), Subject.EachOpponent), new EffectContext(miller.Controller, miller, Array.Empty<ChosenTarget>(), Array.Empty<bool>()));
         _preventedDamageMills.Clear();
+        var owed = _preventedDamageEffects.ToList();
+        _preventedDamageEffects.Clear(); // their own damage is a new damage event
+        foreach (var (shield, controller, effects, about) in owed)
+            await ApplyAllAsync(effects, new EffectContext(controller, State.GetCard(shield), Array.Empty<ChosenTarget>(), Array.Empty<bool>()) { Trigger = about });
         // "Whenever [this] deals damage": once per damage event, with the total it dealt in it.
         foreach (var bySource in final.GroupBy(p => p.Source.Id))
         {
@@ -217,6 +221,9 @@ public sealed partial class Game
     /// <summary>Mills owed by "prevent that damage and each opponent mills that many cards", done once the damage event is over.</summary>
     private readonly List<(Card Controller, int Count)> _preventedDamageMills = new();
 
+    /// <summary>"If damage is prevented this way, [effects]" owed by prevention shields, done once the damage event is over.</summary>
+    private readonly List<(CardId Shield, PlayerId Controller, IReadOnlyList<Effect> Effects, TriggerInfo About)> _preventedDamageEffects = new();
+
     /// <summary>The replacement and prevention effects that apply to this part of a damage event.</summary>
     private List<DamageModifier> DamageModifiers(DamagePart part, Dictionary<int, int>? redirectAllowance, List<DamagePart> redirected,
         HashSet<string> applied, Action<int> notePrevented)
@@ -238,7 +245,9 @@ public sealed partial class Game
                     // "Whenever damage from a creature is prevented this way, …"
                     if (preventing?.WhenCreatureDamagePrevented is { } whenPrevented && preventing.SourceCard is { } shieldCard && WasCreature(source))
                         AddPending(shieldCard, whenPrevented, preventing.Controller, new TriggerInfo(source.Id, source.Version, preventing.Controller));
-                    if (preventing?.WhenPrevented is { } reflexive && preventing.SourceCard is { } reflexiveCard)
+                    if (preventing is { WhenPreventedImmediately: true, WhenPrevented: { } immediate, SourceCard: { } immediateCard })
+                        _preventedDamageEffects.Add((immediateCard, preventing.Controller, immediate.Effects, new TriggerInfo(source.Id, source.Version, SourceController(source), n)));
+                    else if (preventing?.WhenPrevented is { } reflexive && preventing.SourceCard is { } reflexiveCard)
                         AddPending(reflexiveCard, reflexive, preventing.Controller, new TriggerInfo(source.Id, source.Version, SourceController(source), n));
                     if (preventing is { NextTimeOnly: true }) State.PreventionShields.Remove(preventing);
                     return 0;
@@ -438,7 +447,9 @@ public sealed partial class Game
         {
             part.Report?.DamagedPlayers.Add(player);
             Emit(new DamageDealt(source.Id, null, player, amount, part.Combat));
-            ChangeLife(player, -LifeLostToDamage(player, amount));
+            // Infect: the damage gives the player poison counters instead of making them lose life (rule 120.3b).
+            if (source.Has(Keyword.Infect)) State.GetPlayer(player).Poison += amount;
+            else ChangeLife(player, -LifeLostToDamage(player, amount));
             if (part.Combat) RecordCommanderDamage(source, player, amount);
             if (part.Combat && source.Definition.Toxic > 0) State.GetPlayer(player).Poison += source.Definition.Toxic; // rule 702.164c
             Lifelink();
@@ -459,9 +470,9 @@ public sealed partial class Game
         // Lethal damage is 1 from a deathtouch source (rule 702.2c).
         int lethalBefore = target.DamagedByDeathtouch ? 0 : Math.Max(0, target.Toughness - target.Damage);
         if (source.Has(Keyword.Deathtouch) && lethalBefore > 0) lethalBefore = 1;
-        // Wither: the damage is -1/-1 counters the source's controller puts on the creature instead of marked damage (rule 120.3d).
+        // Wither and infect: the damage is -1/-1 counters the source's controller puts on the creature instead of marked damage (rule 120.3d).
         // "All damage is dealt as though its source had wither."
-        bool wither = source.Has(Keyword.Wither) || State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && c.Definition.AllDamageWither);
+        bool wither = source.Has(Keyword.Wither) || source.Has(Keyword.Infect) || State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && c.Definition.AllDamageWither);
         if (wither) PutCounters(target, CounterKind.MinusOneMinusOne, amount, source.Controller);
         else target.Damage += amount;
         if (source.Has(Keyword.Deathtouch)) target.DamagedByDeathtouch = true;
@@ -536,11 +547,11 @@ public sealed partial class Game
     {
         if (ability is null) return null;
         // "X damage divided …, where X is … as you cast this spell": worked out as the division is announced.
-        var ctx = new EffectContext(player, State.GetCard(source), Array.Empty<ChosenTarget>(), Array.Empty<bool>());
+        var ctx = new EffectContext(player, State.GetCard(source), Array.Empty<ChosenTarget>(), Array.Empty<bool>(), Math.Max(0, _announcedX));
         int? TotalOf(IEnumerable<Effect> effects) => effects.Select(e => e switch
         {
             DealDamageDivided dd => dd.TotalFrom is { } from ? Math.Max(0, Eval(from, ctx)) : dd.Total,
-            DistributeCounters dc => dc.Total,
+            DistributeCounters dc => dc.TotalFrom is { } countersFrom ? Math.Max(0, Eval(countersFrom, ctx)) : dc.Total,
             _ => (int?)null,
         }).FirstOrDefault(t => t is not null);
         int trailing = ability.Effects.OfType<DealDamageDivided>().Select(d => d.TrailingTargets).FirstOrDefault();

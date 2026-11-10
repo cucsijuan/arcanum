@@ -64,6 +64,12 @@ public sealed record SpellCopied(CardId Copy, CardId Original, PlayerId Controll
 public sealed record PoisonGiven(PlayerId Player, int Count) : GameEvent;
 public sealed record EmblemCreated(CardId Emblem, PlayerId Owner) : GameEvent;
 public sealed record ChoiceMade(CardId Card, string Choice) : GameEvent;
+
+/// <summary>A player flipped <paramref name="Count"/> coins for the source; <paramref name="Heads"/> came up heads (rule 705).</summary>
+public sealed record CoinsFlipped(CardId Source, PlayerId Player, int Count, int Heads) : GameEvent;
+
+/// <summary>A player's turn was skipped (rule 614.10: "skips their next turn").</summary>
+public sealed record TurnSkipped(PlayerId Player) : GameEvent;
 /// <summary>A creature became prepared (a copy of its prepare spell waits in exile), or was unprepared by an effect.</summary>
 public sealed record PreparedChanged(CardId Card, bool Prepared) : GameEvent;
 /// <summary>A Class became level <see cref="Level"/> (rule 716.2a).</summary>

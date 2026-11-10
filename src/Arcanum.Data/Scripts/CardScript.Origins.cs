@@ -31,6 +31,7 @@ public static partial class CardScriptParser
                 MoreCastsIf = e.TryGetProperty("moreCastsIf", out var mci) ? ParseCondition(mci) : null,
                 MoreCasts = e.TryGetProperty("moreCasts", out var mc) ? mc.GetInt32() : 0,
                 RestToGraveyard = e.TryGetProperty("rest", out var rest) && rest.GetString() == "graveyard",
+                ExileRestToBottom = Flag("exileRestToBottom"),
             };
         if (e.TryGetProperty("nameAndExile", out var nae))
             return new NameThenExileFromAllZones(ParseSubject(nae),

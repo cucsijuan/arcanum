@@ -20,7 +20,7 @@ public static class ManaPayment
     public delegate bool OptionUsable(Card source, ManaOption option);
 
     /// <summary>Unrestricted mana abilities only (floating mana, unknown use).</summary>
-    public static readonly OptionUsable Unrestricted = (_, option) => option.OnlyFor is null;
+    public static readonly OptionUsable Unrestricted = (_, option) => option.OnlyFor is null && !option.XCostsOnly;
 
     /// <summary>Mana abilities usable here that their controller can also afford (life costs, rule 119.4).</summary>
     public static OptionUsable Affordable(GameState state, OptionUsable? usable) =>
@@ -47,7 +47,7 @@ public static class ManaPayment
         List<ManaType>? plainUsed = null, List<ManaUnit>? specialUsed = null)
     {
         var plain = pool.Clone();
-        var specials = pool.Special.Where(u => unitUsable?.Invoke(u) ?? u.OnlyFor is null).ToList();
+        var specials = pool.Special.Where(u => unitUsable?.Invoke(u) ?? (u.OnlyFor is null && !u.XCostsOnly)).ToList();
         var fromPool = new List<ManaType>();
         var remainingPips = new List<ManaType>();
         bool Take(ManaType type)

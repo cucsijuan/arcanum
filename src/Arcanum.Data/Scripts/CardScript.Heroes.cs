@@ -26,6 +26,8 @@ public static partial class CardScriptParser
             {
                 PlayableDuringLoreTurns = e.TryGetProperty("playableDuringLoreTurns", out var pdl) && pdl.GetBoolean(),
                 Linked = e.TryGetProperty("linked", out var etl) && etl.GetBoolean(),
+                UntilTotalManaValue = e.TryGetProperty("untilTotalManaValue", out var etu) ? etu.GetInt32() : 0,
+                OwnerMayPlayUntilEndOfTheirNextTurn = e.TryGetProperty("ownerMayPlayUntilEndOfNextTurn", out var etop) && etop.GetBoolean(),
             };
         if (e.TryGetProperty("nextCreatureSpell", out var ncs))
             return new NextCreatureSpell(ncs.TryGetProperty("haste", out var nh) && nh.GetBoolean(), ncs.TryGetProperty("counters", out var nc) ? nc.GetInt32() : 0)
@@ -42,7 +44,10 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("shuffleFromGraveyard", out var sfg)) return new ShuffleFromGraveyard(ParseFilter(sfg, ControllerFilter.Any));
         if (e.TryGetProperty("lookHandLandsGraveyard", out var lhl)) return new LookHandLandsGraveyard(ParseQuantity(lhl));
         if (e.TryGetProperty("doubleDamageUntilYourNextTurn", out var ddy)) return new DoubleDamageToPlayerUntilYourNextTurn(ParseSubject(ddy));
-        if (e.TryGetProperty("eachDealsDamageEqualToPower", out var edp)) return new EachDealsDamageEqualToPower(ParseSubject(edp), e.TryGetProperty("to", out var edt) ? ParseSubject(edt) : Subject.TargetAt(0));
+        if (e.TryGetProperty("eachDealsDamageEqualToPower", out var edp)) return new EachDealsDamageEqualToPower(ParseSubject(edp), e.TryGetProperty("to", out var edt) && edt.GetString() != "itself" ? ParseSubject(edt) : Subject.TargetAt(0))
+            {
+                ToItself = e.TryGetProperty("to", out var edi) && edi.GetString() == "itself",
+            };
         if (e.TryGetProperty("doublePower", out var dpw)) return new MultiplyPower(ParseSubject(dpw), 2, false);
         if (e.TryGetProperty("triplePowerAndToughness", out var tpt)) return new MultiplyPower(ParseSubject(tpt), 3, true);
         if (e.TryGetProperty("entersWithAdditionalCounters", out var ewac)) return new EntersWithAdditionalCounters(ParseSubject(ewac), ParseQuantity(e.GetProperty("count")));
@@ -66,7 +71,8 @@ public static partial class CardScriptParser
                 OnlyFor = e.TryGetProperty("onlyFor", out var amof) ? CardScriptParser.ParseFilter(amof, ControllerFilter.Any) : null,
             };
         if (e.TryGetProperty("rollDie", out var rd)) return new RollDie(rd.GetInt32());
-        if (e.TryGetProperty("exileUntilLesserCastFree", out var eul)) return new ExileUntilLesserCastFree(ParseFilter(eul, ControllerFilter.Any));
+        if (e.TryGetProperty("exileUntilLesserCastFree", out var eul))
+            return new ExileUntilLesserCastFree(ParseFilter(eul, ControllerFilter.Any)) { UntilEndOfTurn = e.TryGetProperty("untilEndOfTurn", out var eue) && eue.GetBoolean() };
         if (e.TryGetProperty("revealOnePerCardType", out var rop)) return new RevealOnePerCardType(rop.GetInt32());
         if (e.TryGetProperty("ninjutsuEnter", out _)) return new NinjutsuEnter();
         if (e.TryGetProperty("searchLibraryOrGraveyard", out var slg)) return new SearchLibraryOrGraveyard(ParseFilter(slg, ControllerFilter.Any));

@@ -42,6 +42,8 @@ public sealed partial class Game
         State.CreatureDeathsThisTurn.Clear();
         State.NontokenCreaturesDiedThisTurn = 0;
         State.PermanentsSacrificedThisTurn = 0;
+        State.CardsPutIntoExileThisTurn = 0;
+        State.PermanentsPutIntoGraveyardThisTurn = 0;
         State.BlocksThisTurn.Clear();
         State.CombatsThisTurn = 0;
         State.SpellsCastThisTurnCount = 0;
@@ -87,9 +89,14 @@ public sealed partial class Game
             player.ManaSpentOnSpellsThisTurn = 0;
             player.LifeLostThisTurn = 0;
             player.CardsDrawnThisTurn = 0;
+            player.DrawnThisTurn.Clear();
             player.LifeGainsThisTurn = 0;
             player.SpellsCastLastTurn = player.SpellsCastThisTurn.Count;
             player.SpellsCastThisTurn.Clear();
+            player.SpellManaValuesThisTurn.Clear();
+            player.ModifiedCreatureDiedThisTurn = false;
+            State.WhenNextCast.RemoveAll(w => w.Turn < State.TurnNumber); // "this turn" is over
+            State.WhenYourCreatureDealsCombatDamageThisTurn.RemoveAll(w => w.Turn < State.TurnNumber);
             player.ExtraLandsThisTurn = 0;
             player.AttackersThisTurn = 0;
             player.EquipsThisTurn = 0;
@@ -275,6 +282,7 @@ public sealed partial class Game
                 foreach (var (card, version) in State.ExileAtEndOfCombat.ToList())
                     if (State.GetCard(card) is { Zone: Zone.Battlefield } gone && gone.Version == version) await MoveCardAsync(card, Zone.Exile);
                 State.ExileAtEndOfCombat.Clear();
+                State.WhenDealsCombatDamageThisCombat.Clear(); // "this combat" is over
                 break;
             case Step.Cleanup:
                 // Normally no player gets priority in the cleanup step (514.3). If state-based actions apply or abilities

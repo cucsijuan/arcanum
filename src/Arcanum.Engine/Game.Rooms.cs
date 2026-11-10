@@ -105,7 +105,9 @@ public sealed partial class Game
     private Mana.ManaCost? MiracleCost(Card card) =>
         card.Definition.Miracle
         ?? (card.Zone == Zone.Hand && card.Is(Cards.CardType.Enchantment) && HasRule(card.Owner, Cards.ExtraRules.HandEnchantmentsHaveMiracle)
-            ? card.Definition.ManaCost.WithX(0).MinusGeneric(4) : null);
+            ? card.Definition.ManaCost.WithX(0).MinusGeneric(4)
+            : card.Zone == Zone.Hand && (card.Is(Cards.CardType.Instant) || card.Is(Cards.CardType.Sorcery)) && HasRule(card.Owner, Cards.ExtraRules.HandInstantsAndSorceriesHaveMiracleTwo)
+                ? Mana.ManaCost.Parse("{2}") : null);
 
     /// <summary>Whether a permanent the player controls (with its abilities) has this card-wide rule.</summary>
     private bool HasRule(PlayerId player, Cards.ExtraRules rule) =>

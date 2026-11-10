@@ -57,6 +57,7 @@ public static partial class CardScriptParser
                 AddLegendary = e.TryGetProperty("addLegendary", out var bcal) && bcal.GetBoolean(),
                 Keywords = e.TryGetProperty("keywords", out var bck) ? bck.EnumerateArray().Select(k => k.GetString()!).ToList() : Array.Empty<string>(),
                 KeepThisAbility = e.TryGetProperty("keepThisAbility", out var bca) && bca.GetBoolean(),
+                MayChooseAmong = e.TryGetProperty("mayChooseAmong", out var bcm) ? ParseFilter(bcm, ControllerFilter.Any) : null,
             };
         return null;
     }
@@ -85,7 +86,8 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("manaValue", out var mv) && mv.ValueKind == JsonValueKind.String && mv.GetString() == "exiled")
             return new Quantity(0, QuantityKind.ExiledManaValue);
         if (e.TryGetProperty("enteredThisTurn", out var ett))
-            return new Quantity(0, QuantityKind.EnteredThisTurnCount, ParseFilter(ett, ControllerFilter.Any));
+            return new Quantity(0, e.TryGetProperty("evenIfGone", out var etg) && etg.GetBoolean() ? QuantityKind.EnteredThisTurnEver : QuantityKind.EnteredThisTurnCount,
+                ParseFilter(ett, ControllerFilter.Any));
         if (e.TryGetProperty("opponentsControlling", out var opc))
             return new Quantity(0, QuantityKind.OpponentsControlling, ParseFilter(opc, ControllerFilter.Any));
         if (e.TryGetProperty("divide", out var divide))

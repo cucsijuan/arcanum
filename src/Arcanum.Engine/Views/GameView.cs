@@ -198,6 +198,9 @@ public sealed record StackItemView(CardView Card, PlayerId Controller, string? A
 /// <summary>"Creatures can't attack [Defender] unless their controller pays [CostPerCreature] for each": and how many the viewer can pay for now.</summary>
 public sealed record AttackTaxView(PlayerId Defender, string CostPerCreature, int Affordable);
 
+/// <summary>What attacking <paramref name="Defender"/> costs one creature on top of <see cref="AttackTaxView"/> ("unless its controller pays {X}, where X is the number of counters on it").</summary>
+public sealed record AttackerTaxView(CardId Attacker, PlayerId Defender, int Generic);
+
 /// <summary>A creature that can't attack a given player ("can't attack you", "can't attack you this combat").</summary>
 public sealed record AttackRestrictionView(CardId Attacker, PlayerId Defender);
 
@@ -219,6 +222,10 @@ public sealed record GameView
 
     /// <summary>Attack taxes the viewer would have to pay, by defending player.</summary>
     public IReadOnlyList<AttackTaxView> AttackTaxes { get; init; } = Array.Empty<AttackTaxView>();
+
+    /// <summary>Attack costs of single creatures (<see cref="AttackerTaxView"/>), and the generic mana the viewer can pay now (up to 30).</summary>
+    public IReadOnlyList<AttackerTaxView> AttackerTaxes { get; init; } = Array.Empty<AttackerTaxView>();
+    public int AttackTaxBudget { get; init; }
 
     /// <summary>Players the viewer's creatures can't attack, by creature.</summary>
     public IReadOnlyList<AttackRestrictionView> AttackRestrictions { get; init; } = Array.Empty<AttackRestrictionView>();

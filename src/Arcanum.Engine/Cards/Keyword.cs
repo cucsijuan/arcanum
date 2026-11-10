@@ -42,6 +42,8 @@ public enum Keyword
     ProtectionFromBlack,
     ProtectionFromRed,
     ProtectionFromGreen,
+    /// <summary>Protection from multicolored (rule 702.16): from sources with two or more colors.</summary>
+    ProtectionFromMulticolored,
     /// <summary>"If you control three or more artifacts, legendaries, and/or Sagas, you have an enduring story for the rest of the game."</summary>
     Storied,
     /// <summary>"If you control ten or more permanents, you get the city's blessing for the rest of the game" (rule 702.131).</summary>
@@ -137,6 +139,8 @@ public enum Keyword
     /// lost this way" (rule 702.101a).
     /// </summary>
     Extort,
+    /// <summary>Damage it deals to a creature is -1/-1 counters, and to a player poison counters instead of life loss (rules 702.90, 120.3b).</summary>
+    Infect,
 }
 
 public static class Keywords
@@ -175,6 +179,7 @@ public static class Keywords
         Keyword.ProtectionFromBlack => "Protection from black",
         Keyword.ProtectionFromRed => "Protection from red",
         Keyword.ProtectionFromGreen => "Protection from green",
+        Keyword.ProtectionFromMulticolored => "Protection from multicolored",
         Keyword.MustBeBlocked => "Must be blocked",
         Keyword.CantBeBlockedByMoreThanOne => "Can't be blocked by more than one creature",
         Keyword.NonbasicLandwalk => "Nonbasic landwalk",

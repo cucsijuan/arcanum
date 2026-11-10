@@ -683,7 +683,8 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   at least 1 to each target, so no more targets than the amount); on resolution, what was assigned to a target that became illegal isn't
   dealt. `{ "divideEvenly": "X" }` ("X damage divided evenly, rounded down, among any number of targets") divides as it resolves, among
   the targets still legal. Card-wide `"extraTargetCost": 1`: "this spell costs {1} more to cast for each target beyond the first" (no
-  more targets than can be paid for).
+  more targets than can be paid for). A string instead, such as `"extraTargetCost": "{2}{R}"`, is that colored cost for each extra
+  target (colored strive).
 - **Randomness**: `discard` with `"random": true` ("discards N cards at random", all of them if fewer); `{ "destroyRandom": "eachTarget" }`
   ("destroy one of them at random", among the targets still legal).
 - **Triggers**: `dealsDamageToOpponent` ("whenever this creature deals damage to an opponent", combat or not; `triggeredPlayer` is that
@@ -787,7 +788,7 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - **State triggers** (rule 603.8): `{ "trigger": "state", "when": condition, "effects": [...] }` triggers as soon as the condition is
   true and not again until it has left the stack, e.g. `"when": { "not": { "control": { "hasCounterKind": "phylactery" } } }`.
 - **Counter bans**: effect `{ "cantHaveCounters": "target" }` (an object, or a player: "can't get counters") for as long as the
-  source stays on the battlefield; `removeAllCounters` also works on players (poison counters).
+  source stays on the battlefield; `removeAllCounters` also works on players (poison and experience counters).
 - **Replacement** `{ "exileUncastEntering": filter }` until end of turn: a matching card that would enter the battlefield without
   having been cast is exiled instead (it makes none of its entering choices).
 - **One target per player** ("for each player, choose target permanent that player controls"): a target with `"perPlayer": true`
@@ -1159,7 +1160,9 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   `"entersRemovingCountersFrom": filter` (as it enters, remove all counters from any number of matching permanents; it enters with
   twice that many +1/+1 counters); `"graveyardCastOncePerTurn": { "filter", "notFromBattlefieldThisTurn", "entersTapped" }` (once during each of your turns
   you may cast a matching spell from your graveyard; `notFromBattlefieldThisTurn` limits it to cards put there from anywhere
-  other than the battlefield this turn; `entersTapped` makes a permanent cast this way enter tapped);
+  other than the battlefield this turn; `entersTapped` makes a permanent cast this way enter tapped; `"lands": true` lets land cards
+  matching the filter be played this way too; `"grants": [ability, …]` gives the permanent played or cast this way those abilities,
+  for as long as it stays on the battlefield);
   `spellCost` takes `"nth": N` (only the Nth spell you cast each turn); `{ "spellsHaveImprovise": filter }` (ability: matching spells
   you cast have improvise while this is on the battlefield, 702.126).
 
@@ -1737,7 +1740,7 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
 - `lookTopToHandOrGraveyard`: filter. Look at the top card: if it matches, you may reveal it and put it into your hand; if not
   put into your hand, you may put it into your graveyard.
 - `preventNextFromChosenSource`: `{ "effects": [ … ], "text": "…" }`. The next damage from a source you choose to you this turn is
-  prevented; the effects run as a reflexive trigger about that source.
+  prevented; the effects run as a reflexive trigger about that source (with `"immediately": true`, right after the damage event).
 - `counterPerColorWinOnFive`: filter. For each color, put a +1/+1 counter on a permanent you control of that color that matches the
   filter. Putting counters on five of them this way wins the game.
 - `exiledCopyAttackingEachOpponent`: flag. For each opponent, a tapped token copy of the card exiled with the source attacks that
@@ -1954,3 +1957,197 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
 ### Counter kinds
 - `Possession`, `Nest`, `Rev` and `Slumber` are counter kinds, named wherever the script takes one (for example
   `{ "counters": "possession" }` in a quantity).
+
+## Academy set vocabulary
+
+### Keywords
+- **Increment** (rule 702.191a): a keyword line, no script. Whenever you cast a spell, if this is a creature and the mana spent on
+  that spell is more than its power or its toughness, put a +1/+1 counter on it. One trigger per instance.
+- **Paradigm** (rule 702.192a): read from the card data, no script. When it resolves, it is exiled instead of going to the graveyard.
+  The first time a spell with this name resolves for its controller, that player gets a delayed ability: at the beginning of each of
+  their precombat main phases for the rest of the game, they may cast a copy from exile without paying its mana cost. A copy that
+  isn't cast ceases to exist.
+- **Casualty N** (rule 702.153a): read from the rules text, no script. When it is cast, its controller may sacrifice a creature
+  with power N or greater. Each one sacrificed makes a copy when the spell is cast; the copy may choose new targets.
+  Card-wide `"spellsHaveCasualty": filter` (with `"spellsHaveCasualtyN": N`, default 1) gives matching spells their controller
+  casts casualty N, once for each permanent that controller has with it.
+- **Bestow {cost}** (rule 702.103a): read from the rules text, no script. Cast for the bestow cost, it becomes an Aura that enchants
+  a creature and isn't a creature while bestowed. If its target is illegal as it resolves, it enters as a creature. If it later
+  becomes unattached or attached illegally, it stops being an Aura and is a creature on the battlefield.
+- **Echo {cost}** (rule 702.30a): read from the rules text, no script. At the beginning of its controller's upkeep, if it came
+  under their control since their last upkeep, they may pay the echo cost. If they don't, they sacrifice it.
+- **Gravestorm** (rule 702.69): read from the rules text, no script. When it is cast, it is copied for each permanent put into a
+  graveyard from the battlefield this turn (tokens too). One trigger for each instance of the keyword.
+- **Devoid** (rule 702.114a): read from the card data, no script. The card is colorless, in every zone.
+- **Protection from multicolored** (rule 702.16): a keyword line, no script. Protection from sources with two or more colors.
+- **Spree** (rule 702.172): `{ "spell": { "chooseCount": N, "upTo": true, "modes": [ { "cost": "{1}", "text": "…", "effects": [ … ] } ] } }`.
+  Each mode adds its `"cost"` to the spell's total. Casting offers one mode at a time while the total (mana cost plus the chosen
+  modes' costs) can still be paid. At least one mode must be chosen.
+- **Infect**: a keyword line, no script. Damage dealt to creatures is dealt as -1/-1 counters, as with wither. Damage
+  dealt to players gives them poison counters instead of loss of life.
+- **Warp {cost}** (rule 702.185a): the root `"warp": "{W}"`, no other script. Offered from the hand only, for the warp cost. The
+  permanent is exiled at the beginning of the next end step, and its owner may cast it from exile on a later turn. A token is not
+  cast later.
+- **Case** (layout `case`, rule 719.3): a single-face card. The "To solve" line is a triggered ability:
+  `{ "trigger": "endStep", "if": { "all": [{ "not": "solved" }, <condition>] }, "effects": [{ "solve": true }] }`. The solve effect
+  makes it solved, announced as a choice. "Solved —" abilities use `"activateIf": "solved"`. The keyword `"Solved"` is scripted; the
+  solved state ends when the Case leaves the battlefield.
+
+### Card-wide rules
+- `"graveyardAlternativeCost": "{2}{W}"`: you may cast this card from your graveyard for that cost rather than its mana cost.
+- `"attackTaxPerCounter": true`: each creature with counters on it can't attack you or your planeswalkers unless its controller
+  pays {X}, where X is the number of counters on that creature.
+- `"plusOneCountersPlusOneOn": filter`: if +1/+1 counters would be put on a permanent you control that matches the filter, that
+  many plus one are put on it instead.
+- `"manaOnlyForXCosts": true`: the mana this card's mana abilities make may be spent only on costs that contain {X}.
+- `"rules": ["EffectDiscardsMayGoOnTop"]`: if an effect makes you discard a card, you may put it on top of your library instead of
+  into your graveyard. Costs and cleanup discards aren't affected.
+- `"rules": ["YouCantCastPermanentSpells"]`: you can't cast creature, artifact, enchantment, planeswalker or battle spells.
+
+### Static abilities
+- `"protectionFromTypes": ["creature"]` (static): the affected objects have protection from those card types (rule 702.16).
+- `"protectionFromChosenColor": true` (on an Aura): the enchanted creature has protection from the color the Aura's source chose.
+  That protection doesn't remove the Aura.
+- `"cantAttackYouOrPlaneswalkers": true` (static, with `affects`): the affected creatures can't attack you or planeswalkers you control.
+
+### Tokens
+- Role token: `"types": "Enchantment — Aura Role"`, `"aura": "creature"`, and static abilities for the enchanted creature. Of the
+  Roles one player controls on the same permanent, only the newest stays (rule 704.5y).
+
+### Filters
+- `"maxManaValueSourceX": true`: mana value X or less, X being the X the source permanent was cast with.
+- `"maxManaValueLifeGained": true`: mana value X or less, X being the life you gained this turn.
+- `"maxManaValueColorsSpent": true`: mana value no more than the number of colors of mana spent to cast it.
+- `"monocolored": true`: exactly one color.
+- `"enchantedByYours": true`: enchanted by an Aura you control.
+- `"attachedToCreature": true`: an Aura that is attached to a creature.
+- `"targets": filter`: a spell on the stack that targets a permanent matching the filter.
+
+### Triggers
+- `"playerAttacksYourOpponent"`: whenever a player attacks one of your opponents. It triggers once for each opponent attacked by
+  creatures of the attacking player. The triggered player is the attacker and the defending player is that opponent.
+- `"creaturesAttackMatching"` with `"filter": filter`: whenever one or more creatures matching the filter attack, whoever controls
+  them. Once per declaration of attackers.
+- `"exiledFromLibraryOrGraveyard"` with `"batched": true`: whenever one or more cards are put into exile from your library and/or
+  your graveyard.
+- `"enchantedAttacks"`: the same as `"equippedAttacks"`, for an Aura's own ability. The enchanted creature is the triggered object.
+
+### Conditions
+- `"defenderHasMoreLifeThanAnotherOpponent"`: the defending player of the trigger has more life than another of your opponents.
+- `{ "anyPlayerHandAtMost": N }`: some player has N or fewer cards in hand.
+- `"triggeredAbilityCostHasX"`: the activated ability the trigger is about has {X} in its cost.
+- `{ "foundHas": filter }`: a card the effect found (took or revealed) matches the filter.
+- `"triggeredPlayerFirstLossThisTurn"`: the life loss the trigger is about is all the life that player lost this turn.
+- `"modifiedCreatureDiedThisTurn"`: a modified creature (with counters, an Equipment, or an Aura you controlled) died under your
+  control this turn.
+- `"youPutCounterOnSelfThisTurn"`: you put a counter on this creature this turn.
+- `{ "cardsExiledThisTurn": N }`: N or more cards were put into exile this turn, from anywhere.
+- `{ "castXAtLeast": N }`: the X the source was cast with is at least N (0 if it wasn't cast).
+- `{ "opponentCastSpellThisTurn": filter }`: an opponent cast a spell this turn that matches the filter.
+
+### Costs
+- `alternativeCost` with `"extra": { "life": N, "exileFromHand": filter }`: as part of the alternative cost, exile a matching card
+  from your hand (for example `{ "colors": ["U"] }`) and pay the life.
+
+### Quantities
+- String quantities: `"cardsDrawnThisTurn"` (cards you drew this turn), `"triggeredSpellX"` (the X of the spell the cast
+  trigger is about), `"manaSpentOnThis"` (mana spent to cast this spell; 0 for a copy), `"manaSpentOnTarget"` (mana spent to cast the
+  target spell), `"triggeredSpellColorsSpent"` (colors of mana spent on the spell the trigger is about), `"targetHandSize"` (cards in
+  the target opponent's hand), `"affectedHalfLifeRoundedDown"`, `"affectedHalfHandRoundedDown"` and `"affectedHalfPermanentsRoundedDown"`
+  (half of the affected player's life, hand or permanents, rounded down), `"yourNontokenCreaturesDestroyedThisWay"` (your nontoken
+  creatures destroyed by the effect, counted as each last was on the battlefield),
+  `"targetCommanderCasts"` (times the commander the trigger is about was cast from the command zone, by its owner),
+  `"triggeredPlayerAttackersAtYou"` (creatures of the trigger's player attacking you or your planeswalkers),
+  `"yourAurasOnTriggeredAtDeath"` (Auras you controlled that were attached to the creature the trigger is about as it died),
+  `"countersRemovedThisWay"` (counters removed by the `removeAllCounters` before it).
+- `{ "greatestManaValueCast": filter }`: the greatest mana value among the spells you cast this turn that match the filter, as they
+  were on the stack (X included).
+- `{ "enteredThisTurn": filter, "evenIfGone": true }`: the permanents that entered under your control this turn, including those
+  that have left (as they last existed).
+- `{ "twoToThe": quantity }`: 2 to the power of the quantity (capped where no library holds that many cards).
+- `{ "differentlyNamed": filter }`: the number of different names among your permanents matching the filter.
+
+### Effects and options
+- `extraMana` option `"whenNextCast": { "spells": filter, "effects": [ … ], "text": "…" }`: when the mana is added, a delayed
+  ability starts: when you next cast a matching spell this turn, the effects happen (the spell is the one the trigger is about).
+- `extraMana` option `"rider": "scryCommanderCasts"`: when you spend this mana to cast your commander, scry X, where X is the
+  number of times it has been cast from the command zone this game.
+- `{ "atYourNextMainPhase": { "effects": [ … ], "text": "…" }, "amount": quantity }`: at the beginning of your next main phase
+  (precombat or postcombat, whichever comes first). The amount is worked out when the effect happens, and is "triggerAmount"
+  in the effects.
+- `{ "whenDealsCombatDamageThisCombat": subject, "effects": [ … ], "text": "…" }`: whenever that creature deals combat damage to a
+  player this combat. "Triggered" in the effects is that creature.
+- `{ "whenYourCreatureDealsCombatDamageThisTurn": subject, "effects": [ … ], "text": "…" }`: whenever a creature you control deals
+  combat damage to a player this turn. "Triggered" in the effects is the first object of the subject.
+- `{ "doubleTriggeredSpellX": true }`: double the X of the spell the trigger is about, while it is on the stack.
+- `{ "exileTopAsYouChooseCastIfTotalAtMost": N }`: as many times as you choose, exile the top card of your library. If the total
+  mana value of the cards exiled this way is N or less, you may cast any number of them without paying their mana costs.
+- `{ "eachExilesUntilNonlandOpponentPicks": N }`: each player exiles from the top of their library until a nonland card is exiled.
+  An opponent chooses one of the nonland cards, which you can't cast. You may cast up to N of the other exiled cards without paying
+  their mana costs.
+- `{ "exiledPilesOpponentChooses": N }`: exile the top N cards face down, then the top N face up. An opponent chooses a pile, which
+  goes to your graveyard. You may cast a spell from the other pile without paying its mana cost; the rest go to your hand.
+- `{ "copyForEachOtherCreatureItCouldTarget": true }`: the player who controls the spell copies it for each other creature they
+  control that the spell could target. Each copy targets a different one of those creatures.
+- `{ "castExiledFreeThisTurnBottomInstead": subject }`: you may cast the exiled card this turn without paying its mana cost. If it
+  would go to a graveyard, it goes to the bottom of its owner's library instead.
+- `{ "returnCopiedCardToGraveyard": true }`: on a token copy of an exiled card: when the token leaves the battlefield, the card it
+  copied goes to its owner's graveyard.
+- `{ "revealTopDuel": subject }`: you and the target opponent each reveal the top card of your library. Each of you loses life equal
+  to the mana value of the card the other revealed, then each puts the card you revealed into your hand.
+- `{ "animateEnchantedCard": true }` (an Aura's ability): return the enchanted creature card from a graveyard to the battlefield under
+  your control, and attach the Aura to it. `{ "sacrificeAnimated": true }` (an Aura's ability): sacrifice the creature that Aura
+  returned, if it is still that card. Root `"aura": { "kind": "graveyardCard", … }` lets an Aura enchant a creature card in a
+  graveyard; it stays attached while that card is there.
+- `{ "chooseLandCardName": true }`: choose a land card name; the source remembers it, as for "as this enters, choose".
+- `{ "flipCoinsSkipTurns": 5, "who": subject }`: flip five coins; the subject (default: the target) skips that many of its next turns,
+  one for each heads.
+- `{ "moveCountersOfKind": { "from": subject, "to": subject }, "count": quantity, "kind": "+1/+1" }`: move up to `count` counters of
+  that kind from the first object to the second, if both are on the battlefield.
+- `{ "eachDealsDamageEqualToPower": …, "to": "itself" }`: each creature deals damage to itself equal to its power.
+- `pump` with `"cantHave": true`: keywords it removes can't be gained again this turn. The loss applies after every gain.
+- `copyNextInstantOrSorcery` with `"copies": "commanderCasts"`: copy the next instant or sorcery you cast this turn once for each
+  time you cast your commander from the command zone this game.
+- `spellCost` with `"ifTargets": filter`: the cost reduction applies only when the spell targets a matching object.
+- `reanimate` (and `reanimateAll`) with `"addTypes": [ … ]`: the card also has those card types as it enters.
+- `revealTopCastFree` with `"exileRestToBottom": true`: the cards are exiled and cast from exile; the rest go to the bottom of your
+  library in a random order.
+- `becomeCopy` with `"mayChooseAmong": filter`: you may choose which matching artifact or creature card, from any zone, it copies.
+- `revealUntil` with `"mayBattlefield": true` (you may put the card onto the battlefield) and, with `castFree`, `"hitStaysExiled": true`
+  (the card revealed stays exiled if it isn't cast; the rest go to the bottom of the library).
+- `distributeCounters: "X"`: the total is worked out as the division is announced.
+- `choose` with `"among": subject`: choose among the cards that subject gives. When the filter names a `"zone"`, those cards may be
+  in that zone rather than on the battlefield.
+- `addManaUntilEndOfTurn` with `"times": quantity`: the mana is added that many times.
+- `lookAtTop` with `"maxTotalManaValue": N`: take any number of matching cards whose total mana value is N or less.
+- `exile` with `"ownerMayPlayUntilEndOfNextTurn": true`: its owner may play it until the end of their next turn.
+- Tokens (`tokens` effect): `"attackingTriggerDefender": true` (tapped and attacking the trigger's defending player),
+  `"forEachOpponentMustAttack": true` (for each opponent, the tokens attack that opponent this turn if able), `"attachTo": subject`
+  (an Aura token enters attached to the first of these it can enchant). The token's `"aura"` key is the target spec of an Aura token,
+  for example `"creature"`.
+- `exileUntilLesserCastFree` with `"untilEndOfTurn": true`: the card hit stays exiled and may be cast free this turn. The rest go to
+  the bottom of the library in a random order.
+- `preventNextFromChosenSource` with `"immediately": true`: the effects happen right after the damage event, not as a reflexive
+  trigger. Their `"text"` is worded as "If damage is prevented this way, …".
+- `{ "castFreeNow": subject, "most": 1 }`: while it resolves, you may cast up to `most` of the subject's cards without paying their
+  mana costs. `"exiled"` is the cards exiled this way.
+- `{ "revealToHandLoseLifeRepeat": true }`: reveal the top card of your library and put it into your hand. You lose life equal to
+  its mana value. You may repeat this.
+- `{ "cantLoseGameThisTurn": true }`: you can't lose the game this turn, and your opponents can't win it this turn.
+- `{ "damageCantReduceLifeBelowOneThisTurn": true }`: damage can't reduce your life total below 1 this turn.
+- `{ "yourSpellsCantBeCounteredThisTurn": true }`: your spells can't be countered this turn.
+- `{ "hexproofFromColorsThisTurn": ["U", "B"] }`: you and the permanents you control now have hexproof from those colors this turn.
+- `{ "controllersSearchBasicPerExiled": true }`: for each creature exiled this way, its controller searches their library for a basic
+  land card and puts it onto the battlefield tapped. This is done in turn order, starting with the active player.
+- `{ "whenYouNextCastThisTurn": { "spells": filter, "effects": [ … ], "text": "…" } }`: a delayed trigger from any ability. When you
+  next cast a matching spell this turn, the effects happen. The trigger amount is the spell's mana value. The `whenNextCast` mana
+  option works the same way.
+- `{ "drawTwoPayOrReturnDrawn": true }`: you may draw two more cards. Then choose two cards in your hand that were drawn this turn.
+  For each, pay 4 life or put it on top of your library.
+- `{ "exileFromHandUntilLeaves": filter, "of": subject }` (`of` defaults to the first target): look at that player's hand. The
+  source's controller may exile a matching card from it until the source leaves the battlefield, and then it returns to its owner's
+  hand. Nothing is exiled if no card matches or the source has already left.
+- Subject `{ "eachTarget": filter }`: the targets that match the filter, e.g. "each of those creatures you don't control".
+- On an enters-the-battlefield trigger, `"countOf"` and `"upTo"` with X use the X paid as the permanent was cast.
+- `{ "castFromGraveyardThisTurnEach": filter }`: each matching card in your graveyard gains "You may cast this card from your
+  graveyard" until end of turn. Only the cards there when it resolves.

@@ -136,6 +136,7 @@ public sealed partial class Game
         {
             DealtBy = (source.Id, source.Version), ToPlayer = who, NextTimeOnly = true, Controller = who, SourceCard = ctx.Source.Id, Id = NewTimestamp(),
             WhenPrevented = new TriggeredAbility { Trigger = TriggerEvent.Reflexive, Effects = p.WhenPrevented, Text = p.Text },
+            WhenPreventedImmediately = p.Immediately,
         });
     }
 

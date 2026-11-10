@@ -15,6 +15,14 @@ public enum QuantityKind
     NontokenCreaturesDiedThisTurn,
     /// <summary>Times the controller cast their commanders from the command zone this game.</summary>
     CommanderCasts,
+    /// <summary>Times the first target player cast their commanders from the command zone this game.</summary>
+    TargetCommanderCasts,
+    /// <summary>Times the commander the trigger is about has been cast from the command zone this game (by its owner).</summary>
+    TriggeredCommanderCasts,
+    /// <summary>Creatures of the trigger's player attacking you and/or planeswalkers you control.</summary>
+    TriggeredPlayerAttackersAtYou,
+    /// <summary>Auras you controlled that were attached to the creature the trigger is about as it died.</summary>
+    YourAurasOnTriggeredAtDeath,
     /// <summary>Different kinds of counters among creatures the controller controls.</summary>
     CounterKindsAmongYourCreatures,
     /// <summary>Cards put into the controller's graveyard from their hand or library this turn.</summary>
@@ -94,6 +102,9 @@ public enum QuantityKind
     TriggeredColors,
     /// <summary>Spells matching the filter the controller cast this turn.</summary>
     SpellsCastThisTurn,
+
+    /// <summary>The greatest mana value among the spells matching the filter you've cast this turn (as they were on the stack).</summary>
+    GreatestManaValueSpellsCast,
 
     /// <summary>Spells matching the filter you cast this turn before the spell that triggered the ability ("each other … you've cast before it this turn").</summary>
     SpellsCastBeforeTriggered,
@@ -262,6 +273,8 @@ public enum QuantityKind
     SacrificedManaValue,
     /// <summary>Permanents matching the filter that entered the battlefield under your control this turn (and are still those objects there).</summary>
     EnteredThisTurnCount,
+    /// <summary>Permanents matching the filter that entered under the controller's control this turn, also those no longer there (as they last existed).</summary>
+    EnteredThisTurnEver,
     /// <summary>Opponents who control a permanent matching the filter ("opponents who control a creature with power 4 or greater").</summary>
     OpponentsControlling,
     /// <summary>Opponents dealt combat damage this turn by the source (as this object) or by a Dragon.</summary>
@@ -325,6 +338,30 @@ public enum QuantityKind
     CardTypesAmongBatch,
     /// <summary>"If one or more of the chosen permanents are still on the battlefield, … up to that many": the targets still on the battlefield.</summary>
     TargetsOnBattlefield,
+    /// <summary>"The number of cards you've drawn this turn."</summary>
+    CardsYouDrewThisTurn,
+    /// <summary>The X of the spell a cast trigger is about, as it is on the stack now or as it last existed there.</summary>
+    TriggeredSpellX,
+    /// <summary>"The amount of mana spent to cast this spell" (0 for a copy, which wasn't cast).</summary>
+    ManaSpentOnSource,
+    /// <summary>"The amount of mana spent to cast that spell": the target spell at <see cref="Quantity.Index"/>.</summary>
+    ManaSpentOnTarget,
+    /// <summary>"2ˣ": two to the power of the quantity in <see cref="Quantity.Parts"/>.</summary>
+    TwoToThe,
+    /// <summary>"Half their life", "half the cards in their hand", "half the permanents they control", rounded down: of the affected player.</summary>
+    AffectedHalfLifeRoundedDown,
+    AffectedHalfHandRoundedDown,
+    AffectedHalfPermanentsRoundedDown,
+    /// <summary>"The number of colors of mana spent to cast it": the spell a cast trigger is about.</summary>
+    TriggeredSpellColorsSpent,
+    /// <summary>"The number of cards in target opponent's hand": the target player at <see cref="Quantity.Index"/>.</summary>
+    TargetHandSize,
+    /// <summary>"The number of differently named lands you control": distinct names among your permanents matching <see cref="Quantity.Filter"/>.</summary>
+    DifferentlyNamedYouControl,
+    /// <summary>"Each permanent that was put into a graveyard from the battlefield this turn" (tokens too).</summary>
+    PermanentsPutIntoGraveyardThisTurn,
+    /// <summary>"For each nontoken creature you controlled that was destroyed this way" (as each last existed on the battlefield).</summary>
+    YourNontokenCreaturesDestroyedThisWay,
 }
 
 /// <summary>

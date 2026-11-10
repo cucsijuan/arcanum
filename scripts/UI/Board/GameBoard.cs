@@ -1596,6 +1596,12 @@ public partial class GameBoard : Control
                     _actionExtra.Visible = true;
                     _actionExtra.AddChild(BoardStyle.MakeLabel($"Attacking {view.Players[tax.Defender.Value].Name} costs {tax.CostPerCreature} per creature (you can pay for {tax.Affordable})", 14, BoardStyle.Attacking));
                 }
+                foreach (var group in view.AttackerTaxes.GroupBy(t => t.Defender))
+                {
+                    _actionExtra.Visible = true;
+                    var each = string.Join(", ", group.Select(t => $"{view.FindCard(t.Attacker)?.Name} {{{t.Generic}}}"));
+                    _actionExtra.AddChild(BoardStyle.MakeLabel($"Attacking {view.Players[group.Key.Value].Name} costs: {each} (you can pay {{{view.AttackTaxBudget}}})", 14, BoardStyle.Attacking));
+                }
                 if (a.Defenders.Count > 1)
                 {
                     // Several opponents: pick who the next attackers go after.
@@ -2578,6 +2584,12 @@ public partial class GameBoard : Control
                 break;
             case ChoiceMade cm:
                 _announcer.Enqueue(new($"{ev.Name(cm.Card)}: {cm.Choice} chosen", ViewOf(ev, cm.Card), 1.5));
+                break;
+            case CoinsFlipped cf:
+                _announcer.Enqueue(new($"{PlayerName(cf.Player)} flips {cf.Count} coins: {cf.Heads} heads", ViewOf(ev, cf.Source), 2.0));
+                break;
+            case TurnSkipped ts:
+                _announcer.Enqueue(new($"{PlayerName(ts.Player)} skips a turn", null, 2.0));
                 break;
             case ControlChanged cc:
                 _announcer.Enqueue(new($"{PlayerName(cc.NewController)} gains control of {ev.Name(cc.Card)}", ViewOf(ev, cc.Card), 1.5));

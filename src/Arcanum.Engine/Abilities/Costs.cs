@@ -93,6 +93,9 @@ public sealed record CostReduction(int Amount, Condition? Condition = null, Obje
     /// <summary>"Costs {X} less, where X is [quantity]."</summary>
     public Quantity? AmountFrom { get; init; }
 
+    /// <summary>"Costs {1}{U} less": also one mana symbol of this color less, when the reduction applies (rule 118.7c).</summary>
+    public Mana.ManaType? Color { get; init; }
+
     /// <summary>"Costs {X} less, where X is the total power of creatures you control" (those matching <see cref="PowerFilter"/>).</summary>
     public bool ByTotalPower { get; init; }
     public ObjectFilter? PowerFilter { get; init; }
@@ -109,4 +112,6 @@ public sealed record AlternativeCost(Mana.ManaCost Cost, Condition? If = null)
 }
 
 /// <summary>Riders on mana from a source (rule 106.6): what happens when it's spent on matching spells.</summary>
-public enum ManaRider { None, HasteForDragonCreatureSpells, CopyRedInstantOrSorcery, LegendaryUncounterable, Uncounterable, InstantOrSorceryUncounterable, ScryIfSharesTypeWithCommander, CommanderEntersWithCastCountCounters }
+public enum ManaRider { None, HasteForDragonCreatureSpells, CopyRedInstantOrSorcery, LegendaryUncounterable, Uncounterable, InstantOrSorceryUncounterable, ScryIfSharesTypeWithCommander, CommanderEntersWithCastCountCounters,
+    /// <summary>"When you spend this mana to cast your commander, scry X, where X is the number of times it's been cast from the command zone this game."</summary>
+    ScryCommanderCasts }

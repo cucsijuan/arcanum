@@ -114,7 +114,11 @@ public sealed record ControlEffect(CardId Card, int Version, PlayerId NewControl
 }
 
 /// <summary>A card exiled until a source leaves the battlefield.</summary>
-public sealed record LinkedExile(CardId Source, int SourceVersion, CardId Exiled, int ExiledVersion);
+public sealed record LinkedExile(CardId Source, int SourceVersion, CardId Exiled, int ExiledVersion)
+{
+    /// <summary>The card was exiled from a hand: it returns to its owner's hand (rule 610.3c).</summary>
+    public bool ToHand { get; init; }
+}
 
 /// <summary>
 /// "Until end of turn, you may play cards exiled with [this]. Spells you cast this way cost {N} less to cast": every card exiled with that
@@ -125,6 +129,9 @@ public sealed record ExiledWithPlayRight(CardId Source, int SourceVersion, Playe
 /// <summary>A card in exile <paramref name="Player"/> may play until turn <paramref name="UntilTurn"/> ends (free when <paramref name="WithoutPaying"/>).</summary>
 public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player, int UntilTurn, bool WithoutPaying = false)
 {
+    /// <summary>"If that spell would be put into a graveyard, put it on the bottom of its owner's library instead."</summary>
+    public bool BottomInsteadOfGraveyard { get; init; }
+
     /// <summary>Cast by paying life equal to its mana value rather than its mana cost.</summary>
     public bool PayLife { get; init; }
 
@@ -143,6 +150,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
     /// <summary>"Until the end of your next turn": lasts through that player's first turn after <see cref="MadeOnTurn"/>.</summary>
     public PlayerId? UntilEndOfNextTurnOf { get; init; }
     public int MadeOnTurn { get; init; }
+
+    /// <summary>"On a later turn": not on the turn it was made (<see cref="MadeOnTurn"/>).</summary>
+    public bool LaterTurnOnly { get; init; }
 
     /// <summary>"Until your next end step": the permission ends as that player's next end step begins (a later one if made during an end step of theirs).</summary>
     public PlayerId? UntilNextEndStepOf { get; init; }
@@ -222,6 +232,9 @@ public sealed record PreventionShield(int Turn, bool CombatOnly)
 
     /// <summary>"When damage is prevented this way, …": a reflexive trigger about the source (its controller as the player, the amount prevented).</summary>
     public Abilities.TriggeredAbility? WhenPrevented { get; init; }
+
+    /// <summary>"If damage is prevented this way, …": <see cref="WhenPrevented"/> happens right after the damage event, not as a trigger.</summary>
+    public bool WhenPreventedImmediately { get; init; }
 }
 
 /// <summary>
@@ -234,6 +247,9 @@ public sealed record RedirectShield(int Id, PlayerId Controller, CardId Card, Ca
 }
 
 /// <summary>A delayed triggered ability waiting for its moment ("at the beginning of the next upkeep").</summary>
+/// <summary>A paradigm delayed ability: its source spell, its controller, and the spell's characteristics as it resolved (the object it copies).</summary>
+public sealed record ParadigmTrigger(CardId Source, PlayerId Controller, Cards.CardDefinition Spell);
+
 public sealed record DelayedTrigger(CardId Source, Abilities.TriggeredAbility Ability, PlayerId Controller, int Amount)
 {
     /// <summary>Only at this player's upkeep ("your next upkeep").</summary>
@@ -326,7 +342,7 @@ public sealed partial class GameState
     public List<PlayableFromExile> PlayableFromGraveyard { get; } = new();
     public List<PlayableFromExile> FlashbackGranted { get; } = new();
 
-    /// <summary>"When you next cast an instant or sorcery spell this turn, copy that spell" (player, turn).</summary>
+    /// <summary>"When you next cast an instant or sorcery spell this turn, copy that spell" (player, turn; copies -1: one for each time the player cast their commander from the command zone).</summary>
     public List<(PlayerId Player, int Turn, int Copies, bool AnySpell)> CopyNextInstantOrSorcery { get; } = new();
 
     /// <summary>"Until your next turn, … damage to that player or a permanent that player controls is doubled": the player, the effect's controller and its source.</summary>
@@ -419,6 +435,12 @@ public sealed partial class GameState
     /// <summary>Objects (card, version) that are exiled instead if they would be put into a graveyard ("if that spell would be put into a graveyard, exile it instead").</summary>
     public HashSet<(CardId Card, int Version)> ExileInsteadOfGraveyard { get; } = new();
 
+    /// <summary>Spells cast with "if that spell would be put into a graveyard, put it on the bottom of its owner's library instead".</summary>
+    public HashSet<(CardId Card, int Version)> BottomInsteadOfGraveyard { get; } = new();
+
+    /// <summary>Spells (card, version on the stack) that have these abilities once they enter ("if you do, it gains '…'").</summary>
+    public Dictionary<(CardId Card, int Version), IReadOnlyList<Abilities.AbilityDefinition>> AbilitiesOnEnter { get; } = new();
+
     /// <summary>Spells (card, version) exiled with time counters instead of going to the graveyard as they resolve, gaining suspend.</summary>
     public Dictionary<(CardId Card, int Version), int> SuspendOnResolution { get; } = new();
 
@@ -442,6 +464,30 @@ public sealed partial class GameState
 
     /// <summary>Delayed abilities "at end of combat" (rule 603.7): they trigger as the next end of combat step begins.</summary>
     public List<DelayedTrigger> AtEndOfCombat { get; } = new();
+
+    /// <summary>
+    /// The paradigm delayed abilities (rule 702.192a): each triggers at the beginning of each of its controller's precombat main phases for
+    /// the rest of the game, and copies the spell as it resolved (<see cref="ParadigmTrigger.Spell"/>), whatever happened to its card since.
+    /// </summary>
+    public List<ParadigmTrigger> Paradigms { get; } = new();
+
+    /// <summary>Delayed abilities "at the beginning of your next main phase" (precombat or postcombat), for their controller.</summary>
+    public List<DelayedTrigger> AtYourNextMainPhase { get; } = new();
+
+    /// <summary>"Whenever that creature deals combat damage to a player this combat": the delayed ability (about the creature) and the combat (<see cref="CombatSerial"/>).</summary>
+    public List<(DelayedTrigger Trigger, int Combat)> WhenDealsCombatDamageThisCombat { get; } = new();
+
+    /// <summary>"Whenever a creature you control deals combat damage to a player this turn, …": the delayed ability (about an object, e.g. the exiled card) and the turn.</summary>
+    public List<(DelayedTrigger Trigger, int Turn)> WhenYourCreatureDealsCombatDamageThisTurn { get; } = new();
+
+    /// <summary>"When you next cast a [filter] spell this turn, [ability]" from a mana ability: the delayed ability, the spells it waits for and the turn.</summary>
+    public List<(DelayedTrigger Trigger, Abilities.ObjectFilter Spells, int Turn)> WhenNextCast { get; } = new();
+
+    /// <summary>The controllers of the Auras attached to a creature as it died (the card and its version in the graveyard): "for each Aura you controlled that was attached to it".</summary>
+    public Dictionary<(CardId Card, int Version), List<PlayerId>> AurasAtDeath { get; } = new();
+
+    /// <summary>The names of the spells each player controlled that have resolved this game (paradigm's "the first time … has resolved").</summary>
+    public HashSet<(PlayerId Player, string Name)> ResolvedSpellNames { get; } = new();
 
     /// <summary>Delayed abilities that trigger at the beginning of the next end step, with an amount worked out when they were made.</summary>
     public List<DelayedTrigger> AtNextEndStepTriggers { get; } = new();
@@ -490,6 +536,12 @@ public sealed partial class GameState
 
     /// <summary>Permanents sacrificed this turn by all players.</summary>
     public int PermanentsSacrificedThisTurn { get; set; }
+
+    /// <summary>Permanents (tokens too) put into a graveyard from the battlefield this turn: gravestorm (rule 702.69a).</summary>
+    public int PermanentsPutIntoGraveyardThisTurn { get; set; }
+
+    /// <summary>Cards (not tokens or copies) put into exile from anywhere this turn: "if one or more cards were put into exile this turn".</summary>
+    public int CardsPutIntoExileThisTurn { get; set; }
 
     /// <summary>Blocks declared this turn: (blocker, its version, attacker, its version).</summary>
     public List<(CardId Blocker, int BlockerVersion, CardId Attacker, int AttackerVersion)> BlocksThisTurn { get; } = new();

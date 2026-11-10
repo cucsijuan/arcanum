@@ -69,7 +69,9 @@ public sealed record TriggeredPlayerHasMoreLands : Condition;
 /// this turn", "if you lost life this turn" (with "each player": that player), "if a player lost N or more life this turn".</summary>
 public sealed record TurnHappened(TurnEvent Event, int AtLeast = 1) : Condition;
 
-public enum TurnEvent { YouPutCounterOnCreature, CounterPutOnSource, CardLeftYourGraveyard, YouLostLife, PlayerLostLife }
+public enum TurnEvent { YouPutCounterOnCreature, CounterPutOnSource, CardLeftYourGraveyard, YouLostLife, PlayerLostLife,
+    /// <summary>"If you put a counter on this creature this turn": the ability's controller put one on the source.</summary>
+    YouPutCounterOnSource }
 
 /// <summary>"If you have a full party" (rule 700.8): you control a Cleric, a Rogue, a Warrior and a Wizard, each a different creature.</summary>
 public sealed record FullParty : Condition;
@@ -156,6 +158,10 @@ public sealed record BecomeCopy(Subject What, Subject Target, string? ExceptName
 
     /// <summary>"And it's legendary in addition to its other types".</summary>
     public bool AddLegendary { get; init; }
+
+    /// <summary>"You may have it become a copy of an artifact or creature card from among those cards": the controller may choose one of
+    /// <see cref="Target"/> matching this, wherever it is now.</summary>
+    public ObjectFilter? MayChooseAmong { get; init; }
 }
 
 /// <summary>

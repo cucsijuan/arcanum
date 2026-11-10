@@ -97,11 +97,20 @@ public sealed class Player
     /// <summary>Spells this player cast this turn, in order.</summary>
     public List<CardId> SpellsCastThisTurn { get; } = new();
 
+    /// <summary>The mana value each spell of <see cref="SpellsCastThisTurn"/> had on the stack as it was cast (X included), in the same order.</summary>
+    public List<int> SpellManaValuesThisTurn { get; } = new();
+
+    /// <summary>A modified creature (counters, Equipment, or an Aura its controller controlled) died under this player's control this turn.</summary>
+    public bool ModifiedCreatureDiedThisTurn { get; set; }
+
     /// <summary>Spells this player cast during the previous turn ("if a player cast two or more spells last turn").</summary>
     public int SpellsCastLastTurn { get; set; }
 
     /// <summary>Cards drawn this turn.</summary>
     public int CardsDrawnThisTurn { get; set; }
+
+    /// <summary>The cards this player drew this turn (for "cards in your hand drawn this turn").</summary>
+    public List<CardId> DrawnThisTurn { get; } = new();
 
     /// <summary>Separate life gain events this turn.</summary>
     public int LifeGainsThisTurn { get; set; }
@@ -216,7 +225,23 @@ public sealed class Player
     /// <summary>The turn this player has hexproof until its end ("you gain hexproof until end of turn").</summary>
     public int HexproofTurn { get; set; } = -1;
 
+    /// <summary>"You gain hexproof from blue and from black until end of turn": the colors, and the turn.</summary>
+    public (int Turn, IReadOnlyList<string> Colors) HexproofFromColorsThisTurn { get; set; } = (-1, Array.Empty<string>());
+
+    /// <summary>"Spells you control can't be countered this turn": the turn.</summary>
+    public int SpellsCantBeCounteredTurn { get; set; } = -1;
+
+    /// <summary>"Until end of turn, damage that would reduce your life total to less than 1 reduces it to 1 instead": the turn.</summary>
+    public int DamageCantReduceLifeBelowOneTurn { get; set; } = -1;
+
     /// <summary>The last turn this player flipped a coin ("the first time you flip one or more coins each turn").</summary>
+    /// <summary>When the player's current (latest) upkeep began, and the one before it: "since the beginning of your last upkeep" (echo).</summary>
+    public long UpkeepStamp { get; set; } = -1;
+    public long PreviousUpkeepStamp { get; set; } = -1;
+
+    /// <summary>How many of their next turns the player skips ("skips their next X turns", rule 614.10).</summary>
+    public int TurnsToSkip { get; set; }
+
     public int CoinFlipTurn { get; set; } = -1;
     public int CantLoseGameTurn { get; set; } = -1;
 

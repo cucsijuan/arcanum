@@ -24,7 +24,7 @@ public static partial class CardFactory
     };
 
     // A meld card is a card with one face; the combined back face is a record of its own (linked by CardDatabase).
-    private static readonly HashSet<string> SingleFaceLayouts = new(StringComparer.Ordinal) { "normal", "token", "saga", "meld", "class" };
+    private static readonly HashSet<string> SingleFaceLayouts = new(StringComparer.Ordinal) { "normal", "token", "saga", "meld", "class", "case" };
 
     /// <summary>
     /// Keyword actions and ability words the card source lists as keywords but that only label rules text a card
@@ -37,9 +37,11 @@ public static partial class CardFactory
         "Amass", "Recruit", "Gift", "Behold", "Landwalk", "Goad",
         "Revolt", "Delirium", "Battalion", "Fateful hour", "Spell mastery", "Addendum", "Regenerate", "Triple", "Populate", "Exert",
         "Secret council", "Will of the council", "Council's dilemma", "Tempting offer", "Transform",
-        "Lieutenant", "Enrage", "Celebration", "Pack tactics", "Imprint", "Living weapon", "Proliferate", "Discover", "Read ahead",
+        "Lieutenant", "Enrage", "Celebration", "Pack tactics", "Imprint", "Living weapon", "Backup", "Proliferate", "Discover", "Read ahead",
         "Endure", // a keyword action: the script's "endure" effect
-        "Tiered", // the script's modes carry their additional costs (rule 702.183)
+        "Role token", // the script's Aura token with the Role subtype (one Role per controller on a permanent, rule 303.7)
+        "Solved", // a Case: the script's end-step "solve" trigger and its "solved" conditions (rule 719.3)
+        "Tiered", "Spree", // the script's modes carry their additional costs (rules 702.183, 702.172)
         "Meld", // the script's "meld" effect, with "meldsWith" and "meldInto"
         "Boast", "Spectacle", "Overload", "Revolt", "Eminence", "Commander ninjutsu", "Ninjutsu", // scripted (activation limits, alternative costs)
         "Renown", // its trigger and the renowned designation come from the script (rule 702.112)
@@ -57,7 +59,7 @@ public static partial class CardFactory
         "Blitz", // the script's "blitz" cost (with "blitzExtra", "blitzFromGraveyard")
         // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
         "Dethrone", "Hideaway", "Heal", "Aftermath",
-        "Devour", "Multikicker", "Replicate", "Escalate", "Improvise", "Myriad", "Squad", "Dash", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
+        "Devour", "Multikicker", "Replicate", "Escalate", "Improvise", "Myriad", "Squad", "Dash", "Warp", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
         // Pairing rules for two commanders (deck construction); "Partner with" also has a trigger derived below.
         "Partner", "Partner with", "Friends forever", "Choose a background", "Doctor's companion",
     };
@@ -65,7 +67,7 @@ public static partial class CardFactory
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
     /// <remarks>Includes keywords whose rules this factory derives from rules text (Equip, Enchant).</remarks>
     public static ISet<string> SupportedKeywords { get; } =
-        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Megamorph", "Impending", "Offspring", "Evoke", "Encore", "Compleated", "Escape", "Toxic", "Vanishing", "Ravenous", "Mobilize", "Harmonize", "Fabricate", "Eternalize", "Embalm", "Suspend", "Demonstrate", "Dredge" }).Concat(ScriptedKeywords),
+        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Megamorph", "Impending", "Offspring", "Evoke", "Encore", "Compleated", "Escape", "Toxic", "Vanishing", "Ravenous", "Mobilize", "Harmonize", "Fabricate", "Eternalize", "Embalm", "Suspend", "Demonstrate", "Dredge", "Increment", "Paradigm", "Casualty", "Devoid", "Echo", "Gravestorm", "Bestow" }).Concat(ScriptedKeywords),
             StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Why <see cref="Create"/> finds the card unsupported (for tools): each failed requirement, by face.</summary>
@@ -130,9 +132,14 @@ public static partial class CardFactory
             Morph = KeywordLineCost(record.OracleText, MorphLine()) ?? KeywordLineCost(record.OracleText, MegamorphLine()),
             Megamorph = KeywordLineCost(record.OracleText, MegamorphLine()) is not null,
             Impending = KeywordLineCost(record.OracleText, ImpendingLine()),
+            Bestow = KeywordLineCost(record.OracleText, BestowLine()),
             Offspring = KeywordLineCost(record.OracleText, OffspringLine()),
             Harmonize = KeywordLineCost(record.OracleText, HarmonizeLine()),
             Dredge = KeywordLineNumber(record.OracleText, DredgeLine()) ?? 0,
+            Casualty = KeywordLineNumber(record.OracleText, CasualtyLine()) ?? 0,
+            Devoid = record.Keywords.Contains("Devoid", StringComparer.OrdinalIgnoreCase),
+            Gravestorm = KeywordInstances(record.OracleText, "Gravestorm"),
+            Paradigm = record.Keywords.Contains("Paradigm", StringComparer.OrdinalIgnoreCase),
             Evoke = KeywordLineCost(record.OracleText, EvokeLine()) ?? (EvokeExileColor(record.OracleText) is not null ? ManaCost.Zero : null),
             EvokeExtra = EvokeExileColor(record.OracleText) is { } evokeColor
                 ? new Engine.Abilities.ExtraCost { ExileFromHand = new Engine.Abilities.ObjectFilter(Colors: new[] { evokeColor }, Controller: Engine.Abilities.ControllerFilter.Any) } : null,
@@ -328,6 +335,7 @@ public static partial class CardFactory
             if (UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line) || MorphLine().IsMatch(line) || MegamorphLine().IsMatch(line) || ImpendingLine().IsMatch(line) || OffspringLine().IsMatch(line)) continue;
             if (EvokeLine().IsMatch(line) || EvokeExileLine().IsMatch(line) || EncoreLine().IsMatch(line) || MobilizeLine().IsMatch(line) || HarmonizeLine().IsMatch(line)) continue;
             if (FabricateLine().IsMatch(line) || EternalizeLine().IsMatch(line) || EmbalmLine().IsMatch(line) || SuspendLine().IsMatch(line) || DredgeLine().IsMatch(line) || line == "Demonstrate") continue;
+            if (CasualtyLine().IsMatch(line) || EchoLine().IsMatch(line) || BestowLine().IsMatch(line)) continue;
             if (EscapeLine().IsMatch(line) || EscapesWithLine().IsMatch(line.Replace(record.Name, "~")) || ToxicLine().IsMatch(line) || VanishingLine().IsMatch(line)) continue;
             if (CommanderPairingLine().IsMatch(line)) continue;
             // A keyword line: "Flying" or "Flying, trample".
@@ -432,6 +440,25 @@ public static partial class CardFactory
             if (UnearthAbility(line) is { } unearth) abilities.Add(unearth);
             if (EncoreAbility(line) is { } encore) abilities.Add(encore);
             if (MobilizeTrigger(line) is { } mobilize) abilities.Add(mobilize);
+            if (EchoLine().Match(line) is { Success: true } echo)
+                abilities.Add(new Engine.Abilities.TriggeredAbility
+                {
+                    // Echo (rule 702.30a): "At the beginning of your upkeep, if this permanent came under your control since the beginning of your last
+                    // upkeep, sacrifice it unless you pay [cost]."
+                    Trigger = Engine.Abilities.TriggerEvent.YourUpkeep,
+                    Condition = new Engine.Abilities.EchoDue(),
+                    Effects = new Engine.Abilities.Effect[]
+                    {
+                        new Engine.Abilities.MayPay($"Pay echo {echo.Groups["cost"].Value}? (Otherwise sacrifice this permanent.)", ManaCost.Parse(echo.Groups["cost"].Value), null,
+                            Array.Empty<Engine.Abilities.Effect>())
+                        {
+                            Else = new Engine.Abilities.Effect[] { new Engine.Abilities.SacrificeIt(Engine.Abilities.Subject.Self) },
+                        },
+                    },
+                    Text = $"Echo {echo.Groups["cost"].Value} (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)",
+                });
+            // Each instance of increment triggers separately (rule 702.191b).
+            foreach (var _ in line.Split(',').Where(k => k.Trim().Equals("Increment", StringComparison.OrdinalIgnoreCase))) abilities.Add(IncrementTrigger());
             if (FabricateLine().Match(line) is { Success: true } fabricate)
                 abilities.Add(new Engine.Abilities.TriggeredAbility
                 {
@@ -623,11 +650,32 @@ public static partial class CardFactory
         };
     }
 
+    /// <summary>
+    /// Increment (rule 702.191a): "Whenever you cast a spell, if this permanent is a creature and the amount of mana spent to cast that
+    /// spell is greater than this creature's power or this creature's toughness, put a +1/+1 counter on this creature."
+    /// </summary>
+    private static Engine.Abilities.TriggeredAbility IncrementTrigger() => new()
+    {
+        Trigger = Engine.Abilities.TriggerEvent.YouCastSpell,
+        Condition = new Engine.Abilities.IncrementHolds(),
+        Effects = new Engine.Abilities.Effect[] { new Engine.Abilities.AddCounters(1, Engine.Abilities.Subject.Self) },
+        Text = "Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)",
+    };
+
     [GeneratedRegex(@"^Mobilize (?<n>[0-9]+)$")]
     private static partial Regex MobilizeLine();
 
     [GeneratedRegex(@"^Harmonize (?<cost>(\{[0-9WUBRGCX/]+\})+)$")]
     private static partial Regex HarmonizeLine();
+
+    [GeneratedRegex(@"^Echo (?<cost>(\{[0-9WUBRGCX/]+\})+)$")]
+    private static partial Regex EchoLine();
+
+    [GeneratedRegex(@"^Bestow (?<cost>(\{[0-9WUBRGCX/]+\})+)$")]
+    private static partial Regex BestowLine();
+
+    [GeneratedRegex(@"^Casualty (?<n>[0-9]+)$")]
+    private static partial Regex CasualtyLine();
 
     [GeneratedRegex(@"^Dredge (?<n>[0-9]+)$")]
     private static partial Regex DredgeLine();

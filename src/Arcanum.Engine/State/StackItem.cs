@@ -61,6 +61,9 @@ public sealed record SpellOnStack(CardId Card, PlayerId Controller, IReadOnlyLis
     /// <summary>Cast for its dash cost (rule 702.109).</summary>
     public bool Dashed { get; init; }
 
+    /// <summary>Its warp cost was paid (rule 702.185).</summary>
+    public bool Warped { get; init; }
+
     /// <summary>Its blitz cost was paid (rule 702.152); a copy copies that (707.10).</summary>
     public bool Blitzed { get; init; }
     /// <summary>Cast for its evoke cost (rule 702.74a).</summary>

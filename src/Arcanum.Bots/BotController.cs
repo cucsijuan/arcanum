@@ -930,6 +930,21 @@ public sealed class BotController : IPlayerController
             .OfType<AttackDeclaration>().ToList();
         // Requirements and restrictions ("attacks each combat if able", goad, "can't attack alone"): made legal, keeping the plan.
         if (view.AttackRequest is { } rules && !rules.IsLegal(declared, out _)) declared = rules.Complete(declared).ToList();
+        // Creatures whose attack costs something of their own: only those the mana can pay for, the strongest first.
+        if (view.AttackerTaxes.Count > 0)
+        {
+            int left = view.AttackTaxBudget;
+            var paid = new List<AttackDeclaration>();
+            foreach (var d in declared.OrderByDescending(d => view.FindCard(d.Attacker)?.Power ?? 0))
+            {
+                int cost = view.AttackerTaxes.Where(t => t.Attacker == d.Attacker && t.Defender == d.Defender).Sum(t => t.Generic);
+                if (cost > left) continue;
+                left -= cost;
+                paid.Add(d);
+            }
+            declared = paid;
+            if (view.AttackRequest is { } paidRules && !paidRules.IsLegal(declared, out _)) declared = paidRules.Complete(declared).ToList();
+        }
         if (view.AttackTaxes.Count == 0) return declared;
         // Only as many attackers as the attack taxes can be paid for, the strongest first; taxes add up across defenders.
         var budget = view.AttackTaxes.ToDictionary(t => t.Defender, t => t.Affordable);
