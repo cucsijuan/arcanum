@@ -145,6 +145,36 @@ public class BonusSheetTests
         Assert.Equal(17, Life(s, P1));
     }
 
+    [Theory]
+    [InlineData("Mirror Palm", 17)] // the shield first: all 3 is prevented this way and dealt back
+    [InlineData("Prevent 1", 18)] // 1 prevented first: the shield prevents the other 2 and deals 2 back
+    public async Task TheAffectedPlayerOrdersAPartialPreventionAndAShieldThatStrikesBack(string first, int life)
+    {
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        s.Add(P0, Creature("Warden", 3, 4) with { Replaces = Replacements.PreventOneDamageFromOpponentsSources });
+        var totem = s.Add(P1, Make("Spark Totem", "Artifact", """{ "abilities": [{ "cost": "{T}", "effects": [{ "damage": 3, "to": "opponents" }], "text": "{T}: This artifact deals 3 damage to each opponent." }] }""",
+            "{2}", null, "{T}: This artifact deals 3 damage to each opponent."));
+        var palm = s.InHand(P0, Make("Mirror Palm", "Instant", """{ "spell": { "effects": [{ "preventNextFromChosenSource": { "immediately": true, "effects": [{ "damage": "triggerAmount", "to": "triggeredPlayer" }], "text": "If damage is prevented this way, Mirror Palm deals that much damage to that source's controller." } }] } }""",
+            "{R}", null, "The next time a source of your choice would deal damage to you this turn, prevent that damage. If damage is prevented this way, Mirror Palm deals that much damage to that source's controller."));
+        s.Attacker.Choose = (_, request) => request.Options.Where(o => o.Id == totem).Select(o => o.Id).Take(1).ToList();
+        var asked = new List<OptionRequest>();
+        s.Attacker.Option = (_, request) => { asked.Add(request); return request.Options.ToList().FindIndex(o => o.Contains(first)); };
+        Play(s, CastOnce(palm));
+        bool used = false;
+        s.Defender.Act = (_, legal) =>
+        {
+            if (!used && s.Card(palm).Zone == Zone.Graveyard && legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == totem) is { } a) { used = true; return a; }
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        var question = Assert.Single(asked);
+        Assert.EndsWith("which effect applies next?", question.Prompt);
+        Assert.Equal(2, question.Options.Count);
+        Assert.Equal(20, Life(s, P0));
+        Assert.Equal(life, Life(s, P1));
+    }
+
     // ------------------------------------------------------------------ a life floor
 
     [Fact]

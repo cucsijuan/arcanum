@@ -166,6 +166,100 @@ public class DamageAndPreventionTests
         Assert.True(flyingAfter); // the later effect's timestamp wins (rule 613.7)
     }
 
+    // ---------------------------------------------------------------- the order of prevention effects (rule 616.1)
+
+    /// <summary>Player 0 casts a 3-damage spell at <paramref name="target"/>; the questions put to player 1 are recorded and answered by <paramref name="answer"/>.</summary>
+    private static (Scenario S, List<OptionRequest> Asked) BoltAt(Func<Scenario, Target> target, Func<OptionRequest, int>? answer = null)
+    {
+        var s = Casting();
+        s.Lands(P0, 1);
+        s.InHand(P0, Burn("Bolt", 3));
+        var asked = new List<OptionRequest>();
+        s.Defender.Option = (_, request) => { asked.Add(request); return answer?.Invoke(request) ?? 0; };
+        var chosen = target(s);
+        s.Attacker.Targets = (_, _) => new[] { chosen };
+        return (s, asked);
+    }
+
+    private static int IndexOf(OptionRequest request, string text) => request.Options.ToList().FindIndex(o => o.Contains(text));
+
+    [Theory]
+    [InlineData("used up", 1, 0)] // the next-time shield is spent and the counter stays
+    [InlineData("shield counter", 0, 1)] // the counter is spent and the next-time shield stays
+    public async Task TheAffectedPlayerChoosesBetweenAShieldCounterAndANextTimeShield(string pick, int counters, int shields)
+    {
+        CardId mark = default;
+        var (s, asked) = BoltAt(t =>
+        {
+            mark = t.Add(P1, Creature("Mark", 2, 2));
+            t.Card(mark).Counters[CounterKind.Shield] = 1;
+            t.Game.State.PreventionShields.Add(new PreventionShield(1, false) { ToObject = (mark, t.Card(mark).Version), NextTimeOnly = true, Controller = P1, Id = 1 });
+            return Target.Of(mark);
+        }, request => IndexOf(request, pick));
+        int left = -1; // shields wear off in the cleanup step: counted as the spell finishes resolving
+        s.Game.EventRaised += e => { if (e is SpellResolved) left = s.Game.State.PreventionShields.Count; };
+        await s.RunUntilTurn();
+        var question = Assert.Single(asked);
+        Assert.EndsWith("which effect applies next?", question.Prompt);
+        Assert.Equal(2, question.Options.Count);
+        Assert.Equal(Zone.Battlefield, s.Card(mark).Zone);
+        Assert.Equal(0, Dealt(s, mark));
+        Assert.Equal(counters, s.Card(mark).CounterCount(CounterKind.Shield));
+        Assert.Equal(shields, left);
+    }
+
+    [Fact]
+    public async Task PreventionsThatCostAndCauseNothingAreAppliedWithoutAsking()
+    {
+        // Two "prevent all" effects and a "prevent 1": whichever comes first, all 3 damage is prevented and nothing else happens.
+        var (s, asked) = BoltAt(t =>
+        {
+            t.Add(P1, Creature("Seraph", 3, 4) with { Replaces = Replacements.PreventOneDamageFromOpponentsSources });
+            t.Game.State.PreventionShields.Add(new PreventionShield(1, false) { ToPlayer = P1, Controller = P1, Id = 1 });
+            t.Game.State.PreventionShields.Add(new PreventionShield(1, false) { Controller = P1, Id = 2 });
+            return Target.Of(P1);
+        });
+        await s.RunUntilTurn();
+        Assert.Empty(asked);
+        Assert.Equal(20, Life(s, P1));
+    }
+
+    [Fact]
+    public async Task ASingleKindOfPreventionIsAppliedWithoutAsking()
+    {
+        CardId mark = default;
+        var (s, asked) = BoltAt(t =>
+        {
+            mark = t.Add(P1, Creature("Mark", 2, 2));
+            t.Card(mark).Counters[CounterKind.Shield] = 1;
+            return Target.Of(mark);
+        });
+        await s.RunUntilTurn();
+        Assert.Empty(asked);
+        Assert.Equal(Zone.Battlefield, s.Card(mark).Zone);
+        Assert.Equal(0, s.Card(mark).CounterCount(CounterKind.Shield));
+    }
+
+    [Fact]
+    public async Task AComputerPlayerKeepsItsShieldCounterWhenAPreventionCostsNothing()
+    {
+        CardId mark = default;
+        var bot = new Arcanum.Bots.BotController(P1);
+        var (s, _) = BoltAt(t =>
+        {
+            mark = t.Add(P1, Creature("Mark", 2, 2));
+            t.Card(mark).Counters[CounterKind.Shield] = 1;
+            t.Game.State.PreventionShields.Add(new PreventionShield(1, false) { ToObject = (mark, t.Card(mark).Version), Controller = P1, Id = 1 });
+            return Target.Of(mark);
+        });
+        var asked = new List<OptionRequest>();
+        s.Defender.Option = (view, request) => { asked.Add(request); return bot.ChooseOptionAsync(view, request).Result; };
+        await s.RunUntilTurn();
+        Assert.Equal(2, Assert.Single(asked).Options.Count); // a real choice: the player may spend the counter
+        Assert.Equal(Zone.Battlefield, s.Card(mark).Zone);
+        Assert.Equal(1, s.Card(mark).CounterCount(CounterKind.Shield));
+    }
+
     // ---------------------------------------------------------------- Shifting Hydra
 
     private static CardDefinition Hydra() => Creature("Hydra", 0, 0) with

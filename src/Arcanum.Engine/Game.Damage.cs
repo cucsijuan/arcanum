@@ -41,7 +41,10 @@ public sealed partial class Game
     /// <summary>One replacement or prevention effect that could modify a part of a damage event.</summary>
     private sealed record DamageModifier(string Key, string Id, string Label, Func<int, int> Apply)
     {
-        /// <summary>A plain prevention effect (its order among other plain ones changes nothing).</summary>
+        /// <summary>
+        /// A prevention effect that costs and causes nothing (it uses up no shield, removes no counter, and nothing happens
+        /// because it prevented damage): its order among other plain ones changes neither the damage dealt nor the damage prevented.
+        /// </summary>
         public bool PlainPrevention { get; init; }
     }
 
@@ -198,6 +201,8 @@ public sealed partial class Game
         {
             var kinds = modifiers.Select(m => m.Key).Distinct().ToList();
             DamageModifier next;
+            // The order is the affected player's choice unless it can't change anything: one kind of effect, or only
+            // preventions that cost and cause nothing (the same damage is prevented and dealt whichever comes first).
             if (kinds.Count > 1 && !modifiers.All(m => m.PlainPrevention))
             {
                 int pick = await ControllerOf(chooser).ChooseOptionAsync(ViewFor(chooser), new OptionRequest(
@@ -238,20 +243,21 @@ public sealed partial class Game
                            && !State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && c.Definition.DamageCantBePrevented);
         if (preventable)
         {
-            if (PreventsAll(source, part.ToCard, part.ToPlayer, part.Combat, out var preventing) is { } reason)
+            // "Prevent all damage" shields that are used up or make something happen are each a choice of their own. The
+            // options are listed with the one that keeps the most first (a computer player takes the first): a shield of
+            // the affected player that does something for them, then prevention that costs nothing, then the other shields.
+            var costly = State.PreventionShields.Where(s => s.ActiveOn(State.TurnNumber) && !s.CountersInstead && (part.Combat || !s.CombatOnly)
+                                                            && HasCostOrEffect(s, source) && ShieldPrevents(s, source, part.ToCard, part.ToPlayer)).ToList();
+            var affected = part.ToPlayer ?? part.ToCard!.Controller;
+            bool Rewarding(PreventionShield s) => s.Controller == affected && (s.WhenPrevented is not null || s.WhenCreatureDamagePrevented is not null);
+            foreach (var shield in costly.Where(Rewarding)) Add(ShieldModifier(shield, source, notePrevented));
+            if (PreventsAll(source, part.ToCard, part.ToPlayer, part.Combat) is { } reason)
                 Add(new DamageModifier("preventAll", $"preventAll:{RecipientKey(part)}", $"Prevent all of it ({reason})", n =>
                 {
                     notePrevented(n);
-                    // "Whenever damage from a creature is prevented this way, …"
-                    if (preventing?.WhenCreatureDamagePrevented is { } whenPrevented && preventing.SourceCard is { } shieldCard && WasCreature(source))
-                        AddPending(shieldCard, whenPrevented, preventing.Controller, new TriggerInfo(source.Id, source.Version, preventing.Controller));
-                    if (preventing is { WhenPreventedImmediately: true, WhenPrevented: { } immediate, SourceCard: { } immediateCard })
-                        _preventedDamageEffects.Add((immediateCard, preventing.Controller, immediate.Effects, new TriggerInfo(source.Id, source.Version, SourceController(source), n)));
-                    else if (preventing?.WhenPrevented is { } reflexive && preventing.SourceCard is { } reflexiveCard)
-                        AddPending(reflexiveCard, reflexive, preventing.Controller, new TriggerInfo(source.Id, source.Version, SourceController(source), n));
-                    if (preventing is { NextTimeOnly: true }) State.PreventionShields.Remove(preventing);
                     return 0;
                 }) { PlainPrevention = true });
+            foreach (var shield in costly.Where(s => !Rewarding(s))) Add(ShieldModifier(shield, source, notePrevented));
             // "If damage would be dealt to that creature this turn, prevent that damage and put that many +1/+1 counters on it."
             foreach (var shield in State.PreventionShields.Where(s => s.CountersInstead && s.ActiveOn(State.TurnNumber) && (part.Combat || !s.CombatOnly)))
                 if (part.ToCard is { } counted && ShieldPrevents(shield, source, part.ToCard, part.ToPlayer))
@@ -269,7 +275,7 @@ public sealed partial class Game
                         notePrevented(n);
                         _preventedDamageMills.Add((skinner, n));
                         return 0;
-                    }) { PlainPrevention = true });
+                    }));
             // "If a source an opponent controls would deal damage to you, prevent 1 of that damage."
             if (part.ToPlayer is { } player && State.OpponentsOf(player).Contains(SourceController(source)))
                 foreach (var seraph in State.PermanentsControlledBy(player).Where(c => (c.Replaces & Replacements.PreventOneDamageFromOpponentsSources) != 0))
@@ -282,7 +288,7 @@ public sealed partial class Game
                     notePrevented(n);
                     RemoveCountersFrom(shielded, CounterKind.Shield, 1);
                     return 0;
-                }) { PlainPrevention = true });
+                }));
             // "If damage would be dealt to this creature, prevent that damage and remove that many +1/+1 counters from it."
             if (part.ToCard is { } hydra && (hydra.Replaces & Replacements.PreventDamageRemoveCounters) != 0)
                 Add(new DamageModifier("removeCounters", $"removeCounters:{hydra.Id}", $"Prevent it and remove that many +1/+1 counters ({hydra.Name})", n =>
@@ -332,12 +338,42 @@ public sealed partial class Game
     private PlayerId SourceController(Card source) =>
         source.Zone is not (Zone.Battlefield or Zone.Stack) && source.ZoneChangedTurn == State.TurnNumber && source.LastKnownInfo is { } lki ? lki.Controller : source.Controller;
 
-    /// <summary>A prevention effect that prevents all of this damage, described for players; null if none applies (rule 615).</summary>
-    private string? PreventsAll(Card source, Card? targetCard, PlayerId? targetPlayer, bool combat, out PreventionShield? preventing)
+    /// <summary>
+    /// Whether preventing damage from <paramref name="source"/> with this shield costs or causes something: it is used up
+    /// ("the next time"), or something happens because damage was prevented this way.
+    /// </summary>
+    private bool HasCostOrEffect(PreventionShield shield, Card source) =>
+        shield.NextTimeOnly || shield.WhenPrevented is not null || (shield.WhenCreatureDamagePrevented is not null && shield.SourceCard is not null && WasCreature(source));
+
+    /// <summary>A "prevent all damage" shield that is used up or makes something happen, as a choice of its own (rule 616.1).</summary>
+    private DamageModifier ShieldModifier(PreventionShield shield, Card source, Action<int> notePrevented)
     {
-        preventing = null;
+        string from = shield.SourceCard is { } id ? State.GetCard(id).Name : "a prevention effect";
+        string label = shield.NextTimeOnly ? $"Prevent all of it ({from}, which is used up)" : $"Prevent all of it ({from})";
+        return new DamageModifier($"preventShield:{shield.Id}", $"preventShield:{shield.Id}", label, n =>
+        {
+            if (!State.PreventionShields.Contains(shield)) return n; // used up by another part of this event
+            notePrevented(n);
+            // "Whenever damage from a creature is prevented this way, …"
+            if (shield.WhenCreatureDamagePrevented is { } whenPrevented && shield.SourceCard is { } shieldCard && WasCreature(source))
+                AddPending(shieldCard, whenPrevented, shield.Controller, new TriggerInfo(source.Id, source.Version, shield.Controller));
+            if (shield is { WhenPreventedImmediately: true, WhenPrevented: { } immediate, SourceCard: { } immediateCard })
+                _preventedDamageEffects.Add((immediateCard, shield.Controller, immediate.Effects, new TriggerInfo(source.Id, source.Version, SourceController(source), n)));
+            else if (shield.WhenPrevented is { } reflexive && shield.SourceCard is { } reflexiveCard)
+                AddPending(reflexiveCard, reflexive, shield.Controller, new TriggerInfo(source.Id, source.Version, SourceController(source), n));
+            if (shield.NextTimeOnly) State.PreventionShields.Remove(shield);
+            return 0;
+        });
+    }
+
+    /// <summary>
+    /// A prevention effect that prevents all of this damage and costs and causes nothing, described for players; null if
+    /// none applies (rule 615). Shields that are used up or make something happen are <see cref="ShieldModifier"/>s.
+    /// </summary>
+    private string? PreventsAll(Card source, Card? targetCard, PlayerId? targetPlayer, bool combat)
+    {
         foreach (var shield in State.PreventionShields.Where(s => s.ActiveOn(State.TurnNumber) && !s.CountersInstead && (combat || !s.CombatOnly)))
-            if (ShieldPrevents(shield, source, targetCard, targetPlayer)) { preventing = shield; return "a prevention effect"; }
+            if (!HasCostOrEffect(shield, source) && ShieldPrevents(shield, source, targetCard, targetPlayer)) return "a prevention effect";
         if (State.DamagePreventions.Any(d => d.Card == source.Id && d.Version == source.Version)) return "its damage is prevented";
         if (targetPlayer is { } protectedPlayer && State.GetPlayer(protectedPlayer).Protected) return "protection"; // protection from everything
         if (targetPlayer is { } shieldedPlayer && PlayerProtectedFrom(shieldedPlayer, SourceController(source))) return "protection from opponents";
