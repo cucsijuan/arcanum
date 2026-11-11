@@ -184,8 +184,8 @@ public sealed partial class Game
 
     /// <summary>
     /// Recomputes characteristics changed by continuous effects: static abilities of permanents on the battlefield,
-    /// then "until end of turn" effects. Only additive P/T changes (layer 7c) and keyword grants (layer 6) exist so
-    /// far, so the order within a layer doesn't change the result.
+    /// then the effects of resolved spells and abilities, layer by layer (rule 613.1). Inside a layer or sublayer the effects
+    /// apply in timestamp order, except that an effect waits for those it depends on (rules 613.7 and 613.8, ApplyLayer).
     /// </summary>
     private void RecomputeContinuousEffects()
     {
@@ -261,14 +261,32 @@ public sealed partial class Game
 
         // Layer 1 (rule 613.1a): "Enchanted creature is a copy of the chosen creature" gives the copiable values the chosen creature has
         // (those it last had, once it has left the battlefield), so everything below works from the copy.
-        foreach (var (source, ability) in Statics(a => a.CopiesChosenCreature))
+        // A copy of a creature that is itself a copy takes the values that one has as a copy: it depends on the other effect (rule 613.8).
+        var context = new LayerContext(battlefield, sources, graveyardSources);
+        ApplyLayer(() => StaticCandidates(context, a => a.CopiesChosenCreature).Select(candidate =>
         {
-            var chosen = source.ChosenCreature is { } pick && State.GetCard(pick.Card) is { } found && found.Version == pick.Version && found.Zone == Zone.Battlefield ? found : null;
-            if (chosen is not null) source.ChosenCreatureValues = chosen.Definition;
-            if (source.ChosenCreatureValues is not { } values) continue;
-            foreach (var affected in AffectedBy(source, ability).Where(a => a.Id != chosen?.Id).ToList())
-                affected.EffectCopy = values with { IsToken = affected.PrintedDefinition.IsToken, Foil = affected.PrintedDefinition.Foil };
-        }
+            var (source, ability, _) = candidate;
+            Card? Chosen() => source.ChosenCreature is { } pick && State.GetCard(pick.Card) is { } found && found.Version == pick.Version && found.Zone == Zone.Battlefield ? found : null;
+            return new LayerEffect
+            {
+                Key = new EffectKey(StaticEffectKind, source.Id, candidate.Occurrence, ability),
+                Timestamp = source.Timestamp,
+                Source = source,
+                Writes = Aspect.All,
+                Reads = Aspect.All,
+                Exists = () => StaticExists(candidate),
+                Targets = () => AffectedBy(source, ability).Where(a => a.Id != Chosen()?.Id).ToList(),
+                Does = _ => Chosen()?.Definition ?? source.ChosenCreatureValues,
+                Apply = targets =>
+                {
+                    var values = Chosen()?.Definition ?? source.ChosenCreatureValues;
+                    if (!_layerTrial) source.ChosenCreatureValues = values; // remembered once the chosen creature is gone
+                    if (values is null) return;
+                    foreach (var affected in targets)
+                        affected.EffectCopy = values with { IsToken = affected.PrintedDefinition.IsToken, Foil = affected.PrintedDefinition.Foil };
+                },
+            };
+        }).ToList(), card => card.EffectCopy, (card, saved) => card.EffectCopy = (CardDefinition?)saved);
 
         // "Enchanted land is the chosen type" (rule 305.7) removes the abilities from the land's rules text, so it applies before any
         // effect those abilities would generate (rule 613.8a(c) dependency): an Aura making a land an Island, on a land whose ability
@@ -278,9 +296,10 @@ public sealed partial class Game
                 foreach (var affected in AffectedBy(source, ability).Where(a => a.Is(CardType.Land)).ToList())
                     affected.LosesTextAbilities = true;
 
-        // Which abilities exist decides which static abilities apply at all, so the ability layer is worked out first
-        // with printed characteristics, then again once types and colors are settled (rule 613.8 dependency).
-        ApplyAbilityLayer(battlefield, effects, Statics, AffectedBy);
+        // Which abilities exist decides which static abilities apply at all in the layers before the ability layer, so that layer is
+        // worked out first with printed characteristics, then again once types and colors are settled. This is across layers;
+        // inside each layer the order follows rule 613.8 (ApplyLayer).
+        ApplyAbilityLayer(context, effects);
 
         // "This creature has all activated abilities of lands your opponents control except mana abilities" (layer 6, worked out here
         // with control known).
@@ -289,19 +308,35 @@ public sealed partial class Game
             _borrowedLandAbilities[thief.Id] = State.OpponentsOf(thief.Controller).SelectMany(o => State.PermanentsControlledBy(o)).Where(c => c.Is(CardType.Land))
                 .SelectMany(c => c.Abilities.OfType<ActivatedAbility>().Where(a => !IsManaAbilityOf(a))).ToList();
 
-        // Layer 2: control-changing effects and static abilities ("You control enchanted permanent"), in timestamp order.
-        var controlChanges = new List<(long Timestamp, Card Card, Func<PlayerId?> To)>();
-        foreach (var (source, ability) in Statics(a => a.GivesControl || a.GivesControlToMonarch))
-            foreach (var affected in AffectedBy(source, ability).ToList())
+        // Layer 2: control-changing effects and static abilities ("You control enchanted permanent"), in timestamp order unless one
+        // depends on another ("you control enchanted permanent" gives it to whoever controls the Aura once that is settled).
+        ApplyLayer(() =>
+        {
+            var changes = new List<LayerEffect>();
+            foreach (var candidate in StaticCandidates(context, a => a.GivesControl || a.GivesControlToMonarch))
             {
-                var giver = source;
-                controlChanges.Add((source.Timestamp, affected, () => ability.GivesControlToMonarch ? State.Monarch : giver.Controller));
+                var (giver, ability, _) = candidate;
+                PlayerId? To() => ability.GivesControlToMonarch ? State.Monarch : giver.Controller;
+                changes.Add(StaticEffect(context, candidate, Aspect.Control,
+                    card => { if (To() is { } newController && !State.GetPlayer(newController).HasLost) card.Controller = newController; },
+                    does: _ => To(), readsOfSource: ability.GivesControlToMonarch ? Aspect.None : Aspect.Control));
             }
-        foreach (var control in State.ControlEffects)
-            if (State.GetCard(control.Card) is { Zone: Zone.Battlefield } held)
-                controlChanges.Add((control.Timestamp, held, () => control.NewController));
-        foreach (var (_, card, to) in controlChanges.OrderBy(x => x.Timestamp))
-            if (to() is { } newController && !State.GetPlayer(newController).HasLost) card.Controller = newController;
+            for (int i = 0; i < State.ControlEffects.Count; i++)
+            {
+                var control = State.ControlEffects[i];
+                if (State.GetCard(control.Card) is not { Zone: Zone.Battlefield } held) continue;
+                var only = new[] { held };
+                changes.Add(new LayerEffect
+                {
+                    Key = new EffectKey(ControlEffectKind, held.Id, i),
+                    Timestamp = control.Timestamp,
+                    Writes = Aspect.Control,
+                    Targets = () => only,
+                    Apply = _ => { if (!State.GetPlayer(control.NewController).HasLost) held.Controller = control.NewController; },
+                });
+            }
+            return changes;
+        }, card => card.Controller, (card, saved) => card.Controller = (PlayerId)saved!);
         // A permanent that changes control is a new arrival for its controller and leaves combat (rules 302.6, 506.4).
         foreach (var card in battlefield.Where(c => controllersBefore.TryGetValue(c.Id, out var was) && was != c.Controller))
         {
@@ -310,69 +345,174 @@ public sealed partial class Game
             _controlChanged.Add((card.Id, card.Controller, controllersBefore[card.Id]));
         }
 
-        // Layer 1 (names set by copy-like effects), layer 4 (types and subtypes) and layer 5 (colors), in timestamp order.
-        var typeChanges = new List<(long Timestamp, Card Card, Action<Card, TypeState> Apply)>();
-        foreach (var (source, ability) in Statics(a => a.SetName is not null || a.SetTypes is not null || a.SetSubtypes is not null || a.SetColors is not null
-                                                        || a.AddTypes != 0 || a.AddSubtypes is not null || a.AddChosenType || a.SetChosenLandType || a.CreatureTypesOfLastExiled
-                                                        || a.RemoveTypes != 0 || a.EveryCreatureType || a.SetChosenColor))
-            foreach (var affected in AffectedBy(source, ability).ToList())
-            {
-                var chosen = ability.AddChosenType ? source.ChosenType : null;
-                var landType = ability.SetChosenLandType ? source.ChosenType : null;
-                typeChanges.Add((source.Timestamp, affected, (card, t) =>
-                {
-                    // "Enchanted land is the chosen type" (rule 305.7): its old land types go, its other subtypes stay.
-                    if (landType is not null && (t.Types & CardType.Land) != 0)
-                    {
-                        t.Subtypes = t.Subtypes.Where(s => !Card.IsLandType(s)).Append(landType).ToList();
-                        t.LandTypeSet = true;
-                    }
-                    if (ability.SetName is { } name) t.Name = name;
-                    if (ability.EveryCreatureType) t.EveryCreatureType = true;
-                    if (ability.SetChosenColor && source.ChosenColor is { } chosenColor) t.Colors = new[] { chosenColor };
-                    if (ability.SetTypes is { } types) t.Types = types;
-                    if (ability.SetSubtypes is { } subtypes) t.Subtypes = Card.ReplaceSubtypes(t.Subtypes, subtypes);
-                    if (ability.SetColors is { } colors) t.Colors = colors;
-                    t.Types |= ability.AddTypes;
-                    t.Types &= ~ability.RemoveTypes;
-                    if (ability.AddSubtypes is { } add) t.Subtypes.AddRange(add);
-                    if (chosen is not null) t.Subtypes.Add(chosen);
-                    // "Has the creature types of the last creature card exiled with it. It's still a Shapeshifter."
-                    if (ability.CreatureTypesOfLastExiled && LastCreatureExiledWith(source) is { } imprinted)
-                        t.Subtypes = Card.ReplaceSubtypes(t.Subtypes, imprinted.Definition.Subtypes.Where(Card.IsCreatureType).Append("Shapeshifter").Distinct().ToList());
-                }));
-            }
-        foreach (var effect in effects.Where(e => e.AddTypes != 0 || e.AddSubtypes is not null || e.SetSubtypes is not null || e.SetTypes is not null
-                                                  || e.SetColors is not null || e.AddColors is not null || e.LosesLandTypes || e.AddsEveryCreatureType))
-            typeChanges.Add((effect.Timestamp, State.GetCard(effect.Card), (card, t) =>
-            {
-                if (effect.LosesLandTypes) t.Subtypes = t.Subtypes.Where(s => !Card.IsLandType(s)).ToList();
-                if (effect.SetTypes is { } types) t.Types = types;
-                if (effect.SetSubtypes is { } subtypes) { t.Subtypes = Card.ReplaceSubtypes(t.Subtypes, subtypes); t.EveryCreatureType = false; }
-                t.Types |= effect.AddTypes;
-                if (effect.AddSubtypes is { } add) t.Subtypes.AddRange(add);
-                if (effect.AddsEveryCreatureType) t.EveryCreatureType = true;
-                if (effect.SetColors is { } colors) t.Colors = colors;
-                if (effect.AddColors is { } addColors) t.Colors = ColorOrder.Where(c => t.Colors.Contains(c) || addColors.Contains(c)).ToList();
-            }));
-        // Impending (702.176a): "as long as this permanent's impending cost was paid and it has a time counter on it, it's not a creature".
-        foreach (var impended in battlefield.Where(c => c.Impended && c.CounterCount(CounterKind.Time) > 0 && c.HasTextAbilities))
-            typeChanges.Add((impended.Timestamp, impended, (_, t) => t.Types &= ~CardType.Creature));
-        foreach (var group in typeChanges.GroupBy(x => x.Card))
+        // Names set by copy-like effects, then layer 4 (types and subtypes), then layer 5 (colors): each in timestamp order unless an
+        // effect depends on another (rule 613.8). "Enchanted land is the chosen type" takes the abilities of the land's rules text
+        // away here, so an effect of the same layer that such an ability would generate depends on it. An ability with parts in
+        // several of these layers keeps applying to the objects it first applied to (rule 613.6).
+        foreach (var card in battlefield) card.LosesTextAbilities = false;
+        var typeStates = new Dictionary<CardId, TypeState>();
+        TypeState TypesOf(Card card)
         {
-            var card = group.Key;
-            var t = new TypeState(card.Definition.Types, card.Definition.Subtypes.ToList(), card.Definition.ColorList, null);
-            foreach (var change in group.OrderBy(x => x.Timestamp)) change.Apply(card, t);
+            if (!typeStates.TryGetValue(card.Id, out var t))
+                typeStates[card.Id] = t = new TypeState(card.Definition.Types, card.Definition.Subtypes.ToList(), card.Definition.ColorList, null);
+            return t;
+        }
+        void Settle(Card card, TypeState t)
+        {
             card.TypesOverride = t.Types;
             card.SubtypesOverride = t.Subtypes.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (!ReferenceEquals(t.Colors, card.Definition.ColorList)) card.ColorsOverride = t.Colors;
+            card.ColorsOverride = ReferenceEquals(t.Colors, card.Definition.ColorList) ? null : t.Colors;
             card.NameOverride = t.Name;
             card.LosesTextAbilities = t.LandTypeSet;
             card.EffectEveryCreatureType = t.EveryCreatureType;
         }
+        object? SaveTypes(Card card) => typeStates.TryGetValue(card.Id, out var t) ? t.Clone() : null;
+        void RestoreTypes(Card card, object? saved)
+        {
+            if (saved is TypeState t)
+            {
+                typeStates[card.Id] = t;
+                Settle(card, t);
+                return;
+            }
+            typeStates.Remove(card.Id);
+            card.TypesOverride = null;
+            card.SubtypesOverride = null;
+            card.ColorsOverride = null;
+            card.NameOverride = null;
+            card.LosesTextAbilities = false;
+            card.EffectEveryCreatureType = false;
+        }
+        static bool NamePart(StaticAbility a) => a.SetName is not null;
+        static bool TypePart(StaticAbility a) => a.SetTypes is not null || a.SetSubtypes is not null || a.AddTypes != 0 || a.AddSubtypes is not null || a.AddChosenType
+                                                 || a.SetChosenLandType || a.CreatureTypesOfLastExiled || a.RemoveTypes != 0 || a.EveryCreatureType;
+        static bool ColorPart(StaticAbility a) => a.SetColors is not null || a.SetChosenColor;
+        var typeStatics = StaticCandidates(context, a => NamePart(a) || TypePart(a) || ColorPart(a));
+        var keptTargets = new Dictionary<EffectKey, IReadOnlyList<Card>>();
+        LayerEffect TypeEffect(StaticSource candidate, Aspect writes, Action<TypeState> change, Func<IReadOnlyList<Card>, object?>? does = null, Aspect reads = Aspect.None) =>
+            StaticEffect(context, candidate, writes, card =>
+            {
+                var t = TypesOf(card);
+                change(t);
+                Settle(card, t);
+            }, does, reads, locked: keptTargets);
+        LayerEffect LastingTypeEffect(int index, Aspect writes, Action<TypeState> change)
+        {
+            var effect = effects[index];
+            var card = State.GetCard(effect.Card);
+            var only = new[] { card };
+            return new LayerEffect
+            {
+                Key = new EffectKey(LastingEffectKind, card.Id, index),
+                Timestamp = effect.Timestamp,
+                Writes = writes,
+                Targets = () => only,
+                Apply = _ =>
+                {
+                    var t = TypesOf(card);
+                    change(t);
+                    Settle(card, t);
+                },
+            };
+        }
+
+        ApplyLayer(() => typeStatics.Where(c => NamePart(c.Ability)).Select(c => TypeEffect(c, Aspect.Name, t => t.Name = c.Ability.SetName)).ToList(),
+            SaveTypes, RestoreTypes);
+
+        ApplyLayer(() =>
+        {
+            var changes = new List<LayerEffect>();
+            foreach (var candidate in typeStatics.Where(c => TypePart(c.Ability)))
+            {
+                var (source, ability, _) = candidate;
+                changes.Add(TypeEffect(candidate, Aspect.Types | (ability.SetChosenLandType ? Aspect.TextAbilities : Aspect.None), t =>
+                {
+                    // "Enchanted land is the chosen type" (rule 305.7): its old land types go, its other subtypes stay.
+                    if (ability.SetChosenLandType && source.ChosenType is { } landType && (t.Types & CardType.Land) != 0)
+                    {
+                        t.Subtypes = t.Subtypes.Where(s => !Card.IsLandType(s)).Append(landType).ToList();
+                        t.LandTypeSet = true;
+                    }
+                    if (ability.EveryCreatureType) t.EveryCreatureType = true;
+                    if (ability.SetTypes is { } types) t.Types = types;
+                    if (ability.SetSubtypes is { } subtypes) t.Subtypes = Card.ReplaceSubtypes(t.Subtypes, subtypes);
+                    t.Types |= ability.AddTypes;
+                    t.Types &= ~ability.RemoveTypes;
+                    if (ability.AddSubtypes is { } add) t.Subtypes.AddRange(add);
+                    if (ability.AddChosenType && source.ChosenType is { } chosen) t.Subtypes.Add(chosen);
+                    // "Has the creature types of the last creature card exiled with it. It's still a Shapeshifter."
+                    if (ability.CreatureTypesOfLastExiled && LastCreatureExiledWith(source) is { } imprinted)
+                        t.Subtypes = Card.ReplaceSubtypes(t.Subtypes, imprinted.Definition.Subtypes.Where(Card.IsCreatureType).Append("Shapeshifter").Distinct().ToList());
+                },
+                // It sets the land type of a land only: whether the object is one is part of what the effect does.
+                does: ability.SetChosenLandType ? targets => targets.Select(c => ((c.TypesOverride ?? c.Definition.Types) & CardType.Land) != 0 ? 1 : 0).ToArray() : null,
+                reads: ability.SetChosenLandType ? Aspect.Types : Aspect.None));
+            }
+            for (int i = 0; i < effects.Count; i++)
+            {
+                var effect = effects[i];
+                if (effect.AddTypes == 0 && effect.AddSubtypes is null && effect.SetSubtypes is null && effect.SetTypes is null && !effect.LosesLandTypes && !effect.AddsEveryCreatureType) continue;
+                changes.Add(LastingTypeEffect(i, Aspect.Types, t =>
+                {
+                    if (effect.LosesLandTypes) t.Subtypes = t.Subtypes.Where(s => !Card.IsLandType(s)).ToList();
+                    if (effect.SetTypes is { } types) t.Types = types;
+                    if (effect.SetSubtypes is { } subtypes) { t.Subtypes = Card.ReplaceSubtypes(t.Subtypes, subtypes); t.EveryCreatureType = false; }
+                    t.Types |= effect.AddTypes;
+                    if (effect.AddSubtypes is { } add) t.Subtypes.AddRange(add);
+                    if (effect.AddsEveryCreatureType) t.EveryCreatureType = true;
+                }));
+            }
+            // Impending (702.176a): "as long as this permanent's impending cost was paid and it has a time counter on it, it's not a creature".
+            foreach (var impended in battlefield.Where(c => c.Impended))
+            {
+                var only = new[] { impended };
+                changes.Add(new LayerEffect
+                {
+                    Key = new EffectKey(ImpendingEffectKind, impended.Id, 0),
+                    Timestamp = impended.Timestamp,
+                    Source = impended,
+                    Writes = Aspect.Types,
+                    ReadsOfSource = Aspect.TextAbilities,
+                    Exists = () => impended.CounterCount(CounterKind.Time) > 0 && impended.HasTextAbilities,
+                    Targets = () => only,
+                    Apply = _ =>
+                    {
+                        var t = TypesOf(impended);
+                        t.Types &= ~CardType.Creature;
+                        Settle(impended, t);
+                    },
+                });
+            }
+            return changes;
+        }, SaveTypes, RestoreTypes);
+
+        ApplyLayer(() =>
+        {
+            var changes = new List<LayerEffect>();
+            foreach (var candidate in typeStatics.Where(c => ColorPart(c.Ability)))
+            {
+                var (source, ability, _) = candidate;
+                changes.Add(TypeEffect(candidate, Aspect.Colors, t =>
+                {
+                    if (ability.SetChosenColor && source.ChosenColor is { } chosenColor) t.Colors = new[] { chosenColor };
+                    if (ability.SetColors is { } colors) t.Colors = colors;
+                }));
+            }
+            for (int i = 0; i < effects.Count; i++)
+            {
+                var effect = effects[i];
+                if (effect.SetColors is null && effect.AddColors is null) continue;
+                changes.Add(LastingTypeEffect(i, Aspect.Colors, t =>
+                {
+                    if (effect.SetColors is { } colors) t.Colors = colors;
+                    if (effect.AddColors is { } addColors) t.Colors = ColorOrder.Where(c => t.Colors.Contains(c) || addColors.Contains(c)).ToList();
+                }));
+            }
+            return changes;
+        }, SaveTypes, RestoreTypes);
 
         // Layer 6 again with the final types (filters such as "artifact creatures" depend on them).
-        ApplyAbilityLayer(battlefield, effects, Statics, AffectedBy);
+        ApplyAbilityLayer(context, effects);
         foreach (var (thief, stolen) in _borrowedLandAbilities)
             if (State.GetCard(thief) is { Zone: Zone.Battlefield, LosesAbilities: false } holder) holder.GrantedAbilities.AddRange(stolen);
 
@@ -391,71 +531,156 @@ public sealed partial class Game
 
         RecomputeManaTypes(battlefield);
 
-        // Layer 7a: characteristic-defining abilities; 7b: effects that set base power/toughness, in timestamp order.
+        // Layer 7a: characteristic-defining abilities; 7b: effects that set base power/toughness. Each in timestamp order unless an
+        // effect depends on another (rule 613.8): a value worked out from power or toughness waits for what changes those.
         // A characteristic-defining ability works in every zone (rule 604.3): a card in a hand, library, graveyard or exile, or a
         // spell, has the power and toughness it defines (counted for its owner, or for the spell's controller).
-        foreach (var card in battlefield.Concat(State.Cards.Values.Where(c => c.Zone != Zone.Battlefield
-                     && (c.Definition.PowerFrom is not null || c.Definition.ToughnessFrom is not null))))
+        var defining = battlefield.Concat(State.Cards.Values.Where(c => c.Zone != Zone.Battlefield
+                     && (c.Definition.PowerFrom is not null || c.Definition.ToughnessFrom is not null))).ToList();
+        foreach (var card in defining)
         {
-            var cda = new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>());
-            card.BasePowerOverride = card.Definition.PowerFrom is { } pf ? Eval(pf, cda) : null;
-            card.BaseToughnessOverride = card.Definition.ToughnessFrom is { } tf ? Eval(tf, cda) : null;
+            card.BasePowerOverride = null;
+            card.BaseToughnessOverride = null;
         }
-        var setters = new List<(long Timestamp, Card Card, int? Power, int? Toughness)>();
-        foreach (var (source, ability) in Statics(a => a.SetPower is not null || a.SetToughness is not null || a.SetPowerFrom is not null || a.SetToughnessFrom is not null))
-            foreach (var affected in AffectedBy(source, ability).ToList())
+        static object? SaveBase(Card card) => (card.BasePowerOverride, card.BaseToughnessOverride);
+        static void RestoreBase(Card card, object? saved) => (card.BasePowerOverride, card.BaseToughnessOverride) = ((int?, int?))saved!;
+        static int[] Flat(IEnumerable<(int? Power, int? Toughness)> values) => values.SelectMany(v => new[] { v.Power ?? int.MinValue, v.Toughness ?? int.MinValue }).ToArray();
+        ApplyLayer(() => defining.Where(c => c.Definition.PowerFrom is not null || c.Definition.ToughnessFrom is not null).Select(card =>
+        {
+            var only = new[] { card };
+            (int? Power, int? Toughness) Values()
             {
-                // Worked out for each affected object on its own ("base power and toughness each equal to its mana value").
-                var own = new EffectContext(source.Controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>()) { AffectedCard = affected };
-                setters.Add((source.Timestamp, affected, ability.SetPower ?? (ability.SetPowerFrom is { } spf ? Eval(spf, own) : null),
-                    ability.SetToughness ?? (ability.SetToughnessFrom is { } stf ? Eval(stf, own) : null)));
+                var cda = new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>());
+                return (card.Definition.PowerFrom is { } pf ? Eval(pf, cda) : null, card.Definition.ToughnessFrom is { } tf ? Eval(tf, cda) : null);
             }
-        foreach (var effect in effects.Where(e => e.SetPower is not null || e.SetToughness is not null || e.SetPowerFrom is not null || e.SetToughnessFrom is not null))
-        {
-            var card = State.GetCard(effect.Card);
-            var own = new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>());
-            setters.Add((effect.Timestamp, card, effect.SetPower ?? (effect.SetPowerFrom is { } pf ? Eval(pf, own) : null),
-                effect.SetToughness ?? (effect.SetToughnessFrom is { } tf ? Eval(tf, own) : null)));
-        }
-        foreach (var (_, card, power, toughness) in setters.OrderBy(x => x.Timestamp))
-        {
-            if (power is { } p) card.BasePowerOverride = p;
-            if (toughness is { } t) card.BaseToughnessOverride = t;
-        }
+            return new LayerEffect
+            {
+                Key = new EffectKey(DefinedEffectKind, card.Id, 0),
+                Timestamp = card.Timestamp,
+                Writes = Aspect.BasePowerToughness,
+                Reads = QuantityReads(card.Definition.PowerFrom) | QuantityReads(card.Definition.ToughnessFrom),
+                Targets = () => only,
+                Does = _ => Values(),
+                Apply = _ => (card.BasePowerOverride, card.BaseToughnessOverride) = Values(),
+            };
+        }).ToList(), SaveBase, RestoreBase);
 
-        // Layer 7c: modifications (their order doesn't matter); counters (7d) are counted in Card.Power.
-        foreach (var (source, ability) in Statics(a => a.Power != 0 || a.Toughness != 0 || a.PowerBonus is not null || a.ToughnessBonus is not null))
+        ApplyLayer(() =>
         {
-            var ctx = new EffectContext(source.Controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>());
-            if (DependsOnAffected(ability.PowerBonus) || DependsOnAffected(ability.ToughnessBonus))
+            var setters = new List<LayerEffect>();
+            foreach (var candidate in StaticCandidates(context, a => a.SetPower is not null || a.SetToughness is not null || a.SetPowerFrom is not null || a.SetToughnessFrom is not null))
             {
-                // Worked out for each affected object on its own ("for each other creature that shares a creature type with it").
-                foreach (var affected in AffectedBy(source, ability).ToList())
+                var (source, ability, _) = candidate;
+                // Worked out for each affected object on its own ("base power and toughness each equal to its mana value").
+                (int? Power, int? Toughness) Values(Card affected)
                 {
-                    var own = ctx with { AffectedCard = affected };
-                    affected.PowerBonus += ability.Power + (ability.PowerBonus is { } apb ? Eval(apb, own) : 0);
-                    affected.ToughnessBonus += ability.Toughness + (ability.ToughnessBonus is { } atb ? Eval(atb, own) : 0);
+                    var own = new EffectContext(source.Controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>()) { AffectedCard = affected };
+                    return (ability.SetPower ?? (ability.SetPowerFrom is { } spf ? Eval(spf, own) : null),
+                        ability.SetToughness ?? (ability.SetToughnessFrom is { } stf ? Eval(stf, own) : null));
                 }
-                continue;
+                setters.Add(StaticEffect(context, candidate, Aspect.BasePowerToughness, card =>
+                {
+                    var (power, toughness) = Values(card);
+                    if (power is { } p) card.BasePowerOverride = p;
+                    if (toughness is { } t) card.BaseToughnessOverride = t;
+                },
+                does: ability.SetPowerFrom is null && ability.SetToughnessFrom is null ? null : targets => Flat(targets.Select(Values)),
+                reads: QuantityReads(ability.SetPowerFrom) | QuantityReads(ability.SetToughnessFrom)));
             }
-            int power = ability.Power + (ability.PowerBonus is { } pb ? Eval(pb, ctx) : 0);
-            int toughness = ability.Toughness + (ability.ToughnessBonus is { } tb ? Eval(tb, ctx) : 0);
-            if (power == 0 && toughness == 0) continue;
-            foreach (var affected in AffectedBy(source, ability).ToList())
+            for (int i = 0; i < effects.Count; i++)
             {
-                affected.PowerBonus += power;
-                affected.ToughnessBonus += toughness;
+                var effect = effects[i];
+                if (effect.SetPower is null && effect.SetToughness is null && effect.SetPowerFrom is null && effect.SetToughnessFrom is null) continue;
+                var card = State.GetCard(effect.Card);
+                var only = new[] { card };
+                (int? Power, int? Toughness) Values()
+                {
+                    var own = new EffectContext(card.Controller, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>());
+                    return (effect.SetPower ?? (effect.SetPowerFrom is { } pf ? Eval(pf, own) : null),
+                        effect.SetToughness ?? (effect.SetToughnessFrom is { } tf ? Eval(tf, own) : null));
+                }
+                setters.Add(new LayerEffect
+                {
+                    Key = new EffectKey(LastingEffectKind, card.Id, i),
+                    Timestamp = effect.Timestamp,
+                    Writes = Aspect.BasePowerToughness,
+                    Reads = QuantityReads(effect.SetPowerFrom) | QuantityReads(effect.SetToughnessFrom),
+                    Targets = () => only,
+                    Does = effect.SetPowerFrom is null && effect.SetToughnessFrom is null ? null : _ => Values(),
+                    Apply = _ =>
+                    {
+                        var (power, toughness) = Values();
+                        if (power is { } p) card.BasePowerOverride = p;
+                        if (toughness is { } t) card.BaseToughnessOverride = t;
+                    },
+                });
             }
-        }
-        foreach (var effect in effects)
+            return setters;
+        }, SaveBase, RestoreBase);
+
+        // Layer 7c: modifications; counters (7d) are counted in Card.Power. Adding up is the same in any order, but an effect that
+        // looks at power or toughness (for what it applies to, or for how much it gives) waits for the ones that change what it sees.
+        ApplyLayer(() =>
         {
-            var card = State.GetCard(effect.Card);
-            card.PowerBonus += effect.Power;
-            card.ToughnessBonus += effect.Toughness;
-        }
-        // Each hone counter on an Equipment grants +1/+0 to the creature it's attached to.
-        foreach (var equipment in battlefield.Where(c => c.CounterCount(CounterKind.Hone) > 0 && c.AttachedTo is not null))
-            if (State.GetCard(equipment.AttachedTo!.Value) is { Zone: Zone.Battlefield } equipped) equipped.PowerBonus += equipment.CounterCount(CounterKind.Hone);
+            var changes = new List<LayerEffect>();
+            foreach (var candidate in StaticCandidates(context, a => a.Power != 0 || a.Toughness != 0 || a.PowerBonus is not null || a.ToughnessBonus is not null))
+            {
+                var (source, ability, _) = candidate;
+                // Worked out for each affected object on its own ("for each other creature that shares a creature type with it"), or once.
+                bool each = DependsOnAffected(ability.PowerBonus) || DependsOnAffected(ability.ToughnessBonus);
+                (int Power, int Toughness) Bonus(Card? affected)
+                {
+                    var ctx = new EffectContext(source.Controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>());
+                    if (affected is not null) ctx = ctx with { AffectedCard = affected };
+                    return (ability.Power + (ability.PowerBonus is { } pb ? Eval(pb, ctx) : 0), ability.Toughness + (ability.ToughnessBonus is { } tb ? Eval(tb, ctx) : 0));
+                }
+                (int Power, int Toughness) once = default;
+                changes.Add(StaticEffect(context, candidate, Aspect.PowerToughness, card =>
+                {
+                    var (power, toughness) = each ? Bonus(card) : once;
+                    card.PowerBonus += power;
+                    card.ToughnessBonus += toughness;
+                },
+                does: ability.PowerBonus is null && ability.ToughnessBonus is null ? null
+                    : targets => each ? targets.SelectMany(c => { var (p, t) = Bonus(c); return new[] { p, t }; }).ToArray() : Bonus(null),
+                reads: QuantityReads(ability.PowerBonus) | QuantityReads(ability.ToughnessBonus),
+                onApply: () => { if (!each) once = Bonus(null); }));
+            }
+            for (int i = 0; i < effects.Count; i++)
+            {
+                var effect = effects[i];
+                if (effect.Power == 0 && effect.Toughness == 0) continue;
+                var card = State.GetCard(effect.Card);
+                var only = new[] { card };
+                changes.Add(new LayerEffect
+                {
+                    Key = new EffectKey(LastingEffectKind, card.Id, i),
+                    Timestamp = effect.Timestamp,
+                    Writes = Aspect.PowerToughness,
+                    Targets = () => only,
+                    Apply = _ =>
+                    {
+                        card.PowerBonus += effect.Power;
+                        card.ToughnessBonus += effect.Toughness;
+                    },
+                });
+            }
+            // Each hone counter on an Equipment grants +1/+0 to the creature it's attached to.
+            foreach (var equipment in battlefield.Where(c => c.CounterCount(CounterKind.Hone) > 0 && c.AttachedTo is not null))
+            {
+                if (State.GetCard(equipment.AttachedTo!.Value) is not { Zone: Zone.Battlefield } equipped) continue;
+                var only = new[] { equipped };
+                changes.Add(new LayerEffect
+                {
+                    Key = new EffectKey(HoneEffectKind, equipment.Id, 0),
+                    Timestamp = equipment.Timestamp,
+                    Writes = Aspect.PowerToughness,
+                    Targets = () => only,
+                    Apply = _ => equipped.PowerBonus += equipment.CounterCount(CounterKind.Hone),
+                });
+            }
+            return changes;
+        }, card => (card.PowerBonus, card.ToughnessBonus), (card, saved) => (card.PowerBonus, card.ToughnessBonus) = ((int, int))saved!);
         // Mana amounts worked out from characteristics ("X mana, where X is this creature's power") use the final values.
         foreach (var card in battlefield)
             card.ManaAmount = card.Definition.ManaAmountFrom is { } ma
@@ -570,79 +795,152 @@ public sealed partial class Game
 
         /// <summary>Its land subtype was set (rule 305.7).</summary>
         public bool LandTypeSet { get; set; }
+
+        public TypeState Clone() => new(Types, Subtypes.ToList(), Colors, Name) { EveryCreatureType = EveryCreatureType, LandTypeSet = LandTypeSet };
     }
 
     /// <summary>
-    /// Layer 6 in timestamp order (rule 613.7): granting abilities adds to what the object has; losing all abilities
-    /// removes its printed abilities and everything granted by earlier effects, but not by later ones.
+    /// Layer 6: granting abilities adds to what the object has; losing all abilities removes its printed abilities and everything
+    /// granted by effects applied before, but not by those applied after. Timestamp order (rule 613.7), except that an effect waits
+    /// for the ones it depends on (rule 613.8): a static ability that another effect of the layer removes generates no effect.
     /// </summary>
-    private void ApplyAbilityLayer(List<Card> battlefield, List<UntilEndOfTurnEffect> effects,
-        Func<Func<StaticAbility, bool>, List<(Card Source, StaticAbility Ability)>> statics, Func<Card, StaticAbility, IEnumerable<Card>> affectedBy)
+    private void ApplyAbilityLayer(LayerContext context, List<UntilEndOfTurnEffect> effects)
     {
-        // Abilities existing before this pass decide which statics apply; repeat until that is stable.
-        for (int pass = 0; pass < 4; pass++)
+        var battlefield = context.Battlefield;
+        foreach (var card in battlefield)
         {
-            var before = battlefield.ToDictionary(c => c.Id, c => (c.LosesAbilities, c.GrantedAbilities.Count, c.GrantedKeywords.Count));
-            var changes = new List<(long Timestamp, Card Card, Action<Card> Apply)>();
-            foreach (var (source, ability) in statics(a => a.LosesAllAbilities || a.Keywords is { Count: > 0 } || a.GrantedKeywords.Count > 0
-                                                           || a.GrantsAbilities is not null || a.GrantsMana is not null || a.GrantsWard is not null || a.GrantsWardLife > 0
-                                                           || a.GrantsGraveyardAbilities is not null || a.GrantsYourCreaturesAbilities is not null || a.GrantsExiledCreatureAbilities || a.GrantsExiledCardAbilities is not null || a.CantAttackYou || a.CantAttackYouOrPlaneswalkers || a.Goads || a.ProtectionFromRingBearers || a.ProtectionFromTypes != 0 || a.ProtectionFromChosenColor
-                                                           || a.LosesKeywords is not null || a.PreventsDamage != StaticDamagePrevention.None || a.CantActivateAbilities || a.CantBeSacrificed
-                                                           || a.GrantsCantBeBlockedBy is not null || a.GrantsDyingTriggerBonus))
-                foreach (var affected in affectedBy(source, ability).ToList())
-                    changes.Add((source.Timestamp, affected, card =>
-                    {
-                        if (ability.LosesAllAbilities) LoseAllAbilities(card);
-                        card.GrantedKeywords.UnionWith(ability.GrantedKeywords);
-                        card.LostKeywords.ExceptWith(ability.GrantedKeywords); // a later grant gives back a keyword lost earlier (timestamps, rule 613.7)
-                        if (ability.LosesKeywords is { } loses) { card.LostKeywords.UnionWith(loses); card.GrantedKeywords.ExceptWith(loses); }
-                        card.StaticDamagePrevention |= ability.PreventsDamage;
-                        if (ability.CantActivateAbilities) card.AbilitiesCantBeActivated = true;
-                        if (ability.CantBeSacrificed) card.StaticCantBeSacrificed = true;
-                        if (ability.GrantsAbilities is { } granted) card.GrantedAbilities.AddRange(granted.Select(g => g with { GrantedBy = source.Id }));
-                        if (ability.GrantsMana is { } mana) card.GrantedManaOptions.Add(new ManaOption(mana, ability.GrantsManaAmount, ability.GrantsManaOnlyFor));
-                        if (ability.GrantsDyingTriggerBonus) card.DyingTriggerBonus++;
-                        if (ability.GrantsWard is { } ward) card.GrantedWards.Add(ward);
-                        if (ability.GrantsWardLife > 0) card.GrantedWardLives.Add(ability.GrantsWardLife);
-                        if (ability.GrantsCantBeBlockedBy is { } unblockable) card.BlockRestrictions.Add(unblockable);
-                        if (ability.CantAttackYou) card.CantAttackPlayers.Add(source.Controller);
-                        if (ability.CantAttackYouOrPlaneswalkers) card.CantAttackPlayersAndPlaneswalkers.Add(source.Controller);
-                        if (ability.Goads) card.StaticGoaders.Add(source.Controller);
-                        if (ability.ProtectionFromRingBearers) card.ProtectedFromRingBearers = true;
-                        card.ProtectionFromTypes |= ability.ProtectionFromTypes;
-                        if (ability.ProtectionFromChosenColor && source.ChosenColor is { } chosenColor) card.AuraColorProtections.Add((chosenColor, source.Id));
-                        // "Has all activated abilities of all [filter] cards in your graveyard."
-                        if (ability.GrantsGraveyardAbilities is { } fromGraveyard)
-                            card.GrantedAbilities.AddRange(State.GetPlayer(source.Controller).Graveyard.Select(State.GetCard)
-                                .Where(c => Matches(fromGraveyard with { Controller = ControllerFilter.Any }, c, c.Owner, source, source.Controller))
-                                .SelectMany(c => c.Definition.Abilities.OfType<ActivatedAbility>().Where(a => !a.Cost.FromGraveyard && !a.Cost.FromHand))
-                                .Select(a => a with { GrantedBy = source.Id }));
-                        // "Has all activated abilities of creatures you control that don't have the same name as this creature" (as printed, mana abilities too).
-                        if (ability.GrantsYourCreaturesAbilities is { } fromYours)
-                        {
-                            var others = State.PermanentsControlledBy(source.Controller).Where(c => c.Id != card.Id && c.IsCreature && !c.TurnedFaceDown && !HasName(c, card.Name)
-                                && !c.LosesAbilities && Matches(fromYours with { Controller = ControllerFilter.Any }, c, c.Controller, source, source.Controller)).ToList();
-                            card.GrantedAbilities.AddRange(others.SelectMany(c => c.Definition.Abilities.OfType<ActivatedAbility>().Where(a => !a.Cost.FromGraveyard && !a.Cost.FromHand))
-                                .Select(a => a with { GrantedBy = source.Id }));
-                            card.GrantedManaOptions.AddRange(others.SelectMany(c => c.PrintedManaOptions()));
-                        }
-                        if (ability.GrantsExiledCreatureAbilities)
-                            card.GrantedAbilities.AddRange(State.Cards.Values
-                                .Where(c => c.Zone == Zone.Exile && c.ExiledWith is { } w && w.Source == source.Id && w.Version == source.Version && c.Definition.IsCreature())
-                                .SelectMany(c => c.Definition.Abilities.OfType<ActivatedAbility>().Where(a => !a.Cost.FromGraveyard && !a.Cost.FromHand))
-                                .Select(a => a with { GrantedBy = source.Id }));
-                        if (ability.GrantsExiledCardAbilities is { } exiledFilter)
-                        {
-                            var linked = State.Cards.Values.Where(c => c.Zone == Zone.Exile && c.ExiledWith is { } w && w.Source == source.Id && w.Version == source.Version
-                                                                       && Matches(exiledFilter with { Controller = ControllerFilter.Any }, c, c.Owner, source, source.Controller)).ToList();
-                            card.GrantedAbilities.AddRange(linked.SelectMany(c => c.Definition.Abilities.OfType<ActivatedAbility>().Where(a => !a.Cost.FromGraveyard && !a.Cost.FromHand))
-                                .Select(a => a with { GrantedBy = source.Id }));
-                            card.GrantedManaOptions.AddRange(linked.SelectMany(c => c.PrintedManaOptions()));
-                        }
-                    }));
-            foreach (var effect in effects.Where(e => e.LosesAbilities || e.Keywords.Count > 0 || e.Abilities is not null || e.LoseKeywords is not null || e.CantAttackOwner || e.CantAttackPlayerAndPlaneswalkers is not null
-                                                      || e.GrantsMana is not null))
-                changes.Add((effect.Timestamp, State.GetCard(effect.Card), card =>
+            card.LosesAbilities = false;
+            card.GrantedKeywords.Clear();
+            card.GrantedAbilities.Clear();
+            card.GrantedManaOptions.Clear();
+            card.DyingTriggerBonus = 0;
+            card.GrantedWards.Clear();
+            card.GrantedWardLives.Clear();
+            card.LostKeywords.Clear();
+            card.UnblockableBy.Clear();
+            card.BlockRestrictions.Clear();
+            card.CantAttackPlayers.Clear();
+            card.CantAttackOwner = false;
+            card.CantAttackPlayersAndPlaneswalkers.Clear();
+            card.StaticGoaders.Clear();
+            card.ProtectedFromRingBearers = false;
+            card.ProtectedFromPlayers.Clear();
+            card.ProtectionFromTypes = 0;
+            card.AuraColorProtections.Clear();
+            card.StaticDamagePrevention = StaticDamagePrevention.None;
+            card.AbilitiesCantBeActivated = false;
+            card.StaticCantBeSacrificed = false;
+        }
+        foreach (var effect in effects.Where(e => e.UnblockableBy is not null)) State.GetCard(effect.Card).UnblockableBy.Add(effect.UnblockableBy!.Value);
+        foreach (var effect in effects.Where(e => e.CantBeBlockedBy is not null)) State.GetCard(effect.Card).BlockRestrictions.Add(effect.CantBeBlockedBy!);
+        foreach (var effect in effects.Where(e => e.ProtectionFromTypes != 0)) State.GetCard(effect.Card).ProtectionFromTypes |= effect.ProtectionFromTypes;
+        // "You and creatures you control have protection from the chosen card type."
+        foreach (var player in State.Players.Select(p => p.Id))
+            if (PlayerProtectionFromTypes(player) is var shielded and not CardType.None)
+                foreach (var creature in State.PermanentsControlledBy(player).Where(c => c.IsCreature)) creature.ProtectionFromTypes |= shielded;
+        foreach (var effect in effects.Where(e => e.ProtectionFromPlayers is not null)) State.GetCard(effect.Card).ProtectedFromPlayers.UnionWith(effect.ProtectionFromPlayers!);
+        // Keyword counters give their keyword (rule 122.1b).
+        foreach (var card in battlefield)
+        {
+            foreach (var (counter, keyword) in KeywordCounters)
+                if (card.CounterCount(counter) > 0) card.GrantedKeywords.Add(keyword);
+        }
+        ApplyLayer(() => AbilityEffects(context, effects), card => new AbilitySnapshot(card), (card, saved) => ((AbilitySnapshot)saved!).Restore(card));
+    }
+
+    /// <summary>The effects of layer 6: static abilities that grant or remove abilities, then those of resolved spells and abilities.</summary>
+    private List<LayerEffect> AbilityEffects(LayerContext context, List<UntilEndOfTurnEffect> effects)
+    {
+        var changes = new List<LayerEffect>();
+        foreach (var candidate in StaticCandidates(context, a => a.LosesAllAbilities || a.Keywords is { Count: > 0 } || a.GrantedKeywords.Count > 0
+                                                       || a.GrantsAbilities is not null || a.GrantsMana is not null || a.GrantsWard is not null || a.GrantsWardLife > 0
+                                                       || a.GrantsGraveyardAbilities is not null || a.GrantsYourCreaturesAbilities is not null || a.GrantsExiledCreatureAbilities || a.GrantsExiledCardAbilities is not null || a.CantAttackYou || a.CantAttackYouOrPlaneswalkers || a.Goads || a.ProtectionFromRingBearers || a.ProtectionFromTypes != 0 || a.ProtectionFromChosenColor
+                                                       || a.LosesKeywords is not null || a.PreventsDamage != StaticDamagePrevention.None || a.CantActivateAbilities || a.CantBeSacrificed
+                                                       || a.GrantsCantBeBlockedBy is not null || a.GrantsDyingTriggerBonus))
+        {
+            var (source, ability, _) = candidate;
+            var writes = Aspect.Other;
+            if (ability.LosesAllAbilities || ability.GrantsAbilities is not null || ability.GrantsGraveyardAbilities is not null || ability.GrantsYourCreaturesAbilities is not null
+                || ability.GrantsExiledCreatureAbilities || ability.GrantsExiledCardAbilities is not null) writes |= Aspect.Abilities;
+            if (ability.LosesAllAbilities || ability.GrantedKeywords.Count > 0 || ability.LosesKeywords is not null) writes |= Aspect.Keywords;
+            if (ability.LosesAllAbilities || ability.GrantedKeywords.Contains(Keyword.Changeling) || ability.LosesKeywords?.Contains(Keyword.Changeling) == true) writes |= Aspect.Changeling;
+            // "Has all activated abilities of [filter] creatures you control that don't have the same name as this creature": the creatures
+            // it takes them from now (one that lost its abilities gives none).
+            List<Card> Lenders(Card card) => ability.GrantsYourCreaturesAbilities is not { } fromYours ? new List<Card>()
+                : State.PermanentsControlledBy(source.Controller).Where(c => c.Id != card.Id && c.IsCreature && !c.TurnedFaceDown && !HasName(c, card.Name)
+                    && !c.LosesAbilities && Matches(fromYours with { Controller = ControllerFilter.Any }, c, c.Controller, source, source.Controller)).ToList();
+            changes.Add(StaticEffect(context, candidate, writes, card =>
+            {
+                if (ability.LosesAllAbilities) LoseAllAbilities(card);
+                card.GrantedKeywords.UnionWith(ability.GrantedKeywords);
+                card.LostKeywords.ExceptWith(ability.GrantedKeywords); // a later grant gives back a keyword lost earlier (timestamps, rule 613.7)
+                if (ability.LosesKeywords is { } loses) { card.LostKeywords.UnionWith(loses); card.GrantedKeywords.ExceptWith(loses); }
+                card.StaticDamagePrevention |= ability.PreventsDamage;
+                if (ability.CantActivateAbilities) card.AbilitiesCantBeActivated = true;
+                if (ability.CantBeSacrificed) card.StaticCantBeSacrificed = true;
+                if (ability.GrantsAbilities is { } granted) card.GrantedAbilities.AddRange(granted.Select(g => g with { GrantedBy = source.Id }));
+                if (ability.GrantsMana is { } mana) card.GrantedManaOptions.Add(new ManaOption(mana, ability.GrantsManaAmount, ability.GrantsManaOnlyFor));
+                if (ability.GrantsDyingTriggerBonus) card.DyingTriggerBonus++;
+                if (ability.GrantsWard is { } ward) card.GrantedWards.Add(ward);
+                if (ability.GrantsWardLife > 0) card.GrantedWardLives.Add(ability.GrantsWardLife);
+                if (ability.GrantsCantBeBlockedBy is { } unblockable) card.BlockRestrictions.Add(unblockable);
+                if (ability.CantAttackYou) card.CantAttackPlayers.Add(source.Controller);
+                if (ability.CantAttackYouOrPlaneswalkers) card.CantAttackPlayersAndPlaneswalkers.Add(source.Controller);
+                if (ability.Goads) card.StaticGoaders.Add(source.Controller);
+                if (ability.ProtectionFromRingBearers) card.ProtectedFromRingBearers = true;
+                card.ProtectionFromTypes |= ability.ProtectionFromTypes;
+                if (ability.ProtectionFromChosenColor && source.ChosenColor is { } chosenColor) card.AuraColorProtections.Add((chosenColor, source.Id));
+                // "Has all activated abilities of all [filter] cards in your graveyard."
+                if (ability.GrantsGraveyardAbilities is { } fromGraveyard)
+                    card.GrantedAbilities.AddRange(State.GetPlayer(source.Controller).Graveyard.Select(State.GetCard)
+                        .Where(c => Matches(fromGraveyard with { Controller = ControllerFilter.Any }, c, c.Owner, source, source.Controller))
+                        .SelectMany(c => c.Definition.Abilities.OfType<ActivatedAbility>().Where(a => !a.Cost.FromGraveyard && !a.Cost.FromHand))
+                        .Select(a => a with { GrantedBy = source.Id }));
+                // "Has all activated abilities of creatures you control that don't have the same name as this creature" (as printed, mana abilities too).
+                if (ability.GrantsYourCreaturesAbilities is not null)
+                {
+                    var others = Lenders(card);
+                    card.GrantedAbilities.AddRange(others.SelectMany(c => c.Definition.Abilities.OfType<ActivatedAbility>().Where(a => !a.Cost.FromGraveyard && !a.Cost.FromHand))
+                        .Select(a => a with { GrantedBy = source.Id }));
+                    card.GrantedManaOptions.AddRange(others.SelectMany(c => c.PrintedManaOptions()));
+                }
+                if (ability.GrantsExiledCreatureAbilities)
+                    card.GrantedAbilities.AddRange(State.Cards.Values
+                        .Where(c => c.Zone == Zone.Exile && c.ExiledWith is { } w && w.Source == source.Id && w.Version == source.Version && c.Definition.IsCreature())
+                        .SelectMany(c => c.Definition.Abilities.OfType<ActivatedAbility>().Where(a => !a.Cost.FromGraveyard && !a.Cost.FromHand))
+                        .Select(a => a with { GrantedBy = source.Id }));
+                if (ability.GrantsExiledCardAbilities is { } exiledFilter)
+                {
+                    var linked = State.Cards.Values.Where(c => c.Zone == Zone.Exile && c.ExiledWith is { } w && w.Source == source.Id && w.Version == source.Version
+                                                               && Matches(exiledFilter with { Controller = ControllerFilter.Any }, c, c.Owner, source, source.Controller)).ToList();
+                    card.GrantedAbilities.AddRange(linked.SelectMany(c => c.Definition.Abilities.OfType<ActivatedAbility>().Where(a => !a.Cost.FromGraveyard && !a.Cost.FromHand))
+                        .Select(a => a with { GrantedBy = source.Id }));
+                    card.GrantedManaOptions.AddRange(linked.SelectMany(c => c.PrintedManaOptions()));
+                }
+            },
+            does: ability.GrantsYourCreaturesAbilities is null ? null : targets => targets.SelectMany(t => Lenders(t).Select(c => c.Id.Value).Append(-1)).ToArray(),
+            reads: ability.GrantsYourCreaturesAbilities is null ? Aspect.None : Aspect.All,
+            spawns: ability.GrantsAbilities?.Any(g => g is StaticAbility) == true));
+        }
+        for (int i = 0; i < effects.Count; i++)
+        {
+            var effect = effects[i];
+            if (!effect.LosesAbilities && effect.Keywords.Count == 0 && effect.Abilities is null && effect.LoseKeywords is null && !effect.CantAttackOwner
+                && effect.CantAttackPlayerAndPlaneswalkers is null && effect.GrantsMana is null) continue;
+            var card = State.GetCard(effect.Card);
+            var only = new[] { card };
+            var writes = Aspect.Other;
+            if (effect.LosesAbilities || effect.Abilities is not null) writes |= Aspect.Abilities;
+            if (effect.LosesAbilities || effect.Keywords.Count > 0 || effect.LoseKeywords is not null) writes |= Aspect.Keywords;
+            if (effect.LosesAbilities || effect.Keywords.Contains(Keyword.Changeling) || effect.LoseKeywords?.Contains(Keyword.Changeling) == true) writes |= Aspect.Changeling;
+            changes.Add(new LayerEffect
+            {
+                Key = new EffectKey(LastingEffectKind, card.Id, i),
+                Timestamp = effect.Timestamp,
+                Writes = writes,
+                Spawns = effect.Abilities?.Any(a => a is StaticAbility) == true,
+                Targets = () => only,
+                Apply = _ =>
                 {
                     if (effect.LosesAbilities) LoseAllAbilities(card);
                     if (effect.GrantsMana is { } mana) card.GrantedManaOptions.Add(new ManaOption(mana, effect.GrantsManaAmount));
@@ -652,48 +950,57 @@ public sealed partial class Game
                     if (effect.Abilities is { } abilities) card.GrantedAbilities.AddRange(abilities);
                     if (effect.CantAttackOwner) card.CantAttackOwner = true;
                     if (effect.CantAttackPlayerAndPlaneswalkers is { } barred) card.CantAttackPlayersAndPlaneswalkers.Add(barred);
-                }));
+                },
+            });
+        }
+        return changes;
+    }
 
-            foreach (var card in battlefield)
-            {
-                card.LosesAbilities = false;
-                card.GrantedKeywords.Clear();
-                card.GrantedAbilities.Clear();
-                card.GrantedManaOptions.Clear();
-                card.DyingTriggerBonus = 0;
-                card.GrantedWards.Clear();
-                card.GrantedWardLives.Clear();
-                card.LostKeywords.Clear();
-                card.UnblockableBy.Clear();
-                card.BlockRestrictions.Clear();
-                card.CantAttackPlayers.Clear();
-                card.CantAttackOwner = false;
-                card.CantAttackPlayersAndPlaneswalkers.Clear();
-                card.StaticGoaders.Clear();
-                card.ProtectedFromRingBearers = false;
-                card.ProtectedFromPlayers.Clear();
-                card.ProtectionFromTypes = 0;
-                card.AuraColorProtections.Clear();
-                card.StaticDamagePrevention = StaticDamagePrevention.None;
-                card.AbilitiesCantBeActivated = false;
-                card.StaticCantBeSacrificed = false;
-            }
-            foreach (var effect in effects.Where(e => e.UnblockableBy is not null)) State.GetCard(effect.Card).UnblockableBy.Add(effect.UnblockableBy!.Value);
-            foreach (var effect in effects.Where(e => e.CantBeBlockedBy is not null)) State.GetCard(effect.Card).BlockRestrictions.Add(effect.CantBeBlockedBy!);
-            foreach (var effect in effects.Where(e => e.ProtectionFromTypes != 0)) State.GetCard(effect.Card).ProtectionFromTypes |= effect.ProtectionFromTypes;
-            // "You and creatures you control have protection from the chosen card type."
-            foreach (var player in State.Players.Select(p => p.Id))
-                if (PlayerProtectionFromTypes(player) is var shielded and not CardType.None)
-                    foreach (var creature in State.PermanentsControlledBy(player).Where(c => c.IsCreature)) creature.ProtectionFromTypes |= shielded;
-            foreach (var effect in effects.Where(e => e.ProtectionFromPlayers is not null)) State.GetCard(effect.Card).ProtectedFromPlayers.UnionWith(effect.ProtectionFromPlayers!);
-            // Keyword counters give their keyword (rule 122.1b).
-            foreach (var card in battlefield)
-            {
-                foreach (var (counter, keyword) in KeywordCounters)
-                    if (card.CounterCount(counter) > 0) card.GrantedKeywords.Add(keyword);
-            }
-            foreach (var change in changes.OrderBy(x => x.Timestamp)) change.Apply(change.Card);
-            if (battlefield.All(c => before[c.Id] == (c.LosesAbilities, c.GrantedAbilities.Count, c.GrantedKeywords.Count))) break;
+    /// <summary>What layer 6 has written on a permanent, to take a trial application back.</summary>
+    private sealed class AbilitySnapshot(Card card)
+    {
+        private readonly bool _losesAbilities = card.LosesAbilities, _cantAttackOwner = card.CantAttackOwner, _fromRingBearers = card.ProtectedFromRingBearers,
+            _cantActivate = card.AbilitiesCantBeActivated, _cantBeSacrificed = card.StaticCantBeSacrificed;
+        private readonly int _dyingTriggerBonus = card.DyingTriggerBonus;
+        private readonly CardType _protectionFromTypes = card.ProtectionFromTypes;
+        private readonly StaticDamagePrevention _prevention = card.StaticDamagePrevention;
+        private readonly Keyword[] _keywords = card.GrantedKeywords.ToArray(), _lostKeywords = card.LostKeywords.ToArray();
+        private readonly AbilityDefinition[] _abilities = card.GrantedAbilities.ToArray();
+        private readonly ManaOption[] _manaOptions = card.GrantedManaOptions.ToArray();
+        private readonly ManaCost[] _wards = card.GrantedWards.ToArray();
+        private readonly int[] _wardLives = card.GrantedWardLives.ToArray();
+        private readonly ObjectFilter[] _blockRestrictions = card.BlockRestrictions.ToArray();
+        private readonly PlayerId[] _cantAttack = card.CantAttackPlayers.ToArray(), _cantAttackOrPlaneswalkers = card.CantAttackPlayersAndPlaneswalkers.ToArray(),
+            _goaders = card.StaticGoaders.ToArray();
+        private readonly (string Color, CardId Aura)[] _colorProtections = card.AuraColorProtections.ToArray();
+
+        public void Restore(Card card)
+        {
+            card.LosesAbilities = _losesAbilities;
+            card.CantAttackOwner = _cantAttackOwner;
+            card.ProtectedFromRingBearers = _fromRingBearers;
+            card.AbilitiesCantBeActivated = _cantActivate;
+            card.StaticCantBeSacrificed = _cantBeSacrificed;
+            card.DyingTriggerBonus = _dyingTriggerBonus;
+            card.ProtectionFromTypes = _protectionFromTypes;
+            card.StaticDamagePrevention = _prevention;
+            Put(card.GrantedKeywords, _keywords);
+            Put(card.LostKeywords, _lostKeywords);
+            Put(card.GrantedAbilities, _abilities);
+            Put(card.GrantedManaOptions, _manaOptions);
+            Put(card.GrantedWards, _wards);
+            Put(card.GrantedWardLives, _wardLives);
+            Put(card.BlockRestrictions, _blockRestrictions);
+            Put(card.CantAttackPlayers, _cantAttack);
+            Put(card.CantAttackPlayersAndPlaneswalkers, _cantAttackOrPlaneswalkers);
+            Put(card.StaticGoaders, _goaders);
+            Put(card.AuraColorProtections, _colorProtections);
+        }
+
+        private static void Put<T>(ICollection<T> into, T[] values)
+        {
+            into.Clear();
+            foreach (var value in values) into.Add(value);
         }
     }
 
