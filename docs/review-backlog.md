@@ -10,7 +10,7 @@ kind of bug come back; **P3** hygiene. "To confirm" items were found by reading 
 
 ### R1. Permanents that "enter tapped" are tapped after they entered — **done**
 `MoveCard` has no way to say "tapped", so about eight effects move the card and set `Tapped` afterwards
-(`Game.Abilities.cs` ~721, 1064, 1390, 1869, 2028, 3123, 3254, `Game.Voting.cs`). Rule 614.1c: the permanent enters
+(`Game.Effects.Part1.cs` to `Part4.cs`, `Game.Voting.cs`). Rule 614.1c: the permanent enters
 already tapped. Between the move and the tap, triggers of the entering are collected and static effects recomputed with the
 permanent untapped.
 **Fix:** a `tapped` parameter on `MoveCard` (next to the definition's own enters-tapped replacements), used by every caller.
@@ -40,7 +40,7 @@ counter and token replacements), reapply until none are left.
 **Test:** a card with its own "shuffle instead" while "exile instead of the graveyard" also applies: the player chooses.
 
 ### R5. "Put the rest on the bottom in any order" is always random — **done**
-`LookAtTopTakeAsync` (`Game.Abilities.cs` ~3260) shuffles the rest unless they go to the graveyard, and `RestOnTop` leaves
+`LookAtTopTakeAsync` (`Game.Effects.Helpers.cs`) shuffles the rest unless they go to the graveyard, and `RestOnTop` leaves
 them as they were. Effects that say "in any order" (bottom) or "put the rest back in any order" (top) must let the player
 order them; only "in a random order" is random.
 **Fix:** an order option on `LookAtTopTake` (random / chosen, top / bottom) using `OrderAsync`; audit the module's scripts
@@ -48,7 +48,7 @@ that use the effect and set it from the card's text.
 **Test:** look at three, take one, the player chooses the order of the other two at the bottom.
 
 ### R6. A free-cast permission outlives the effect that granted it — **done**
-Effects that let a player cast a card during their resolution (`Game.Abilities.cs` ~801, 1034, 1831, 1943, 2560, 2664) add a
+Effects that let a player cast a card during their resolution (`Game.Effects.Part1.cs` to `Part4.cs`) add a
 `PlayableFromExile` entry "without paying" valid for the whole turn and then call `CastSpellAsync`. When the player backs
 out (or the cast fails), the entry stays: the card can be cast for free later that turn, at any time the player could cast
 it. Suspend also sets `HasteOnEnter` before the cast and doesn't undo it.
@@ -77,7 +77,7 @@ player or controller chooses the order of replacement and prevention effects.
 
 ### R10. Layers: dependency is handled by a fixed two-pass approach
 `RecomputeContinuousEffects` works the ability layer out with printed characteristics and again after types and colors
-(comment near `Game.Abilities.cs` ~3750). Rule 613.8 dependencies in general (an effect that changes what another applies
+(comment in `Game.Layers.cs`). Rule 613.8 dependencies in general (an effect that changes what another applies
 to, or whether it exists, inside the same layer) are not detected.
 **Plan:** a dependency pass inside each layer (613.8b: dependent effects apply after what they depend on, timestamps
 otherwise, loops fall back to timestamps), covered by the classic dependency cases as tests.
@@ -107,7 +107,7 @@ reductions, increases) used both to list legal actions and to cast; the legal-ac
 Remove the bot guard and make the soak tests fail on any backed-out action.
 
 ### D2. Tapping and untapping are done in about twenty places — **done**
-`Tapped = true/false` appears across `Game.Priority.cs`, `Game.Abilities.cs`, `Game.Combat.cs`, `Game.Turn.cs`,
+`Tapped = true/false` appears across `Game.Priority.cs`, `Game.Effects.Part1.cs` to `Part4.cs`, `Game.Combat.cs`, `Game.Turn.cs`,
 `Game.Voting.cs`, `Game.Monarch.cs`; most emit `PermanentTapped`/`PermanentUntapped`, some (entering, untap step) on purpose
 don't. A new site that forgets the event breaks "becomes tapped" triggers and conditions silently.
 **Fix:** `Tap(card)` / `Untap(card)` helpers (event + no-op when already in that state) and the R1 enter-tapped parameter;
@@ -123,10 +123,17 @@ like these needs engine code, and the bit field will run out.
 filter and a quantity, "gains the abilities of" as a layer 6 effect with a filter, filters with subtype parameters instead
 of one boolean per card. Migrate card by card (their tests must stay green); stop adding new `Replacements` bits.
 
-### D4. Effect resolution is one 4,700-line file
+### D4. Effect resolution is one 4,700-line file — **done**
 `Game.Abilities.cs` holds the effect switch, conditions, quantities, filters, the layer system and trigger collection.
 **Plan:** split by concern (`Game.Effects.*.cs` per family of effects, `Game.Layers.cs`, `Game.Filters.cs`, `Game.Triggers.cs`)
 without changing behavior, so reviews and merges stay possible.
+
+Done: `Game.Abilities.cs` is split with no behavior change. `Game.Targeting.cs` holds targeting (rule 115); `Game.Effects.cs` holds
+resolution, `EffectContext`, `CardsFor` / `PlayersFor` and the `ApplyAsync` dispatcher; the effect switch is cut in order into
+`Game.Effects.Part1.cs` to `Part4.cs` (`ApplyGroup1Async` to `ApplyGroup4Async`), which are tried in that order, so the switch is
+four ordered parts rather than one file; `Game.Effects.Helpers.cs` has the effect helpers; `Game.Counters.cs`, `Game.Quantities.cs`,
+`Game.Conditions.cs`, `Game.Layers.cs` and `Game.Triggers.cs` hold counters, quantities, conditions, the layer code and triggers.
+The filters stayed with the layer code (`Matches` in `Game.Layers.cs`) rather than a separate `Game.Filters.cs`.
 
 ### D5. Limited events are run by two orchestrators
 Local events (`scripts/Client/LimitedService.cs`) and online events (`src/Arcanum.Net/Events/EventHost.cs`) share
@@ -138,7 +145,7 @@ one place for timers, pairing and match results.
 
 ### H1. Real card names in the generic repository — **done**
 Against the project rule, the main repository names real cards in identifiers and comments: a local variable in `MoveCard`
-(`Game.Zones.cs` ~142), a field and comment in the layer code (`Game.Abilities.cs` ~3756), comments in
+(`Game.Zones.cs` ~142), a field and comment in the layer code (`Game.Layers.cs`), comments in
 `AbilityDefinition.cs` (~472), `Effects.cs` (~477), `Conditions.cs` (~94) and `Game.Priority.cs` (~587); the demo sandbox in
 `GameBoard.cs` (~233-247) builds its board from real cards; two data tests use names from a real set's world.
 **Fix:** rename to describe the rule, write the comments generically, make the sandbox use generic test cards
@@ -190,5 +197,5 @@ the card goes ("instead of putting it into your graveyard"), so the card is disc
 4. **D1** (single cost builder), then remove the bot guard (H2) and rerun every soak.
 5. **H1** (generic names, sandbox, guard test).
 6. **R3, R4, R7, R8** (rules ordering work, each with its own tests).
-7. **D4** (split the file, no behavior change), then **D3** migration and **R9/R10** as the engine needs them.
+7. **D4** (done: the effect switch is four ordered parts, `Game.Effects.Part1.cs` to `Part4.cs`), then **D3** migration and **R9/R10** as the engine needs them.
 8. **D5** when limited events are next touched.
