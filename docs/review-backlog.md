@@ -75,12 +75,35 @@ doesn't change the result; as soon as a partial prevention ("prevent the next N"
 player or controller chooses the order of replacement and prevention effects.
 **Done:** `ModifyDamagePartAsync` (`Game.Damage.cs`) takes the damage modifiers from `DamageModifiers` and lets the affected player order them (rule 616.1) whenever the order can change the result: it is not asked when there is one kind of modifier or when all of them are preventions that cost and cause nothing. "Prevent all" shields that are used up or make something happen are each an option of their own, listed so that the one keeping the most comes first; a computer player takes the first.
 
-### R10. Layers: dependency is handled by a fixed two-pass approach
+### R10. Layers: dependency is handled by a fixed two-pass approach — **done**
 `RecomputeContinuousEffects` works the ability layer out with printed characteristics and again after types and colors
 (comment in `Game.Layers.cs`). Rule 613.8 dependencies in general (an effect that changes what another applies
-to, or whether it exists, inside the same layer) are not detected.
-**Plan:** a dependency pass inside each layer (613.8b: dependent effects apply after what they depend on, timestamps
-otherwise, loops fall back to timestamps), covered by the classic dependency cases as tests.
+to, or whether it exists, inside the same layer) were not detected.
+**Done:** `ApplyLayer` (`Game.LayerDependencies.cs`) runs every layer and sublayer. Each continuous effect is a `LayerEffect`
+with a timestamp and live `Exists`, `Targets`, `Does` and `Apply`. `NextInDependencyOrder` finds dependencies by applying each
+effect on trial and seeing whether another effect's existence, targets or result changes (613.8a). Dependent effects wait; ready
+effects and dependency loops use timestamp order (613.8b). The order is worked out again after each effect (613.8c). A fast path,
+from the `Aspect` read and write flags, keeps plain timestamp order when no effect writes what another reads. The two-pass ability
+computation stays, because it is cross-layer feedback that 613.8 does not cover. Tests: `tests/Arcanum.Engine.Tests/LayerDependencyTests.cs`.
+
+### R11. Rule 613.6 lock stops at layer 5
+An ability's effect should keep applying to the objects it first applied to in an earlier layer, also in layers 6, 7b and 7c.
+Example: a single ability "noncreature artifacts are 2/2 creatures" doesn't set power and toughness in 7b, because its filter
+no longer matches after layer 4.
+**Plan:** carry the locked target set (`locked` in `StaticEffect`) through layers 6 and 7.
+
+### R12. Preliminary ability pass ignores what layer 6 does to the abilities
+A permanent that loses all abilities in layer 6 also stops generating its layer 2, 4 and 5 effects, but by 613.6 those still
+apply.
+**Plan:** decide each ability's existence for earlier layers before layer 6 runs, and rework the preliminary pass.
+
+### R13. Granted static ability uses the wrong timestamp
+It uses its object's timestamp instead of the later of the object's and the granting effect's (613.7a).
+**Plan:** give granted abilities that timestamp.
+
+### R14. Layer 7a ignores ability loss
+A characteristic-defining ability still applies to a permanent that lost all abilities in layer 6.
+**Plan:** check this against 613.8a and 604.3 and match the rules.
 
 ## P1 — program
 
@@ -197,5 +220,6 @@ the card goes ("instead of putting it into your graveyard"), so the card is disc
 4. **D1** (single cost builder), then remove the bot guard (H2) and rerun every soak.
 5. **H1** (generic names, sandbox, guard test).
 6. **R3, R4, R7, R8** (rules ordering work, each with its own tests).
-7. **D4** (done: the effect switch is four ordered parts, `Game.Effects.Part1.cs` to `Part4.cs`), then **D3** migration and **R9/R10** as the engine needs them.
+7. **D4** (done: the effect switch is four ordered parts, `Game.Effects.Part1.cs` to `Part4.cs`), then **D3** migration (R9 and R10 done).
+8. **R11**, **R12**, **R13** and **R14**, in that order, each with its own tests (the layer rules left after R10).
 8. **D5** when limited events are next touched.

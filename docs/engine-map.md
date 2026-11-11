@@ -60,7 +60,7 @@ Large groups of related vocabulary get their own partial files so the main switc
 | Quantities by target loyalty, domain, distinct powers, graveyard mana values, cards milled or drawn this way | `EvalFracture` (`Game.Fracture.cs`); parsed by `ParseFractureQuantity` (`Arcanum.Data/Scripts/CardScript.Fracture.cs`) |
 | Filters | `Matches` (`Game.Layers.cs`), targeting in `Game.FiltersAndTargeting.cs` |
 | Triggered abilities | `Observers` and `QueueObservers` (`Game.Triggers.cs`); trigger bookkeeping in `Game.TriggerTracking.cs` |
-| Static abilities, layers | `RecomputeContinuousEffects` (`Game.Layers.cs`) |
+| Static abilities, layers | `RecomputeContinuousEffects` (`Game.Layers.cs`). Every layer and sublayer runs through `ApplyLayer` (`Game.LayerDependencies.cs`), which orders its effects by dependency, then timestamp (rule 613.8); `NextInDependencyOrder` picks the next one |
 | Casting, costs, modes, X | `Game.Priority.cs` (casting flow), `Game.CastingCosts.cs` (ways to cast, `CanPayToCast`) |
 | Mana payment | `Rules/ManaPayment.cs`, `Mana/ManaCost.cs`, `Mana/ManaPool.cs` |
 | Zone changes and their replacements | `MoveCardAsync` (`Game.Zones.cs`) |
@@ -342,7 +342,8 @@ service seals a career's checked actions, and online career events run through i
    rules text it implements.
 3. Parse it in `CardScript` (or the group's partial file).
 4. Execute it in the matching place from the table above. Choices go through the player controller (`ChooseYesNoAsync`,
-   `ChooseCardsAsync`, ...) so bots and the UI both handle them.
+   `ChooseCardsAsync`, ...) so bots and the UI both handle them. A new layer effect (a static ability or a continuous effect in
+   a layer) must declare the `Aspect`s it reads and writes (`Game.LayerDependencies.cs`), or the fast path may skip a dependency on it.
 5. If the mechanic is a keyword, make `CardFactory` derive it or list it in `ScriptedKeywords`.
 6. Write a test in `tests/Arcanum.Engine.Tests` with invented cards (see `HeroesTests.Make` for building one from a script).
 7. Document the vocabulary in `card-scripts.md`.
