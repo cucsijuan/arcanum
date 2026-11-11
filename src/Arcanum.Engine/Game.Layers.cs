@@ -225,8 +225,11 @@ public sealed partial class Game
 
         foreach (var card in battlefield)
         {
+            // Layer 7 values from the last recomputation are gone: the earlier layers see printed power and toughness.
             card.PowerBonus = 0;
             card.ToughnessBonus = 0;
+            card.BasePowerOverride = null;
+            card.BaseToughnessOverride = null;
             card.Controller = card.BaseController;
             card.GrantedSubtypes.Clear();
             // "Your Ring-bearer is legendary."
@@ -263,6 +266,8 @@ public sealed partial class Game
         // (those it last had, once it has left the battlefield), so everything below works from the copy.
         // A copy of a creature that is itself a copy takes the values that one has as a copy: it depends on the other effect (rule 613.8).
         var context = new LayerContext(battlefield, sources, graveyardSources);
+        // A static ability whose effect has started to apply keeps applying to the same objects in the later layers (rule 613.6).
+        var locks = new EffectLocks();
         ApplyLayer(() => StaticCandidates(context, a => a.CopiesChosenCreature).Select(candidate =>
         {
             var (source, ability, _) = candidate;
@@ -313,13 +318,13 @@ public sealed partial class Game
         ApplyLayer(() =>
         {
             var changes = new List<LayerEffect>();
-            foreach (var candidate in StaticCandidates(context, a => a.GivesControl || a.GivesControlToMonarch))
+            foreach (var candidate in StaticCandidates(context, a => a.GivesControl || a.GivesControlToMonarch, locks))
             {
                 var (giver, ability, _) = candidate;
                 PlayerId? To() => ability.GivesControlToMonarch ? State.Monarch : giver.Controller;
                 changes.Add(StaticEffect(context, candidate, Aspect.Control,
                     card => { if (To() is { } newController && !State.GetPlayer(newController).HasLost) card.Controller = newController; },
-                    does: _ => To(), readsOfSource: ability.GivesControlToMonarch ? Aspect.None : Aspect.Control));
+                    does: _ => To(), readsOfSource: ability.GivesControlToMonarch ? Aspect.None : Aspect.Control, locked: locks));
             }
             for (int i = 0; i < State.ControlEffects.Count; i++)
             {
@@ -387,15 +392,14 @@ public sealed partial class Game
         static bool TypePart(StaticAbility a) => a.SetTypes is not null || a.SetSubtypes is not null || a.AddTypes != 0 || a.AddSubtypes is not null || a.AddChosenType
                                                  || a.SetChosenLandType || a.CreatureTypesOfLastExiled || a.RemoveTypes != 0 || a.EveryCreatureType;
         static bool ColorPart(StaticAbility a) => a.SetColors is not null || a.SetChosenColor;
-        var typeStatics = StaticCandidates(context, a => NamePart(a) || TypePart(a) || ColorPart(a));
-        var keptTargets = new Dictionary<EffectKey, IReadOnlyList<Card>>();
+        var typeStatics = StaticCandidates(context, a => NamePart(a) || TypePart(a) || ColorPart(a), locks);
         LayerEffect TypeEffect(StaticSource candidate, Aspect writes, Action<TypeState> change, Func<IReadOnlyList<Card>, object?>? does = null, Aspect reads = Aspect.None) =>
             StaticEffect(context, candidate, writes, card =>
             {
                 var t = TypesOf(card);
                 change(t);
                 Settle(card, t);
-            }, does, reads, locked: keptTargets);
+            }, does, reads, locked: locks);
         LayerEffect LastingTypeEffect(int index, Aspect writes, Action<TypeState> change)
         {
             var effect = effects[index];
@@ -511,8 +515,9 @@ public sealed partial class Game
             return changes;
         }, SaveTypes, RestoreTypes);
 
-        // Layer 6 again with the final types (filters such as "artifact creatures" depend on them).
-        ApplyAbilityLayer(context, effects);
+        // Layer 6 again with the final types (filters such as "artifact creatures" depend on them); this is the real one, so an
+        // ability whose effect starts to apply here keeps its objects in layer 7.
+        ApplyAbilityLayer(context, effects, locks);
         foreach (var (thief, stolen) in _borrowedLandAbilities)
             if (State.GetCard(thief) is { Zone: Zone.Battlefield, LosesAbilities: false } holder) holder.GrantedAbilities.AddRange(stolen);
 
@@ -568,7 +573,7 @@ public sealed partial class Game
         ApplyLayer(() =>
         {
             var setters = new List<LayerEffect>();
-            foreach (var candidate in StaticCandidates(context, a => a.SetPower is not null || a.SetToughness is not null || a.SetPowerFrom is not null || a.SetToughnessFrom is not null))
+            foreach (var candidate in StaticCandidates(context, a => a.SetPower is not null || a.SetToughness is not null || a.SetPowerFrom is not null || a.SetToughnessFrom is not null, locks))
             {
                 var (source, ability, _) = candidate;
                 // Worked out for each affected object on its own ("base power and toughness each equal to its mana value").
@@ -585,7 +590,7 @@ public sealed partial class Game
                     if (toughness is { } t) card.BaseToughnessOverride = t;
                 },
                 does: ability.SetPowerFrom is null && ability.SetToughnessFrom is null ? null : targets => Flat(targets.Select(Values)),
-                reads: QuantityReads(ability.SetPowerFrom) | QuantityReads(ability.SetToughnessFrom)));
+                reads: QuantityReads(ability.SetPowerFrom) | QuantityReads(ability.SetToughnessFrom), locked: locks));
             }
             for (int i = 0; i < effects.Count; i++)
             {
@@ -623,7 +628,7 @@ public sealed partial class Game
         ApplyLayer(() =>
         {
             var changes = new List<LayerEffect>();
-            foreach (var candidate in StaticCandidates(context, a => a.Power != 0 || a.Toughness != 0 || a.PowerBonus is not null || a.ToughnessBonus is not null))
+            foreach (var candidate in StaticCandidates(context, a => a.Power != 0 || a.Toughness != 0 || a.PowerBonus is not null || a.ToughnessBonus is not null, locks))
             {
                 var (source, ability, _) = candidate;
                 // Worked out for each affected object on its own ("for each other creature that shares a creature type with it"), or once.
@@ -644,7 +649,7 @@ public sealed partial class Game
                 does: ability.PowerBonus is null && ability.ToughnessBonus is null ? null
                     : targets => each ? targets.SelectMany(c => { var (p, t) = Bonus(c); return new[] { p, t }; }).ToArray() : Bonus(null),
                 reads: QuantityReads(ability.PowerBonus) | QuantityReads(ability.ToughnessBonus),
-                onApply: () => { if (!each) once = Bonus(null); }));
+                onApply: () => { if (!each) once = Bonus(null); }, locked: locks));
             }
             for (int i = 0; i < effects.Count; i++)
             {
@@ -804,7 +809,8 @@ public sealed partial class Game
     /// granted by effects applied before, but not by those applied after. Timestamp order (rule 613.7), except that an effect waits
     /// for the ones it depends on (rule 613.8): a static ability that another effect of the layer removes generates no effect.
     /// </summary>
-    private void ApplyAbilityLayer(LayerContext context, List<UntilEndOfTurnEffect> effects)
+    /// <param name="locks">Null for the preliminary pass (worked out before the earlier layers, rule 613.6 doesn't apply to it).</param>
+    private void ApplyAbilityLayer(LayerContext context, List<UntilEndOfTurnEffect> effects, EffectLocks? locks = null)
     {
         var battlefield = context.Battlefield;
         foreach (var card in battlefield)
@@ -845,18 +851,18 @@ public sealed partial class Game
             foreach (var (counter, keyword) in KeywordCounters)
                 if (card.CounterCount(counter) > 0) card.GrantedKeywords.Add(keyword);
         }
-        ApplyLayer(() => AbilityEffects(context, effects), card => new AbilitySnapshot(card), (card, saved) => ((AbilitySnapshot)saved!).Restore(card));
+        ApplyLayer(() => AbilityEffects(context, effects, locks), card => new AbilitySnapshot(card), (card, saved) => ((AbilitySnapshot)saved!).Restore(card));
     }
 
     /// <summary>The effects of layer 6: static abilities that grant or remove abilities, then those of resolved spells and abilities.</summary>
-    private List<LayerEffect> AbilityEffects(LayerContext context, List<UntilEndOfTurnEffect> effects)
+    private List<LayerEffect> AbilityEffects(LayerContext context, List<UntilEndOfTurnEffect> effects, EffectLocks? locks)
     {
         var changes = new List<LayerEffect>();
         foreach (var candidate in StaticCandidates(context, a => a.LosesAllAbilities || a.Keywords is { Count: > 0 } || a.GrantedKeywords.Count > 0
                                                        || a.GrantsAbilities is not null || a.GrantsMana is not null || a.GrantsWard is not null || a.GrantsWardLife > 0
                                                        || a.GrantsGraveyardAbilities is not null || a.GrantsYourCreaturesAbilities is not null || a.GrantsExiledCreatureAbilities || a.GrantsExiledCardAbilities is not null || a.CantAttackYou || a.CantAttackYouOrPlaneswalkers || a.Goads || a.ProtectionFromRingBearers || a.ProtectionFromTypes != 0 || a.ProtectionFromChosenColor
                                                        || a.LosesKeywords is not null || a.PreventsDamage != StaticDamagePrevention.None || a.CantActivateAbilities || a.CantBeSacrificed
-                                                       || a.GrantsCantBeBlockedBy is not null || a.GrantsDyingTriggerBonus))
+                                                       || a.GrantsCantBeBlockedBy is not null || a.GrantsDyingTriggerBonus, locks))
         {
             var (source, ability, _) = candidate;
             var writes = Aspect.Other;
@@ -920,7 +926,7 @@ public sealed partial class Game
             },
             does: ability.GrantsYourCreaturesAbilities is null ? null : targets => targets.SelectMany(t => Lenders(t).Select(c => c.Id.Value).Append(-1)).ToArray(),
             reads: ability.GrantsYourCreaturesAbilities is null ? Aspect.None : Aspect.All,
-            spawns: ability.GrantsAbilities?.Any(g => g is StaticAbility) == true));
+            spawns: ability.GrantsAbilities?.Any(g => g is StaticAbility) == true, locked: locks));
         }
         for (int i = 0; i < effects.Count; i++)
         {

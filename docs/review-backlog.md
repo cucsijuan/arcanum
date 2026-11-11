@@ -86,11 +86,17 @@ effects and dependency loops use timestamp order (613.8b). The order is worked o
 from the `Aspect` read and write flags, keeps plain timestamp order when no effect writes what another reads. The two-pass ability
 computation stays, because it is cross-layer feedback that 613.8 does not cover. Tests: `tests/Arcanum.Engine.Tests/LayerDependencyTests.cs`.
 
-### R11. Rule 613.6 lock stops at layer 5
+### R11. Rule 613.6 lock stops at layer 5 — **done**
 An ability's effect should keep applying to the objects it first applied to in an earlier layer, also in layers 6, 7b and 7c.
 Example: a single ability "noncreature artifacts are 2/2 creatures" doesn't set power and toughness in 7b, because its filter
 no longer matches after layer 4.
-**Plan:** carry the locked target set (`locked` in `StaticEffect`) through layers 6 and 7.
+**Done:** `EffectLocks` (`Game.LayerDependencies.cs`) records, for each static ability whose effect has started to apply, the
+objects it applies to and its source. `StaticEffect` takes them as `locked`, so the effect keeps those objects in every later
+layer and still exists after its ability is lost; `StaticCandidates` brings back abilities lost on the way. One `locks` object
+runs through layer 2, name, layer 4, layer 5, the layer 6 pass (`ApplyAbilityLayer`) and layers 7b and 7c. The preliminary
+ability pass takes no locks. Also fixed: base power and toughness overrides are reset at the start of the recomputation with
+the other layer 7 values, so layers 1 to 6 no longer see values left over from the previous recomputation. Tests: the last three
+in `tests/Arcanum.Engine.Tests/LayerDependencyTests.cs`.
 
 ### R12. Preliminary ability pass ignores what layer 6 does to the abilities
 A permanent that loses all abilities in layer 6 also stops generating its layer 2, 4 and 5 effects, but by 613.6 those still
@@ -221,5 +227,5 @@ the card goes ("instead of putting it into your graveyard"), so the card is disc
 5. **H1** (generic names, sandbox, guard test).
 6. **R3, R4, R7, R8** (rules ordering work, each with its own tests).
 7. **D4** (done: the effect switch is four ordered parts, `Game.Effects.Part1.cs` to `Part4.cs`), then **D3** migration (R9 and R10 done).
-8. **R11**, **R12**, **R13** and **R14**, in that order, each with its own tests (the layer rules left after R10).
+8. **R11** (done), **R12**, **R13** and **R14**, in that order, each with its own tests (the layer rules left after R10).
 8. **D5** when limited events are next touched.

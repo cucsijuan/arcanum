@@ -60,7 +60,7 @@ Large groups of related vocabulary get their own partial files so the main switc
 | Quantities by target loyalty, domain, distinct powers, graveyard mana values, cards milled or drawn this way | `EvalFracture` (`Game.Fracture.cs`); parsed by `ParseFractureQuantity` (`Arcanum.Data/Scripts/CardScript.Fracture.cs`) |
 | Filters | `Matches` (`Game.Layers.cs`), targeting in `Game.FiltersAndTargeting.cs` |
 | Triggered abilities | `Observers` and `QueueObservers` (`Game.Triggers.cs`); trigger bookkeeping in `Game.TriggerTracking.cs` |
-| Static abilities, layers | `RecomputeContinuousEffects` (`Game.Layers.cs`). Every layer and sublayer runs through `ApplyLayer` (`Game.LayerDependencies.cs`), which orders its effects by dependency, then timestamp (rule 613.8); `NextInDependencyOrder` picks the next one |
+| Static abilities, layers | `RecomputeContinuousEffects` (`Game.Layers.cs`). Every layer and sublayer runs through `ApplyLayer` (`Game.LayerDependencies.cs`), which orders its effects by dependency, then timestamp (rule 613.8); `NextInDependencyOrder` picks the next one. `EffectLocks` keeps an effect on the objects it first applied to in every later layer (rule 613.6), even after its ability is lost |
 | Casting, costs, modes, X | `Game.Priority.cs` (casting flow), `Game.CastingCosts.cs` (ways to cast, `CanPayToCast`) |
 | Mana payment | `Rules/ManaPayment.cs`, `Mana/ManaCost.cs`, `Mana/ManaPool.cs` |
 | Zone changes and their replacements | `MoveCardAsync` (`Game.Zones.cs`) |

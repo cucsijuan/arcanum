@@ -167,4 +167,67 @@ public class LayerDependencyTests
         });
         Assert.Equal((1, 1), (s.Card(bear).Power, s.Card(bear).Toughness));
     }
+
+    // ------------------------------------------------------------------ rule 613.6: an effect keeps its objects in later layers
+
+    [Fact]
+    public async Task AnEffectThatMakesCreaturesSetsThePowerOfThoseItMade()
+    {
+        // "Each noncreature artifact is a 2/2 artifact creature": after layer 4 the artifact is no longer a noncreature artifact,
+        // but the same effect still sets its power and toughness in layer 7b.
+        var animator = Enchantment("Animator", new StaticAbility(new AffectedFilter(AffectedScope.AllPermanents))
+        {
+            Filter = new ObjectFilter(CardType.Artifact, ExcludedTypes: CardType.Creature), AddTypes = CardType.Creature, SetPower = 2, SetToughness = 2,
+        });
+        CardId idol = default;
+        var s = await Settled(s =>
+        {
+            s.Add(P0, animator);
+            idol = s.Add(P1, new CardDefinition { Name = "Idol", Types = CardType.Artifact });
+        });
+        Assert.True(s.Card(idol).IsCreature);
+        Assert.Equal((2, 2), (s.Card(idol).Power, s.Card(idol).Toughness));
+    }
+
+    [Theory]
+    [InlineData(false, 1, 1)]
+    [InlineData(true, 4, 1)]
+    public async Task AnEffectKeepsApplyingAfterItsAbilityIsLost(bool meeknessIsOlder, int meeknessPower, int bearPower)
+    {
+        // "Each other non-Aura enchantment is a creature with base power and toughness 4/4" makes Meekness a creature; Meekness's
+        // "All creatures lose all abilities and have base power and toughness 1/1" then takes its own ability away in layer 6, but
+        // having started to apply, it still sets base power and toughness in layer 7b, in timestamp order with the 4/4.
+        var mirror = Enchantment("Mirror", new StaticAbility(new AffectedFilter(AffectedScope.AllPermanents))
+        {
+            Filter = new ObjectFilter(CardType.Enchantment, ExcludedSubtype: "Aura") { Other = true }, AddTypes = CardType.Creature, SetPower = 4, SetToughness = 4,
+        });
+        var meekness = Enchantment("Meekness", new StaticAbility(EveryCreature) { LosesAllAbilities = true, SetPower = 1, SetToughness = 1 });
+        CardId meek = default, bear = default;
+        var s = await Settled(s =>
+        {
+            if (meeknessIsOlder) meek = s.Add(P0, meekness);
+            s.Add(P0, mirror);
+            if (!meeknessIsOlder) meek = s.Add(P0, meekness);
+            bear = s.Add(P1, Creature("Bear", 3, 3));
+        });
+        Assert.True(s.Card(meek).IsCreature);
+        Assert.Equal((meeknessPower, meeknessPower), (s.Card(meek).Power, s.Card(meek).Toughness));
+        Assert.Equal((bearPower, bearPower), (s.Card(bear).Power, s.Card(bear).Toughness));
+    }
+
+    [Fact]
+    public async Task AnEffectGrantingAbilitiesKeepsItsCreaturesForItsBonus()
+    {
+        // "Creatures with power 2 or less have flying and get +2/+0" starts to apply in layer 6 to the 2/2; "All creatures have base
+        // power and toughness 5/5" makes it a 5/5 in layer 7b, and the bonus still goes to the same creature in layer 7c.
+        CardId bear = default;
+        var s = await Settled(s =>
+        {
+            s.Add(P0, Enchantment("Wings", new StaticAbility(EveryCreature, 2, 0, new[] { Keyword.Flying }) { Filter = new ObjectFilter(MaxPower: 2) }));
+            s.Add(P0, Enchantment("Giants", new StaticAbility(EveryCreature) { SetPower = 5, SetToughness = 5 }));
+            bear = s.Add(P0, Creature("Bear", 2, 2));
+        });
+        Assert.True(s.Card(bear).Has(Keyword.Flying));
+        Assert.Equal((7, 5), (s.Card(bear).Power, s.Card(bear).Toughness));
+    }
 }

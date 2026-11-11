@@ -95,6 +95,19 @@ public sealed partial class Game
     /// <summary>A static ability on its source; <paramref name="Occurrence"/> tells apart the same ability object held twice.</summary>
     private readonly record struct StaticSource(Card Source, StaticAbility Ability, int Occurrence);
 
+    private static EffectKey StaticKey(StaticSource candidate) =>
+        new(StaticEffectKind, candidate.Source.Id, candidate.Ability.FromGraveyard ? -1 - candidate.Occurrence : candidate.Occurrence, candidate.Ability);
+
+    /// <summary>
+    /// The static abilities whose effect has started to apply in an earlier layer of one recomputation, and the objects it applies
+    /// to: it keeps applying to those in every later layer, even if the ability is lost on the way (rule 613.6).
+    /// </summary>
+    private sealed class EffectLocks
+    {
+        public readonly Dictionary<EffectKey, IReadOnlyList<Card>> Targets = new();
+        public readonly Dictionary<EffectKey, StaticSource> Sources = new();
+    }
+
     /// <summary>True while an effect is applied only to see what it would change (rule 613.8a): nothing outside the layer's own state may be kept.</summary>
     private bool _layerTrial;
 
@@ -238,9 +251,20 @@ public sealed partial class Game
 
     /// <summary>
     /// The static abilities that may apply in a layer: each one its source has now, oldest source first, whether or not its
-    /// condition holds yet (it may come to hold as the layer is applied).
+    /// condition holds yet (it may come to hold as the layer is applied). With <paramref name="locks"/>, also those whose effect
+    /// started to apply in an earlier layer and whose source has lost them since (rule 613.6).
     /// </summary>
-    private static List<StaticSource> StaticCandidates(LayerContext context, Func<StaticAbility, bool> relevant)
+    private static List<StaticSource> StaticCandidates(LayerContext context, Func<StaticAbility, bool> relevant, EffectLocks? locks = null)
+    {
+        var found = StaticCandidatesNow(context, relevant);
+        if (locks is null || locks.Sources.Count == 0) return found;
+        var present = found.Select(StaticKey).ToHashSet();
+        foreach (var (key, candidate) in locks.Sources)
+            if (relevant(candidate.Ability) && !present.Contains(key)) found.Add(candidate);
+        return found;
+    }
+
+    private static List<StaticSource> StaticCandidatesNow(LayerContext context, Func<StaticAbility, bool> relevant)
     {
         var found = new List<StaticSource>();
         foreach (var source in context.Sources.OrderBy(c => c.Timestamp))
@@ -286,10 +310,10 @@ public sealed partial class Game
     /// </summary>
     private LayerEffect StaticEffect(LayerContext context, StaticSource candidate, Aspect writes, Action<Card> apply,
         Func<IReadOnlyList<Card>, object?>? does = null, Aspect reads = Aspect.None, Aspect readsOfSource = Aspect.None, bool spawns = false,
-        Dictionary<EffectKey, IReadOnlyList<Card>>? locked = null, Action? onApply = null)
+        EffectLocks? locked = null, Action? onApply = null)
     {
-        var (source, ability, occurrence) = candidate;
-        var key = new EffectKey(StaticEffectKind, source.Id, ability.FromGraveyard ? -1 - occurrence : occurrence, ability);
+        var (source, ability, _) = candidate;
+        var key = StaticKey(candidate);
         return new LayerEffect
         {
             Key = key,
@@ -299,12 +323,12 @@ public sealed partial class Game
             Reads = reads | (ability.While is not null ? Aspect.All : ScopeReads(ability.Affects) | FilterReads(ability.Filter)),
             ReadsOfSource = readsOfSource | (ability.FromGraveyard ? Aspect.None : Aspect.Abilities | Aspect.TextAbilities | Aspect.Copy),
             Spawns = spawns,
-            Exists = () => (locked is not null && locked.ContainsKey(key)) || StaticExists(candidate),
-            Targets = () => locked is not null && locked.TryGetValue(key, out var kept) ? kept : AffectedBy(context, source, ability).ToList(),
+            Exists = () => (locked is not null && locked.Targets.ContainsKey(key)) || StaticExists(candidate),
+            Targets = () => locked is not null && locked.Targets.TryGetValue(key, out var kept) ? kept : AffectedBy(context, source, ability).ToList(),
             Does = does,
             Apply = targets =>
             {
-                if (locked is not null && !_layerTrial) locked.TryAdd(key, targets);
+                if (locked is not null && !_layerTrial && locked.Targets.TryAdd(key, targets)) locked.Sources[key] = candidate;
                 onApply?.Invoke();
                 foreach (var card in targets) apply(card);
             },
