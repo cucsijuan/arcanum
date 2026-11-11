@@ -69,11 +69,11 @@ allows going to zero), and each player finishes all their mulligans before the n
 in turn order declares, then everyone who chose to mulligans at the same time, repeated).
 **Fix:** allow mulligan to zero; run mulligans in declaration rounds.
 
-### R9. Prevention is always applied before damage doubling
+### R9. Prevention is always applied before damage doubling — **done**
 `ModifyDamage` prevents first, then doubles and triples. Today every prevention effect prevents all damage, so the order
 doesn't change the result; as soon as a partial prevention ("prevent the next N") exists it will. Rule 616.1: the affected
 player or controller chooses the order of replacement and prevention effects.
-**Fix:** when adding partial prevention, build the damage pipeline from ordered replacement effects instead of fixed steps.
+**Done:** `ModifyDamagePartAsync` (`Game.Damage.cs`) takes the damage modifiers from `DamageModifiers` and lets the affected player order them (rule 616.1) whenever the order can change the result: it is not asked when there is one kind of modifier or when all of them are preventions that cost and cause nothing. "Prevent all" shields that are used up or make something happen are each an option of their own, listed so that the one keeping the most comes first; a computer player takes the first.
 
 ### R10. Layers: dependency is handled by a fixed two-pass approach
 `RecomputeContinuousEffects` works the ability layer out with printed characteristics and again after types and colors
