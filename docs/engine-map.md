@@ -348,4 +348,9 @@ service seals a career's checked actions, and online career events run through i
 6. Write a test in `tests/Arcanum.Engine.Tests` with invented cards (see `HeroesTests.Make` for building one from a script).
 7. Document the vocabulary in `card-scripts.md`.
 8. Run `dotnet build Arcanum.csproj`, the test projects, and a soak of the set that needs it (`SetGamesTests`, environment variables
-   `ARCANUM_MODULE_PATH` (absolute), `ARCANUM_CARD_FILE`, `ARCANUM_SMOKE_SET`, `ARCANUM_SMOKE_GAMES`).
+   `ARCANUM_MODULE_PATH` (absolute), `ARCANUM_SMOKE_SET`, `ARCANUM_SMOKE_GAMES`).
+   The real card data comes from `ARCANUM_CARD_FILE` when it is set (optional). Otherwise the checks use the card data the game
+   downloaded and converted for the module's current version, `user://card_data/<module id>/cards.v*-<module version>.jsonl.gz`
+   (on Linux, `~/.local/share/godot/app_userdata/Arcanum/card_data/<module id>/`). Start the game once with that module version
+   to create it. Without card data, the set and commander soaks fail with a message saying so; the booster and script coverage
+   checks skip.

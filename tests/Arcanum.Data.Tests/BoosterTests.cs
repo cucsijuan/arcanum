@@ -100,14 +100,14 @@ public class BoosterTests
     }
 
     /// <summary>
-    /// Optional: with ARCANUM_MODULE_PATH and ARCANUM_CARD_FILE set (and ARCANUM_PRINTINGS_FILE when the card file has no printings),
+    /// Optional: with ARCANUM_MODULE_PATH set and card data found (<see cref="RealCardData"/>; ARCANUM_PRINTINGS_FILE when it has no printings),
     /// every booster set of the module (or only ARCANUM_BOOSTER_SET) opens complete boosters from the real card data.
     /// </summary>
     [Fact]
     public void ModuleBoostersOpenWhenProvided()
     {
         var dir = Environment.GetEnvironmentVariable("ARCANUM_MODULE_PATH");
-        var cardFile = Environment.GetEnvironmentVariable("ARCANUM_CARD_FILE");
+        var cardFile = RealCardData.Find(dir);
         var printingsFile = Environment.GetEnvironmentVariable("ARCANUM_PRINTINGS_FILE");
         var only = Environment.GetEnvironmentVariable("ARCANUM_BOOSTER_SET");
         if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(cardFile)) return;

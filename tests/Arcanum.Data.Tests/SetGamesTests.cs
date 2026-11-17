@@ -11,17 +11,17 @@ namespace Arcanum.Data.Tests;
 public class SetGamesTests
 {
     /// <summary>
-    /// Optional soak test of a real set: with ARCANUM_MODULE_PATH, ARCANUM_CARD_FILE and ARCANUM_SMOKE_SET (a set code)
-    /// set, the computer plays ARCANUM_SMOKE_GAMES games (default 40) against itself with random two-color decks of the
+    /// Optional soak test of a real set: with ARCANUM_MODULE_PATH and ARCANUM_SMOKE_SET (a set code) set (the card data is the
+    /// game's for that module version, or ARCANUM_CARD_FILE; see <see cref="RealCardData"/>), the computer plays ARCANUM_SMOKE_GAMES games (default 40) against itself with random two-color decks of the
     /// set's cards. Every game must run without an engine error; cards never cast are listed.
     /// </summary>
     [Fact]
     public async Task SetGamesPlayWithoutErrorsWhenProvided()
     {
         var dir = Environment.GetEnvironmentVariable("ARCANUM_MODULE_PATH");
-        var cardFile = Environment.GetEnvironmentVariable("ARCANUM_CARD_FILE");
         var code = Environment.GetEnvironmentVariable("ARCANUM_SMOKE_SET");
-        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(cardFile) || string.IsNullOrEmpty(code)) return;
+        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(code)) return;
+        var cardFile = RealCardData.Require(dir);
         int games = int.TryParse(Environment.GetEnvironmentVariable("ARCANUM_SMOKE_GAMES"), out var n) ? n : 40;
         var module = Arcanum.Data.Modules.ContentModule.Load(dir);
         using var file = File.OpenRead(cardFile);
@@ -77,17 +77,17 @@ public class SetGamesTests
     }
 
     /// <summary>
-    /// Optional soak test of a module's commander decks: with ARCANUM_MODULE_PATH, ARCANUM_CARD_FILE and ARCANUM_SMOKE_DECKS (a deck
-    /// name prefix) set, the computer plays ARCANUM_SMOKE_GAMES four-player Commander games (default 20) with those decks. Every game
+    /// Optional soak test of a module's commander decks: with ARCANUM_MODULE_PATH and ARCANUM_SMOKE_DECKS (a deck name prefix) set
+    /// (card data as in <see cref="RealCardData"/>), the computer plays ARCANUM_SMOKE_GAMES four-player Commander games (default 20) with those decks. Every game
     /// must run without an engine error.
     /// </summary>
     [Fact]
     public async Task CommanderDeckGamesPlayWithoutErrorsWhenProvided()
     {
         var dir = Environment.GetEnvironmentVariable("ARCANUM_MODULE_PATH");
-        var cardFile = Environment.GetEnvironmentVariable("ARCANUM_CARD_FILE");
         var prefix = Environment.GetEnvironmentVariable("ARCANUM_SMOKE_DECKS");
-        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(cardFile) || string.IsNullOrEmpty(prefix)) return;
+        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(prefix)) return;
+        var cardFile = RealCardData.Require(dir);
         int games = int.TryParse(Environment.GetEnvironmentVariable("ARCANUM_SMOKE_GAMES"), out var n) ? n : 20;
         var module = Arcanum.Data.Modules.ContentModule.Load(dir);
         using var file = File.OpenRead(cardFile);

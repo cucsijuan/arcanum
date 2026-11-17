@@ -191,8 +191,8 @@ public class ImportTests
 public class ModuleTests
 {
     /// <summary>
-    /// Optional check of a real content module: set ARCANUM_MODULE_PATH (and optionally ARCANUM_CARD_FILE to also
-    /// report coverage). Every script must parse.
+    /// Optional check of a real content module: set ARCANUM_MODULE_PATH (coverage is also reported when card data is found,
+    /// see <see cref="RealCardData"/>). Every script must parse.
     /// </summary>
     [Fact]
     public void ModuleScriptsParseWhenProvided()
@@ -205,7 +205,7 @@ public class ModuleTests
         Assert.True(errors.Count == 0, string.Join("\n", errors.Take(20)));
         Console.WriteLine($"scripts={scripts.Count}");
 
-        var cardFile = Environment.GetEnvironmentVariable("ARCANUM_CARD_FILE");
+        var cardFile = RealCardData.Find(dir);
         if (string.IsNullOrEmpty(cardFile)) return;
         using var file = File.OpenRead(cardFile);
         var db = new CardDatabase(OracleJsonl.Import(file, module.Sources.Cards.ToFilter()), scripts);
