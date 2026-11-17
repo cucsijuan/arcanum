@@ -301,9 +301,10 @@ public sealed partial class Game
                 foreach (var affected in AffectedBy(source, ability).Where(a => a.Is(CardType.Land)).ToList())
                     affected.LosesTextAbilities = true;
 
-        // Which abilities exist decides which static abilities apply at all in the layers before the ability layer, so that layer is
-        // worked out first with printed characteristics, then again once types and colors are settled. This is across layers;
-        // inside each layer the order follows rule 613.8 (ApplyLayer).
+        // Which abilities are granted decides which static abilities apply at all in the layers before the ability layer, so that
+        // layer is worked out first with printed characteristics, then again once types and colors are settled. Abilities it takes
+        // away still count for the earlier layers (they apply before layer 6). This is across layers; inside each layer the order
+        // follows rule 613.8 (ApplyLayer).
         ApplyAbilityLayer(context, effects);
 
         // "This creature has all activated abilities of lands your opponents control except mana abilities" (layer 6, worked out here
@@ -851,8 +852,36 @@ public sealed partial class Game
             foreach (var (counter, keyword) in KeywordCounters)
                 if (card.CounterCount(counter) > 0) card.GrantedKeywords.Add(keyword);
         }
-        ApplyLayer(() => AbilityEffects(context, effects, locks), card => new AbilitySnapshot(card), (card, saved) => ((AbilitySnapshot)saved!).Restore(card));
+        bool preliminary = locks is null;
+        if (preliminary) _preliminaryLosses = new();
+        try
+        {
+            ApplyLayer(() => AbilityEffects(context, effects, locks), card => new AbilitySnapshot(card), (card, saved) => ((AbilitySnapshot)saved!).Restore(card));
+        }
+        finally
+        {
+            if (preliminary)
+            {
+                // Layers 2 to 5 come before layer 6 (rule 613.1): an ability that layer 6 takes away still generates its effects
+                // in them, so the earlier layers see each permanent with its own abilities and every ability granted to it, lost or
+                // not. Which grants exist was worked out above, with the losses they depend on (rule 613.8).
+                foreach (var card in battlefield)
+                {
+                    if (_preliminaryLosses!.TryGetValue(card.Id, out var kept))
+                    {
+                        card.GrantedAbilities.InsertRange(0, kept.Abilities.Where(a => !card.GrantedAbilities.Contains(a)));
+                        card.GrantedKeywords.UnionWith(kept.Keywords);
+                    }
+                    card.LosesAbilities = false;
+                    card.LostKeywords.Clear();
+                }
+                _preliminaryLosses = null;
+            }
+        }
     }
+
+    /// <summary>During the preliminary ability pass: what each permanent had been granted when it lost all its abilities.</summary>
+    private Dictionary<CardId, (List<AbilityDefinition> Abilities, HashSet<Keyword> Keywords)>? _preliminaryLosses;
 
     /// <summary>The effects of layer 6: static abilities that grant or remove abilities, then those of resolved spells and abilities.</summary>
     private List<LayerEffect> AbilityEffects(LayerContext context, List<UntilEndOfTurnEffect> effects, EffectLocks? locks)
@@ -1010,8 +1039,15 @@ public sealed partial class Game
         }
     }
 
-    private static void LoseAllAbilities(Card card)
+    private void LoseAllAbilities(Card card)
     {
+        // Granted before the loss: kept for the layers before 6 when this is the preliminary pass (ApplyAbilityLayer).
+        if (_preliminaryLosses is { } kept && !_layerTrial)
+        {
+            if (!kept.TryGetValue(card.Id, out var grants)) kept[card.Id] = grants = (new List<AbilityDefinition>(), new HashSet<Keyword>());
+            grants.Abilities.AddRange(card.GrantedAbilities);
+            grants.Keywords.UnionWith(card.GrantedKeywords);
+        }
         card.LosesAbilities = true;
         card.DyingTriggerBonus = 0;
         card.CantAttackOwner = false;

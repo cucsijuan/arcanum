@@ -98,10 +98,14 @@ ability pass takes no locks. Also fixed: base power and toughness overrides are 
 the other layer 7 values, so layers 1 to 6 no longer see values left over from the previous recomputation. Tests: the last three
 in `tests/Arcanum.Engine.Tests/LayerDependencyTests.cs`.
 
-### R12. Preliminary ability pass ignores what layer 6 does to the abilities
+### R12. Preliminary ability pass ignores what layer 6 does to the abilities — **done**
 A permanent that loses all abilities in layer 6 also stops generating its layer 2, 4 and 5 effects, but by 613.6 those still
 apply.
-**Plan:** decide each ability's existence for earlier layers before layer 6 runs, and rework the preliminary pass.
+**Done:** when `ApplyAbilityLayer` (`Game.Layers.cs`) runs as the preliminary pass without locks, it gives layers 2 to 5 the
+abilities that layer 6 takes away. At the end of that pass, each permanent gets back its own abilities (`LosesAbilities` and
+`LostKeywords` cleared), plus every ability and keyword it had been granted before it lost them. `LoseAllAbilities` records these
+in `_preliminaryLosses`, outside trial applications. Tests: `ACreatureThatLosesItsAbilitiesStillChangesTypesAndColors` (both
+timestamp orders) and `AnEffectThatStartedBeforeLayerSixKeepsItsLaterParts` in `tests/Arcanum.Engine.Tests/LayerDependencyTests.cs`.
 
 ### R13. Granted static ability uses the wrong timestamp
 It uses its object's timestamp instead of the later of the object's and the granting effect's (613.7a).
@@ -227,5 +231,5 @@ the card goes ("instead of putting it into your graveyard"), so the card is disc
 5. **H1** (generic names, sandbox, guard test).
 6. **R3, R4, R7, R8** (rules ordering work, each with its own tests).
 7. **D4** (done: the effect switch is four ordered parts, `Game.Effects.Part1.cs` to `Part4.cs`), then **D3** migration (R9 and R10 done).
-8. **R11** (done), **R12**, **R13** and **R14**, in that order, each with its own tests (the layer rules left after R10).
-8. **D5** when limited events are next touched.
+8. **R11** and **R12** (done), **R13** and **R14**, in that order, each with its own tests (the layer rules left after R10).
+9. **D5** when limited events are next touched.

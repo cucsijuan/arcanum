@@ -230,4 +230,59 @@ public class LayerDependencyTests
         Assert.True(s.Card(bear).Has(Keyword.Flying));
         Assert.Equal((7, 5), (s.Card(bear).Power, s.Card(bear).Toughness));
     }
+
+    // ------------------------------------------------------------------ losing abilities in layer 6 comes after layers 2 to 5
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ACreatureThatLosesItsAbilitiesStillChangesTypesAndColors(bool removalIsOlder)
+    {
+        // A creature with "Other creatures you control are Zombies" and "All creatures are blue": both apply in layers 4 and 5,
+        // before Hush takes its abilities away in layer 6, whichever came first.
+        var captain = Creature("Captain", 2, 2) with
+        {
+            Abilities = new AbilityDefinition[]
+            {
+                new StaticAbility(new AffectedFilter(AffectedScope.YourCreatures)) { Filter = new ObjectFilter { Other = true }, AddSubtypes = new[] { "Zombie" } },
+                new StaticAbility(EveryCreature) { SetColors = new[] { "U" } },
+            },
+        };
+        CardId bear = default, cap = default;
+        var s = await Settled(s =>
+        {
+            if (removalIsOlder) s.Add(P1, Hush());
+            cap = s.Add(P0, captain);
+            bear = s.Add(P0, Creature("Bear", 2, 2));
+            if (!removalIsOlder) s.Add(P1, Hush());
+        });
+        Assert.True(s.Card(bear).HasSubtype("Zombie"));
+        Assert.Equal(new[] { "U" }, s.Card(bear).Colors);
+        Assert.Equal(new[] { "U" }, s.Card(cap).Colors);
+        Assert.Empty(s.Card(cap).Abilities); // it has lost them all the same
+    }
+
+    [Fact]
+    public async Task AnEffectThatStartedBeforeLayerSixKeepsItsLaterParts()
+    {
+        // "Other creatures you control are Zombies and have menace": its layer 4 part applies before Hush, so having started, it
+        // still grants menace in layer 6 (rule 613.6), though its creature has lost the ability.
+        var captain = Creature("Captain", 2, 2) with
+        {
+            Abilities = new AbilityDefinition[]
+            {
+                new StaticAbility(new AffectedFilter(AffectedScope.YourCreatures), 0, 0, new[] { Keyword.Menace })
+                    { Filter = new ObjectFilter { Other = true }, AddSubtypes = new[] { "Zombie" } },
+            },
+        };
+        CardId bear = default;
+        var s = await Settled(s =>
+        {
+            s.Add(P1, Hush());
+            s.Add(P0, captain);
+            bear = s.Add(P0, Creature("Bear", 2, 2));
+        });
+        Assert.True(s.Card(bear).HasSubtype("Zombie"));
+        Assert.True(s.Card(bear).Has(Keyword.Menace));
+    }
 }
