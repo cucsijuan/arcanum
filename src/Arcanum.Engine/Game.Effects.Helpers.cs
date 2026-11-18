@@ -23,10 +23,10 @@ public sealed partial class Game
                 Abilities = p.AddAbilities?.Select(a => BindGranter(a, ctx.Controller)).ToList(), Timestamp = NewTimestamp(),
                 SetPower = p.SetPower, SetToughness = p.SetToughness,
             });
-        if (p.AddSubtypes is not null || p.AddKeywords is not null || p.AddColors is not null || p.AddTypes != 0)
+        if (p.AddSubtypes is not null || p.AddKeywords is not null || p.AddColors is not null || p.AddTypes != 0 || p.NoAbilities)
             State.LastingEffects.Add(new UntilEndOfTurnEffect(card.Id, card.Version, 0, 0, p.AddKeywords ?? (IReadOnlyList<Keyword>)Array.Empty<Keyword>())
             {
-                AddSubtypes = p.AddSubtypes, AddColors = p.AddColors, AddTypes = p.AddTypes, Timestamp = NewTimestamp(),
+                AddSubtypes = p.AddSubtypes, AddColors = p.AddColors, AddTypes = p.AddTypes, Timestamp = NewTimestamp(), LosesAbilities = p.NoAbilities,
             });
         RecomputeContinuousEffects();
     }
@@ -81,13 +81,15 @@ public sealed partial class Game
         int eachOfThree = State.PermanentsControlledBy(player).Count(c => c.HasTextAbilities && c.Definition.ClueFoodTreasureEach);
         int squirrels = State.PermanentsControlledBy(player).Count(c => c.HasTextAbilities && c.Definition.TokensPlusThatManySquirrels);
         var replacements = State.PermanentsControlledBy(player).SelectMany(c => c.Abilities.OfType<TokenReplacement>()).ToList();
-        // "The first time you would create one or more tokens each turn, you may instead create that many copies of equipped creature."
+        // "The first time you would create one or more tokens each turn, you may instead create that many copies of equipped creature"
+        // (or "of enchanted permanent").
+        bool CopiesHost(Card c) => c.HasTextAbilities && c.AttachedTo is { } host && State.GetCard(host) is { Zone: Zone.Battlefield } h
+                                   && (c.Definition.FirstTokensCopyEquipped && h.IsCreature || c.Definition.FirstTokensCopyEnchanted);
         bool firstThisTurn = State.TokensCreatedOnTurn.GetValueOrDefault(player, -1) != State.TurnNumber;
         State.TokensCreatedOnTurn[player] = State.TurnNumber;
         var crowns = new List<Card>();
         if (firstThisTurn)
-            foreach (var crown in State.PermanentsControlledBy(player).Where(c => c.HasTextAbilities && c.Definition.FirstTokensCopyEquipped
-                         && c.AttachedTo is { } host && State.GetCard(host) is { IsCreature: true, Zone: Zone.Battlefield }).ToList())
+            foreach (var crown in State.PermanentsControlledBy(player).Where(CopiesHost).ToList())
                 if (await ControllerOf(player).ChooseYesNoAsync(ViewFor(player), new YesNoRequest(
                         $"{crown.Name}: create copies of {State.GetCard(crown.AttachedTo!.Value).Name} instead?", crown.Id)))
                     crowns.Add(crown);
@@ -129,10 +131,11 @@ public sealed partial class Game
                     replacements.Remove(r);
                 }));
             foreach (var crown in crowns.ToList())
-                choices.Add(("That many copies of the equipped creature instead", () =>
+                choices.Add((crown.Definition.FirstTokensCopyEnchanted ? "That many copies of the enchanted permanent instead" : "That many copies of the equipped creature instead", () =>
                 {
                     crowns.Remove(crown);
-                    if (crown.AttachedTo is not { } host || State.GetCard(host) is not { IsCreature: true, Zone: Zone.Battlefield } equipped) return;
+                    if (!CopiesHost(crown)) return;
+                    var equipped = State.GetCard(crown.AttachedTo!.Value);
                     var (copied, copiedBackFaceUp) = CopiableForToken(equipped);
                     CardDefinition AsToken(CardDefinition face) => face with { IsToken = true, ImageByName = face.ImageByName || (!face.IsToken && face.ImageKey is null) };
                     var copyToken = AsToken(copied) with { BackFace = copied.BackFace is { } back ? AsToken(back) : null };
@@ -234,9 +237,24 @@ public sealed partial class Game
     private async Task LookAtTopAsync(PlayerId who, int count, CardChoicePurpose purpose, Card source)
     {
         var player = State.GetPlayer(who);
+        if (count <= 0) return; // scry 0 / surveil 0: no event, nothing triggers (rules 701.22b, 701.25c)
         var top = player.Library.Take(count).ToList();
-        if (top.Count == 0) return;
         bool scry = purpose == CardChoicePurpose.ScryToBottom;
+        // With an empty library nothing is looked at, but the player still scried or surveilled (rules 701.22d, 701.25d).
+        if (top.Count > 0) await LookAtTopCardsAsync(who, top, count, scry, purpose, source);
+        var happened = scry ? TriggerEvent.YouScry : TriggerEvent.YouSurveil;
+        player.ScriedOrSurveilledThisTurn = true;
+        foreach (var card in State.PermanentsControlledBy(who).ToList()) Queue(card.Id, happened, who, new TriggerInfo(Player: who, Amount: top.Count));
+        foreach (var card in State.PermanentsControlledBy(who).ToList()) Queue(card.Id, TriggerEvent.YouScryOrSurveil, who, new TriggerInfo(Player: who, Amount: top.Count));
+        foreach (var card in player.Graveyard.Select(State.GetCard).ToList())
+            foreach (var ability in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.FromGraveyard && a.Trigger == happened))
+                AddPending(card.Id, ability, who, new TriggerInfo(Player: who, Amount: top.Count));
+    }
+
+    /// <summary>The looking and moving part of a scry or surveil, for the cards actually on top.</summary>
+    private async Task LookAtTopCardsAsync(PlayerId who, List<CardId> top, int count, bool scry, CardChoicePurpose purpose, Card source)
+    {
+        var player = State.GetPlayer(who);
         Look(who, top);
         var prompt = scry
             ? $"Scry {count}: click the cards to put on the bottom of your library, any number; the rest stay on top"
@@ -260,13 +278,6 @@ public sealed partial class Game
         // The cards go back face down: only the player who looked follows them, unless a single one stays in the library.
         PlacedInUnseenOrder(top, who);
         Emit(new LookedAtTop(who, top.Count, chosen.Count, scry));
-        var happened = scry ? TriggerEvent.YouScry : TriggerEvent.YouSurveil;
-        player.ScriedOrSurveilledThisTurn = true;
-        foreach (var card in State.PermanentsControlledBy(who).ToList()) Queue(card.Id, happened, who, new TriggerInfo(Player: who, Amount: top.Count));
-        foreach (var card in State.PermanentsControlledBy(who).ToList()) Queue(card.Id, TriggerEvent.YouScryOrSurveil, who, new TriggerInfo(Player: who, Amount: top.Count));
-        foreach (var card in player.Graveyard.Select(State.GetCard).ToList())
-            foreach (var ability in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.FromGraveyard && a.Trigger == happened))
-                AddPending(card.Id, ability, who, new TriggerInfo(Player: who, Amount: top.Count));
     }
 
     /// <summary>Cards a search puts onto the battlefield together with what it finds (<see cref="SearchLibrary.WithExiled"/>).</summary>
@@ -448,7 +459,7 @@ public sealed partial class Game
     }
 
     private static string DescribeCost(ExtraCost cost) =>
-        cost.Discard > 0 ? $"Discard {cost.Discard} card{(cost.Discard > 1 ? "s" : "")}"
+        cost.Discard > 0 ? $"Discard {cost.Discard} card{(cost.Discard > 1 ? "s" : "")}{(cost.DiscardAtRandom ? " at random" : "")}"
         : cost.Sacrifice is { } s ? $"Sacrifice {(cost.SacrificeCount > 1 ? cost.SacrificeCount.ToString() : "a")} {(s.Subtype is { } st ? st : s.Token == true ? "token" : s.Types == CardType.Creature ? "creature" : "permanent")}{(cost.SacrificeCount > 1 ? "s" : "")}"
         : cost.PayLife > 0 ? $"Pay {cost.PayLife} life"
         : cost.ExileFromGraveyard > 0 ? $"Exile {cost.ExileFromGraveyard} cards from your graveyard"
@@ -485,7 +496,7 @@ public sealed partial class Game
         && !(spell.Definition.CantBeCounteredIf is { } uncounterableIf && Holds(uncounterableIf, spell.Controller, spell)) // spell mastery: "this spell can't be countered"
         && !(spell.Definition.CantBeCounteredIfXAtLeast is { } xLimit && State.Stack.OfType<SpellOnStack>().FirstOrDefault(s => s.Card == spell.Id)?.X >= xLimit) // "if X is 5 or more, this spell can't be countered"
         && !((spell.Is(CardType.Instant) || spell.Is(CardType.Sorcery)) && Has(spell.Controller, Replacements.YourInstantsAndSorceriesCantBeCountered))
-        && !State.PermanentsControlledBy(spell.Controller).Any(p => p.HasTextAbilities && p.Definition.YourSpellsCantBeCountered)
+        && !State.PermanentsControlledBy(spell.Controller).Any(p => p.HasTextAbilities && (p.Definition.YourSpellsCantBeCountered || (spell.IsCreature && p.Definition.YourCreatureSpellsCantBeCountered)))
         && !State.Battlefield.Select(State.GetCard).Any(p => p.HasTextAbilities && p.Definition.SpellsCantBeCountered) // "Spells can't be countered."
         && State.GetPlayer(spell.Controller).SpellsCantBeCounteredTurn != State.TurnNumber; // "Spells you control can't be countered this turn."
 

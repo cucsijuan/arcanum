@@ -45,6 +45,7 @@ public sealed partial class Game
         if (filter.MaxManaValueTriggeredCounters && !(_triggeredSubject is { } counted
                                                       && ManaValueOf(obj) <= TriggeredCounterTotal(State.GetCard(counted), _triggeredSubjectVersion))) return false;
         if (filter.MaxManaValueX && (_announcedX < 0 || ManaValueOf(obj) > _announcedX)) return false;
+        if (filter.MaxToughnessX && (_announcedX < 0 || obj.Toughness > _announcedX)) return false;
         if (filter.TargetsYou && !(obj.Zone == Zone.Stack && State.Stack.OfType<SpellOnStack>().FirstOrDefault(s => s.Card == obj.Id) is { } spell
                                    && spell.Targets.Any(t => t.Target.Player == sourceController))) return false;
         return true;

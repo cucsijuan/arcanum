@@ -71,6 +71,9 @@ public sealed record ManaOption(IReadOnlyList<ManaType> Types, int Amount = 1, O
     /// <summary>"Spend this mana only to cast an Equipment spell or activate an equip ability": besides <see cref="OnlyFor"/> spells, equip abilities only.</summary>
     public bool EquipOnly { get; init; }
 
+    /// <summary>"Spend this mana only to activate abilities of [filter] sources": no spells, only abilities of <see cref="OnlyFor"/> sources.</summary>
+    public bool AbilitiesOnly { get; init; }
+
     /// <summary>"…, unlock a door, or turn a permanent face up": besides <see cref="OnlyFor"/> spells, it may pay to unlock doors.</summary>
     public bool ForUnlock { get; init; }
 
@@ -93,6 +96,12 @@ public sealed record ManaOption(IReadOnlyList<ManaType> Types, int Amount = 1, O
     public (Abilities.ObjectFilter Spells, Abilities.TriggeredAbility Ability)? WhenNextCast { get; init; }
 
     /// <summary>"Three times as much of that mana" for a <see cref="OneOfEach"/> or <see cref="Combination"/> ability: its mana, this many times over.</summary>
+    /// <summary>Its type is the color chosen as its permanent entered ("Add two mana of the chosen color"); none before a choice.</summary>
+    public bool ChosenColorMana { get; init; }
+
+    /// <summary>"Each opponent gains 1 life": life each opponent of its controller gains when it is activated.</summary>
+    public int OpponentsGainLife { get; init; }
+
     public int Times { get; init; } = 1;
 
     /// <summary>How many mana one activation adds.</summary>

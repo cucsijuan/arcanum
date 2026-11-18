@@ -124,6 +124,25 @@ public static class PredefinedTokens
         IsToken = true,
     };
 
+    /// <summary>"A Lander token. It's an artifact with '{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.'"</summary>
+    public static readonly CardDefinition Lander = new()
+    {
+        Name = "Lander",
+        Types = CardType.Artifact,
+        Subtypes = new[] { "Lander" },
+        Abilities = new AbilityDefinition[]
+        {
+            new ActivatedAbility
+            {
+                Cost = new AbilityCost(ManaCost.Parse("{2}"), Tap: true, SacrificeSelf: true),
+                Effects = new Effect[] { new SearchLibrary(new ObjectFilter(CardType.Land, Supertype: Supertype.Basic), 1, State.Zone.Battlefield, Tapped: true) },
+                Text = "{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+            },
+        },
+        OracleText = "{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+        IsToken = true,
+    };
+
     /// <summary>
     /// The token incubate creates (rule 701.53a): "an Incubator token. It's an artifact with '{2}: Transform this artifact' and a back face
     /// that's a 0/0 Phyrexian artifact creature".
@@ -181,6 +200,7 @@ public static class PredefinedTokens
         "food" => Food,
         "clue" => Clue,
         "map" => Map,
+        "lander" => Lander,
         "blood" => Blood,
         _ => null,
     };

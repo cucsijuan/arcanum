@@ -163,6 +163,8 @@ public sealed partial class Game
     /// <summary>"Twice that many" effects that apply to these counters on this permanent (each instance once).</summary>
     private int CounterDoublings(Card card, CounterKind kind, PlayerId? placedBy) =>
         Instances(card.Controller, Replacements.DoubleCounters) + (placedBy is { } by ? CountersYouPutDoublings(by) : 0)
+        + State.PermanentsControlledBy(card.Controller).Count(c => c.HasTextAbilities && c.Definition.DoublesCountersOnYour is { } on
+            && Matches(on with { Controller = ControllerFilter.Any }, card, card.Controller, c, card.Controller))
         + (kind == CounterKind.PlusOnePlusOne && card.IsCreature ? Instances(card.Controller, Replacements.DoubleCreaturePlusOneCounters) : 0);
 
     /// <summary>"If you would put one or more counters on a permanent or player, put twice that many of each of those kinds of counters on that permanent or player instead."</summary>

@@ -70,6 +70,8 @@ public sealed record CoinsFlipped(CardId Source, PlayerId Player, int Count, int
 
 /// <summary>A player's turn was skipped (rule 614.10: "skips their next turn").</summary>
 public sealed record TurnSkipped(PlayerId Player) : GameEvent;
+/// <summary>A player controls the active player during this turn (rule 722).</summary>
+public sealed record PlayerControlled(PlayerId Controlled, PlayerId Controller) : GameEvent;
 /// <summary>A creature became prepared (a copy of its prepare spell waits in exile), or was unprepared by an effect.</summary>
 public sealed record PreparedChanged(CardId Card, bool Prepared) : GameEvent;
 /// <summary>A Class became level <see cref="Level"/> (rule 716.2a).</summary>

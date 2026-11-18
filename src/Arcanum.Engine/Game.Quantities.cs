@@ -158,10 +158,19 @@ public sealed partial class Game
             QuantityKind.TriggerAmount => ctx.Trigger?.Amount ?? 0,
             QuantityKind.SacrificedToughness => ctx.Results.Sacrificed.Sum(id => State.GetCard(id).LastKnownInfo?.Toughness ?? State.GetCard(id).Toughness),
             QuantityKind.SacrificedPower => ctx.Results.Sacrificed.Sum(id => State.GetCard(id).LastKnownInfo?.Power ?? State.GetCard(id).Power),
+            // A negative power counts as 0 (rule 107.1b).
+            QuantityKind.TappedForCostPower => Math.Max(0, ctx.Results.TappedForCost.Sum(t => State.GetCard(t.Card) is var c && c.Version == t.Version && c.Zone == Zone.Battlefield
+                ? StationValue(c.Power, c.Toughness, ctx.Controller)
+                : c.LastKnownInfo is { } lki && lki.Version == t.Version ? StationValue(lki.Power, lki.Toughness, ctx.Controller) : 0)),
             QuantityKind.LifeLostThisWay => ctx.Results.LifeLost,
             QuantityKind.MilledThisWay => ctx.Results.Milled.Count(id => q.Filter is null
                 || Matches(q.Filter with { Controller = ControllerFilter.Any }, State.GetCard(id), State.GetCard(id).Owner, ctx.Source, ctx.Controller)),
             QuantityKind.DestroyedThisWay => ctx.Results.Destroyed,
+            QuantityKind.PutIntoGraveyardThisWay => q.Filter is { } putFilter
+                ? ctx.Results.PutIntoGraveyard.Select(State.GetCard).Count(c => Matches(putFilter with { Controller = ControllerFilter.Any }, c, c.Owner, ctx.Source, ctx.Controller))
+                : ctx.Results.PutIntoGraveyard.Count,
+            QuantityKind.HalfStartingLifeRoundedUp => (Config.StartingLife + 1) / 2,
+            QuantityKind.SourceManaValue => ManaValueOf(ctx.Source),
             QuantityKind.ExcessDamage => ctx.Results.ExcessDamage,
             QuantityKind.ExiledThisWay => ctx.Results.Exiled.Count(id => q.Filter is null
                 || Matches(q.Filter with { Controller = ControllerFilter.Any }, State.GetCard(id), State.GetCard(id).Owner, ctx.Source, ctx.Controller)),
@@ -218,7 +227,7 @@ public sealed partial class Game
             QuantityKind.Devotion => DevotionTo(ctx.Controller, q.Filter?.Colors ?? Array.Empty<string>()),
             QuantityKind.PlayersWhoDrewThisWay => ctx.Results.PlayersWhoDrew.Count(p => q.Filter?.Controller != ControllerFilter.Opponent || p != ctx.Controller),
             QuantityKind.OpponentsWithMore => State.OpponentsOf(ctx.Controller).Count(o => OpponentMeasure(q.Measure!, o) > OpponentMeasure(q.Measure!, ctx.Controller)),
-            QuantityKind.AffectedManaValue or QuantityKind.FoundPower or QuantityKind.FoundToughness => EvalOrigins(q, ctx),
+            QuantityKind.AffectedManaValue or QuantityKind.AffectedAttacksThisTurn or QuantityKind.FoundPower or QuantityKind.FoundToughness => EvalOrigins(q, ctx),
             QuantityKind.ManaValueSum or QuantityKind.ControlGainedThisWay or QuantityKind.FoundManaValue or QuantityKind.DiscardedManaValue or QuantityKind.FoundMatching
                 or QuantityKind.CardTypesAmongDiscarded or QuantityKind.CreaturesDiedThisTurn or QuantityKind.CountersRemovedThisWay
                 or QuantityKind.SpellsAndAbilitiesCounteredThisWay or QuantityKind.Rolled or QuantityKind.OpponentsDealtCombatDamage => EvalHeroes(q, ctx),
@@ -244,14 +253,22 @@ public sealed partial class Game
     /// <summary>Quantities that need a resolving spell's targets or results (checked only while it resolves).</summary>
     /// <summary>A quantity worked out for each object a static ability affects.</summary>
     private static bool DependsOnAffected(Quantity? q) =>
-        q is not null && (q.Kind == QuantityKind.OtherCreaturesSharingTypeWithAffected || (q.Parts?.Any(DependsOnAffected) ?? false));
+        q is not null && (q.Kind is QuantityKind.OtherCreaturesSharingTypeWithAffected or QuantityKind.AffectedAttacksThisTurn || (q.Parts?.Any(DependsOnAffected) ?? false));
 
     private static bool DependsOnTargets(Quantity q) => q.Kind is QuantityKind.TargetPower or QuantityKind.TargetToughness or QuantityKind.TargetManaValue
-        or QuantityKind.X or QuantityKind.TriggerAmount or QuantityKind.TriggeredPower or QuantityKind.TriggeredToughness or QuantityKind.SacrificedPower or QuantityKind.SacrificedToughness
+        or QuantityKind.X or QuantityKind.TriggerAmount or QuantityKind.TriggeredPower or QuantityKind.TriggeredToughness or QuantityKind.SacrificedPower or QuantityKind.SacrificedToughness or QuantityKind.TappedForCostPower
         or QuantityKind.LifeLostThisWay or QuantityKind.MilledThisWay or QuantityKind.DestroyedThisWay or QuantityKind.ExcessDamage or QuantityKind.ExiledThisWay
         or QuantityKind.DiscardedThisWay or QuantityKind.ReturnedThisWay or QuantityKind.MilledManaValue or QuantityKind.TappedThisWay or QuantityKind.ManaSpent
         || q.ControlledByTarget || q.ControlledByTriggeredPlayer;
 
     /// <summary>The amount a pending trigger is about, while its targets are chosen and checked ("with equal or lesser mana value than that spell").</summary>
     private int _triggeredAmount;
+
+    /// <summary>
+    /// What a creature tapped for a station cost counts: its power, or its toughness when that is greater and its controller controls a
+    /// permanent saying "each creature you control with toughness greater than its power stations permanents using its toughness".
+    /// </summary>
+    private int StationValue(int power, int toughness, PlayerId controller) =>
+        toughness > power && State.PermanentsControlledBy(controller).Any(p => p.HasTextAbilities && p.Definition.StationsWithToughness) ? toughness : power;
+
 }

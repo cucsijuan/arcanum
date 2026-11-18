@@ -131,7 +131,11 @@ public sealed record Stops(IReadOnlyList<Step> OwnTurn, IReadOnlyList<Step> Oppo
 [JsonDerivedType(typeof(ModesQuestion), "modes")]
 [JsonDerivedType(typeof(NumberQuestion), "number")]
 [JsonDerivedType(typeof(OptionQuestion), "option")]
-public abstract record Question;
+public abstract record Question
+{
+    /// <summary>The player this decision is for when it isn't the seat's own: one it controls this turn (rule 722.4).</summary>
+    public PlayerId? For { get; init; }
+}
 
 public sealed record KeepHandQuestion(int MulligansTaken) : Question;
 public sealed record BottomQuestion(int Count) : Question;

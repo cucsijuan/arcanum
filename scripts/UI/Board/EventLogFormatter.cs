@@ -55,6 +55,7 @@ public static class EventLogFormatter
             ChoiceMade cm => $"{C(cm.Card)}: {cm.Choice} chosen.",
             CoinsFlipped cf => $"{P(cf.Player)} flips {cf.Count} coins for {C(cf.Source)}: {cf.Heads} heads.",
             TurnSkipped ts => $"{P(ts.Player)} skips a turn.",
+            PlayerControlled pc => $"{P(pc.Controller)} controls {P(pc.Controlled)} during this turn.",
             PreparedChanged pc => $"{C(pc.Card)} {(pc.Prepared ? "becomes prepared" : "is no longer prepared")}.",
             EnduringStoryGained es => $"{P(es.Player)} has an enduring story.",
             CitysBlessingGained cb => $"{P(cb.Player)} gets the city's blessing.",

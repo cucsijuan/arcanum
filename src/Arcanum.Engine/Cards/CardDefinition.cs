@@ -233,6 +233,9 @@ public sealed partial record CardDefinition
     /// <summary>"Choose a color other than red": the color letter the choice made as it enters excludes.</summary>
     public string? ChosenColorExcept { get; init; }
 
+    /// <summary>"Choose artifact, creature, enchantment, instant, or sorcery": the card types offered for <see cref="EnterChoice.CardType"/> (all when null).</summary>
+    public IReadOnlyList<CardType>? ChoosableCardTypes { get; init; }
+
     /// <summary>"As this enters, choose a color / creature type."</summary>
     public EnterChoice ChooseOnEnter { get; init; }
 
@@ -367,8 +370,20 @@ public sealed partial record CardDefinition
     /// <summary>"If you would put one or more counters on a permanent or player, put twice that many of each of those kinds of counters on that permanent or player instead."</summary>
     public bool DoublesCountersYouPut { get; init; }
 
+    /// <summary>"If one or more counters would be put on a [filter] you control, twice that many of each of those kinds of counters are put on it instead."</summary>
+    public Abilities.ObjectFilter? DoublesCountersOnYour { get; init; }
+
     /// <summary>"Damage can't be prevented" (a static ability of the permanent).</summary>
     public bool DamageCantBePrevented { get; init; }
+
+    /// <summary>"Each creature you control with toughness greater than its power stations permanents using its toughness rather than its power."</summary>
+    public bool StationsWithToughness { get; init; }
+
+    /// <summary>"Combat damage can't be prevented."</summary>
+    public bool CombatDamageCantBePrevented { get; init; }
+
+    /// <summary>"Creature spells you control can't be countered."</summary>
+    public bool YourCreatureSpellsCantBeCountered { get; init; }
 
     /// <summary>
     /// "As an additional cost to cast this spell, you may sacrifice any number of [filter]. This spell costs {1} less to cast for
@@ -392,6 +407,18 @@ public sealed partial record CardDefinition
 
     /// <summary>Warp (702.185): cast from the hand for this cost, it's exiled at the next end step and its owner may cast it from exile on a later turn.</summary>
     public ManaCost? Warp { get; init; }
+
+    /// <summary>"Warp—{B}, Pay 2 life": life paid along with the warp cost.</summary>
+    public int WarpLife { get; init; }
+
+    /// <summary>"You may cast this card from your graveyard using its warp ability."</summary>
+    public bool WarpFromGraveyard { get; init; }
+
+    /// <summary>"The first spell each player casts during each of their turns may be cast without paying its mana cost."</summary>
+    public bool FirstSpellEachTurnFree { get; init; }
+
+    /// <summary>"Artifact cards and red creature cards in your hand have warp {2}{R}": the cards in its controller's hand it gives warp, and the cost.</summary>
+    public (ObjectFilter Cards, ManaCost Cost)? GrantsWarp { get; init; }
 
     /// <summary>
     /// Impending N—[cost] (702.176): cast for this cost, it enters with N time counters, isn't a creature while it has one, and at the
@@ -534,8 +561,17 @@ public sealed partial record CardDefinition
     /// <summary>Its <see cref="EntersAsCopyOf"/> copy has haste ("except it has haste").</summary>
     public bool EntersAsCopyWithHaste { get; init; }
 
+    /// <summary>"Enter as a copy of any land card in a graveyard": the cards to copy are in graveyards, not on the battlefield.</summary>
+    public bool EntersAsCopyFromGraveyards { get; init; }
+
+    /// <summary>"You may have this land enter tapped as a copy of …": it enters tapped when it enters as a copy.</summary>
+    public bool EntersTappedAsCopy { get; init; }
+
     /// <summary>"Except it's a Bird in addition to its other types and it has flying": subtypes and keywords the copy also has (rule 707.9b).</summary>
     public IReadOnlyList<string>? EntersAsCopyAddSubtypes { get; init; }
+
+    /// <summary>"Except it's an artifact in addition to its other types": card types the copy gets (rule 707.9b).</summary>
+    public CardType EntersAsCopyAddTypes { get; init; }
     public IReadOnlyList<string>? EntersAsCopyAddKeywords { get; init; }
 
     /// <summary>"Except … it has '[ability]'": abilities the copy also has (rule 707.9b).</summary>
@@ -788,6 +824,9 @@ public sealed partial record CardDefinition
     /// <summary>"Players can't draw cards."</summary>
     public bool PlayersCantDraw { get; init; }
 
+    /// <summary>"As long as you have one or fewer cards in hand, if you would draw one or more cards, you draw that many cards plus one instead."</summary>
+    public bool DrawsOneMoreWithOneOrFewerInHand { get; init; }
+
     /// <summary>"If a creature attacking causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time."</summary>
     public bool ExtraTriggersFromAttacking { get; init; }
 
@@ -983,6 +1022,12 @@ public sealed partial record CardDefinition
     /// <summary>"As long as this Equipment is attached to a creature, the first time you would create one or more tokens each turn, you may instead create that many tokens that are copies of equipped creature."</summary>
     public bool FirstTokensCopyEquipped { get; init; }
 
+    /// <summary>"The first time you would create one or more tokens each turn, you may instead create that many tokens that are copies of enchanted permanent."</summary>
+    public bool FirstTokensCopyEnchanted { get; init; }
+
+    /// <summary>"If you would proliferate, proliferate twice instead."</summary>
+    public bool ProliferateTwice { get; init; }
+
     /// <summary>"Prevent all combat damage that would be dealt to attacking creatures you control."</summary>
     public bool PreventCombatDamageToYourAttackers { get; init; }
 
@@ -999,6 +1044,10 @@ public sealed partial record CardDefinition
     public Abilities.ObjectFilter? CastExiledWithThis { get; init; }
     public bool CastExiledWithThisYourTurn { get; init; }
     public Abilities.ExtraCost? CastExiledWithThisExtra { get; init; }
+    /// <summary>"You may play cards exiled with this": lands too (a land play), not only spells.</summary>
+    public bool CastExiledWithThisPlay { get; init; }
+    /// <summary>"As long as [condition], you may play cards exiled with this": the permission applies only while it holds.</summary>
+    public Abilities.Condition? CastExiledWithThisWhile { get; init; }
 
     /// <summary>"Artifacts and lands enter tapped" (every player's, while this is on the battlefield).</summary>
     public bool ArtifactsAndLandsEnterTapped { get; init; }
@@ -1017,6 +1066,16 @@ public sealed partial record CardDefinition
 
     /// <summary>Vanishing N (rule 702.63): enters with N time counters; at the beginning of your upkeep remove one; when the last is removed, sacrifice it.</summary>
     public int Vanishing { get; init; }
+
+    /// <summary>Modular N (rule 702.43): enters with N +1/+1 counters; its dies trigger is one of its abilities.</summary>
+    public int Modular { get; init; }
+
+    /// <summary>
+    /// Sunburst (rule 702.44a), one per instance (702.44d): entering from the stack as a resolving spell, it enters with a +1/+1
+    /// counter for each color of mana spent to cast it if it enters as a creature (ignoring type-changing effects), otherwise
+    /// with that many charge counters (702.44b).
+    /// </summary>
+    public int Sunburst { get; init; }
 
     /// <summary>With <see cref="EntersAsCopy"/>: "except it has vanishing N if that creature doesn't have vanishing".</summary>
     public int CopyGetsVanishingIfNone { get; init; }
@@ -1070,4 +1129,7 @@ public sealed record GraveyardCastOncePerTurn(Abilities.ObjectFilter Filter, boo
 
     /// <summary>"If you do, it gains '…'": abilities the permanent played or cast this way has (for as long as it stays on the battlefield).</summary>
     public IReadOnlyList<Abilities.AbilityDefinition>? Grants { get; init; }
+
+    /// <summary>Only while this holds for the permanent ("8+ | Once during each of your turns, …" on a Spacecraft).</summary>
+    public Abilities.Condition? While { get; init; }
 }

@@ -54,6 +54,7 @@ public sealed partial class Game
         context.Results.Sacrificed.AddRange(item.SacrificedForCost);
         context.Results.Discarded.AddRange(item.DiscardedForCost);
         context.Results.ExiledForCost.AddRange(item.ExiledForCost);
+        context.Results.TappedForCost.AddRange(item.TappedForCost);
         if ((item as AbilityOnStack)?.Trigger?.Found is { } carried) context.Results.Found.AddRange(carried);
         // A promised gift is given before the spell's other effects (rule 702.174b).
         if (item is SpellOnStack { GiftTo: { } giftee } && (source.Is(CardType.Instant) || source.Is(CardType.Sorcery))) await GiveGiftAsync(giftee, source);
@@ -178,10 +179,15 @@ public sealed partial class Game
         public List<CardId> DestroyedCards { get; } = new();
         public int ExcessDamage { get; set; }
         public List<CardId> Exiled { get; } = new();
+
+        /// <summary>The permanents that had a counter put on them by the last proliferate.</summary>
+        public List<CardId> Proliferated { get; } = new();
+        public List<CardId> PutIntoGraveyard { get; } = new();
         public List<CardId> Created { get; } = new();
         public CardId? Amassed { get; set; }
         public List<CardId> Discarded { get; } = new();
         public List<CardId> ExiledForCost { get; } = new();
+        public List<(CardId Card, int Version)> TappedForCost { get; } = new();
         public List<PlayerId> HandDiscarders { get; } = new();
         public List<CardId> Found { get; } = new();
 

@@ -67,7 +67,7 @@ public static partial class CardFactory
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
     /// <remarks>Includes keywords whose rules this factory derives from rules text (Equip, Enchant).</remarks>
     public static ISet<string> SupportedKeywords { get; } =
-        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Megamorph", "Impending", "Offspring", "Evoke", "Encore", "Compleated", "Escape", "Toxic", "Vanishing", "Ravenous", "Mobilize", "Harmonize", "Fabricate", "Eternalize", "Embalm", "Suspend", "Demonstrate", "Dredge", "Increment", "Paradigm", "Casualty", "Devoid", "Echo", "Gravestorm", "Bestow" }).Concat(ScriptedKeywords),
+        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Megamorph", "Impending", "Offspring", "Evoke", "Encore", "Compleated", "Escape", "Toxic", "Vanishing", "Ravenous", "Mobilize", "Harmonize", "Fabricate", "Eternalize", "Embalm", "Suspend", "Demonstrate", "Dredge", "Increment", "Paradigm", "Casualty", "Devoid", "Echo", "Gravestorm", "Bestow", "Station", "Sunburst", "Modular" }).Concat(ScriptedKeywords),
             StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Why <see cref="Create"/> finds the card unsupported (for tools): each failed requirement, by face.</summary>
@@ -105,6 +105,10 @@ public static partial class CardFactory
         var derived = DeriveCosts(record.OracleText);
         int? power = ParseStat(record.Power, out bool powerOk);
         int? toughness = ParseStat(record.Toughness, out bool toughnessOk);
+        bool station = record.Keywords.Contains("Station", StringComparer.OrdinalIgnoreCase);
+        // A station card's power/toughness box belongs to a station symbol: the card has no power or toughness except
+        // through that symbol's static ability, which the script spells out (rule 721.2b, 721.2c).
+        if (station) power = toughness = null;
 
         var definition = new CardDefinition
         {
@@ -135,6 +139,8 @@ public static partial class CardFactory
             Bestow = KeywordLineCost(record.OracleText, BestowLine()),
             Offspring = KeywordLineCost(record.OracleText, OffspringLine()),
             Harmonize = KeywordLineCost(record.OracleText, HarmonizeLine()),
+            Warp = KeywordLineCost(record.OracleText, WarpLine()), // a script's "warp" still overrides it
+            WarpLife = WarpLifeCost(record.OracleText),
             Dredge = KeywordLineNumber(record.OracleText, DredgeLine()) ?? 0,
             Casualty = KeywordLineNumber(record.OracleText, CasualtyLine()) ?? 0,
             Devoid = record.Keywords.Contains("Devoid", StringComparer.OrdinalIgnoreCase),
@@ -149,7 +155,9 @@ public static partial class CardFactory
             EscapesWithCounters = KeywordLineNumber(record.OracleText.Replace(record.Name, "~"), EscapesWithLine()) ?? 0,
             Toxic = KeywordLineNumber(record.OracleText, ToxicLine()) ?? 0,
             Vanishing = KeywordLineNumber(record.OracleText, VanishingLine()) ?? 0,
+            Modular = KeywordLineNumber(record.OracleText, ModularLine()) ?? 0,
             Cascade = KeywordInstances(record.OracleText, "Cascade"),
+            Sunburst = KeywordInstances(record.OracleText, "Sunburst"),
             EntersWithXCounters = record.Keywords.Contains("Ravenous", StringComparer.OrdinalIgnoreCase), // 702.156a
             WardMana = derived.WardMana,
             WardLife = derived.WardLife,
@@ -159,6 +167,7 @@ public static partial class CardFactory
         if (definition.Offspring is not null) definition = definition with { Abilities = definition.Abilities.Append(OffspringTrigger).ToList() };
         if (definition.Evoke is not null) definition = definition with { Abilities = definition.Abilities.Append(EvokeTrigger).ToList() };
         if (record.Keywords.Contains("Ravenous", StringComparer.OrdinalIgnoreCase)) definition = definition with { Abilities = definition.Abilities.Append(RavenousTrigger).ToList() };
+        if (station) definition = definition with { Abilities = WithStation(definition.Abilities, record.OracleText) };
         definition = definition with { Abilities = Engine.Abilities.AbilityDefinition.InClassLevelOrder(definition.Abilities) };
 
         // "*" power/toughness is fine when the script defines it (characteristic-defining ability).
@@ -336,7 +345,7 @@ public static partial class CardFactory
             if (EvokeLine().IsMatch(line) || EvokeExileLine().IsMatch(line) || EncoreLine().IsMatch(line) || MobilizeLine().IsMatch(line) || HarmonizeLine().IsMatch(line)) continue;
             if (FabricateLine().IsMatch(line) || EternalizeLine().IsMatch(line) || EmbalmLine().IsMatch(line) || SuspendLine().IsMatch(line) || DredgeLine().IsMatch(line) || line == "Demonstrate") continue;
             if (CasualtyLine().IsMatch(line) || EchoLine().IsMatch(line) || BestowLine().IsMatch(line)) continue;
-            if (EscapeLine().IsMatch(line) || EscapesWithLine().IsMatch(line.Replace(record.Name, "~")) || ToxicLine().IsMatch(line) || VanishingLine().IsMatch(line)) continue;
+            if (EscapeLine().IsMatch(line) || EscapesWithLine().IsMatch(line.Replace(record.Name, "~")) || ToxicLine().IsMatch(line) || VanishingLine().IsMatch(line) || ModularLine().IsMatch(line)) continue;
             if (CommanderPairingLine().IsMatch(line)) continue;
             // A keyword line: "Flying" or "Flying, trample".
             if (line.Split(',').Select(k => k.Trim()).All(k => record.Keywords.Contains(k, StringComparer.OrdinalIgnoreCase) || WardLine().IsMatch(k))) continue;
@@ -459,6 +468,15 @@ public static partial class CardFactory
                 });
             // Each instance of increment triggers separately (rule 702.191b).
             foreach (var _ in line.Split(',').Where(k => k.Trim().Equals("Increment", StringComparison.OrdinalIgnoreCase))) abilities.Add(IncrementTrigger());
+            // Modular N (rule 702.43a): it enters with N +1/+1 counters (Game.Zones) and has this dies trigger.
+            if (ModularLine().Match(line) is { Success: true })
+                abilities.Add(Scripts.CardScriptParser.Parse("""
+                    { "abilities": [ { "trigger": "dies",
+                      "targets": [ { "kind": "creature", "filter": { "types": ["artifact"] }, "text": "target artifact creature" } ],
+                      "effects": [ { "may": "Put a +1/+1 counter on target artifact creature for each +1/+1 counter on this?",
+                                     "effects": [ { "counters": { "counters": "+1/+1" }, "what": "target" } ] } ],
+                      "text": "When this dies, you may put a +1/+1 counter on target artifact creature for each +1/+1 counter on this." } ] }
+                    """).Abilities[0] with { Text = $"{line} (This enters with {ModularLine().Match(line).Groups["n"].Value} +1/+1 counter{(ModularLine().Match(line).Groups["n"].Value == "1" ? "" : "s")} on it. When it dies, you may put its +1/+1 counters on target artifact creature.)" });
             if (FabricateLine().Match(line) is { Success: true } fabricate)
                 abilities.Add(new Engine.Abilities.TriggeredAbility
                 {
@@ -877,6 +895,15 @@ public static partial class CardFactory
     [GeneratedRegex(@"^Evoke (?<cost>(\{[0-9WUBRGC/]+\})+)$")]
     private static partial Regex EvokeLine();
 
+    /// <summary>"Warp {1}{G}" (rule 702.185a); the cost may have {X}. "Warp—{B}, Pay 2 life" adds life to pay.</summary>
+    [GeneratedRegex(@"^Warp(?: |—)(?<cost>(\{[0-9WUBRGCX/]+\})+)(?:, [Pp]ay (?<life>\d+) life)?$")]
+    private static partial Regex WarpLine();
+
+    /// <summary>The life a "Warp—{cost}, Pay N life" line asks for (0 when none).</summary>
+    private static int WarpLifeCost(string oracleText) =>
+        ReminderText().Replace(oracleText, "").Split('\n').Select(l => WarpLine().Match(WithoutLabel(l.Trim().TrimEnd('.'))))
+            .FirstOrDefault(m => m.Success) is { } m && m.Groups["life"].Success ? int.Parse(m.Groups["life"].Value) : 0;
+
     [GeneratedRegex(@"^Evoke—Exile an? (?<color>white|blue|black|red|green) card from your hand$")]
     private static partial Regex EvokeExileLine();
 
@@ -903,7 +930,30 @@ public static partial class CardFactory
     [GeneratedRegex(@"^Vanishing (?<n>[0-9]+)$")]
     private static partial Regex VanishingLine();
 
+    [GeneratedRegex(@"^Modular (?<n>[0-9]+)$")]
+    private static partial Regex ModularLine();
+
     /// <summary>Ravenous's trigger (rule 702.156a); its "enters with X +1/+1 counters" is <see cref="Engine.Cards.CardDefinition.EntersWithXCounters"/>.</summary>
+    /// <summary>
+    /// Station (rule 702.184a): "Tap another untapped creature you control: Put a number of charge counters on this permanent
+    /// equal to the tapped creature's power. Activate only as a sorcery." It goes before the station symbols' abilities, as printed.
+    /// </summary>
+    private static readonly Engine.Abilities.AbilityDefinition StationAbility = Scripts.CardScriptParser.Parse("""
+        { "abilities": [ { "cost": "tapCreatures:1", "sorcery": true, "effects": [ { "counters": "tappedPower", "kind": "charge", "what": "self" } ],
+          "text": "Station (Tap another creature you control: Put charge counters equal to its power on this permanent. Station only as a sorcery.)" } ] }
+        """).Abilities[0];
+
+    /// <summary>The station ability, with the card's own reminder text, before the first station symbol's ability (rule 721.4).</summary>
+    private static List<Engine.Abilities.AbilityDefinition> WithStation(IReadOnlyList<Engine.Abilities.AbilityDefinition> abilities, string oracleText)
+    {
+        var line = oracleText.Split('\n').FirstOrDefault(l => l.StartsWith("Station", StringComparison.Ordinal));
+        var ability = line is null ? StationAbility : StationAbility with { Text = line };
+        var list = abilities.ToList();
+        int at = list.FindIndex(a => a is Engine.Abilities.StaticAbility { While: Engine.Abilities.SourceHasCounters { Kind: Engine.Abilities.CounterKind.Charge } });
+        list.Insert(at < 0 ? list.Count : at, ability);
+        return list;
+    }
+
     private static readonly Engine.Abilities.AbilityDefinition RavenousTrigger = Scripts.CardScriptParser.Parse("""
         { "abilities": [ { "trigger": "enters", "if": { "atLeast": "X", "value": 5 }, "effects": [ { "draw": 1 } ],
           "text": "Ravenous — When this permanent enters, if X is 5 or more, draw a card." } ] }

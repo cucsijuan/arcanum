@@ -233,6 +233,12 @@ public sealed record GameView
     /// <summary>While the viewer declares attackers: who may attack whom, and the restrictions and requirements to obey.</summary>
     public Players.AttackRequest? AttackRequest { get; init; }
 
+    /// <summary>The player controlling the active player during this turn (rule 722), or null.</summary>
+    public PlayerId? ActivePlayerControlledBy { get; init; }
+
+    /// <summary>While the viewer controls the active player (rule 722): the game as that player sees it, for their decisions.</summary>
+    public GameView? ControlledView { get; init; }
+
     /// <summary>The monarch (rule 724), if there is one.</summary>
     public PlayerId? Monarch { get; init; }
 

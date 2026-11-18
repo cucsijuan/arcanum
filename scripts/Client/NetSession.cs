@@ -109,7 +109,8 @@ public sealed class NetSession : IBoardSession
 
     public int PlayerCount => _client.Players.Count;
     public PlayerId LocalSeat => _client.Seat;
-    public GameView ViewFor(PlayerId viewer) => _client.View!;
+    /// <summary>This seat's view, or the view of the player it controls this turn (rule 722) for that player's decisions.</summary>
+    public GameView ViewFor(PlayerId viewer) => _client.View is { ControlledView: { } controlled } && controlled.Viewer == viewer ? controlled : _client.View!;
     public bool RevealAll => false;
     public string? PlaymatOf(PlayerId player) => _client.Playmats.ElementAtOrDefault(player.Value);
     public Decision? CurrentDecision => Hub.Current is { IsAnswered: false } d ? d : null;

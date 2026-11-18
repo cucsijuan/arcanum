@@ -135,7 +135,20 @@ public sealed partial class Game
         }
         var ways = new List<CastingWay> { new(CastingWayKind.ManaCost, card.Definition.ManaCost) };
         if (card.Zone == Zone.Hand && card.Definition.Dash is { } dash) ways.Add(new(CastingWayKind.Dash, dash)); // 702.109a
-        if (card.Zone == Zone.Hand && card.Definition.Warp is { } warp) ways.Add(new(CastingWayKind.Warp, warp)); // 702.185a
+        if (card.Definition.Warp is { } warp && (card.Zone == Zone.Hand || WarpFromGraveyard(card)))
+        {
+            // 702.185a; "you may cast this card from your graveyard using its warp ability": only that way, unless something else allows it.
+            var warpWay = new CastingWay(CastingWayKind.Warp, warp, card.Definition.WarpLife);
+            if (card.Zone == Zone.Graveyard && !GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0)
+                return new() { warpWay };
+            ways.Add(warpWay);
+        }
+        // Warp given to cards in the hand by a permanent ("artifact cards … in your hand have warp {2}{R}"): one more warp cost each.
+        if (card.Zone == Zone.Hand)
+            foreach (var granter in State.PermanentsControlledBy(caster).Where(p => p.HasTextAbilities && p.Definition.GrantsWarp is not null).ToList())
+                if (granter.Definition.GrantsWarp is var (warpCards, grantedWarp) && Matches(warpCards with { Controller = ControllerFilter.Any }, card, caster, granter, caster)
+                    && !ways.Any(w => w.Kind == CastingWayKind.Warp && w.Mana.Equals(grantedWarp)))
+                    ways.Add(new(CastingWayKind.Warp, grantedWarp));
         if (card.Definition.Evoke is { } evoke) ways.Add(new(CastingWayKind.Evoke, evoke)); // an alternative cost (702.74a)
         // "Gain evoke {N} as you cast them": one more evoke cost per permanent granting it.
         if (card.Zone == Zone.Hand && card.Types.IsPermanent())
@@ -151,21 +164,21 @@ public sealed partial class Game
         if (card.Zone == Zone.Graveyard && HarmonizeCost(card) is { } harmonize)
         {
             // 702.180a: from the graveyard only with harmonize, unless something else lets it be cast from there.
-            if (!GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0 && !BlitzFromGraveyard(card))
+            if (!GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0 && !OwnGraveyardCastAbility(card))
                 return new() { new(CastingWayKind.Harmonize, harmonize) };
             ways.Add(new(CastingWayKind.Harmonize, harmonize));
         }
         if (card.Zone == Zone.Graveyard && (card.Definition.Escape ?? GrantedEscape(card)) is { } escape)
         {
             // 702.138a: from the graveyard only with escape, unless something else lets it be cast from there.
-            if (!GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0 && !BlitzFromGraveyard(card))
+            if (!GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0 && !OwnGraveyardCastAbility(card))
                 return new() { new(CastingWayKind.Escape, escape) };
             ways.Add(new(CastingWayKind.Escape, escape));
         }
         if (card.Zone == Zone.Graveyard && card.Definition.GraveyardAlternativeCost is { } fromGraveyard)
         {
             // Only that way from the graveyard, unless something else lets it be cast from there.
-            if (!GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0 && !BlitzFromGraveyard(card))
+            if (!GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0 && !OwnGraveyardCastAbility(card))
                 return new() { new(CastingWayKind.Alternative, fromGraveyard) };
             ways.Add(new(CastingWayKind.Alternative, fromGraveyard));
         }
@@ -182,6 +195,10 @@ public sealed partial class Game
         // "Once during each of your turns, you may cast a spell from your hand / an enchantment spell by paying life equal to its mana value."
         if (LifeOncePerTurnSource(card, caster) is not null) ways.Add(new(CastingWayKind.LifeOncePerTurn, ManaCost.Zero, card.ManaValue));
         if (card.Zone == Zone.Hand && Has(caster, Replacements.CastFromHandFree)) ways.Add(new(CastingWayKind.WithoutPaying, ManaCost.Zero));
+        // "The first spell each player casts during each of their turns may be cast without paying its mana cost" (any player's permanent).
+        else if (caster == State.ActivePlayer && State.GetPlayer(caster).SpellsCastThisTurn.Count == 0
+                 && State.Battlefield.Select(State.GetCard).Any(p => p.HasTextAbilities && p.Definition.FirstSpellEachTurnFree))
+            ways.Add(new(CastingWayKind.WithoutPaying, ManaCost.Zero));
         // "You may cast Dragon spells without paying their mana costs": wherever the card can be cast from.
         else if (State.PermanentsControlledBy(caster).Any(p => p.HasTextAbilities && p.Definition.CastSpellsFree is { } free
                      && Matches(free with { Controller = ControllerFilter.Any }, card, caster, p, caster)))
@@ -224,6 +241,9 @@ public sealed partial class Game
                 // "Spells your opponents cast cost {1} more": only an opponent of the taxer's controller pays it.
                 if (Matches(increase.Spells with { Controller = ControllerFilter.Any }, card, caster, taxer, taxer.Controller)
                     && (increase.Spells.Controller != ControllerFilter.Opponent || State.OpponentsOf(taxer.Controller).Contains(caster))) cost = cost.PlusGeneric(increase.Amount);
+        // "Each spell cast this way costs {1} more": a card only that kind of permission lets its caster play.
+        if (card.Zone == Zone.Exile && State.PlayableFromExile.Where(p => p.Card == card.Id && p.Version == card.Version && p.Player == caster).ToList() is { Count: > 0 } exilePerms
+            && exilePerms.Min(p => p.CostMore) is > 0 and var exileTax && ExiledWithPlayRightFor(card, caster) is null) cost = cost.PlusGeneric(exileTax);
         // "Costs {1} more for each target beyond the first": before targets are chosen, as if it had one.
         if (card.Definition.ExtraTargetCost > 0 && targets is not null)
             cost = cost.PlusGeneric(card.Definition.ExtraTargetCost * Math.Max(0, targets.Count(t => !t.Target.IsNone) - 1));
@@ -481,7 +501,10 @@ public sealed partial class Game
         !card.Is(CardType.Creature) && State.NoncreatureSpellsForbiddenFor.Contains((caster, State.TurnNumber))
         // "You can't cast permanent spells."
         || (card.Is(CardType.Creature) || card.Is(CardType.Artifact) || card.Is(CardType.Enchantment) || card.Is(CardType.Planeswalker) || card.Is(CardType.Battle))
-           && HasRule(caster, Cards.ExtraRules.YouCantCastPermanentSpells);
+           && HasRule(caster, Cards.ExtraRules.YouCantCastPermanentSpells)
+        // "Each player can't cast more than one noncreature spell each turn."
+        || !card.Is(CardType.Creature) && State.GetPlayer(caster).NoncreatureSpellsCastThisTurn > 0
+           && State.Players.Any(p => HasRule(p.Id, Cards.ExtraRules.EachPlayerOneNoncreatureSpellPerTurn));
 
     /// <summary>"You can't cast this spell during your first, second, or third turns of the game."</summary>
     /// <summary>The permanent letting <paramref name="caster"/> cast this card exiled with it ("as long as …, you may cast the exiled card"), if any.</summary>
@@ -563,7 +586,7 @@ public sealed partial class Game
             var question = ways[1].Kind switch
             {
                 CastingWayKind.Dash => $"Cast {card.Name} for its dash cost {ways[1].Mana}?",
-                CastingWayKind.Warp => $"Cast {card.Name} for its warp cost {ways[1].Mana} (exiled at the next end step, castable from exile on a later turn)?",
+                CastingWayKind.Warp => $"Cast {card.Name} for its warp cost {ways[1].Mana}{(ways[1].Life > 0 ? $" and {ways[1].Life} life" : "")} (exiled at the next end step, castable from exile on a later turn)?",
                 CastingWayKind.Blitz => $"Cast {card.Name} for its blitz cost {BlitzCostText(card)}?",
                 CastingWayKind.Evoke => $"Cast {card.Name} for its evoke cost {EvokeCostText(card, ways[1].Mana)} (it's sacrificed when it enters)?",
                 CastingWayKind.Overload => $"Cast {card.Name} for its overload cost {ways[1].Mana}?",
@@ -581,7 +604,7 @@ public sealed partial class Game
         {
             CastingWayKind.ManaCost => $"Pay its mana cost {w.Mana}",
             CastingWayKind.Dash => $"Dash {w.Mana}",
-            CastingWayKind.Warp => $"Warp {w.Mana}",
+            CastingWayKind.Warp => w.Life > 0 ? $"Warp {w.Mana}, pay {w.Life} life" : $"Warp {w.Mana}",
             CastingWayKind.Blitz => $"Blitz {BlitzCostText(card)}",
             CastingWayKind.Evoke => $"Evoke {EvokeCostText(card, w.Mana)}",
             CastingWayKind.Foretold => $"Foretell cost {w.Mana}",

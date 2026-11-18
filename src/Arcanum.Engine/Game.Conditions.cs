@@ -30,7 +30,7 @@ public sealed partial class Game
             && State.PermanentsControlledBy(that).Count(c => c.Is(CardType.Land)) > State.PermanentsControlledBy(ctx.Controller).Count(c => c.Is(CardType.Land)),
         TargetMatches t => ctx.ChosenAt(t.Index)?.Card is { } id && State.GetCard(id) is var card
                            && Matches(t.Filter with { Controller = ControllerFilter.Any }, card, card.Controller, ctx.Source, ctx.Controller),
-        Not { Inner: TargetMatches or YouSacrificedThisWay or CreatedThisWay or TargetLifeExactly or XAtLeast or TriggeredWasAttacking or TriggeredHasCounters or TargetAttachedTo or QuantityAtLeast or TargetControlledByYou } n => !HoldsIn(n.Inner, ctx),
+        Not { Inner: QuantityLessThan or TargetMatches or YouSacrificedThisWay or CreatedThisWay or TargetLifeExactly or XAtLeast or TriggeredWasAttacking or TriggeredHasCounters or TargetAttachedTo or QuantityAtLeast or TargetControlledByYou } n => !HoldsIn(n.Inner, ctx),
         TargetLifeExactly t => ctx.ChosenAt(t.Index)?.Player is { } p && State.GetPlayer(p).Life == t.Life,
         XAtLeast x => ctx.X >= x.AtLeast,
         ActivatedThisTurn a => ctx.ActivatedIndex is { } activated && ctx.Source.ActivationsThisTurn.GetValueOrDefault(activated) >= a.Times,
@@ -41,6 +41,7 @@ public sealed partial class Game
         CreatedThisWay => ctx.Results.Created.Count > 0,
         TriggeredWasAttacking => ctx.Trigger?.Subject is { } t && State.GetCard(t).WasAttacking,
         QuantityAtLeast qa => Eval(qa.Quantity, ctx) >= qa.AtLeast,
+        QuantityLessThan lt => Eval(lt.Left, ctx) < Eval(lt.Right, ctx),
         TargetAttachedTo a => ctx.ChosenAt(a.Attached)?.Card is { } att && ctx.ChosenAt(a.To)?.Card is { } host && State.GetCard(att).AttachedTo == host,
         TriggeredHasCounters h => ctx.Trigger?.Subject is { } tc && State.GetCard(tc).CounterCount(CounterKind.PlusOnePlusOne) >= h.AtLeast,
         TriggeredMatches tm => ctx.Trigger?.Subject is { } subject && State.GetCard(subject) is var about
@@ -95,6 +96,9 @@ public sealed partial class Game
             IncrementHolds => source.Zone == Zone.Battlefield && source.IsCreature && info?.SpellManaSpent is { } spent && (spent > source.Power || spent > source.Toughness),
             // "When this enters, if X is 5 or more": the X it was cast with (107.3m).
             QuantityAtLeast { Quantity.Kind: QuantityKind.X } => HoldsIn(condition, ctx with { X = source.CastX }),
+            // "When this dies while its power is 4 or greater": the permanent as it last existed on the battlefield.
+            SourceIs si when source.Zone != Zone.Battlefield && info?.Subject == source.Id
+                => Matches(si.Filter with { Controller = ControllerFilter.Any }, source, source.LastKnownInfo?.Controller ?? source.Owner, source, controller, lastKnown: true),
             Not n => !HoldsAtTrigger(n.Inner, controller, source, info),
             All a => a.Conditions.All(c => HoldsAtTrigger(c, controller, source, info)),
             _ => Holds(condition, controller, source),
@@ -183,6 +187,7 @@ public sealed partial class Game
             SacrificedThisTurn st => player.SacrificedThisTurn.Select(State.GetCard)
                 .Count(c => Matches(st.Filter with { Controller = ControllerFilter.Any }, c, controller, source, controller, lastKnown: true)) >= st.AtLeast,
             YourPermanentLeftThisTurn => player.PermanentLeftThisTurn,
+            VoidThisTurn => State.NonlandPermanentLeftThisTurn || State.SpellWarpedThisTurn,
             SourceAttackedThisTurn => source is not null && source.AttacksThisTurn > 0,
             SourceAttackedOrBlockedThisTurn => source is not null && (source.AttacksThisTurn > 0
                 || State.BlocksThisTurn.Any(b => b.Blocker == source.Id && b.BlockerVersion == source.Version)),
@@ -210,6 +215,8 @@ public sealed partial class Game
             CardsExiledWithSource => source is not null && State.Cards.Values.Any(c => c.Zone == Zone.Exile && c.ExiledWith is { } w && w.Source == source.Id && w.Version == source.Version),
             OpponentsControlTotal ot => State.OpponentsOf(controller).Sum(o => State.PermanentsControlledBy(o)
                 .Count(c => Matches(ot.Filter with { Controller = ControllerFilter.Any }, c, o, source, controller))) >= ot.AtLeast,
+            APlayerControlsNone none => State.Players.Where(p => !p.HasLost).Any(p => !State.PermanentsControlledBy(p.Id)
+                .Any(c => Matches(none.Filter with { Controller = ControllerFilter.Any }, c, c.Controller, source, controller))),
             OpponentControls oc => State.OpponentsOf(controller).Any(o => State.PermanentsControlledBy(o)
                 .Count(c => Matches(oc.Filter with { Controller = ControllerFilter.Any }, c, o, source, controller)) >= oc.AtLeast),
             OpponentDealtDamageThisTurn od => State.OpponentsOf(controller).Any(o => State.GetPlayer(o).DamageTakenThisTurn >= od.AtLeast),

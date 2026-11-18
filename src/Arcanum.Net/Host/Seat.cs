@@ -244,19 +244,21 @@ internal sealed class Seat : IPlayerController
     }
 
     /// <summary>Asks the person (checking their answer), or the computer when it plays the seat.</summary>
-    private Task<T> Ask<T>(Question question, Func<T, string?> check, Func<BotController, Task<T>> computer) =>
+    private Task<T> Ask<T>(GameView view, Question question, Func<T, string?> check, Func<BotController, Task<T>> computer) =>
         Decide(async () =>
         {
             if (!ComputerDecides)
             {
-                var (answered, value) = await AskPerson(question, check);
+                var (answered, value) = await AskPerson(view, question, check);
                 if (answered) return value;
             }
             return await computer(Computer);
         });
 
-    private Task<(bool Answered, T Value)> AskPerson<T>(Question question, Func<T, string?> check)
+    private Task<(bool Answered, T Value)> AskPerson<T>(GameView view, Question question, Func<T, string?> check)
     {
+        // A decision for the player this seat controls this turn (rule 722.4) says whose it is.
+        if (view.Viewer != Id) question = question with { For = view.Viewer };
         var result = new TaskCompletionSource<(bool, T)>();
         T parsed = default!;
         var pending = new Pending(++_nextAsk, question,
@@ -284,17 +286,17 @@ internal sealed class Seat : IPlayerController
     private static string? Distinct(IReadOnlyList<CardId>? ids) =>
         ids is not null && ids.Distinct().Count() != ids.Count ? "The same card was chosen twice." : null;
 
-    private string? FromHand(IReadOnlyList<CardId>? chosen, int count) =>
+    private string? FromHand(IReadOnlyList<CardId>? chosen, int count, PlayerId player) =>
         chosen is null || chosen.Count != count ? $"Choose exactly {count} card{(count == 1 ? "" : "s")}."
-        : Distinct(chosen) ?? (chosen.All(S.GetPlayer(Id).Hand.Contains) ? null : "Choose cards from your hand.");
+        : Distinct(chosen) ?? (chosen.All(S.GetPlayer(player).Hand.Contains) ? null : "Choose cards from the hand.");
 
     // ------------------------------------------------------------------ IPlayerController
 
     public Task<bool> KeepHandAsync(GameView view, int mulligansTaken) =>
-        Ask(new KeepHandQuestion(mulligansTaken), (bool _) => null, c => c.KeepHandAsync(view, mulligansTaken));
+        Ask(view, new KeepHandQuestion(mulligansTaken), (bool _) => null, c => c.KeepHandAsync(view, mulligansTaken));
 
     public Task<IReadOnlyList<CardId>> ChooseCardsToBottomAsync(GameView view, int count) =>
-        Ask(new BottomQuestion(count), (IReadOnlyList<CardId> c) => FromHand(c, count), c => c.ChooseCardsToBottomAsync(view, count));
+        Ask(view, new BottomQuestion(count), (IReadOnlyList<CardId> c) => FromHand(c, count, view.Viewer), c => c.ChooseCardsToBottomAsync(view, count));
 
     public Task<PlayerAction> ChooseActionAsync(GameView view, IReadOnlyList<PlayerAction> legalActions) =>
         Decide(async () =>
@@ -303,7 +305,7 @@ internal sealed class Seat : IPlayerController
             if (!ComputerDecides && Policy.ShouldAutoPass(view, legalActions)) return PassPriority.Instance;
             if (!ComputerDecides)
             {
-                var (answered, value) = await AskPerson(new ActionQuestion(legalActions),
+                var (answered, value) = await AskPerson(view, new ActionQuestion(legalActions),
                     (PlayerAction a) => a is not null && legalActions.Contains(a) ? null : "That action isn't possible now.");
                 if (answered) return value;
             }
@@ -311,7 +313,7 @@ internal sealed class Seat : IPlayerController
         });
 
     public Task<IReadOnlyList<ManaTap>?> ChooseManaPaymentAsync(GameView view, ManaPaymentRequest request) =>
-        Ask(new ManaQuestion(request), (IReadOnlyList<ManaTap>? taps) => CheckPayment(request, taps), c => c.ChooseManaPaymentAsync(view, request));
+        Ask(view, new ManaQuestion(request), (IReadOnlyList<ManaTap>? taps) => CheckPayment(request, taps), c => c.ChooseManaPaymentAsync(view, request));
 
     private string? CheckPayment(ManaPaymentRequest request, IReadOnlyList<ManaTap>? taps)
     {
@@ -333,7 +335,7 @@ internal sealed class Seat : IPlayerController
             Specs = request.Specs.Select(s => s with { Filter = null, Text = s.Describe() }).ToList(),
             Allowed = null,
         };
-        return Ask(new TargetsQuestion(sent), (IReadOnlyList<Target>? chosen) =>
+        return Ask(view, new TargetsQuestion(sent), (IReadOnlyList<Target>? chosen) =>
         {
             if (chosen is null) return request.CanCancel ? null : "These targets must be chosen.";
             if (!request.IsComplete(chosen.Count) || (!request.LastIsAnyNumber && chosen.Count != request.Legal.Count))
@@ -345,7 +347,7 @@ internal sealed class Seat : IPlayerController
     }
 
     public Task<IReadOnlyList<AttackDeclaration>> DeclareAttackersAsync(GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders) =>
-        Ask(new AttackQuestion(possibleAttackers, defenders), (IReadOnlyList<AttackDeclaration> declared) =>
+        Ask(view, new AttackQuestion(possibleAttackers, defenders), (IReadOnlyList<AttackDeclaration> declared) =>
         {
             if (declared is null) return "Declare attackers.";
             if (declared.Select(d => d.Attacker).Distinct().Count() != declared.Count) return "A creature can attack only once.";
@@ -359,12 +361,12 @@ internal sealed class Seat : IPlayerController
         }, c => c.DeclareAttackersAsync(view, possibleAttackers, defenders));
 
     public Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(GameView view, BlockRequest request) =>
-        Ask(new BlockQuestion(request), (IReadOnlyList<BlockDeclaration> blocks) =>
+        Ask(view, new BlockQuestion(request), (IReadOnlyList<BlockDeclaration> blocks) =>
             blocks is null ? "Declare blockers." : request.IsLegal(blocks, out var reason) ? null : reason ?? "Illegal blocks.",
             c => c.DeclareBlockersAsync(view, request));
 
     public Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) =>
-        Ask(new DamageQuestion(request), (DamageAssignment a) =>
+        Ask(view, new DamageQuestion(request), (DamageAssignment a) =>
         {
             if (a?.ToBlockers is null) return "Assign the damage.";
             if (!a.ToBlockers.Keys.All(request.Lethal.ContainsKey)) return "Damage can only be assigned to blocking creatures.";
@@ -377,13 +379,13 @@ internal sealed class Seat : IPlayerController
         }, c => c.AssignCombatDamageAsync(view, request));
 
     public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) =>
-        Ask(new YesNoQuestion(request), (bool _) => null, c => c.ChooseYesNoAsync(view, request));
+        Ask(view, new YesNoQuestion(request), (bool _) => null, c => c.ChooseYesNoAsync(view, request));
 
     public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) =>
-        Ask(new DiscardQuestion(count), (IReadOnlyList<CardId> c) => FromHand(c, count), c => c.ChooseDiscardAsync(view, count));
+        Ask(view, new DiscardQuestion(count), (IReadOnlyList<CardId> c) => FromHand(c, count, view.Viewer), c => c.ChooseDiscardAsync(view, count));
 
     public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request) =>
-        Ask(new CardsQuestion(request), (IReadOnlyList<CardId> chosen) =>
+        Ask(view, new CardsQuestion(request), (IReadOnlyList<CardId> chosen) =>
         {
             if (request.CanCancel && chosen is { Count: 0 }) return null; // backing out of the spell or ability
             if (chosen is null || chosen.Count < request.Min || chosen.Count > request.Max)
@@ -392,7 +394,7 @@ internal sealed class Seat : IPlayerController
         }, c => c.ChooseCardsAsync(view, request));
 
     public Task<IReadOnlyList<int>?> ChooseModesAsync(GameView view, ModeRequest request) =>
-        Ask(new ModesQuestion(request), (IReadOnlyList<int>? modes) =>
+        Ask(view, new ModesQuestion(request), (IReadOnlyList<int>? modes) =>
         {
             if (modes is null) return request.CanCancel ? null : "Modes must be chosen.";
             return modes.Count >= request.Min && modes.Count <= request.Max && modes.Distinct().Count() == modes.Count && modes.All(request.Possible.Contains)
@@ -400,10 +402,10 @@ internal sealed class Seat : IPlayerController
         }, c => c.ChooseModesAsync(view, request));
 
     public Task<int> ChooseNumberAsync(GameView view, NumberRequest request) =>
-        Ask(new NumberQuestion(request), (int n) => n >= request.Min && n <= request.Max ? null : $"Choose a number from {request.Min} to {request.Max}.",
+        Ask(view, new NumberQuestion(request), (int n) => n >= request.Min && n <= request.Max ? null : $"Choose a number from {request.Min} to {request.Max}.",
             c => c.ChooseNumberAsync(view, request));
 
     public Task<int> ChooseOptionAsync(GameView view, OptionRequest request) =>
-        Ask(new OptionQuestion(request), (int i) => i >= 0 && i < request.Options.Count ? null : "Choose one of the options.",
+        Ask(view, new OptionQuestion(request), (int i) => i >= 0 && i < request.Options.Count ? null : "Choose one of the options.",
             c => c.ChooseOptionAsync(view, request));
 }

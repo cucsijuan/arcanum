@@ -126,6 +126,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>"Enchanted land is the chosen type": sets its land type to the basic land type chosen as the source entered (rule 305.7).</summary>
     public bool SetChosenLandType { get; init; }
 
+    /// <summary>"Nonbasic lands are Mountains": sets the land type of the lands it affects to this basic land type (rule 305.7).</summary>
+    public string? SetLandType { get; init; }
+
     /// <summary>Grants ward with this cost ("artifacts and creatures you control have ward {1}").</summary>
     public Mana.ManaCost? GrantsWard { get; init; }
 

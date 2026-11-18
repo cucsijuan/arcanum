@@ -407,19 +407,7 @@ public sealed partial class Game
                 break;
             }
             case PhaseOut po:
-                foreach (var card in CardsFor(po.What, ctx).Where(c => State.Battlefield.Contains(c.Id)).ToList())
-                {
-                    // Already phased out with the permanent it's attached to: a permanent phases out only once.
-                    if (!State.Battlefield.Contains(card.Id)) continue;
-                    // Anything attached phases out with it (indirect phasing, rule 702.26g).
-                    foreach (var phasing in State.Battlefield.Select(State.GetCard).Where(a => a.AttachedTo == card.Id).Append(card).ToList())
-                    {
-                        State.Battlefield.Remove(phasing.Id);
-                        State.Combat?.Remove(phasing.Id);
-                        State.PhasedOut.Add((phasing.Id, card.Controller));
-                        Emit(new PhasedOut(phasing.Id));
-                    }
-                }
+                PhaseOutPermanents(CardsFor(po.What, ctx));
                 break;
             case RingTemptsYou:
             {

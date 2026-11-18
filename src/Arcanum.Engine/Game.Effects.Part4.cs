@@ -260,6 +260,10 @@ public sealed partial class Game
                         else if (t.Attacking && State.Combat is { } openCombat)
                             openCombat.Attacks.Add(await AttackFor(State.GetCard(token), ctx));
                         if (t.SacrificeAtEndOfCombat) State.SacrificeAtEndOfCombat.Add((token, State.GetCard(token).Version));
+                        // Marked as made during an end step, so only the controller's end step of a later turn counts.
+                        if (t.SacrificeAtEndStepOfYourNextTurn)
+                            State.AtPlayersNextEndStep.Add((new DelayedTrigger(ctx.Source.Id, SacrificeThatToken, ctx.Controller, 0) { AboutCard = (token, State.GetCard(token).Version) },
+                                ctx.Controller, State.TurnNumber, true));
                         if (t.HasteUntilEndOfTurn)
                             State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(token, State.GetCard(token).Version, 0, 0, new[] { Keyword.Haste }) { Timestamp = NewTimestamp() });
                     }
@@ -950,11 +954,69 @@ public sealed partial class Game
                     EndSimultaneous();
                 }
                 break;
+            case DiscardOrSacrifice ds:
+            {
+                var players = ds.Who.SelectMany(w => PlayersFor(w, ctx)).Distinct().ToHashSet();
+                var discards = new List<(PlayerId Player, CardId Card)>();
+                var sacrifices = new List<CardId>();
+                foreach (var player in State.ApnapOrder().Where(players.Contains).ToList())
+                {
+                    var hand = State.GetPlayer(player).Hand.ToList();
+                    var permanents = State.PermanentsControlledBy(player).Where(c => CanBeSacrificedBy(c, player)).ToList();
+                    if (hand.Count == 0 && permanents.Count == 0) continue;
+                    bool discard = permanents.Count == 0;
+                    if (hand.Count > 0 && permanents.Count > 0)
+                    {
+                        int way = await ControllerOf(player).ChooseOptionAsync(ViewFor(player), new OptionRequest($"{ctx.Source.Name}: discard a card or sacrifice a permanent?",
+                            ctx.Source.Id, new[] { "Discard a card", "Sacrifice a permanent" }, OptionKind.Other));
+                        Require(way is 0 or 1, "Choose one of the options.");
+                        discard = way == 0;
+                    }
+                    if (discard)
+                    {
+                        var pick = await ControllerOf(player).ChooseCardsAsync(ViewFor(player), new CardChoiceRequest("Discard a card", ctx.Source.Id,
+                            hand.Select(id => ViewBuilder.Card(State, id, player)).ToList(), 1, 1, CardChoicePurpose.Discard));
+                        Require(pick.Count == 1 && hand.Contains(pick[0]), "Choose a card from your hand.");
+                        discards.Add((player, pick[0]));
+                    }
+                    else
+                    {
+                        var pick = await ControllerOf(player).ChooseCardsAsync(ViewFor(player), new CardChoiceRequest("Sacrifice a permanent", ctx.Source.Id,
+                            permanents.Select(c => ViewBuilder.Card(State, c.Id, player)).ToList(), 1, 1, CardChoicePurpose.Sacrifice));
+                        Require(pick.Count == 1 && permanents.Any(c => c.Id == pick[0]), "Choose a permanent you control.");
+                        sacrifices.Add(pick[0]);
+                    }
+                }
+                BeginSimultaneous();
+                foreach (var (player, card) in discards) await DiscardCardAsync(player, card, ctx.Controller, byEffect: true);
+                foreach (var card in sacrifices) await SacrificePermanentAsync(card);
+                EndSimultaneous();
+                ctx.Results.PutIntoGraveyard.Clear();
+                ctx.Results.PutIntoGraveyard.AddRange(discards.Select(d => d.Card).Concat(sacrifices).Where(id => State.GetCard(id).Zone == Zone.Graveyard));
+                break;
+            }
+            case SwitchPowerToughness sw:
+                foreach (var switched in CardsFor(sw.What, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
+                    State.UntilEndOfTurn.Add(new UntilEndOfTurnEffect(switched.Id, switched.Version, 0, 0, Array.Empty<Keyword>())
+                        { SwitchesPowerToughness = true, Timestamp = NewTimestamp() });
+                break;
+            case ControlPlayerNextTurn cp:
+                // Applies from the start of that player's next turn (rule 722.1); the latest such effect wins.
+                foreach (var controlled in PlayersFor(cp.Player, ctx).ToList())
+                    State.PendingPlayerControl.Add((controlled, ctx.Controller, NewTimestamp()));
+                break;
+            case GainSunburst gs:
+                foreach (var spell in CardsFor(gs.What, ctx).Where(c => c.Zone == Zone.Stack).ToList())
+                    State.SunburstOnEnter.Add((spell.Id, spell.Version));
+                break;
             case ShuffleHandIntoLibrary sh:
                 foreach (var owner in PlayersFor(sh.Who, ctx).ToList())
                 {
                     var player = State.GetPlayer(owner);
+                    BeginSimultaneous();
                     foreach (var id in player.Hand.ToList()) await MoveCardAsync(id, Zone.Library);
+                    if (sh.WithGraveyard) foreach (var id in player.Graveyard.ToList()) await MoveCardAsync(id, Zone.Library);
+                    EndSimultaneous();
                     Shuffle(player);
                 }
                 break;

@@ -57,6 +57,7 @@ public sealed partial class Game
         if (filter.Tapped is { } tapped && (lk?.Tapped ?? obj.Tapped) != tapped) return false;
         if (filter.FaceDown is { } faceDown && obj.TurnedFaceDown != faceDown) return false;
         if (filter.TwoOrMoreCardTypes && System.Numerics.BitOperations.PopCount((uint)(obj.Types & ~CardType.Kindred)) + (obj.Is(CardType.Kindred) ? 1 : 0) < 2) return false;
+        if (filter.ManaValueParityChosen && (source?.ChosenParity is not { } mvParity || (obj.ManaValue % 2 == 0 ? "even" : "odd") != mvParity)) return false;
         if (filter.PowerParityChosen && (source?.ChosenParity is not { } powerParity || (obj.Power % 2 == 0 ? "even" : "odd") != powerParity)) return false;
         if (filter.NotNamedLikeYourRooms)
         {
@@ -72,6 +73,9 @@ public sealed partial class Game
         if (filter.Name is { } name && (lk?.Name ?? obj.Name) != name) return false;
         if (filter.NotName is { } notName && (lk?.Name ?? obj.Name) == notName) return false;
         if (filter.MaxManaValueSpentOnSource && (source is null || ManaValueOf(obj) > source.ManaSpent)) return false;
+        if (filter.HasWarp && obj.Definition.Warp is null && !(obj.Zone == Zone.Hand && State.PermanentsControlledBy(obj.Owner).Any(p => p.HasTextAbilities
+            && p.Definition.GrantsWarp is var (warpCards, _) && Matches(warpCards with { Controller = ControllerFilter.Any }, obj, obj.Owner, p, obj.Owner)))) return false;
+        if (filter.CastForWarp && !obj.CastForWarp) return false;
         if (filter.MaxManaValueColorsSpentOnSource && (source is null || ManaValueOf(obj) > source.SpentManaTypes
                 .Where(t => t is Mana.ManaType.White or Mana.ManaType.Blue or Mana.ManaType.Black or Mana.ManaType.Red or Mana.ManaType.Green).Distinct().Count())) return false;
         if (filter.OwnedByYou && obj.Owner != sourceController) return false;
@@ -83,6 +87,7 @@ public sealed partial class Game
         if (filter.FromGraveyard && !(obj.Zone == Zone.Stack ? obj.CastFromGraveyard : obj.EnteredFrom == Zone.Graveyard)) return false;
         if (filter.EnteredOrCastFromGraveyard && !(obj.EnteredFrom == Zone.Graveyard || obj.EnteredCastFromGraveyard)) return false;
         if (filter.CastFromHand && !obj.CastFromHand) return false;
+        if (filter.NotCastFromHand && (obj.CastFromHand || obj.Zone == Zone.Hand)) return false;
         if (filter.BasePower is { } basePower && obj.BasePower != basePower) return false;
         if (filter.BasePowerOrToughness is { } baseStat && obj.BasePower != baseStat && obj.BaseToughness != baseStat) return false;
         if (filter.WasCast is { } wasCast && obj.WasCast != wasCast) return false;
@@ -117,6 +122,7 @@ public sealed partial class Game
             && obj.ManaValue >= (source.Zone == Zone.Battlefield || source.LastKnownInfo is null ? source.Power : source.LastKnownInfo.Power)) return false;
         if (filter.ChosenColor && (source?.ChosenColor is not { } color || !colors.Contains(color))) return false;
         if (filter.ChosenType && (source?.ChosenType is not { } type || !HasSubtype(type))) return false;
+        if (filter.ChosenCardType && !(source?.ChosenType is { } chosenCardType && Enum.TryParse<CardType>(chosenCardType, out var cardType) && (types & cardType) != 0)) return false;
         if (filter.AnyOf is { Count: > 0 } anyOf && !anyOf.Any(f => Matches(f with { Controller = ControllerFilter.Any }, obj, objController, source, sourceController, lastKnown))) return false;
         if (filter.WithCounterKind is { } counterKind && (lk is null ? obj.CounterCount(counterKind) : lk.Counters.GetValueOrDefault(counterKind)) <= 0) return false;
         if (filter.HasCounters is { } hasCounters && ((lk is null ? obj.CounterCount(CounterKind.PlusOnePlusOne) : lk.Counters.GetValueOrDefault(CounterKind.PlusOnePlusOne)) > 0) != hasCounters) return false;
@@ -296,8 +302,8 @@ public sealed partial class Game
         // "Enchanted land is the chosen type" (rule 305.7) removes the abilities from the land's rules text, so it applies before any
         // effect those abilities would generate (rule 613.8a(c) dependency): an Aura making a land an Island, on a land whose ability
         // makes every land a Swamp, means that "each land is a Swamp" doesn't exist. Lands losing their text this way generate no static abilities below.
-        foreach (var (source, ability) in Statics(a => a.SetChosenLandType))
-            if (source.ChosenType is not null && !source.LosesTextAbilities)
+        foreach (var (source, ability) in Statics(a => a.SetChosenLandType || a.SetLandType is not null))
+            if (LandTypeSetBy(source, ability) is not null && !source.LosesTextAbilities)
                 foreach (var affected in AffectedBy(source, ability).Where(a => a.Is(CardType.Land)).ToList())
                     affected.LosesTextAbilities = true;
 
@@ -391,7 +397,7 @@ public sealed partial class Game
         }
         static bool NamePart(StaticAbility a) => a.SetName is not null;
         static bool TypePart(StaticAbility a) => a.SetTypes is not null || a.SetSubtypes is not null || a.AddTypes != 0 || a.AddSubtypes is not null || a.AddChosenType
-                                                 || a.SetChosenLandType || a.CreatureTypesOfLastExiled || a.RemoveTypes != 0 || a.EveryCreatureType;
+                                                 || a.SetChosenLandType || a.SetLandType is not null || a.CreatureTypesOfLastExiled || a.RemoveTypes != 0 || a.EveryCreatureType;
         static bool ColorPart(StaticAbility a) => a.SetColors is not null || a.SetChosenColor;
         var typeStatics = StaticCandidates(context, a => NamePart(a) || TypePart(a) || ColorPart(a), locks);
         LayerEffect TypeEffect(StaticSource candidate, Aspect writes, Action<TypeState> change, Func<IReadOnlyList<Card>, object?>? does = null, Aspect reads = Aspect.None) =>
@@ -430,10 +436,11 @@ public sealed partial class Game
             foreach (var candidate in typeStatics.Where(c => TypePart(c.Ability)))
             {
                 var (source, ability, _) = candidate;
-                changes.Add(TypeEffect(candidate, Aspect.Types | (ability.SetChosenLandType ? Aspect.TextAbilities : Aspect.None), t =>
+                bool setsLandType = ability.SetChosenLandType || ability.SetLandType is not null;
+                changes.Add(TypeEffect(candidate, Aspect.Types | (setsLandType ? Aspect.TextAbilities : Aspect.None), t =>
                 {
-                    // "Enchanted land is the chosen type" (rule 305.7): its old land types go, its other subtypes stay.
-                    if (ability.SetChosenLandType && source.ChosenType is { } landType && (t.Types & CardType.Land) != 0)
+                    // "Enchanted land is the chosen type" / "Nonbasic lands are Mountains" (rule 305.7): its old land types go, its other subtypes stay.
+                    if (LandTypeSetBy(source, ability) is { } landType && (t.Types & CardType.Land) != 0)
                     {
                         t.Subtypes = t.Subtypes.Where(s => !Card.IsLandType(s)).Append(landType).ToList();
                         t.LandTypeSet = true;
@@ -450,8 +457,8 @@ public sealed partial class Game
                         t.Subtypes = Card.ReplaceSubtypes(t.Subtypes, imprinted.Definition.Subtypes.Where(Card.IsCreatureType).Append("Shapeshifter").Distinct().ToList());
                 },
                 // It sets the land type of a land only: whether the object is one is part of what the effect does.
-                does: ability.SetChosenLandType ? targets => targets.Select(c => ((c.TypesOverride ?? c.Definition.Types) & CardType.Land) != 0 ? 1 : 0).ToArray() : null,
-                reads: ability.SetChosenLandType ? Aspect.Types : Aspect.None));
+                does: setsLandType ? targets => targets.Select(c => ((c.TypesOverride ?? c.Definition.Types) & CardType.Land) != 0 ? 1 : 0).ToArray() : null,
+                reads: setsLandType ? Aspect.Types : Aspect.None));
             }
             for (int i = 0; i < effects.Count; i++)
             {
@@ -687,6 +694,9 @@ public sealed partial class Game
             }
             return changes;
         }, card => (card.PowerBonus, card.ToughnessBonus), (card, saved) => (card.PowerBonus, card.ToughnessBonus) = ((int, int))saved!);
+        // Layer 7d: switching power and toughness (rule 613.4d); two switches undo each other.
+        foreach (var card in battlefield)
+            card.PowerToughnessSwitched = State.UntilEndOfTurn.Count(e => e.SwitchesPowerToughness && e.Card == card.Id && e.Version == card.Version) % 2 == 1;
         // Mana amounts worked out from characteristics ("X mana, where X is this creature's power") use the final values.
         foreach (var card in battlefield)
             card.ManaAmount = card.Definition.ManaAmountFrom is { } ma
@@ -1077,4 +1087,8 @@ public sealed partial class Game
         if (filter.Subtype is { } subtype) candidates = candidates.Where(c => c.HasSubtype(subtype));
         return candidates;
     }
+
+    /// <summary>The basic land type a "[lands] are [type]" ability sets (rule 305.7): its fixed type, or the one chosen as its source entered.</summary>
+    private static string? LandTypeSetBy(Card source, StaticAbility ability) =>
+        ability.SetLandType ?? (ability.SetChosenLandType ? source.ChosenType : null);
 }

@@ -2591,6 +2591,11 @@ public partial class GameBoard : Control
             case TurnSkipped ts:
                 _announcer.Enqueue(new($"{PlayerName(ts.Player)} skips a turn", null, 2.0));
                 break;
+            case PlayerControlled pc:
+                _announcer.Enqueue(new(pc.Controller == Bottom ? $"You control {PlayerName(pc.Controlled)} this turn: you see what they see and make their decisions"
+                    : pc.Controlled == Bottom ? $"{PlayerName(pc.Controller)} controls you this turn and makes your decisions"
+                    : $"{PlayerName(pc.Controller)} controls {PlayerName(pc.Controlled)} this turn", null, 2.5));
+                break;
             case ControlChanged cc:
                 _announcer.Enqueue(new($"{PlayerName(cc.NewController)} gains control of {ev.Name(cc.Card)}", ViewOf(ev, cc.Card), 1.5));
                 break;

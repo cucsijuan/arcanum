@@ -384,7 +384,9 @@ public sealed partial class Game
 
     /// <summary>Creatures a card entering "as a copy of any [filter] on the battlefield" may copy (not those entering with it).</summary>
     private List<Card> CopyCandidates(Card card, Abilities.ObjectFilter filter, PlayerId controller) =>
-        State.Battlefield.Select(State.GetCard)
+        (EnteringFace(card, card.Transformed).EntersAsCopyFromGraveyards
+            ? State.Players.SelectMany(p => p.Graveyard).Select(State.GetCard) // "a copy of any land card in a graveyard"
+            : State.Battlefield.Select(State.GetCard))
             .Where(c => c.Id != card.Id && !(_enteringTogether?.Contains(c.Id) ?? false)
                         && Matches(filter with { Controller = Abilities.ControllerFilter.Any }, c, c.Controller, card, controller))
             .ToList();
@@ -396,9 +398,9 @@ public sealed partial class Game
         var candidates = CopyCandidates(card, filter, controller);
         if (candidates.Count == 0) return null;
         var chosen = await ControllerOf(controller).ChooseCardsAsync(ViewFor(controller), new Players.CardChoiceRequest(
-            $"{card.Name}: choose a creature to enter as a copy of (or none)", card.Id,
+            $"{card.Name}: choose what to enter as a copy of (or none)", card.Id,
             candidates.Select(c => ViewBuilder.Card(State, c.Id, controller)).ToList(), 0, 1, Players.CardChoicePurpose.ToBattlefield));
-        Require(chosen.Count <= 1 && chosen.All(c => candidates.Any(x => x.Id == c)), "Choose one of the creatures, or none.");
+        Require(chosen.Count <= 1 && chosen.All(c => candidates.Any(x => x.Id == c)), "Choose one of them, or none.");
         if (chosen.Count == 0) return null;
         var original = State.GetCard(chosen[0]);
         Emit(new ChoiceMade(card.Id, $"a copy of {original.Name}"));
@@ -409,6 +411,7 @@ public sealed partial class Game
         var entering = EnteringFace(card, transformed);
         // "Except it has vanishing 3 if that creature doesn't have vanishing."
         if (entering.CopyGetsVanishingIfNone > 0 && values.Vanishing == 0) values = values with { Vanishing = entering.CopyGetsVanishingIfNone };
+        if (entering.EntersAsCopyAddTypes != 0) values = values with { Types = values.Types | entering.EntersAsCopyAddTypes };
         if (entering.EntersAsCopyAddSubtypes is { } extraSubtypes) values = values with { Subtypes = values.Subtypes.Concat(extraSubtypes).Distinct().ToList() };
         if (entering.EntersAsCopyAddKeywords is { } extraKeywords) values = values with { Keywords = values.Keywords.Concat(extraKeywords).Distinct().ToList() };
         if (entering.EntersAsCopyAddAbilities is { } extraAbilities) values = values with { Abilities = values.Abilities.Concat(extraAbilities).ToList() };
@@ -513,13 +516,14 @@ public sealed partial class Game
         bool wasFaceDown = card.TurnedFaceDown;
         bool staysFaceDown = wasFaceDown && ((from == Zone.Hand && to == Zone.Stack) || (from == Zone.Stack && to == Zone.Battlefield));
         var spentToCast = from == Zone.Stack && to == Zone.Battlefield ? card.SpentManaTypes : null; // what paid for the spell stays known (rule 601.2h)
+        int manaSpentToCast = spentToCast is not null ? card.ManaSpent : 0;
         // Cast bestowed, it's a bestowed Aura spell on the stack, and the bestowed Aura it becomes as it resolves (702.103b).
         bool staysBestowed = card.Bestowed && (to == Zone.Stack || (from == Zone.Stack && to == Zone.Battlefield));
         // A Room spell becomes a Room with the door that was cast unlocked; put onto the battlefield any other way, its doors are locked (709.5e).
         int? castDoor = from == Zone.Stack && to == Zone.Battlefield && card.PrintedDefinition.IsRoom ? card.CastHalf : null;
         card.ResetStatus();
         if (castDoor is { } door) card.UnlockedDoors = 1 << door;
-        if (spentToCast is not null) card.SpentManaTypes = spentToCast;
+        if (spentToCast is not null) { card.SpentManaTypes = spentToCast; card.ManaSpent = manaSpentToCast; }
         card.Bestowed = staysBestowed;
         card.TurnedFaceDown = staysFaceDown || (to == Zone.Battlefield && _enteringFaceDown == id);
         if (to == Zone.Battlefield && _enteringFaceDown == id) card.FaceDownAs = _enteringFaceDownAs;
@@ -539,10 +543,12 @@ public sealed partial class Game
             meldWith.MeldedInto = id;
             card.MeldPartner = meldWith;
         }
+        bool enteredTappedAsCopy = false;
         if (to == Zone.Battlefield && _pendingCopies.Remove((id, card.Version - 1), out var copied))
         {
             // Whether the copy lasts until end of turn is the entering card's own rule, read before the copy took over.
             card.CopyEndsAtCleanup = EnteringFace(card, card.Transformed).EntersAsCopyUntilEndOfTurn;
+            enteredTappedAsCopy = EnteringFace(card, card.Transformed).EntersTappedAsCopy;
             card.CopiedDefinition = copied;
         }
         _pendingCopies.Remove((id, card.Version - 1));
@@ -588,7 +594,7 @@ public sealed partial class Game
                 card.AttachedTo = attachTo;
                 card.AttachedPlayer = _enteringAttachedPlayer is { } enchanting && enchanting.Card == id ? enchanting.Player : null;
                 // Replacement effects that modify how the permanent enters (rule 614.1c).
-                if (tapped || card.Definition.EntersTapped || (from == Zone.Stack && State.EntersTappedFromStack.Remove((id, card.Version - 1)))) card.Tapped = true;
+                if (tapped || enteredTappedAsCopy || card.Definition.EntersTapped || (from == Zone.Stack && State.EntersTappedFromStack.Remove((id, card.Version - 1)))) card.Tapped = true;
                 // "If you do, it gains '…'" (cast with a permission that grants abilities): for as long as it stays on the battlefield.
                 if (from == Zone.Stack && State.AbilitiesOnEnter.Remove((id, card.Version - 1), out var gainedOnEnter))
                     State.LastingEffects.Add(new UntilEndOfTurnEffect(id, card.Version, 0, 0, Array.Empty<Cards.Keyword>())
@@ -612,6 +618,12 @@ public sealed partial class Game
                 if (card.Definition.Loyalty is { } loyalty) // 306.5b
                     enterCounters.Add((Abilities.CounterKind.Loyalty, Math.Max(0, loyalty - (_enteringFewerLoyalty is { } fewer && fewer.Card == id ? fewer.Fewer : 0))));
                 if (card.Definition.Vanishing > 0) enterCounters.Add((Abilities.CounterKind.Time, card.Definition.Vanishing)); // 702.63a
+                if (card.Definition.Modular > 0) enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, card.Definition.Modular)); // 702.43a
+                int sunburst = card.Definition.Sunburst + (from == Zone.Stack && State.SunburstOnEnter.Remove((id, card.Version - 1)) ? 1 : 0);
+                if (sunburst > 0 && from == Zone.Stack
+                    && card.SpentManaTypes.Where(t => t is Mana.ManaType.White or Mana.ManaType.Blue or Mana.ManaType.Black or Mana.ManaType.Red or Mana.ManaType.Green).Distinct().Count() is var colors and > 0)
+                    for (int i = 0; i < sunburst; i++) // 702.44a, b, d: the printed types decide, not type-changing effects
+                        enterCounters.Add((card.Definition.Types.HasFlag(Cards.CardType.Creature) ? Abilities.CounterKind.PlusOnePlusOne : Abilities.CounterKind.Charge, colors));
                 if (withCounters is not null) enterCounters.AddRange(withCounters.Where(c => c.Count > 0));
                 if (from == Zone.Stack && State.FinalityOnEnter.Remove((id, card.Version - 1))) enterCounters.Add((Abilities.CounterKind.Finality, 1));
                 // A Saga enters with a lore counter (714.3a); read ahead, with as many as the chosen chapter, and the chapters it skips don't
@@ -702,6 +714,10 @@ public sealed partial class Game
 
     private async Task DrawAsync(PlayerId playerId, int count = 1)
     {
+        // "As long as you have one or fewer cards in hand, if you would draw one or more cards, you draw that many plus one instead":
+        // replaces the whole draw event once per such permanent (each applies once, 614.5; the hand hasn't changed in between).
+        if (count > 0 && State.GetPlayer(playerId).Hand.Count <= 1)
+            count += State.PermanentsControlledBy(playerId).Count(c => c.HasTextAbilities && c.Definition.DrawsOneMoreWithOneOrFewerInHand);
         for (int i = 0; i < count; i++) await DrawOneAsync(playerId, 0);
     }
 

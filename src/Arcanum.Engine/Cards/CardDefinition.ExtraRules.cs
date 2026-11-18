@@ -66,6 +66,8 @@ public enum ExtraRules : long
     EffectDiscardsMayGoOnTop = 268435456,
     /// <summary>"You can't cast permanent spells."</summary>
     YouCantCastPermanentSpells = 536870912,
+    /// <summary>"Each player can't cast more than one noncreature spell each turn."</summary>
+    EachPlayerOneNoncreatureSpellPerTurn = 1073741824,
 }
 
 public sealed partial record CardDefinition

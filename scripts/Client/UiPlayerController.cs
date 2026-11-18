@@ -22,10 +22,10 @@ public sealed class UiPlayerController(PlayerId player, DecisionHub hub, Decisio
         log.Record(async () => (await hub.Ask(decision), true));
 
     public Task<bool> KeepHandAsync(GameView view, int mulligansTaken) =>
-        Ask(new MulliganDecision { Player = player, MulligansTaken = mulligansTaken });
+        Ask(new MulliganDecision { Player = view.Viewer, MulligansTaken = mulligansTaken });
 
     public Task<IReadOnlyList<CardId>> ChooseCardsToBottomAsync(GameView view, int count) =>
-        Ask(new SelectCardsDecision { Player = player, Count = count, Reason = SelectCardsReason.MulliganBottom });
+        Ask(new SelectCardsDecision { Player = view.Viewer, Count = count, Reason = SelectCardsReason.MulliganBottom });
 
     public Task<PlayerAction> ChooseActionAsync(GameView view, IReadOnlyList<PlayerAction> legalActions) =>
         log.Record(async () =>
@@ -36,44 +36,44 @@ public sealed class UiPlayerController(PlayerId player, DecisionHub hub, Decisio
                 await presentation();
                 return ((PlayerAction)PassPriority.Instance, false);
             }
-            return (await hub.Ask(new PriorityDecision { Player = player, Legal = legalActions }), true);
+            return (await hub.Ask(new PriorityDecision { Player = view.Viewer, Legal = legalActions }), true);
         });
 
     public Task<IReadOnlyList<ManaTap>?> ChooseManaPaymentAsync(GameView view, ManaPaymentRequest request) =>
         log.Record(async () =>
         {
             if (!ConfirmManaPayment) return ((IReadOnlyList<ManaTap>?)request.SuggestedTaps, false);
-            return (await hub.Ask(new ManaPaymentDecision { Player = player, Request = request }), true);
+            return (await hub.Ask(new ManaPaymentDecision { Player = view.Viewer, Request = request }), true);
         });
 
     public Task<IReadOnlyList<Arcanum.Engine.Abilities.Target>?> ChooseTargetsAsync(GameView view, TargetRequest request) =>
-        Ask(new TargetDecision { Player = player, Request = request });
+        Ask(new TargetDecision { Player = view.Viewer, Request = request });
 
     public Task<IReadOnlyList<AttackDeclaration>> DeclareAttackersAsync(
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders) =>
-        Ask(new AttackDecision { Player = player, PossibleAttackers = possibleAttackers, Defenders = defenders, Request = view.AttackRequest });
+        Ask(new AttackDecision { Player = view.Viewer, PossibleAttackers = possibleAttackers, Defenders = defenders, Request = view.AttackRequest });
 
     public Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(GameView view, BlockRequest request) =>
-        Ask(new BlockDecision { Player = player, Request = request });
+        Ask(new BlockDecision { Player = view.Viewer, Request = request });
 
     public Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) =>
-        Ask(new DamageAssignmentDecision { Player = player, Request = request });
+        Ask(new DamageAssignmentDecision { Player = view.Viewer, Request = request });
 
     public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) =>
-        Ask(new YesNoDecision { Player = player, Request = request });
+        Ask(new YesNoDecision { Player = view.Viewer, Request = request });
 
     public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) =>
-        Ask(new SelectCardsDecision { Player = player, Count = count, Reason = SelectCardsReason.Discard });
+        Ask(new SelectCardsDecision { Player = view.Viewer, Count = count, Reason = SelectCardsReason.Discard });
 
     public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request) =>
-        Ask(new ChooseCardsDecision { Player = player, Request = request });
+        Ask(new ChooseCardsDecision { Player = view.Viewer, Request = request });
 
     public Task<IReadOnlyList<int>?> ChooseModesAsync(GameView view, ModeRequest request) =>
-        Ask(new ChooseModesDecision { Player = player, Request = request });
+        Ask(new ChooseModesDecision { Player = view.Viewer, Request = request });
 
     public Task<int> ChooseNumberAsync(GameView view, NumberRequest request) =>
-        Ask(new ChooseNumberDecision { Player = player, Request = request });
+        Ask(new ChooseNumberDecision { Player = view.Viewer, Request = request });
 
     public Task<int> ChooseOptionAsync(GameView view, OptionRequest request) =>
-        Ask(new ChooseOptionDecision { Player = player, Request = request });
+        Ask(new ChooseOptionDecision { Player = view.Viewer, Request = request });
 }

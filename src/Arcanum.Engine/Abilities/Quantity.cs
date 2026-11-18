@@ -82,12 +82,26 @@ public enum QuantityKind
     /// <summary>Toughness / power of the permanent sacrificed by this spell or ability (cost or effect).</summary>
     SacrificedToughness,
     SacrificedPower,
+    /// <summary>
+    /// Power of the permanents tapped to pay this ability's costs ("the tapped creature's power", station, rule 702.184a),
+    /// as each is when the ability resolves, or as it last existed on the battlefield if it left (rule 608.2h).
+    /// </summary>
+    TappedForCostPower,
     /// <summary>Life lost by players through this effect ("life lost this way").</summary>
     LifeLostThisWay,
     /// <summary>Cards put into graveyards from libraries by this effect that match the filter.</summary>
     MilledThisWay,
     /// <summary>Permanents destroyed by this effect.</summary>
     DestroyedThisWay,
+
+    /// <summary>Cards a "toGraveyard" effect of this ability put into a graveyard ("for each card put into a graveyard this way").</summary>
+    PutIntoGraveyardThisWay,
+
+    /// <summary>Half the starting life total, rounded up.</summary>
+    HalfStartingLifeRoundedUp,
+
+    /// <summary>The source's mana value (as it last existed, when it has left).</summary>
+    SourceManaValue,
     /// <summary>Damage dealt beyond lethal to the creature by this effect.</summary>
     ExcessDamage,
     /// <summary>Cards exiled by this effect that match the filter.</summary>
@@ -206,6 +220,8 @@ public enum QuantityKind
     HalfRoundedUp,
     /// <summary>The mana value of the object a static ability is being applied to ("equal to its mana value").</summary>
     AffectedManaValue,
+    /// <summary>"For each time it has attacked this turn": of the object a static ability affects.</summary>
+    AffectedAttacksThisTurn,
     /// <summary>The life the player being affected (or else the controller) lost this turn.</summary>
     AffectedLifeLostThisTurn,
     /// <summary>The most poison counters an opponent has ("as long as an opponent has three or more poison counters").</summary>

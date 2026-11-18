@@ -18,6 +18,7 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("copyAbility", out var cab))
             return new CopyAbility(ParseSubject(cab), e.TryGetProperty("count", out var cac) ? ParseQuantity(cac) : 1);
         if (e.TryGetProperty("additionalEndStep", out var aes)) return new AdditionalEndStep(aes.ValueKind == JsonValueKind.String && aes.GetString() == "ifFirst");
+        if (e.TryGetProperty("additionalUpkeepStep", out _)) return new AdditionalUpkeepStep();
         if (e.TryGetProperty("unattachWhenControlLost", out var uwc)) return new UnattachWhenControlLost(ParseSubject(uwc));
         if (e.TryGetProperty("revealAndAlternate", out var raa)) return new RevealAndAlternate(raa.GetInt32());
         if (e.TryGetProperty("rememberChosen", out _)) return new RememberChosen();

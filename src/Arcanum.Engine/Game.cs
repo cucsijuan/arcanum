@@ -122,9 +122,16 @@ public sealed partial class Game
             Monarch = State.Monarch,
             AttackRequest = player == State.ActivePlayer ? _attackRequest : null,
             TimeCalledAt = TimeCalledAt,
+            ActivePlayerControlledBy = State.ActivePlayerControlledBy is { } by && State.PlayerControlledBy(by) is not null ? by : null,
+            ControlledView = State.PlayerControlledBy(player) is { } controlled ? ViewFor(controlled, revealAll) : null,
         };
 
-    private IPlayerController ControllerOf(PlayerId player) => _controllers[player.Value];
+    /// <summary>Who makes <paramref name="player"/>'s decisions: themselves, or the player controlling them this turn (rule 722.4).</summary>
+    private IPlayerController ControllerOf(PlayerId player) => _controllers[DeciderFor(player).Value];
+
+    /// <summary>The player making <paramref name="player"/>'s choices and decisions now (rule 722.4).</summary>
+    public PlayerId DeciderFor(PlayerId player) =>
+        player == State.ActivePlayer && State.ActivePlayerControlledBy is { } by && State.PlayerControlledBy(by) == player ? by : player;
 
     /// <summary>A new timestamp, later than every earlier one (rule 613.7).</summary>
     private long NewTimestamp() => ++State.LastTimestamp;
@@ -192,6 +199,7 @@ public sealed partial class Game
                 break;
             case CardMoved { From: Zone.Battlefield } left:
                 State.GetPlayer(left.LastController).PermanentLeftThisTurn = true;
+                if (State.GetCard(left.Card).LastKnownInfo is { } leftLki && (leftLki.Types & CardType.Land) == 0) State.NonlandPermanentLeftThisTurn = true;
                 if (left.To == Zone.Exile && State.GetCard(left.Card).LastKnownInfo is { } exiledLki && (exiledLki.Types & CardType.Creature) != 0)
                     State.GetPlayer(left.LastController).CreaturesExiledThisTurn++;
                 break;

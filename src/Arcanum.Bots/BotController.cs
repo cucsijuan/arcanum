@@ -31,6 +31,23 @@ public sealed class BotController : IPlayerController
     public BotController(PlayerId me) => _me = me;
 
     /// <summary>
+    /// Bots playing the players this one controls during their turns (rule 722.4): a decision whose view is another
+    /// player's is that player's to make, so it is made as that player, with this bot's settings.
+    /// </summary>
+    private readonly Dictionary<PlayerId, BotController> _controlled = new();
+
+    private BotController For(GameView view)
+    {
+        if (!_controlled.TryGetValue(view.Viewer, out var bot))
+        {
+            bot = new BotController(view.Viewer) { AlwaysKeep = AlwaysKeep, Pace = Pace };
+            bot.UseCardRules(_definitions);
+            _controlled[view.Viewer] = bot;
+        }
+        return bot;
+    }
+
+    /// <summary>
     /// How to read the printed rules of a card by id. The bot only asks about cards visible in its view
     /// (its hand, the battlefield, the stack), so it never learns hidden information.
     /// </summary>
@@ -55,16 +72,17 @@ public sealed class BotController : IPlayerController
 
     public Task<bool> KeepHandAsync(GameView view, int mulligansTaken)
     {
+        if (view.Viewer != _me) return For(view).KeepHandAsync(view, mulligansTaken);
         var hand = view.Self.Hand;
         int lands = hand.Count(c => (c.Types & CardType.Land) != 0);
         bool keep = AlwaysKeep || mulligansTaken >= 2 || (lands >= 2 && lands <= hand.Count - 2);
         return Task.FromResult(keep);
     }
 
-    public Task<IReadOnlyList<CardId>> ChooseCardsToBottomAsync(GameView view, int count) =>
+    public Task<IReadOnlyList<CardId>> ChooseCardsToBottomAsync(GameView view, int count) => view.Viewer != _me ? For(view).ChooseCardsToBottomAsync(view, count) :
         Task.FromResult<IReadOnlyList<CardId>>(LeastUseful(view, count));
 
-    public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) =>
+    public Task<IReadOnlyList<CardId>> ChooseDiscardAsync(GameView view, int count) => view.Viewer != _me ? For(view).ChooseDiscardAsync(view, count) :
         Task.FromResult<IReadOnlyList<CardId>>(LeastUseful(view, count));
 
     /// <summary>Modes picked for each source's latest modal spell or ability, to choose its targets accordingly.</summary>
@@ -72,6 +90,7 @@ public sealed class BotController : IPlayerController
 
     public Task<IReadOnlyList<int>?> ChooseModesAsync(GameView view, ModeRequest request)
     {
+        if (view.Viewer != _me) return For(view).ChooseModesAsync(view, request);
         var rules = Rules(view, request.Source) ?? _definitions(request.Source);
         var ability = rules?.Spell?.Modes is not null ? rules.Spell : rules?.Abilities.FirstOrDefault(a => a.Modes is not null);
         var ranked = request.Possible
@@ -87,6 +106,7 @@ public sealed class BotController : IPlayerController
     /// <summary>The color or creature type most common among the bot's own visible cards.</summary>
     public Task<int> ChooseOptionAsync(GameView view, OptionRequest request)
     {
+        if (view.Viewer != _me) return For(view).ChooseOptionAsync(view, request);
         if (request.Suggested is { } suggested) return Task.FromResult(suggested);
         if (request.Kind == OptionKind.CardName) return Task.FromResult(ChooseCardName(view, request));
         if (request.Kind == OptionKind.Other && CostChoice(view, request) is { } way) return Task.FromResult(way);
@@ -206,6 +226,7 @@ public sealed class BotController : IPlayerController
     /// </summary>
     public Task<int> ChooseNumberAsync(GameView view, NumberRequest request)
     {
+        if (view.Viewer != _me) return For(view).ChooseNumberAsync(view, request);
         int chosen = request.Prompt.Contains("loyalty counters", StringComparison.Ordinal) ? Math.Max(request.Min, request.Max - 1) : request.Max;
         if (request.Prompt.Contains("pay X life", StringComparison.Ordinal))
         {
@@ -254,6 +275,7 @@ public sealed class BotController : IPlayerController
 
     public Task<IReadOnlyList<CardId>> ChooseCardsAsync(GameView view, CardChoiceRequest request)
     {
+        if (view.Viewer != _me) return For(view).ChooseCardsAsync(view, request);
         int lands = view.Battlefield.Count(c => c.Controller == _me && (c.Types & CardType.Land) != 0)
                     + view.Self.Hand.Count(c => (c.Types & CardType.Land) != 0);
         // Lands are dead draws once there are enough; spells far above the mana available are slow.
@@ -297,6 +319,7 @@ public sealed class BotController : IPlayerController
 
     public async Task<PlayerAction> ChooseActionAsync(GameView view, IReadOnlyList<PlayerAction> legal)
     {
+        if (view.Viewer != _me) return await For(view).ChooseActionAsync(view, legal);
         // Asked again with nothing changed: the last action came to nothing (the bot backed out of a target choice it had no
         // good answer for), so it isn't tried again from this same position. Only a safety net against looping: an action
         // that fails without the bot backing out is recorded by the engine (Game.FailedActions) and reported as an error.
@@ -755,6 +778,7 @@ public sealed class BotController : IPlayerController
 
     public Task<IReadOnlyList<Target>?> ChooseTargetsAsync(GameView view, TargetRequest request)
     {
+        if (view.Viewer != _me) return For(view).ChooseTargetsAsync(view, request);
         var ability = FindAbility(view, request);
         _x = _announcedX.TryGetValue(request.Source, out var announced) ? announced : null;
         try { return Task.FromResult(ChooseTargets(view, request, ability)); }
@@ -923,6 +947,7 @@ public sealed class BotController : IPlayerController
     public async Task<IReadOnlyList<AttackDeclaration>> DeclareAttackersAsync(
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders)
     {
+        if (view.Viewer != _me) return await For(view).DeclareAttackersAsync(view, possibleAttackers, defenders);
         var declared = (await ChooseAttackersAsync(view, possibleAttackers, defenders))
             // A creature that can't attack the chosen player attacks another it may attack, or stays home.
             .Select(d => view.MayAttack(d.Attacker, d.Defender) || d.Planeswalker is not null ? d
@@ -1075,6 +1100,7 @@ public sealed class BotController : IPlayerController
 
     public async Task<IReadOnlyList<BlockDeclaration>> DeclareBlockersAsync(GameView view, BlockRequest request)
     {
+        if (view.Viewer != _me) return await For(view).DeclareBlockersAsync(view, request);
         RememberAttacks(view);
         var blocks = PlanBlocks(view, request);
         // Requirements (lures, "must be blocked") and restrictions: the closest legal declaration to the plan (rule 509.1c).
@@ -1256,7 +1282,7 @@ public sealed class BotController : IPlayerController
     /// that would hurt our own permanent or us: one we had to target because nothing else was legal; and to an optional
     /// sacrifice that isn't worth its payoff (see <see cref="PaymentWorthIt"/>).
     /// </summary>
-    public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) => request.Suggested is { } suggested ? Task.FromResult(suggested) :
+    public Task<bool> ChooseYesNoAsync(GameView view, YesNoRequest request) => view.Viewer != _me ? For(view).ChooseYesNoAsync(view, request) : request.Suggested is { } suggested ? Task.FromResult(suggested) :
         // Asked only when the full cost can be paid too: a card with morph is cast face up then (face down only when that's all it can afford),
         // and a card with evoke is cast to stay rather than evoked.
         Task.FromResult(!EndsALoop(view, request) && !request.Prompt.Contains(" face down as a 2/2", StringComparison.Ordinal)
@@ -1309,9 +1335,9 @@ public sealed class BotController : IPlayerController
         }
     }
 
-    public Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) =>
+    public Task<DamageAssignment> AssignCombatDamageAsync(GameView view, DamageAssignmentRequest request) => view.Viewer != _me ? For(view).AssignCombatDamageAsync(view, request) :
         Task.FromResult(request.Suggested);
 
-    public Task<IReadOnlyList<ManaTap>?> ChooseManaPaymentAsync(GameView view, ManaPaymentRequest request) =>
+    public Task<IReadOnlyList<ManaTap>?> ChooseManaPaymentAsync(GameView view, ManaPaymentRequest request) => view.Viewer != _me ? For(view).ChooseManaPaymentAsync(view, request) :
         Task.FromResult<IReadOnlyList<ManaTap>?>(request.SuggestedTaps);
 }

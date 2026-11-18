@@ -131,6 +131,9 @@ public sealed record SourceIs(ObjectFilter Filter) : Condition;
 /// <summary>A quantity is at least <paramref name="AtLeast"/> ("if at least one creature card was exiled this way").</summary>
 public sealed record QuantityAtLeast(Quantity Quantity, int AtLeast) : Condition;
 
+/// <summary>One quantity is less than another ("if the amount of mana spent to cast that spell was less than its mana value").</summary>
+public sealed record QuantityLessThan(Quantity Left, Quantity Right) : Condition;
+
 /// <summary>
 /// Increment (rule 702.191a): "if this permanent is a creature and the amount of mana spent to cast that spell is greater than this
 /// creature's power or this creature's toughness" — the spell of the cast trigger.
@@ -233,6 +236,9 @@ public sealed record SacrificedThisTurn(ObjectFilter Filter, int AtLeast = 1) : 
 
 /// <summary>"If a permanent you controlled left the battlefield this turn".</summary>
 public sealed record YourPermanentLeftThisTurn : Condition;
+
+/// <summary>Void: "if a nonland permanent left the battlefield this turn or a spell was warped this turn".</summary>
+public sealed record VoidThisTurn : Condition;
 
 /// <summary>"If this creature attacked this turn".</summary>
 public sealed record SourceAttackedThisTurn : Condition;
@@ -419,6 +425,9 @@ public sealed record AttachedControllerIsMonarch : Condition;
 
 /// <summary>"If an opponent controls [N] or more [filter]" (any one opponent).</summary>
 public sealed record OpponentControls(ObjectFilter Filter, int AtLeast) : Condition;
+
+/// <summary>"If a player controls no creatures": some player in the game (you too) controls no matching permanent.</summary>
+public sealed record APlayerControlsNone(ObjectFilter Filter) : Condition;
 
 /// <summary>"[Option] — …": the source chose that option as it entered.</summary>
 public sealed record ChoseOption(string Option) : Condition;

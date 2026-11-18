@@ -34,6 +34,9 @@ public abstract record StackItem(PlayerId Controller, IReadOnlyList<ChosenTarget
     /// <summary>Cards exiled from a graveyard to pay its costs ("the exiled cards").</summary>
     public IReadOnlyList<CardId> ExiledForCost { get; init; } = Array.Empty<CardId>();
 
+    /// <summary>Permanents tapped to pay its costs, with the object version they had ("the tapped creature's power").</summary>
+    public IReadOnlyList<(CardId Card, int Version)> TappedForCost { get; init; } = Array.Empty<(CardId, int)>();
+
     /// <summary>The card the spell is, or the source of the ability.</summary>
     public abstract CardId SourceCard { get; }
 }

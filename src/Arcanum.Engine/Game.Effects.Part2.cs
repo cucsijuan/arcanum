@@ -116,6 +116,20 @@ public sealed partial class Game
                 var owners = ru.From is { } revealFrom ? PlayersFor(revealFrom, ctx).ToList() : new List<PlayerId> { ctx.Controller };
                 if (owners.Count == 0) break;
                 var player = State.GetPlayer(owners[0]);
+                if (ru.CastThisTurn)
+                {
+                    // Every card is exiled face up as it goes; only the one found may be cast, and only this turn.
+                    while (player.Library.Count > 0)
+                    {
+                        var top = player.Library[0];
+                        await MoveCardAsync(top, Zone.Exile);
+                        var exiledCard = State.GetCard(top);
+                        if (exiledCard.Zone != Zone.Exile || !Matches(ru.Filter with { Controller = ControllerFilter.Any }, exiledCard, player.Id, ctx.Source, ctx.Controller)) continue;
+                        State.PlayableFromExile.Add(new PlayableFromExile(top, exiledCard.Version, ctx.Controller, State.TurnNumber) { CastOnly = true });
+                        break;
+                    }
+                    break;
+                }
                 if (ru.CastFree)
                 {
                     // "Exiles cards until an instant or sorcery card; you may cast it without paying its mana cost; the rest go to the bottom."
@@ -351,6 +365,13 @@ public sealed partial class Game
                 break;
             case AdditionalCombat { AfterThisMainWithMain: true }:
                 if (State.Step.IsMain()) _extraCombatsAfterMain++;
+                break;
+            case AdditionalCombatAfterThisMain acm:
+                if (State.Step.IsMain())
+                    _extraCombatsAfterMainOnly.Add(acm.AtItsBeginning is { } atBeginning
+                        ? new DelayedTrigger(ctx.Source.Id, new TriggeredAbility { Trigger = TriggerEvent.YourBeginCombat, Effects = atBeginning, Text = acm.Text }, ctx.Controller, 0)
+                            { SourceVersion = ctx.Source.Version, SourceTransforms = ctx.Source.TransformCount }
+                        : null);
                 break;
             case AdditionalCombat ac:
                 _extraCombats++;
@@ -833,6 +854,17 @@ public sealed partial class Game
                         ctx.Results.Discarded.AddRange(await DiscardAsync(player, sac.OtherwiseDiscard, ctx.Controller));
                 break;
             }
+            case PutIntoGraveyard pg:
+            {
+                BeginSimultaneous();
+                foreach (var card in CardsFor(pg.What, ctx).ToList())
+                {
+                    await MoveCardAsync(card.Id, Zone.Graveyard);
+                    if (card.Zone == Zone.Graveyard) ctx.Results.PutIntoGraveyard.Add(card.Id);
+                }
+                EndSimultaneous();
+                break;
+            }
             case PutIntoLibrary pl:
             {
                 var placed = new List<(CardId Card, PlayerId Owner, bool Bottom)>();
@@ -897,7 +929,7 @@ public sealed partial class Game
             case Surveil sv:
             {
                 var graveyardBefore = State.GetPlayer(ctx.Controller).Graveyard.ToHashSet();
-                await LookAtTopAsync(ctx.Controller, sv.Count, CardChoicePurpose.SurveilToGraveyard, ctx.Source);
+                await LookAtTopAsync(ctx.Controller, sv.CountFrom is { } svFrom ? Math.Max(0, Eval(svFrom, ctx)) : sv.Count, CardChoicePurpose.SurveilToGraveyard, ctx.Source);
                 ctx.Results.Surveilled.AddRange(State.GetPlayer(ctx.Controller).Graveyard.Where(id => !graveyardBefore.Contains(id)));
                 break;
             }
@@ -966,7 +998,13 @@ public sealed partial class Game
             }
             case Discard d:
                 foreach (var player in PlayersFor(d.Who, ctx).ToList())
-                    ctx.Results.Discarded.AddRange(d.AtRandom
+                    if (d.OtherwiseLoseLife > 0 && State.GetPlayer(player).Hand.Count == 0)
+                    {
+                        int before = State.GetPlayer(player).Life;
+                        ChangeLife(player, -d.OtherwiseLoseLife);
+                        ctx.Results.LifeLost += Math.Max(0, before - State.GetPlayer(player).Life);
+                    }
+                    else ctx.Results.Discarded.AddRange(d.AtRandom
                         ? await DiscardAtRandomAsync(player, Eval(d.Count, ctx with { AffectedPlayer = player }), ctx.Controller)
                         : await DiscardAsync(player, Eval(d.Count, ctx with { AffectedPlayer = player }), ctx.Controller));
                 break;
@@ -975,7 +1013,8 @@ public sealed partial class Game
                 // "Discard any number of cards" / "discard up to two cards": the player chooses which (none is fine).
                 PlayerId? discarderOrNone = dan.Who is { } danWho ? PlayersFor(danWho, ctx).Cast<PlayerId?>().FirstOrDefault() : ctx.Controller;
                 if (discarderOrNone is not { } discarder) break;
-                var hand = State.GetPlayer(discarder).Hand.ToList();
+                var hand = State.GetPlayer(discarder).Hand
+                    .Where(id => dan.Filter is not { } only || Matches(only with { Controller = ControllerFilter.Any }, State.GetCard(id), discarder, ctx.Source, ctx.Controller)).ToList();
                 if (hand.Count == 0) break;
                 int most = Math.Min(hand.Count, dan.Max ?? hand.Count);
                 var picked = await ControllerOf(discarder).ChooseCardsAsync(ViewFor(discarder), new CardChoiceRequest(
@@ -994,7 +1033,9 @@ public sealed partial class Game
                 break;
             case MayDo m:
                 if (m.OncePerTurn && ctx.Source.DoneThisTurn.Contains(m)) break; // "Do this only once each turn"
-                if (await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest(m.Prompt, ctx.Source.Id)))
+                var decider = m.Who is { } mayWho ? PlayersFor(mayWho, ctx).Cast<PlayerId?>().FirstOrDefault() : ctx.Controller;
+                if (decider is null) { if (m.Else is { } noOne) await ApplyAllAsync(noOne, ctx); break; }
+                if (await ControllerOf(decider.Value).ChooseYesNoAsync(ViewFor(decider.Value), new YesNoRequest(m.Prompt, ctx.Source.Id)))
                 {
                     if (m.OncePerTurn) ctx.Source.DoneThisTurn.Add(m);
                     await ApplyAllAsync(m.Effects, ctx);
@@ -1052,6 +1093,14 @@ public sealed partial class Game
             case GainLife g:
                 foreach (var player in PlayersFor(g.Who, ctx).ToList()) await GainLifeAsync(player, Eval(g.Amount, ctx));
                 break;
+            case LifeTotalBecomes lb:
+                foreach (var player in PlayersFor(lb.Who, ctx).ToList())
+                {
+                    int difference = Eval(lb.Amount, ctx with { AffectedPlayer = player }) - State.GetPlayer(player).Life;
+                    if (difference > 0) await GainLifeAsync(player, difference);
+                    else if (difference < 0) ChangeLife(player, difference);
+                }
+                break;
             case LoseLife l:
                 foreach (var player in PlayersFor(l.Who, ctx))
                 {
@@ -1061,8 +1110,11 @@ public sealed partial class Game
                 }
                 break;
             case Destroy d:
+            {
+                int? destroyedManaValue = d.ManaValueIs is { } mvq ? Eval(mvq, ctx) : null;
                 BeginSimultaneous();
-                foreach (var card in CardsFor(d.What, ctx).Where(c => !c.Has(Keyword.Indestructible) && !(d.ExceptCreatedThisWay && ctx.Results.Created.Contains(c.Id))).ToList())
+                foreach (var card in CardsFor(d.What, ctx).Where(c => !c.Has(Keyword.Indestructible) && !(d.ExceptCreatedThisWay && ctx.Results.Created.Contains(c.Id))
+                                                                      && (destroyedManaValue is not { } mv || ManaValueOf(c) == mv)).ToList())
                 {
                     if (await SurvivesDestructionAsync(card, !d.CantBeRegenerated)) continue;
                     bool creature = card.IsCreature;
@@ -1074,6 +1126,7 @@ public sealed partial class Game
                 }
                 EndSimultaneous();
                 break;
+            }
             case ExileIt x:
             {
                 var exiling = x.What.Kind == SubjectKind.Triggered && ctx.Trigger is { Subject: { } tid } ti && State.GetCard(tid) is { } tc && tc.Version == ti.SubjectVersion

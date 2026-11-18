@@ -205,7 +205,14 @@ public sealed partial class Game
                     var pick = take == hand.Count ? hand : (await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest($"Exile {take} card(s) from your hand", ctx.Source.Id,
                         hand.Select(id => ViewBuilder.Card(State, id, who)).ToList(), take, take, CardChoicePurpose.Discard))).ToList();
                     Require(pick.Count == take && pick.Distinct().Count() == take && pick.All(hand.Contains), "Choose cards from your hand.");
-                    foreach (var id in pick) { await MoveCardAsync(id, Zone.Exile); ctx.Results.Exiled.Add(id); }
+                    foreach (var id in pick)
+                    {
+                        await MoveCardAsync(id, Zone.Exile);
+                        ctx.Results.Exiled.Add(id);
+                        if (ech.OwnerMayPlay && State.GetCard(id) is { Zone: Zone.Exile } exiled)
+                            State.PlayableFromExile.Add(new PlayableFromExile(id, exiled.Version, exiled.Owner, int.MaxValue)
+                                { CostMore = ech.PlayCostMore, LandEntersTapped = ech.LandsEnterTapped, MadeOnTurn = State.TurnNumber });
+                    }
                 }
                 break;
             }
@@ -606,8 +613,9 @@ public sealed partial class Game
             case Myriad:
                 await MyriadAsync(ctx);
                 break;
-            case Proliferate:
+            case Proliferate proliferate:
                 await ProliferateAsync(ctx);
+                if (proliferate.ThenPhaseOutChosen) await PhaseOutChosenProliferatedAsync(ctx);
                 break;
             case DiscoverCards discover:
                 await DiscoverAsync(discover, ctx);
@@ -629,20 +637,23 @@ public sealed partial class Game
             case ExileUntilSourceLeaves eu:
                 // If the source already left the battlefield, nothing is exiled (it would return at once).
                 if (!SourceOnBattlefield(ctx)) break;
+                BeginSimultaneous(); // "exile all artifacts and creatures with mana value 2 or less until …": one event
                 foreach (var card in CardsFor(eu.What, ctx).ToList())
                 {
                     await MoveCardAsync(card.Id, Zone.Exile);
+                    if (card.Zone == Zone.Exile) card.ExiledWith = (ctx.Source.Id, ctx.Source.Version); // "each card exiled with this"
                     if (!card.Definition.IsToken) State.LinkedExiles.Add(new LinkedExile(ctx.Source.Id, ctx.Source.Version, card.Id, card.Version));
                     if (eu.Castable && card.Zone == Zone.Exile)
                         State.PlayableFromExile.Add(new PlayableFromExile(card.Id, card.Version, ctx.Controller, int.MaxValue) { AnyManaType = true, CastOnly = true });
                 }
+                EndSimultaneous();
                 break;
             case ExileAndReturnAtEndStep er:
                 foreach (var card in CardsFor(er.What, ctx).ToList())
                 {
                     await MoveCardAsync(card.Id, Zone.Exile);
                     if (!card.Definition.IsToken) State.AtNextEndStep.Add(new DelayedAction(card.Id, card.Version, Return: true, er.UnderYourControl ? ctx.Controller : card.Owner)
-                        { Counters = er.ReturnCounter is { } returnKind ? (returnKind, 1) : null });
+                        { Counters = er.ReturnCounter is { } returnKind ? (returnKind, 1) : null, Tapped = er.ReturnTapped });
                 }
                 break;
             case ExtraTurn et:
@@ -708,7 +719,7 @@ public sealed partial class Game
                     {
                         IsToken = true,
                         ImageByName = face.ImageByName || (!face.IsToken && face.ImageKey is null),
-                        Supertypes = tc.NotLegendary ? face.Supertypes & ~Supertype.Legendary : face.Supertypes,
+                        Supertypes = tc.NotLegendary ? face.Supertypes & ~Supertype.Legendary : tc.AddLegendary ? face.Supertypes | Supertype.Legendary : face.Supertypes,
                         ManaCost = tc.NoManaCost ? ManaCost.Zero : face.ManaCost,
                         Keywords = tc.Haste ? face.Keywords.Append("Haste").ToList() : face.Keywords,
                         Subtypes = tc.AddSubtypes is { } extra ? face.Subtypes.Concat(extra).Distinct().ToList() : face.Subtypes,

@@ -13,6 +13,9 @@ public sealed record ManaUnit(ManaType Type, Core.CardId Source, Abilities.Objec
     /// <summary>Besides the spells it may pay for, it may pay for equip abilities only (<see cref="Cards.ManaOption.EquipOnly"/>).</summary>
     public bool EquipOnly { get; init; }
 
+    /// <summary>It pays only for abilities (of <see cref="OnlyFor"/> sources), never for spells (<see cref="Cards.ManaOption.AbilitiesOnly"/>).</summary>
+    public bool AbilitiesOnly { get; init; }
+
     /// <summary>It may be spent only on costs that contain {X} (<see cref="Cards.ManaOption.XCostsOnly"/>).</summary>
     public bool XCostsOnly { get; init; }
 

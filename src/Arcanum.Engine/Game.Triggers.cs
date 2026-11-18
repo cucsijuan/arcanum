@@ -413,10 +413,16 @@ public sealed partial class Game
                     foreach (var watching in abilities.Where(a => a.Trigger == TriggerEvent.YouPlayLand
                                                                   && Matches((a.Filter ?? new ObjectFilter()) with { Controller = ControllerFilter.Any }, land, land.Controller, observer, observer.Controller)))
                         AddPending(observer.Id, watching, observer.Controller, new TriggerInfo(land.Id, land.Version, played.Player));
+                // "Whenever an opponent plays a land".
+                foreach (var (observer, abilities) in Observers().Where(o => State.OpponentsOf(o.Card.Controller).Contains(played.Player)))
+                    foreach (var watching in abilities.Where(a => a.Trigger == TriggerEvent.OpponentPlaysLand))
+                        AddPending(observer.Id, watching, observer.Controller, new TriggerInfo(land.Id, land.Version, played.Player));
                 break;
             }
             case PermanentTapped t when State.GetCard(t.Card).Zone == Zone.Battlefield:
                 Queue(t.Card, TriggerEvent.BecomesTapped, State.GetCard(t.Card).Controller);
+                foreach (var attached in State.Battlefield.Select(State.GetCard).Where(c => c.AttachedTo == t.Card).ToList())
+                    Queue(attached.Id, TriggerEvent.AttachedBecomesTapped, attached.Controller, new TriggerInfo(t.Card, State.GetCard(t.Card).Version));
                 break;
             case PermanentTransformed transformed:
                 CollectTransformTriggers(transformed);
@@ -476,6 +482,12 @@ public sealed partial class Game
                 break;
             }
             case StepBegan { Step: Step.BeginCombat } s:
+                // "At the beginning of that combat": the next inserted combat phase is the one beginning now.
+                if (_insertedCombatTriggers.Count > 0 && _insertedCombatTriggers.Dequeue() is { } thatCombat)
+                    _pendingTriggers.Add(new PendingTrigger(thatCombat.Source, thatCombat.Ability, thatCombat.Controller, new TriggerInfo(Amount: 0))
+                    {
+                        SourceTransforms = thatCombat.SourceTransforms, SourceVersion = thatCombat.SourceVersion ?? -1,
+                    });
                 foreach (var card in PermanentsAndEmblemsOf(s.ActivePlayer)) Queue(card.Id, TriggerEvent.YourBeginCombat, s.ActivePlayer);
                 foreach (var card in State.GetPlayer(s.ActivePlayer).Graveyard.Select(State.GetCard).ToList())
                     foreach (var ability in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.FromGraveyard && a.Trigger == TriggerEvent.YourBeginCombat))
@@ -585,6 +597,10 @@ public sealed partial class Game
                 foreach (var aura in State.Battlefield.Select(State.GetCard).Where(c => c.AttachedTo is { } host && State.GetCard(host) is { Zone: Zone.Battlefield } h
                                                                                        && h.Controller == s.ActivePlayer).ToList())
                     Queue(aura.Id, TriggerEvent.EnchantedControllersUpkeep, aura.Controller, new TriggerInfo(Player: s.ActivePlayer));
+                // "At the beginning of enchanted player's first upkeep each turn."
+                if (_upkeepsThisTurn == 1)
+                    foreach (var aura in State.Battlefield.Select(State.GetCard).Where(c => c.AttachedPlayer == s.ActivePlayer).ToList())
+                        Queue(aura.Id, TriggerEvent.EnchantedPlayersFirstUpkeep, aura.Controller, new TriggerInfo(Player: s.ActivePlayer));
                 break;
             case StepBegan { Step: Step.End } s:
                 // Impending (702.176a): "at the beginning of your end step, if this permanent's impending cost was paid and it has a time counter on it, remove a time counter from it".
@@ -624,7 +640,8 @@ public sealed partial class Game
                 {
                     State.AtNextEndStep.Remove(delayed);
                     var delayedAbility = !delayed.Return ? SacrificeAtEndStep
-                        : delayed.Counters is { } c ? ReturnAtEndStep with { Effects = new Effect[] { new PutOntoBattlefield(Subject.Triggered) { Counters = c.Count, CounterKind = c.Kind } } }
+                        : delayed.Counters is { } c ? ReturnAtEndStep with { Effects = new Effect[] { new PutOntoBattlefield(Subject.Triggered, delayed.Tapped) { Counters = c.Count, CounterKind = c.Kind } } }
+                        : delayed.Tapped ? ReturnAtEndStep with { Effects = new Effect[] { new PutOntoBattlefield(Subject.Triggered, Tapped: true) } }
                         : ReturnAtEndStep;
                     _pendingTriggers.Add(new PendingTrigger(delayed.Card, delayedAbility, delayed.Controller, new TriggerInfo(delayed.Card, delayed.Version)));
                 }
@@ -676,6 +693,10 @@ public sealed partial class Game
     private void QueueYourGraveyard(Card moved, Zone from)
     {
         if (moved.Zone != Zone.Graveyard) return;
+        foreach (var (observer, abilities) in Observers().ToList())
+            foreach (var ability in abilities.Where(a => a.Trigger == TriggerEvent.CardPutIntoAnyGraveyard && observer.Id != moved.Id))
+                if (Matches((ability.Filter ?? ObjectFilter.Anything) with { Controller = ControllerFilter.Any }, moved, moved.Owner, observer, observer.Controller))
+                    AddPending(observer.Id, ability, observer.Controller, new TriggerInfo(moved.Id, moved.Version, moved.Owner));
         foreach (var (observer, abilities) in Observers().Where(o => o.Card.Controller == moved.Owner).ToList())
             foreach (var ability in abilities.Where(a => a.Trigger == TriggerEvent.CardPutIntoYourGraveyard && (a.FromZone is not { } fromZone || fromZone == from)))
                 if (Matches((ability.Filter ?? ObjectFilter.Anything) with { Controller = ControllerFilter.Any }, moved, moved.Owner, observer, observer.Controller))
@@ -685,7 +706,9 @@ public sealed partial class Game
     private void Queue(CardId source, TriggerEvent trigger, PlayerId controller, TriggerInfo? info = null)
     {
         foreach (var ability in TriggerAbilitiesOf(State.GetCard(source)))
-            if (ability.Trigger == trigger) AddPending(source, ability, controller, info);
+            if (ability.Trigger == trigger && !(ability.Filter is { } filter && trigger is TriggerEvent.BlocksCreature or TriggerEvent.BlocksOrBecomesBlockedByCreature
+                    && info?.Subject is { } other && !Matches(filter with { Controller = ControllerFilter.Any }, State.GetCard(other), State.GetCard(other).Controller, State.GetCard(source), controller)))
+                AddPending(source, ability, controller, info); // "blocks a creature with flying": the filter is about the other creature
     }
 
     /// <summary>

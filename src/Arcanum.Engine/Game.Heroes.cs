@@ -53,6 +53,9 @@ public sealed partial class Game
             case AdditionalEndStep extra:
                 if (!extra.OnlyIfFirst || (State.Step == Step.End && _endStepsThisTurn == 1)) _extraEndSteps++;
                 break;
+            case AdditionalUpkeepStep:
+                if (State.Step == Step.Upkeep) _extraUpkeeps++;
+                break;
             case UnattachWhenControlLost uw:
                 foreach (var card in CardsFor(uw.What, ctx).ToList())
                     State.UnattachWhenControlLost.Add((card.Id, card.Version, ctx.Controller, State.TurnNumber, ctx.Source.Id));

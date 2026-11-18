@@ -13,8 +13,14 @@ public sealed partial class Game
     /// <summary>Additional combat phases, each followed by an additional main phase, to come right after the current main phase.</summary>
     private int _extraCombatsAfterMain;
 
+    /// <summary>Additional combat phases (without a main phase) to come right after the current main phase, each with its delayed ability, if any.</summary>
+    private readonly List<DelayedTrigger?> _extraCombatsAfterMainOnly = new();
+
+    /// <summary>The delayed abilities of the inserted combat phases still to begin, in the order they come.</summary>
+    private readonly Queue<DelayedTrigger?> _insertedCombatTriggers = new();
+
     /// <summary>Additional end steps still to come after this one, and how many end steps this turn has had ("if it's the first end step of the turn").</summary>
-    private int _extraEndSteps, _endStepsThisTurn;
+    private int _extraEndSteps, _endStepsThisTurn, _extraUpkeeps, _upkeepsThisTurn;
 
     /// <summary>The player whose turn ran last, whose attacks become "during their last turn".</summary>
     private Core.PlayerId? _previousTurnPlayer;
@@ -30,6 +36,16 @@ public sealed partial class Game
             last.UnionWith(State.GetPlayer(previous).PlayersAttackedThisTurn);
         }
         _previousTurnPlayer = State.ActivePlayer;
+        // "You control that player during their next turn": the latest such effect applies to this turn (rule 722.1); a player
+        // can control themselves (722.6), and a controller who has left the game controls no one.
+        State.ActivePlayerControlledBy = null;
+        var controls = State.PendingPlayerControl.Where(c => c.Controlled == State.ActivePlayer).ToList();
+        State.PendingPlayerControl.RemoveAll(c => c.Controlled == State.ActivePlayer);
+        if (controls.Count > 0 && controls.MaxBy(c => c.Timestamp) is var latest && latest.Controller != State.ActivePlayer && !State.GetPlayer(latest.Controller).HasLost)
+        {
+            State.ActivePlayerControlledBy = latest.Controller;
+            Emit(new PlayerControlled(State.ActivePlayer, latest.Controller));
+        }
         // "Until your next turn": those emblems of the player whose turn begins end now.
         foreach (var emblem in State.EmblemsUntilOwnersNextTurn.Where(e => State.GetCard(e).Owner == State.ActivePlayer).ToList())
         {
@@ -39,6 +55,8 @@ public sealed partial class Game
         }
         active.LandsPlayedThisTurn = 0;
         State.CreaturesDiedThisTurn = 0;
+        State.NonlandPermanentLeftThisTurn = false;
+        State.SpellWarpedThisTurn = false;
         State.CreatureDeathsThisTurn.Clear();
         State.NontokenCreaturesDiedThisTurn = 0;
         State.PermanentsSacrificedThisTurn = 0;
@@ -93,6 +111,7 @@ public sealed partial class Game
             player.LifeGainsThisTurn = 0;
             player.SpellsCastLastTurn = player.SpellsCastThisTurn.Count;
             player.SpellsCastThisTurn.Clear();
+            player.NoncreatureSpellsCastThisTurn = 0;
             player.SpellManaValuesThisTurn.Clear();
             player.ModifiedCreatureDiedThisTurn = false;
             State.WhenNextCast.RemoveAll(w => w.Turn < State.TurnNumber); // "this turn" is over
@@ -140,8 +159,12 @@ public sealed partial class Game
         _endTurnRequested = false;
         _extraCombats = 0;
         _extraCombatsAfterMain = 0;
+        _extraCombatsAfterMainOnly.Clear();
+        _insertedCombatTriggers.Clear();
         _extraEndSteps = 0;
         _endStepsThisTurn = 0;
+        _extraUpkeeps = 0;
+        _upkeepsThisTurn = 0;
         var order = StepExtensions.TurnOrder.ToList();
         for (int index = 0; index < order.Count; index++)
         {
@@ -173,6 +196,7 @@ public sealed partial class Game
                 continue;
             }
             if (step == Step.End) _endStepsThisTurn++;
+            if (step == Step.Upkeep) _upkeepsThisTurn++;
             await RunStepAsync(step);
             // "An additional combat phase after this phase followed by an additional main phase": inserted after this main phase.
             if (step.IsMain() && _extraCombatsAfterMain > 0 && !_endTurnRequested)
@@ -182,10 +206,25 @@ public sealed partial class Game
                     order.InsertRange(index + 1, combat.Append(Step.PostcombatMain));
                 _skipCombatDamageSteps = false;
             }
+            // "There's an additional combat phase after this phase": combat phases only, the first one made first.
+            if (step.IsMain() && _extraCombatsAfterMainOnly.Count > 0 && !_endTurnRequested)
+            {
+                var combat = StepExtensions.TurnOrder.SkipWhile(s => s != Step.BeginCombat).TakeWhile(s => s != Step.PostcombatMain).ToList();
+                foreach (var _ in _extraCombatsAfterMainOnly) order.InsertRange(index + 1, combat);
+                foreach (var delayed in _extraCombatsAfterMainOnly) _insertedCombatTriggers.Enqueue(delayed);
+                _extraCombatsAfterMainOnly.Clear();
+                _skipCombatDamageSteps = false;
+            }
             // "There is an additional end step after this step" (rule 500.8).
             if (step == Step.End && _extraEndSteps > 0 && !_endTurnRequested)
             {
                 _extraEndSteps--;
+                index--;
+            }
+            // "An additional upkeep step after this step" (rule 500.8).
+            if (step == Step.Upkeep && _extraUpkeeps > 0 && !_endTurnRequested)
+            {
+                _extraUpkeeps--;
                 index--;
             }
         }

@@ -9,6 +9,9 @@ namespace Arcanum.Engine.Abilities;
 /// <param name="Sacrifice">What must be sacrificed (null: nothing); the filter's controller is ignored (you control it).</param>
 public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, int SacrificeCount = 1, int PayLife = 0)
 {
+    /// <summary>"Discard a card at random": the cards are picked at random, not chosen.</summary>
+    public bool DiscardAtRandom { get; init; }
+
     /// <summary>"Tap N untapped [filter] you control" (e.g. ten Elves).</summary>
     public ObjectFilter? TapCreatures { get; init; }
     public int TapCount { get; init; }
@@ -28,6 +31,12 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
     /// <summary>"Behold a [filter] and exile it": the beheld card is exiled, linked to the permanent the spell becomes (rule 607.2).</summary>
     public bool BeholdExile { get; init; }
 
+    /// <summary>
+    /// "Choose a creature you control or a warped creature card you own in exile": chosen like <see cref="Behold"/>, but among the
+    /// warped cards its payer owns in exile instead of the cards in their hand (nothing is revealed).
+    /// </summary>
+    public bool BeholdWarpedExile { get; init; }
+
     /// <summary>"Behold three Elementals": how many different objects (1 when not said).</summary>
     public int BeholdCount { get; init; } = 1;
 
@@ -42,6 +51,15 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
 
     /// <summary>The permanents you control the counters are removed from ("remove a counter from a nonland permanent you control").</summary>
     public ObjectFilter? RemoveCountersFrom { get; init; }
+
+    /// <summary>Only counters of this kind ("remove a +1/+1 counter from …").</summary>
+    public CounterKind? RemoveCountersKind { get; init; }
+
+    /// <summary>"From each of two creatures": every counter comes from a different permanent.</summary>
+    public bool RemoveCountersFromDifferent { get; init; }
+
+    /// <summary>All the counters come off one permanent ("remove X counters from an artifact or creature you control").</summary>
+    public bool RemoveCountersFromOne { get; init; }
 
     /// <summary>"Mill N cards" as a cost (it can't be paid with fewer cards in the library, rule 701.13b).</summary>
     public int Mill { get; init; }

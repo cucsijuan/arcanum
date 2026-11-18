@@ -265,6 +265,7 @@ public sealed partial class Game
     private int EvalOrigins(Quantity q, EffectContext ctx) => q.Kind switch
     {
         QuantityKind.AffectedManaValue => ctx.AffectedCard is { } affected ? ManaValueOf(affected) : 0,
+        QuantityKind.AffectedAttacksThisTurn => ctx.AffectedCard?.AttacksThisTurn ?? 0,
         QuantityKind.FoundPower => FoundStats(ctx)?.Power ?? 0,
         QuantityKind.FoundToughness => FoundStats(ctx)?.Toughness ?? 0,
         _ => throw new NotSupportedException($"Quantity {q.Kind} is not implemented."),

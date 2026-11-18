@@ -11,6 +11,8 @@ public static class ViewBuilder
     public static GameView Build(GameState state, PlayerId viewer, bool revealAll = false, int commanderTaxPerCast = 0)
     {
         CardView View(CardId id) => Card(state, id, viewer, revealAll, commanderTaxPerCast);
+        // While controlling another player, information visible to that player is visible to the controller too (rule 722.3).
+        var controlled = state.PlayerControlledBy(viewer);
 
         IReadOnlyList<CardView> Views(IEnumerable<CardId> ids) => ids.Select(View).ToList();
 
@@ -29,12 +31,11 @@ public static class ViewBuilder
                 HasLost = p.HasLost,
                 LibraryCount = p.Library.Count,
                 LibraryTop = p.Library.Count == 0 ? null
-                    : (p.Id == viewer && MayLookAtLibraryTop(state, p.Id)) || state.GetCard(p.Library[0]).IsVisibleTo(viewer)
-                      || RevealedByEffect(state, state.GetCard(p.Library[0]), viewer)
+                    : ((p.Id == viewer || p.Id == controlled) && MayLookAtLibraryTop(state, p.Id)) || SeenBy(state, state.GetCard(p.Library[0]), viewer)
                         ? Card(state, p.Library[0], viewer, reveal: true)
                         : null,
                 KnownLibrary = p.Library.Select((id, i) => (Id: id, Position: i))
-                    .Where(x => state.GetCard(x.Id).IsVisibleTo(viewer) || RevealedByEffect(state, state.GetCard(x.Id), viewer))
+                    .Where(x => SeenBy(state, state.GetCard(x.Id), viewer))
                     .Select(x => new LibraryCardView(x.Position, View(x.Id))).ToList(),
                 Hand = Views(p.Hand),
                 Graveyard = Views(p.Graveyard),
@@ -81,6 +82,11 @@ public static class ViewBuilder
         _ => false,
     };
 
+    /// <summary>Whether <paramref name="viewer"/> sees the card: known to them, revealed, or seen by the player they control this turn (rule 722.3).</summary>
+    public static bool SeenBy(GameState state, Card card, PlayerId viewer) =>
+        card.IsVisibleTo(viewer) || RevealedByEffect(state, card, viewer)
+        || state.PlayerControlledBy(viewer) is { } controlled && (card.IsVisibleTo(controlled) || RevealedByEffect(state, card, controlled));
+
     private static bool Revealing(GameState state, PlayerId player, Cards.Replacements rule) =>
         !state.GetPlayer(player).HasLost && state.PermanentsControlledBy(player).Any(c => (c.Replaces & rule) != 0);
 
@@ -112,7 +118,7 @@ public static class ViewBuilder
     public static CardView Card(GameState state, CardId id, PlayerId viewer, bool reveal = false, int commanderTaxPerCast = 0)
     {
         var card = state.GetCard(id);
-        bool visible = reveal || card.IsVisibleTo(viewer) || RevealedByEffect(state, card, viewer);
+        bool visible = reveal || SeenBy(state, card, viewer);
         // A face-down spell or permanent shows its face-down characteristics to everyone (708.2), and what it is only to those who may look.
         bool faceDown = card.TurnedFaceDown && card.Zone is Zone.Battlefield or Zone.Stack;
         var faceDownCard = faceDown && visible ? PrintedFace(card, card.PrintedDefinition, isBack: false) : null;

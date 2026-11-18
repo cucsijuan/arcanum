@@ -159,6 +159,9 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>"Sacrifice X Squirrels" as a cost: X is announced and that many matching permanents (<see cref="Extra"/>'s filter) are sacrificed.</summary>
     public bool SacrificeX { get; init; }
 
+    /// <summary>"Remove X counters from an artifact or creature you control": X is announced and X counters are removed from one permanent matching <see cref="Extra"/>'s filter.</summary>
+    public bool RemoveCountersX { get; init; }
+
     /// <summary>"Tap X untapped tokens you control" as a cost: X is announced and that many matching permanents (<see cref="Extra"/>'s tap filter) are tapped.</summary>
     public bool TapX { get; init; }
 
@@ -181,6 +184,9 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>"Tap [the permanent that granted this ability]" as a cost ("Tap this equipment").</summary>
     public bool TapGranter { get; init; }
 
+    /// <summary>"Exile [the permanent that granted this ability]" as a cost (an Equipment's granted "Exile [this Equipment]: …").</summary>
+    public bool ExileGranter { get; init; }
+
     /// <summary>Activated from the hand by discarding this card (cycling, rule 702.29).</summary>
     public bool FromHand { get; init; }
 
@@ -200,6 +206,12 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
 public sealed record ActivatedAbility : AbilityDefinition
 {
     public required AbilityCost Cost { get; init; }
+
+    /// <summary>
+    /// "Equip—Pay {3} or remove a counter from this Equipment": the costs its controller chooses between as it activates the ability
+    /// (<see cref="Cost"/> is the first), with how each is shown.
+    /// </summary>
+    public IReadOnlyList<(AbilityCost Cost, string Label)>? CostOptions { get; init; }
 
     /// <summary>"For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana."</summary>
     public bool TapCreaturesForMana { get; init; }
@@ -253,6 +265,9 @@ public sealed record ActivatedAbility : AbilityDefinition
     /// <summary>"This ability costs {N} less to activate if [condition]."</summary>
     public Condition? CostReductionIf { get; init; }
     public int CostReductionAmount { get; init; }
+
+    /// <summary>"This ability costs {X} less to activate, where X is …": generic mana less by this quantity.</summary>
+    public Quantity? CostReductionFrom { get; init; }
 }
 
 /// <summary>"[Spells matching the filter] you cast cost {N} less to cast" while the source is on the battlefield.</summary>
@@ -439,6 +454,10 @@ public enum TriggerEvent
     /// that targets an opponent, something an opponent controls or a card in an opponent's graveyard; once for each.
     /// </summary>
     YouCommitCrime,
+    /// <summary>"Whenever an opponent commits a crime" (rule 700.13): the opponent is the triggered player.</summary>
+    OpponentCommitsCrime,
+    /// <summary>"Whenever a [filter] card is put into a graveyard from anywhere" (any graveyard, the battlefield included).</summary>
+    CardPutIntoAnyGraveyard,
     /// <summary>"Whenever you surveil."</summary>
     YouSurveil,
     /// <summary>"Whenever you scry or surveil": one event for either.</summary>
@@ -451,6 +470,8 @@ public enum TriggerEvent
     OpponentDealtNoncombatDamage,
     /// <summary>"When enchanted creature is dealt damage": once for each source dealing damage to the permanent this is attached to.</summary>
     AttachedDealtDamage,
+    /// <summary>"When enchanted/equipped creature becomes tapped" (about that creature).</summary>
+    AttachedBecomesTapped,
     /// <summary>"Whenever an opponent gains control of a permanent from you": the permanent is "triggered", that opponent "triggeredPlayer".</summary>
     OpponentGainsControlFromYou,
     /// <summary>"Whenever this deals damage": once for each damage event it deals damage in, with the total dealt ("that much").</summary>
@@ -625,6 +646,10 @@ public enum TriggerEvent
     TurnedFaceUp,
     /// <summary>"Whenever a [filter] permanent you control is turned face up" (subject: that permanent; the observer sees itself too).</summary>
     YourPermanentTurnedFaceUp,
+    /// <summary>"Whenever an opponent plays a land" (the land is what it is about; the player is the opponent).</summary>
+    OpponentPlaysLand,
+    /// <summary>"At the beginning of enchanted player's first upkeep each turn" (an Aura attached to a player; the player is the active player).</summary>
+    EnchantedPlayersFirstUpkeep,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>
@@ -793,6 +818,9 @@ public sealed record ObjectFilter(
     /// <summary>"Each creature with power of the chosen quality": its power has the parity the source chose.</summary>
     public bool PowerParityChosen { get; init; }
 
+    /// <summary>Its mana value has the parity the source chose ("of the chosen quality"; zero is even).</summary>
+    public bool ManaValueParityChosen { get; init; }
+
     /// <summary>"Other than enchanted creature": not the object the source is attached to.</summary>
     public bool NotAttachedToSource { get; init; }
 
@@ -849,6 +877,9 @@ public sealed record ObjectFilter(
 
     /// <summary>A spell cast from its owner's hand.</summary>
     public bool CastFromHand { get; init; }
+
+    /// <summary>A spell cast from anywhere other than its owner's hand (still in the hand while the cast is being considered).</summary>
+    public bool NotCastFromHand { get; init; }
 
     /// <summary>"With base power 1" (base power and toughness after copy and setting effects, before modifications).</summary>
     public int? BasePower { get; init; }
@@ -967,6 +998,12 @@ public sealed record ObjectFilter(
     /// <summary>Mana value at most the mana spent to cast the source ("with mana value less than or equal to the amount of mana spent to cast this creature").</summary>
     public bool MaxManaValueSpentOnSource { get; init; }
 
+    /// <summary>"A card with warp": the object has warp (rule 702.185).</summary>
+    public bool HasWarp { get; init; }
+
+    /// <summary>"That was cast for its warp cost": a permanent that resolved as a warped spell.</summary>
+    public bool CastForWarp { get; init; }
+
     /// <summary>"Monocolored": exactly one color.</summary>
     public bool Monocolored { get; init; }
 
@@ -978,6 +1015,12 @@ public sealed record ObjectFilter(
 
     /// <summary>Mana value X or less, X being the resolving spell's ("with mana value X or less").</summary>
     public bool MaxManaValueX { get; init; }
+
+    /// <summary>Toughness X or less, X being the resolving spell's ("destroy all creatures with toughness X or less").</summary>
+    public bool MaxToughnessX { get; init; }
+
+    /// <summary>"Of the chosen type", where the source's choice is a card type ("Spells you cast of the chosen type").</summary>
+    public bool ChosenCardType { get; init; }
 
     /// <summary>Mana value X or less, X being the one the source permanent was cast with ("when this creature enters, destroy … with mana value X or less").</summary>
     public bool MaxManaValueSourceX { get; init; }

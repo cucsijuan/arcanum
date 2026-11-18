@@ -240,7 +240,7 @@ public sealed partial class Game
         }
         var source = part.Source;
         bool preventable = State.DamageCantBePreventedTurn != State.TurnNumber && !part.Unpreventable // "damage can't be prevented (this turn)"
-                           && !State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && c.Definition.DamageCantBePrevented);
+                           && !State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && (c.Definition.DamageCantBePrevented || (part.Combat && c.Definition.CombatDamageCantBePrevented)));
         if (preventable)
         {
             // "Prevent all damage" shields that are used up or make something happen are each a choice of their own. The

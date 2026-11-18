@@ -97,6 +97,9 @@ public sealed class Player
     /// <summary>Spells this player cast this turn, in order.</summary>
     public List<CardId> SpellsCastThisTurn { get; } = new();
 
+    /// <summary>Noncreature spells this player cast this turn (what they were as they were cast).</summary>
+    public int NoncreatureSpellsCastThisTurn { get; set; }
+
     /// <summary>The mana value each spell of <see cref="SpellsCastThisTurn"/> had on the stack as it was cast (X included), in the same order.</summary>
     public List<int> SpellManaValuesThisTurn { get; } = new();
 

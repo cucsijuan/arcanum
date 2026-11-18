@@ -29,6 +29,9 @@ public sealed record Destroy(Subject What) : Effect
 
     /// <summary>"Destroy all other creatures": skip tokens this spell or ability created.</summary>
     public bool ExceptCreatedThisWay { get; init; }
+
+    /// <summary>"… with mana value equal to [quantity]": only those (the quantity is counted as the effect resolves).</summary>
+    public Quantity? ManaValueIs { get; init; }
 }
 public sealed record ExileIt(Subject What) : Effect
 {
@@ -162,6 +165,9 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
     /// <summary>"Sacrifice that token at end of combat".</summary>
     public bool SacrificeAtEndOfCombat { get; init; }
 
+    /// <summary>"At the beginning of the end step on your next turn, sacrifice that token" (a delayed trigger, rule 603.7).</summary>
+    public bool SacrificeAtEndStepOfYourNextTurn { get; init; }
+
     /// <summary>"Tapped and attacking": they attack the player (or planeswalker) the triggering creature attacks.</summary>
     public bool Attacking { get; init; }
 
@@ -173,7 +179,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
-    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story, Flood, Supply, Coin, Hoofprint, Ingredient, Acorn, Growth, Dream, Tower, Decayed, MinusZeroMinusOne, Rally, Experience, Void, Possession, Nest, Rev, Slumber, Study }
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story, Flood, Supply, Coin, Hoofprint, Ingredient, Acorn, Growth, Dream, Tower, Decayed, MinusZeroMinusOne, Rally, Experience, Void, Possession, Nest, Rev, Slumber, Study, Hatchling }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect
@@ -183,7 +189,11 @@ public sealed record Scry(int Count) : Effect
 }
 
 /// <summary>Look at the top N cards of your library; put any number into your graveyard, the rest back on top (rule 701.25).</summary>
-public sealed record Surveil(int Count) : Effect;
+public sealed record Surveil(int Count) : Effect
+{
+    /// <summary>"Surveil X, where X is …": the count worked out as the effect happens (instead of <see cref="Count"/>).</summary>
+    public Quantity? CountFrom { get; init; }
+}
 
 /// <summary>Each of two creatures deals damage equal to its power to the other (rule 701.14).</summary>
 public sealed record Fight(Subject First, Subject Second) : Effect;
@@ -193,6 +203,9 @@ public sealed record Discard(Quantity Count, Subject Who) : Effect
 {
     /// <summary>"Discards N cards at random" (rule 701.9b): the cards are chosen at random, not by the player.</summary>
     public bool AtRandom { get; init; }
+
+    /// <summary>"Each opponent who can't loses N life": a player with no card in hand to discard loses this much life instead.</summary>
+    public int OtherwiseLoseLife { get; init; }
 }
 
 /// <summary>Effects that happen only if a condition holds when the effect is reached ("If you control a Wizard, ...").</summary>
@@ -206,11 +219,17 @@ public sealed record MayDo(string Prompt, IReadOnlyList<Effect> Effects) : Effec
 
     /// <summary>"If you don't, …".</summary>
     public IReadOnlyList<Effect>? Else { get; init; }
+
+    /// <summary>Who decides ("that creature's controller may have …"); the controller when absent. The effects stay the source's.</summary>
+    public Subject? Who { get; init; }
 }
 
 /// <summary>Put cards (from a graveyard, usually) onto the battlefield; "under your control" unless <paramref name="UnderOwnersControl"/>.</summary>
 public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool UnderOwnersControl = false) : Effect
 {
+    /// <summary>"It … has no abilities": it loses all abilities from then on (with its new types).</summary>
+    public bool NoAbilities { get; init; }
+
     /// <summary>"Return it to the battlefield face down" (a 2/2 creature, or <see cref="FaceDownAs"/>); with <see cref="FaceDownChoice"/> its controller chooses face up or face down.</summary>
     public bool FaceDown { get; init; }
     public bool FaceDownChoice { get; init; }
@@ -313,6 +332,12 @@ public sealed record Sacrifice(Quantity Count, ObjectFilter Filter, Subject Who)
 }
 
 /// <summary>Put a target creature on the top or bottom of its owner's library (the owner chooses: "on their choice").</summary>
+/// <summary>"Put each card exiled with this into its owner's graveyard": the cards move at once (not a mill or a discard).</summary>
+public sealed record PutIntoGraveyard(Subject What) : Effect;
+
+/// <summary>"Your life total becomes N": the player gains or loses the difference (rule 119.5).</summary>
+public sealed record LifeTotalBecomes(Quantity Amount, Subject Who) : Effect;
+
 public sealed record PutIntoLibrary(Subject What, bool Bottom = false) : Effect
 {
     /// <summary>Always on top (no choice).</summary>
@@ -374,6 +399,9 @@ public sealed record ExileAndReturnAtEndStep(Subject What, bool UnderYourControl
 {
     /// <summary>"Return it … with a +1/+1 counter on it" / "with a flying counter on it".</summary>
     public CounterKind? ReturnCounter { get; init; }
+
+    /// <summary>"Return it to the battlefield tapped".</summary>
+    public bool ReturnTapped { get; init; }
 }
 
 /// <summary>Create token copies of a permanent, optionally with haste and "sacrifice it at the beginning of the next end step".</summary>
@@ -402,6 +430,9 @@ public sealed record CreateTokenCopy(Subject Of, Quantity Count, bool Haste = fa
 
     /// <summary>"Except the tokens aren't legendary."</summary>
     public bool NotLegendary { get; init; }
+
+    /// <summary>"Except it's legendary": the copy has the legendary supertype in addition to its copied ones (rule 707.9b).</summary>
+    public bool AddLegendary { get; init; }
 
     /// <summary>"With no mana cost" (embalm, eternalize): the copy's mana cost is none, so its colors are only those it's given.</summary>
     public bool NoManaCost { get; init; }
@@ -1087,6 +1118,9 @@ public sealed record RevealUntil(ObjectFilter Filter, State.Zone To) : Effect
     /// <summary>With castFree: "exile that card and put the rest on the bottom": the card revealed stays exiled if it isn't cast.</summary>
     public bool HitStaysExiled { get; init; }
 
+    /// <summary>"Exile cards from the top of your library until you exile a nonland card. You may cast that card this turn": every card stays exiled.</summary>
+    public bool CastThisTurn { get; init; }
+
     /// <summary>"Then shuffles all other cards revealed this way into their library" (instead of the bottom in a random order).</summary>
     public bool RestShuffled { get; init; }
 
@@ -1163,6 +1197,12 @@ public sealed record AdditionalCombat(bool UntapCreatures) : Effect
     /// <summary>"There is an additional combat phase after this [main] phase followed by an additional main phase" (rule 505.1a).</summary>
     public bool AfterThisMainWithMain { get; init; }
 }
+
+/// <summary>
+/// "If it's your main phase, there's an additional combat phase after this phase. At the beginning of that combat, [effects]": a combat
+/// phase (no additional main phase) right after the current main phase, with a delayed ability for its beginning of combat step.
+/// </summary>
+public sealed record AdditionalCombatAfterThisMain(IReadOnlyList<Effect>? AtItsBeginning, string Text) : Effect;
 
 /// <summary>"Take an extra turn after this one" for the subject players.</summary>
 public sealed record ExtraTurn(Subject Who) : Effect;
@@ -1357,7 +1397,17 @@ public sealed record ChooseColorNow : Effect;
 public sealed record ExchangeLifeWithToughness(Subject Player) : Effect;
 
 /// <summary>"Target opponent exiles two cards from their hand": each of those players chooses that many and exiles them.</summary>
-public sealed record ExileCardsFromHand(Quantity Count, Subject Who) : Effect;
+public sealed record ExileCardsFromHand(Quantity Count, Subject Who) : Effect
+{
+    /// <summary>"And may play that card for as long as it remains exiled": its owner gets that permission.</summary>
+    public bool OwnerMayPlay { get; init; }
+
+    /// <summary>With <see cref="OwnerMayPlay"/>: "each spell cast this way costs {N} more to cast".</summary>
+    public int PlayCostMore { get; init; }
+
+    /// <summary>With <see cref="OwnerMayPlay"/>: "each land played this way enters tapped".</summary>
+    public bool LandsEnterTapped { get; init; }
+}
 
 /// <summary>
 /// Remove every counter from the subject: from a permanent, or from a player (poison counters, the only counters players get).
@@ -1780,7 +1830,22 @@ public sealed record EachDrawsDamageDealtToSource : Effect;
 public sealed record CopiesOfDestroyedHalved(int Count) : Effect;
 
 /// <summary>"That player shuffles their hand into their library."</summary>
-public sealed record ShuffleHandIntoLibrary(Subject Who) : Effect;
+/// <summary>
+/// "You and defending player each discard a card or sacrifice a permanent": each of those players chooses one (in APNAP order, rule
+/// 101.4), then all of it happens at once; the cards that reach a graveyard are this way's results.
+/// </summary>
+public sealed record DiscardOrSacrifice(IReadOnlyList<Subject> Who) : Effect;
+
+/// <summary>"That spell gains sunburst": the spell (on the stack) enters with sunburst counters as if it had the keyword.</summary>
+public sealed record GainSunburst(Subject What) : Effect;
+
+/// <summary>"You control [player] during that player's next turn" (rule 722).</summary>
+public sealed record ControlPlayerNextTurn(Subject Player) : Effect;
+
+/// <summary>"Switch [its] power and toughness until end of turn" (layer 7d).</summary>
+public sealed record SwitchPowerToughness(Subject What) : Effect;
+
+public sealed record ShuffleHandIntoLibrary(Subject Who, bool WithGraveyard = false) : Effect;
 
 /// <summary>"Creature spells you cast this turn can't be countered."</summary>
 public sealed record CreatureSpellsUncounterableThisTurn : Effect;
@@ -2149,7 +2214,11 @@ public sealed record GivePromisedGift : Effect;
 public sealed record DoublePowerAndToughness(Subject What) : Effect;
 
 /// <summary>Proliferate (rule 701.34): any number of permanents and/or players get another counter of each kind already there.</summary>
-public sealed record Proliferate : Effect;
+public sealed record Proliferate : Effect
+{
+    /// <summary>"Then choose any number of permanents you control that had a counter put on them this way. Those permanents phase out."</summary>
+    public bool ThenPhaseOutChosen { get; init; }
+}
 
 /// <summary>
 /// Discover N (rule 701.57): exile cards from the top of your library until a nonland card with mana value N or less; cast it without paying
@@ -2172,6 +2241,9 @@ public sealed record DiscardAnyNumber : Effect
 
     /// <summary>"Target player discards any number of cards": the player who discards (default: you).</summary>
     public Subject? Who { get; init; }
+
+    /// <summary>"Discard one or more land cards": only cards matching this.</summary>
+    public ObjectFilter? Filter { get; init; }
 }
 
 /// <summary>"For each creature your opponents control, create a [token]. Each of those tokens fights a different one of those creatures" (the fights deal their damage at once).</summary>

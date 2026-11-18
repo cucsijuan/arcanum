@@ -8,8 +8,8 @@ engine derives from card data: type line, power/toughness, supported keywords an
 Comments (`//`) and trailing commas are allowed.
 
 Also derived from rules text without a script: `Equip {N}`, `Enchant creature` (and land, artifact,
-enchantment, permanent, "... you control"), "This land/creature enters tapped", cycling and "Partner with [name]"
-(its enters trigger). Partner, partner with, "Partner—[kind]", friends forever, "Choose a Background" and "Doctor's
+enchantment, permanent, "... you control"), "This land/creature enters tapped", cycling, `Modular N` (enters with N +1/+1
+counters, and its dies trigger), `Station` (its ability) and "Partner with [name]" (its enters trigger). Partner, partner with, "Partner—[kind]", friends forever, "Choose a Background" and "Doctor's
 companion" only decide which two cards can be commanders together.
 
 ## Structure
@@ -119,6 +119,9 @@ Effects say who or what they affect with these values:
 | `targetOwner` | The owner of the first target |
 | `triggered` / `triggeredPlayer` | The object / player the trigger event was about ("that creature", "that player") |
 | `{ "each": filter }` | Every permanent matching the filter (controller defaults to any) |
+
+A `{ "choose": filter }` subject is valid only for attaching (`"attach"` with `"to"`). Anywhere else the parser rejects it.
+Write a `"choose"` effect, then use `chosen` as the subject.
 
 ## Quantities
 
@@ -255,7 +258,8 @@ Besides `affects`/`pump`/`keywords`: `filter`, `while` (condition), quantities i
 `addTypes`, `grants` (abilities), `losesAbilities`, `setPower`, `setToughness`, `setTypes`, `setSubtypes`, `setColors`,
 `setName`, `grantsMana` / `grantsManaAmount`, `givesControl`. Scope `permanents:you` affects all your permanents.
 `grantsManaOnlyFor`: filter (with `grantsMana`) limits that mana to spells matching the filter. `{ "spellsHaveStorm": filter }`
-gives storm to the spells you cast that match the filter.
+gives storm to the spells you cast that match the filter. A granted restricted mana ability is written as static `grantsMana`
+with `grantsManaOnlyFor`, not as a granted ability with `addMana` and `onlyFor`: the payment planner reads only `grantsMana`.
 
 ### Targets and spells
 Target objects also take `anyNumber` (last requirement only), `attachedToTarget: "target"`, `singleTarget` (stack objects)
@@ -1397,7 +1401,8 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `"firstTokensCopyEquipped": true` (on Equipment): the first time you would create one or more tokens each turn, you may create
   that many tokens that are copies of the equipped creature instead.
 - `"castExiledWithThis": { "filter": f, "yourTurn": true, "extra": cost }`: you may cast spells matching the filter from among the
-  cards you own that this permanent exiled. `yourTurn` allows it only on your turn. `extra` is an additional cost paid to cast them.
+  cards you own that this permanent exiled. `yourTurn` allows it only on your turn. `extra` is an additional cost paid to cast them. `"play": true` also allows playing
+  the exiled lands, and `"while": condition` allows it only while the condition holds.
 - `"typeChoices": ["Elemental", "Elf"]` with `"chooseOnEnter": "creatureType"`: the creature type chosen as it enters is one of the
   listed types. Without the list, any creature type.
 - `"spellsHaveConvoke": filter` and `"spellsHaveConspire": filter`: spells you cast that match the filter have convoke or conspire.
@@ -2151,3 +2156,94 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
 - On an enters-the-battlefield trigger, `"countOf"` and `"upTo"` with X use the X paid as the permanent was cast.
 - `{ "castFromGraveyardThisTurnEach": filter }`: each matching card in your graveyard gains "You may cast this card from your
   graveyard" until end of turn. Only the cards there when it resolves.
+
+## Station, warp, copies, control and other vocabulary
+
+### Card-wide rules
+- `"stationsWithToughness": true`: each creature you control with toughness greater than its power stations permanents using its
+  toughness (the tapped creature's toughness counts for a station cost). The `Station` line itself needs no script.
+- A station symbol ability ("N+ | …") is a static on `self` with `"while": { "counters": N, "kind": "charge" }`; for a symbol that
+  makes the permanent a creature, add `"addTypes": ["creature"]`, `"setPower"` and `"setToughness"`, and give its keywords and
+  abilities with `"keywords"` and `"grants"` in the same static. Text: `"N+ | "` followed by the ability text.
+- `"warpFromGraveyard": true`: you may cast this card from your graveyard using its warp ability.
+- `"grantsWarp": { "filter": f, "cost": "{2}{R}" }`: the cards in your hand that match the filter have warp with that cost.
+- `"firstSpellEachTurnFree": true`: the first spell each player casts during each of their turns may be cast without paying its
+  mana cost.
+- `"yourCreatureSpellsCantBeCountered": true`, `"combatDamageCantBePrevented": true`, `"proliferateTwice": true` (if you would
+  proliferate, proliferate twice instead) and `"firstTokensCopyEnchanted": true` (on an Aura: the first time you would create
+  tokens each turn, you may create copies of the enchanted permanent instead).
+- `"doublesCountersOnYour": filter`: if counters would be put on a permanent you control that matches the filter, twice that many
+  of each kind are put on it instead. Like `doublesCountersYouPut`, but for the filter.
+- `"drawsOneMoreWithOneOrFewerInHand": true`: while you have one or fewer cards in hand, you draw one more card whenever you draw.
+- `"chooseCardTypeFrom": ["artifact", "creature", …]`: the card types offered by `"chooseOnEnter": "cardType"`.
+- `"entersAsCopyAddTypes": [ … ]`: card types the copy also has. `"entersAsCopyFromGraveyards": true`: the copy is of a card in a
+  graveyard, not on the battlefield. `"entersTappedAsCopy": true`: the copy enters tapped.
+- `graveyardCastOncePerTurn` takes `"while": condition`: the permission applies only while the condition holds.
+- `"rules": ["EachPlayerOneNoncreatureSpellPerTurn"]`: while a permanent you control has it, each player can cast only one
+  noncreature spell each turn.
+
+### Costs
+- Activated ability `"costOptions": [{ "cost": "{3}", "label": "Pay {3}" }, { "cost": "removeCounterFrom:self", "label": "Remove a counter" }]`:
+  the controller picks one of the costs as they activate it. Each option is paid like `"cost"`.
+- Activated ability `"costReductionFrom": quantity`: it costs that much generic mana less.
+- Cost tokens: `exileGranter` (exile the permanent that granted the ability, e.g. an Equipment's granted ability);
+  `tapPermanents:X:filter` (announce X, tap X untapped matching permanents you control); `removePlusOneCounterFrom:filter` (remove a
+  +1/+1 counter from a matching permanent you control); `removeXCountersFrom:filter` (announce X, remove X counters from one matching
+  permanent you control); `removeCountersFromAmong:N:filter` (remove N counters of any kind from one or more matching permanents you
+  control; add `:other` to leave out the source).
+- Extra-cost objects (`additionalCost`, `alternativeCost` `extra`, `castFromGraveyardCost`, `castExiledWithThis` `extra`):
+  `"discardAtRandom": true` (the discard is at random), `"removeCountersKind": "+1/+1"` (only counters of that kind),
+  `"removeCountersFromDifferent": true` (each counter comes from a different permanent), `"beholdWarpedExile": true` (with
+  `"behold"`, a warped creature card you own in exile can be beholded).
+
+### Mana
+- `extraMana` options: `"types": "chosen"` (the color chosen as the permanent entered), `"abilitiesOnly": true` (the mana can only
+  activate abilities of the `onlyFor` sources, not spells), `"opponentsGainLife": N` (each opponent gains N life when the mana
+  ability is activated).
+
+### Static abilities
+- Static `setLandType` (a land type name): the affected lands lose their other land types and have that one, in the land-type
+  layer (like `setChosenLandType`).
+
+### Triggers, conditions and filters
+- Triggers: `opponentPlaysLand` (whenever an opponent plays a land), `opponentCommitsCrime` (rule 700.13; the opponent is the triggered
+  player), `attachedBecomesTapped` (the creature this is attached to becomes tapped), `cardPutIntoAnyGraveyard` (a card matching
+  the filter is put into any graveyard, the battlefield included), `enchantedPlayersFirstUpkeep` (an Aura on a player: the enchanted
+  player's first upkeep each turn).
+- Conditions: `{ "lessThan": [quantity, quantity] }`; `{ "aPlayerControlsNone": filter }` (some player, you included, controls no
+  matching permanent); `"void"` (a nonland permanent left the battlefield this turn, or a spell was warped this turn).
+- Filters: `"manaValueParityChosen": true` (the mana value has the parity the source chose), `"chosenCardType": true` (the card type
+  the source chose), `"maxToughnessX": true` (toughness X or less), `"notCastFromHand": true`, `"hasWarp": true` (has warp), and
+  `"castForWarp": true` (a permanent that resolved as a warped spell).
+
+### Quantities
+- Strings: `"affectedAttacksThisTurn"` (times the affected object attacked this turn, in a static), `"tappedPower"` (power of the
+  creatures tapped to pay the cost), `"halfStartingLife"` (half the starting life total, rounded up).
+- `{ "putIntoGraveyardThisWay": filter }`: the matching cards put into a graveyard by this ability's `toGraveyard` effect.
+- `{ "manaValue": "self" }`: the source's mana value.
+
+### Effects
+- `additionalUpkeepStep: true` (rule 500.8): the active player gets an additional upkeep step after this one.
+- `additionalCombatAfterThisMain: true` with `"atItsBeginning": [ … ]` and `"text"`: if it's your main phase, an additional combat phase
+  follows this phase. Its beginning-of-combat effects are the `atItsBeginning` effects.
+- `controlPlayerNextTurn: subject`: you control that player during that player's next turn (rule 722).
+- `switchPowerToughness: subject`: switch its power and toughness until end of turn.
+- `discardOrSacrifice: [subject, subject]`: each listed player discards a card or sacrifices a permanent, each choosing in turn order,
+  then it all happens at once.
+- `gainSunburst: subject`: the spell on the stack enters with sunburst counters, as if it had the keyword.
+- `discard` with `"otherwiseLoseLife": N`: a player with no cards in hand loses N life instead.
+- `may` with `"who"`: the player who makes the choice.
+- `destroy` with `"manaValueIs": quantity`: only permanents with that mana value are destroyed.
+- `toGraveyard: subject`: put each of those cards into its owner's graveyard at once (not a mill or a discard).
+- `lifeBecomes: quantity` with `"who"`: that player's life total becomes the quantity (they gain or lose the difference).
+- `flicker` with `"tapped": true`: the permanent returns tapped.
+- `copy` with `"addLegendary": true`: the copy is legendary in addition to its other types.
+- `reanimate` with `"noAbilities": true`: the permanent has no abilities.
+- Tokens with `"sacrificeAtEndStepOfYourNextTurn": true`: sacrificed at the end step of your next turn.
+- `exileFromHand` with `"ownerMayPlay": true` (the owner may play those cards later), `"playCostMore": N` (each costs N more) and
+  `"landsEnterTapped": true`.
+- `proliferate` with `"thenPhaseOutChosen": true`: then the chosen permanents that had counters put on them phase out.
+- `discardAnyNumber` with `"filter"`: only cards matching it can be discarded.
+- `shuffleHandIntoLibrary` with `"withGraveyard": true`: the graveyard goes into the library too.
+- `surveil` takes a quantity as well as a number (`{ "surveil": quantity }`).
+- `revealUntil` with `"castThisTurn": true`: the cards stay exiled, and you may cast the matching card this turn.

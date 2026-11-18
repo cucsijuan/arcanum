@@ -398,6 +398,9 @@ public partial class PlayerArea : Control
                 + (bearer is not null ? $"Ring-bearer: {bearer}." : "No Ring-bearer right now.") + "\n\n"
                 + string.Join("\n", RingAbilities.Take(Math.Min(me.RingLevel, 4))));
         }
+        if (view.ActivePlayerControlledBy is { } controller && view.ActivePlayer == me.Id)
+            AddTag($"Controlled by {view.Players[controller.Value].Name}", new Color("ff8c69"),
+                $"{view.Players[controller.Value].Name} controls {me.Name} during this turn: they see everything {me.Name} can see and make all of {me.Name}'s choices and decisions.");
         if (view.Monarch == me.Id) AddTag("Monarch", new Color("ffd166"), $"{me.Name} is the monarch: they draw a card at the beginning of their end step. A creature that deals combat damage to them makes its controller the monarch.");
         if (me.EnduringStory) AddTag("Enduring story", new Color("b48cff"), $"{me.Name} has an enduring story for the rest of the game.");
         if (me.CitysBlessing) AddTag("City's blessing", new Color("6fd08c"), $"{me.Name} has the city's blessing for the rest of the game.");

@@ -389,6 +389,9 @@ public sealed partial class Game
         foreach (var (observer, abilities) in Observers().Where(o => o.Card.Controller == item.Controller).ToList())
             foreach (var ability in abilities.Where(a => a.Trigger == TriggerEvent.YouCommitCrime))
                 AddPending(observer.Id, ability, observer.Controller, new TriggerInfo(Player: item.Controller));
+        foreach (var (observer, abilities) in Observers().Where(o => opponents.Contains(o.Card.Controller)).ToList())
+            foreach (var ability in abilities.Where(a => a.Trigger == TriggerEvent.OpponentCommitsCrime))
+                AddPending(observer.Id, ability, observer.Controller, new TriggerInfo(Player: item.Controller));
     }
 
     /// <summary>

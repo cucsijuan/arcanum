@@ -90,6 +90,7 @@ public sealed partial class Game
                 foreach (var warped in CardsFor(Subject.Triggered, ctx).ToList())
                 {
                     await MoveCardAsync(warped.Id, Zone.Exile);
+                    if (warped.Zone == Zone.Exile) warped.WarpedInExile = true;
                     if (warped.Zone == Zone.Exile && !warped.Definition.IsToken)
                         State.PlayableFromExile.Add(new PlayableFromExile(warped.Id, warped.Version, warped.Owner, int.MaxValue)
                             { CastOnly = true, LaterTurnOnly = true, MadeOnTurn = State.TurnNumber });

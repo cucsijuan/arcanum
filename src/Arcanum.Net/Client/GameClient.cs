@@ -156,6 +156,8 @@ public sealed class GameClient
         {
             var c = _controller!;
             var view = View ?? throw new InvalidOperationException("Question before any view.");
+            // A decision for the player this seat controls this turn (rule 722.4) is made from that player's view.
+            if (ask.Question.For is { } other && view.ControlledView is { } controlled && controlled.Viewer == other) view = controlled;
             switch (ask.Question)
             {
                 case KeepHandQuestion q: Reply(ask, await c.KeepHandAsync(view, q.MulligansTaken)); break;

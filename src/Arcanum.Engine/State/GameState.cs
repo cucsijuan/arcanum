@@ -31,6 +31,9 @@ public sealed record UntilEndOfTurnEffect(CardId Card, int Version, int Power, i
     /// <summary>It loses all abilities (those it gained from earlier effects too).</summary>
     public bool LosesAbilities { get; init; }
 
+    /// <summary>"Switch this creature's power and toughness until end of turn" (layer 7d, rule 613.4d).</summary>
+    public bool SwitchesPowerToughness { get; init; }
+
     /// <summary>When the effect began (rule 613.7a).</summary>
     public long Timestamp { get; init; }
 
@@ -167,6 +170,12 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
     /// <summary>"You may cast" (not play): a land can't be played this way.</summary>
     public bool CastOnly { get; init; }
 
+    /// <summary>"Each spell cast this way costs {N} more to cast."</summary>
+    public int CostMore { get; init; }
+
+    /// <summary>"Each land played this way enters tapped."</summary>
+    public bool LandEntersTapped { get; init; }
+
     /// <summary>"You may play a card exiled with [this]" / "a spell from among those cards": playing one of the group ends the others' permission (0: none).</summary>
     public int Group { get; init; }
 
@@ -276,6 +285,9 @@ public sealed record DelayedAction(CardId Card, int Version, bool Return, Player
 {
     /// <summary>Counters it returns with.</summary>
     public (Abilities.CounterKind Kind, int Count)? Counters { get; init; }
+
+    /// <summary>It returns tapped ("return it to the battlefield tapped").</summary>
+    public bool Tapped { get; init; }
 }
 
 /// <summary>Damage dealt by a source (object as it was then) to a permanent (object) or a player during a turn.</summary>
@@ -359,6 +371,9 @@ public sealed partial class GameState
 
     /// <summary>Spells (object versions) that enter with a finality counter as they resolve ("that artifact enters with a finality counter on it").</summary>
     public HashSet<(CardId Card, int Version)> FinalityOnEnter { get; } = new();
+
+    /// <summary>Spells that gained sunburst ("that spell gains sunburst"): the permanent they become has one more instance of it (rule 702.44).</summary>
+    public HashSet<(CardId Card, int Version)> SunburstOnEnter { get; } = new();
 
     /// <summary>Spells (as these objects on the stack) whose permanent enters tapped ("if you cast a spell this way, that artifact enters tapped").</summary>
     public HashSet<(CardId Card, int Version)> EntersTappedFromStack { get; } = new();
@@ -528,6 +543,12 @@ public sealed partial class GameState
     /// <summary>Creatures that died this turn (morbid).</summary>
     public int CreaturesDiedThisTurn { get; set; }
 
+    /// <summary>A nonland permanent (anyone's) left the battlefield this turn (for void).</summary>
+    public bool NonlandPermanentLeftThisTurn { get; set; }
+
+    /// <summary>A spell (anyone's) was cast for its warp cost this turn ("a spell was warped this turn", for void).</summary>
+    public bool SpellWarpedThisTurn { get; set; }
+
     /// <summary>The creatures that died this turn (each as it last existed on the battlefield).</summary>
     public List<CardId> CreatureDeathsThisTurn { get; } = new();
 
@@ -536,6 +557,19 @@ public sealed partial class GameState
 
     /// <summary>Permanents sacrificed this turn by all players.</summary>
     public int PermanentsSacrificedThisTurn { get; set; }
+
+    /// <summary>
+    /// "You control target player during that player's next turn" effects waiting for that turn (rule 722.1): the most recent
+    /// one applies when the player's next turn begins, so a skipped turn doesn't use them up.
+    /// </summary>
+    public List<(PlayerId Controlled, PlayerId Controller, long Timestamp)> PendingPlayerControl { get; } = new();
+
+    /// <summary>The player controlling the active player during this turn (rule 722), or null: the active player controls themselves.</summary>
+    public PlayerId? ActivePlayerControlledBy { get; set; }
+
+    /// <summary>The player <paramref name="viewer"/> controls this turn (rule 722), if any: they see what that player sees (722.3).</summary>
+    public PlayerId? PlayerControlledBy(PlayerId viewer) =>
+        ActivePlayerControlledBy == viewer && ActivePlayer != viewer && !GetPlayer(viewer).HasLost ? ActivePlayer : null;
 
     /// <summary>Permanents (tokens too) put into a graveyard from the battlefield this turn: gravestorm (rule 702.69a).</summary>
     public int PermanentsPutIntoGraveyardThisTurn { get; set; }

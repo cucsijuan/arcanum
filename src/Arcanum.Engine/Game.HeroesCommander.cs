@@ -619,6 +619,13 @@ public sealed partial class Game
     };
 
     /// <summary>"You may cast this card from your graveyard using its blitz ability."</summary>
+    /// <summary>"You may cast this card from your graveyard using its warp ability."</summary>
+    private static bool WarpFromGraveyard(Card card) =>
+        card.Zone == Zone.Graveyard && card.Definition.WarpFromGraveyard && card.Definition.Warp is not null && !card.Is(CardType.Land);
+
+    /// <summary>The card's own ability lets it be cast from its owner's graveyard (blitz or warp "from your graveyard").</summary>
+    private static bool OwnGraveyardCastAbility(Card card) => BlitzFromGraveyard(card) || WarpFromGraveyard(card);
+
     private static bool BlitzFromGraveyard(Card card) =>
         card.Zone == Zone.Graveyard && card.Definition.BlitzFromGraveyard && card.Definition.Blitz is not null && !card.Is(CardType.Land);
 
@@ -730,6 +737,7 @@ public sealed partial class Game
         return State.PermanentsControlledBy(caster).Where(p => p.HasTextAbilities && p.Definition.GraveyardCastOncePerTurn is { } permission
                 && (!card.Is(CardType.Land) || permission.Lands)
                 && !State.GraveyardCastsUsed.Contains((p.Id, p.Version, State.TurnNumber))
+                && (permission.While is not { } holds || Holds(holds, caster, p))
                 && Matches(permission.Filter with { Controller = ControllerFilter.Any }, card, caster, p, caster)
                 && (!permission.NotFromBattlefieldThisTurn || (card.ZoneChangedTurn == State.TurnNumber && card.EnteredFrom != Zone.Battlefield)))
             .ToList();

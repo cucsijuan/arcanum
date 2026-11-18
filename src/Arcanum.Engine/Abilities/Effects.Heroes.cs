@@ -30,6 +30,9 @@ public sealed record CopyAbility(Subject What, Quantity Count) : HeroesEffect;
 /// <summary>"There is an additional end step after this step" (rule 500.8), with <see cref="OnlyIfFirst"/>: "if it's the first end step of the turn".</summary>
 public sealed record AdditionalEndStep(bool OnlyIfFirst) : HeroesEffect;
 
+/// <summary>"[The active player] gets an additional upkeep step after this step" (rule 500.8): added only while it's an upkeep step.</summary>
+public sealed record AdditionalUpkeepStep : HeroesEffect;
+
 /// <summary>
 /// "When you lose control of [it] this turn, if it's attached to a creature you control, unattach it": a delayed triggered ability
 /// (rule 603.7) watching that object.

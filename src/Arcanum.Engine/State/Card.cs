@@ -203,6 +203,12 @@ public sealed class Card
     /// <summary>As a spell: mana from a Treasure was spent to cast it.</summary>
     public bool PaidWithTreasure { get; set; }
 
+    /// <summary>This permanent was cast for its warp cost (rule 702.185a): "if that creature was cast for its warp cost".</summary>
+    public bool CastForWarp { get; set; }
+
+    /// <summary>Exiled by warp's delayed triggered ability (rule 702.185a): a "warped card" in exile. Cleared when it leaves exile.</summary>
+    public bool WarpedInExile { get; set; }
+
     /// <summary>As a spell: its caster promised the gift.</summary>
     public bool GiftPromised { get; set; }
 
@@ -537,8 +543,14 @@ public sealed class Card
     public int BasePower => BasePowerOverride ?? Definition.Power ?? 0;
     public int BaseToughness => BaseToughnessOverride ?? Definition.Toughness ?? 0;
 
-    public int Power => (BasePowerOverride ?? Definition.Power ?? 0) + PowerBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne);
-    public int Toughness => (BaseToughnessOverride ?? Definition.Toughness ?? 0) + ToughnessBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne) - CounterCount(CounterKind.MinusZeroMinusOne);
+    public int Power => PowerToughnessSwitched ? UnswitchedToughness : UnswitchedPower;
+    public int Toughness => PowerToughnessSwitched ? UnswitchedPower : UnswitchedToughness;
+
+    private int UnswitchedPower => (BasePowerOverride ?? Definition.Power ?? 0) + PowerBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne);
+    private int UnswitchedToughness => (BaseToughnessOverride ?? Definition.Toughness ?? 0) + ToughnessBonus + CounterCount(CounterKind.PlusOnePlusOne) - CounterCount(CounterKind.MinusOneMinusOne) - CounterCount(CounterKind.MinusZeroMinusOne);
+
+    /// <summary>Its power and toughness are switched (layer 7d, after every other change, rule 613.4d): an odd number of switch effects.</summary>
+    public bool PowerToughnessSwitched { get; set; }
 
     public int CounterCount(CounterKind kind) => Counters.GetValueOrDefault(kind);
 
@@ -642,6 +654,7 @@ public sealed class Card
             : o.CommanderIdentity ? o with { Types = CommanderIdentityTypes }
             : o.ColorsOpponentsLandsCouldProduce ? o with { Types = OpponentsLandColors }
             : o.TypesYourLandsCouldProduce ? o with { Types = YourLandTypes }
+            : o.ChosenColorMana ? o with { Types = ChosenColor is { } chosen && Mana.ManaTypeExtensions.TryParse(chosen[0], out var chosenType) ? new[] { chosenType } : Array.Empty<Mana.ManaType>() }
             : o;
         // "Remove any number of [kind] counters: add one mana for each": at most as many as it has now.
         if (resolved.RemovesCounters is { } kind) resolved = resolved with { Amount = CounterCount(kind) };
@@ -868,6 +881,7 @@ public sealed class Card
         AttachedPlayer = null;
         AttachedTo = null;
         PowerBonus = 0;
+        PowerToughnessSwitched = false;
         ToughnessBonus = 0;
         GrantedKeywords.Clear();
         LostKeywords.Clear();
@@ -946,6 +960,8 @@ public sealed class Card
         Bestowed = false;
         FormerHost = null;
         PaidWithTreasure = false;
+        CastForWarp = false;
+        WarpedInExile = false;
         GiftPromised = false;
         GiftTo = null;
         ChosenOption = null;
