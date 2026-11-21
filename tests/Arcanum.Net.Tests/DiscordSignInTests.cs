@@ -88,6 +88,54 @@ public class DiscordSignInTests
         }, new CancellationTokenSource(TimeSpan.FromSeconds(10)).Token));
     }
 
+    /// <summary>Stands in for the service's device links: answers the start, then each poll with the next status in turn.</summary>
+    private sealed class FakeLinks(params HttpStatusCode[] polls) : HttpMessageHandler
+    {
+        public readonly List<(string Path, string Body)> Requests = new();
+        private int _poll;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancel)
+        {
+            var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancel);
+            Requests.Add((request.RequestUri!.AbsolutePath, body));
+            if (request.RequestUri.AbsolutePath == "/auth/link")
+                return Json(HttpStatusCode.OK,
+                    "{\"code\":\"ABCD-2345\",\"deviceToken\":\"secret\",\"url\":\"https://service.test/link\",\"expiresIn\":600,\"interval\":0}");
+            var status = polls[Math.Min(_poll++, polls.Length - 1)];
+            return Json(status, status == HttpStatusCode.OK
+                ? "{\"accessToken\":\"at\",\"refreshToken\":\"rt\",\"expiresIn\":604800}"
+                : "{\"status\":\"pending\"}");
+        }
+
+        private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
+            new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+    }
+
+    [Fact]
+    public async Task A_device_shows_the_code_and_asks_until_the_player_has_signed_in_elsewhere()
+    {
+        var fake = new FakeLinks(HttpStatusCode.Accepted, HttpStatusCode.Accepted, HttpStatusCode.OK);
+        var signIn = new DiscordSignIn(new HttpClient(fake) { BaseAddress = new Uri("https://service.test/") }, "123");
+        DiscordLinkCode? shown = null;
+        var tokens = await signIn.LinkAsync(code => shown = code, new CancellationTokenSource(TimeSpan.FromSeconds(30)).Token);
+
+        Assert.Equal(new DiscordTokens("at", "rt", 604800), tokens);
+        Assert.Equal(new DiscordLinkCode("ABCD-2345", "https://service.test/link", TimeSpan.FromMinutes(10)), shown);
+        Assert.Equal(new[] { "/auth/link", "/auth/link/poll", "/auth/link/poll", "/auth/link/poll" }, fake.Requests.Select(r => r.Path));
+        // The device asks with its own secret, never with the code shown on screen.
+        Assert.All(fake.Requests.Skip(1), r => Assert.Equal("secret", JsonDocument.Parse(r.Body).RootElement.GetProperty("deviceToken").GetString()));
+    }
+
+    [Fact]
+    public async Task A_device_sign_in_refused_or_expired_is_refused()
+    {
+        foreach (var answer in new[] { HttpStatusCode.Unauthorized, HttpStatusCode.NotFound })
+        {
+            var signIn = new DiscordSignIn(new HttpClient(new FakeLinks(HttpStatusCode.Accepted, answer)) { BaseAddress = new Uri("https://service.test/") }, "123");
+            await Assert.ThrowsAsync<DiscordRefusedException>(() => signIn.LinkAsync(_ => { }, new CancellationTokenSource(TimeSpan.FromSeconds(30)).Token));
+        }
+    }
+
     [Fact]
     public async Task Closing_the_sign_in_stops_listening()
     {

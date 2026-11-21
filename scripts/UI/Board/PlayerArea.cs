@@ -42,6 +42,12 @@ public partial class PlayerArea : Control
 
     /// <summary>The second commander in the command zone (partners, a Background).</summary>
     private readonly ZonePile _command2 = new("Commander");
+
+    /// <summary>
+    /// Another player's hand while its cards are out of sight (the compact board's strip): a pile beside the library
+    /// with how many cards it holds; touching it shows the hand (face down, but for cards revealed to this screen).
+    /// </summary>
+    private readonly ZonePile _handPile = new("Hand") { Visible = false };
     private readonly HBoxContainer _pool = new();
     private readonly Dictionary<CardId, CardNode> _cards = new();
     private IReadOnlySet<CardId> _staged = new HashSet<CardId>();
@@ -65,13 +71,64 @@ public partial class PlayerArea : Control
     public bool Compact { get; init; }
 
     /// <summary>Room kept free at the right edge (the menu buttons sit over the top half's piles there).</summary>
-    public float RightInset { get; init; }
+    public float RightInset { get; set; }
 
-    private float Scale => Compact ? 0.7f : 1f;
-    private Vector2 HandSize => BoardStyle.HandCardSize * Scale;
+    /// <summary>
+    /// The hand isn't shown (the compact board's strip of this screen's own cards on another player's turn): the rows of
+    /// permanents take its room.
+    /// </summary>
+    public bool HideHand { get; set; }
+
+    private float _cardScale = 1;
+
+    /// <summary>How big this side's cards are drawn, on top of <see cref="Compact"/> (the compact board's strip is smaller).</summary>
+    public float CardScale
+    {
+        get => _cardScale;
+        set
+        {
+            if (Mathf.IsEqualApprox(value, _cardScale)) return;
+            _cardScale = value;
+            if (IsInsideTree()) SizePiles();
+        }
+    }
+
+    private float Scale => (Compact ? 0.7f : 1f) * _cardScale;
+    private Vector2 HandSize => BoardStyle.HandCardSize * Scale * HandScale;
+
+    /// <summary>The hand drawn bigger than the rest of this side (this screen's own table alone on the compact board).</summary>
+    public float HandScale { get; set; } = 1;
+
+    /// <summary>Room kept free at the left of the hand (the compact board's list of players stands there).</summary>
+    public float HandLeftInset { get; set; }
+
+    /// <summary>How much of the hand shows above the edge: as much more as the hand is bigger.</summary>
+    private float HandPeek => Peek * HandScale;
+
+    /// <summary>Where the piles start, from the left (the hand keeps clear of them).</summary>
+    private float _pilesLeft = float.MaxValue;
     private Vector2 FieldSize => BoardStyle.BattlefieldCardSize * Scale;
-    private Vector2 PileSize => BoardStyle.PileCardSize * Scale;
-    private float Peek => PilePeek * Scale;
+    // The piles don't shrink as far as the cards (their titles keep their size and need the room), unless asked to.
+    private float PileScale => SmallPiles ? Scale : Mathf.Max(Scale, 0.8f);
+
+    private bool _smallPiles;
+
+    /// <summary>
+    /// The piles shrink as far as the cards (several sides side by side across the compact board's strip, where the
+    /// piles would take most of a side's width).
+    /// </summary>
+    public bool SmallPiles
+    {
+        get => _smallPiles;
+        set
+        {
+            if (value == _smallPiles) return;
+            _smallPiles = value;
+            if (IsInsideTree()) SizePiles();
+        }
+    }
+    private Vector2 PileSize => BoardStyle.PileCardSize * PileScale;
+    private float Peek => PilePeek * PileScale;
 
     /// <summary>Room kept above the hand for the cost pips its cards show over their top edge.</summary>
     private const float HandPipsRoom = 22;
@@ -141,11 +198,12 @@ public partial class PlayerArea : Control
         _handNote.Visible = false;
         AddChild(_handNote);
         _command2.Visible = false;
+        _handPile.CardClicked += _ => ZoneClicked?.Invoke(Player, Zone.Hand);
         _graveyard.CardClicked += _ => ZoneClicked?.Invoke(Player, Zone.Graveyard);
         _exile.CardClicked += _ => ZoneClicked?.Invoke(Player, Zone.Exile);
-        foreach (var pile in new[] { _library, _graveyard, _exile, _command, _command2 })
+        foreach (var pile in new[] { _library, _graveyard, _exile, _command, _command2, _handPile })
         {
-            if (pile != _graveyard && pile != _exile) pile.CardClicked += c => CardClicked?.Invoke(c); // e.g. casting a commander from the command zone
+            if (pile != _graveyard && pile != _exile && pile != _handPile) pile.CardClicked += c => CardClicked?.Invoke(c); // e.g. casting a commander from the command zone
             pile.CardHoverStarted += c => CardHoverStarted?.Invoke(c);
             pile.CardHoverEnded += c => CardHoverEnded?.Invoke(c);
             AddChild(pile);
@@ -164,9 +222,15 @@ public partial class PlayerArea : Control
         Resized += LayoutStatic;
     }
 
+    private void SizePiles()
+    {
+        foreach (var pile in new[] { _library, _graveyard, _exile, _command, _command2, _handPile }) pile.SetCardSize(PileSize);
+        LayoutStatic();
+    }
+
     public override void _Ready()
     {
-        foreach (var pile in new[] { _library, _graveyard, _exile, _command, _command2 })
+        foreach (var pile in new[] { _library, _graveyard, _exile, _command, _command2, _handPile })
         {
             pile.LabelBelow = FacesDown;
             pile.TopCard.BackUpsideDown = FacesDown;
@@ -178,6 +242,7 @@ public partial class PlayerArea : Control
         _exile.UseCompactLabel("Exile");
         _command.UseCompactLabel("Cmdr");
         _command2.UseCompactLabel("Cmdr");
+        _handPile.UseCompactLabel("Hand");
         _handLabel.AddThemeFontSizeOverride("font_size", 11);
     }
 
@@ -205,6 +270,17 @@ public partial class PlayerArea : Control
     /// default the rows start a little away from the divider and may reach the hand.
     /// </summary>
     public (float Start, float End)? FieldBand { get; set; }
+
+    /// <summary>Where the rows of cards go without a <see cref="FieldBand"/> (measured the same way).</summary>
+    public (float Start, float End) DefaultFieldBand => (Compact ? 56 : 62,
+        !HideHand ? Size.Y - HandPeek - HandPipsRoom
+        // A narrow side (one of several across a strip) has its rows reach its piles: they end before the piles and
+        // their labels.
+        : Size.X < NarrowSide ? Size.Y - Peek - 18
+        : Size.Y - 6);
+
+    /// <summary>Narrower than this, a side's rows of cards can run into its piles.</summary>
+    private const float NarrowSide = 800;
 
     /// <summary>
     /// The node that shows a card: its own, or the top of the stack of identical tokens it is part of
@@ -244,15 +320,16 @@ public partial class PlayerArea : Control
         _tags.ResetSize();
         _tags.Position = new Vector2(_nameBadge.Position.X + _nameBadge.Size.X + 6, _nameBadge.Position.Y + (_nameBadge.Size.Y - _tags.Size.Y) / 2);
 
-        float gap = PileGap * Scale;
+        float gap = PileGap * PileScale;
         float x = Size.X - SideMargin - RightInset - PileSize.X;
         float y = FacesDown ? Peek - PileSize.Y : Size.Y - Peek;
-        foreach (var pile in new[] { _command2, _command, _exile, _graveyard, _library })
+        foreach (var pile in new[] { _command2, _command, _exile, _graveyard, _library, _handPile })
         {
             if (!pile.Visible) continue;
             pile.Position = new Vector2(x, y);
             x -= PileSize.X + gap;
         }
+        _pilesLeft = x + PileSize.X + gap;
         _handLabel.Position = new Vector2(_library.Position.X - 78, FacesDown ? 4 : Size.Y - 22);
         _handNote.ResetSize();
         _handNote.Position = new Vector2(_handLabel.Position.X - _handNote.Size.X - 10, _handLabel.Position.Y);
@@ -312,12 +389,17 @@ public partial class PlayerArea : Control
         _activeBorder.Visible = isActive;
         ApplyTurnGlow(isActive);
         _handLabel.Text = $"{(FacesDown ? "⌃" : "⌄")} Hand ({me.Hand.Count})";
+        _handLabel.Visible = !HideHand;
 
         // The library always shows the card back; we build a hidden view rather than reveal its top.
         CardView? libraryTop = me.LibraryTop ?? (me.LibraryCount > 0
             ? new CardView { Id = new CardId(-1 - Player.Value), Owner = Player, Controller = Player, Zone = Zone.Library, IsHidden = true }
             : null);
         _library.Refresh(me.LibraryCount, libraryTop);
+        _handPile.Visible = HideHand && FacesDown;
+        _handPile.Refresh(me.Hand.Count, me.Hand.Count > 0
+            ? new CardView { Id = new CardId(-101 - Player.Value), Owner = Player, Controller = Player, Zone = Zone.Hand, IsHidden = true }
+            : null);
         _graveyard.Refresh(me.Graveyard.Count, me.Graveyard.LastOrDefault());
         // Cards exiled only while a permanent stays on the battlefield sit under that permanent, not in the pile.
         var pileExile = me.Exile.Where(c => c.HeldUnder is null).ToList();
@@ -369,10 +451,11 @@ public partial class PlayerArea : Control
             node.SetAssignedDamage(null);
             node.SetCaption(null);
             node.SetStack(1, false);
+            node.Visible = !(HideHand && cardView.Zone == Zone.Hand);
         }
 
         _handOrder.Clear();
-        _handOrder.AddRange(me.Hand.Select(c => _cards[c.Id]));
+        if (!HideHand) _handOrder.AddRange(me.Hand.Select(c => _cards[c.Id]));
         LayoutHand();
         LayoutBattlefield(battlefield, held, view);
         SortByDrawOrder();
@@ -542,7 +625,8 @@ public partial class PlayerArea : Control
         var size = HandSize;
         float spacing = Mathf.Min(size.X - 8, Mathf.Min(640f, Size.X * 0.5f) / n);
         float totalWidth = spacing * (n - 1) + size.X;
-        float startX = (Size.X - totalWidth) / 2;
+        // Centered, unless that runs into the piles: then as far left as it must (not into the room kept at the left).
+        float startX = Math.Max(HandLeftInset, Math.Min((Size.X - totalWidth) / 2, _pilesLeft - 8 - totalWidth));
 
         for (int i = 0; i < n; i++)
         {
@@ -550,7 +634,7 @@ public partial class PlayerArea : Control
             float t = n == 1 ? 0 : (i / (float)(n - 1)) * 2 - 1; // -1 .. 1 across the fan
             bool hovered = node.IsHovered;
             // The fan hangs from the top edge in the top half (the bottom half's fan turned over).
-            var target = new Vector2(startX + i * spacing, FacesDown ? Peek - size.Y - t * t * 8 : Size.Y - Peek + t * t * 8);
+            var target = new Vector2(startX + i * spacing, FacesDown ? HandPeek - size.Y - t * t * 8 : Size.Y - HandPeek + t * t * 8);
             float rotation = FacesDown ? -t * 6f : t * 6f;
             if (hovered)
             {
@@ -616,7 +700,7 @@ public partial class PlayerArea : Control
         var lands = Stacks(inRows.Where(c => BattlefieldLayout.RowOf(c) == BattlefieldRow.Lands));
         var blockerStacks = Stacks(blockers);
 
-        float creatureY = FieldBand?.Start ?? (Compact ? 56 : 62);
+        float creatureY = (FieldBand ?? DefaultFieldBand).Start;
         var rows = new List<IReadOnlyList<CardStack>> { creatures };
         if (others.Count > 0) rows.Add(others);
         if (lands.Count > 0) rows.Add(lands);
@@ -631,7 +715,7 @@ public partial class PlayerArea : Control
         float baseGap = Compact ? 14 : 22;
         int TitlesInGap(int g) => FacesDown ? Under(rows[g]) : Under(rows[g + 1]); // the gap between rows g and g + 1
         var gaps = Enumerable.Range(0, rows.Count - 1).Select(g => Math.Max(baseGap, TitlesInGap(g) * TitleStrip * Scale + 3)).ToList();
-        float room = (FieldBand?.End ?? Size.Y - Peek - HandPipsRoom) - creatureY - FieldSize.Y * rows.Count;
+        float room = (FieldBand ?? DefaultFieldBand).End - creatureY - FieldSize.Y * rows.Count;
         if (gaps.Count > 0 && Size.Y > 100 && gaps.Sum() > room)
         {
             float plain = Mathf.Max(36 - FieldSize.Y, Mathf.Min(baseGap, room / gaps.Count));

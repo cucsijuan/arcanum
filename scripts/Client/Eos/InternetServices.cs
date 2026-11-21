@@ -9,6 +9,9 @@ public static class InternetServices
     public static IOnlineServices? Create(string version, Action<string> log)
     {
 #if ARCANUM_EOS
+        // The SDK's library exists only for desktop systems; elsewhere (a console) the build has no internet lobbies,
+        // and the career's identity comes from the services' web interface instead.
+        if (Godot.OS.GetName() is not ("Windows" or "macOS" or "Linux")) return null;
         if (EosKeys.Current is not { } keys) return null;
         var eos = new EosOnlineServices(keys, version, Account.DiscordAccessTokenAsync);
         eos.Log += log;

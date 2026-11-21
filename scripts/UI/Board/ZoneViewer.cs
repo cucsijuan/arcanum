@@ -9,7 +9,8 @@ namespace Arcanum.UI.Board;
 /// <summary>
 /// Every card in one player's graveyard or exile, opened by clicking that pile. Cards that can be used right now
 /// (cast from exile after an Adventure, flashback, graveyard abilities, targets) are highlighted and act on click.
-/// Also shows the tokens of one stack on the battlefield one by one, to pick which of them to target.
+/// Also shows the tokens of one stack on the battlefield one by one, to pick which of them to target, and another
+/// player's hand while the compact board keeps it out of sight.
 /// </summary>
 public partial class ZoneViewer : PanelContainer
 {
@@ -18,6 +19,7 @@ public partial class ZoneViewer : PanelContainer
     private readonly Label _title = BoardStyle.MakeTitle("", 18, BoardStyle.Text);
     private readonly Label _hint = BoardStyle.MakeLabel("", 13, BoardStyle.TextDim);
     private readonly HFlowContainer _grid = new();
+    private readonly HBoxContainer _header = new();
     private readonly Button _close = BoardStyle.MakeButton("Close", 14);
 
     public event Action<CardNode>? CardClicked;
@@ -42,13 +44,12 @@ public partial class ZoneViewer : PanelContainer
         box.AddThemeConstantOverride("separation", 8);
         AddChild(box);
 
-        var header = new HBoxContainer();
-        header.AddThemeConstantOverride("separation", 12);
+        _header.AddThemeConstantOverride("separation", 12);
         _title.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        header.AddChild(_title);
+        _header.AddChild(_title);
         _close.Pressed += Close;
-        header.AddChild(_close);
-        box.AddChild(header);
+        _header.AddChild(_close);
+        box.AddChild(_header);
         box.AddChild(_hint);
 
         var scroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, SizeFlagsVertical = SizeFlags.ExpandFill };
@@ -108,6 +109,16 @@ public partial class ZoneViewer : PanelContainer
             _title.Text = $"{cards[0].Name} tokens of {owner.Name} ({cards.Count})";
             _hint.Text = "Click the token to target.";
         }
+        else if (Zone == Zone.Hand)
+        {
+            // Another player's hand: face down, but for the cards revealed to this screen.
+            cards = owner.Hand.ToList();
+            _title.Text = $"Hand of {owner.Name} ({cards.Count})";
+            int usableNow = cards.Count(c => usable(c.Id));
+            _hint.Text = cards.Count == 0 ? "Empty."
+                : usableNow > 0 ? $"Highlighted cards can be chosen now ({usableNow}): click one."
+                : cards.All(c => c.IsHidden) ? "Its cards are hidden." : "Hover a revealed card to see it large.";
+        }
         else
         {
             cards = (Zone == Zone.Graveyard ? owner.Graveyard : owner.Exile).Reverse().ToList(); // most recent first
@@ -133,9 +144,14 @@ public partial class ZoneViewer : PanelContainer
         // Centered over the board, wide enough for seven cards per row, as tall as needed up to most of the screen.
         var parent = GetParentAreaSize();
         int perRow = Math.Clamp(cards.Count, 4, 7);
-        float width = perRow * (CardSize.X + 8) + 40;
+        // Around the cards: the panel's frame, the title row and hint above them, and the scroll bar beside them (all
+        // as tall as they are drawn, which depends on the interface art).
+        var frame = GetThemeStylebox("panel").GetMinimumSize();
+        float above = _header.GetCombinedMinimumSize().Y + _hint.GetCombinedMinimumSize().Y + 2 * 8;
+        const float ScrollBar = 20;
+        float width = perRow * (CardSize.X + 8) + frame.X + ScrollBar;
         int rows = Math.Max(1, (int)Math.Ceiling(cards.Count / (double)perRow));
-        float height = Math.Min(parent.Y * 0.75f, rows * (CardSize.Y + 8) + 100);
+        float height = Math.Min(parent.Y * 0.75f, rows * (CardSize.Y + 8) + above + frame.Y);
         Size = new Vector2(width, height);
         Position = (parent - Size) / 2;
     }

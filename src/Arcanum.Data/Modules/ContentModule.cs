@@ -17,7 +17,15 @@ public sealed record CardSource(
 /// <param name="ByIdTemplate">URL for an exact image id ({id}), used when a name is ambiguous (tokens).</param>
 /// <param name="BackUrlTemplate">URL of a double-faced card's back face picture by name ({name}); without it the back shows as text.</param>
 /// <param name="BackByIdTemplate">URL of a double-faced printing's back face picture by its image id ({id}).</param>
-public sealed record ImageSource(string UrlTemplate, int MinIntervalMs, string? ByIdTemplate = null, string? BackUrlTemplate = null, string? BackByIdTemplate = null);
+/// <param name="MinIntervalMs">How far apart requests to the templates above start.</param>
+/// <param name="ByNameMinIntervalMs">How far apart the requests by name start, when the source allows fewer of them
+/// (null: <paramref name="MinIntervalMs"/>).</param>
+/// <param name="FileByIdTemplate">The picture file itself by image id, on a host without the request limits above
+/// ({id}; {id0} and {id1} are its first and second characters); tried before <paramref name="ByIdTemplate"/>.</param>
+/// <param name="FileBackByIdTemplate">The same for a double-faced printing's back face.</param>
+/// <param name="FileMinIntervalMs">How far apart requests to the file host start.</param>
+public sealed record ImageSource(string UrlTemplate, int MinIntervalMs, string? ByIdTemplate = null, string? BackUrlTemplate = null, string? BackByIdTemplate = null,
+    int? ByNameMinIntervalMs = null, string? FileByIdTemplate = null, string? FileBackByIdTemplate = null, int FileMinIntervalMs = 0);
 
 /// <summary>Where every printing of every card comes from (sets, collector numbers, rarities, exact images).</summary>
 public sealed record PrintingSource(string Index, string DownloadField);
@@ -91,7 +99,10 @@ public sealed class ContentModule
             new CardSource(Required(cards, "format"), Required(cards, "index"), Required(cards, "downloadField"), Required(cards, "updatedField"),
                 StringList(cards, "includeIfLegalIn"), StringList(cards, "excludeLayouts")),
             new ImageSource(Required(images, "urlTemplate"), images.TryGetProperty("minIntervalMs", out var ms) ? ms.GetInt32() : 100,
-                Optional(images, "byIdTemplate"), Optional(images, "backUrlTemplate"), Optional(images, "backByIdTemplate")),
+                Optional(images, "byIdTemplate"), Optional(images, "backUrlTemplate"), Optional(images, "backByIdTemplate"),
+                images.TryGetProperty("byNameMinIntervalMs", out var byName) ? byName.GetInt32() : null,
+                Optional(images, "fileByIdTemplate"), Optional(images, "fileBackByIdTemplate"),
+                images.TryGetProperty("fileMinIntervalMs", out var fileMs) ? fileMs.GetInt32() : 0),
             s.TryGetProperty("printings", out var printings)
                 ? new PrintingSource(Required(printings, "index"), Required(printings, "downloadField"))
                 : null,
@@ -135,24 +146,61 @@ public sealed class ContentModule
     /// Card scripts in scripts/*.json, keyed by oracle id (the file name). Scripts that fail to parse are reported
     /// through <paramref name="errors"/> and skipped, so one bad script never breaks the whole module.
     /// </summary>
-    public Dictionary<string, Scripts.CardScript> LoadScripts(List<string>? errors = null)
+    /// <param name="progress">Called now and then with the script files read and their total.</param>
+    public Dictionary<string, Scripts.CardScript> LoadScripts(List<string>? errors = null, Action<int, int>? progress = null)
     {
         var scripts = new Dictionary<string, Scripts.CardScript>(StringComparer.OrdinalIgnoreCase);
-        var dir = Path.Combine(Directory, "scripts");
-        if (!System.IO.Directory.Exists(dir)) return scripts;
-        foreach (var file in System.IO.Directory.EnumerateFiles(dir, "*.json"))
+        if (!System.IO.Directory.Exists(ScriptsDirectory)) return scripts;
+        var files = System.IO.Directory.EnumerateFiles(ScriptsDirectory, "*.json").ToList();
+        int done = 0;
+        foreach (var file in files)
         {
-            try
+            if (++done % 200 == 0) progress?.Invoke(done, files.Count);
+            if (TryParseScript(file, errors) is { } script) scripts[Path.GetFileNameWithoutExtension(file)] = script;
+        }
+        progress?.Invoke(files.Count, files.Count);
+        return scripts;
+    }
+
+    /// <summary>Where the card scripts are (scripts/*.json).</summary>
+    public string ScriptsDirectory => Path.Combine(Directory, "scripts");
+
+    /// <summary>
+    /// A card's script by oracle id, read and parsed the first time it is asked for (safe to call from any thread):
+    /// the same script <see cref="LoadScripts"/> would give it, or null.
+    /// </summary>
+    public Func<string, Scripts.CardScript?> ScriptReader()
+    {
+        // Every file named for the card, in the order LoadScripts goes through them: the last that parses is the one.
+        var files = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        if (System.IO.Directory.Exists(ScriptsDirectory))
+        {
+            foreach (var file in System.IO.Directory.EnumerateFiles(ScriptsDirectory, "*.json"))
             {
-                scripts[Path.GetFileNameWithoutExtension(file)] = Scripts.CardScriptParser.Parse(File.ReadAllText(file));
-            }
-            // An unknown name (a replacement, a counter kind...) is a script error too, not a reason to fail loading the module.
-            catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException or ArgumentException)
-            {
-                errors?.Add($"{Path.GetFileName(file)}: {e.Message}");
+                var id = Path.GetFileNameWithoutExtension(file);
+                if (!files.TryGetValue(id, out var named)) files[id] = named = new List<string>(1);
+                named.Add(file);
             }
         }
-        return scripts;
+        var parsed = new System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<Scripts.CardScript?>>(StringComparer.OrdinalIgnoreCase);
+        return oracleId => files.TryGetValue(oracleId, out var named)
+            ? parsed.GetOrAdd(oracleId, _ => new Lazy<Scripts.CardScript?>(
+                () => named.Select(file => TryParseScript(file, null)).LastOrDefault(script => script is not null))).Value
+            : null;
+    }
+
+    private static Scripts.CardScript? TryParseScript(string file, List<string>? errors)
+    {
+        try
+        {
+            return Scripts.CardScriptParser.Parse(File.ReadAllText(file));
+        }
+        // An unknown name (a replacement, a counter kind...) is a script error too, not a reason to fail loading the module.
+        catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException or ArgumentException)
+        {
+            errors?.Add($"{Path.GetFileName(file)}: {e.Message}");
+            return null;
+        }
     }
 
     /// <summary>Deck construction formats in formats/*.json.</summary>
@@ -231,6 +279,12 @@ public sealed class ContentModule
     /// <summary>URL of a double-faced card's back face picture, by the back face's name or by image id; null if the module has none.</summary>
     public string? BackImageUrl(string faceName) => Sources.Images.BackUrlTemplate?.Replace("{name}", Uri.EscapeDataString(faceName));
     public string? BackImageUrlById(string id) => Sources.Images.BackByIdTemplate?.Replace("{id}", Uri.EscapeDataString(id));
+
+    /// <summary>The picture file by image id on the module's file host (front or back face); null if it names none.</summary>
+    public string? FileImageUrlById(string id, bool back) =>
+        (back ? Sources.Images.FileBackByIdTemplate : Sources.Images.FileByIdTemplate) is { } template && id.Length >= 2
+            ? template.Replace("{id0}", Uri.EscapeDataString(id[..1])).Replace("{id1}", Uri.EscapeDataString(id[1..2])).Replace("{id}", Uri.EscapeDataString(id))
+            : null;
 
     /// <summary>URL of the picture of one of the module's card back designs, or null if it offers no such design.</summary>
     public string? CardBackUrl(string id) => Sources.CardBacks?.FirstOrDefault(b => b.Id == id)?.Url;

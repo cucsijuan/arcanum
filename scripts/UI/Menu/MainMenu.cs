@@ -46,6 +46,13 @@ public partial class MainMenu : Control
             _opened = true;
             Callable.From(() => App.Instance.GoTo(App.CareerScene)).CallDeferred();
         }
+        // ARCANUM_OPEN=game: straight into a game with the module's sample decks (test runs on devices without a
+        // command line; ARCANUM_VS_BOT, ARCANUM_AUTOPLAY and the other quick-start settings apply).
+        else if (OS.GetEnvironment("ARCANUM_OPEN") == "game" && !_opened)
+        {
+            _opened = true;
+            Callable.From(() => App.Instance.GoTo(App.GameBoardScene)).CallDeferred();
+        }
         SetAnchorsPreset(LayoutPreset.FullRect);
         var backdrop = MenuKit.AddArcaneBackdrop(this);
         var fan = AddFannedCardBacks();

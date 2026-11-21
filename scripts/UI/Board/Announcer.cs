@@ -34,10 +34,10 @@ public partial class Announcer : Control
     public Announcer()
     {
         MouseFilter = MouseFilterEnum.Ignore;
-        AnchorLeft = 0.5f; AnchorRight = 0.5f; AnchorTop = 0.5f; AnchorBottom = 0.5f;
+        // Its banner is centered a little over a quarter of the way down the board (whatever its height).
+        AnchorLeft = 0.5f; AnchorRight = 0.5f; AnchorTop = 0.27f; AnchorBottom = 0.27f;
         GrowHorizontal = GrowDirection.Both;
         GrowVertical = GrowDirection.Both;
-        OffsetTop = -250;
         _banner.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Board, new Color(0.05f, 0.05f, 0.07f, 0.94f), 12, BoardStyle.ActiveBorder, 2, padding: 14));
         _banner.MouseFilter = MouseFilterEnum.Ignore;
         var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
@@ -53,7 +53,7 @@ public partial class Announcer : Control
         _banner.AddChild(row);
         _banner.Visible = false;
         AddChild(_banner);
-        _turnBanner.Position = new Vector2(0, 190); // a little above the middle of the screen (this node sits 250 above it)
+        _turnBanner.Position = new Vector2(0, 190); // a little above the middle of the screen
         AddChild(_turnBanner);
     }
 

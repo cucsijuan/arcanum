@@ -12,6 +12,12 @@ public sealed class DiscordOptions
     public string ClientId { get; set; } = "";
     public string ClientSecret { get; set; } = "";
     public string TokenUrl { get; set; } = "https://discord.com/api/oauth2/token";
+
+    /// <summary>Where Discord sends the answer for a device link (registered as a redirect of the Discord application).</summary>
+    public string LinkRedirectUri { get; set; } = "";
+
+    /// <summary>The page players open to type a device's code.</summary>
+    public string LinkPage { get; set; } = "";
 }
 
 /// <param name="Code">The authorization code Discord sent to the game's loopback address.</param>
@@ -60,11 +66,25 @@ public sealed partial class DiscordAuth(HttpClient http, IOptions<DiscordOptions
 
     private async Task<IResult> Token(Dictionary<string, string> form, CancellationToken cancel)
     {
+        if (options.Value.ClientId.Length == 0 || options.Value.ClientSecret.Length == 0)
+        {
+            log.LogError("The Discord application isn't configured (Discord__ClientId / Discord__ClientSecret).");
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
+        // Discord's error is about the code or token the game sent (expired, used twice...): the game asks to sign in again.
+        return await Tokens(form, cancel) is { } tokens
+            ? Results.Ok(tokens)
+            : Results.Json(new { error = "discord_refused" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    /// <summary>Discord's tokens for this grant (with the application's id and secret added), or null when Discord refuses.</summary>
+    public async Task<DiscordTokens?> Tokens(Dictionary<string, string> form, CancellationToken cancel)
+    {
         var app = options.Value;
         if (app.ClientId.Length == 0 || app.ClientSecret.Length == 0)
         {
             log.LogError("The Discord application isn't configured (Discord__ClientId / Discord__ClientSecret).");
-            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            return null;
         }
         form["client_id"] = app.ClientId;
         form["client_secret"] = app.ClientSecret;
@@ -72,15 +92,14 @@ public sealed partial class DiscordAuth(HttpClient http, IOptions<DiscordOptions
         var body = await response.Content.ReadAsStringAsync(cancel);
         if (!response.IsSuccessStatusCode)
         {
-            // Discord's error is about the code or token the game sent (expired, used twice...): the game asks to sign in again.
             log.LogInformation("Discord refused a {Grant}: {Status}", form["grant_type"], (int)response.StatusCode);
-            return Results.Json(new { error = "discord_refused" }, statusCode: StatusCodes.Status401Unauthorized);
+            return null;
         }
         using var json = JsonDocument.Parse(body);
         var root = json.RootElement;
-        return Results.Ok(new DiscordTokens(
+        return new DiscordTokens(
             root.GetProperty("access_token").GetString() ?? "",
             root.TryGetProperty("refresh_token", out var refresh) ? refresh.GetString() ?? "" : "",
-            root.TryGetProperty("expires_in", out var expires) ? expires.GetInt32() : 0));
+            root.TryGetProperty("expires_in", out var expires) ? expires.GetInt32() : 0);
     }
 }

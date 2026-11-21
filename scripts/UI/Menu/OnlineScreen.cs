@@ -83,19 +83,26 @@ public partial class OnlineScreen : Control
 
     private async void SignInWithDiscord()
     {
-        ShowStatus("Waiting for Discord in your browser…");
+        ShowStatus(Account.HasBrowser ? "Waiting for Discord in your browser…" : "Waiting for the sign-in on your phone or computer…");
+        Control? codeDialog = null;
         try
         {
-            using var cancel = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-            var name = await Account.SignInWithDiscordAsync(cancel.Token);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromMinutes(Account.HasBrowser ? 5 : 10));
+            var name = await Account.SignInWithDiscordAsync(cancel.Token, code => codeDialog = AccountPrompt.ShowCode(this, code, cancel));
+            if (IsInstanceValid(codeDialog)) codeDialog!.QueueFree();
             if (!IsInstanceValid(this)) return;
             AccountPrompt.OfferName(this, name, Rebuild);
             ShowStatus("Signed in with Discord.");
             Online.SignIn(PlayerName);
         }
-        catch (OperationCanceledException) { if (IsInstanceValid(this)) ShowStatus("Signing in with Discord took too long; try again from the settings."); }
+        catch (OperationCanceledException)
+        {
+            if (IsInstanceValid(codeDialog)) codeDialog!.QueueFree();
+            if (IsInstanceValid(this)) ShowStatus("Not signed in; you can sign in from the settings.");
+        }
         catch (Exception e)
         {
+            if (IsInstanceValid(codeDialog)) codeDialog!.QueueFree();
             if (IsInstanceValid(this)) ShowStatus(e is System.Net.Http.HttpRequestException ? "The sign-in service can't be reached; try again later." : e.Message);
         }
     }

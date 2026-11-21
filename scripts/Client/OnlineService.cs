@@ -607,7 +607,7 @@ public partial class OnlineService : Node
         var path = ProjectSettings.GlobalizePath(SavePath);
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
         File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(_save));
-        File.Move(path + ".tmp", path, overwrite: true);
+        Arcanum.Data.SafeFile.Replace(path + ".tmp", path);
     }
 
     public static void DeleteSave()

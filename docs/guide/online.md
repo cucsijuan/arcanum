@@ -13,7 +13,9 @@ Every player needs the same game version and the same content module.
 
 The first time you go online over the internet, the game asks:
 
-- **Sign in with Discord** opens your browser to Discord. Allow the game there and it returns to Arcanum.
+- **Sign in with Discord** opens your browser to Discord. Allow the game there and it returns to Arcanum. On a system
+  without a browser, the game shows a code instead: open the page it names on a phone or computer, type the code and
+  sign in with Discord there. The game continues by itself.
 - **Local network only** skips the sign-in. You can still host and join on your own network.
 
 You can sign in or out later in **Settings**, under **Gameplay**, in the **Online** section, in the **Discord account**

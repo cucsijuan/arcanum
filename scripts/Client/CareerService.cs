@@ -58,21 +58,30 @@ public sealed partial class CareerService
 
     public CareerState State => _save?.State ?? throw new InvalidOperationException("No career.");
 
-    public void Init(ContentModule module, CardDatabase cards)
+    /// <summary>
+    /// Reads the content's career and builds its world on a worker thread (seconds on slow devices), then loads the
+    /// player's career here.
+    /// </summary>
+    public async Task InitAsync(ContentModule module, CardDatabase cards)
     {
         var errors = new List<string>();
-        var content = module.LoadCareer(errors);
+        _module = module;
+        _cards = cards;
+        var seasonPath = SeasonPath;
+        var (content, world) = await Task.Run(() =>
+        {
+            var content = module.LoadCareer(errors);
+            return content is null ? (null, null) : (content, MakeWorld(content, ReadSeason(seasonPath) ?? module.LoadSeason(errors)));
+        });
         foreach (var error in errors) GD.PushWarning($"Career: {error}");
         if (content is null)
         {
+            _module = null;
+            _cards = null;
             Problem = errors.Count > 0 ? "The content's career settings couldn't be read." : "The installed content has no career.";
             return;
         }
-        _module = module;
-        _cards = cards;
-        var seasonErrors = new List<string>();
-        MakeWorld(content, ReadSeason() ?? module.LoadSeason(seasonErrors));
-        foreach (var error in seasonErrors) GD.PushWarning($"Career: {error}");
+        World = world;
         _contentId = $"{module.Manifest.Id} {module.Manifest.Version}";
         App.Instance.Online.EventFinished += OnOnlineEventFinished;
         App.Instance.Online.EventDayOver += OnOnlineDayOver;
@@ -80,11 +89,12 @@ public sealed partial class CareerService
         UpdateSeason();
     }
 
-    private void MakeWorld(CareerContent content, CareerSeason? season)
+    /// <summary>Builds the career world; safe on a worker thread (it only reads the module and the cards).</summary>
+    private CareerWorld MakeWorld(CareerContent content, CareerSeason? season)
     {
         var module = _module!;
         var deckNames = module.DeckNames().ToHashSet(StringComparer.OrdinalIgnoreCase);
-        World = new CareerWorld(content, _cards!, module.LoadSets(), name => deckNames.Contains(name) ? module.ReadDeck(name) : null, module.LoadFormats(), season);
+        return new CareerWorld(content, _cards!, module.LoadSets(), name => deckNames.Contains(name) ? module.ReadDeck(name) : null, module.LoadFormats(), season);
     }
 
     // ---------------------------------------------------------------- the season and the clock
@@ -92,9 +102,9 @@ public sealed partial class CareerService
     /// <summary>The season last downloaded for this content (the module's own is used until there is one).</summary>
     private string SeasonPath => ProjectSettings.GlobalizePath($"{Folder}/season.{_module!.Manifest.Id}.json");
 
-    private CareerSeason? ReadSeason()
+    private static CareerSeason? ReadSeason(string path)
     {
-        try { return File.Exists(SeasonPath) ? CareerSeason.Parse(File.ReadAllText(SeasonPath)) : null; }
+        try { return File.Exists(path) ? CareerSeason.Parse(File.ReadAllText(path)) : null; }
         catch (Exception e) when (e is FormatException or System.Text.Json.JsonException or IOException) { return null; }
     }
 
@@ -107,19 +117,28 @@ public sealed partial class CareerService
         if (OS.GetEnvironment("ARCANUM_CAREER_OFFLINE") == "1") return;
         try
         {
-            using var http = new System.Net.Http.HttpClient { BaseAddress = Account.ServiceUrl, Timeout = TimeSpan.FromSeconds(15) };
-            using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, $"career/season/{_module!.Manifest.Id}.json");
-            if (File.Exists(SeasonPath)) request.Headers.IfModifiedSince = File.GetLastWriteTimeUtc(SeasonPath);
-            using var response = await http.SendAsync(request);
-            if (response.Headers.Date is { } serverNow) _clockOffset = serverNow.UtcDateTime - DateTime.UtcNow;
-            if (response.StatusCode != System.Net.HttpStatusCode.OK) return; // not changed, or no season for this content
-            var text = await response.Content.ReadAsStringAsync();
-            var season = CareerSeason.Parse(text); // a newer layout than this game understands throws: keep the old one
-            File.WriteAllText(SeasonPath, text);
-            if (response.Content.Headers.LastModified is { } modified) File.SetLastWriteTimeUtc(SeasonPath, modified.UtcDateTime);
-            if (_module!.LoadCareer() is { } content)
+            // The request and the new world are made on a worker thread: setting up the connection and building the
+            // world take long enough on slow devices to stall the screen.
+            var seasonPath = SeasonPath;
+            var times = Times;
+            var world = await Task.Run(async () =>
             {
-                MakeWorld(content, season);
+                using var http = new System.Net.Http.HttpClient { BaseAddress = Account.ServiceUrl, Timeout = TimeSpan.FromSeconds(15) };
+                using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, $"career/season/{_module!.Manifest.Id}.json");
+                if (File.Exists(seasonPath)) request.Headers.IfModifiedSince = times.GetUtc(seasonPath);
+                using var response = await http.SendAsync(request);
+                if (response.Headers.Date is { } serverNow) _clockOffset = serverNow.UtcDateTime - DateTime.UtcNow;
+                if (response.StatusCode != System.Net.HttpStatusCode.OK) return null; // not changed, or no season for this content
+                var text = await response.Content.ReadAsStringAsync();
+                var season = CareerSeason.Parse(text); // a newer layout than this game understands throws: keep the old one
+                Directory.CreateDirectory(Path.GetDirectoryName(seasonPath)!); // a first run has no career folder yet
+                File.WriteAllText(seasonPath, text);
+                if (response.Content.Headers.LastModified is { } modified) times.SetUtc(seasonPath, modified.UtcDateTime);
+                return _module!.LoadCareer() is { } content ? MakeWorld(content, season) : null;
+            });
+            if (world is not null)
+            {
+                World = world;
                 SeasonChanged?.Invoke();
             }
         }
@@ -128,6 +147,7 @@ public sealed partial class CareerService
 
     private void Load()
     {
+        Arcanum.Data.SafeFile.Recover(SavePath);
         if (!File.Exists(SavePath)) return;
         try
         {
@@ -166,7 +186,18 @@ public sealed partial class CareerService
         save.Journal.Add(action);
         save.Content = _contentId;
         _save = save;
-        Write();
+        try
+        {
+            Write();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Not saved: the action didn't happen. The career goes back to what is on disk, so the player can try again.
+            GD.PushError($"Career: saving failed: {e}");
+            _save = null;
+            Load();
+            throw new CareerRuleException($"The career couldn't be saved: {e.Message}");
+        }
         SyncSoon();
         return result;
     }
@@ -181,7 +212,11 @@ public sealed partial class CareerService
     /// <summary>Ends the career: the saved file is kept next to it as a backup, and the career's decks are removed.</summary>
     public void Abandon()
     {
-        if (File.Exists(SavePath)) File.Move(SavePath, SavePath + ".old", overwrite: true);
+        if (File.Exists(SavePath))
+        {
+            if (File.Exists(SavePath + ".old")) File.Delete(SavePath + ".old");
+            File.Move(SavePath, SavePath + ".old");
+        }
         foreach (var deck in Decks.List(null)) Decks.Delete(deck);
         File.WriteAllText(EndedPath, DateTime.UtcNow.ToString("O")); // the cloud's copy ends too
         _save = null;
@@ -195,6 +230,9 @@ public sealed partial class CareerService
     private static string CloudFile => OS.GetEnvironment("ARCANUM_CAREER_CLOUD") is { Length: > 0 } name ? name : "career.zip";
     private string FolderPath => ProjectSettings.GlobalizePath(Folder);
     private string EndedPath => Path.Combine(FolderPath, "ended");
+
+    /// <summary>The times this folder's files were given (downloaded files are dated as the cloud's copies).</summary>
+    private FileTimes Times => new(Path.Combine(FolderPath, "file-times.json"));
 
     /// <summary>Where the career stands with the cloud, for the player.</summary>
     public string CloudStatus { get; private set; } = "";
@@ -247,6 +285,7 @@ public sealed partial class CareerService
         if (await App.Instance.Online.CloudAsync() is not { } cloud)
         {
             SetCloud(Account.HasDiscord ? $"Not saved to the cloud. {App.Instance.Online.InternetStatus}" : "Kept on this computer only: sign in with Discord to keep it in the cloud.");
+            GD.Print($"Career: {CloudStatus}");
             return;
         }
         var remoteBytes = await cloud.ReadAsync(CloudFile);
@@ -302,14 +341,14 @@ public sealed partial class CareerService
         {
             if (!File.Exists(path)) return;
             bundle.Files[name] = File.ReadAllBytes(path);
-            times.Add(File.GetLastWriteTimeUtc(path));
+            times.Add(Times.GetUtc(path));
         }
         Add(SavePath, CareerBundle.SaveName);
         Add(Path.Combine(FolderPath, "event.json"), "event.json");
         var decks = Path.Combine(FolderPath, "decks");
         if (Directory.Exists(decks))
             foreach (var file in Directory.GetFiles(decks)) Add(file, "decks/" + Path.GetFileName(file));
-        if (bundle.Save is null && File.Exists(EndedPath)) times.Add(File.GetLastWriteTimeUtc(EndedPath));
+        if (bundle.Save is null && File.Exists(EndedPath)) times.Add(Times.GetUtc(EndedPath));
         if (times.Count == 0) return null;
         bundle.SavedUtc = times.Max();
         return bundle;
@@ -329,12 +368,12 @@ public sealed partial class CareerService
             var path = Path.Combine(FolderPath, name);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllBytes(path, data);
-            File.SetLastWriteTimeUtc(path, remote.SavedUtc);
+            Times.SetUtc(path, remote.SavedUtc);
         }
         if (remote.Save is null)
         {
             File.WriteAllText(EndedPath, remote.SavedUtc.ToString("O"));
-            File.SetLastWriteTimeUtc(EndedPath, remote.SavedUtc);
+            Times.SetUtc(EndedPath, remote.SavedUtc);
         }
         else if (File.Exists(EndedPath)) File.Delete(EndedPath);
         _save = null;
@@ -355,7 +394,7 @@ public sealed partial class CareerService
         Directory.CreateDirectory(Path.GetDirectoryName(SavePath)!);
         var temp = SavePath + ".tmp";
         File.WriteAllBytes(temp, _save!.Write(CareerSave.DefaultKey));
-        File.Move(temp, SavePath, overwrite: true);
+        Arcanum.Data.SafeFile.Replace(temp, SavePath);
     }
 
     /// <summary>A deck's cards the collection doesn't have enough of.</summary>

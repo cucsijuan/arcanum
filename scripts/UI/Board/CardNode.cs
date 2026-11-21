@@ -365,6 +365,7 @@ public partial class CardNode : Control
             else if (_requestedImage != imageKey)
             {
                 _requestedImage = imageKey;
+                _face.Texture = null; // never show the last card's picture for this one, while it loads or if it has none
                 var name = view.Name!;
                 void Apply(Texture2D texture)
                 {

@@ -47,7 +47,7 @@ public partial class SettingsScreen : Control
         AddChild(_tabs);
 
         // Options on the left, never wider than reads well; descriptions in the space to their right.
-        var pageArea = new Control { AnchorBottom = 1, OffsetLeft = 140, OffsetTop = 110, OffsetRight = 140 + 900, OffsetBottom = -30 };
+        var pageArea = _pageArea = new Control { AnchorBottom = 1, OffsetLeft = 140, OffsetTop = 110, OffsetRight = 140 + 900, OffsetBottom = -30 };
         AddChild(pageArea);
         foreach (var content in new[] { GameplayPage(), AppearancePage(), AudioPage(), VideoPage() })
         {
@@ -57,16 +57,18 @@ public partial class SettingsScreen : Control
             _pages.Add(page);
         }
 
-        _description.AnchorLeft = 1; _description.AnchorRight = 1;
-        _description.OffsetLeft = -800; _description.OffsetRight = -140; _description.OffsetTop = 150;
         _description.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         AddChild(_description);
+        PlaceDescription();
+        Resized += PlaceDescription;
         SettingsKit.Row.Described += Describe;
 
         _tabs.Changed += index =>
         {
             for (int i = 0; i < _pages.Count; i++) _pages[i].Visible = i == index;
             _description.Text = "";
+            // With a controller, the page's first option takes the focus.
+            PadFocus.Prefer(FirstButton(_pages[index]));
         };
         _tabs.Select(0);
 
@@ -83,23 +85,60 @@ public partial class SettingsScreen : Control
         AddChild(_fileDialog);
     }
 
+    private Control _pageArea = null!;
+
+    /// <summary>Descriptions go to the right of the options; on a screen too narrow for both, under them.</summary>
+    private void PlaceDescription()
+    {
+        bool beside = Size.X >= 140 + 900 + 60 + 400 + 140;
+        _description.AnchorTop = beside ? 0 : 1;
+        _description.AnchorBottom = beside ? 0 : 1;
+        _description.AnchorLeft = beside ? 1 : 0;
+        _description.AnchorRight = 1;
+        _description.OffsetLeft = beside ? Math.Max(140 + 900 + 60 - Size.X, -800) : 140;
+        _description.OffsetRight = -140;
+        _description.OffsetTop = beside ? 150 : -86;
+        _description.OffsetBottom = beside ? 150 : -10;
+        _description.VerticalAlignment = beside ? VerticalAlignment.Top : VerticalAlignment.Center;
+        _description.AddThemeFontSizeOverride("font_size", beside ? 22 : 17);
+        _pageArea.OffsetBottom = beside ? -30 : -92;
+    }
+
     public override void _ExitTree() => SettingsKit.Row.Described -= Describe;
 
     private void Describe(string text) => _description.Text = text;
 
-    /// <summary>Q and E (or Page Up/Down) switch tabs.</summary>
+    private static BaseButton? FirstButton(Node node)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (child is CanvasItem { Visible: false }) continue;
+            if (child is BaseButton { Disabled: false } button) return button;
+            if (FirstButton(child) is { } inner) return inner;
+        }
+        return null;
+    }
+
+    /// <summary>Q and E (or Page Up/Down, or a controller's shoulder buttons) switch tabs.</summary>
     public override void _UnhandledInput(InputEvent @event)
     {
-        if (@event is not InputEventKey { Pressed: true, Echo: false } key) return;
-        if (key.Keycode is Key.Q or Key.Pageup) _tabs.Select(_tabs.Current - 1);
-        else if (key.Keycode is Key.E or Key.Pagedown) _tabs.Select(_tabs.Current + 1);
-        else return;
+        int step = @event switch
+        {
+            InputEventKey { Pressed: true, Echo: false, Keycode: Key.Q or Key.Pageup } => -1,
+            InputEventKey { Pressed: true, Echo: false, Keycode: Key.E or Key.Pagedown } => 1,
+            InputEventJoypadButton { Pressed: true, ButtonIndex: JoyButton.LeftShoulder } => -1,
+            InputEventJoypadButton { Pressed: true, ButtonIndex: JoyButton.RightShoulder } => 1,
+            _ => 0,
+        };
+        if (step == 0) return;
+        _tabs.Select(_tabs.Current + step);
         GetViewport().SetInputAsHandled();
     }
 
     private static Control Page(Control content)
     {
-        var scroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        // The page scrolls to the option the controller's focus moves to.
+        var scroll = new ScrollContainer { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, FollowFocus = true };
         scroll.SetAnchorsPreset(LayoutPreset.FullRect);
         var margin = new MarginContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         margin.AddThemeConstantOverride("margin_right", 18);
@@ -146,6 +185,10 @@ public partial class SettingsScreen : Control
         box.AddChild(Row("Opening boosters", SettingsKit.Choice(openings.Select(o => o.Item2).ToList(),
                 Math.Max(0, Array.FindIndex(openings, o => o.Item1 == S.BoosterOpening)), selected => { S.BoosterOpening = openings[selected].Item1; Settings.Save(); }),
             "How your booster opens at the start of each draft round: swipe across its tear line yourself (it opens by itself if you wait), let it tear open, or skip straight to the cards."));
+        var views = new[] { ("auto", "Automatic"), ("compact", "One table at a time"), ("full", "Every table") };
+        box.AddChild(Row("Board view", SettingsKit.Choice(views.Select(v => v.Item2).ToList(),
+                Math.Max(0, Array.FindIndex(views, v => v.Item1 == S.BoardView)), selected => { S.BoardView = views[selected].Item1; Settings.Save(); }),
+            "Every table: all players' tables at once. One table at a time: the table of the player whose turn it is fills the screen, with your own cards along the bottom, and the list of players beside it opens anyone's table. Automatic picks one table at a time on small screens (handheld consoles, phones)."));
 
         box.AddChild(SettingsKit.Section("Default stops"));
         var captions = new HBoxContainer();
@@ -173,6 +216,27 @@ public partial class SettingsScreen : Control
         box.AddChild(SettingsKit.Section("Updates"));
         box.AddChild(Switch("Check for updates at start", S.CheckForUpdates, v => S.CheckForUpdates = v,
             "When the game starts, look for a newer version of the game or of the card content and offer to install it."));
+
+        box.AddChild(SettingsKit.Section("Card pictures"));
+        box.AddChild(Switch("Download every card picture", S.DownloadEveryPicture, v =>
+            {
+                S.DownloadEveryPicture = v;
+                CardImageCache.DownloadEvery(v ? App.Instance.Cards : null);
+            },
+            "Card pictures download when a card is first seen and stay on this device. On, every card's picture also downloads in " +
+            "the background (after the ones you are looking at), so cards show at once everywhere. It takes about 5 GB " +
+            "and goes on where it stopped each time the game starts."));
+        var everyState = BoardStyle.MakeLabel("", 16);
+        everyState.CustomMinimumSize = new Vector2(SettingsKit.ControlWidth, 0);
+        box.AddChild(Row("Downloaded", everyState, "How many card pictures are on this device, while every picture is downloading."));
+        var everyTimer = new Godot.Timer { WaitTime = 0.5, Autostart = true };
+        void ShowEvery() => everyState.Text = !S.DownloadEveryPicture ? "Only the pictures seen"
+            : CardImageCache.EveryProgress is not { } p ? "Looking at the pictures on this device…"
+            : $"{p.Have:N0} of {p.Total:N0}" + (p.Failed > 0 ? $", {p.Failed:N0} not available" : "")
+              + (p.Stopped is { } why ? $". Stopped: {why}" : p.Have + p.Failed >= p.Total ? ". All done." : "");
+        everyTimer.Timeout += ShowEvery;
+        everyState.AddChild(everyTimer);
+        ShowEvery();
 
         box.AddChild(SettingsKit.Section("Online"));
         box.AddChild(Row("Discord account", DiscordAccount(),
@@ -204,24 +268,26 @@ public partial class SettingsScreen : Control
         void Show(string? note = null)
         {
             bool waiting = _discordSignIn is not null;
-            state.Text = note ?? (waiting ? "Waiting for the browser…" : Account.HasDiscord ? "Signed in" : "Not signed in");
+            state.Text = note ?? (waiting ? (Account.HasBrowser ? "Waiting for the browser…" : "Waiting for the code…") : Account.HasDiscord ? "Signed in" : "Not signed in");
             button.Text = waiting ? "Cancel" : Account.HasDiscord ? "Sign out" : "Sign in";
         }
         button.Pressed += async () =>
         {
             if (_discordSignIn is { } waiting) { waiting.Cancel(); return; }
             if (Account.HasDiscord) { Account.SignOut(); Show(); return; }
-            using var cancel = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            using var cancel = new CancellationTokenSource(TimeSpan.FromMinutes(Account.HasBrowser ? 5 : 10));
             _discordSignIn = cancel;
             Show();
             string? note = null;
+            Control? codeDialog = null;
             try
             {
-                var name = await Account.SignInWithDiscordAsync(cancel.Token);
+                var name = await Account.SignInWithDiscordAsync(cancel.Token, code => codeDialog = AccountPrompt.ShowCode(this, code, cancel));
                 AccountPrompt.OfferName(this, name, () => { if (IsInstanceValid(_playerName)) _playerName.Text = Settings.PlayerName; });
             }
             catch (OperationCanceledException) { }
             catch (Exception e) { note = e is System.Net.Http.HttpRequestException ? "The sign-in service can't be reached." : e.Message; }
+            if (IsInstanceValid(codeDialog)) codeDialog!.QueueFree();
             _discordSignIn = null;
             if (IsInstanceValid(button)) Show(note);
         };

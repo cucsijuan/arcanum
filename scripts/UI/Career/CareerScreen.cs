@@ -171,8 +171,8 @@ public partial class CareerScreen : Control
         {
             case "decks": OpenDeckBuilder(); return true;
             case "collection": OpenCollection(); return true;
-            case "daily" when Career.Decks.List(null) is [var first, ..]:
-                var testDeck = Career.Decks.Load(first).Deck;
+            case "daily" when Career.Decks.List(null).Select(d => Career.Decks.Load(d).Deck)
+                                   .FirstOrDefault(d => CareerRules.DeckProblems(d, State, World).Count == 0) is { } testDeck:
                 Career.Do(new StartDaily(Career.Now, _reward, testDeck.Export()));
                 App.Instance.PendingMatch = Career.Match(testDeck, Settings.PlayerName);
                 App.Instance.GoTo(App.GameBoardScene);

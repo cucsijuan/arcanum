@@ -75,27 +75,23 @@ public partial class OnlineService
     }
 
     /// <summary>
-    /// The player's cloud files, signing in to the online services first when the player has an account (null: this
-    /// build has none, the player hasn't signed in with Discord, or the services can't be reached).
+    /// The player's cloud files (kept by the career service; what the online services kept before is moved there), or
+    /// null when the player hasn't signed in or the services can't be reached.
     /// </summary>
     public async Task<ICloudStorage?> CloudAsync()
     {
-        if (Internet is not ICloudStorage cloud || !(Account.HasDiscord || Account.UsesDeviceAccount)) return null;
-        if (!Internet.IsAvailable)
-        {
-            SignIn(Settings.PlayerName);
-            try { if (_signIn is { } signIn) await signIn; }
-            catch (Exception) { /* the status says why */ }
-        }
-        return cloud.IsReady ? cloud : null;
+        if (await IdTokenAsync() is null) return null;
+        return new ServiceCloud(IdTokenAsync, Internet is ICloudStorage { IsReady: true } earlier ? earlier : null);
     }
 
     /// <summary>
     /// The player's ID token for the career service, signing in to the online services first when the player has an
-    /// account (null: this build has none, the player hasn't signed in, or the services can't be reached).
+    /// account (null: the player hasn't signed in, or the services can't be reached). Where the services' library isn't
+    /// part of the build (a console), the token comes from their web interface for the Discord sign-in.
     /// </summary>
     public async Task<string?> IdTokenAsync()
     {
+        if (Internet is null) return Account.HasDiscord ? await Eos.EosWebIdentity.IdTokenAsync() : null;
         if (Internet is not IIdentityTokens tokens || !(Account.HasDiscord || Account.UsesDeviceAccount)) return null;
         if (!Internet.IsAvailable)
         {

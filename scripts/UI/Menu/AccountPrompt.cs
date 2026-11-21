@@ -1,12 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using Arcanum.Client;
+using Arcanum.Net.Services;
+using Arcanum.UI.Board;
 using Godot;
 
 namespace Arcanum.UI.Menu;
 
-/// <summary>After signing in with Discord: offers the Discord name as the player's name (when it's another one).</summary>
+/// <summary>
+/// Signing in with Discord: the code to type on a phone or computer where the game can't open a browser, and afterwards
+/// the Discord name offered as the player's name (when it's another one).
+/// </summary>
 public static class AccountPrompt
 {
+    /// <summary>
+    /// Shows a device sign-in's code until the sign-in ends (the caller frees the returned dialog); Cancel stops waiting.
+    /// </summary>
+    public static Control ShowCode(Control screen, DiscordLinkCode code, CancellationTokenSource cancel)
+    {
+        var page = code.Url.Replace("https://", "").Replace("http://", "");
+        var shown = BoardStyle.MakeTitle(code.Code, 56);
+        shown.HorizontalAlignment = HorizontalAlignment.Center;
+        return MenuKit.Modal(screen, "Sign in with Discord",
+            $"On your phone or computer, open {page} and type this code. The game continues by itself once you've signed in " +
+            $"(the code lasts {code.Lasts.TotalMinutes:0} minutes).", shown,
+            ("Cancel", cancel.Cancel));
+    }
+
     /// <param name="used">After the Discord name became the player's.</param>
     public static void OfferName(Control screen, string? discordName, Action? used = null)
     {

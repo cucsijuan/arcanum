@@ -157,7 +157,7 @@ public partial class OnlineService
         var root = new JsonObject { ["port"] = _port, ["host"] = JsonNode.Parse(host.Save()) };
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
         File.WriteAllText(path + ".tmp", root.ToJsonString());
-        File.Move(path + ".tmp", path, overwrite: true);
+        Arcanum.Data.SafeFile.Replace(path + ".tmp", path);
     }
 
     /// <summary>Hosts the saved event again; players get back in with their seats.</summary>

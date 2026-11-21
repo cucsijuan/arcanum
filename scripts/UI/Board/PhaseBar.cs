@@ -11,7 +11,7 @@ namespace Arcanum.UI.Board;
 /// </summary>
 public partial class PhaseBar : PanelContainer
 {
-    private static readonly (Step Step, string Short, string Name)[] Steps =
+    internal static readonly (Step Step, string Short, string Name)[] Steps =
     {
         (Step.Upkeep, "UPK", "Upkeep"),
         (Step.Draw, "DRW", "Draw"),
@@ -26,13 +26,42 @@ public partial class PhaseBar : PanelContainer
     };
 
     /// <summary>When a stop happens, and how to act before combat damage.</summary>
-    private const string StopHint =
+    internal const string StopHint =
         "\nA stop gives you priority after that step's action happens (e.g. at BLK, once blockers are declared)." +
         "\nCombat damage is dealt as soon as DMG begins, so tricks before damage go at BLK." +
         "\nWhen your creatures are in combat, the game also stops at BLK if you can play something.";
 
-    private static readonly Color OwnStop = BoardStyle.Playable;
-    private static readonly Color OpponentStop = BoardStyle.Blocking;
+    internal static readonly Color OwnStop = BoardStyle.Playable;
+    internal static readonly Color OpponentStop = BoardStyle.Blocking;
+
+    /// <summary>
+    /// Touching the bar opens the stops panel instead of toggling its small markers (the compact board, on a touch
+    /// screen).
+    /// </summary>
+    public bool OpensPanel
+    {
+        get => _opensPanel;
+        set
+        {
+            _opensPanel = value;
+            foreach (var (opponent, _, _, own) in _chips.Values)
+                opponent.MouseFilter = own.MouseFilter = value ? MouseFilterEnum.Ignore : MouseFilterEnum.Stop;
+            _fullControl.MouseFilter = value ? MouseFilterEnum.Ignore : MouseFilterEnum.Stop;
+            TooltipText = value ? "Stops: touch to choose where the game stops for you" : "";
+        }
+    }
+
+    private bool _opensPanel;
+
+    /// <summary>The bar was touched or clicked while it <see cref="OpensPanel"/>.</summary>
+    public event Action? PanelRequested;
+
+    public override void _GuiInput(InputEvent @event)
+    {
+        if (!_opensPanel || @event is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left }) return;
+        PanelRequested?.Invoke();
+        AcceptEvent();
+    }
 
     private readonly Dictionary<Step, (Button Opponent, Panel Chip, Label Label, Button Own)> _chips = new();
     private readonly Button _fullControl = BoardStyle.MakeButton("FULL", 11, plain: true);

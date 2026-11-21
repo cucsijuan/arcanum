@@ -4,10 +4,39 @@ using Arcanum.Engine.Cards;
 namespace Arcanum.Data.CardData;
 
 /// <summary>A card known to the client: engine definition, support status and the imported data behind it.</summary>
-public sealed record CardEntry(CardDefinition Definition, CardSupport Support, CardRecord Record)
+/// <remarks>
+/// An entry read from the card cache makes its definition the first time it is asked for (on any thread, once), so
+/// startup doesn't have to make every card's.
+/// </remarks>
+public sealed class CardEntry
 {
-    public string Name => Definition.Name;
+    private readonly Lazy<CardDefinition> _definition;
+
+    public CardEntry(CardDefinition definition, CardSupport support, CardRecord record)
+    {
+        _definition = new Lazy<CardDefinition>(definition);
+        Name = definition.Name;
+        Support = support;
+        Record = record;
+    }
+
+    /// <param name="name">The definition's name (its first face's for an adventurer card).</param>
+    internal CardEntry(string name, Func<CardDefinition> definition, CardSupport support, CardRecord record)
+    {
+        _definition = new Lazy<CardDefinition>(definition, LazyThreadSafetyMode.ExecutionAndPublication);
+        Name = name;
+        Support = support;
+        Record = record;
+    }
+
+    public CardDefinition Definition => _definition.Value;
+    public CardSupport Support { get; }
+    public CardRecord Record { get; }
+    public string Name { get; }
     public int ManaValue => Definition.ManaCost.ManaValue;
+
+    /// <summary>Whether the definition has been made already.</summary>
+    internal bool IsMade => _definition.IsValueCreated;
 }
 
 /// <summary>What to look for in <see cref="CardDatabase.Search"/>. Empty fields don't filter.</summary>
@@ -41,15 +70,20 @@ public sealed class CardDatabase : ICardDatabase
 {
     private readonly Dictionary<string, CardEntry> _byName;
     private readonly List<CardEntry> _sorted;
-    private readonly Dictionary<string, List<CardRecord>> _tokensByName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<CardRecord>> _tokensByName;
 
     /// <param name="scripts">Card scripts by oracle id (from the content module).</param>
-    public CardDatabase(IEnumerable<CardRecord> records, IReadOnlyDictionary<string, Scripts.CardScript>? scripts = null)
+    /// <param name="progress">Called now and then with the records gone through and their total.</param>
+    public CardDatabase(IEnumerable<CardRecord> records, IReadOnlyDictionary<string, Scripts.CardScript>? scripts = null,
+        Action<int, int>? progress = null)
     {
         _byName = new Dictionary<string, CardEntry>(StringComparer.OrdinalIgnoreCase);
+        _tokensByName = new Dictionary<string, List<CardRecord>>(StringComparer.OrdinalIgnoreCase);
         var all = records as IReadOnlyList<CardRecord> ?? records.ToList();
+        int done = 0;
         foreach (var record in all)
         {
+            if (++done % 500 == 0) progress?.Invoke(done, all.Count);
             if (record.IsToken)
             {
                 if (!_tokensByName.TryGetValue(record.Name, out var tokens)) _tokensByName[record.Name] = tokens = new List<CardRecord>();
@@ -60,14 +94,15 @@ public sealed class CardDatabase : ICardDatabase
             var (definition, support) = CardFactory.Create(record, scripts?.GetValueOrDefault(record.OracleId));
             _byName[record.Name] = new CardEntry(definition, support, record);
         }
+        progress?.Invoke(all.Count, all.Count);
         // Meld pairs (rule 712.4): a card that melds knows the combined back face, which isn't a card of its own.
         foreach (var record in all.Where(r => r.Layout == "meld" && scripts?.GetValueOrDefault(r.OracleId)?.MeldInto is not null).ToList())
         {
             var script = scripts![record.OracleId];
             if (!_byName.TryGetValue(record.Name, out var melder) || !_byName.TryGetValue(script.MeldInto!, out var result)) continue;
             var back = result.Definition with { IsMeldResult = true };
-            _byName[result.Record.Name] = result with { Definition = back };
-            _byName[record.Name] = melder with { Definition = melder.Definition with { MeldResult = back } };
+            _byName[result.Record.Name] = new CardEntry(back, result.Support, result.Record);
+            _byName[record.Name] = new CardEntry(melder.Definition with { MeldResult = back }, melder.Support, melder.Record);
         }
         // A card with several faces whose name is its first face's (an adventurer card) is also found by that name.
         foreach (var entry in _byName.Values.Where(e => e.Name != e.Record.Name).ToList())
@@ -79,6 +114,62 @@ public sealed class CardDatabase : ICardDatabase
             .Select(g => new SetInfo(g.Key, g.First().SetName, g.Min(p => p.Released) ?? "", g.First().SetType, g.Count()))
             .OrderByDescending(s => s.Released, StringComparer.Ordinal).ThenBy(s => s.Name, StringComparer.Ordinal)
             .ToList();
+    }
+
+    /// <summary>A database put back together from <see cref="CardCache"/>, whose entries make their definitions when first asked.</summary>
+    internal CardDatabase(Dictionary<string, CardEntry> byName, List<CardEntry> sorted, Dictionary<string, List<CardRecord>> tokensByName,
+        IReadOnlyList<SetInfo> sets, IReadOnlyList<string> nonbasicLandNames, IReadOnlyList<string> creatureCardNames)
+    {
+        _byName = byName;
+        _sorted = sorted;
+        _tokensByName = tokensByName;
+        Sets = sets;
+        _nonbasicLandNames = nonbasicLandNames;
+        _creatureCardNames = creatureCardNames;
+    }
+
+    // What CardCache writes: the lookups exactly as built, so reading them back needs no definition.
+    internal IReadOnlyDictionary<string, CardEntry> ByName => _byName;
+    internal IReadOnlyList<CardEntry> Sorted => _sorted;
+    internal IReadOnlyDictionary<string, List<CardRecord>> TokensByName => _tokensByName;
+
+    /// <summary>
+    /// Makes every card's definition ahead of need, in the background, so a later search over all cards doesn't wait
+    /// for them. Entries made already are skipped; the work stops early when <paramref name="cancel"/> fires.
+    /// </summary>
+    /// <remarks>
+    /// It uses at most half the processors, so the game around it stays responsive: on a device with few of them
+    /// (a handheld console), one thread of the lowest priority does it.
+    /// </remarks>
+    public Task MakeDefinitionsAsync(CancellationToken cancel = default)
+    {
+        var entries = _byName.Values.Distinct().Where(e => !e.IsMade).ToList();
+        int workers = Environment.ProcessorCount / 2;
+        if (workers > 1)
+            return Task.Run(() =>
+            {
+                var options = new ParallelOptions { CancellationToken = cancel, MaxDegreeOfParallelism = workers };
+                try { Parallel.ForEach(entries, options, entry => _ = entry.Definition); }
+                catch (OperationCanceledException) { }
+            }, CancellationToken.None);
+        var done = new TaskCompletionSource();
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                foreach (var entry in entries)
+                {
+                    if (cancel.IsCancellationRequested) break;
+                    _ = entry.Definition;
+                }
+                done.SetResult();
+            }
+            catch (Exception e) { done.SetException(e); } // as the pool's version: the task faults, the game goes on
+        }) { IsBackground = true, Name = "Card definitions" };
+        try { thread.Priority = ThreadPriority.Lowest; }
+        catch (Exception e) when (e is PlatformNotSupportedException or ThreadStateException) { }
+        thread.Start();
+        return done.Task;
     }
 
     /// <summary>Every set any known card was printed in, newest first.</summary>
@@ -180,6 +271,9 @@ public sealed class CardDatabase : ICardDatabase
     public CardSupport SupportOf(string name) => _byName.TryGetValue(name, out var e) ? e.Support : CardSupport.Unsupported;
 
     public IEnumerable<CardDefinition> All => _sorted.Select(e => e.Definition);
+
+    /// <summary>Every card's record, in the order of <see cref="All"/>, without making its definition.</summary>
+    public IEnumerable<CardRecord> Records => _sorted.Select(e => e.Record);
 
     /// <summary>The module's curated search tags (null: none, so the values they decide aren't known).</summary>
     public SearchTags? SearchTags

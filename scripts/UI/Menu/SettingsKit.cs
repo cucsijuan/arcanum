@@ -282,9 +282,17 @@ public static partial class SettingsKit
             control.OffsetLeft = -ControlWidth - 8; control.OffsetRight = -8;
             control.GrowVertical = GrowDirection.Both;
             AddChild(control);
-            // Hovering the control also lights its row.
+            // Hovering the control, or the controller's focus on it, also lights its row.
             control.MouseEntered += Light;
             MouseEntered += Light;
+            LightOnFocus(control);
+        }
+
+        private void LightOnFocus(Control control)
+        {
+            control.FocusEntered += Light;
+            foreach (var child in control.GetChildren())
+                if (child is Control inner) LightOnFocus(inner);
         }
 
         private void Light()

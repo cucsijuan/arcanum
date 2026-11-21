@@ -121,6 +121,9 @@ public partial class GameBoard : Control
         public required PriorityDecision Decision { get; init; }
         public required PlayerAction Action { get; init; }
         public bool Dragging { get; set; }
+
+        /// <summary>Let go without moving, the card is played (a click); a first touch only picks it, so only sliding it out plays it.</summary>
+        public bool PlaysOnRelease { get; init; } = true;
     }
 
     private readonly Label _loading = BoardStyle.MakeLabel("", 22);
@@ -213,6 +216,9 @@ public partial class GameBoard : Control
         // ARCANUM_MODE=<id>: played with that game mode (quick testing of plugins without the menus).
         var mode = App.Instance.Formats.FirstOrDefault(f => f.Id == OS.GetEnvironment("ARCANUM_MODE"))?.Mode;
         _newSession = MatchFactory(seats, mode?.Format.StartingLife ?? 20, commander: false, setup, mode);
+        // ARCANUM_CAREER_TABLE=<n>: at the career's n-th table, with two picture playmats (testing the table's look).
+        if (CareerService.AnyTable(Random.Shared) is { } table && OS.GetEnvironment("ARCANUM_CAREER_TABLE").Length > 0)
+            _match = new MatchSetup(seats, mode?.Format.StartingLife ?? 20) { Table = table, TableMats = new[] { "red-dragon", "elves" } };
     }
 
     /// <summary>
@@ -383,6 +389,11 @@ public partial class GameBoard : Control
     {
         _session?.Leave();
         _session = session;
+        // A game played here knows every card in it: their pictures download ahead, this screen's own cards first.
+        if (session is GameSession { Game: var game })
+            CardImageCache.Prefetch(game.State.Cards.Values
+                .OrderBy(c => c.Owner == Bottom ? 0 : 1)
+                .SelectMany(c => CardImageCache.KeysFor(c.PrintedDefinition)));
         _lost.Clear();
         _announcer.Clear();
         _holdUntilMs = 0;
@@ -392,6 +403,7 @@ public partial class GameBoard : Control
         _session.Failed += e => ShowGameOver($"Engine error:\n{e.Message}");
         _session.EventRaised += OnGameEvent;
         _phaseBar.Bind(session.Policy);
+        _stopsPanel.Bind(session.Policy);
         _log.Clear();
         _unreadLog = 0;
         UpdateLogBadge();
@@ -448,7 +460,7 @@ public partial class GameBoard : Control
         _mulligan.ZIndex = BoardStyle.Z.Mulligan;
         _mulligan.CardClicked += OnCardClicked;
         _mulligan.CardHoverStarted += ShowPreview;
-        _mulligan.CardHoverEnded += HidePreview;
+        _mulligan.CardHoverEnded += HoverEnded;
         AddChild(_mulligan);
         _announcer.ZIndex = BoardStyle.Z.Announcer;
         _announcer.ArrowsChanged += arrows => _arrows.SetOverlayArrows(arrows);
@@ -512,7 +524,7 @@ public partial class GameBoard : Control
         _stackView.OffsetLeft = 120; _stackView.OffsetTop = 120;
         _stackView.ZIndex = BoardStyle.Z.Stack;
         _stackView.CardHoverStarted += ShowPreview;
-        _stackView.CardHoverEnded += HidePreview;
+        _stackView.CardHoverEnded += HoverEnded;
         _stackView.ItemClicked += OnStackItemClicked;
         AddChild(_stackView);
 
@@ -539,6 +551,8 @@ public partial class GameBoard : Control
         actionBox.AddChild(_actionButtons);
         _actionPanel.AddChild(actionBox);
         AddChild(_actionPanel);
+        // Shown again as it was (after an announcement, say): its answer takes the focus again.
+        Arcanum.UI.PadFocus.OfferWhenShown(_actionPanel, () => _primaryAction is { Disabled: false } primary ? primary : null);
 
         // Bottom-left log button with unread badge.
         var logButton = BoardStyle.MakeButton("Log", 13, compact: true);
@@ -584,6 +598,7 @@ public partial class GameBoard : Control
         AddChild(_previewHint);
         _status.ZIndex = BoardStyle.Z.Preview;
         AddChild(_status);
+        BuildCompactControls();
 
         // Game over overlay.
         _gameOver.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -620,6 +635,7 @@ public partial class GameBoard : Control
         overBox.AddChild(toMenu);
         _gameOver.AddChild(overBox);
         AddChild(_gameOver);
+        Arcanum.UI.PadFocus.OfferWhenShown(_gameOver);
 
         UpdateLogBadge();
     }
@@ -659,6 +675,7 @@ public partial class GameBoard : Control
         panel.AddChild(box);
         _menu.AddChild(panel);
         AddChild(_menu);
+        Arcanum.UI.PadFocus.OfferWhenShown(_menu);
     }
 
     // ---------------------------------------------------------------- refresh
@@ -748,8 +765,8 @@ public partial class GameBoard : Control
             area.StackMark = StackMark;
             area.ZoneClicked += OpenZone;
             area.PlayerClicked += OnPlayerClicked;
-            area.CardHoverStarted += ShowPreview;
-            area.CardHoverEnded += HidePreview;
+            area.CardHoverStarted += HoverStarted;
+            area.CardHoverEnded += HoverEnded;
             area.GroupLiftChanged += OnGroupLifted;
             AddChild(area);
             MoveChild(area, 1 + i); // above the background, below arrows and overlays
@@ -790,6 +807,7 @@ public partial class GameBoard : Control
         {
             foreach (var mat in _tableMats) mat.Visible = false;
             _tournamentMat.Visible = false;
+            foreach (var area in _areas) area.OpenEdge = false;
             return;
         }
         var table = _match!.Table!;
@@ -807,6 +825,11 @@ public partial class GameBoard : Control
         }
         if (_tablePicture.Texture is null && ResourceLoader.Exists(table)) _tablePicture.Texture = GD.Load<Texture2D>(table);
         var json = System.IO.Path.ChangeExtension(table, ".json");
+        if (_compact)
+        {
+            LayoutCompactTable(json);
+            return;
+        }
         float height = Size.Y, divider = TableDivider * height;
         var shared = _match.TournamentMat;
         var span = new Rect2();
@@ -845,9 +868,10 @@ public partial class GameBoard : Control
 
     private void Refresh()
     {
+        var decision = _session.CurrentDecision;
+        PlaceAreas(_session.ViewFor(Bottom), decision);
         ApplyPlaymats(); // an opponent's playmat can become known after the table was laid out
         LayoutTable();
-        var decision = _session.CurrentDecision;
         if (decision is not null && !ReferenceEquals(decision, _lastDecision))
         {
             _selected.Clear();
@@ -912,6 +936,9 @@ public partial class GameBoard : Control
         _phaseBar.SetCurrentStep(view.TurnNumber == 0 ? null : view.Step);
         _phaseBar.SetActivePlayer(view.TurnNumber == 0 ? null : view.Players[view.ActivePlayer.Value].Name, view.ActivePlayer == Bottom,
             BoardStyle.PlayerColor(view.ActivePlayer.Value));
+        _stepTrack.SetCurrentStep(view.TurnNumber == 0 ? null : view.Step);
+        _stepTrack.SetActivePlayer(view.TurnNumber == 0 ? null : view.Players[view.ActivePlayer.Value].Name, view.ActivePlayer == Bottom,
+            BoardStyle.PlayerColor(view.ActivePlayer.Value));
         _stackView.Refresh(view.Stack);
         _undoButton.Disabled = !_session.CanUndo || _match?.Event is not null; // no take-backs in event games
 
@@ -943,6 +970,7 @@ public partial class GameBoard : Control
             ChoicePiles(decision).Count > 1 ? "Back" : "Close");
         UpdateArrows(view, decision);
         BuildActionPanel(view, decision);
+        if (_actionPanel.Visible) Arcanum.UI.PadFocus.Offer(_actionPanel, _primaryAction is { Disabled: false } primary ? primary : null);
         UpdateMulliganView(decision);
         if (_autoplay && decision is not null)
         {
@@ -1273,8 +1301,9 @@ public partial class GameBoard : Control
     {
         foreach (var child in _actionButtons.GetChildren()) child.QueueFree();
         foreach (var child in _actionExtra.GetChildren()) child.QueueFree();
+        _primaryAction = null;
         _actionExtra.Visible = false;
-        _actionPanel.Visible = decision is not null && !view.IsGameOver;
+        _actionPanel.Visible = decision is not null && !view.IsGameOver && !LargeMulligan(decision);
         if (decision is null) return;
 
         string who = view.Players[decision.Player.Value].Name;
@@ -1823,14 +1852,19 @@ public partial class GameBoard : Control
             if (_session.CurrentDecision is null) _actionPanel.Visible = false; // wait for the engine's next question
         };
         _actionButtons.AddChild(button);
+        if (primary) _primaryAction = button;
         return button;
     }
+
+    /// <summary>The prompt's default answer (where a controller's focus starts).</summary>
+    private Button? _primaryAction;
 
     // ---------------------------------------------------------------- input
 
     public override void _Process(double delta)
     {
         _session?.Poll();
+        if (_session is not null) CheckScreen(delta);
         if (_online is not null)
         {
             int left = _online.DecisionSecondsLeft;
@@ -1849,6 +1883,7 @@ public partial class GameBoard : Control
 
     public override void _Input(InputEvent @event)
     {
+        TrackPointer(@event);
         if (_drag is not { } drag) return;
         switch (@event)
         {
@@ -1866,7 +1901,7 @@ public partial class GameBoard : Control
             case InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false } release:
                 _drag = null;
                 drag.Node.IsDragging = false;
-                bool cancelled = drag.Dragging && drag.Area.IsOverHand(release.GlobalPosition);
+                bool cancelled = drag.Dragging ? drag.Area.IsOverHand(release.GlobalPosition) : !drag.PlaysOnRelease;
                 if (!cancelled && !drag.Decision.IsAnswered) Choose(drag.Decision, drag.Action);
                 else Refresh(); // dropped back onto the hand: snap into place
                 break;
@@ -1878,6 +1913,15 @@ public partial class GameBoard : Control
         if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
         {
             _menu.Visible = !_menu.Visible;
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        // The controller's top face button opens the stops (and closes them).
+        if (@event is InputEventJoypadButton { Pressed: true, ButtonIndex: JoyButton.Y })
+        {
+            if (_stopsPanel.Visible) _stopsPanel.Close();
+            else _stopsPanel.Open();
             GetViewport().SetInputAsHandled();
             return;
         }
@@ -1932,7 +1976,7 @@ public partial class GameBoard : Control
         if (_zoneViewer.GetParent() is not null) return;
         _zoneViewer.CardClicked += OnZoneCardClicked;
         _zoneViewer.CardHoverStarted += ShowPreview;
-        _zoneViewer.CardHoverEnded += HidePreview;
+        _zoneViewer.CardHoverEnded += HoverEnded;
         AddChild(_zoneViewer);
     }
 
@@ -2174,6 +2218,7 @@ public partial class GameBoard : Control
 
     private void OnCardClicked(CardNode node)
     {
+        if (_touch && !TouchActs(node)) return;
         var id = node.Id;
         switch (_session.CurrentDecision)
         {
@@ -2400,6 +2445,7 @@ public partial class GameBoard : Control
         if (decision is ChooseCardsDecision choice)
         {
             var who = PlayerName(choice.Player);
+            _mulligan.Large = false; // its answers stay in the action panel
             _mulligan.ShowHand(choice.Request.Options, $"{who}: {choice.Request.Prompt}", _selected, selectable: true);
             return;
         }
@@ -2419,8 +2465,36 @@ public partial class GameBoard : Control
             SelectCardsDecision s => $"{name}: choose {s.Count} card{(s.Count > 1 ? "s" : "")} to put on the bottom",
             _ => name,
         };
+        // The compact board: the whole screen, with the answers under the hand (the action panel is put away).
+        _mulligan.Large = _compact;
+        if (_compact)
+            _mulligan.SetAnswers(decision switch
+            {
+                MulliganDecision m => new (string, Action, bool, bool)[]
+                {
+                    ("Mulligan", Answer(() => m.Answer(false)), false, true),
+                    ("Keep", Answer(() => m.Answer(true)), true, true),
+                },
+                SelectCardsDecision s => new (string, Action, bool, bool)[]
+                {
+                    ($"Confirm ({_selected.Count}/{s.Count})", Answer(() => s.Answer(_selected.ToList())), true, _selected.Count == s.Count),
+                },
+                _ => Array.Empty<(string, Action, bool, bool)>(),
+            });
         _mulligan.ShowHand(view.Players[decision.Player.Value].Hand, title, _selected, selectable: bottom);
     }
+
+    /// <summary>An answer to the current decision from a button of the large mulligan view (as the action panel's buttons do).</summary>
+    private Action Answer(Action answer) => () =>
+    {
+        if (_session.CurrentDecision is null) return;
+        answer();
+        if (_session.CurrentDecision is null) _mulligan.SetAnswers(Array.Empty<(string, Action, bool, bool)>());
+    };
+
+    /// <summary>The compact board answers a mulligan in the large mulligan view, not in the action panel.</summary>
+    private bool LargeMulligan(Decision? decision) =>
+        _compact && decision is MulliganDecision or SelectCardsDecision { Reason: SelectCardsReason.MulliganBottom };
 
     /// <summary>The pick the single pile was last opened for, so it opens by itself only once.</summary>
     private (Decision, int)? _pileOpenedFor;

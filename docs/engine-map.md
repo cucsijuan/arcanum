@@ -25,7 +25,27 @@ Game content (scripts, sets, decks) lives in the content module repository, not 
    isn't fully supported. Keywords a script must spell out are in `ScriptedKeywords`; derived ones in `SupportedKeywords`. Flavor and
    ability words before " — " are labels and are stripped before keywords are derived.
 3. `CardDatabase` (`CardData/CardDatabase.cs`) holds every card by name, links pairs that need each other (meld), and lists what can
-   be searched, collected and built with.
+   be searched, collected and built with. The client gets it from the card cache when there is one (see below).
+
+## Card cache
+
+`CardCache` (`Arcanum.Data/CardData/CardCache.cs`) keeps the built `CardDatabase` on disk, as `user://card_data/<module id>/cards.v14-<module version>.cache`,
+next to the compact card file. It stores the records (each string once), the lookups exactly as built (by name, including the
+adventurer first-face aliases, the sorted order, tokens by name, meld links), each card's support and name, the sets, and the
+nonbasic-land and creature name lists. Definitions are not stored.
+
+- **Key** (`CardCache.Key`): a cache is used only when the format, the builds of `Arcanum.Data` and `Arcanum.Engine` (their module
+  version ids), the compact card file (name, size, last write) and every `scripts/*.json` file (name, size, last write; contents instead of last write where every file has the same time, as
+  in a read-only image stamped with its mount time) match the
+  ones it was written from. Any change makes the cache read as missing.
+- **Rebuild** (`ContentLoader`, `scripts/Client/ContentLoader.cs`): a missing cache makes every card, shows "Preparing cards (once
+  after an install or update)… N%", writes the cache and deletes older `cards*.cache` files. Writing goes through a temporary file.
+- **Lazy definitions**: a `CardEntry` read from the cache makes its `Definition` the first time it is asked for (once, thread-safe).
+  `CardDatabase.MakeDefinitionsAsync` makes the rest on the thread pool after loading. `ContentModule.ScriptReader()` parses one
+  card's script by oracle id for this; it gives the same result as `ContentModule.LoadScripts`.
+- **Keeping it right**: a new field on `CardRecord`, `Printing`, `CardFaceRecord`, `RelatedToken` or `PrintingPrices` needs
+  `CardCache`'s writer and reader updated. `CardCacheTests.EveryRecordFieldIsKept` fails until it is. A change to the file's
+  layout (what the writer and reader store) needs the cache's `Format` number bumped, so older files read as missing.
 
 ## Scripts
 
@@ -233,6 +253,48 @@ overlapping patterns resolve by position), so add a new effect record as a `case
 cases, not at the end of a file. Helpers that cases call go in `Game.Effects.Helpers.cs`, counter placement in `Game.Counters.cs`,
 and quantities in `Game.Quantities.cs`.
 
+## Board view
+
+The board shows one table at a time (compact) or every table at once (full). `Settings.BoardView` is "auto", "compact" or "full";
+"auto" is compact on a screen under 9 inches (diagonal, from its pixel size and density). In the compact view a side's cards scale
+with its height, and the career table pictures are not drawn (`GameBoard.AtTable` is false).
+
+| Piece | Where |
+|-------|-------|
+| Setting, `CompactBoard`, `SmallScreen`, `CheckScreen`; small screens draw the interface `SmallScreenScale` (1.5) bigger | `scripts/Client/Settings.cs`; the "Board view" row in `scripts/UI/Menu/SettingsScreen.cs`; `App._Process` (`scripts/Client/App.cs`) |
+| Layout of the shown table and the strip of this screen's cards (`PlaceAreas`, run first in `Refresh`; `StripDivider` 0.66, `StripWithHandDivider` 0.5; `ScaleFor`, `UsualSideHeight`); the stack (`_stackView`) sits near the top, over the table shown large | `scripts/UI/Board/GameBoard.Compact.cs` |
+| Hand button, and the hand opening by itself for a decision about cards in it | `GameBoard.Compact.cs` (`_handButton`, `_handOpen`, `handWanted`) |
+| The list of players: life buttons pick attack and target choices; name buttons show a table, a second press follows the turn again | `GameBoard.Compact.cs` (`RefreshPlayerList`, `_viewed`); a new turn resets the view (`_compactTurn`) |
+| Re-checking the view every 0.5 s (a console taken out of its dock) | `GameBoard.Compact.cs` (`CheckScreen`), called from `GameBoard._Process` |
+| Per-side hand, strip and pile settings (`RightInset`, `HideHand`, `CardScale`; piles never below `PileScale` 0.8) | `scripts/UI/Board/PlayerArea.cs` |
+| Banner of the announcer centred at 0.27 of the board's height | `scripts/UI/Board/Announcer.cs` |
+
+## Touch input
+
+A touch is detected from `InputEventScreenTouch`; a real mouse motion switches back (`TrackPointer`, from `GameBoard._Input`).
+The first touch on a card picks it and shows the preview. A touch on the picked card again does what a click does, and so does every
+touch after that while it stays picked. A hand card can be slid out to play it after its first touch (`DragState.PlaysOnRelease`
+false). A touch elsewhere puts the preview away. Hover ends do not hide the preview on touch.
+
+| Piece | Where |
+|-------|-------|
+| `_touch`, `TouchActs`, `PutPreviewAwayIfMissed`, `HoverEnded` | `scripts/UI/Board/GameBoard.Touch.cs`; `OnCardClicked` and `_Input` in `scripts/UI/Board/GameBoard.cs` |
+| Slide-out play (`DragState`, `PlaysOnRelease`) | `scripts/UI/Board/GameBoard.cs` |
+| Finger slide that scrolls (14 px deadzone, glide after release, the press under it cancelled), and the right stick scrolling (focus, else the control under the pointer, else the front-most list) | `scripts/UI/ScrollGestures.cs`; added as a child of `App` in `App._Ready` (`scripts/Client/App.cs`) |
+| Controller pointer: the left stick moves a gold dot that sends mouse events (`ui_accept` left click, `ui_cancel` right click while it shows; fades after 4 s unused; a touch or real mouse fades it at once) | `scripts/UI/VirtualPointer.cs`; added as a child of `App` in `App._Ready` (`scripts/Client/App.cs`) |
+
+## Stops panel
+
+The stops panel sets the stops per step, for opponents' turns and for this player's own turn, and full control. It opens when the
+phase bar is touched in the compact view, or with the controller's top face button (`JoyButton.Y`). It is bound to the session's
+`AutoPassPolicy` and works with the directional pad; it is drawn smaller when the board is too short for it.
+
+| Piece | Where |
+|-------|-------|
+| Panel: toggles, `Bind`, `Open`, `Close`, focus | `scripts/UI/Board/StopsPanel.cs` |
+| Phase bar: `OpensPanel` (touch opens the panel instead of the small markers), `PanelRequested`; the shared `Steps`, `StopHint`, `OwnStop`, `OpponentStop` | `scripts/UI/Board/PhaseBar.cs` |
+| Controller button | `scripts/UI/Board/GameBoard.cs` (`_UnhandledInput`) |
+
 ## Commander suggestions
 
 The deck builder and the career deck desk can show the community statistics of the chosen commander. These are not rules and the engine never reads them.
@@ -337,12 +399,17 @@ service seals a career's checked actions, and online career events run through i
 | Service: online tables, host reports, results, leaderboards (SQLite) | `server/Arcanum.CareerService/EventDesk.cs` |
 | Service: checked careers (SQLite) | `server/Arcanum.CareerService/CareerStore.cs` |
 | Service: EOS Connect ID token check | `server/Arcanum.CareerService/EosIdentity.cs` |
+| Service: device sign-in links (`/auth/link`, `/link`, `/link/callback`) | `server/Arcanum.CareerService/DiscordLinks.cs` |
+| Service: cloud files (`/cloud/{name}`, `CloudFile`, `SaveCloudFile`) | `server/Arcanum.CareerService/CareerStore.cs` |
 | Service: career world per content version, built at start | `server/Arcanum.CareerService/CareerWorlds.cs` |
 | Service: systemd unit, Caddy, deploy scripts | `server/Arcanum.CareerService/deploy/` |
 | Client: sync and checked status | `scripts/Client/CareerService.Check.cs` |
 | Client: check-in, table, result, leaderboards | `scripts/Client/CareerService.Online.cs` |
 | Client: the table's unlisted lobby, started when its people are in | `scripts/Client/OnlineService.CareerTable.cs` |
-| Client: EOS ID token (`IdTokenAsync`, `IIdentityTokens`) | `scripts/Client/OnlineService.Directory.cs`, `scripts/Client/Eos/EosOnlineServices.cs` |
+| Client: EOS ID token (`IdTokenAsync`, `IIdentityTokens`) | `scripts/Client/OnlineService.Directory.cs`, `scripts/Client/Eos/EosOnlineServices.cs`; without the services' library, `scripts/Client/Eos/EosWebIdentity.cs` |
+| Client: Discord sign-in, browser or device code (`DiscordSignIn.LinkAsync`, `Account.HasBrowser`, `AccountPrompt.ShowCode`) | `src/Arcanum.Net/Services/DiscordSignIn.cs`, `scripts/Client/Account.cs`, `scripts/UI/Menu/AccountPrompt.cs` |
+| Client: cloud files on the career service (`CloudAsync`) | `scripts/Client/ServiceCloud.cs`, `scripts/Client/OnlineService.Directory.cs` |
+| Client: file times where the file system can't set them (`file-times.json`) | `scripts/Client/FileTimes.cs` |
 | Client: online event screen and standings | `scripts/UI/Career/EventScreen.Online.cs`, `scripts/UI/Career/CareerScreen.Standings.cs` |
 | Tests | `tests/Arcanum.Data.Tests/CareerSealTests.cs`, `tests/Arcanum.Data.Tests/OnlineEventsTests.cs` |
 

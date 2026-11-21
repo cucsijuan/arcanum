@@ -331,13 +331,17 @@ public static class OracleJsonl
     }
 
     /// <summary>Reads records written by <see cref="WriteCompact"/>.</summary>
-    public static List<CardRecord> ReadCompact(Stream source)
+    /// <param name="progress">Called now and then with how much of <paramref name="source"/> has been read (0 to 1), when its length is known.</param>
+    public static List<CardRecord> ReadCompact(Stream source, Action<double>? progress = null)
     {
         var records = new List<CardRecord>();
+        long length = source.CanSeek ? source.Length : 0;
         using var reader = new StreamReader(new GZipStream(source, CompressionMode.Decompress), Encoding.UTF8);
         string? line;
+        int lines = 0;
         while ((line = reader.ReadLine()) is not null)
         {
+            if (progress is not null && length > 0 && ++lines % 500 == 0) progress((double)source.Position / length);
             if (line.Length == 0) continue;
             using var doc = JsonDocument.Parse(line);
             if (FromSource(doc.RootElement) is { } record) records.Add(record);

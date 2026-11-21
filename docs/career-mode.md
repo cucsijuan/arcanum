@@ -220,13 +220,23 @@ shows them and the pointer's position; Ctrl+click copies a point).
   which serves `/career/season/<module id>.json` as a static file. The game downloads it when it changed (at start;
   the screens refresh when it arrives) and keeps it; offline it uses the last one, or the module's own.
   `schemaVersion`: a file newer than the game understands is ignored (the last one stays).
-- **Player Data Storage** (per-user files): cloud copy of the career, so it survives reinstalls and moves between
-  devices with the player's account (see *Accounts*). The career's folder (save, career decks, an event in progress)
-  goes up as one zip (`career.zip`) a few seconds after each change and when the career opens. The journals decide:
-  the one that continues the other wins (a new device takes the cloud's); with the same journal the newer files win;
-  journals that went apart ask the player which to keep, and the other is kept as a backup zip in the career's folder.
-  Ending a career ends the cloud's too. Needs the product's encryption key (`EOS_ENCRYPTION_KEY`) and a client policy
-  with Player Data Storage; without a Discord sign-in the career stays on the device.
+- **Cloud files** (kept by the career service, for every device): cloud copy of the career, so it survives reinstalls
+  and moves between devices with the player's account (see *Accounts*). The career's folder (save, career decks, an
+  event in progress) goes up as one zip (`career.zip`) a few seconds after each change and when the career opens. The
+  journals decide: the one that continues the other wins (a new device takes the cloud's); with the same journal the
+  newer files win; journals that went apart ask the player which to keep, and the other is kept as a backup zip in the
+  career's folder. Ending a career ends the cloud's too.
+  - `GET /cloud/{name}` and `PUT /cloud/{name}` take the EOS ID token as the bearer token. A name is lower case letters,
+    digits, dots, dashes and underscores (up to 64 characters); a file is at most 1 MB and a player keeps 8 (`413` too
+    large, `409` with `too_many_files`). The files are in the `cloud` table (`CareerStore.cs`), as the game sends them.
+  - Client: `scripts/Client/ServiceCloud.cs`; `OnlineService.CloudAsync` returns it once the player has signed in with
+    Discord. A file the service doesn't have is copied once from the online services' Player Data Storage, where their
+    library runs (PC). Writes go only to the service.
+  - Without a Discord sign-in the career stays on the device.
+- **File times** (`scripts/Client/FileTimes.cs`): where the file system can't set a file's time (a console's memory
+  card), `file-times.json` in the career's folder keeps the time the game meant for it. The time counts only while the
+  file keeps the time the file system gave it, so a file written again reads with its own. The season download and the
+  career's cloud sync use it.
 - **Leaderboards:** the career service's rank and this month's points, from online matches (see *Scheduled online
   events*). Per format, event wins and season standings aren't built yet (C6).
 - **Server time:** dailies and event windows use the service's time when online (learned from the season download's
@@ -272,6 +282,25 @@ across devices and reinstalls.
     new Discord access token and logs in again without asking the player.
   - Confirmed (2026-10-11): EOS accepts the access token of the plain OAuth2 flow (the SDK documents the one the
     Discord SDK returns; both are OAuth2 access tokens of the same Discord application).
+- **Device sign-in (no browser):** where the game can't open a browser (`Account.HasBrowser` is false: systems other
+  than Windows, macOS, Linux and the BSDs), it shows a code instead of opening Discord.
+  - `POST /auth/link` on the career service makes the code (8 characters, shown as `XXXX-XXXX`, without 0, O, 1, I or L),
+    the device's own token and a lifetime of 10 minutes. The device asks `POST /auth/link/poll` with its token every 3
+    seconds: `202` while the player is still signing in, `200` with the tokens (once), `401` when Discord refused, `404`
+    when the code expired.
+  - The player types the code on the link page (`GET /link`, from a phone or computer). `GET /link/go` sends them to
+    Discord's authorization page, and Discord returns to `GET /link/callback`, which exchanges the code with the client
+    secret, as the browser sign-in does. Links live in the service's memory only.
+  - Discord application: the link callback (`Discord:LinkRedirectUri` in `appsettings.json`) must be added to its OAuth2
+    redirects, next to the loopback address. `Discord:LinkPage` is the page the player types the code on.
+  - Client: `DiscordSignIn.LinkAsync` (`src/Arcanum.Net/Services/DiscordSignIn.cs`); `Account.SignInWithDiscordAsync`
+    takes it without a browser; `AccountPrompt.ShowCode` shows the code until the sign-in ends or Cancel.
+- **Identity where the online services' library isn't in the build** (systems the library doesn't run on):
+  `EosWebIdentity` (`scripts/Client/Eos/EosWebIdentity.cs`, used by `OnlineService.IdTokenAsync`) gets the ID token from
+  the services' web token endpoint. It exchanges the Discord access token (`external_auth`, `discord_access_token`) for
+  the identity the library would sign in to, with the product's client id and secret from the build's keys. The token is
+  kept until 5 minutes before it expires. A refusal with 400, 401 or 500 makes the game drop the Discord token, so the
+  next try asks Discord again.
 - **More providers later: Epic, Google** (`Epic` / `EpicIdToken` through Epic Account Services, which needs Epic's
   approval of the product; `GoogleIdToken`). Apple (`AppleIdToken`) becomes mandatory when the game ships on iOS with
   other sign-in options.
@@ -369,7 +398,7 @@ Built (C5) for draft events and constructed events (not Commander) with an `onli
 
 The game is open source and written in C#, so the client can be read and modified. Two consequences:
 
-- **Player Data Storage alone doesn't stop cheating.** The client writes its own files there with its own sign-in; a
+- **Cloud storage alone doesn't stop cheating.** The client writes its own cloud files with its own ID token; a
   modified client writes whatever it wants. It is a good *place* for the save (cloud copy, survives reinstalls), not an
   authority.
 - **Encrypting or signing the save on the client doesn't either.** Whatever key the client uses ships inside the build
@@ -389,7 +418,7 @@ developer runs. That is the career service (built in C5, below).
   (`CareerSeals.PublicKeys`, key id `k1`), so it can tell a genuine seal from a made-up one. A career is *checked* when
   its seal covers the whole journal.
 - **Profile = seal + journal.** The service keeps the career it checked (journal, the state it gives, the seal). A new
-  device or a career that went apart takes that profile (`GET /career/profile`). Player Data Storage holds the game's
+  device or a career that went apart takes that profile (`GET /career/profile`). The cloud files hold the game's
   copy, which is not trusted on its own.
 - **Everything random is derived, not stored.** Booster contents, store stock, opponents and offers come from
   `hash(profile seed, day, counter)`. The service recomputes them, so a journal can't claim a different booster.
@@ -443,15 +472,15 @@ career rules library as the game, without a second copy in another language).
 |---|---|
 | Machine | Always Free compute VM `VM.Standard.E2.1.Micro` (x86, 1 GB RAM + 2 GB swap; Ampere had no capacity), Ubuntu 24.04; ASP.NET runtime (`aspnetcore-runtime-8.0`) from Ubuntu's packages, service built for `linux-x64`; about 420 MB in use with the career world warm |
 | Service | ASP.NET minimal API in its own project (e.g. `server/Arcanum.CareerService`), referencing `Arcanum.Data` for the career rules |
-| Endpoints | `POST /career/sync` (actions → checked and sealed, or refused), `GET /career/profile` (the checked career, for a new install); online events: `POST /events/checkin`, `GET /events/table` (the player's table for a start, seated on first ask after it), `GET /events/tables/{id}`, `POST /events/tables/{id}/code` (host's lobby code), `POST /events/tables/{id}/report` (host's report of the table), `POST /events/tables/{id}/result` (each person's own result), `GET /leaderboard/{rank\|month}`; `POST /auth/discord` (OAuth code → Discord tokens, keeps the client secret), `POST /auth/discord/refresh`, `GET /health` (also the service's clock). The season files are static files, `GET /career/season/<module id>.json`, served by Caddy |
+| Endpoints | `POST /career/sync` (actions → checked and sealed, or refused), `GET /career/profile` (the checked career, for a new install); online events: `POST /events/checkin`, `GET /events/table` (the player's table for a start, seated on first ask after it), `GET /events/tables/{id}`, `POST /events/tables/{id}/code` (host's lobby code), `POST /events/tables/{id}/report` (host's report of the table), `POST /events/tables/{id}/result` (each person's own result), `GET /leaderboard/{rank\|month}`; `POST /auth/discord` (OAuth code → Discord tokens, keeps the client secret), `POST /auth/discord/refresh`, `POST /auth/link` and `POST /auth/link/poll`, `GET /link`, `GET /link/go`, `GET /link/callback` (device sign-in, see *Accounts*), `GET /cloud/{name}` and `PUT /cloud/{name}` (cloud files), `GET /health` (also the service's clock). The season files are static files, `GET /career/season/<module id>.json`, served by Caddy |
 | Auth | EOS Connect ID token in each request (`Authorization: Bearer`), RS256, keys from EOS's JWKS (fetched again at most once a minute for an unknown key id); expiry, issuer, product and deployment ids (`Eos` in `appsettings.json`) are checked; the player id is the token's subject, never from the body |
-| Data | SQLite `career.db` in the service's state folder (`/var/lib/arcanum-career`): `careers` (per player: the checked career, journal, state and seal, compressed), `refused` (the reason of each refused sync; no journal), and for online events `checkins`, `seated`, `tables` (each table and its host's report) and `results` (each person's own result) |
+| Data | SQLite `career.db` in the service's state folder (`/var/lib/arcanum-career`): `careers` (per player: the checked career, journal, state and seal, compressed), `refused` (the reason of each refused sync; no journal), `cloud` (each player's cloud files), and for online events `checkins`, `seated`, `tables` (each table and its host's report) and `results` (each person's own result) |
 | Keys | ECDSA P-256 sealing key, `/etc/arcanum-career/seal-key.pem`, readable by root only, made once by `setup.sh` on the machine and never copied off it; systemd gives the service a copy (`LoadCredential`). Its public key (base64, SubjectPublicKeyInfo) is in `CareerSeals.PublicKeys` under the key id `k1`, which each seal names, so a key can be rotated (a retired key stays listed) |
 | HTTPS | Reverse proxy with automatic certificates (Caddy, `deploy/Caddyfile`) on a domain or free subdomain (`arcanum-career.duckdns.org`); the season files are served from `/srv/arcanum-career`, everything else goes to the service on `127.0.0.1:5080`; only ports 80/443 open in the VM's security list and firewall |
 | Running | systemd unit `arcanum-career.service` with restart (`server/Arcanum.CareerService/deploy`): `setup.sh` once on the machine (packages, user, sealing key, Caddy, `arcanum-set-game` in `/usr/local/sbin`); `deploy-user-setup.sh <public key file> [user@host]` once, from a computer with full access, creates the `deploy` user the release workflow uses (see Notes); `deploy.sh [user@host]` takes a backup first (when backups are set up), builds and copies the service over SSH, writes the game version it checks (`Career__Game`, from `project.godot`; when the version changes, also `Career__PreviousGame` and `Career__Since`) and restarts it; `publish-content.sh <module dir>` puts a content module version on the machine; `publish-season.sh` checks and puts a season file; `backup-setup.sh <puller public key file> [user@host]` sets up the backups (see *Backups*). Secrets in `/etc/arcanum-career/secrets.env` on the machine only (`Discord__ClientSecret=…`). The release workflow runs `deploy-service.yml` (`deploy.sh` as user `deploy`) after a tag's release is published; the deploy key and host key are secrets of the `career-service` environment, which only tags `v*` may use |
 | Content and world | `/var/lib/arcanum-career/content/<module id>/<version>/` holds the module and the game's compact card data (`cards.jsonl.gz`). `CareerWorlds` builds the career world of the newest content at start and every 5 minutes (so the first sync doesn't wait), keeps one world (rebuilt when the season file changes) |
 | Backups | `career-backup` (`deploy/career-backup.sh`, run daily at 04:00 UTC by `arcanum-backup.timer` as user `arcanum`) copies `career.db` with `sqlite3 .backup` (the database is in WAL mode, so a plain file copy is unsafe), checks it with `PRAGMA integrity_check` and writes a gzipped copy `career-YYYY-MM-DD-HHMM.db.gz` to `/var/lib/arcanum-career/backups`; the machine keeps the last 3 days. A backup machine that is always on fetches them at 04:30 UTC with `backup-pull.sh` (as user `arcanum-backup`, set up by `backup-pull-setup.sh`) into `/var/lib/arcanum-backup/arcanum-career-backups`: every copy of the last 7 days, the newest of each week for 5 weeks and of each month for a year. Its unit fails when the newest copy is more than a day old. The service's machine gives that user read-only access to the backups folder only (`backup-setup.sh`, `rrsync -ro`). The sealing key is not backed up (see *Restoring a backup*) |
-| Limits | rate limits per address (the address Caddy passes on): 30 requests a minute for careers and events, 10 a minute for sign-ins; at most 20,000 actions in one sync |
+| Limits | rate limits per address (the address Caddy passes on): 30 requests a minute for careers, cloud files and events, 10 a minute for sign-ins (a device's link polls: 60 a minute); at most 20,000 actions in one sync |
 
 Notes:
 - Always Free instances that sit idle can be reclaimed by Oracle; check the current idle rules when setting it up
@@ -600,10 +629,10 @@ Entry fees and prizes for the qualifier and the championship are set in the modu
 | Opponent roster and rivals | content module (data) + `Arcanum.Bots` (deck building per tier) | names/portraits generic |
 | Career hub screen | `scenes/career` | the dashboard: day, cash, dailies, today's event, store, collection, decks, news |
 | Store screen with hotspots, table playmat (one image split across both seats) | `scenes/career`, `scripts/UI/Board/Playmat.cs` | art in `ui-art/LGS-1*.jpg` |
-| Remote config + cloud save | `scripts/Client/CareerService.cs`, `scripts/Client/Eos` | season download and server time from the career service; Player Data Storage |
-| Accounts: Discord sign-in, linking/unlinking, Settings → Account | `scripts/Client/Eos`, career service (`/auth/discord` code exchange) | replaces Device ID login |
+| Remote config + cloud save | `scripts/Client/CareerService.cs`, `scripts/Client/ServiceCloud.cs`, `scripts/Client/FileTimes.cs`, `scripts/Client/Eos` | season download and server time from the career service; cloud files on the career service (Player Data Storage copies moved once) |
+| Accounts: Discord sign-in, device code, linking/unlinking, Settings → Account | `scripts/Client/Eos` (`EosWebIdentity.cs`), `scripts/Client/Account.cs`, `scripts/UI/Menu/AccountPrompt.cs`, `src/Arcanum.Net/Services/DiscordSignIn.cs`; career service (`/auth/discord` code exchange, `/auth/link` device code) | replaces Device ID login |
 | Career rules library (journal replay, derived randomness, limits) | `Arcanum.Data/Career` | the same code runs in the client and in the career service |
-| Career service (checks and seals careers, online tables, leaderboards) | `server/Arcanum.CareerService` (`Program.cs`, `CareerStore.cs`, `EventDesk.cs`, `EosIdentity.cs`, `CareerWorlds.cs`); `Arcanum.Data/Career/CareerChecker.cs`, `CareerSeal.cs` | ASP.NET on the Oracle Cloud VM; sealing key only there; EOS ID token check; per-player checked career |
+| Career service (checks and seals careers, online tables, leaderboards) | `server/Arcanum.CareerService` (`Program.cs`, `CareerStore.cs`, `EventDesk.cs`, `EosIdentity.cs`, `DiscordLinks.cs`, `CareerWorlds.cs`); `Arcanum.Data/Career/CareerChecker.cs`, `CareerSeal.cs` | ASP.NET on the Oracle Cloud VM; sealing key only there; EOS ID token check; per-player checked career |
 | Scheduled online events | rules in `Arcanum.Data/Career/OnlineEvents.cs`; tables in `server/Arcanum.CareerService/EventDesk.cs`; client in `scripts/Client/CareerService.Online.cs`, the table's lobby in `scripts/Client/OnlineService.CareerTable.cs`, screens in `scripts/UI/Career/EventScreen.Online.cs` and `CareerScreen.Standings.cs` | check-in, seating, host, confirmed results, ranks and monthly points |
 
 ## Milestones

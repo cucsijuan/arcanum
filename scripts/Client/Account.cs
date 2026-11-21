@@ -45,13 +45,21 @@ public static class Account
         get { Load(); return _refreshToken is not null; }
     }
 
+    /// <summary>Whether the game can open pages in a browser here (desktop systems); elsewhere it signs in with a code.</summary>
+    public static bool HasBrowser => OS.GetName() is "Windows" or "macOS" or "Linux" or "FreeBSD" or "NetBSD" or "OpenBSD" or "BSD";
+
     /// <summary>
-    /// Opens Discord's sign-in in the browser and waits for the player (until <paramref name="cancel"/>); returns their
-    /// Discord name (null when Discord doesn't say).
+    /// Opens Discord's sign-in in the browser (or, without one, has <paramref name="showCode"/> show a code to sign in with
+    /// on a phone or computer) and waits for the player (until <paramref name="cancel"/>); returns their Discord name (null
+    /// when Discord doesn't say).
     /// </summary>
-    public static async Task<string?> SignInWithDiscordAsync(CancellationToken cancel)
+    /// <param name="showCode">Shows a device sign-in's code where the game can't open a browser.</param>
+    public static async Task<string?> SignInWithDiscordAsync(CancellationToken cancel, Action<DiscordLinkCode>? showCode = null)
     {
-        var tokens = await Discord.SignInAsync(url => OS.ShellOpen(url), cancel);
+        // Where there is no browser to open (a console), the player signs in on a phone or computer with a code.
+        var tokens = showCode is not null && !HasBrowser
+            ? await Discord.LinkAsync(showCode, cancel)
+            : await Discord.SignInAsync(url => OS.ShellOpen(url), cancel);
         Keep(tokens);
         Changed?.Invoke();
         try { return await DiscordSignIn.NameAsync(DiscordApi, tokens.AccessToken, cancel); }

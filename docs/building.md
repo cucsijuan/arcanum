@@ -82,6 +82,7 @@ Environment variables useful while developing and testing:
 | `ARCANUM_MODULE_PATH=<dir>` | Use a content module from this folder |
 | `ARCANUM_UPDATE_FROM=<version>` | The update check runs as if the game were that version (shows the update dialog; outside an exported build it offers the download page) |
 | `ARCANUM_OPEN=online` | The main menu opens the online screen at once (exported builds can't be given a scene) |
+| `ARCANUM_OPEN=game` | The main menu opens a game with the module's sample decks at once (devices without a command line, e.g. automatic test runs; `ARCANUM_VS_BOT`, `ARCANUM_AUTOPLAY` and the other quick-start switches apply) |
 | `ARCANUM_SHOTS=<folder>[,seconds]` | Saves a numbered picture of the screen (`0001.png`, `0002.png`…) every 20 s, or every `seconds`, while the game plays on. Unlike `ARCANUM_SHOT` it doesn't quit (long test runs) |
 
 Online play can be tested with two instances on one machine (run `res://scenes/online/Online.tscn`; add

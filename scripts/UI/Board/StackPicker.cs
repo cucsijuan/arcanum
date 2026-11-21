@@ -76,6 +76,7 @@ public partial class StackPicker : Control
         _slider.Value = Math.Clamp(initial, min, max);
         ShowValue();
         Visible = true;
+        Arcanum.UI.PadFocus.Offer(this, _confirm);
     }
 
     private void ShowValue() => _value.Text = $"{(int)_slider.Value} of {_max}";

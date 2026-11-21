@@ -101,12 +101,19 @@ public partial class App : Node
     public override async void _Ready()
     {
         Instance = this;
+        AddSymbolFallbacks();
         Settings.Load();
         Settings.Apply();
         // Kit scroll bars everywhere (screens set the rest of their look themselves).
         if (Arcanum.UI.UiArt.Theme() is { } theme) GetTree().Root.Theme = theme;
         AddChild(Content);
         AddChild(Online);
+        // Controllers and touch screens: sliding a finger and the right stick scroll; the left stick moves a pointer.
+        AddChild(new Arcanum.UI.ScrollGestures());
+        // Controllers and keys: a panel of choices takes the focus on its answer (before the pointer, which gets the
+        // buttons first while it shows).
+        AddChild(new Arcanum.UI.PadFocus());
+        AddChild(new Arcanum.UI.VirtualPointer());
         GetTree().SceneChanged += () => Presence.ShowScreen(GetTree().CurrentScene?.SceneFilePath ?? "");
         if (GetTree().CurrentScene is { } first) Presence.ShowScreen(first.SceneFilePath);
         // ARCANUM_SHOT=<file.png>[,seconds]: saves a picture of the screen after a while (default 8 s) and quits (screenshots).
@@ -162,7 +169,7 @@ public partial class App : Node
             }
             if (Formats.Count == 0) Formats.Add(FormatRules.Casual);
             LoadGameModes();
-            if (loaded) Career.Init(Module!, Cards!);
+            if (loaded) await Career.InitAsync(Module!, Cards!);
             ContentStatus = loaded ? $"{Cards!.Count:N0} cards ready" : "No content module: generic demo only";
             ContentProgress?.Invoke(ContentStatus);
             _contentReady.TrySetResult(loaded);
@@ -176,7 +183,28 @@ public partial class App : Node
         }
     }
 
+    /// <summary>
+    /// Symbols the interface writes as text (≡, ↶, ⚔, ✕...) come from bundled symbol fonts behind each of the game's
+    /// fonts, so they show the same everywhere (some devices, such as consoles, have no system fonts to fall back on).
+    /// </summary>
+    private static void AddSymbolFallbacks()
+    {
+        var symbols = new Godot.Collections.Array<Font>();
+        foreach (var file in new[] { "NotoSansMath-Regular.ttf", "NotoSansSymbols2-Regular.ttf", "NotoSansSymbols-Regular.ttf" })
+            if (ResourceLoader.Exists($"res://fonts/noto-symbols/{file}")) symbols.Add(GD.Load<Font>($"res://fonts/noto-symbols/{file}"));
+        if (symbols.Count == 0) return;
+        foreach (var path in new[]
+                 {
+                     "res://fonts/alegreya-sans/AlegreyaSans-Medium.ttf", "res://fonts/bebas-neue/BebasNeue-Regular.ttf",
+                     "res://fonts/lt-museum/LTMuseum-Bold.ttf", "res://fonts/ortica/Ortica-Bold.otf", "res://fonts/pixelify-sans/PixelifySans.ttf",
+                 })
+            if (ResourceLoader.Exists(path) && GD.Load<Font>(path) is { } font) font.Fallbacks = symbols; // the loaded font is shared by everything using it
+        ThemeDB.FallbackFont.Fallbacks = symbols;
+    }
+
     public override void _ExitTree() => Presence.Stop();
+
+    public override void _Process(double delta) => Settings.CheckScreen(delta);
 
     /// <summary>Folder where players put game modes of their own (modes/*.lua).</summary>
     public static string UserModesDir => ProjectSettings.GlobalizePath("user://modes");

@@ -12,6 +12,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(builder.Configuration["Urls"] ?? "http://127.0.0.1:5080");
 builder.Services.Configure<DiscordOptions>(builder.Configuration.GetSection("Discord"));
 builder.Services.AddHttpClient<DiscordAuth>(c => c.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<DiscordLinks>();
 builder.Services.Configure<EosOptions>(builder.Configuration.GetSection("Eos"));
 builder.Services.AddHttpClient<EosIdentity>(c => c.Timeout = TimeSpan.FromSeconds(15));
 builder.Services.AddSingleton<CareerStore>();
@@ -43,6 +45,10 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("career", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? context.Connection.RemoteIpAddress?.ToString() ?? "",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
+    // A device asks for its link every few seconds while the player signs in on another one.
+    options.AddPolicy("link-poll", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? context.Connection.RemoteIpAddress?.ToString() ?? "",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1) }));
 });
 
 var app = builder.Build();
@@ -60,6 +66,26 @@ app.MapPost("/auth/discord", async (DiscordCodeRequest request, DiscordAuth disc
 // A new access token from the refresh token, so the game signs in again without asking the player.
 app.MapPost("/auth/discord/refresh", async (DiscordRefreshRequest request, DiscordAuth discord, CancellationToken cancel) =>
         await discord.Refresh(request, cancel))
+    .RequireRateLimiting("auth");
+
+// Signing in on a device without a browser (DiscordLinks): the device starts a link and shows its code, the player types
+// it on the link page from a phone or computer and signs in with Discord there, and the device collects the tokens.
+app.MapPost("/auth/link", (DiscordLinks links) => Results.Ok(links.Start())).RequireRateLimiting("auth");
+app.MapPost("/auth/link/poll", (LinkPoll request, DiscordLinks links) => links.Poll(request)).RequireRateLimiting("link-poll");
+app.MapGet("/link", (string? code) => Results.Content(DiscordLinks.Page(code: code), "text/html; charset=utf-8"));
+app.MapGet("/link/go", (string? code, DiscordLinks links) => links.AuthorizeUrl(code) is { } url
+        ? Results.Redirect(url)
+        : Results.Content(DiscordLinks.Page("That code isn't waiting for a sign-in. Check it, or start again in the game.", error: true),
+            "text/html; charset=utf-8", statusCode: StatusCodes.Status404NotFound))
+    .RequireRateLimiting("auth");
+app.MapGet("/link/callback", async (string? code, string? state, string? error, DiscordLinks links, CancellationToken cancel) =>
+        !await links.Complete(state, code, error, cancel)
+            ? Results.Content(DiscordLinks.Page("This sign-in has expired. Start again in the game.", error: true), "text/html; charset=utf-8",
+                statusCode: StatusCodes.Status404NotFound)
+            : Results.Content(DiscordLinks.Page(error is null && !string.IsNullOrEmpty(code)
+                ? "Signed in. Go back to the game: it continues by itself."
+                : "Signing in was cancelled. Start again in the game if you want to sign in.", error: error is not null || string.IsNullOrEmpty(code)),
+                "text/html; charset=utf-8"))
     .RequireRateLimiting("auth");
 
 // The career world takes a while to build on a small machine: built at start and kept current in the background.
@@ -96,6 +122,38 @@ app.MapPost("/career/sync", async (HttpRequest http, CareerSyncRequest request, 
     .RequireRateLimiting("career");
 
 // The career as the service checked it: a new device, or a career that went apart from the checked one, starts from it.
+// The player's cloud files (the career and its decks, career.zip): kept here for every device, whatever it can run.
+app.MapGet("/cloud/{name}", async (HttpRequest http, string name, EosIdentity eos, CareerStore store, CancellationToken cancel) =>
+    {
+        if (!eos.Configured) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        if (await eos.PlayerAsync(http, cancel) is not { } player) return Results.Unauthorized();
+        if (!CareerStore.CloudName(name)) return Results.BadRequest(new { error = "invalid_name" });
+        using var db = store.Open();
+        return store.CloudFile(db, player, name) is { } data ? Results.Bytes(data, "application/octet-stream") : Results.NotFound();
+    })
+    .RequireRateLimiting("career");
+
+app.MapPut("/cloud/{name}", async (HttpRequest http, string name, EosIdentity eos, CareerStore store, CancellationToken cancel) =>
+    {
+        if (!eos.Configured) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        if (await eos.PlayerAsync(http, cancel) is not { } player) return Results.Unauthorized();
+        if (!CareerStore.CloudName(name)) return Results.BadRequest(new { error = "invalid_name" });
+        if (http.ContentLength is > CareerStore.CloudFileLimit) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        using var body = new MemoryStream();
+        var buffer = new byte[81920];
+        int read;
+        while ((read = await http.Body.ReadAsync(buffer, cancel)) > 0)
+        {
+            body.Write(buffer, 0, read);
+            if (body.Length > CareerStore.CloudFileLimit) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+        using var db = store.Open();
+        return store.SaveCloudFile(db, player, name, body.ToArray())
+            ? Results.NoContent()
+            : Results.Json(new { error = "too_many_files" }, statusCode: StatusCodes.Status409Conflict);
+    })
+    .RequireRateLimiting("career");
+
 app.MapGet("/career/profile", async (HttpRequest http, EosIdentity eos, CareerStore store, CancellationToken cancel) =>
     {
         if (!eos.Configured) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);

@@ -73,25 +73,74 @@ public partial class ContentLoader : Node
                 var records = OracleJsonl.Import(input, Module.Sources.Cards.ToFilter());
                 if (printings is not null) records = OracleJsonl.WithPrintings(records, printings);
                 using (var output = File.Create(temp)) OracleJsonl.WriteCompact(records, output);
-                File.Move(temp, compact, overwrite: true);
+                Arcanum.Data.SafeFile.Replace(temp, compact);
             });
             File.Delete(source);
             if (printingsFile is not null) File.Delete(printingsFile);
         }
 
         Report("Loading cards…");
+        var module = Module;
+        var cache = Path.Combine(dataDir, $"cards.v14-{module.Manifest.Version}.cache");
+        IProgress<string> progress = new Progress<string>(Report); // reports from the worker reach the screen on this thread
         var scriptErrors = new List<string>();
-        var scripts = Module.LoadScripts(scriptErrors);
-        foreach (var error in scriptErrors) GD.PushWarning($"Card script: {error}");
-        int scriptCount = scriptErrors.Count;
+        var tagErrors = new List<string>();
         Cards = await Task.Run(() =>
         {
-            using var input = File.OpenRead(compact);
-            return new CardDatabase(OracleJsonl.ReadCompact(input), scripts) { SearchTags = Module.LoadSearchTags(scriptErrors) };
+            var key = CardCache.Key(compact, module.ScriptsDirectory);
+            var cards = CardCache.Read(cache, key, module.ScriptReader());
+            if (cards is null)
+            {
+                var stored = CardCache.StoredKey(cache);
+                GD.Print(stored is null ? "Card cache: none yet; making the cards." :
+                    stored == key ? "Card cache: unreadable; making the cards again." :
+                    $"Card cache: made for other content or another game build; making the cards again.\n  was: {stored}\n  now: {key}");
+                cards = MakeCards(module, compact, cache, key, scriptErrors, progress);
+            }
+            cards.SearchTags = module.LoadSearchTags(tagErrors);
+            return cards;
         });
-        foreach (var error in scriptErrors.Skip(scriptCount)) GD.PushWarning($"Search tags: {error}");
-        GD.Print($"Loaded {Cards.Count} cards from module '{Module.Manifest.Id}'.");
+        foreach (var error in scriptErrors) GD.PushWarning($"Card script: {error}");
+        foreach (var error in tagErrors) GD.PushWarning($"Search tags: {error}");
+        // Cards make their definitions when first used; the rest are made in the background, so a search over all of
+        // them doesn't wait.
+        _ = Cards.MakeDefinitionsAsync();
+        if (Settings.Current.DownloadEveryPicture) CardImageCache.DownloadEvery(Cards);
+        GD.Print($"Loaded {Cards.Count} cards from module '{module.Manifest.Id}'.");
         return true;
+    }
+
+    /// <summary>
+    /// Makes every card from the card data and the module's scripts (the first start with this content or game
+    /// version), and keeps the result in <paramref name="cache"/> for the next starts.
+    /// </summary>
+    private static CardDatabase MakeCards(ContentModule module, string compact, string cache, string key, List<string> scriptErrors,
+        IProgress<string> progress)
+    {
+        // Shares of the work, as measured on the slowest device: scripts, reading the card data, making the cards.
+        // Only a new percentage is reported: each report changes the screen's text, and one per card kept the screen
+        // busy enough on slow devices to stop it from being drawn until the end.
+        int shown = -1;
+        void Step(double from, double share, double done)
+        {
+            int percent = (int)((from + share * done) * 100);
+            if (Interlocked.Exchange(ref shown, percent) != percent)
+                progress.Report($"Preparing cards (once after an install or update)… {percent}%");
+        }
+        var scripts = module.LoadScripts(scriptErrors, (done, total) => Step(0, 0.12, (double)done / total));
+        List<CardRecord> records;
+        using (var input = File.OpenRead(compact)) records = OracleJsonl.ReadCompact(input, done => Step(0.12, 0.30, done));
+        var cards = new CardDatabase(records, scripts, (done, total) => Step(0.42, 0.58, (double)done / total));
+        try
+        {
+            foreach (var old in Directory.EnumerateFiles(Path.GetDirectoryName(cache)!, "cards*.cache")) File.Delete(old);
+            CardCache.Write(cards, cache, key);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            GD.PushWarning($"The card cache couldn't be saved ({e.Message}); the next start makes the cards again.");
+        }
+        return cards;
     }
 
     /// <summary>

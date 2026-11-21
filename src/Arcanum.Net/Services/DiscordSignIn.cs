@@ -13,6 +13,9 @@ public sealed record DiscordTokens(
     [property: JsonPropertyName("refreshToken")] string RefreshToken,
     [property: JsonPropertyName("expiresIn")] int ExpiresIn);
 
+/// <summary>A device sign-in's code, the page to type it on (from a phone or computer), and how long it lasts.</summary>
+public sealed record DiscordLinkCode(string Code, string Url, TimeSpan Lasts);
+
 /// <summary>Discord said no: the code or refresh token is no longer good (expired, revoked); the player signs in again.</summary>
 public sealed class DiscordRefusedException(string message) : Exception(message);
 
@@ -81,6 +84,45 @@ public sealed class DiscordSignIn(HttpClient service, string clientId, int port 
             }
         }
     }
+
+    /// <summary>
+    /// Signs in on a device that can't show Discord's pages (a console, a television): the service makes a short code,
+    /// <paramref name="show"/> puts it on screen with the page to type it on (from a phone or computer), and the device
+    /// asks the service every few seconds until the player has signed in there, or the code expires.
+    /// </summary>
+    public async Task<DiscordTokens> LinkAsync(Action<DiscordLinkCode> show, CancellationToken cancel)
+    {
+        using var started = await service.PostAsync("auth/link", null, cancel);
+        started.EnsureSuccessStatusCode();
+        var link = await started.Content.ReadFromJsonAsync<DiscordLinkStart>(cancel)
+            ?? throw new InvalidOperationException("The career service sent no code.");
+        show(new DiscordLinkCode(link.Code, link.Url, TimeSpan.FromSeconds(link.ExpiresIn)));
+        var interval = TimeSpan.FromSeconds(Math.Max(1, link.Interval));
+        while (true)
+        {
+            await Task.Delay(interval, cancel);
+            using var response = await service.PostAsJsonAsync("auth/link/poll", new { deviceToken = link.DeviceToken }, cancel);
+            switch (response.StatusCode)
+            {
+                case HttpStatusCode.Accepted:
+                    continue; // the player hasn't finished yet
+                case HttpStatusCode.Unauthorized:
+                    throw new DiscordRefusedException("Discord sign-in was cancelled.");
+                case HttpStatusCode.NotFound:
+                    throw new DiscordRefusedException("The sign-in code expired; try again.");
+            }
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<DiscordTokens>(cancel)
+                ?? throw new InvalidOperationException("The career service sent no tokens.");
+        }
+    }
+
+    private sealed record DiscordLinkStart(
+        [property: JsonPropertyName("code")] string Code,
+        [property: JsonPropertyName("deviceToken")] string DeviceToken,
+        [property: JsonPropertyName("url")] string Url,
+        [property: JsonPropertyName("expiresIn")] int ExpiresIn,
+        [property: JsonPropertyName("interval")] int Interval);
 
     /// <summary>The player's Discord name (display name, or user name without one), or null when Discord doesn't say.</summary>
     /// <param name="discord">A client for Discord's API (https://discord.com/api/v10/).</param>

@@ -133,6 +133,9 @@ At the end of a game, the screen offers **New game**, **Back to event** (in an e
 | Click a card in hand | Play it |
 | Drag a card from hand | Play it on release; drop it back on the hand to cancel |
 | Hover a card | Large preview |
+| Slide a finger over a list or page | Scroll it |
+| Right stick | Scroll the focused list or page, else the one under the pointer |
+| Left stick | Move the gold pointer. While it shows, the confirm button left-clicks and the back button right-clicks |
 | F | Flip a double-faced card's preview to its other face |
 | Space | Press the main button of the action panel |
 | Ctrl+Z | Undo |

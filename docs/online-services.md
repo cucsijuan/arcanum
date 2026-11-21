@@ -61,8 +61,9 @@ The SDK is not in this repository (its license doesn't allow it; `LICENSE-EXCEPT
 2. Write the product's keys: `python3 tools/eos_keys.py <keys.json>` (or with `EOS_PRODUCT_ID`, `EOS_SANDBOX_ID`,
    `EOS_DEPLOYMENT_ID`, `EOS_CLIENT_ID`, `EOS_CLIENT_SECRET` set) writes `scripts/Client/Eos/EosKeys.g.cs`, which is
    ignored by git. Without it the build has only the local network. The optional `encryptionKey` /
-   `EOS_ENCRYPTION_KEY` (64 hex characters) encrypts the players' cloud files (career saves); it must never change
-   once players have saved with it, and without it the build has no cloud saves.
+   `EOS_ENCRYPTION_KEY` (64 hex characters) encrypts the files in the online services' player storage, which the career
+   service's cloud copies are moved from once (see `career-mode.md`); it must never change once players have saved with
+   it. Without it nothing is moved. Cloud files themselves are kept by the career service, as sent.
 
 The release workflow does both from repository secrets: `EOS_SDK_TOKEN` (a token that can read the private
 `cucsijuan/eos-sdk` repository, which holds the SDK) and the `EOS_*` keys above. Without them it still releases,
