@@ -41,6 +41,11 @@ public partial class MainMenu : Control
             OnlineScreen.Page = OnlineScreen.OnlinePage.Both;
             Callable.From(() => App.Instance.GoTo(App.OnlineScene)).CallDeferred();
         }
+        else if (OS.GetEnvironment("ARCANUM_OPEN") == "settings" && !_opened)
+        {
+            _opened = true;
+            Callable.From(() => App.Instance.GoTo(App.SettingsScene)).CallDeferred();
+        }
         else if (OS.GetEnvironment("ARCANUM_OPEN") == "career" && !_opened)
         {
             _opened = true;

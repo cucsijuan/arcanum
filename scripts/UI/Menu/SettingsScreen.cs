@@ -46,9 +46,13 @@ public partial class SettingsScreen : Control
         _tabs = new SettingsKit.Tabs(names) { AnchorLeft = 0.5f, AnchorRight = 0.5f, OffsetTop = 22, GrowHorizontal = GrowDirection.Both };
         AddChild(_tabs);
 
-        // Options on the left, never wider than reads well; descriptions in the space to their right.
-        var pageArea = _pageArea = new Control { AnchorBottom = 1, OffsetLeft = 140, OffsetTop = 110, OffsetRight = 140 + 900, OffsetBottom = -30 };
-        AddChild(pageArea);
+        // Options on the left, never wider than reads well; descriptions in a column of their own to the right, or on a
+        // screen too narrow for both, in a strip of their own under the options. Neither ever covers the other.
+        _body.SetAnchorsPreset(LayoutPreset.FullRect);
+        AddChild(_body);
+        _body.AddChild(_split);
+        var pageArea = _pageArea;
+        _split.AddChild(pageArea);
         foreach (var content in new[] { GameplayPage(), AppearancePage(), AudioPage(), VideoPage() })
         {
             var page = Page(content);
@@ -58,7 +62,8 @@ public partial class SettingsScreen : Control
         }
 
         _description.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        AddChild(_description);
+        _description.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        _split.AddChild(_description);
         PlaceDescription();
         Resized += PlaceDescription;
         SettingsKit.Row.Described += Describe;
@@ -85,23 +90,34 @@ public partial class SettingsScreen : Control
         AddChild(_fileDialog);
     }
 
-    private Control _pageArea = null!;
+    private readonly MarginContainer _body = new();
+    private readonly BoxContainer _split = new();
+    private readonly Control _pageArea = new() { SizeFlagsVertical = SizeFlags.ExpandFill };
 
-    /// <summary>Descriptions go to the right of the options; on a screen too narrow for both, under them.</summary>
+    /// <summary>The widest the options get, and the narrowest a description column beside them may be.</summary>
+    private const float OptionsWidth = 900, DescriptionWidth = 360;
+
+    /// <summary>Lays out the options and their descriptions for the screen's width.</summary>
     private void PlaceDescription()
     {
-        bool beside = Size.X >= 140 + 900 + 60 + 400 + 140;
-        _description.AnchorTop = beside ? 0 : 1;
-        _description.AnchorBottom = beside ? 0 : 1;
-        _description.AnchorLeft = beside ? 1 : 0;
-        _description.AnchorRight = 1;
-        _description.OffsetLeft = beside ? Math.Max(140 + 900 + 60 - Size.X, -800) : 140;
-        _description.OffsetRight = -140;
-        _description.OffsetTop = beside ? 150 : -86;
-        _description.OffsetBottom = beside ? 150 : -10;
-        _description.VerticalAlignment = beside ? VerticalAlignment.Top : VerticalAlignment.Center;
-        _description.AddThemeFontSizeOverride("font_size", beside ? 22 : 17);
-        _pageArea.OffsetBottom = beside ? -30 : -92;
+        float side = Size.X >= OptionsWidth + DescriptionWidth + 2 * 140 + 60 ? 140 : Math.Clamp((Size.X - OptionsWidth) / 2, 16, 140);
+        bool beside = Size.X >= OptionsWidth + DescriptionWidth + 2 * side + 60;
+        _body.AddThemeConstantOverride("margin_left", (int)side);
+        _body.AddThemeConstantOverride("margin_right", (int)side);
+        _body.AddThemeConstantOverride("margin_top", 110);
+        _body.AddThemeConstantOverride("margin_bottom", beside ? 30 : 12);
+        _split.Vertical = !beside;
+        _split.AddThemeConstantOverride("separation", beside ? 60 : 8);
+        // Beside: the options keep their width and the description takes the rest, from the top. Under: the options take
+        // the height left by the description strip, which keeps room for three lines so the list doesn't jump.
+        _pageArea.CustomMinimumSize = new Vector2(beside ? OptionsWidth : 0, 0);
+        _pageArea.SizeFlagsHorizontal = beside ? SizeFlags.Fill : SizeFlags.ExpandFill;
+        _description.SizeFlagsVertical = beside ? SizeFlags.ShrinkBegin : SizeFlags.ShrinkEnd;
+        int font = beside ? 22 : 17;
+        _description.AddThemeFontSizeOverride("font_size", font);
+        _description.AddThemeConstantOverride("line_spacing", beside ? 6 : 0);
+        _description.CustomMinimumSize = new Vector2(0, beside ? 0 : 3 * (font + 6));
+        _description.VerticalAlignment = VerticalAlignment.Top;
     }
 
     public override void _ExitTree() => SettingsKit.Row.Described -= Describe;
