@@ -90,9 +90,10 @@ public partial class SettingsScreen : Control
         AddChild(_fileDialog);
     }
 
-    private readonly MarginContainer _body = new();
-    private readonly BoxContainer _split = new();
-    private readonly Control _pageArea = new() { SizeFlagsVertical = SizeFlags.ExpandFill };
+    // They cover the whole screen, the header and tabs included: clicks go through to what's under them.
+    private readonly MarginContainer _body = new() { MouseFilter = MouseFilterEnum.Ignore };
+    private readonly BoxContainer _split = new() { MouseFilter = MouseFilterEnum.Ignore };
+    private readonly Control _pageArea = new() { SizeFlagsVertical = SizeFlags.ExpandFill, MouseFilter = MouseFilterEnum.Ignore };
 
     /// <summary>The widest the options get, and the narrowest a description column beside them may be.</summary>
     private const float OptionsWidth = 900, DescriptionWidth = 360;
