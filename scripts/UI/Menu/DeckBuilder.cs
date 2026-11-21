@@ -21,7 +21,21 @@ public partial class DeckBuilder : Control
 {
     private const int Columns = 7;
     private const int Rows = 3;
-    private static readonly Vector2 TileSize = new(168, 234);
+    private static readonly Vector2 FullTileSize = new(168, 234);
+
+    /// <summary>
+    /// A screen too narrow for the full layout (a handheld console): the header's less used actions go in a menu, the
+    /// filters take two rows, the deck panel is narrower, the results fit as many cards as the space takes, and each deck
+    /// line has a button to take a copy out (a touch has no right click).
+    /// </summary>
+    private bool _compact;
+    private const float CompactBelowWidth = 1700;
+
+    /// <summary>The size of a result's card now, and how many columns and rows of them a page has.</summary>
+    private Vector2 _tile = FullTileSize;
+    private int _columns = Columns, _rows = Rows;
+    private float DeckPanelWidth => _compact ? 360 : 470;
+    private readonly Control _gridArea = new() { SizeFlagsVertical = SizeFlags.ExpandFill, ClipContents = true };
 
     private static readonly (string Label, CardType Type)[] TypeFilters =
     {
@@ -60,6 +74,8 @@ public partial class DeckBuilder : Control
     // Suggestions for the commander (community statistics from the module's source), shown instead of the search.
     private static readonly string[] SuggestionSorts = { "Most played", "Highest synergy", "Lowest price", "Highest price" };
     private readonly HBoxContainer _modeRow = new();
+    /// <summary>Narrow: the type, mana value and set filters' own row.</summary>
+    private HBoxContainer? _pickers;
     private readonly Button _searchMode = BoardStyle.MakeButton("Search", 15);
     private readonly Button _suggestMode = BoardStyle.MakeButton("Suggestions", 15);
     private readonly VBoxContainer _suggestBar = new() { Visible = false };
@@ -94,9 +110,11 @@ public partial class DeckBuilder : Control
     public override async void _Ready()
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
+        _compact = GetViewportRect().Size.X < CompactBelowWidth;
         MenuKit.AddBackdrop(this);
-        var header = MenuKit.AddHeader(this, "Decks", () => ConfirmDiscard(() => App.Instance.GoTo(App.MainMenuScene)));
+        var header = _headerBar = MenuKit.AddHeader(this, "Decks", () => ConfirmDiscard(() => App.Instance.GoTo(App.MainMenuScene)));
         _headerTitle = header.GetChild<Label>(1);
+        _headerSpacer = header.GetChild<Control>(2);
         BuildHeaderActions(header);
         BuildBody();
         BuildDialogs();
@@ -136,8 +154,9 @@ public partial class DeckBuilder : Control
 
     private void BuildHeaderActions(HBoxContainer header)
     {
-        header.AddChild(BoardStyle.MakeLabel("Open:", 15, BoardStyle.TextDim));
-        _deckPicker.CustomMinimumSize = new Vector2(260, 40);
+        if (!_compact) header.AddChild(BoardStyle.MakeLabel("Open:", 15, BoardStyle.TextDim));
+        _deckPicker.CustomMinimumSize = new Vector2(_compact ? 240 : 260, 40);
+        _deckPicker.ClipText = true;
         // Item 0 is a placeholder; saved decks follow it.
         _deckPicker.ItemSelected += index =>
         {
@@ -152,22 +171,47 @@ public partial class DeckBuilder : Control
             b.Pressed += action;
             header.AddChild(b);
         }
-        Action("New", () => ConfirmDiscard(NewDeck));
-        Action("Import", () => { _importText.Text = ""; _importDialog.PopupCentered(); });
-        Action("Export", Export);
-        Action("Delete", AskDelete);
+        var actions = new (string Text, Action Action)[]
+        {
+            ("New", () => ConfirmDiscard(NewDeck)),
+            ("Import", () => { _importText.Text = ""; _importDialog.PopupCentered(); }),
+            ("Export", Export),
+            ("Delete", AskDelete),
+        };
+        if (_compact)
+        {
+            // The less used actions in a menu: Save stays a button of its own.
+            var more = BoardStyle.MakeButton("More…", 16);
+            more.CustomMinimumSize = new Vector2(96, 44);
+            more.Pressed += () =>
+            {
+                var menu = new PopupMenu();
+                for (int i = 0; i < actions.Length; i++) menu.AddItem(actions[i].Text, i);
+                menu.AddThemeFontSizeOverride("font_size", 18);
+                menu.IdPressed += id => { menu.QueueFree(); actions[id].Action(); };
+                menu.PopupHide += () => menu.QueueFree();
+                AddChild(menu);
+                menu.Position = (Vector2I)more.GetScreenPosition() + new Vector2I(0, (int)more.Size.Y);
+                menu.Popup();
+            };
+            header.AddChild(more);
+        }
+        else
+            foreach (var (text, action) in actions) Action(text, action);
         Action("Save", Save, primary: true);
     }
 
     private void BuildBody()
     {
-        var body = new HBoxContainer { AnchorRight = 1, AnchorBottom = 1, OffsetLeft = 24, OffsetTop = 96, OffsetRight = -24, OffsetBottom = -20 };
-        body.AddThemeConstantOverride("separation", 20);
+        var body = _compact
+            ? new HBoxContainer { AnchorRight = 1, AnchorBottom = 1, OffsetLeft = 16, OffsetTop = 84, OffsetRight = -16, OffsetBottom = -12 }
+            : new HBoxContainer { AnchorRight = 1, AnchorBottom = 1, OffsetLeft = 24, OffsetTop = 96, OffsetRight = -24, OffsetBottom = -20 };
+        body.AddThemeConstantOverride("separation", _compact ? 14 : 20);
         AddChild(body);
 
         // Left: filters, results, pages.
         var left = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        left.AddThemeConstantOverride("separation", 12);
+        left.AddThemeConstantOverride("separation", _compact ? 8 : 12);
         body.AddChild(left);
 
         BuildSuggestionControls(left);
@@ -180,7 +224,7 @@ public partial class DeckBuilder : Control
         foreach (var color in new[] { "W", "U", "B", "R", "G", "C" })
         {
             var (bg, fg) = BoardStyle.PipColors(color[0]);
-            var toggle = new Button { Text = color, ToggleMode = true, FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(40, 40),
+            var toggle = new Button { Text = color, ToggleMode = true, FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(_compact ? 36 : 40, 40),
                 TooltipText = color == "C" ? "Colorless" : "Color " + color };
             toggle.AddThemeColorOverride("font_color", fg);
             toggle.AddThemeColorOverride("font_pressed_color", fg);
@@ -197,10 +241,19 @@ public partial class DeckBuilder : Control
         _setFilter.TooltipText = "Only cards printed in this set, with that set's art";
         _setFilter.CustomMinimumSize = new Vector2(220, 0);
         _setFilter.ClipText = true;
-        filters.AddChild(_typeFilter);
-        filters.AddChild(_mvFilter);
-        filters.AddChild(_setFilter);
+        // Narrow: the type, mana value and set filters on a row of their own under the search.
+        var pickers = filters;
         left.AddChild(filters);
+        if (_compact)
+        {
+            pickers = _pickers = new HBoxContainer();
+            pickers.AddThemeConstantOverride("separation", 10);
+            _setFilter.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            left.AddChild(pickers);
+        }
+        pickers.AddChild(_typeFilter);
+        pickers.AddChild(_mvFilter);
+        pickers.AddChild(_setFilter);
         left.AddChild(_suggestBar);
 
         var toggles = new HBoxContainer();
@@ -210,19 +263,32 @@ public partial class DeckBuilder : Control
         _legalOnly.Toggled += _ => RunSearch();
         toggles.AddChild(_supportedOnly);
         toggles.AddChild(_legalOnly);
-        toggles.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-        toggles.AddChild(BoardStyle.MakeLabel("Click a card to add it · right-click to remove", 13, BoardStyle.TextDim));
-        left.AddChild(toggles);
+        if (!_compact)
+        {
+            toggles.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+            toggles.AddChild(BoardStyle.MakeLabel("Click a card to add it · right-click to remove", 13, BoardStyle.TextDim));
+            left.AddChild(toggles);
+        }
 
         _grid.AddThemeConstantOverride("h_separation", 12);
         _grid.AddThemeConstantOverride("v_separation", 12);
-        _grid.SizeFlagsVertical = SizeFlags.ExpandFill;
-        left.AddChild(_grid);
+        // The results fill the space between the filters and the pages: as many cards as fit (see FitGrid).
+        _gridArea.AddChild(_grid);
+        _gridArea.Resized += FitGrid;
+        left.AddChild(_gridArea);
 
-        var pages = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        // Narrow: the two switches share the pages' row.
+        var pages = new HBoxContainer { Alignment = _compact ? BoxContainer.AlignmentMode.Begin : BoxContainer.AlignmentMode.Center };
         pages.AddThemeConstantOverride("separation", 16);
-        _prev.CustomMinimumSize = new Vector2(110, 40);
-        _next.CustomMinimumSize = new Vector2(110, 40);
+        if (_compact)
+        {
+            pages.AddChild(toggles);
+            pages.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+            _prev.Text = "‹";
+            _next.Text = "›";
+            _prev.CustomMinimumSize = _next.CustomMinimumSize = new Vector2(56, 40);
+        }
+        if (!_compact) _prev.CustomMinimumSize = _next.CustomMinimumSize = new Vector2(110, 40);
         _prev.Pressed += () => ShowPage(_page - 1);
         _next.Pressed += () => ShowPage(_page + 1);
         pages.AddChild(_prev);
@@ -234,19 +300,24 @@ public partial class DeckBuilder : Control
         AddChild(_searchDelay);
 
         // Right: the deck.
-        var right = new VBoxContainer { CustomMinimumSize = new Vector2(470, 0) };
-        right.AddThemeConstantOverride("separation", 10);
+        var right = new VBoxContainer { CustomMinimumSize = new Vector2(DeckPanelWidth, 0) };
+        right.AddThemeConstantOverride("separation", _compact ? 6 : 10);
         _name.TextChanged += _ => MarkDirty();
         right.AddChild(MenuKit.Row("Name", _name, 70));
         _format.ItemSelected += _ => { MarkDirty(); RunSearch(); RefreshDeck(); };
         right.AddChild(MenuKit.Row("Format", _format, 70));
 
         var tabs = new HBoxContainer();
-        tabs.AddThemeConstantOverride("separation", 8);
+        tabs.AddThemeConstantOverride("separation", _compact ? 4 : 8);
         foreach (var tab in new[] { _commanderTab, _mainTab, _sideTab, _tokensTab })
         {
             tab.ToggleMode = true;
-            tab.CustomMinimumSize = new Vector2(_tokensTab == tab ? 110 : 140, 38);
+            tab.CustomMinimumSize = _compact ? new Vector2(0, 36) : new Vector2(_tokensTab == tab ? 110 : 140, 38);
+            if (_compact)
+            {
+                tab.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                tab.AddThemeFontSizeOverride("font_size", 13);
+            }
             tabs.AddChild(tab);
         }
         _tokensTab.TooltipText = "The tokens this deck's cards make: choose the pictures they are shown with";
@@ -261,19 +332,31 @@ public partial class DeckBuilder : Control
         _list.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _list.AddThemeConstantOverride("separation", 2);
         scroll.AddChild(_list);
-        right.AddChild(MenuKit.Card(scroll, 10));
+        right.AddChild(Panel(scroll));
         right.GetChild<Control>(right.GetChildCount() - 1).SizeFlagsVertical = SizeFlags.ExpandFill;
 
         right.AddChild(MenuKit.Hint("Mana curve (main deck, nonland)"));
-        _curve.CustomMinimumSize = new Vector2(0, 70);
+        _curve.CustomMinimumSize = new Vector2(0, _compact ? 40 : 70);
         _curve.AddThemeConstantOverride("separation", 6);
         right.AddChild(_curve);
 
-        _validation.CustomMinimumSize = new Vector2(0, 90);
-        _validation.AddThemeFontSizeOverride("normal_font_size", 13);
+        _validation.CustomMinimumSize = new Vector2(0, _compact ? 40 : 90);
+        _validation.AddThemeFontSizeOverride("normal_font_size", _compact ? 12 : 13);
         _validation.AddThemeColorOverride("default_color", BoardStyle.Text);
-        right.AddChild(MenuKit.Card(_validation, 10));
+        right.AddChild(Panel(_validation));
         body.AddChild(right);
+    }
+
+    /// <summary>A framed panel; narrow, a plain one, whose frame doesn't take the room of a few deck lines.</summary>
+    private PanelContainer Panel(Control content)
+    {
+        if (!_compact) return MenuKit.Card(content, 10);
+        var panel = new PanelContainer();
+        var box = BoardStyle.Box(new Color(0.09f, 0.09f, 0.11f, 0.92f), 8, BoardStyle.PanelBorder, 1);
+        box.SetContentMarginAll(8);
+        panel.AddThemeStyleboxOverride("panel", box);
+        panel.AddChild(content);
+        return panel;
     }
 
     private void BuildDialogs()
@@ -306,7 +389,14 @@ public partial class DeckBuilder : Control
         _searchMode.SetPressedNoSignal(true);
         _searchMode.Pressed += () => SetSuggesting(false);
         _suggestMode.Pressed += () => SetSuggesting(true);
-        left.AddChild(_modeRow);
+        // Narrow: the switch sits in the header, so it doesn't take a row of its own.
+        if (_compact)
+        {
+            foreach (var button in new[] { _searchMode, _suggestMode }) button.CustomMinimumSize = new Vector2(120, 44);
+            _headerBar!.AddChild(_modeRow);
+            _headerBar.MoveChild(_modeRow, _headerSpacer!.GetIndex() + 1);
+        }
+        else left.AddChild(_modeRow);
 
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 10);
@@ -365,6 +455,7 @@ public partial class DeckBuilder : Control
         _searchMode.SetPressedNoSignal(!_suggesting);
         _suggestMode.SetPressedNoSignal(_suggesting);
         _filters.Visible = !_suggesting;
+        if (_pickers is not null) _pickers.Visible = !_suggesting;
         _suggestBar.Visible = _suggesting;
         if (_suggesting && _deck.Commander.Count > 0 && _editingCommander)
         {
@@ -615,11 +706,40 @@ public partial class DeckBuilder : Control
         ShowPage(0);
     }
 
+    /// <summary>
+    /// Sizes the results to the space they have: the full layout keeps its cards' size (as many of its 7 × 3 as fit);
+    /// the narrow one picks the card size, down to three quarters, that shows the most cards. The page shown keeps its
+    /// first card.
+    /// </summary>
+    private void FitGrid()
+    {
+        var area = _gridArea.Size;
+        if (area.X <= 0 || area.Y <= 0) return;
+        const float gap = 12;
+        (Vector2 Tile, int Columns, int Rows) Fit(float scale)
+        {
+            var tile = (FullTileSize * scale).Floor();
+            return (tile, Math.Max(1, (int)((area.X + gap) / (tile.X + gap))), Math.Max(1, (int)((area.Y + gap) / (tile.Y + gap))));
+        }
+        var best = Fit(1);
+        if (_compact)
+        {
+            for (float scale = 0.95f; scale >= 0.749f; scale -= 0.05f)
+                if (Fit(scale) is var fit && fit.Columns * fit.Rows > best.Columns * best.Rows) best = fit;
+        }
+        else best = (best.Tile, Math.Min(Columns, best.Columns), Math.Min(Rows, best.Rows));
+        if (best.Tile == _tile && best.Columns == _columns && best.Rows == _rows) return;
+        int first = _page * _columns * _rows;
+        (_tile, _columns, _rows) = best;
+        _grid.Columns = _columns;
+        if (_results.Count > 0) ShowPage(first / (_columns * _rows));
+    }
+
     private SetInfo? SelectedSet => _setFilter.Selected > 0 && _setFilter.Selected <= _sets.Count ? _sets[_setFilter.Selected - 1] : null;
 
     private void ShowPage(int page)
     {
-        int pageSize = Columns * Rows;
+        int pageSize = _columns * _rows;
         int pages = Math.Max(1, (_results.Count + pageSize - 1) / pageSize);
         _page = Math.Clamp(page, 0, pages - 1);
         foreach (var child in _grid.GetChildren()) child.QueueFree();
@@ -637,8 +757,8 @@ public partial class DeckBuilder : Control
 
     private Control Tile(CardEntry entry, Printing? printing)
     {
-        var tile = new Control { CustomMinimumSize = TileSize };
-        var card = new CardNode { Size = TileSize };
+        var tile = new Control { CustomMinimumSize = _tile };
+        var card = new CardNode { Size = _tile };
         tile.AddChild(card);
         string? set = printing?.Set.ToUpperInvariant(), number = printing?.CollectorNumber;
         card.Setup(ViewOf(DefinitionOf(entry.Name, set, number), -1), showCostPips: false);
@@ -654,7 +774,7 @@ public partial class DeckBuilder : Control
         }
         if (_suggesting && _suggestStats.TryGetValue(entry.Name, out var stats))
         {
-            var strip = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(8, TileSize.Y - 38), Size = new Vector2(TileSize.X - 16, 30) };
+            var strip = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(8, _tile.Y - 38), Size = new Vector2(_tile.X - 16, 30) };
             strip.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color(0.07f, 0.08f, 0.1f, 0.88f), 8));
             var text = BoardStyle.MakeLabel($"{stats.Inclusion:P0} · {Signed(stats.Synergy)}", 15, BoardStyle.Text, bold: true);
             text.HorizontalAlignment = HorizontalAlignment.Center;
@@ -677,7 +797,7 @@ public partial class DeckBuilder : Control
         if (copies > 0)
         {
             var badge = BoardStyle.MakeLabel($"×{copies}", 18, new Color("16171a"), bold: true);
-            var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(TileSize.X - 52, 8) };
+            var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Ignore, Position = new Vector2(_tile.X - 52, 8) };
             panel.AddThemeStyleboxOverride("panel", BoardStyle.Box(BoardStyle.Playable, 10));
             panel.AddChild(badge);
             tile.AddChild(panel);
@@ -703,7 +823,7 @@ public partial class DeckBuilder : Control
         _preview.Setup(view, showCostPips: false);
         var rect = anchor.GetGlobalRect();
         // Show it beside the hovered card, on whichever side has room.
-        float x = rect.End.X + 12 + _preview.Size.X < GetViewportRect().Size.X - 480 ? rect.End.X + 12 : rect.Position.X - _preview.Size.X - 12;
+        float x = rect.End.X + 12 + _preview.Size.X < GetViewportRect().Size.X - DeckPanelWidth - 10 ? rect.End.X + 12 : rect.Position.X - _preview.Size.X - 12;
         _preview.Position = new Vector2(x, Math.Clamp(rect.Position.Y - 60, 90, GetViewportRect().Size.Y - _preview.Size.Y - 20));
         _preview.Visible = true;
     }
@@ -736,11 +856,14 @@ public partial class DeckBuilder : Control
     }
 
     private Label? _headerTitle;
+    private HBoxContainer? _headerBar;
+    private Control? _headerSpacer;
 
     private void UpdateTitle()
     {
         if (_headerTitle is not null)
-            _headerTitle.Text = "Decks" + (_name.Text.Length > 0 ? $" · {_name.Text}" : "") + (_dirty ? " *" : "");
+            // Narrow: the deck's name shows in its field only.
+            _headerTitle.Text = "Decks" + (_name.Text.Length > 0 && !_compact ? $" · {_name.Text}" : "") + (_dirty ? " *" : "");
     }
 
     private void RefreshDeck()
@@ -975,6 +1098,15 @@ public partial class DeckBuilder : Control
         row.AddChild(name);
         if (card is not null) row.AddChild(BoardStyle.MakeCostRow(card.Definition.ManaCost.ToString(), 18, 11));
         if (card is { Record.Printings.Count: > 0 }) row.AddChild(PrintingButton(entry, card));
+        if (_compact)
+        {
+            // A touch has no right click: a button takes a copy out.
+            var less = BoardStyle.MakeModalButton("−", false, 15);
+            less.CustomMinimumSize = new Vector2(32, 0);
+            less.TooltipText = "One fewer";
+            less.Pressed += () => Add(entry.Name, -1, entry.Set, entry.Number, entry.Foil);
+            row.AddChild(less);
+        }
         return row;
     }
 
@@ -1050,7 +1182,7 @@ public partial class DeckBuilder : Control
         {
             var column = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.End, SizeFlagsHorizontal = SizeFlags.ExpandFill };
             column.AddThemeConstantOverride("separation", 2);
-            var bar = new Panel { CustomMinimumSize = new Vector2(0, 4 + 46f * counts[i] / max) };
+            var bar = new Panel { CustomMinimumSize = new Vector2(0, 4 + (_compact ? 30f : 46f) * counts[i] / max) };
             bar.AddThemeStyleboxOverride("panel", BoardStyle.Box(counts[i] > 0 ? BoardStyle.Playable : BoardStyle.PanelBorder, 3));
             column.AddChild(bar);
             var label = BoardStyle.MakeLabel(i == 7 ? "7+" : i.ToString(), 11, BoardStyle.TextDim);
