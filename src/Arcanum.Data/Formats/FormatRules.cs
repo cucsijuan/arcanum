@@ -214,9 +214,12 @@ public static class DeckValidator
             // A card that is a creature in the command zone is a legendary creature there (rule 903.3).
             bool legendaryCreature = (c.Definition.Supertypes & Supertype.Legendary) != 0 && (c.Definition.AsOffBattlefield().Is(CardType.Creature)
                 || c.Record.OracleText.Contains("isn't on the battlefield, it's a", StringComparison.OrdinalIgnoreCase));
-            bool allowed = legendaryCreature || c.Record.OracleText.Contains("can be your commander", StringComparison.OrdinalIgnoreCase)
+            // A legendary Vehicle, or a legendary Spacecraft with a power/toughness box, can be a commander too (rule 903.3).
+            bool legendaryVehicle = (c.Definition.Supertypes & Supertype.Legendary) != 0
+                && (c.Definition.Subtypes.Contains("Vehicle") || c.Definition.Subtypes.Contains("Spacecraft") && c.Record.Power is not null);
+            bool allowed = legendaryCreature || legendaryVehicle || c.Record.OracleText.Contains("can be your commander", StringComparison.OrdinalIgnoreCase)
                            || (pair && IsBackground(c)); // a Background is a commander only beside one that chooses it (rule 702.124k)
-            if (!allowed) issues.Add(new(IssueSeverity.Error, $"{c.Name} can't be a commander (it isn't a legendary creature).", c.Name));
+            if (!allowed) issues.Add(new(IssueSeverity.Error, $"{c.Name} can't be a commander (it isn't a legendary creature, Vehicle or Spacecraft with power and toughness).", c.Name));
         }
 
         // Color identity (rule 903.4): every card's mana symbols must fit the commanders' combined identity.

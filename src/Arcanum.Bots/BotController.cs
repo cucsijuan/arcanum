@@ -56,12 +56,17 @@ public sealed class BotController : IPlayerController
     private CardDefinition? Rules(GameView view, CardId id) =>
         view.FindCard(id) is { IsHidden: false } ? _definitions(id) : null;
 
-    /// <summary>What casting it means: the card, or its Adventure.</summary>
+    /// <summary>What casting it means: the card, its Adventure, or the back face of a modal double-faced card.</summary>
     private CardDefinition? SpellRules(GameView view, CastSpell cast) =>
         Rules(view, cast.Card) is { } rules
-            ? cast.Half is { } half && rules.SplitHalves is { } halves ? halves[half]
+            ? cast.Back ? rules.BackFace
+            : cast.Half is { } half && rules.SplitHalves is { } halves ? (half == CardDefinition.FusedHalves ? rules.AsFused() : halves[half])
             : cast.Adventure ? rules.Adventure : rules.Adventure is not null ? rules with { Adventure = null } : rules
             : null;
+
+    /// <summary>The mana cost of the face being cast.</summary>
+    private static string? CastCost(GameView view, CastSpell cast) =>
+        view.FindCard(cast.Card) is { } card ? cast.Back ? card.OtherFace?.ManaCost : card.ManaCost : null;
 
     private async Task PaceAsync()
     {
@@ -233,6 +238,9 @@ public sealed class BotController : IPlayerController
             int planned = request.Source is { } planFor && _plannedLifeX.Remove(planFor, out int x) ? x : 0;
             chosen = Math.Max(request.Min, Math.Min(Math.Min(planned, request.Max), view.Self.Life - 1));
         }
+        // "You may pay any amount of life": keep at least half of it, and never go below 7.
+        if (request.Prompt.Contains("pay how much life", StringComparison.Ordinal))
+            chosen = Math.Max(request.Min, Math.Min(request.Max, view.Self.Life - Math.Max(7, (view.Self.Life + 1) / 2)));
         if (request.Source is { } source) _announcedX[source] = chosen; // X is announced before targets (rule 601.2b)
         return Task.FromResult(chosen);
     }
@@ -377,7 +385,8 @@ public sealed class BotController : IPlayerController
 
         if (myTurn && view.Step.IsMain() && emptyStack)
         {
-            if (legal.OfType<PlayLand>().FirstOrDefault() is { } land) return land;
+            // A land card first; a modal double-faced card's land face only when there's no other land to play.
+            if (legal.OfType<PlayLand>().OrderBy(l => l.Back).FirstOrDefault() is { } land) return land;
             // A face-down creature it can turn face up: before combat, so it attacks as what it really is.
             if (view.Step == Step.PrecombatMain && legal.OfType<TurnFaceUp>().FirstOrDefault() is { } faceUp) return faceUp;
             if (BestSpell(view, legal, mainPhase: true) is { } spell) return spell;
@@ -420,7 +429,7 @@ public sealed class BotController : IPlayerController
     /// </summary>
     private bool CounterCostWorthIt(GameView view, CastSpell cast, CardDefinition rules, StackItemView top)
     {
-        int mana = AvailableMana(view) - ManaValue(view.FindCard(cast.Card)?.ManaCost);
+        int mana = AvailableMana(view) - ManaValue(CastCost(view, cast));
         var sacrifices = new List<ExtraCost>();
         if (rules.AdditionalCost is { Sacrifice: not null } always) sacrifices.Add(always);
         if (rules.AdditionalCostOptions is { Count: > 0 } options
@@ -448,6 +457,7 @@ public sealed class BotController : IPlayerController
             var rules = SpellRules(view, cast);
             var card = view.FindCard(cast.Card);
             if (rules is null || card is null) continue;
+            var cost = CastCost(view, cast);
             double score = 0;
             if (rules is { Spell: { } lifeSpell, PayXLife: true })
             {
@@ -456,7 +466,7 @@ public sealed class BotController : IPlayerController
             }
             else if (rules.Spell is { } spell)
             {
-                _x = card.ManaCost?.Contains("{X}") == true ? AffordableX(view, card.ManaCost) : null;
+                _x = cost?.Contains("{X}") == true ? AffordableX(view, cost) : null;
                 score = SpellScore(view, spell);
                 _x = null;
                 // Tricks (pump our own creature) are for combat, not the main phase.
@@ -467,8 +477,8 @@ public sealed class BotController : IPlayerController
             }
             else if (mainPhase && rules.Types.IsPermanent())
             {
-                score = 1 + ManaValue(card.ManaCost) + (rules.Is(CardType.Creature) ? 1 : 0);
-                if (rules.EnchantTarget is not null) score = AuraScore(view, rules, ManaValue(card.ManaCost));
+                score = 1 + ManaValue(cost) + (rules.Is(CardType.Creature) ? 1 : 0);
+                if (rules.EnchantTarget is not null) score = AuraScore(view, rules, ManaValue(cost));
             }
             if (score > bestScore) { bestScore = score; best = cast; }
         }

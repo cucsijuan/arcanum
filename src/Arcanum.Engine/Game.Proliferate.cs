@@ -50,6 +50,7 @@ public sealed partial class Game
         {
             State.GetPlayer(player).Poison++;
             Emit(new PoisonGiven(player, 1));
+            Emit(new PlayerCountersPut(player, 1, ctx.Controller));
         }
     }
 

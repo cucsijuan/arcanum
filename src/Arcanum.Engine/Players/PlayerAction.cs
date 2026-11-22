@@ -11,10 +11,14 @@ public sealed record PassPriority : PlayerAction
     public static readonly PassPriority Instance = new();
 }
 
-public sealed record PlayLand(CardId Card) : PlayerAction;
+/// <summary>Play a land (rule 305); <paramref name="Back"/>: a modal double-faced card played with its back face up (712.12).</summary>
+public sealed record PlayLand(CardId Card, bool Back = false) : PlayerAction;
 
-/// <summary>Cast a spell (as the card's Adventure when <paramref name="Adventure"/>). Mana is paid through a payment decision (auto-pay suggested).</summary>
-public sealed record CastSpell(CardId Card, bool Adventure = false, int? Half = null) : PlayerAction;
+/// <summary>
+/// Cast a spell (as the card's Adventure when <paramref name="Adventure"/>; a modal double-faced card's back face when <paramref name="Back"/>,
+/// rule 712.11b). Mana is paid through a payment decision (auto-pay suggested).
+/// </summary>
+public sealed record CastSpell(CardId Card, bool Adventure = false, int? Half = null, bool Back = false) : PlayerAction;
 
 /// <summary>
 /// Activate a mana ability, e.g. tap a land for mana (rule 605). Mana abilities don't use the stack;

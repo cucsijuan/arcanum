@@ -1282,7 +1282,8 @@ public partial class GameBoard : Control
     {
         var view = _session.ViewFor(p.Player);
         static bool Legendary(CardView c) => (c.Supertypes & Arcanum.Engine.Cards.Supertype.Legendary) != 0;
-        if (action is CastSpell { Adventure: false, Half: null } cast && view.FindCard(cast.Card) is { } card && Legendary(card)
+        if (action is CastSpell { Adventure: false, Half: null } cast && view.FindCard(cast.Card) is { } cardInZone
+            && (cast.Back ? cardInZone.OtherFace : cardInZone) is { } card && Legendary(card)
             && Arcanum.Engine.Cards.CardTypeExtensions.IsPermanent(card.Types)
             && view.Battlefield.Any(c => c.Controller == p.Player && c.Name == card.Name && Legendary(c)))
         {
@@ -1330,9 +1331,12 @@ public partial class GameBoard : Control
                 {
                     var label = option switch
                     {
+                        PlayLand { Back: true } => $"Play {card?.OtherFace?.Name}",
                         PlayLand => $"Play {card?.Name}",
+                        CastSpell { Back: true } => $"Cast {card?.OtherFace?.Name} {card?.OtherFace?.ManaCost}",
                         CastSpell { Adventure: true } => $"Adventure: {card?.AdventureName} {card?.AdventureCost}",
                         CastSpell { Half: { } half } when card?.SplitHalves is { } halves && half < halves.Count => $"Cast {halves[half]}",
+                        CastSpell { Half: Arcanum.Engine.Cards.CardDefinition.FusedHalves } when card?.SplitHalves is { Count: 2 } both => $"Fuse: cast {both[0]} and {both[1]}",
                         CastSpell => $"Cast {card?.Name}",
                         ActivateManaAbility m => $"Add {{{m.Type.ToSymbol()}}}",
                         TurnFaceUp { ForManaCost: true } => $"Turn face up for {card?.FaceDownCard?.ManaCost} ({card?.FaceDownCard?.Name})",
@@ -1567,12 +1571,14 @@ public partial class GameBoard : Control
                     {
                         CastSpell { Half: { } half } c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Graveyard, SplitHalves: { } halves } g && half < halves.Count
                             => (c.Card, $"Cast {halves[half]} (graveyard)"),
+                        CastSpell { Back: true } c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Graveyard or Arcanum.Engine.State.Zone.Exile } g
+                            => (c.Card, $"Cast {g.OtherFace?.Name} ({(g.Zone == Arcanum.Engine.State.Zone.Exile ? "exile" : "graveyard")})"),
                         CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Graveyard } g => (c.Card, $"Flashback {g.Name}"),
                         CastSpell { Adventure: true } c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (c.Card, $"Adventure: {x.AdventureName} (exile)"),
                         CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile, PreparedSpellOf: { } on } x
                             => (c.Card, $"Prepared: {x.Name} {x.ManaCost} ({view.FindCard(on)?.Name})"),
                         CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (c.Card, $"Cast {x.Name} (exile)"),
-                        PlayLand l when view.FindCard(l.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (l.Card, $"Play {x.Name} (exile)"),
+                        PlayLand l when view.FindCard(l.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (l.Card, $"Play {(l.Back ? x.OtherFace?.Name : x.Name)} (exile)"),
                         ActivateAbility a when view.FindCard(a.Source) is { Zone: Arcanum.Engine.State.Zone.Graveyard } g
                             => (a.Source, $"{g.Name}: {Shorten(a.Index < g.AbilityTexts.Count ? g.AbilityTexts[a.Index] : "activate")}"),
                         // The companion waits outside the game, not on the board.

@@ -79,6 +79,9 @@ Instead of `targets`/`effects`, a spell or ability can list `modes`:
 Each mode's effects refer to its own targets (`"target"` is the mode's first target). Modes without legal
 targets can't be chosen.
 
+A spell or ability with `"targetRule": "allDifferent"` and one player target per mode ("each mode must target a different
+player") needs the targets to be different players.
+
 ## Cost reductions
 
 `{ "spellCost": { "spells": { "types": ["instant", "sorcery"] }, "amount": 1 } }` in `abilities`: spells you cast
@@ -181,7 +184,7 @@ Numbers in effects can be `3`, `"X"`, `"-X"`, `"lifeGained"`, `"life"`, `"handSi
 | `creatureCombatDamageToPlayer` | A creature matching `filter` deals combat damage to a player |
 | `opponentLosesLife` | An opponent loses life |
 | `draw` | You draw a card |
-| `countersPlaced` | +1/+1 counters are put on a creature matching `filter` (`"onSelf": true`: on this one) |
+| `countersPlaced` | +1/+1 counters are put on a creature matching `filter` (`"onSelf": true`: on this one; `"orPlayer": true`: poison and experience counters put on a player too, the triggered player is that player) |
 | `becomesTapped` | This permanent becomes tapped |
 | `eachUpkeep` / `eachBeginCombat` / `eachEndStep` | At the beginning of each upkeep / combat / end step |
 | `youForage` | You forage (see the section below) |
@@ -343,6 +346,15 @@ Quantities also: `sacrificedToughness`, `lifeLostThisWay`, `destroyedThisWay`, `
   - Copies copy the face that's up: a copy of a transformed permanent has the back face and mana value 0 and can't
     transform; a token copy of a double-faced permanent is a double-faced token, entering with the same face up.
   - Day/night cards (daybound, nightbound) and cards cast transformed (disturb …) are not run yet.
+- **Modal double-faced cards** (layout `modal_dfc`): the script is written like a transforming card, the front face at the
+  root and the back face under `"back": { … }`, and the card is supported only when both faces are. Either face can be
+  played: a land face is played as a land and enters with its back face up, and a spell face is cast with that face up,
+  staying up on the stack and entering with it. A player picks the face in the cast or play list. An effect that casts
+  the card asks its caster which face to cast (among the faces it may cast there); miracle casts the front face. Each face
+  is judged as its own card, so a permission for lands or spells covers the face that matches. The back face's mana value
+  is its own. A land face's mana ability comes from its rules text. When an effect puts it onto the battlefield, it enters
+  front face up unless the effect says transformed, and it stays where it is when the face it would enter with isn't a
+  permanent card.
 - **Sagas** (layout `saga`): chapter abilities are triggered abilities with `"trigger": "chapter", "chapters": [3, 4]`.
   A Saga enters with a lore counter, gets one as its controller's precombat main phase begins, and is sacrificed
   once it has as many lore counters as its last chapter and no chapter ability is waiting or on the stack.
@@ -392,6 +404,7 @@ Class cards are described with the other card frames above.
 | Recruit | `{ "recruit": true }` (draw, discard, a 1/1 white Human Soldier if a nonland card was discarded) |
 | Attach something | `{ "attach": "created", "to": "target" }`, `{ "attach": { "choose": filter }, "to": "target" }` (chosen, optional) |
 | Cards milled this way to hand | `{ "takeMilled": filter }` (all) / `{ "takeMilled": filter, "count": 2 }` (up to) |
+| Cards milled this way onto the battlefield | `{ "takeMilled": filter, "to": "battlefield" }` |
 | Remove every counter | `{ "removeAllCounters": "attached" }` |
 | Exile and return at once | `{ "blink": "eachTarget" }` |
 | Shuffle into its owner's library | `{ "shuffleIntoLibrary": "self" }` |
@@ -449,7 +462,7 @@ Trigger options: `"batched": true` ("whenever one or more …"), `"counterKind":
 another player's draws (`opponentDraws`) and spells (`opponentCastsSpell`).
 
 Activated abilities: `"equip": true` marks equip abilities written in a script (`Equip—{2}, Pay 2 life`, `Equip Wizard
-{1}`), `"costReductionPer": filter`, `"discardFilter": filter` (the discarded card must match). Costs:
+{1}`, `Equip commander {3}`). A plain `Equip {N}` line is never scripted: the engine derives it, and a script copy would duplicate it. `"costReductionPer": filter`, `"discardFilter": filter` (the discarded card must match). Costs:
 `sacrifice:artifact|creature`, `sacrifice:Goblin` (another permanent with that subtype).
 
 Static abilities: `"grantsWard": "{1}"`, `"extraTriggers": true` (triggered abilities of affected permanents trigger an
@@ -628,7 +641,8 @@ Card-wide: `"multikicker"`, `"replicate"`, `"squad"`, `"dash"`, `"splice"`, `"mi
 `"conspire"`, `"payXLife"`, `"entersWithXCountersTimes": 2`, `"flashbackExtra"` (non-mana flashback costs), `"flashbackExilesX"`,
 `"flashbackReduction"` (quantity), `"devour": 3` with `"devourFilter"`, `"exert": true` with `"exertIf"`, `"cantBeSacrificed"`.
 Split cards describe their halves under `"split": [ { … }, { … } ]`; an aftermath half is cast only from the graveyard. Two halves that are
-both permanents make a Room (see "Rooms, dread, rule flags and face-down effects" below).
+both permanents make a Room (see "Rooms, dread, rule flags and face-down effects" below). A split card with the Fuse keyword can be cast
+from its owner's hand with both halves; nothing to script beyond `"split"`.
 Quantities `"timesKicked"`, `"squadPaid"`. Trigger `castThis` ("when you cast this spell"), `cycled` ("when you cycle this card",
 amount: X), `exerted`. Cycling costs may include `{X}`. `"modesRepeat": true` ("you may choose the same mode more than once").
 
@@ -1249,6 +1263,7 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   "hasn't dealt combat damage yet".
 - `"triggeredAttacksPlayerAlone"`: the creature that triggered the ability attacks a player (not a planeswalker), and no other creature
   attacks that player.
+- `"triggeredAttacksPlayer"`: the creature that triggered the ability attacks a player (not a planeswalker); others may attack too.
 - `"libraryEmpty"`: your library has no cards.
 - `{ "opponentsControlTotal": filter, "count": 3 }`: your opponents together control at least `count` (default 1) objects matching
   the filter; the count is across all opponents. Used by `"entersTappedUnless"`.
@@ -1256,7 +1271,10 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 ### Quantities
 - `{ "divide": quantity, "by": 3 }`: the quantity divided by N, rounded down ("for every three …").
 - Strings: `"cardTypesInAllGraveyards"` (card types among cards in all graveyards), `"drawnThisWay"` (cards drawn by an earlier effect of
-  this spell or ability), `"domain"` (basic land types among lands you control), `"distinctPowers"` (different powers among your creatures).
+  this spell or ability), `"domain"` (basic land types among lands you control), `"distinctPowers"` (different powers among your creatures),
+  `"damagedThisWay"` (distinct objects damaged by an earlier effect of this spell or ability), `"opponentsAttackedThisTurn"` (opponents you
+  attacked this turn), `"exiledForCostManaValue"` (total mana value of the cards exiled to pay this spell's cost).
+- `{ "counters": "+1/+1", "on": "target" }`: the counters of that kind on the first target.
 - Objects: `{ "loyalty": "target" }` (loyalty counters on the first target), `{ "greatestManaValueInGraveyard": filter }` (the greatest
   mana value among matching cards in your graveyard, 0 if none), `{ "milledThisTurn": "target" }` (cards put into the first target
   player's graveyard from their library this turn); `{ "opponentsWhoDiscardedFewer": n, "filter": f }` (the number of opponents who discarded fewer
@@ -1271,6 +1289,8 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   compares both. Without types, it compares creatures.
 - `"remembered": true`: only the object the source has remembered matches (same card and version).
 - `"toughnessAbovePower": true`: the object's toughness is greater than its power.
+- `"noCounterKind": "+1/+1"`: the object has no counters of that kind.
+- `"maxManaValueYourCounters": true`: the object's mana value is no more than the number of counters on permanents you control.
 
 ### Effects
 - `{ "loyaltyAtInstantSpeed": "Seer" }`: until end of turn, you may activate the loyalty abilities of planeswalkers you control with
@@ -1296,6 +1316,10 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   planeswalkers you control with that subtype.
 - `{ "protectionAndLifeLock": subject }`: until that player's next turn, they have protection from everything and their life total
   can't change.
+- `{ "payLifeRounds": [ effects ] }`: starting with you, each player may pay any amount of life, repeated until no one pays.
+  Then the effects happen for each player, with `"X"` as the life that player paid.
+- `{ "moveCounter": { "kind": "+1/+1", "from": "self", "to": "triggered", "count": 1 } }`: moves counters of that kind from the first
+  subject to the second (`count` defaults to 1). Used for graft.
 - `{ "payAnyLife": true, "effects": [ … ] }`: you may pay any amount of life. If you do, the effects happen; `"X"` in them is the life
   paid.
 - `{ "revealTwoFromOutsideOpponentChooses": true }`: you may reveal two cards with different names from outside the game (your
@@ -1366,6 +1390,8 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 ### From the rules text (no script key)
 - **Escape**: the cost and the exile count are read from the line "Escape—{cost}, Exile N other cards from your graveyard", and the
   counters from "escapes with N +1/+1 counters". The card can be cast from the graveyard for the escape cost (rule 702.138).
+  Root `"rules": ["GraveyardNonlandCardsHaveEscape"]`: each nonland card in your graveyard has escape, its mana cost and the exile of
+  three other cards. A card with no mana cost (empty printed cost) gets no escape.
 - **Ravenous**: "Ravenous" makes the creature enter with X +1/+1 counters, where X is the value chosen for its cast. It draws a card if X is 5 or more.
 - **Toxic N**, **Vanishing N** and **Fear** are read from the rules text.
 - **Enchant player** and **Enchant opponent**: an Aura that is attached to a player. The Aura is shown on that player's side of the board.
@@ -1422,6 +1448,9 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - Static `"exiledCreatureAbilities": true`: the source has the activated abilities of the creature cards exiled with it.
 - Static `grantsManaOnlyFor`: restricts the mana the static grants to the given use.
 - Activated ability with `"onlyOpponents": true`: only the controller's opponents may activate it. The controller can't.
+- Activated ability with `"anyPlayer": true`: any player may activate it ("Any player may activate this ability").
+- Static `"protectionFromColorsOutsideCommanderIdentity": true`: protection from each color outside the commander's color identity.
+  With no commander, it is protection from every color (rule 903.4f).
 - `extraMana` entries take `"cantPayGeneric": true`: the mana can pay colored and {C} symbols only, not generic costs.
 - Static `"everyCreatureType": true`: the affected creatures are every creature type.
 - Static `"setChosenColor": true`: the affected object becomes the source's chosen color.
@@ -1529,6 +1558,7 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - Target kind `spellOrCreature`: a spell on the stack (not this source) or a creature permanent ("target spell or creature"); a filter applies to both.
 - Target kind `ability` with `"triggeredOnly": true`: a triggered ability only.
 - Target rule `"targetRule": "shareCreatureType"`: all the targets share a creature type. A mode takes its own `targetRule`.
+- Target rule `"allDifferent"` on a spell or ability: its targets are all different from each other (see "Modal spells" above for modes).
 - Subjects `sourceOwner` (the source's owner), `playersOtherThanSourceOwner` (each player except that owner, in turn order) and
   `triggeredController` (the controller of the triggering object).
 - Conditions `"creatureAttackingYou"` (a creature is attacking you), `"yourMainPhase"`, `"foretold"`, `{ "spentToCast": "{W}{W}" }`
@@ -1619,6 +1649,9 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   flanking gets -1/-1 until end of turn (one trigger per blocker). Battle cry: when it attacks, each other attacking creature gets
   +1/+0 (one trigger per instance). Mentor: when it attacks, a +1/+1 counter goes on target attacking creature with lesser power.
   Hexproof from monocolored: opponents' monocolored spells and abilities from monocolored sources can't target it.
+- **Graft N**: scripted, not derived. The creature enters with `"entersWithCounters": N`. Its trigger is `creatureEnters` with a filter
+  for other creatures (any controller), `"if": { "counters": 1 }` (it has a +1/+1 counter), `"may"`, and `{ "moveCounter": … }` from
+  itself to the triggered creature (rule 702.58).
 - **Riot**: a keyword read from the card data, no script. As it enters, its controller answers yes (a +1/+1 counter) or no
   (haste). One answer for each instance.
 - **Fabricate N**: read from the rules text, no script. When it enters, its controller may put N +1/+1 counters on it; if not,
@@ -1636,7 +1669,9 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   they choose also copies it. Each copy may have new targets chosen.
 - **Omen**: an Adventure whose spell half has the Omen type. As the spell resolves, it is shuffled into its owner's library, not
   exiled.
-- **Myriad**: `"myriad": true` (see above). Its tokens are exiled at end of combat.
+- **Myriad**: `"myriad": true` (see above). Its tokens are exiled at end of combat. Options on the effect: `"mandatory": true` (no
+  choice to skip an opponent), `"playerOnly": true` (only the defending player is attacked, not their planeswalkers), `"notLegendary": true`
+  (the copies aren't legendary) and `"sacrificeAtEndOfCombat": true` (the copies are sacrificed, not exiled).
 
 ### Costs
 - `life:X`: "Pay X life", with X announced with the other costs.
@@ -1791,6 +1826,17 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
 - `"enterUntappedIfControl": filter`: with a reveal-or-tapped choice as it enters, the permanents matching the filter that you
   control let it enter untapped instead. `"enterAlsoChooseColor": true` adds "choose a color as it enters" to that choice.
 - `"graveyardCastFinality": true`: a permanent cast from the graveyard this way enters with a finality counter on it.
+- `"countersPerArtifactManaSpent": true`: each creature you control enters with an additional +1/+1 counter for each mana from an
+  artifact source spent to cast it.
+- `"doublesDamageOfYourCreaturesWithCounters": true`: double all damage that creatures you control with counters on them would deal.
+- `"preventsDamageToYourOtherCreaturesForCounters": true`: damage that would be dealt to another creature you control is prevented,
+  and that many +1/+1 counters are put on that creature instead.
+- `"extraMutagenWithTokens": true`: if one or more tokens would be created under your control, those tokens plus a Mutagen token are
+  created instead.
+- `"drawTriggersTwice": true`: each triggered ability of a permanent you control that triggers on a draw (you draw, an opponent draws,
+  a player draws) triggers one more time, once more for each such permanent.
+- `"nontokenCreaturesYouControlHaveRiot": true`: nontoken creatures you control have riot.
+- `"opponentsSkipExtraTurns": true`: when an opponent would begin an extra turn, that player skips it instead.
 
 ## Sacrifice deck vocabulary
 
@@ -1893,6 +1939,7 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
 - `"always"`: no condition (for a permission such as "you may cast this from your graveyard").
 - `{ "creatureDied": filter }`: a creature matching the filter died this turn (the bare `"morbid"` is any creature).
 - `{ "aPlayerLifeAtMost": 5 }`: a player (you included) has 5 life or less.
+- `{ "aPlayerLifeAtMost": "halfStarting" }`: a player (you included) has at most half the starting life (twice their life is at most the starting life).
 - `{ "defendingPlayerControls": filter }`: the player this attacking source attacks controls a matching object.
 - `{ "sourceHadCounters": "any" }`: the source had counters of any kind.
 
@@ -1938,6 +1985,7 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
 - `{ "exileAllCreaturesFractals": token spec }`: exile all creatures; each player creates a 0/0 Fractal with counters equal to the total
   power they had exiled.
 - `{ "wheneverCreatureDiesThisTurn": [ effects ], "text": "…" }`: a delayed trigger until end of turn: whenever a creature dies this turn.
+  An optional `"filter"` limits it to the creatures that match.
 - `{ "reorderTopOf": "you", "count": 3 }`: look at the top cards of that library and put them back in any order; you choose the order.
 - `{ "revealTopDifferentPowers": quantity, "filter": filter }`: reveal the top cards; put any number of matching cards with different
   powers into your hand, the rest on the bottom in a random order.
@@ -1960,6 +2008,7 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
 - `{ "exileYouControl": 1, "filter": filter }`: exile that many permanents you control matching the filter.
 
 ### Counter kinds
+- `Pressure` is a counter kind too (`"pressure"` where the script takes a kind).
 - `Possession`, `Nest`, `Rev` and `Slumber` are counter kinds, named wherever the script takes one (for example
   `{ "counters": "possession" }` in a quantity).
 

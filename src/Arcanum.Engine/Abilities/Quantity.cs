@@ -93,6 +93,8 @@ public enum QuantityKind
     MilledThisWay,
     /// <summary>Permanents destroyed by this effect.</summary>
     DestroyedThisWay,
+    /// <summary>How many permanents the effect dealt damage to ("a Mutagen token for each creature dealt damage this way").</summary>
+    DamagedThisWay,
 
     /// <summary>Cards a "toGraveyard" effect of this ability put into a graveyard ("for each card put into a graveyard this way").</summary>
     PutIntoGraveyardThisWay,
@@ -161,6 +163,12 @@ public enum QuantityKind
     Sum,
     /// <summary>The number of opponents the controller has.</summary>
     OpponentCount,
+    /// <summary>How many different opponents you attacked this turn (attacking their planeswalkers or battles doesn't count).</summary>
+    OpponentsAttackedThisTurn,
+    /// <summary>The total mana value of the cards exiled to pay the cost of the resolving ability or spell.</summary>
+    ExiledForCostManaValue,
+    /// <summary>The counters of kind <see cref="Quantity.Counter"/> on the target at <see cref="Quantity.Index"/> ("the number of +1/+1 counters on that creature").</summary>
+    TargetCounters,
     /// <summary>Total power of your attacking creatures matching the filter ("their total power").</summary>
     AttackingPower,
     /// <summary>Cards in all players' hands.</summary>
@@ -216,6 +224,8 @@ public enum QuantityKind
     OtherCreaturesSharingTypeWithAffected,
     /// <summary>Half the cards in the library of the player being affected (or else the controller's), rounded down.</summary>
     HalfLibrary,
+    /// <summary>Half the library of the player being affected, rounded up ("mills half their library, rounded up").</summary>
+    HalfLibraryUp,
     /// <summary>Half of <see cref="Quantity.Parts"/>[0], rounded up (rule 107.1a: "round up each time").</summary>
     HalfRoundedUp,
     /// <summary>The mana value of the object a static ability is being applied to ("equal to its mana value").</summary>
@@ -308,6 +318,8 @@ public enum QuantityKind
     FoundManaValue,
     /// <summary>Card types among the cards this effect discarded ("a card for each card type among cards discarded this way").</summary>
     CardTypesAmongDiscarded,
+    /// <summary>Card types among the spells the controller cast this turn, as each was cast.</summary>
+    CardTypesAmongSpellsCastThisTurn,
     /// <summary>Creatures that died this turn ("for each creature that died this turn").</summary>
     CreaturesDiedThisTurn,
     /// <summary>The result of this effect's die roll.</summary>

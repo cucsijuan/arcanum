@@ -12,13 +12,15 @@ namespace Arcanum.Engine;
 
 public sealed partial class Game
 {
-    /// <summary>"Each other creature you control enters with additional +1/+1 counters equal to …" of the entering creature's controller's permanents.</summary>
+    /// <summary>"Each other creature you control enters with additional +1/+1 counters equal to …" of the entering creature's controller's permanents, and the like.</summary>
     private int ExtraEnterCounters(Card entering) =>
         State.PermanentsControlledBy(entering.Controller).Where(c => c.Id != entering.Id && c.Definition.OthersEnterWithCounters is not null && c.HasTextAbilities
                 && (c.Definition.OthersEnterWithCountersFilter is not { } only || Matches(only with { Controller = ControllerFilter.Any }, entering, entering.Controller, c, c.Controller)))
             .Sum(c => Math.Max(0, Eval(c.Definition.OthersEnterWithCounters!, new EffectContext(c.Controller, c, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))))
         + State.GetPlayer(entering.Controller).Graveyard.Select(State.GetCard)
-            .Count(g => g.Definition.GraveyardEnterBonus is { } bonus && Matches(bonus with { Controller = ControllerFilter.Any }, entering, entering.Controller, g, entering.Controller));
+            .Count(g => g.Definition.GraveyardEnterBonus is { } bonus && Matches(bonus with { Controller = ControllerFilter.Any }, entering, entering.Controller, g, entering.Controller))
+        // "Each creature you control enters with an additional +1/+1 counter on it for each mana from an artifact source spent to cast it."
+        + State.PermanentsControlledBy(entering.Controller).Count(c => c.Definition.CountersPerArtifactManaSpent && c.HasTextAbilities) * entering.ArtifactManaSpent;
 
     /// <summary>Puts counters on a permanent (doubled by "twice that many counters" effects of its controller).</summary>
     /// <summary>A counter kind as players read it ("first strike", "+1/+1").</summary>

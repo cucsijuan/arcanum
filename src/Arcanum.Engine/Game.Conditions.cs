@@ -64,6 +64,7 @@ public sealed partial class Game
         TriggeredPlayerFirstLossOnTheirTurn => ctx.Trigger is { Player: { } loser, Amount: var lost } && loser == State.ActivePlayer
                                                && State.GetPlayer(loser).LifeLostThisTurn == lost,
         TriggeredInGraveyard => ctx.Trigger is { Subject: { } tg } tgi && State.GetCard(tg) is { Zone: Zone.Graveyard } tgc && tgc.Version == tgi.SubjectVersion,
+        TriggeredAttacksPlayer => ctx.Trigger?.Subject is { } attacker && State.Combat?.FindAttack(attacker) is { Planeswalker: null },
         TriggeredAttacksPlayerAlone => ctx.Trigger?.Subject is { } lone && State.Combat?.FindAttack(lone) is { Planeswalker: null } alone
                                        && State.Combat.Attacks.Count(a => a.Defender == alone.Defender && a.Planeswalker is null) == 1,
         TriggeredCrewedBySource => ctx.Trigger?.Subject is { } vehicle && State.CrewedThisTurn.Any(c => c.Vehicle == vehicle && c.Crewer == ctx.Source.Id && c.Turn == State.TurnNumber),
@@ -91,7 +92,7 @@ public sealed partial class Game
         static bool AboutTrigger(Quantity q) => q.Parts?.Any(AboutTrigger) == true || q.Kind is QuantityKind.ManaSpent or QuantityKind.TriggerAmount or QuantityKind.TriggeredPower or QuantityKind.TriggeredToughness or QuantityKind.TriggeredColors or QuantityKind.TriggeredPlayerAttackers or QuantityKind.TriggeredPlayerAttackersAtYou or QuantityKind.TriggeredPlayerHandSize or QuantityKind.SpellsCastBeforeTriggered;
         return condition switch
         {
-            TriggeredAttacksPlayerAlone or TriggeredMatches or TriggeredPlayerHasMostLife or TriggeredHadCounters or TriggeredPlayerIsYou or DefenderHasMoreLifeThanAnotherOpponent or TriggeredAbilityCostHasX or FoundHas or TriggeredPlayerFirstLossThisTurn or TriggeredPlayerFirstLossOnTheirTurn or TriggeredCrewedBySource or Evolves or TriggeredPlayerHasMoreLands or AttackersMatchChosenNumber or TriggeredPlayerIsActive or TriggeredBlockedAttackingYourOpponent or BatchHas => HoldsIn(condition, ctx),
+            TriggeredAttacksPlayerAlone or TriggeredAttacksPlayer or TriggeredMatches or TriggeredPlayerHasMostLife or TriggeredHadCounters or TriggeredPlayerIsYou or DefenderHasMoreLifeThanAnotherOpponent or TriggeredAbilityCostHasX or FoundHas or TriggeredPlayerFirstLossThisTurn or TriggeredPlayerFirstLossOnTheirTurn or TriggeredCrewedBySource or Evolves or TriggeredPlayerHasMoreLands or AttackersMatchChosenNumber or TriggeredPlayerIsActive or TriggeredBlockedAttackingYourOpponent or BatchHas => HoldsIn(condition, ctx),
             QuantityAtLeast qa when AboutTrigger(qa.Quantity) => HoldsIn(condition, ctx),
             IncrementHolds => source.Zone == Zone.Battlefield && source.IsCreature && info?.SpellManaSpent is { } spent && (spent > source.Power || spent > source.Toughness),
             // "When this enters, if X is 5 or more": the X it was cast with (107.3m).
@@ -136,6 +137,7 @@ public sealed partial class Game
             AdditionalCostWasPaid => source?.AdditionalCostPaid == true,
             WasEvoked => source?.Evoked == true,
             WasForetold => source?.CastForetold == true,
+            WasSneaked ws => source?.Sneaked == true && (!ws.ThisTurn || source.ZoneChangedTurn == State.TurnNumber),
             ClassLevelIs cl => source?.Zone == Zone.Battlefield && source.ClassLevel == cl.Level,
             ClassLevelAtLeast cla => source?.Zone == Zone.Battlefield && source.ClassLevel >= cla.Level,
             TopOfLibrary top => player.Library.Count > 0
@@ -155,6 +157,9 @@ public sealed partial class Game
                 .Count(id => State.GetCard(id) is var c && c.Controller == controller && Matches(aw.Filter! with { Controller = ControllerFilter.Any }, c, controller, source, controller)) >= aw.Count,
             SourceAndOthersAttackedThisCombat sa => SourceAndOthersAttacked(source, sa.Others),
             QuantityAtLeast qa when source is not null && !DependsOnTargets(qa.Quantity) => Eval(qa.Quantity, new EffectContext(controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>())) >= qa.AtLeast,
+            // "As long as [a quantity] is less than [another]": a static ability's condition, read from its source.
+            QuantityLessThan lt when source is not null && !DependsOnTargets(lt.Left) && !DependsOnTargets(lt.Right)
+                => new EffectContext(controller, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>()) is var here && Eval(lt.Left, here) < Eval(lt.Right, here),
             SourceHasCounters c => source is not null && source.CounterCount(c.Kind) >= c.AtLeast,
             CastXAtLeast cx => source is not null && source.CastX >= cx.AtLeast,
             ModifiedCreatureDiedThisTurn => player.ModifiedCreatureDiedThisTurn,
@@ -258,6 +263,7 @@ public sealed partial class Game
                 .Any(c => Matches(oc.Filter with { Controller = ControllerFilter.Any }, c, o, source, controller, lastKnown: c.Zone != Zone.Stack))),
             OpponentLifeAtMost ol => State.OpponentsOf(controller).Any(o => State.GetPlayer(o).Life <= ol.Life),
             APlayerLifeAtMost al => State.Players.Any(p => !p.HasLost && p.Life <= al.Life),
+            APlayerLifeAtMostHalfStarting => State.Players.Any(p => !p.HasLost && p.Life * 2 <= Config.StartingLife),
             NoMonarch => State.Monarch is null,
             ResolvedThisTurn r => source is not null && (r.Exactly ? source.ResolvedThisTurn.Values.DefaultIfEmpty(0).Max() == r.Times : source.ResolvedThisTurn.Values.DefaultIfEmpty(0).Max() >= r.Times),
             FullParty => PartySize(controller) == 4,

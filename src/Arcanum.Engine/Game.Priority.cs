@@ -83,6 +83,15 @@ public sealed partial class Game
     private static readonly string[] ColorLetters = { "W", "U", "B", "R", "G" };
     private static readonly string[] BasicLandTypes = { "Plains", "Island", "Swamp", "Mountain", "Forest" };
 
+    /// <summary>
+    /// Riot instances a permanent has as it enters: its own, and one for each "nontoken creatures you control have riot" of its
+    /// controller's permanents (rule 614.12: they apply to it as it enters).
+    /// </summary>
+    private int RiotInstances(Card card) =>
+        card.Definition.KeywordAbilities.Count(k => k == Keyword.Riot)
+        + (card.IsCreature && !card.Definition.IsToken
+            ? State.PermanentsControlledBy(card.Controller).Count(c => c.Id != card.Id && c.HasTextAbilities && c.Definition.NontokenCreaturesHaveRiot) : 0);
+
     /// <summary>"As this enters, choose a color / creature type" (rule 614.12), made before anything else happens.</summary>
     private async Task ResolveEnterChoicesAsync()
     {
@@ -96,7 +105,7 @@ public sealed partial class Game
             if (card.Version != version || card.Zone != Zone.Battlefield) continue;
             var who = card.Controller;
             // Riot (702.136a): a +1/+1 counter or haste, chosen as it enters; each instance is a separate choice (702.136b).
-            for (int riot = card.Definition.KeywordAbilities.Count(k => k == Keyword.Riot); riot > 0; riot--)
+            for (int riot = RiotInstances(card); riot > 0; riot--)
             {
                 bool counter = await ControllerOf(who).ChooseYesNoAsync(ViewFor(who), new YesNoRequest($"Riot: {card.Name} enters with a +1/+1 counter? (No: it has haste.)", id));
                 if (counter) PutCounters(card, CounterKind.PlusOnePlusOne, 1, who);
@@ -361,18 +370,41 @@ public sealed partial class Game
 
         // Cards in hand, commanders in the command zone (rule 903.8), cards with flashback or harmonize in the graveyard and
         // exiled cards the player may play this turn.
-        var castable = player.Hand.Concat(player.Command)
-            .Concat(player.Graveyard.Where(id => State.GetCard(id).Definition is { Flashback: not null } || HarmonizeCost(State.GetCard(id)) is not null || HasGrantedFlashback(State.GetCard(id))))
-            .Concat(PlayableExile(playerId))
-            .Concat(State.PlayableFromGraveyard.Concat(State.FlashbackGranted)
-                .Where(p => p.Player == playerId && State.GetCard(p.Card) is { Zone: Zone.Graveyard } c && c.Version == p.Version).Select(p => p.Card))
-            .Concat(OtherCastableCards(playerId))
-            .Concat(player.Graveyard.Where(id => HasGraveyardCastRight(State.GetCard(id))))
-            .Concat(PlaysLandsFromGraveyard(playerId) ? player.Graveyard.Where(id => State.GetCard(id).Is(CardType.Land))
-                : HasRule(playerId, ExtraRules.PlayForestsFromGraveyard) ? player.Graveyard.Where(id => State.GetCard(id).Is(CardType.Land) && State.GetCard(id).HasSubtype("Forest"))
-                : Enumerable.Empty<CardId>())
-            .Distinct().ToList(); // listed first: checking a card may look at its permissions without them (OnlyAsAdventure)
-        foreach (var card in castable.Select(State.GetCard))
+        List<CardId> Castable() => player.Hand.Concat(player.Command)
+                .Concat(player.Graveyard.Where(id => State.GetCard(id).Definition is { Flashback: not null } || HarmonizeCost(State.GetCard(id)) is not null || HasGrantedFlashback(State.GetCard(id))))
+                .Concat(PlayableExile(playerId))
+                .Concat(State.PlayableFromGraveyard.Concat(State.FlashbackGranted)
+                    .Where(p => p.Player == playerId && State.GetCard(p.Card) is { Zone: Zone.Graveyard } c && c.Version == p.Version).Select(p => p.Card))
+                .Concat(OtherCastableCards(playerId))
+                .Concat(player.Graveyard.Where(id => HasGraveyardCastRight(State.GetCard(id))))
+                .Concat(PlaysLandsFromGraveyard(playerId) ? player.Graveyard.Where(id => State.GetCard(id).Is(CardType.Land))
+                    : HasRule(playerId, ExtraRules.PlayForestsFromGraveyard) ? player.Graveyard.Where(id => State.GetCard(id).Is(CardType.Land) && State.GetCard(id).HasSubtype("Forest"))
+                    : Enumerable.Empty<CardId>())
+                .Distinct().ToList();
+        var castable = Castable(); // listed first: checking a card may look at its permissions without them (OnlyAsAdventure)
+        // A modal double-faced card can be cast or played with either face (rules 712.11b, 712.12): a permission or rule that lets a
+        // player play or cast cards of some kind covers the card when the face they'd play has that kind. The back faces are looked
+        // at with those faces up.
+        var modal = State.Cards.Values.Where(c => c.PrintedDefinition.IsModalDoubleFaced && c.Zone is Zone.Hand or Zone.Command or Zone.Graveyard or Zone.Exile or Zone.Library).ToList();
+        var backCastable = new HashSet<CardId>();
+        if (modal.Count > 0)
+        {
+            foreach (var m in modal) m.Transformed = true;
+            try { backCastable.UnionWith(Castable()); }
+            finally { foreach (var m in modal) m.Transformed = false; }
+            backCastable.IntersectWith(modal.Select(m => m.Id));
+        }
+        var frontCastable = castable.ToHashSet();
+        foreach (var card in castable.Concat(backCastable).Distinct().Select(State.GetCard))
+        {
+            if (frontCastable.Contains(card.Id)) AddPlays(card, back: false);
+            if (!backCastable.Contains(card.Id)) continue;
+            card.Transformed = true;
+            try { AddPlays(card, back: true); }
+            finally { card.Transformed = false; }
+        }
+
+        void AddPlays(Card card, bool back)
         {
             if (card.Is(CardType.Land))
             {
@@ -380,9 +412,9 @@ public sealed partial class Game
                     && !(card.Zone == Zone.Exile && ExiledWithPlayRightFor(card, playerId) is null && StaticExiledWithPermission(card, playerId) is null
                          && State.PlayableFromExile.Where(p => p.Card == card.Id && p.Version == card.Version && p.Player == playerId).All(p => p.CastOnly)
                          && !card.OnAdventure))
-                    actions.Add(new PlayLand(card.Id));
+                    actions.Add(new PlayLand(card.Id, back));
             }
-            else if (SpellsForbidden(playerId) || splitSecond) continue;
+            else if (SpellsForbidden(playerId) || splitSecond) return;
             else if (card.PrintedDefinition.SplitHalves is { } halves)
             {
                 // A split card: each half on its own (an aftermath half only from a graveyard, the other half not from there).
@@ -394,8 +426,16 @@ public sealed partial class Game
                     card.CastHalf = null;
                     if (halfCastable) actions.Add(new CastSpell(card.Id, Half: h));
                 }
+                // Fuse (702.102a): from its owner's hand, both halves as one spell.
+                if (card.PrintedDefinition.Fuse && card.Zone == Zone.Hand && card.Owner == playerId)
+                {
+                    card.CastHalf = CardDefinition.FusedHalves;
+                    bool fusedCastable = CanCast(card, playerId, sorcerySpeed);
+                    card.CastHalf = null;
+                    if (fusedCastable) actions.Add(new CastSpell(card.Id, Half: CardDefinition.FusedHalves));
+                }
             }
-            else if (CanCast(card, playerId, sorcerySpeed) && !OnlyAsAdventure(card, playerId, sorcerySpeed)) actions.Add(new CastSpell(card.Id));
+            else if (CanCast(card, playerId, sorcerySpeed) && !OnlyAsAdventure(card, playerId, sorcerySpeed)) actions.Add(new CastSpell(card.Id, Back: back));
             // An adventurer card can be cast as its Adventure wherever it could be cast (rule 715.3), except from exile after an adventure.
             if (card.PrintedDefinition.Adventure is not null && !card.OnAdventure && card.Zone != Zone.Command)
             {
@@ -427,12 +467,12 @@ public sealed partial class Game
                 if (abilities[i] is ActivatedAbility ability && !splitSecond && CanActivate(emblem, ability, i, playerId, sorcerySpeed))
                     actions.Add(new ActivateAbility(emblem.Id, i));
         }
-        // "Only your opponents may activate this ability": abilities of opponents' permanents this player may activate.
+        // "Only your opponents may activate this ability" / "Any player may activate this ability": abilities of opponents' permanents this player may activate.
         foreach (var permanent in State.OpponentsOf(playerId).SelectMany(State.PermanentsControlledBy))
         {
             var abilities = permanent.Abilities;
             for (int i = 0; i < abilities.Count; i++)
-                if (abilities[i] is ActivatedAbility { OnlyOpponents: true } ability && !splitSecond && CanActivate(permanent, ability, i, playerId, sorcerySpeed))
+                if (abilities[i] is ActivatedAbility ability && (ability.OnlyOpponents || ability.AnyPlayer) && !splitSecond && CanActivate(permanent, ability, i, playerId, sorcerySpeed))
                     actions.Add(new ActivateAbility(permanent.Id, i));
         }
 
@@ -457,8 +497,8 @@ public sealed partial class Game
     private bool CanCast(Card card, PlayerId playerId, bool sorcerySpeed)
     {
         bool timing = TimingAllows(card, playerId, sorcerySpeed);
-        if (!timing && card.Definition.FlashExtraCost is null && card.Definition.FlashExtraCostExtra is null) return false;
-        return CanBeCast(card, playerId, flashExtra: !timing);
+        if (!timing && card.Definition.FlashExtraCost is null && card.Definition.FlashExtraCostExtra is null && SneakCosts(card, playerId).Count == 0) return false;
+        return CanBeCastWith(card, playerId, PayableNow(card, playerId, timing));
     }
 
     /// <summary>The player can't cast spells now ("players can't cast spells this turn", "your opponents can't cast spells this turn").</summary>
@@ -558,6 +598,8 @@ public sealed partial class Game
             foreach (var id in player.Graveyard.Where(id => State.GetCard(id).Is(CardType.Land))) yield return id;
         foreach (var id in player.Graveyard)
             if (OwnGraveyardCastAbility(State.GetCard(id)) || ((State.GetCard(id).Definition.Escape ?? GrantedEscape(State.GetCard(id))) is not null && !State.GetCard(id).Is(CardType.Land))) yield return id;
+        foreach (var id in player.Graveyard)
+            if (SneakCosts(State.GetCard(id), playerId).Count > 0) yield return id;
         foreach (var id in player.Exile)
             if (Foretold(State.GetCard(id))) yield return id;
         foreach (var id in player.Graveyard)
@@ -612,7 +654,7 @@ public sealed partial class Game
         var rights = State.GraveyardCastRights.Where(r => r.Player == card.Owner && r.Turn == State.TurnNumber).ToList();
         foreach (var p in State.PermanentsControlledBy(card.Owner).Where(p => p.HasTextAbilities && p.Definition.GraveyardCastFilter is not null))
             if (p.Definition.GraveyardCastWhile is not { } cond || Holds(cond, card.Owner, p))
-                rights.Add(new GraveyardCastRight(card.Owner, State.TurnNumber, p.Definition.GraveyardCastFilter!) { Extra = p.Definition.GraveyardCastExtra });
+                rights.Add(new GraveyardCastRight(card.Owner, State.TurnNumber, p.Definition.GraveyardCastFilter!) { Extra = p.Definition.GraveyardCastExtra, Finality = p.Definition.GraveyardCastRightFinality });
         return rights.Where(r => Matches(r.Filter with { Controller = ControllerFilter.Any }, card, card.Owner, null, r.Player)).ToList();
     }
 
@@ -844,7 +886,7 @@ public sealed partial class Game
 
     private string Describe(PlayerAction action) => action switch
     {
-        CastSpell c => $"cast {State.GetCard(c.Card).Name}{(c.Adventure ? " (adventure)" : "")}{(c.Half is { } half ? $" (half {half})" : "")}",
+        CastSpell c => $"cast {State.GetCard(c.Card).Name}{(c.Adventure ? " (adventure)" : "")}{(c.Half is { } half ? half == CardDefinition.FusedHalves ? " (fused)" : $" (half {half})" : "")}{(c.Back ? " (back face)" : "")}",
         ActivateAbility a => $"activate {State.GetCard(a.Source).Name} #{a.Index}",
         _ => action.ToString() ?? "",
     };
@@ -856,6 +898,8 @@ public sealed partial class Game
         switch (action)
         {
             case PlayLand play:
+                // A modal double-faced card played with its back face up (rule 712.12): the permissions below look at that face.
+                if (play.Back && State.GetCard(play.Card).PrintedDefinition.IsModalDoubleFaced) State.GetCard(play.Card).Transformed = true;
                 await NoteExilePlayAsync(State.GetCard(play.Card), playerId);
                 player.LandsPlayedThisTurn++;
                 // A land played from the graveyard uses up that type's permission, unless a permission without that limit covers it.
@@ -873,7 +917,7 @@ public sealed partial class Game
                     && State.PlayableFromExile.Where(p => p.Card == play.Card && p.Version == playedCard.Version && p.Player == playerId && !p.CastOnly).ToList() is { Count: > 0 } landPerms
                     && landPerms.All(p => p.LandEntersTapped);
                 // It enters under the control of the player who played it, whoever owns it (rule 110.2).
-                await MoveCardAsync(play.Card, Zone.Battlefield, controller: playerId, tapped: playedTapped);
+                await MoveCardAsync(play.Card, Zone.Battlefield, controller: playerId, tapped: playedTapped, transformed: play.Back && playedCard.PrintedDefinition.IsModalDoubleFaced);
                 if (landPermission?.Definition.GraveyardCastOncePerTurn?.Grants is { } landGrants && State.GetCard(play.Card) is { Zone: Zone.Battlefield } playedLand)
                     State.LastingEffects.Add(new UntilEndOfTurnEffect(playedLand.Id, playedLand.Version, 0, 0, Array.Empty<Keyword>())
                     {
@@ -931,7 +975,7 @@ public sealed partial class Game
             {
                 int cancels = _playerCancels;
                 bool done = action is CastSpell cast
-                    ? await CastSpellAsync(player, cast.Card, cast.Adventure, half: cast.Half, withPriority: true)
+                    ? await CastSpellAsync(player, cast.Card, cast.Adventure, half: cast.Half, withPriority: true, back: cast.Back)
                     : await ActivateAbilityAsync(player, (ActivateAbility)action);
                 // A legal action can only come to nothing because the player backed out of it; anything else is an engine error.
                 if (!done && _playerCancels == cancels) _failedActions.Add($"turn {State.TurnNumber}, {playerId}: {Describe(action)}");
@@ -949,23 +993,75 @@ public sealed partial class Game
     /// </summary>
     /// <param name="exileAfter">Exiled instead of going anywhere else when it leaves the stack (as with flashback).</param>
     /// <param name="withPriority">Cast as an action with priority, rather than by an effect that's resolving (which ignores timing).</param>
-    private async Task<bool> CastSpellAsync(Player player, CardId cardId, bool adventure = false, bool exileAfter = false, int? half = null, bool withPriority = false)
+    /// <param name="back">A modal double-faced card cast with its back face up (rule 712.11b); null: its caster chooses the face as it's cast.</param>
+    /// <param name="faceAllowed">For that choice: what the face cast must be (an effect casting "an instant or sorcery card"); by default, castable.</param>
+    private async Task<bool> CastSpellAsync(Player player, CardId cardId, bool adventure = false, bool exileAfter = false, int? half = null, bool withPriority = false,
+        bool? back = null, Func<Card, bool>? faceAllowed = null)
     {
         var card = State.GetCard(cardId);
+        if (card.PrintedDefinition.IsModalDoubleFaced && card.Zone != Zone.Stack && back is null)
+        {
+            back = await ChooseModalFaceAsync(player, card, faceAllowed);
+            if (back is null) return false;
+        }
         card.AsAdventure = adventure;
         card.CastHalf = half;
+        card.Transformed = back == true && card.PrintedDefinition.IsModalDoubleFaced && card.Zone != Zone.Stack;
         // An aftermath half is exiled whenever it would leave the stack (702.127a).
-        if (half is { } h && card.PrintedDefinition.SplitHalves?[h].Aftermath == true) exileAfter = true;
+        if (half is { } h && h != CardDefinition.FusedHalves && card.PrintedDefinition.SplitHalves?[h].Aftermath == true) exileAfter = true;
         if (!await CastAsItIsAsync(player, card, exileAfter, withPriority))
         {
             if (card.Zone != Zone.Stack) card.TurnedFaceDown = false; // a face-down cast backed out of
             if (card.Zone != Zone.Stack) card.Bestowed = false;
             card.AsAdventure = false;
             card.CastHalf = null;
+            if (card.Zone is not (Zone.Stack or Zone.Battlefield)) card.Transformed = false;
             return false;
         }
         return true;
     }
+
+    /// <summary>
+    /// An effect casting a modal double-faced card: its caster chooses which face to cast (rule 712.11b), among the faces that
+    /// can be cast that way (<paramref name="faceAllowed"/>, by default any face that can be cast now). Null when neither can.
+    /// </summary>
+    private async Task<bool?> ChooseModalFaceAsync(Player player, Card card, Func<Card, bool>? faceAllowed = null)
+    {
+        var faces = CastableFaces(card, faceAllowed ?? (c => !c.Is(CardType.Land) && CanBeCast(c, player.Id, flashExtra: false)));
+        if (faces.Count <= 1) return faces.Count == 1 ? faces[0] : null;
+        int chosen = await ControllerOf(player.Id).ChooseOptionAsync(ViewFor(player.Id), new OptionRequest(
+            $"Cast which face of {card.PrintedDefinition.Name}?", card.Id,
+            faces.Select(b => b ? card.PrintedDefinition.BackFace!.Name : card.PrintedDefinition.Name).ToList(), OptionKind.Other));
+        Require(chosen >= 0 && chosen < faces.Count, "Choose one of the faces.");
+        return faces[chosen];
+    }
+
+    /// <summary>
+    /// The faces a card could be cast with that pass <paramref name="test"/>, as back-face flags: each face of a modal double-faced card
+    /// looked at with that face up (an effect that lets a player cast cards of some kind lets them cast a face of that kind), or
+    /// the card as it is.
+    /// </summary>
+    private List<bool> CastableFaces(Card card, Func<Card, bool> test)
+    {
+        if (!card.PrintedDefinition.IsModalDoubleFaced || card.Zone is Zone.Stack or Zone.Battlefield)
+            return test(card) ? new List<bool> { card.Transformed } : new List<bool>();
+        var faces = new List<bool>();
+        bool was = card.Transformed;
+        try
+        {
+            foreach (bool back in new[] { false, true })
+            {
+                card.Transformed = back;
+                if (test(card)) faces.Add(back);
+            }
+        }
+        finally { card.Transformed = was; }
+        return faces;
+    }
+
+    /// <summary>Whether an effect could cast the card now: a face of it that isn't a land and can be cast (rule 712.11b).</summary>
+    private bool CanBeCastAnyFace(Card card, PlayerId caster) =>
+        CastableFaces(card, c => !c.Is(CardType.Land) && CanBeCast(c, caster, flashExtra: false)).Count > 0;
 
     private async Task<bool> CastAsItIsAsync(Player player, Card card, bool exileAfter, bool withPriority)
     {
@@ -977,7 +1073,7 @@ public sealed partial class Game
         if (!LegendarySpellAllowed(card, player.Id)) return false;
         // "Can't cast spells" also stops casting as part of an effect (rule 101.2).
         if (SpellsForbidden(player.Id) || CastForbiddenByName(card, player.Id) || CastForbiddenThisEarly(card, player.Id) || NoncreatureForbidden(card, player.Id)) return false;
-        var payable = PayableCastingWays(card, player.Id, flashExtra);
+        var payable = withPriority ? PayableNow(card, player.Id, timing: !flashExtra) : PayableCastingWays(card, player.Id, flashExtra: false);
         if (payable.Count == 0) return false;
         bool flashback = exileAfter || IsFlashbackCast(card);
         bool fromGraveyard = card.Zone == Zone.Graveyard, fromExile = card.Zone == Zone.Exile;
@@ -1276,6 +1372,20 @@ public sealed partial class Game
             conspirators = tapped.Select(State.GetCard).ToList();
             foreach (var c in conspirators) Tap(c);
         }
+        // Sneak: return an unblocked attacker you control to its owner's hand as part of the cost; the spell remembers what it attacked.
+        (PlayerId Defender, CardId? Planeswalker)? sneakAttack = null;
+        if (choices.Way.Kind == CastingWayKind.Sneak)
+        {
+            var unblocked = UnblockedAttackers(player.Id);
+            Require(unblocked.Count > 0, "Sneak needs an unblocked attacker you control.");
+            var returnedPick = unblocked.Count == 1 ? new[] { unblocked[0].Attacker } : await ControllerOf(player.Id).ChooseCardsAsync(ViewFor(player.Id), new CardChoiceRequest(
+                $"Sneak: return an unblocked attacker you control to its owner's hand to cast {card.Name}", cardId,
+                unblocked.Select(a => ViewBuilder.Card(State, a.Attacker, player.Id)).ToList(), 1, 1, CardChoicePurpose.ToHand));
+            Require(returnedPick.Count == 1 && unblocked.Any(a => a.Attacker == returnedPick[0]), "Choose one of your unblocked attackers.");
+            var returned = unblocked.First(a => a.Attacker == returnedPick[0]);
+            sneakAttack = (returned.Defender, returned.Planeswalker);
+            await MoveCardAsync(returned.Attacker, Zone.Hand);
+        }
         bool treasure = paidMana.Taps.Any(t => State.GetCard(t.Source).HasSubtype("Treasure")) || paidMana.SpecialSpent.Any(u => State.GetCard(u.Source).HasSubtype("Treasure"));
         // What the additional costs sacrificed or discarded stays known to the spell ("the sacrificed creature's power").
         var costSacrificed = new List<CardId>();
@@ -1297,6 +1407,10 @@ public sealed partial class Game
         if (riders.Contains(ManaRider.HasteForDragonCreatureSpells) && card.Is(CardType.Creature) && card.HasSubtype("Dragon")) card.HasteOnEnter = true;
         // "If you cast a creature spell this way, it gains haste until end of turn."
         if (card.Zone == Zone.Library && LibraryTopPermissions(player.Id).Any(p => p.Definition.LibraryTopCastHaste)) card.HasteOnEnter = true;
+        // "If you cast a creature spell this way, that creature enters with an additional +1/+1 counter on it."
+        bool libraryTopCounter = card.Zone == Zone.Library && card.IsCreature && State.PermanentsControlledBy(player.Id).Any(p => p.HasTextAbilities
+            && p.Definition.LibraryTopPlayCounter && p.Definition.LibraryTopPlay is { } plays && (p.Definition.LibraryTopPlayIf is not { } playIf || Holds(playIf, player.Id, p))
+            && Matches(plays with { Controller = ControllerFilter.Any }, card, player.Id, p, player.Id));
         bool uncounterable = (riders.Contains(ManaRider.LegendaryUncounterable) && (card.Supertypes & Supertype.Legendary) != 0)
                              || riders.Contains(ManaRider.Uncounterable)
                              || (riders.Contains(ManaRider.InstantOrSorceryUncounterable) && (card.Is(CardType.Instant) || card.Is(CardType.Sorcery)));
@@ -1318,6 +1432,7 @@ public sealed partial class Game
         int commanderBonus = card.IsCommander && card.Owner == player.Id
             ? paidMana.SpecialSpent.Count(u => u.Rider == ManaRider.CommanderEntersWithCastCountCounters) * player.CommanderCasts.GetValueOrDefault(cardId) : 0;
         bool fromHand = card.CastFromHand, haste = card.HasteOnEnter, asAdventure = card.AsAdventure;
+        bool backFaceUp = card.Transformed && card.PrintedDefinition.IsModalDoubleFaced; // the face it's cast with stays up on the stack (712.8f)
         var castHalf = card.CastHalf;
         await NoteExilePlayAsync(card, player.Id);
         // "When you next cast a creature spell of that type this turn": the spell will enter with an additional +1/+1 counter.
@@ -1329,6 +1444,7 @@ public sealed partial class Game
         var preparedOn = card.PreparedSpellOf;
         (CardId, int)? castFromExileAs = card.Zone == Zone.Exile ? (card.Id, card.Version) : null;
         await MoveCardAsync(cardId, Zone.Stack, controller: player.Id);
+        if (card.Zone == Zone.Stack) card.Transformed = backFaceUp;
         // "Choose a creature type and behold …" as a cost: the spell's chosen type.
         if (_beholdType.Remove(cardId, out var beheldType) && card.Zone == Zone.Stack) card.ChosenType = beheldType;
         if (preparedOn is { } preparedCreature && card.Zone == Zone.Stack) CastPreparedSpell(card, preparedCreature);
@@ -1337,6 +1453,8 @@ public sealed partial class Game
         // "If that spell would be put into your graveyard, exile it instead" (the permission it was cast with).
         if (exiledInsteadOfGraveyard && card.Zone == Zone.Stack) State.ExileInsteadOfGraveyard.Add((card.Id, card.Version));
         if (bottomInsteadOfGraveyard && card.Zone == Zone.Stack) State.BottomInsteadOfGraveyard.Add((card.Id, card.Version));
+        if (libraryTopCounter && card.Zone == Zone.Stack)
+            State.ExtraCountersOnEnter[(card.Id, card.Version)] = State.ExtraCountersOnEnter.GetValueOrDefault((card.Id, card.Version)) + 1;
         if (commanderBonus > 0 && card.Zone == Zone.Stack)
             State.ExtraCountersOnEnter[(card.Id, card.Version)] = State.ExtraCountersOnEnter.GetValueOrDefault((card.Id, card.Version)) + commanderBonus;
         if (nextCreature.Sum(n => n.Counters) is var nextCounters and > 0)
@@ -1362,14 +1480,17 @@ public sealed partial class Game
         }
         card.ManaSpent = cost.ManaValue;
         card.SpentManaTypes = paidMana.Types;
+        card.ArtifactManaSpent = paidMana.SpecialSpent.Count(u => u.FromArtifact);
         card.PaidWithTreasure = treasure;
         card.GiftPromised = giftTo is not null;
         card.GiftTo = giftTo;
         if (player.NextSpellUncounterableThisTurn) { uncounterable = true; player.NextSpellUncounterableThisTurn = false; }
+        if (!card.IsCreature) player.NextNoncreatureSpellAffinityThisTurn = 0;
         if (player.CreatureSpellsUncounterableThisTurn && card.IsCreature) uncounterable = true;
         card.Uncounterable = uncounterable;
         card.Kicked = kicked;
         card.CastForetold = choices.Way.Kind == CastingWayKind.Foretold;
+        card.Sneaked = choices.Way.Kind == CastingWayKind.Sneak;
         if (choices.Way.Kind == CastingWayKind.LifeOncePerTurn && State.PermanentsControlledBy(player.Id).FirstOrDefault(c => c.HasTextAbilities
                 && !_freeFromExileUsed.Contains((c.Id, c.Version, State.TurnNumber))
                 && (((c.Definition.ExtraRules & ExtraRules.LifeCastFromHandOncePerTurn) != 0 && card.CastFromHand)
@@ -1392,9 +1513,11 @@ public sealed partial class Game
         {
             Ability = ability != CastingTargets(card.Definition) ? ability : null,
             X = x, Kicked = kicked, Flashback = flashback || choices.Way.Kind == CastingWayKind.Harmonize, GiftTo = giftTo, SacrificedForCost = costSacrificed, DiscardedForCost = costDiscarded, Division = division, KickCount = choices.KickCount, SquadCount = choices.SquadCount, Dashed = choices.Way.Kind == CastingWayKind.Dash, Warped = choices.Way.Kind == CastingWayKind.Warp, Blitzed = choices.Way.Kind == CastingWayKind.Blitz, Evoked = choices.Way.Kind == CastingWayKind.Evoke, CompleatedFewer = compleatedFewer,
+            SneakAttack = sneakAttack,
             Impended = choices.Way.Kind == CastingWayKind.Impending, Escaped = choices.Way.Kind == CastingWayKind.Escape, OffspringPaid = choices.OffspringPaid, GrantedOffspringPaid = choices.GrantedOffspringPaid.Count,
         });
         player.SpellManaValuesThisTurn.Add(ManaValueOf(card));
+        player.SpellTypesThisTurn.Add(card.Types);
         Emit(new SpellCast(player.Id, cardId));
         foreach (var castThis in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.Trigger == TriggerEvent.CastThis))
             AddPending(cardId, castThis, player.Id, new TriggerInfo(cardId, card.Version, player.Id, ManaValueOf(card)));
@@ -1809,6 +1932,7 @@ public sealed partial class Game
         : unit.AbilitiesOnly && !isAbility ? false
         : unit.OnlyFor is not { } only
         || (isAbility && isEquip && unit.EquipOnly)
+        || (isAbility && unit.AnyAbility)
         || (use is not null && (!isAbility || (unit.AbilitiesToo && !unit.EquipOnly)) && Matches(only with { Controller = ControllerFilter.Any }, use, use.Controller, null, use.Controller));
 
     /// <summary>Which mana abilities can pay for a spell (or an ability of <paramref name="use"/>): restricted mana only for what it allows.</summary>
@@ -1817,6 +1941,7 @@ public sealed partial class Game
         : option.AbilitiesOnly && !isAbility ? false
         : option.OnlyFor is not { } only
         || (isAbility && isEquip && option.EquipOnly)
+        || (isAbility && option.AnyAbility)
         || (use is not null && (!isAbility || (option.AbilitiesToo && !option.EquipOnly))
             && Matches(only with { Controller = ControllerFilter.Any }, use, use.Controller, source, source.Controller));
 
@@ -2428,6 +2553,16 @@ public sealed partial class Game
         };
     }
 
+    /// <summary>
+    /// Plain mana from <paramref name="source"/> into the player's pool; an artifact's is kept apart, remembered as from an artifact
+    /// ("for each mana from an artifact source spent to cast it"), and spends like any other.
+    /// </summary>
+    private void AddPoolMana(Player player, ManaType type, Card source)
+    {
+        if (source.IsArtifact) player.ManaPool.AddSpecial(new ManaUnit(type, source.Id, null, true, ManaRider.None) { FromArtifact = true });
+        else player.ManaPool.Add(type);
+    }
+
     private async Task TapForManaAsync(Player player, ManaTap tap)
     {
         var source = State.GetCard(tap.Source);
@@ -2452,8 +2587,8 @@ public sealed partial class Game
         {
             if (onlyFor is not null || rider != ManaRider.None || snow || option is { CantPayGeneric: true } || option is { XCostsOnly: true })
                 player.ManaPool.AddSpecial(new ManaUnit(type, source.Id, onlyFor, option?.AbilitiesToo ?? false, rider)
-                    { Snow = snow, EquipOnly = option?.EquipOnly ?? false, AbilitiesOnly = option?.AbilitiesOnly ?? false, ForUnlock = option?.ForUnlock ?? false, ForFaceUp = option?.ForFaceUp ?? false, CantPayGeneric = option?.CantPayGeneric ?? false, XCostsOnly = option?.XCostsOnly ?? false });
-            else player.ManaPool.Add(type);
+                    { Snow = snow, EquipOnly = option?.EquipOnly ?? false, AbilitiesOnly = option?.AbilitiesOnly ?? false, AnyAbility = option?.AnyAbility ?? false, ForUnlock = option?.ForUnlock ?? false, ForFaceUp = option?.ForFaceUp ?? false, CantPayGeneric = option?.CantPayGeneric ?? false, XCostsOnly = option?.XCostsOnly ?? false, FromArtifact = source.IsArtifact });
+            else AddPoolMana(player, type, source);
             Emit(new ManaAdded(player.Id, type, tap.Source));
         }
         // "This land deals 1 damage to you" / "You gain 1 life" (part of the mana ability, rule 605.3b).
@@ -2464,19 +2599,19 @@ public sealed partial class Game
         // An ability that adds only {C} already includes the additional {C} (Card.ManaOptions); one that could add something else gets it now.
         if (produced.Contains(ManaType.Colorless) && option is not { Types: [ManaType.Colorless], Combination: false }) AddExtraColorless(player, source);
         // A Mountain tapped for mana other than only {R}: its additional {R} now (the {R}-only ability already includes it).
-        if (source.ExtraRed > 0 && produced.Count > 0 && option is not { Types: [ManaType.Red], Combination: false })
+        if (source.ExtraRed > 0 && produced.Count > 0 && option is not { Types: [ManaType.Red], Combination: false } && option is not { ExtrasIncluded: true })
             for (int i = 0; i < source.ExtraRed; i++)
             {
                 player.ManaPool.Add(ManaType.Red);
                 Emit(new ManaAdded(player.Id, ManaType.Red, source.Id));
             }
-        if (source.ExtraGreen > 0 && produced.Count > 0 && option is not { Types: [ManaType.Green], Combination: false })
+        if (source.ExtraGreen > 0 && produced.Count > 0 && option is not { Types: [ManaType.Green], Combination: false } && option is not { ExtrasIncluded: true })
             for (int i = 0; i < source.ExtraGreen; i++)
             {
                 player.ManaPool.Add(ManaType.Green);
                 Emit(new ManaAdded(player.Id, ManaType.Green, source.Id));
             }
-        if (source.ExtraBlack > 0 && produced.Count > 0 && option is not { Types: [ManaType.Black], Combination: false })
+        if (source.ExtraBlack > 0 && produced.Count > 0 && option is not { Types: [ManaType.Black], Combination: false } && option is not { ExtrasIncluded: true })
             for (int i = 0; i < source.ExtraBlack; i++)
             {
                 player.ManaPool.Add(ManaType.Black);
@@ -2612,6 +2747,9 @@ public sealed partial class Game
                 total += self.Amount;
         }
         if (card.Definition.Undaunted) total += State.OpponentsOf(caster).Count(); // "costs {1} less to cast for each opponent"
+        // "The next noncreature spell you cast this turn has affinity for artifacts" (each instance counts, 702.41b).
+        if (!card.IsCreature && State.GetPlayer(caster).NextNoncreatureSpellAffinityThisTurn is > 0 and var affinity)
+            total += affinity * State.PermanentsControlledBy(caster).Count(c => c.Is(CardType.Artifact));
         if (ExiledWithPlayRightFor(card, caster) is { } exiledWithRight) total += exiledWithRight.CostLess; // "spells you cast this way cost {2} less"
         // Eminence (a commander's ability that also works from the command zone).
         var reducers = State.PermanentsControlledBy(caster).Select(p => (Card: p, Abilities: (IEnumerable<AbilityDefinition>)p.Abilities))
@@ -2747,15 +2885,20 @@ public sealed partial class Game
                 _enteringImpended = spell.Impended && card.Types.IsPermanent() ? spell.Card : null;
                 _enteringOffspring = spell.OffspringPaid && card.Types.IsPermanent() ? spell.Card : null;
                 _enteringEvoked = spell.Evoked && card.Types.IsPermanent() ? spell.Card : null;
+                _enteringSneaked = spell.SneakAttack is not null && card.Types.IsPermanent() ? spell.Card : null;
+                if (_enteringSneaked is not null) State.EntersTappedFromStack.Add((card.Id, card.Version));
                 _enteringFewerLoyalty = spell.CompleatedFewer > 0 ? (spell.Card, spell.CompleatedFewer) : null;
                 _enteringCastX = (spell.Card, spell.X);
                 await MoveCardAsync(spell.Card, card.Types.IsPermanent() ? Zone.Battlefield : discard, controller: spell.Controller, attachTo: attachTo,
                     kicked: spell.Kicked && card.Types.IsPermanent(), castFromHand: card.CastFromHand && card.Types.IsPermanent(),
                     wasCast: card.Types.IsPermanent() && !card.Definition.IsToken, timesKicked: spell.KickCount, squadPaid: spell.SquadCount,
-                    withCounters: EnteringCounters(card, spell));
+                    withCounters: EnteringCounters(card, spell),
+                    // It enters with the face up that was up on the stack (rule 712.13).
+                    transformed: card.Transformed && card.PrintedDefinition.IsModalDoubleFaced && card.Types.IsPermanent());
                 _enteringImpended = null;
                 _enteringOffspring = null;
                 _enteringEvoked = null;
+                _enteringSneaked = null;
                 _enteringFewerLoyalty = null;
                 _enteringCastX = null;
                 _enteringAttachedPlayer = null;
@@ -2770,6 +2913,9 @@ public sealed partial class Game
                     State.AtNextEndStepEffects.Add((card.Id, spell.Controller, card.Id, card.Version, new Effect[] { new ReturnToHand(Subject.Triggered) }, null, null));
                 }
                 if (card.Zone == Zone.Battlefield && spell.Blitzed) Blitzed(card, spell.Controller);
+                // Sneak: a creature enters attacking what the returned creature was attacking (it was never declared as an attacker).
+                if (card.Zone == Zone.Battlefield && spell.SneakAttack is { } sneakAttack && card.IsCreature && State.Combat is { } sneakCombat)
+                    sneakCombat.Attacks.Add(new AttackInfo { Attacker = card.Id, Defender = sneakAttack.Defender, Planeswalker = sneakAttack.Planeswalker });
                 // Warp (702.185a): the permanent is exiled at the beginning of the next end step; its owner may cast it from exile on a later turn.
                 if (card.Zone == Zone.Battlefield && spell.Warped) card.CastForWarp = true;
                 if (card.Zone == Zone.Battlefield && spell.Warped)

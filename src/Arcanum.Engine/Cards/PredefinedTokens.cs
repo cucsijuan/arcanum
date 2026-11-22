@@ -124,6 +124,27 @@ public static class PredefinedTokens
         IsToken = true,
     };
 
+    /// <summary>"A Mutagen token. It's an artifact with '{1}, {T}, Sacrifice this token: Put a +1/+1 counter on target creature. Activate only as a sorcery.'"</summary>
+    public static readonly CardDefinition Mutagen = new()
+    {
+        Name = "Mutagen",
+        Types = CardType.Artifact,
+        Subtypes = new[] { "Mutagen" },
+        Abilities = new AbilityDefinition[]
+        {
+            new ActivatedAbility
+            {
+                Cost = new AbilityCost(ManaCost.Parse("{1}"), Tap: true, SacrificeSelf: true),
+                Targets = new[] { new TargetSpec(TargetKind.Creature) },
+                Effects = new Effect[] { new AddCounters(new Quantity(1), Subject.TargetAt(0)) },
+                SorcerySpeed = true,
+                Text = "{1}, {T}, Sacrifice this token: Put a +1/+1 counter on target creature. Activate only as a sorcery.",
+            },
+        },
+        OracleText = "{1}, {T}, Sacrifice this token: Put a +1/+1 counter on target creature. Activate only as a sorcery.",
+        IsToken = true,
+    };
+
     /// <summary>"A Lander token. It's an artifact with '{2}, {T}, Sacrifice this token: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.'"</summary>
     public static readonly CardDefinition Lander = new()
     {
@@ -201,6 +222,7 @@ public static class PredefinedTokens
         "clue" => Clue,
         "map" => Map,
         "lander" => Lander,
+        "mutagen" => Mutagen,
         "blood" => Blood,
         _ => null,
     };

@@ -606,7 +606,7 @@ public sealed partial class Game
                     _miracleCost[id] = instead;
                     try
                     {
-                        if (!copy.Is(CardType.Land) && CanBeCast(copy, ctx.Controller, flashExtra: false)
+                        if (CanBeCastAnyFace(copy, ctx.Controller)
                             && await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast the copy of {copy.Name} by paying {instead}?", id)))
                             await CastSpellAsync(State.GetPlayer(ctx.Controller), id);
                     }
@@ -693,13 +693,14 @@ public sealed partial class Game
                 if (tm.Count >= 0)
                 {
                     int max = Math.Min(tm.Count, eligible.Count);
-                    taken = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest(tm.ToTop ? $"Put up to {max} on top of your library" : $"Put up to {max} into your hand", ctx.Source.Id,
-                        eligible.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 0, max, CardChoicePurpose.ToHand));
+                    taken = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest(tm.ToTop ? $"Put up to {max} on top of your library" : tm.ToBattlefield ? $"Put up to {max} onto the battlefield" : $"Put up to {max} into your hand", ctx.Source.Id,
+                        eligible.Select(c => ViewBuilder.Card(State, c.Id, who)).ToList(), 0, max, tm.ToBattlefield ? CardChoicePurpose.ToBattlefield : CardChoicePurpose.ToHand));
                     Require(taken.Count <= max && taken.Distinct().Count() == taken.Count && taken.All(id => eligible.Any(c => c.Id == id)), "Choose among the milled cards.");
                 }
                 foreach (var id in taken)
                 {
                     if (tm.ToTop) { await MoveCardAsync(id, Zone.Library); continue; } // the top: where a card put into a library goes
+                    if (tm.ToBattlefield) { await MoveCardAsync(id, Zone.Battlefield, controller: who); continue; }
                     await MoveCardAsync(id, Zone.Hand);
                     if (State.GetCard(id).Zone == Zone.Hand) ctx.Results.Found.Add(id);
                 }
@@ -766,6 +767,7 @@ public sealed partial class Game
                     if (bl.Transformed && !card.IsDoubleFaced) continue;
                     await MoveCardAsync(card.Id, Zone.Battlefield, controller: bl.UnderYourControl ? ctx.Controller : card.Owner, tapped: bl.Tapped, transformed: bl.Transformed,
                         withCounters: bl.EnterCounters > 0 ? new[] { (CounterKind.PlusOnePlusOne, bl.EnterCounters) } : null);
+                    if (bl.Attacking && card.Zone == Zone.Battlefield) await PutIntoCombatAttackingAsync(card, ctx, triggeredPlayer: false);
                 }
                 EndEnteringTogether();
                 break;
@@ -1051,10 +1053,11 @@ public sealed partial class Game
                 var fromZone = cg.FromExile ? Zone.Exile : Zone.Graveyard;
                 var permissions = cg.FromExile ? State.PlayableFromExile : State.PlayableFromGraveyard;
                 var castable = pool
-                    .Where(c => c.Zone == fromZone && !c.Is(CardType.Land) && Matches(cg.Filter with { Controller = ControllerFilter.Any }, c, c.Owner, ctx.Source, who)
-                                && (maxValue is null || c.ManaValue <= maxValue)
-                                && CastableWith(c))
+                    .Where(c => c.Zone == fromZone && CastableFaces(c, Fits).Count > 0)
                     .ToList();
+                // A face of the card that's of the kind this effect lets a player cast, and castable with its permission.
+                bool Fits(Card c) => !c.Is(CardType.Land) && Matches(cg.Filter with { Controller = ControllerFilter.Any }, c, c.Owner, ctx.Source, who)
+                                     && (maxValue is null || c.ManaValue <= maxValue) && CastableWith(c);
                 // Whether it could be cast with the permission this effect gives (tried, then taken back).
                 bool CastableWith(Card c)
                 {
@@ -1084,7 +1087,7 @@ public sealed partial class Game
                 try
                 {
                     // "If that spell would be put into a graveyard, exile it instead."
-                    bool castNow = await CastSpellAsync(player, card.Id);
+                    bool castNow = await CastSpellAsync(player, card.Id, faceAllowed: Fits);
                     if (castNow) ctx.Results.CastThisWay = true;
                     if (castNow && !cg.NoExile && !cg.FromExile) State.ExileInsteadOfGraveyard.Add((card.Id, card.Version));
                 }

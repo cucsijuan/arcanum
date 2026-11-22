@@ -17,7 +17,7 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>What a spell is cast for (rule 118.9): its mana cost or one alternative cost.</summary>
-    private enum CastingWayKind { ManaCost, Dash, Warp, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown, Escape, Evoke, Harmonize, RuleAlternative, FreeFromExile, LifeOncePerTurn, Bestow }
+    private enum CastingWayKind { ManaCost, Dash, Warp, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown, Escape, Evoke, Harmonize, RuleAlternative, FreeFromExile, LifeOncePerTurn, Bestow, Sneak }
 
     /// <summary>
     /// One way to pay for casting a card: the cost it's cast for (its mana cost, or the flashback or miracle cost it's being
@@ -65,9 +65,13 @@ public sealed partial class Game
 
     private static readonly ManaCost FiveColors = ManaCost.Parse("{W}{U}{B}{R}{G}");
 
-    /// <summary>"Each enchantment card in your graveyard has escape. The escape cost is equal to the card's mana cost plus exile three other cards from your graveyard."</summary>
+    /// <summary>
+    /// "Each enchantment card (each nonland card) in your graveyard has escape. The escape cost is equal to the card's mana cost plus exile
+    /// three other cards from your graveyard."
+    /// </summary>
     private ManaCost? GrantedEscape(Card card) =>
-        card.Zone == Zone.Graveyard && card.Is(CardType.Enchantment) && HasRule(card.Owner, ExtraRules.GraveyardEnchantmentsHaveEscape) ? card.Definition.ManaCost : null;
+        card.Zone == Zone.Graveyard && !card.Definition.NoManaCost && ((card.Is(CardType.Enchantment) && HasRule(card.Owner, ExtraRules.GraveyardEnchantmentsHaveEscape))
+            || (!card.Is(CardType.Land) && HasRule(card.Owner, ExtraRules.GraveyardNonlandCardsHaveEscape))) ? card.Definition.ManaCost : null;
 
     /// <summary>The permanent whose "cast spells from the top of your library by [cost]" is the only permission letting the card be cast from there.</summary>
     private Card? LibraryTopCostHolder(Card card, PlayerId caster)
@@ -121,7 +125,7 @@ public sealed partial class Game
         if (card.Zone == Zone.Library && LibraryTopLifePermission(card, caster))
         {
             var life = new List<CastingWay> { new(CastingWayKind.PayLife, ManaCost.Zero, card.ManaValue) };
-            if (LibraryTopPermissions(caster).Any() || LibraryTopManaPermission(card, caster)) life.Add(new(CastingWayKind.ManaCost, card.Definition.ManaCost));
+            if ((LibraryTopPermissions(caster).Any() || LibraryTopManaPermission(card, caster)) && !card.Definition.NoManaCost) life.Add(new(CastingWayKind.ManaCost, card.Definition.ManaCost));
             return life;
         }
         if (_miracleCost.TryGetValue(card.Id, out var miracle)) return new() { new(CastingWayKind.ManaCost, miracle) };
@@ -133,7 +137,14 @@ public sealed partial class Game
                 flashback = flashback.MinusGeneric(Math.Max(0, Eval(reduction, new EffectContext(caster, card, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
             return new() { new(CastingWayKind.ManaCost, flashback) };
         }
-        var ways = new List<CastingWay> { new(CastingWayKind.ManaCost, card.Definition.ManaCost) };
+        var sneaks = SneakCosts(card, caster);
+        // "You may cast creature spells from your graveyard using their sneak abilities": only that way, unless something else allows it.
+        if (card.Zone == Zone.Graveyard && sneaks.Count > 0 && !GraveyardCastByOtherPermission(card) && OncePerTurnGraveyardPermissions(card, caster).Count == 0
+            && !OwnGraveyardCastAbility(card) && HarmonizeCost(card) is null && (card.Definition.Escape ?? GrantedEscape(card)) is null)
+            return sneaks.Select(m => new CastingWay(CastingWayKind.Sneak, m)).ToList();
+        // A card with no mana cost can't be cast by paying it (118.6); only the other ways below, if any.
+        var ways = card.Definition.NoManaCost ? new List<CastingWay>() : new List<CastingWay> { new(CastingWayKind.ManaCost, card.Definition.ManaCost) };
+        ways.AddRange(sneaks.Select(m => new CastingWay(CastingWayKind.Sneak, m)));
         if (card.Zone == Zone.Hand && card.Definition.Dash is { } dash) ways.Add(new(CastingWayKind.Dash, dash)); // 702.109a
         if (card.Definition.Warp is { } warp && (card.Zone == Zone.Hand || WarpFromGraveyard(card)))
         {
@@ -455,6 +466,43 @@ public sealed partial class Game
         return (choosable.Count > 0 ? choosable : modes).Select(m => m.Cost ?? ManaCost.Zero).MinBy(m => m.ManaValue);
     }
 
+    /// <summary>
+    /// The sneak costs the card can be cast for now: during the declare blockers step, while the caster controls an unblocked attacker
+    /// to return, its own sneak cost from the hand, and from the graveyard its own and the granted ones while a permanent of the caster's
+    /// lets its creature cards be cast from there using their sneak abilities.
+    /// </summary>
+    private List<ManaCost> SneakCosts(Card card, PlayerId caster)
+    {
+        var costs = new List<ManaCost>();
+        if (State.Step != Step.DeclareBlockers || card.Owner != caster || card.Zone is not (Zone.Hand or Zone.Graveyard) || UnblockedAttackers(caster).Count == 0) return costs;
+        if (card.Zone == Zone.Hand)
+        {
+            if (card.Definition.Sneak is { } own) costs.Add(own);
+            return costs;
+        }
+        var granted = State.PermanentsControlledBy(caster).Where(p => p.HasTextAbilities && p.Definition.GraveyardSneak is var (cards, _)
+            && Matches(cards with { Controller = ControllerFilter.Any }, card, caster, p, caster)).Select(p => p.Definition.GraveyardSneak!.Value.Cost).ToList();
+        if (granted.Count == 0) return costs;
+        if (card.Definition.Sneak is { } printed) costs.Add(printed);
+        foreach (var cost in granted)
+            if (!costs.Contains(cost)) costs.Add(cost);
+        return costs;
+    }
+
+    /// <summary>
+    /// The ways the caster could pay for casting the card with priority now: when its timing doesn't allow it, only by paying extra for flash
+    /// or with sneak, whose casts ignore the card's timing (they happen during the declare blockers step).
+    /// </summary>
+    private List<CastingChoices> PayableNow(Card card, PlayerId caster, bool timing)
+    {
+        if (timing) return PayableCastingWays(card, caster, flashExtra: false);
+        var payable = card.Definition.FlashExtraCost is not null || card.Definition.FlashExtraCostExtra is not null
+            ? PayableCastingWays(card, caster, flashExtra: true).Where(c => c.Way.Kind != CastingWayKind.Sneak).ToList()
+            : new List<CastingChoices>();
+        if (SneakCosts(card, caster).Count > 0) payable.AddRange(PayableCastingWays(card, caster, flashExtra: false).Where(c => c.Way.Kind == CastingWayKind.Sneak));
+        return payable;
+    }
+
     /// <summary>Whether the card may be cast now without paying extra for flash: an instant, flash, or a permission to cast it as though it had flash.</summary>
     private bool TimingAllows(Card card, PlayerId caster, bool sorcerySpeed) =>
         (sorcerySpeed || !State.OpponentsOf(caster).Any(o => State.PermanentsControlledBy(o).Any(c => c.HasTextAbilities && c.Definition.OpponentsCastAtSorcerySpeed))) &&
@@ -491,9 +539,11 @@ public sealed partial class Game
         || State.PermanentsControlledBy(caster).Any(c => (c.Supertypes & Supertype.Legendary) != 0 && (c.IsCreature || c.Is(CardType.Planeswalker)));
 
     /// <summary>Whether the card can be cast now, timing aside: its legality, a legal target for each requirement and a way to pay.</summary>
-    private bool CanBeCast(Card card, PlayerId caster, bool flashExtra) =>
+    private bool CanBeCast(Card card, PlayerId caster, bool flashExtra) => CanBeCastWith(card, caster, PayableCastingWays(card, caster, flashExtra));
+
+    private bool CanBeCastWith(Card card, PlayerId caster, List<CastingChoices> payable) =>
         LegendarySpellAllowed(card, caster) && !CastForbiddenByName(card, caster) && !CastForbiddenThisEarly(card, caster) && !NoncreatureForbidden(card, caster)
-        && PayableCastingWays(card, caster, flashExtra).Any(w => w.Way.Kind == CastingWayKind.Overload
+        && payable.Any(w => w.Way.Kind == CastingWayKind.Overload
             ? HasLegalTargets(card.Definition.Overloaded, caster, card.Id) : HasLegalTargets(CastingTargets(card.Definition), caster, card.Id));
 
     /// <summary>"Your opponents can't cast noncreature spells this turn."</summary>
@@ -594,6 +644,7 @@ public sealed partial class Game
                 CastingWayKind.Bestow => $"Cast {card.Name} bestowed (as an Aura) for {ways[1].Mana}?",
                 CastingWayKind.Escape => $"Cast {card.Name} for its escape cost {EscapeCostText(card)}?",
                 CastingWayKind.Harmonize => $"Cast {card.Name} for its harmonize cost {ways[1].Mana}?",
+                CastingWayKind.Sneak => $"Cast {card.Name} for its sneak cost {ways[1].Mana} (returning an unblocked attacker you control to its owner's hand)?",
                 CastingWayKind.FaceDown => $"Cast {card.Name} face down as a 2/2 creature for {ways[1].Mana}?",
                 CastingWayKind.WithoutPaying => card.Definition.ManaCost.XCount > 0 ? $"Cast {card.Name} without paying its mana cost (X = 0)?" : $"Cast {card.Name} without paying its mana cost?",
                 _ => $"Pay {ways[1].Mana} instead of the mana cost?",
@@ -613,6 +664,7 @@ public sealed partial class Game
             CastingWayKind.Bestow => $"Bestow {w.Mana}",
             CastingWayKind.Escape => $"Escape {EscapeCostText(card)}",
             CastingWayKind.Harmonize => $"Harmonize {w.Mana}",
+            CastingWayKind.Sneak => $"Sneak {w.Mana}, return an unblocked attacker",
             CastingWayKind.FaceDown => $"Face down for {w.Mana}",
             CastingWayKind.WithoutPaying => "Without paying its mana cost",
             _ => $"Pay {w.Mana} instead of the mana cost",

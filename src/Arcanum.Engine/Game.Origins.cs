@@ -151,7 +151,7 @@ public sealed partial class Game
     private bool CastableFreeNow(Card card, PlayerId caster)
     {
         bool added = _castFree.Add(card.Id);
-        try { return !SpellsForbidden(caster) && CanBeCast(card, caster, flashExtra: false); }
+        try { return !SpellsForbidden(caster) && CanBeCastAnyFace(card, caster); }
         finally { if (added) _castFree.Remove(card.Id); }
     }
 

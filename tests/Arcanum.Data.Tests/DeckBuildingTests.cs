@@ -140,6 +140,9 @@ public class CommanderFormatTests
         Card("Bard Hero", "Legendary Creature — Human", new[] { "R" }, "Choose a Background (You can have a Background as a second commander.)", new[] { "Choose a background" }),
         Card("Noble Upbringing", "Legendary Enchantment — Background", new[] { "G" }, "Commander creatures you own get +1/+1."),
         Card("Plain Bear", "Creature — Bear", new[] { "G" }),
+        Card("Grove Wagon", "Legendary Artifact — Vehicle", new[] { "G" }, "Crew 2"),
+        Card("Grove Skiff", "Legendary Artifact — Spacecraft", new[] { "G" }, "Station") with { Power = "5", Toughness = "5" },
+        Card("Grove Beacon", "Legendary Artifact — Spacecraft", new[] { "G" }, "Station"),
         Card("Ember Imp", "Creature — Imp", new[] { "R" }),
         Card("Ring Rider", "Creature — Wraith Knight", new[] { "G" }, "Deathtouch\nA deck can have up to nine cards named Ring Rider."),
     }.Concat(Enumerable.Range(0, 60).Select(i => Card($"Elf {i}", "Creature — Elf", new[] { "G" }))));
@@ -202,6 +205,16 @@ public class CommanderFormatTests
     public void CommanderMustBeALegendaryCreature()
     {
         Assert.Contains(Errors(Deck("Plain Bear")), e => e.Contains("can't be a commander"));
+    }
+
+    /// <summary>A legendary Vehicle, or a legendary Spacecraft with a power/toughness box, can be a commander (rule 903.3); one without, can't.</summary>
+    [Theory]
+    [InlineData("Grove Wagon", true)]
+    [InlineData("Grove Skiff", true)]
+    [InlineData("Grove Beacon", false)]
+    public void ALegendaryVehicleOrSpacecraftWithPowerCanBeACommander(string commander, bool allowed)
+    {
+        Assert.Equal(!allowed, Errors(Deck(commander)).Any(e => e.Contains("can't be a commander")));
     }
 
     [Fact]

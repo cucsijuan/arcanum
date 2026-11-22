@@ -52,14 +52,15 @@ public static partial class CardFactory
         "Manifest", // the script's "manifest" effect (face-down 2/2; a creature card turns face up for its mana cost)
         "Manifest dread", // the script's "manifestDread" effect (rule 701.62)
         "Retrace", // the script's "graveyardCastCost": discard a land card (rule 702.81)
+        "Graft", // the script's "entersWithCounters" and its "another creature enters" trigger with "moveCounters" (rule 702.58)
         "Eerie", "Survival", // ability words: the script's "youFullyUnlockRoom" / "yourSecondMainPhase" triggers
         "Clash", // the script's "clash" effect with "ifWin" / "else"
         "Champion", // the script's "champion" enters trigger, its "returnLinkedExiled" leaves trigger and "championed" triggers
         "Blight", // the script's "blight" cost or effect (put N -1/-1 counters on a creature you control)
         "Blitz", // the script's "blitz" cost (with "blitzExtra", "blitzFromGraveyard")
         // Keywords a script turns on with a card-wide rule ("multikicker": "{2}", "storm": true …).
-        "Dethrone", "Hideaway", "Heal", "Aftermath",
-        "Devour", "Multikicker", "Replicate", "Escalate", "Improvise", "Myriad", "Squad", "Dash", "Warp", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
+        "Dethrone", "Hideaway", "Heal", "Aftermath", "Fuse",
+        "Devour", "Multikicker", "Replicate", "Escalate", "Improvise", "Myriad", "Squad", "Dash", "Warp", "Sneak", "Splice", "Miracle", "Storm", "Undaunted", "Delve", "Conspire",
         // Pairing rules for two commanders (deck construction); "Partner with" also has a trigger derived below.
         "Partner", "Partner with", "Friends forever", "Choose a background", "Doctor's companion",
     };
@@ -95,6 +96,11 @@ public static partial class CardFactory
         if (record.Layout == "prepare" && record.Faces.Count == 2) return CreatePreparationCard(record, script);
         if (record.Layout == "split" && record.Faces.Count == 2) return CreateSplit(record, script);
         if (record.Layout == "transform" && record.Faces.Count == 2) return CreateTransforming(record, script);
+        if (record.Layout == "modal_dfc" && record.Faces.Count == 2)
+        {
+            var (modal, modalSupport) = CreateTransforming(record, script);
+            return (modal with { IsModalDoubleFaced = true }, modalSupport);
+        }
         var (supertypes, types, subtypes) = TypeLine.Parse(record.TypeLine);
         var tapForMana = subtypes.Where(BasicLandTypes.ContainsKey).Select(t => BasicLandTypes[t]).ToList();
         tapForMana.AddRange(ManaAbilityTypes(record.OracleText));
@@ -115,6 +121,7 @@ public static partial class CardFactory
             Name = record.Name,
             OracleId = record.OracleId,
             ManaCost = cost,
+            NoManaCost = record.ManaCost.Length == 0 && record.Faces.Count == 0 && (types & CardType.Land) == 0,
             Types = types,
             Supertypes = supertypes,
             Subtypes = subtypes,
@@ -141,6 +148,7 @@ public static partial class CardFactory
             Harmonize = KeywordLineCost(record.OracleText, HarmonizeLine()),
             Warp = KeywordLineCost(record.OracleText, WarpLine()), // a script's "warp" still overrides it
             WarpLife = WarpLifeCost(record.OracleText),
+            Sneak = KeywordLineCost(record.OracleText, SneakLine()), // a script's "sneak" still overrides it
             Dredge = KeywordLineNumber(record.OracleText, DredgeLine()) ?? 0,
             Casualty = KeywordLineNumber(record.OracleText, CasualtyLine()) ?? 0,
             Devoid = record.Keywords.Contains("Devoid", StringComparer.OrdinalIgnoreCase),
@@ -295,7 +303,9 @@ public static partial class CardFactory
             Keywords = PrintedKeywords(record),
             SplitHalves = halves,
             ImageKey = record.DefaultPrintingId,
+            Fuse = record.Keywords.Contains("Fuse", StringComparer.OrdinalIgnoreCase),
         };
+        if (definition.Fuse) supported &= CardDefinition.CanFuse(halves);
         return (definition, supported ? CardSupport.Full : CardSupport.Unsupported);
     }
 
@@ -898,6 +908,10 @@ public static partial class CardFactory
     /// <summary>"Warp {1}{G}" (rule 702.185a); the cost may have {X}. "Warp—{B}, Pay 2 life" adds life to pay.</summary>
     [GeneratedRegex(@"^Warp(?: |—)(?<cost>(\{[0-9WUBRGCX/]+\})+)(?:, [Pp]ay (?<life>\d+) life)?$")]
     private static partial Regex WarpLine();
+
+    /// <summary>"Sneak {1}{U}": an alternative cost during the declare blockers step.</summary>
+    [GeneratedRegex(@"^Sneak (?<cost>(\{[0-9WUBRGCX/]+\})+)$")]
+    private static partial Regex SneakLine();
 
     /// <summary>The life a "Warp—{cost}, Pay N life" line asks for (0 when none).</summary>
     private static int WarpLifeCost(string oracleText) =>

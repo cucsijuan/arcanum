@@ -69,6 +69,7 @@ public sealed partial class Game
         if (filter.Supertype != 0 && (supertypes & filter.Supertype) == 0) return false;
         if (filter.ExcludedSupertype != 0 && (supertypes & filter.ExcludedSupertype) != 0) return false;
         if (filter.MaxManaValueLandCount && obj.ManaValue > State.PermanentsControlledBy(sourceController).Count(c => c.Is(CardType.Land))) return false;
+        if (filter.MaxManaValueYourCounters && obj.ManaValue > State.PermanentsControlledBy(sourceController).Sum(c => c.Counters.Values.Sum())) return false;
         if (filter.ExcludedSubtype is { } excluded && HasSubtype(excluded)) return false;
         if (filter.Name is { } name && (lk?.Name ?? obj.Name) != name) return false;
         if (filter.NotName is { } notName && (lk?.Name ?? obj.Name) == notName) return false;
@@ -82,6 +83,7 @@ public sealed partial class Game
         if (filter.PutIntoZoneThisTurn && obj.ZoneChangedTurn != State.TurnNumber) return false;
         if (filter.AttackingYou && State.Combat?.FindAttack(obj.Id)?.Defender != sourceController) return false;
         if (filter.AttackingYouDirectly && (State.Combat?.FindAttack(obj.Id) is not { } direct || direct.Defender != sourceController || direct.Planeswalker is not null)) return false;
+        if (filter.CrewedSourceThisTurn && (source is null || !State.CrewedThisTurn.Any(c => c.Vehicle == source.Id && c.Crewer == obj.Id && c.Turn == State.TurnNumber))) return false;
         if (filter.AttackingYourOpponent && (State.Combat?.FindAttack(obj.Id) is not { } onOpponent || onOpponent.Planeswalker is not null
                                              || onOpponent.Defender == sourceController || !State.OpponentsOf(sourceController).Contains(onOpponent.Defender))) return false;
         if (filter.FromGraveyard && !(obj.Zone == Zone.Stack ? obj.CastFromGraveyard : obj.EnteredFrom == Zone.Graveyard)) return false;
@@ -125,6 +127,7 @@ public sealed partial class Game
         if (filter.ChosenCardType && !(source?.ChosenType is { } chosenCardType && Enum.TryParse<CardType>(chosenCardType, out var cardType) && (types & cardType) != 0)) return false;
         if (filter.AnyOf is { Count: > 0 } anyOf && !anyOf.Any(f => Matches(f with { Controller = ControllerFilter.Any }, obj, objController, source, sourceController, lastKnown))) return false;
         if (filter.WithCounterKind is { } counterKind && (lk is null ? obj.CounterCount(counterKind) : lk.Counters.GetValueOrDefault(counterKind)) <= 0) return false;
+        if (filter.WithoutCounterKind is { } noCounterKind && (lk is null ? obj.CounterCount(noCounterKind) : lk.Counters.GetValueOrDefault(noCounterKind)) > 0) return false;
         if (filter.HasCounters is { } hasCounters && ((lk is null ? obj.CounterCount(CounterKind.PlusOnePlusOne) : lk.Counters.GetValueOrDefault(CounterKind.PlusOnePlusOne)) > 0) != hasCounters) return false;
         if (filter.Enchanted is { } enchanted && HasAttached(obj, "Aura") != enchanted) return false;
         if (filter.Equipped is { } equipped && HasAttached(obj, "Equipment") != equipped) return false;
@@ -757,7 +760,8 @@ public sealed partial class Game
         foreach (var card in battlefield)
             card.ExtraGreen = !card.Is(CardType.Land) ? 0
                 : battlefield.Count(a => a.AttachedTo == card.Id && a.HasTextAbilities && a.Definition.EnchantedLandExtraGreen)
-                  + (card.HasSubtype("Forest") ? battlefield.Count(c => c.Controller == card.Controller && c.HasTextAbilities && c.Definition.YourForestsExtraGreen) : 0);
+                  + (card.HasSubtype("Forest") ? battlefield.Count(c => c.Controller == card.Controller && c.HasTextAbilities && c.Definition.YourForestsExtraGreen) : 0)
+                  + battlefield.Count(c => c.Controller == card.Controller && c.HasTextAbilities && c.Definition.YourLandsExtraGreen);
         foreach (var card in battlefield)
             card.ExtraBlack = card.Is(CardType.Land) && card.HasSubtype("Swamp")
                 ? battlefield.Count(c => c.Controller == card.Controller && c.HasTextAbilities && c.Definition.YourSwampsExtraBlack) : 0;
@@ -899,7 +903,7 @@ public sealed partial class Game
         var changes = new List<LayerEffect>();
         foreach (var candidate in StaticCandidates(context, a => a.LosesAllAbilities || a.Keywords is { Count: > 0 } || a.GrantedKeywords.Count > 0
                                                        || a.GrantsAbilities is not null || a.GrantsMana is not null || a.GrantsWard is not null || a.GrantsWardLife > 0
-                                                       || a.GrantsGraveyardAbilities is not null || a.GrantsYourCreaturesAbilities is not null || a.GrantsExiledCreatureAbilities || a.GrantsExiledCardAbilities is not null || a.CantAttackYou || a.CantAttackYouOrPlaneswalkers || a.Goads || a.ProtectionFromRingBearers || a.ProtectionFromTypes != 0 || a.ProtectionFromChosenColor
+                                                       || a.GrantsGraveyardAbilities is not null || a.GrantsYourCreaturesAbilities is not null || a.GrantsExiledCreatureAbilities || a.GrantsExiledCardAbilities is not null || a.CantAttackYou || a.CantAttackYouOrPlaneswalkers || a.Goads || a.ProtectionFromRingBearers || a.ProtectionFromTypes != 0 || a.ProtectionFromChosenColor || a.ProtectionFromColorsOutsideCommanderIdentity
                                                        || a.LosesKeywords is not null || a.PreventsDamage != StaticDamagePrevention.None || a.CantActivateAbilities || a.CantBeSacrificed
                                                        || a.GrantsCantBeBlockedBy is not null || a.GrantsDyingTriggerBonus, locks))
         {
@@ -935,6 +939,12 @@ public sealed partial class Game
                 if (ability.ProtectionFromRingBearers) card.ProtectedFromRingBearers = true;
                 card.ProtectionFromTypes |= ability.ProtectionFromTypes;
                 if (ability.ProtectionFromChosenColor && source.ChosenColor is { } chosenColor) card.AuraColorProtections.Add((chosenColor, source.Id));
+                if (ability.ProtectionFromColorsOutsideCommanderIdentity)
+                {
+                    var identity = CommanderIdentityTypes(source.Controller);
+                    foreach (var letter in ColorLetters)
+                        if (Mana.ManaTypeExtensions.TryParse(letter[0], out var type) && !identity.Contains(type)) card.AuraColorProtections.Add((letter, source.Id));
+                }
                 // "Has all activated abilities of all [filter] cards in your graveyard."
                 if (ability.GrantsGraveyardAbilities is { } fromGraveyard)
                     card.GrantedAbilities.AddRange(State.GetPlayer(source.Controller).Graveyard.Select(State.GetCard)

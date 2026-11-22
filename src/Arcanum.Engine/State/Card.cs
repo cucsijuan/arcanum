@@ -17,7 +17,7 @@ public sealed class Card
     public CardDefinition Definition => TurnedFaceDown ? FaceDownAs ?? FaceDownCreature : EffectCopy ?? CopiedDefinition ?? (MeldPartner is not null && PrintedDefinition.MeldResult is { } melded ? melded
         : Transformed && BackFaceDefinition is { } back ? back
         : AsAdventure && PrintedDefinition.Adventure is { } adventure ? adventure
-        : CastHalf is { } half && PrintedDefinition.SplitHalves is { } halves ? halves[half]
+        : CastHalf is { } half && PrintedDefinition.SplitHalves is { } halves ? (half == CardDefinition.FusedHalves ? PrintedDefinition.AsFused() : halves[half])
         : Zone == Zone.Battlefield && PrintedDefinition.IsRoom ? PrintedDefinition.AsRoom(UnlockedDoors)
         : Zone != Zone.Battlefield && PrintedDefinition.CreatureOffBattlefield is not null ? PrintedDefinition.AsOffBattlefield()
         : Bestowed && PrintedDefinition.Bestow is not null ? PrintedDefinition.AsBestowed()
@@ -30,9 +30,10 @@ public sealed class Card
     public bool Bestowed { get; internal set; }
 
     /// <summary>
-    /// A double-faced permanent with its back face up (rule 701.27g: a "transformed permanent"). Only a permanent can be
-    /// transformed: in every other zone the card has its front face up (712.8a), and it enters the battlefield front face
-    /// up unless an effect puts it there transformed (712.14).
+    /// A double-faced permanent with its back face up (rule 701.27g: a "transformed permanent"), or a modal double-faced spell cast
+    /// with its back face up (712.11b). Elsewhere the card has its front face up (712.8a), and it enters the battlefield front face
+    /// up unless an effect puts it there transformed (712.14), it's played as a land with its back face (712.12) or it's a spell
+    /// that had its back face up on the stack (712.13).
     /// </summary>
     public bool Transformed { get; internal set; }
 
@@ -59,10 +60,11 @@ public sealed class Card
 
     /// <summary>
     /// Its mana value (rule 202.3): with its back face up, that of its front face's mana cost (712.8e), or 0 for a copy of a
-    /// back face (202.3b) — a double-faced token is one (707.8a). A spell's X is added where it is on the stack.
+    /// back face (202.3b) — a double-faced token is one (707.8a); a modal double-faced card's back face, its own. A spell's X is added where it is on the stack.
     /// </summary>
     public int ManaValue => !IsCopy && MeldPartner is { } partner ? PrintedDefinition.ManaCost.ManaValue + partner.PrintedDefinition.ManaCost.ManaValue // rule 712.8g
-        : !IsCopy && Transformed && PrintedDefinition.BackFace is not null
+        // A modal double-faced card's back face has its own mana cost (rule 712.8f).
+        : !IsCopy && Transformed && PrintedDefinition.BackFace is not null && !PrintedDefinition.IsModalDoubleFaced
         ? (PrintedDefinition.IsToken ? 0 : PrintedDefinition.ManaCost.ManaValue)
         : Definition.ManaCost.ManaValue;
 
@@ -190,6 +192,9 @@ public sealed class Card
 
     /// <summary>As a spell: the mana spent to cast it.</summary>
     public int ManaSpent { get; set; }
+
+    /// <summary>As a spell, and kept as it becomes a permanent: how much of the mana spent to cast it was from artifact sources.</summary>
+    public int ArtifactManaSpent { get; set; }
 
     /// <summary>The mana spent to cast it, by type: as a spell, and kept as it becomes a permanent ("if {W}{W} was spent to cast it").</summary>
     public IReadOnlyList<Mana.ManaType> SpentManaTypes { get; set; } = Array.Empty<Mana.ManaType>();
@@ -557,6 +562,7 @@ public sealed class Card
     public bool Is(CardType type) => (Types & type) != 0;
 
     public bool IsCreature => Is(CardType.Creature);
+    public bool IsArtifact => Is(CardType.Artifact);
 
     /// <summary>Has this subtype (changelings have every creature type).</summary>
     public bool HasSubtype(string subtype) =>
@@ -737,6 +743,23 @@ public sealed class Card
                 for (int i = 0; i < options.Count; i++)
                     if (options[i].Produces > 0 && options[i].Types.Count == 1 && !options[i].Combination)
                         options[i] = options[i] with { Amount = options[i].Amount + ExtraWhileWatchersTapped };
+            // A plain ability adding one mana of another type: the additional {R}/{G}/{B} it gets as it's tapped is part of what
+            // it produces, so paying a cost with it can count on that mana (Game.Priority adds it then only for other abilities).
+            if (ExtraRed + ExtraGreen + ExtraBlack > 0)
+                for (int i = 0; i < options.Count; i++)
+                {
+                    var o = options[i];
+                    if (o is not { Produces: 1, Amount: 1, Times: 1, Combination: false, OneOfEach: false, OnlyFor: null, Rider: ManaRider.None, RemovesCounters: null,
+                                   EquipOnly: false, AbilitiesOnly: false, AnyAbility: false, ForUnlock: false, ForFaceUp: false, CantPayGeneric: false,
+                                   XCostsOnly: false, ChosenColorMana: false, ColorsAmongYourPermanents: false, ColorsAmongMatching: null,
+                                   ColorsAmongLegendaryCreatureCardsInGraveyard: false, CommanderIdentity: false, ColorsOpponentsLandsCouldProduce: false,
+                                   TypesYourLandsCouldProduce: false, WhenNextCast: null } || o.Types.Count != 1) continue;
+                    var types = new List<Mana.ManaType> { o.Types[0] };
+                    if (o.Types[0] != Mana.ManaType.Red) types.AddRange(Enumerable.Repeat(Mana.ManaType.Red, ExtraRed));
+                    if (o.Types[0] != Mana.ManaType.Green) types.AddRange(Enumerable.Repeat(Mana.ManaType.Green, ExtraGreen));
+                    if (o.Types[0] != Mana.ManaType.Black) types.AddRange(Enumerable.Repeat(Mana.ManaType.Black, ExtraBlack));
+                    if (types.Count > 1) options[i] = o with { Types = types, OneOfEach = true, ExtrasIncluded = true };
+                }
             return options;
         }
     }
@@ -815,6 +838,9 @@ public sealed class Card
 
     /// <summary>Its evoke cost was paid (rule 702.74a): as a permanent, until it leaves the battlefield.</summary>
     public bool Evoked { get; set; }
+
+    /// <summary>Its sneak cost was paid: as a spell, and as the permanent it became, until it leaves the battlefield.</summary>
+    public bool Sneaked { get; set; }
 
     /// <summary>As a spell: the creatures tapped to pay for it with convoke (rule 702.51c), as the objects they were.</summary>
     public List<(CardId Card, int Version)> Convokers { get; set; } = new();
@@ -914,6 +940,7 @@ public sealed class Card
         Kicked = false;
         AdditionalCostPaid = false;
         CastForetold = false;
+        Sneaked = false;
         TimesKicked = 0;
         SquadPaid = 0;
         Renowned = false;
@@ -956,6 +983,7 @@ public sealed class Card
         CastFromExile = false;
         ForetoldTurn = -1;
         ManaSpent = 0;
+        ArtifactManaSpent = 0;
         SpentManaTypes = Array.Empty<Mana.ManaType>();
         Bestowed = false;
         FormerHost = null;

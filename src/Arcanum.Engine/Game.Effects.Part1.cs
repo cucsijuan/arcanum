@@ -68,6 +68,7 @@ public sealed partial class Game
                 break;
             case GetExperienceCounter:
                 State.GetPlayer(ctx.Controller).Experience++;
+                Emit(new PlayerCountersPut(ctx.Controller, 1, ctx.Controller));
                 Emit(new ChoiceMade(ctx.Source.Id, $"{State.GetPlayer(ctx.Controller).Name} gets an experience counter ({State.GetPlayer(ctx.Controller).Experience})"));
                 break;
             case ReturnToBattlefieldOrHandByManaValue rbm:
@@ -610,8 +611,8 @@ public sealed partial class Game
             case Clash clash:
                 await ApplyAllAsync(await ClashAsync(ctx) ? clash.IfWin : clash.Else ?? Array.Empty<Effect>(), ctx);
                 break;
-            case Myriad:
-                await MyriadAsync(ctx);
+            case Myriad myriad:
+                await MyriadAsync(ctx, myriad);
                 break;
             case Proliferate proliferate:
                 await ProliferateAsync(ctx);

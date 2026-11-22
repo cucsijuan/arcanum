@@ -211,6 +211,7 @@ public sealed partial class Game
                         to = Zone.Battlefield;
                     var host = ru.AttachTo is { } attachTo ? CardsFor(attachTo, ctx).FirstOrDefault(c => c.Zone == Zone.Battlefield && c.IsCreature) : null;
                     await MoveCardAsync(hit, to, controller: ru.RevealerPuts ? player.Id : ctx.Controller, attachTo: to == Zone.Battlefield && host is not null && State.GetCard(hit).HasSubtype("Equipment") ? host.Id : null, tapped: ru.Tapped);
+                    if (ru.Attacking && State.GetCard(hit).Zone == Zone.Battlefield) await PutIntoCombatAttackingAsync(State.GetCard(hit), ctx, triggeredPlayer: false);
                 }
                 if (hits.Count > 0) EndEnteringTogether();
                 if (ru.RestToGraveyard)
@@ -349,6 +350,7 @@ public sealed partial class Game
                     if (poison == 0) continue;
                     State.GetPlayer(player).Poison += poison;
                     Emit(new PoisonGiven(player, poison));
+                    Emit(new PlayerCountersPut(player, poison, ctx.Controller));
                 }
                 break;
             case EndTheTurn:
@@ -463,8 +465,8 @@ public sealed partial class Game
                     int count = anyColor.DevotionToThatColor ? DevotionTo(adder, new[] { ColorLetters[Array.IndexOf(allColors, type)] }) : anyColor.Count;
                     for (int n = 0; n < count; n++)
                     {
-                        if (anyColor.Rider != ManaRider.None) State.GetPlayer(adder).ManaPool.AddSpecial(new ManaUnit(type, ctx.Source.Id, null, true, anyColor.Rider));
-                        else State.GetPlayer(adder).ManaPool.Add(type);
+                        if (anyColor.Rider != ManaRider.None) State.GetPlayer(adder).ManaPool.AddSpecial(new ManaUnit(type, ctx.Source.Id, null, true, anyColor.Rider) { FromArtifact = ctx.Source.IsArtifact });
+                        else AddPoolMana(State.GetPlayer(adder), type, ctx.Source);
                         Emit(new ManaAdded(adder, type, ctx.Source.Id));
                     }
                 }
@@ -721,8 +723,8 @@ public sealed partial class Game
                 for (int n = am.Times is { } times ? Eval(times, ctx) : 1; n > 0; n--)
                     foreach (var type in am.Types)
                     {
-                        if (am.OnlyFor is { } only) State.GetPlayer(ctx.Controller).ManaPool.AddSpecial(new ManaUnit(type, ctx.Source.Id, only, false, ManaRider.None) { ForUnlock = am.ForUnlock });
-                        else State.GetPlayer(ctx.Controller).ManaPool.Add(type);
+                        if (am.OnlyFor is { } only) State.GetPlayer(ctx.Controller).ManaPool.AddSpecial(new ManaUnit(type, ctx.Source.Id, only, false, ManaRider.None) { ForUnlock = am.ForUnlock, FromArtifact = ctx.Source.IsArtifact });
+                        else AddPoolMana(State.GetPlayer(ctx.Controller), type, ctx.Source);
                         Emit(new ManaAdded(ctx.Controller, type, ctx.Source.Id));
                     }
                 ManaPoolChanged();
@@ -806,15 +808,7 @@ public sealed partial class Game
                             transformed: p.Transformed, withCounters: withCounters);
                     }
                     finally { if (faceDown) { _enteringFaceDown = null; _enteringFaceDownAs = null; } }
-                    if (p.Attacking && State.Combat is { } combat && card.IsCreature)
-                    {
-                        // Put onto the battlefield attacking: its controller chooses which player it attacks (rule 508.4).
-                        var defending = combat.Attacks.Select(a => a.Defender).Distinct().ToList();
-                        if (defending.Count == 0) defending = State.OpponentsOf(card.Controller).ToList();
-                        var defender = defending.Count == 1 ? defending[0]
-                            : await ChooseOpponentAsync(card.Controller, ctx.Source, $"Choose the player {card.Name} attacks", defending) ?? defending[0];
-                        combat.Attacks.Add(new AttackInfo { Attacker = card.Id, Defender = defender });
-                    }
+                    if (p.Attacking) await PutIntoCombatAttackingAsync(card, ctx, p.AttackingTriggeredPlayer);
                     if (card.Zone == Zone.Battlefield) ctx.Results.Entered.Add(card.Id);
                     BecomeAsItEnters(card, p, ctx);
                     if (p.ExileIfLeaves && card.Zone == Zone.Battlefield) State.ExileIfLeaves.Add((card.Id, card.Version));
@@ -949,7 +943,7 @@ public sealed partial class Game
                 await MoveCardAsync(topId, Zone.Exile);
                 var top = State.GetCard(topId);
                 bool cast = false;
-                if (top.Zone == Zone.Exile && !top.Is(CardType.Land) && CanBeCast(top, ctx.Controller, flashExtra: false)
+                if (top.Zone == Zone.Exile && CanBeCastAnyFace(top, ctx.Controller)
                     && await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast {top.Name}?", topId)))
                 {
                     await CastSpellAsync(you, topId);

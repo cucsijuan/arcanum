@@ -164,7 +164,7 @@ public partial class CardImageCache : Node
             try
             {
                 var keys = records.Where(r => r.DefaultPrintingId is not null)
-                    .SelectMany(r => r.Layout == "transform" && r.Faces.Count == 2
+                    .SelectMany(r => r.Layout is "transform" or "modal_dfc" && r.Faces.Count == 2
                         ? new[] { "id:" + r.DefaultPrintingId, BackPrefix + "id:" + r.DefaultPrintingId }
                         : new[] { "id:" + r.DefaultPrintingId })
                     .ToList();

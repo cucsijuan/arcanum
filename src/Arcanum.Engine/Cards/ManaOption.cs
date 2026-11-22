@@ -13,6 +13,9 @@ public sealed record ManaOption(IReadOnlyList<ManaType> Types, int Amount = 1, O
     /// <summary>Adds one mana of each of <see cref="Types"/> at once instead of <see cref="Amount"/> mana of one type.</summary>
     public bool OneOfEach { get; init; }
 
+    /// <summary>The source's additional {R}/{G}/{B} for being tapped for mana is already among <see cref="Types"/> (Card.ManaOptions).</summary>
+    public bool ExtrasIncluded { get; init; }
+
     /// <summary>"Add two mana in any combination of {U}, {B}, and/or {R}": each of the <see cref="Amount"/> mana is chosen among <see cref="Types"/>.</summary>
     public bool Combination { get; init; }
 
@@ -73,6 +76,9 @@ public sealed record ManaOption(IReadOnlyList<ManaType> Types, int Amount = 1, O
 
     /// <summary>"Spend this mana only to activate abilities of [filter] sources": no spells, only abilities of <see cref="OnlyFor"/> sources.</summary>
     public bool AbilitiesOnly { get; init; }
+
+    /// <summary>"Spend this mana only to cast an artifact spell or to activate an ability": besides <see cref="OnlyFor"/> spells, any activated ability.</summary>
+    public bool AnyAbility { get; init; }
 
     /// <summary>"…, unlock a door, or turn a permanent face up": besides <see cref="OnlyFor"/> spells, it may pay to unlock doors.</summary>
     public bool ForUnlock { get; init; }

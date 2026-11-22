@@ -179,7 +179,7 @@ public sealed record CreateTokens(CardDefinition Token, Quantity Count, Subject 
 }
 
 public enum CounterKind { PlusOnePlusOne, MinusOneMinusOne, Loyalty, Stun, Divinity, Revival, Page, Wish, Soul, Incubation, Fellowship, Bait, Stash, Lore, Hone, Quest, Trample, Indestructible, Lifelink, Shadow, Hope, Influence, Burden,
-    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story, Flood, Supply, Coin, Hoofprint, Ingredient, Acorn, Growth, Dream, Tower, Decayed, MinusZeroMinusOne, Rally, Experience, Void, Possession, Nest, Rev, Slumber, Study, Hatchling }
+    FirstStrike, DoubleStrike, Deathtouch, Flying, Haste, Hexproof, Menace, Reach, Vigilance, Verse, Charge, Ribbon, Luck, Unity, Time, Corpse, Gold, Phylactery, Storage, Finality, Blight, Point, Shield, Vow, Cell, Story, Flood, Supply, Coin, Hoofprint, Ingredient, Acorn, Growth, Dream, Tower, Decayed, MinusZeroMinusOne, Rally, Experience, Void, Possession, Nest, Rev, Slumber, Study, Hatchling, Pressure }
 
 /// <summary>Look at the top N cards of your library; put any number on the bottom, the rest back on top (rule 701.22).</summary>
 public sealed record Scry(int Count) : Effect
@@ -241,6 +241,9 @@ public sealed record PutOntoBattlefield(Subject What, bool Tapped = false, bool 
 
     /// <summary>"Tapped and attacking": it attacks a player or planeswalker its controller chooses (rule 508.4).</summary>
     public bool Attacking { get; init; }
+
+    /// <summary>With <see cref="Attacking"/>: it attacks the player the trigger is about ("it enters tapped and attacking that player").</summary>
+    public bool AttackingTriggeredPlayer { get; init; }
 
     /// <summary>An Aura returned "attached to" this (a target creature).</summary>
     public Subject? AttachTo { get; init; }
@@ -562,6 +565,9 @@ public sealed record LookAtTopTake(int Count, ObjectFilter? Filter, int Take, St
 
     /// <summary>"Any number of [filter] cards with total mana value N or less": chosen one at a time among those that still fit.</summary>
     public int MaxTotalManaValue { get; init; }
+
+    /// <summary>With <see cref="MaxTotalManaValue"/>: at most this many cards ("up to two … with total mana value 6 or less"); 0 for any number.</summary>
+    public int MaxTotalCards { get; init; }
 }
 
 /// <summary>"[Player] reveals their hand; you choose a [filter] card from it; they discard it."</summary>
@@ -1100,6 +1106,9 @@ public sealed record RevealUntil(ObjectFilter Filter, State.Zone To) : Effect
     /// <summary>The cards found enter tapped.</summary>
     public bool Tapped { get; init; }
 
+    /// <summary>"Put that card onto the battlefield tapped and attacking" (rule 508.4).</summary>
+    public bool Attacking { get; init; }
+
     /// <summary>The other revealed cards go to the graveyard (instead of the bottom in a random order).</summary>
     public bool RestToGraveyard { get; init; }
 
@@ -1382,6 +1391,9 @@ public sealed record TakeMilled(ObjectFilter? Filter, int Count) : Effect
 {
     /// <summary>"Put a creature or land card from among the milled cards on top of your library" instead of into the hand.</summary>
     public bool ToTop { get; init; }
+
+    /// <summary>"You may put a permanent card from among them onto the battlefield" (under the effect's controller's control).</summary>
+    public bool ToBattlefield { get; init; }
 }
 
 /// <summary>"[Who] puts all the cards from their graveyard on the bottom of their library in a random order."</summary>
@@ -1444,6 +1456,9 @@ public sealed record Blink(Subject What) : Effect
 {
     /// <summary>They return tapped.</summary>
     public bool Tapped { get; init; }
+
+    /// <summary>"Return it to the battlefield … tapped and attacking" (rule 508.4).</summary>
+    public bool Attacking { get; init; }
 
     /// <summary>"Return that card to the battlefield under your control" (instead of its owner's).</summary>
     public bool UnderYourControl { get; init; }
@@ -1789,6 +1804,9 @@ public sealed record RemoveUpToCounters(int Max, Subject From) : Effect;
 /// <summary>"The next spell you cast this turn can't be countered."</summary>
 public sealed record NextSpellUncounterable : Effect;
 
+/// <summary>"The next noncreature spell you cast this turn has affinity for artifacts."</summary>
+public sealed record NextNoncreatureSpellAffinity : Effect;
+
 /// <summary>"If you do, repeat this process": the resolving ability's effects happen again from the start.</summary>
 public sealed record RepeatProcess : Effect;
 
@@ -1868,6 +1886,36 @@ public sealed record MountainsAddExtraRedThisTurn : Effect;
 /// </summary>
 public sealed record RevealTwoFromOutsideOpponentChooses : Effect;
 
+/// <summary>"You may put a card you own from outside the game into your hand."</summary>
+public sealed record OutsideCardToHand : Effect;
+
+/// <summary>
+/// "Each opponent exiles cards from the top of their library until they exile a nonland card": every card exiled this way is
+/// exiled with the source ("a card exiled with [this]").
+/// </summary>
+public sealed record ExileUntilLinked(ObjectFilter Filter, Subject Who) : Effect;
+
+/// <summary>"You may cast a card exiled with [this] without paying its mana cost": one card, chosen among the castable ones.</summary>
+public sealed record CastOneExiledWithSourceFree : Effect;
+
+/// <summary>"Until end of turn, [it] becomes the color of your choice and gains hexproof from that color": the source's chosen color.</summary>
+public sealed record BecomeChosenColorWithHexproof(Subject What) : Effect;
+
+/// <summary>
+/// "Return a creature card exiled with [this] to the battlefield under your control. Return each other card exiled with [this] to its
+/// owner's hand."
+/// </summary>
+public sealed record ReturnLinkedCreatureRestToHand : Effect;
+
+/// <summary>"Return target creature card and all other cards with the same name as that card from your graveyard to the battlefield tapped."</summary>
+public sealed record ReanimateWithSameName(Subject What, bool Tapped) : Effect;
+
+/// <summary>
+/// "Search your library and/or outside the game for exactly four [filter] cards you own with different names, then reveal those
+/// cards. An opponent chooses two of them. Put the chosen cards into your hand and shuffle the rest into your library."
+/// </summary>
+public sealed record SearchLibraryAndOutsideOpponentChooses(ObjectFilter Filter, int Count, int Chosen) : Effect;
+
 /// <summary>
 /// "You may reveal an artifact card you own from outside the game or choose a face-up artifact card you own in exile. Put that card
 /// into your hand." (the filter picks the cards)
@@ -1917,7 +1965,11 @@ public sealed record ExileTopFaceDown(Subject Whose) : Effect
 }
 
 /// <summary>"Until end of turn, you may play a card exiled with [this] without paying its mana cost" (one of them).</summary>
-public sealed record PlayOneExiledWithThisFree : Effect;
+public sealed record PlayOneExiledWithThisFree : Effect
+{
+    /// <summary>"Until end of turn, you may play a card exiled with [this]": paying its costs as usual.</summary>
+    public bool Paying { get; init; }
+}
 
 /// <summary>"Put those counters on [this]": the counters the object a trigger is about had as it left the battlefield.</summary>
 public sealed record TakeCountersOfTriggered : Effect
@@ -1928,6 +1980,15 @@ public sealed record TakeCountersOfTriggered : Effect
 
 /// <summary>"Move all counters from [this] onto [target]".</summary>
 public sealed record MoveAllCounters(Subject From, Subject To) : Effect;
+
+/// <summary>
+/// "Starting with you, each player may pay any amount of life. Repeat this process until no one pays life." Then <see cref="Each"/>
+/// for each player, in turn order, as that player with X the total life they paid ("creates a 1/1 Rat for each 1 life they paid").
+/// </summary>
+public sealed record PayLifeRounds(IReadOnlyList<Effect> Each) : Effect;
+
+/// <summary>"Move a +1/+1 counter from this permanent onto that creature" (rule 122.5: only as many as the first has).</summary>
+public sealed record MoveCounters(int Count, CounterKind Kind, Subject From, Subject To) : Effect;
 
 /// <summary>"You may return another permanent you control that shares a permanent type with it to its owner's hand."</summary>
 public sealed record MayBounceAnotherSharingType : Effect;
@@ -2074,7 +2135,18 @@ public sealed record MayCastFromGraveyardThisTurn(ObjectFilter Filter) : Effect
 }
 
 /// <summary>Myriad (rule 702.116): a token copy of the source attacking each other opponent (or a planeswalker they control), exiled at end of combat.</summary>
-public sealed record Myriad : Effect;
+public sealed record Myriad : Effect
+{
+    /// <summary>
+    /// "For each other opponent, create a token that's a copy of this creature tapped and attacking that player, except it isn't
+    /// legendary. Sacrifice those tokens at end of combat": no choice to skip an opponent, only the player is attacked, the copies
+    /// aren't legendary and are sacrificed rather than exiled.
+    /// </summary>
+    public bool Mandatory { get; init; }
+    public bool PlayerOnly { get; init; }
+    public bool NotLegendary { get; init; }
+    public bool SacrificeAtEndOfCombat { get; init; }
+}
 
 /// <summary>
 /// Encore's effect (rule 702.141a): "For each opponent, create a token that's a copy of this card that attacks that opponent this

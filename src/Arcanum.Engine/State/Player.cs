@@ -103,6 +103,9 @@ public sealed class Player
     /// <summary>The mana value each spell of <see cref="SpellsCastThisTurn"/> had on the stack as it was cast (X included), in the same order.</summary>
     public List<int> SpellManaValuesThisTurn { get; } = new();
 
+    /// <summary>The card types each spell of <see cref="SpellsCastThisTurn"/> had as it was cast, in the same order.</summary>
+    public List<Cards.CardType> SpellTypesThisTurn { get; } = new();
+
     /// <summary>A modified creature (counters, Equipment, or an Aura its controller controlled) died under this player's control this turn.</summary>
     public bool ModifiedCreatureDiedThisTurn { get; set; }
 
@@ -182,6 +185,9 @@ public sealed class Player
 
     /// <summary>Cards put into this player's graveyard from their library this turn.</summary>
     public int MilledThisTurn { get; set; }
+
+    /// <summary>"The next noncreature spell you cast this turn has affinity for artifacts": how many such instances wait for that spell.</summary>
+    public int NextNoncreatureSpellAffinityThisTurn { get; set; }
 
     /// <summary>"The next spell you cast this turn can't be countered": waiting for that spell.</summary>
     public bool NextSpellUncounterableThisTurn { get; set; }

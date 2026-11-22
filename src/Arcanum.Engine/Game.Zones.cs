@@ -214,6 +214,7 @@ public sealed partial class Game
 
     /// <summary>The spell resolving now that was cast for its evoke cost (rule 702.74a).</summary>
     private CardId? _enteringEvoked;
+    private CardId? _enteringSneaked;
 
     /// <summary>A card being put onto the battlefield face down (a manifest): face down as it enters (rule 701.40a, 708.3).</summary>
     private CardId? _enteringFaceDown;
@@ -242,6 +243,11 @@ public sealed partial class Game
         var card = State.GetCard(id);
         if (card.CeasedToExist) return; // a token that left the battlefield stays where it is (rule 111.8)
         transformed &= to == Zone.Battlefield && card.Zone != Zone.Battlefield && card.IsDoubleFaced;
+        // A modal double-faced card put onto the battlefield other than as a resolving spell enters with its front face up, and
+        // stays where it is when that face isn't a permanent card (rule 712.14b).
+        if (to == Zone.Battlefield && card.Zone is not (Zone.Battlefield or Zone.Stack) && card.PrintedDefinition.IsModalDoubleFaced
+            && !Cards.CardTypeExtensions.IsPermanent((transformed && card.PrintedDefinition.BackFace is { } upFace ? upFace : card.PrintedDefinition).Types))
+            return;
         // If something exiles it instead of letting it enter, it makes none of the choices for entering (rule 614.1).
         if (to == Zone.Battlefield && card.Zone != Zone.Battlefield && State.ExileUncastEntering.Count > 0)
             _movePlans[(id, card.Version)] = (to, await PlanMoveAsync(card, to, transformed: transformed, enteringController: controller));
@@ -517,13 +523,14 @@ public sealed partial class Game
         bool staysFaceDown = wasFaceDown && ((from == Zone.Hand && to == Zone.Stack) || (from == Zone.Stack && to == Zone.Battlefield));
         var spentToCast = from == Zone.Stack && to == Zone.Battlefield ? card.SpentManaTypes : null; // what paid for the spell stays known (rule 601.2h)
         int manaSpentToCast = spentToCast is not null ? card.ManaSpent : 0;
+        int artifactManaSpentToCast = spentToCast is not null ? card.ArtifactManaSpent : 0;
         // Cast bestowed, it's a bestowed Aura spell on the stack, and the bestowed Aura it becomes as it resolves (702.103b).
         bool staysBestowed = card.Bestowed && (to == Zone.Stack || (from == Zone.Stack && to == Zone.Battlefield));
         // A Room spell becomes a Room with the door that was cast unlocked; put onto the battlefield any other way, its doors are locked (709.5e).
         int? castDoor = from == Zone.Stack && to == Zone.Battlefield && card.PrintedDefinition.IsRoom ? card.CastHalf : null;
         card.ResetStatus();
         if (castDoor is { } door) card.UnlockedDoors = 1 << door;
-        if (spentToCast is not null) { card.SpentManaTypes = spentToCast; card.ManaSpent = manaSpentToCast; }
+        if (spentToCast is not null) { card.SpentManaTypes = spentToCast; card.ManaSpent = manaSpentToCast; card.ArtifactManaSpent = artifactManaSpentToCast; }
         card.Bestowed = staysBestowed;
         card.TurnedFaceDown = staysFaceDown || (to == Zone.Battlefield && _enteringFaceDown == id);
         if (to == Zone.Battlefield && _enteringFaceDown == id) card.FaceDownAs = _enteringFaceDownAs;
@@ -560,6 +567,7 @@ public sealed partial class Game
         card.Impended = to == Zone.Battlefield && _enteringImpended == id;
         card.OffspringPaid = to == Zone.Battlefield && _enteringOffspring == id;
         card.Evoked = to == Zone.Battlefield && _enteringEvoked == id;
+        card.Sneaked = to == Zone.Battlefield && _enteringSneaked == id;
         card.PutOntoBattlefieldBy = to == Zone.Battlefield ? _puttingOntoBattlefieldBy : null;
         card.CastX = to == Zone.Battlefield && _enteringCastX is { } enteringX && enteringX.Card == id ? enteringX.X : 0;
         card.ClassLevel = to == Zone.Battlefield ? 1 : 0;
@@ -646,7 +654,7 @@ public sealed partial class Game
                 // "This creature enters prepared": prepared as it enters, so its enters abilities see it prepared.
                 if (card.Definition.EntersPrepared) Prepare(card, announce: false);
                 if (card.IsCreature && ExtraEnterCounters(card) is var extraCounters and > 0) enterCounters.Add((Abilities.CounterKind.PlusOnePlusOne, extraCounters));
-                if (card.Definition.ChooseOnEnter != Cards.EnterChoice.None || card.Definition.Devour > 0 || card.Definition.EntersRemovingCountersFrom is not null || card.Definition.KeywordAbilities.Contains(Cards.Keyword.Riot))
+                if (card.Definition.ChooseOnEnter != Cards.EnterChoice.None || card.Definition.Devour > 0 || card.Definition.EntersRemovingCountersFrom is not null || RiotInstances(card) > 0)
                     State.PendingEnterChoices.Add((id, card.Version));
                 break;
             case Zone.Stack:

@@ -76,6 +76,7 @@ public sealed partial class Game
         int angels = State.PermanentsControlledBy(player).Count(c => c.HasTextAbilities && c.Definition.CreatureTokensBecomeAngels);
         int extraFoods = Instances(player, Replacements.ExtraFoodWithTokens);
         int extraFrogs = Instances(player, Replacements.ExtraFrogWithTokens);
+        int extraMutagens = State.PermanentsControlledBy(player).Count(c => c.HasTextAbilities && c.Definition.ExtraMutagenWithTokens);
         int treasures = Instances(player, Replacements.FoodAlsoTreasure);
         int dragons = State.PermanentsControlledBy(player).Count(c => c.HasTextAbilities && c.Definition.ArtifactTokensBecomeDragons);
         int eachOfThree = State.PermanentsControlledBy(player).Count(c => c.HasTextAbilities && c.Definition.ClueFoodTreasureEach);
@@ -107,6 +108,7 @@ public sealed partial class Game
                 }));
             if (extraFoods > 0) choices.Add(("Those tokens plus an additional Food", () => { batch.Add((PredefinedTokens.Food, 1, false)); extraFoods--; }));
             if (extraFrogs > 0) choices.Add(("Those tokens plus a 1/1 green Frog", () => { batch.Add((FrogToken, 1, false)); extraFrogs--; }));
+            if (extraMutagens > 0) choices.Add(("Those tokens plus a Mutagen", () => { batch.Add((PredefinedTokens.Mutagen, 1, false)); extraMutagens--; }));
             if (treasures > 0 && foods > 0) choices.Add(("A Treasure for each Food", () => { batch.Add((PredefinedTokens.Treasure, foods, false)); treasures--; }));
             if (dragons > 0 && batch.Any(b => b.Token.Types.HasFlag(CardType.Artifact)))
                 choices.Add(("That many 5/5 red Dragons with flying instead of the artifact tokens", () =>
@@ -515,7 +517,7 @@ public sealed partial class Game
         {
             // "With total mana value N or less": one at a time, among the cards that still fit.
             var picked = new List<CardId>();
-            while (true)
+            while (look.MaxTotalCards == 0 || picked.Count < look.MaxTotalCards)
             {
                 int left = look.MaxTotalManaValue - picked.Sum(id => State.GetCard(id).ManaValue);
                 var fits = eligible.Where(id => !picked.Contains(id) && State.GetCard(id).ManaValue <= left).ToList();
@@ -804,4 +806,19 @@ public sealed partial class Game
     /// <summary>Whether a permanent with the given subtype (an Aura, an Equipment) is attached to <paramref name="obj"/>.</summary>
     private bool HasAttached(Card obj, string subtype) =>
         State.Battlefield.Select(State.GetCard).Any(c => c.AttachedTo == obj.Id && c.HasSubtype(subtype));
+
+    /// <summary>
+    /// A creature put onto the battlefield attacking: its controller chooses which defending player it attacks (rule 508.4), or it
+    /// attacks the player the trigger is about when <paramref name="triggeredPlayer"/>. Nothing happens outside combat.
+    /// </summary>
+    private async Task PutIntoCombatAttackingAsync(Card card, EffectContext ctx, bool triggeredPlayer)
+    {
+        if (State.Combat is not { } combat || !card.IsCreature) return;
+        var defending = combat.Attacks.Select(a => a.Defender).Distinct().ToList();
+        if (defending.Count == 0) defending = State.OpponentsOf(card.Controller).ToList();
+        if (triggeredPlayer && ctx.Trigger?.Player is { } attacked && attacked != card.Controller) defending = new() { attacked };
+        var defender = defending.Count == 1 ? defending[0]
+            : await ChooseOpponentAsync(card.Controller, ctx.Source, $"Choose the player {card.Name} attacks", defending) ?? defending[0];
+        combat.Attacks.Add(new AttackInfo { Attacker = card.Id, Defender = defender });
+    }
 }

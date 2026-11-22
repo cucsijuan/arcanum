@@ -316,8 +316,8 @@ public sealed partial class Game
                 Require(i >= 0 && i < 5, "Choose a color.");
                 for (int k = 0; k < n; k++)
                 {
-                    if (am.OnlyFor is { } only) State.GetPlayer(ctx.Controller).ManaPool.AddSpecial(new ManaUnit(colors[i], ctx.Source.Id, only, false, ManaRider.None));
-                    else State.GetPlayer(ctx.Controller).ManaPool.Add(colors[i]);
+                    if (am.OnlyFor is { } only) State.GetPlayer(ctx.Controller).ManaPool.AddSpecial(new ManaUnit(colors[i], ctx.Source.Id, only, false, ManaRider.None) { FromArtifact = ctx.Source.IsArtifact });
+                    else AddPoolMana(State.GetPlayer(ctx.Controller), colors[i], ctx.Source);
                     Emit(new ManaAdded(ctx.Controller, colors[i], ctx.Source.Id));
                 }
                 ctx.Source.DoneThisTurn.Add(am);
@@ -392,7 +392,7 @@ public sealed partial class Game
                 {
                     var check = new PlayableFromExile(card.Id, card.Version, ctx.Controller, State.TurnNumber) { CastOnly = true, AnyManaType = anyMana };
                     State.PlayableFromExile.Add(check);
-                    try { return CanBeCast(card, ctx.Controller, flashExtra: false); }
+                    try { return CanBeCastAnyFace(card, ctx.Controller); }
                     finally { State.PlayableFromExile.Remove(check); }
                 }
                 foreach (var card in exiled)
@@ -401,7 +401,7 @@ public sealed partial class Game
                     State.PlayableFromExile.Add(permission);
                     try
                     {
-                        if (CanBeCast(card, ctx.Controller, flashExtra: false)
+                        if (CanBeCastAnyFace(card, ctx.Controller)
                             && (ce.OneOf is not null || await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller), new YesNoRequest($"Cast {card.Name}?", card.Id))))
                             cast = await CastSpellAsync(player, card.Id);
                     }
@@ -791,6 +791,8 @@ public sealed partial class Game
         QuantityKind.DiscardedManaValue => ctx.Results.Discarded.Select(State.GetCard).Sum(ManaValueOf),
         QuantityKind.CardTypesAmongDiscarded => new[] { CardType.Artifact, CardType.Creature, CardType.Enchantment, CardType.Instant, CardType.Land, CardType.Planeswalker,
             CardType.Sorcery, CardType.Battle, CardType.Kindred }.Count(t => ctx.Results.Discarded.Any(id => State.GetCard(id).Is(t))),
+        QuantityKind.CardTypesAmongSpellsCastThisTurn => new[] { CardType.Artifact, CardType.Creature, CardType.Enchantment, CardType.Instant, CardType.Land, CardType.Planeswalker,
+            CardType.Sorcery, CardType.Battle, CardType.Kindred }.Count(t => State.GetPlayer(ctx.Controller).SpellTypesThisTurn.Any(types => (types & t) != 0)),
         QuantityKind.CreaturesDiedThisTurn => State.CreaturesDiedThisTurn,
         QuantityKind.Rolled => ctx.Results.Rolled,
         QuantityKind.OpponentsDealtCombatDamage => State.OpponentsOf(ctx.Controller).Count(o => State.GetPlayer(o).CombatDamageTakenThisTurn > 0),

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using Arcanum.Engine.Core;
 using Arcanum.Engine.Events;
+using Arcanum.Engine.Players;
 using Arcanum.Engine.State;
 
 namespace Arcanum.Engine;
@@ -24,6 +26,25 @@ public sealed partial class Game
 
     /// <summary>The player whose turn ran last, whose attacks become "during their last turn".</summary>
     private Core.PlayerId? _previousTurnPlayer;
+
+    /// <summary>
+    /// Whether the player about to begin a turn skips it instead: "skip your next turn" (consumed), or, for an extra turn, an opponent's
+    /// "if an opponent would begin an extra turn, that player skips that turn instead". When both apply, the player chooses which (616.1).
+    /// </summary>
+    private async Task<bool> SkipsTurnAsync(PlayerId player, bool extra)
+    {
+        var p = State.GetPlayer(player);
+        var denier = extra ? State.OpponentsOf(player).SelectMany(State.PermanentsControlledBy)
+            .FirstOrDefault(c => c.HasTextAbilities && c.Definition.OpponentsSkipExtraTurns) : null;
+        if (p.TurnsToSkip <= 0 && denier is null) return false;
+        bool useOwnSkip = p.TurnsToSkip > 0;
+        if (useOwnSkip && denier is not null)
+            useOwnSkip = await ControllerOf(player).ChooseOptionAsync(ViewFor(player), new OptionRequest("Skip this extra turn because of", denier.Id,
+                new[] { "Your \"skip your next turn\"", denier.Name }, OptionKind.Other)) == 0;
+        if (useOwnSkip) p.TurnsToSkip--;
+        Emit(new TurnSkipped(player));
+        return true;
+    }
 
     private async Task RunTurnAsync(bool skipDraw)
     {
@@ -85,6 +106,7 @@ public sealed partial class Game
             player.ScriedOrSurveilledThisTurn = false;
             player.MilledThisTurn = 0;
             player.NextSpellUncounterableThisTurn = false;
+            player.NextNoncreatureSpellAffinityThisTurn = 0;
             player.CreatureSpellsUncounterableThisTurn = false;
             player.TreasureSpellsThisTurn = 0;
             player.NoLegendRuleThisTurn = false;
@@ -113,6 +135,7 @@ public sealed partial class Game
             player.SpellsCastThisTurn.Clear();
             player.NoncreatureSpellsCastThisTurn = 0;
             player.SpellManaValuesThisTurn.Clear();
+            player.SpellTypesThisTurn.Clear();
             player.ModifiedCreatureDiedThisTurn = false;
             State.WhenNextCast.RemoveAll(w => w.Turn < State.TurnNumber); // "this turn" is over
             State.WhenYourCreatureDealsCombatDamageThisTurn.RemoveAll(w => w.Turn < State.TurnNumber);

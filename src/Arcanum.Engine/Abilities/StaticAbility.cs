@@ -117,6 +117,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>"Has protection from the chosen color. This effect doesn't remove this Aura" (the source's chosen color).</summary>
     public bool ProtectionFromChosenColor { get; init; }
 
+    /// <summary>"Has protection from each color that's not in your commander's color identity" (with no commander, from each color, rule 903.4f).</summary>
+    public bool ProtectionFromColorsOutsideCommanderIdentity { get; init; }
+
     /// <summary>The ability works while its card is in its owner's graveyard ("As long as this card is in your graveyard, …").</summary>
     public bool FromGraveyard { get; init; }
 

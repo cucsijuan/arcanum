@@ -267,6 +267,16 @@ public sealed partial class Game
                         if (counted.Zone == Zone.Battlefield) PutCounters(counted, CounterKind.PlusOnePlusOne, n, shield.Controller);
                         return 0;
                     }));
+            // "If damage would be dealt to another creature you control, prevent that damage. Put a +1/+1 counter on that creature
+            // for each 1 damage prevented this way."
+            if (part.ToCard is { IsCreature: true } guarded && guarded.Zone == Zone.Battlefield)
+                foreach (var keeper in State.PermanentsControlledBy(guarded.Controller).Where(c => c.Id != guarded.Id && c.HasTextAbilities && c.Definition.PreventsDamageToYourOtherCreaturesForCounters))
+                    Add(new DamageModifier("preventCounters", $"preventCountersStatic:{keeper.Id}", $"Prevent it and put that many +1/+1 counters on {guarded.Name} ({keeper.Name})", n =>
+                    {
+                        notePrevented(n);
+                        if (guarded.Zone == Zone.Battlefield) PutCounters(guarded, CounterKind.PlusOnePlusOne, n, keeper.Controller);
+                        return 0;
+                    }));
             // "If a source you control would deal damage to an opponent, prevent that damage and each opponent mills that many cards."
             if (part.ToPlayer is { } milled && State.OpponentsOf(SourceController(source)).Contains(milled))
                 foreach (var skinner in State.PermanentsControlledBy(SourceController(source)).Where(c => c.HasTextAbilities && (c.Definition.ExtraRules & ExtraRules.YourDamageToOpponentsMillsInstead) != 0))
@@ -440,6 +450,11 @@ public sealed partial class Game
             foreach (var _ in State.DamageTripled.Where(t => t.Player == controller && t.Turn == State.TurnNumber))
                 result.Add(($"triple:{controller.Value}:{i++}", "Triple it", 3));
         }
+        // "Double all damage that creatures you control with counters on them would deal."
+        bool withCounters = lki is not null ? lki.Counters.Values.Any(n => n > 0) : source.Counters.Values.Any(n => n > 0);
+        if (creature && withCounters)
+            foreach (var c in State.PermanentsControlledBy(controller).Where(c => c.HasTextAbilities && c.Definition.DoublesDamageOfYourCreaturesWithCounters))
+                result.Add(($"double:{c.Id}", $"Double it ({c.Name})", 2));
         // "If a creature you control that entered this turn would deal damage, it deals twice that much damage instead."
         if (creature && source.Zone == Zone.Battlefield && State.Players.Any(p => p.EnteredThisTurn.Contains((source.Id, source.Version))))
             foreach (var c in State.PermanentsControlledBy(controller).Where(c => c.HasTextAbilities && c.Definition.DoublesDamageOfCreaturesEnteredThisTurn))
@@ -484,10 +499,18 @@ public sealed partial class Game
             part.Report?.DamagedPlayers.Add(player);
             Emit(new DamageDealt(source.Id, null, player, amount, part.Combat));
             // Infect: the damage gives the player poison counters instead of making them lose life (rule 120.3b).
-            if (source.Has(Keyword.Infect)) State.GetPlayer(player).Poison += amount;
+            if (source.Has(Keyword.Infect))
+            {
+                State.GetPlayer(player).Poison += amount;
+                Emit(new PlayerCountersPut(player, amount, source.Controller));
+            }
             else ChangeLife(player, -LifeLostToDamage(player, amount));
             if (part.Combat) RecordCommanderDamage(source, player, amount);
-            if (part.Combat && source.Definition.Toxic > 0) State.GetPlayer(player).Poison += source.Definition.Toxic; // rule 702.164c
+            if (part.Combat && source.Definition.Toxic > 0) // rule 702.164c
+            {
+                State.GetPlayer(player).Poison += source.Definition.Toxic;
+                Emit(new PlayerCountersPut(player, source.Definition.Toxic, source.Controller));
+            }
             Lifelink();
             return;
         }

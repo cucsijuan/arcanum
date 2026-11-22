@@ -184,7 +184,8 @@ public sealed partial class Game
                 Queue(m.Card, TriggerEvent.DiesOrExiled, m.LastController);
                 QueueObservers(TriggerEvent.CreatureDies, State.GetCard(m.Card), m.LastController);
                 QueueObservers(TriggerEvent.CreatureDiesOrExiled, State.GetCard(m.Card), m.LastController);
-                foreach (var delayed in State.CreatureDiesThisTurnTriggers.Where(d => d.Turn == State.TurnNumber).ToList())
+                foreach (var delayed in State.CreatureDiesThisTurnTriggers.Where(d => d.Turn == State.TurnNumber
+                             && (d.Ability.Filter is not { } watched || Matches(watched with { Controller = ControllerFilter.Any }, State.GetCard(m.Card), m.LastController, State.GetCard(d.Source), d.Controller))).ToList())
                     AddPending(delayed.Source, delayed.Ability, delayed.Controller, new TriggerInfo(m.Card, State.GetCard(m.Card).Version, m.LastController));
                 break;
             case SpellCopied copied:
@@ -253,6 +254,10 @@ public sealed partial class Game
                             foreach (var watching in abilities.Where(x => x.Trigger == TriggerEvent.PlayerAttacksYourOpponent))
                                 AddPending(observer.Id, watching, observer.Controller, new TriggerInfo(Player: a.Player,
                                     Amount: declaredCombat.Attacks.Count(x => x.Defender == attackedOpponent && x.Planeswalker is null)) { Defender = attackedOpponent });
+                    // "Whenever one or more of your opponents are attacked": once, whoever attacks them.
+                    foreach (var (observer, abilities) in Observers().Where(o => declaredCombat.Attacks.Any(x => x.Planeswalker is null && State.OpponentsOf(o.Card.Controller).Contains(x.Defender))))
+                        foreach (var watching in abilities.Where(x => x.Trigger == TriggerEvent.OpponentsAttacked))
+                            AddPending(observer.Id, watching, observer.Controller, new TriggerInfo(Player: a.Player));
                     // "Whenever one or more [non-Toy] creatures you control attack a player": once per player attacked by matching creatures of the observer's controller.
                     foreach (var attacked in declaredCombat.Attacks.Where(x => x.Planeswalker is null).GroupBy(x => x.Defender).ToList())
                         foreach (var (observer, abilities) in Observers().Where(o => o.Card.Zone == Zone.Battlefield))
@@ -323,6 +328,12 @@ public sealed partial class Game
                         AddPending(saga.Id, ability, saga.Controller, new TriggerInfo(Amount: chapter));
                 break;
             }
+            case PlayerCountersPut pcp:
+                foreach (var observer in State.Battlefield.Select(State.GetCard).ToList())
+                    foreach (var ability in observer.Abilities.OfType<TriggeredAbility>().Where(a => a.Trigger == TriggerEvent.CountersPlaced && a.OrPlayer))
+                        if (!ability.PlacedByYou || pcp.By == observer.Controller)
+                            AddPending(observer.Id, ability, observer.Controller, new TriggerInfo(Player: pcp.Player, Amount: pcp.Count));
+                break;
             case CountersPlaced cp when State.GetCard(cp.Card).Zone == Zone.Battlefield:
             {
                 var target = State.GetCard(cp.Card);
@@ -706,9 +717,9 @@ public sealed partial class Game
     private void Queue(CardId source, TriggerEvent trigger, PlayerId controller, TriggerInfo? info = null)
     {
         foreach (var ability in TriggerAbilitiesOf(State.GetCard(source)))
-            if (ability.Trigger == trigger && !(ability.Filter is { } filter && trigger is TriggerEvent.BlocksCreature or TriggerEvent.BlocksOrBecomesBlockedByCreature
+            if (ability.Trigger == trigger && !(ability.Filter is { } filter && trigger is TriggerEvent.BlocksCreature or TriggerEvent.BlocksOrBecomesBlockedByCreature or TriggerEvent.OpponentDiscards
                     && info?.Subject is { } other && !Matches(filter with { Controller = ControllerFilter.Any }, State.GetCard(other), State.GetCard(other).Controller, State.GetCard(source), controller)))
-                AddPending(source, ability, controller, info); // "blocks a creature with flying": the filter is about the other creature
+                AddPending(source, ability, controller, info); // "blocks a creature with flying" / "discards a creature card": the filter is about the other card
     }
 
     /// <summary>
@@ -860,7 +871,7 @@ public sealed partial class Game
         // "If a triggered ability of [this] triggers, that ability triggers an additional time."
         for (int i = ExtraTriggersFor(State.GetCard(source)) + ExtraTriggersFromMoving(State.GetCard(source), ability, controller, info)
                      + ExtraTriggersFromLandsAndBirds(State.GetCard(source), ability, info) + ExtraTriggersFromDying(State.GetCard(source), ability, info)
-                     + ExtraTriggersFromAttack(State.GetCard(source), ability, info); i > 0; i--)
+                     + ExtraTriggersFromAttack(State.GetCard(source), ability, info) + ExtraTriggersFromDrawing(State.GetCard(source), ability); i > 0; i--)
             _pendingTriggers.Add(pending);
     }
 
@@ -891,6 +902,14 @@ public sealed partial class Game
                + (source.Zone != Zone.Battlefield && (source.Definition.Replaces & Replacements.ExtraTriggersFromLegendariesAndArtifactsMoving) != 0
                   && source.LastKnownInfo is { HasTextAbilities: true } gone && gone.Controller == owner ? 1 : 0);
     }
+
+    /// <summary>
+    /// "If a player drawing a card causes a triggered ability of a permanent you control to trigger, that ability triggers an
+    /// additional time": one more for each such permanent its controller has.
+    /// </summary>
+    private int ExtraTriggersFromDrawing(Card source, TriggeredAbility ability) =>
+        source.Zone == Zone.Battlefield && ability.Trigger is TriggerEvent.YouDrawCard or TriggerEvent.OpponentDrawsCard or TriggerEvent.AnyPlayerDraws
+            ? State.PermanentsControlledBy(source.Controller).Count(p => p.HasTextAbilities && p.Definition.DrawTriggersTwice) : 0;
 
     /// <summary>Additional times a permanent's ability triggers when its controller casts or copies an instant or sorcery spell (one per such permanent).</summary>
     private int InstantSorceryExtraTriggers(Card observer, Card spell, PlayerId caster) =>
@@ -927,6 +946,8 @@ public sealed partial class Game
             => State.TargetedThisTurn.Count(t => t.Card == aimedAt && t.Version == info.SubjectVersion && t.By == by && t.Turn == State.TurnNumber),
         // "Whenever an opponent draws their second card each turn".
         TriggerEvent.OpponentDrawsCard when info?.Player is { } drawer => State.GetPlayer(drawer).CardsDrawnThisTurn,
+        // "Whenever a player draws their second card each turn".
+        TriggerEvent.AnyPlayerDraws when info?.Player is { } anyDrawer => State.GetPlayer(anyDrawer).CardsDrawnThisTurn,
         // "Whenever an opponent casts their first noncreature spell each turn": that player's matching spells this turn, this one included.
         TriggerEvent.OpponentCastsSpell or TriggerEvent.YouCastSpell or TriggerEvent.AnyPlayerCastsSpell when info?.Player is { } caster
             => State.GetPlayer(caster).SpellsCastThisTurn.Select(State.GetCard)

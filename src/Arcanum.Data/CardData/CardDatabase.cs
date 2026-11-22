@@ -253,9 +253,9 @@ public sealed class CardDatabase : ICardDatabase
     private IReadOnlyList<string>? _names;
 
     /// <summary>Every card name, in alphabetical order (what a player may choose for "choose a card name").</summary>
-    /// <remarks>A transforming double-faced card offers either face's name, not both together (rule 712.19).</remarks>
+    /// <remarks>A double-faced card (transforming or modal) offers either face's name, not both together (rule 712.19).</remarks>
     public IReadOnlyList<string> Names => _names ??= _sorted
-        .SelectMany(e => e.Record.Layout == "transform" && e.Record.Faces.Count == 2 ? e.Record.Faces.Select(f => f.Name) : new[] { e.Record.Name })
+        .SelectMany(e => e.Record.Layout is "transform" or "modal_dfc" && e.Record.Faces.Count == 2 ? e.Record.Faces.Select(f => f.Name) : new[] { e.Record.Name })
         .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
 
     private IReadOnlyList<string>? _nonbasicLandNames;

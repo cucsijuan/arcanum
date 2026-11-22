@@ -62,6 +62,9 @@ public sealed record CreatureDied(CardId Card) : GameEvent;
 public sealed record AbilityCountered(CardId Source) : GameEvent;
 public sealed record SpellCopied(CardId Copy, CardId Original, PlayerId Controller) : GameEvent;
 public sealed record PoisonGiven(PlayerId Player, int Count) : GameEvent;
+
+/// <summary>Counters were put on a player (poison, experience), by <paramref name="By"/> (the controller of what put them).</summary>
+public sealed record PlayerCountersPut(PlayerId Player, int Count, PlayerId? By) : GameEvent;
 public sealed record EmblemCreated(CardId Emblem, PlayerId Owner) : GameEvent;
 public sealed record ChoiceMade(CardId Card, string Choice) : GameEvent;
 

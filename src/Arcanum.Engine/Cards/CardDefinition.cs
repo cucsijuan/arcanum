@@ -166,6 +166,12 @@ public sealed partial record CardDefinition
     }
 
     private ManaCost _manaCost = ManaCost.Zero;
+
+    /// <summary>
+    /// The card has no mana cost (a suspend card printed without one): its mana cost is unpayable, so it can be cast only without paying it
+    /// or for an alternative cost that isn't based on its mana cost (rules 118.6, 202.1b).
+    /// </summary>
+    public bool NoManaCost { get; init; }
     public CardType Types { get; init; }
     public Supertype Supertypes { get; init; }
     public IReadOnlyList<string> Subtypes { get; init; } = Array.Empty<string>();
@@ -211,6 +217,9 @@ public sealed partial record CardDefinition
 
     /// <summary>"Whenever you tap a Forest for mana, add an additional {G}."</summary>
     public bool YourForestsExtraGreen { get; init; }
+
+    /// <summary>"Whenever you tap a land for mana, add {G}."</summary>
+    public bool YourLandsExtraGreen { get; init; }
 
     /// <summary>"If a creature dying causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time."</summary>
     public bool YourDyingTriggersExtra { get; init; }
@@ -401,6 +410,8 @@ public sealed partial record CardDefinition
     public Abilities.ObjectFilter? GraveyardCastFilter { get; init; }
     public Abilities.ExtraCost? GraveyardCastExtra { get; init; }
     public Abilities.Condition? GraveyardCastWhile { get; init; }
+    /// <summary>With <see cref="GraveyardCastFilter"/>: "if you cast a spell this way, that creature enters with a finality counter on it".</summary>
+    public bool GraveyardCastRightFinality { get; init; }
 
     /// <summary>Dash (702.109): cast for this cost, it gains haste and returns to its owner's hand at the next end step.</summary>
     public ManaCost? Dash { get; init; }
@@ -419,6 +430,19 @@ public sealed partial record CardDefinition
 
     /// <summary>"Artifact cards and red creature cards in your hand have warp {2}{R}": the cards in its controller's hand it gives warp, and the cost.</summary>
     public (ObjectFilter Cards, ManaCost Cost)? GrantsWarp { get; init; }
+
+    /// <summary>
+    /// Sneak {cost}: during the declare blockers step it may be cast from the hand for this cost and by returning an
+    /// unblocked attacker its caster controls to its owner's hand. A permanent spell cast this way enters tapped, and a creature enters
+    /// attacking what the returned creature was attacking.
+    /// </summary>
+    public ManaCost? Sneak { get; init; }
+
+    /// <summary>
+    /// "Creature cards in your graveyard have sneak {3}{B}. You may cast creature spells from your graveyard using their sneak abilities":
+    /// the cards of its controller's graveyard given that sneak cost, which (with their own sneak costs) may be cast from there that way only.
+    /// </summary>
+    public (ObjectFilter Cards, ManaCost Cost)? GraveyardSneak { get; init; }
 
     /// <summary>
     /// Impending N—[cost] (702.176): cast for this cost, it enters with N time counters, isn't a creature while it has one, and at the
@@ -776,6 +800,27 @@ public sealed partial record CardDefinition
     /// <summary>If a creature you control that entered this turn would deal damage, it deals twice that much damage instead.</summary>
     public bool DoublesDamageOfCreaturesEnteredThisTurn { get; init; }
 
+    /// <summary>"If an opponent would begin an extra turn, that player skips that turn instead."</summary>
+    public bool OpponentsSkipExtraTurns { get; init; }
+
+    /// <summary>"Nontoken creatures you control have riot" (they choose a +1/+1 counter or haste as they enter, rule 614.12).</summary>
+    public bool NontokenCreaturesHaveRiot { get; init; }
+
+    /// <summary>"Each creature you control enters with an additional +1/+1 counter on it for each mana from an artifact source spent to cast it."</summary>
+    public bool CountersPerArtifactManaSpent { get; init; }
+
+    /// <summary>"If a player drawing a card causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time."</summary>
+    public bool DrawTriggersTwice { get; init; }
+
+    /// <summary>"If one or more tokens would be created under your control, those tokens plus a Mutagen token are created instead."</summary>
+    public bool ExtraMutagenWithTokens { get; init; }
+
+    /// <summary>"If damage would be dealt to another creature you control, prevent that damage. Put a +1/+1 counter on that creature for each 1 damage prevented this way."</summary>
+    public bool PreventsDamageToYourOtherCreaturesForCounters { get; init; }
+
+    /// <summary>"Double all damage that creatures you control with counters on them would deal."</summary>
+    public bool DoublesDamageOfYourCreaturesWithCounters { get; init; }
+
     /// <summary>You may play lands from your graveyard.</summary>
     public bool PlayLandsFromGraveyard { get; init; }
 
@@ -865,6 +910,9 @@ public sealed partial record CardDefinition
 
     /// <summary>Only while this holds ("as long as this attacked this turn").</summary>
     public Abilities.Condition? LibraryTopPlayIf { get; init; }
+
+    /// <summary>With <see cref="LibraryTopPlay"/>: "if you cast a creature spell this way, that creature enters with an additional +1/+1 counter on it."</summary>
+    public bool LibraryTopPlayCounter { get; init; }
 
     /// <summary>"You may cast spells from the top of your library by sacrificing a nonland permanent in addition to paying their other costs."</summary>
     public Abilities.ExtraCost? LibraryTopExtraCost { get; init; }
@@ -1092,6 +1140,13 @@ public sealed partial record CardDefinition
     /// transform (701.27) and then has only the back face's characteristics, whose mana value is the front face's (712.8e).
     /// </summary>
     public CardDefinition? BackFace { get; init; }
+
+    /// <summary>
+    /// A modal double-faced card (rule 712.3): <see cref="BackFace"/> is a face of its own. It's cast with the face its caster
+    /// chooses (712.11b) or played as a land with a land face up (712.12); on the stack and the battlefield it has only that
+    /// face's characteristics, its mana value from that face's own mana cost (712.8f), and elsewhere its front face's (712.8a).
+    /// </summary>
+    public bool IsModalDoubleFaced { get; init; }
 
     public bool Is(CardType type) => (Types & type) != 0;
 

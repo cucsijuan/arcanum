@@ -67,6 +67,12 @@ public sealed record SpellOnStack(CardId Card, PlayerId Controller, IReadOnlyLis
     /// <summary>Its warp cost was paid (rule 702.185).</summary>
     public bool Warped { get; init; }
 
+    /// <summary>
+    /// Cast for its sneak cost: what the returned unblocked attacker was attacking. A permanent enters tapped, and a creature
+    /// enters attacking that player or planeswalker.
+    /// </summary>
+    public (Core.PlayerId Defender, Core.CardId? Planeswalker)? SneakAttack { get; init; }
+
     /// <summary>Its blitz cost was paid (rule 702.152); a copy copies that (707.10).</summary>
     public bool Blitzed { get; init; }
     /// <summary>Cast for its evoke cost (rule 702.74a).</summary>

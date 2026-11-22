@@ -492,4 +492,491 @@ public class SetVocabularyTests
         await s.RunUntilTurn();
         Assert.Equal(Zone.Battlefield, s.Card(attacker).Zone); // a 2/2 blocked by a 3/3 survives: the damage to it is prevented
     }
+
+    private static int _nextScripted;
+
+    private static CardDefinition Scripted(string name, string typeLine, string manaCost, string script, string oracle, string? power = null, string? toughness = null, params string[] keywords)
+    {
+        var fields = new Dictionary<string, object?>
+        {
+            ["oracle_id"] = $"setvocab-{_nextScripted++}", ["name"] = name, ["layout"] = "normal", ["mana_cost"] = manaCost,
+            ["type_line"] = typeLine, ["oracle_text"] = oracle,
+        };
+        if (power is not null) { fields["power"] = power; fields["toughness"] = toughness; }
+        if (keywords.Length > 0) fields["keywords"] = keywords;
+        var record = OracleJsonl.Import(new MemoryStream(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(fields)))).First();
+        var parsed = CardScriptParser.Parse(script);
+        var (definition, support) = CardFactory.Create(record, parsed);
+        Assert.True(support == CardSupport.Full, string.Join("; ", CardFactory.Explain(record, parsed)));
+        return definition;
+    }
+
+    private static CardDefinition GreenSprout() => Scripted("Test Sprout", "Creature — Plant", "{1}{G}", """{ "abilities": [] }""", "Invented.", "1", "1");
+
+    [Fact]
+    public async Task YourLandsTapForAnAdditionalGreenWhileTheCardIsOnTheBattlefield()
+    {
+        var grove = Scripted("Test Grove", "Enchantment", "", """{ "yourLandsExtraGreen": true }""", "Each land you control taps for an additional {G}.");
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        s.Add(P0, grove);
+        var sprout = s.InHand(P0, GreenSprout());
+        Play(s, Cast(s, "Test Sprout"));
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(sprout).Zone); // the Mountain taps for {R} and the extra {G} pays the green cost
+    }
+
+    [Fact]
+    public async Task WithTheCardAForestTappedForGreenMakesTwoGreenForTheGreenCost()
+    {
+        var grove = Scripted("Test Grove", "Enchantment", "", """{ "yourLandsExtraGreen": true }""", "Each land you control taps for an additional {G}.");
+        var s = new Scenario();
+        s.Add(P0, GenericCards.Forest);
+        s.Add(P0, grove);
+        var sprout = s.InHand(P0, GreenSprout());
+        Play(s, Cast(s, "Test Sprout"));
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(sprout).Zone); // the Forest taps for {G} and the extra {G}
+    }
+
+    [Fact]
+    public async Task WithoutTheCardALandOnlyTapsForItsOwnColor()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        var sprout = s.InHand(P0, GreenSprout());
+        Play(s, Cast(s, "Test Sprout"));
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Hand, s.Card(sprout).Zone); // one {R} cannot pay {1}{G}
+    }
+
+    [Fact]
+    public async Task TheNextNoncreatureSpellCostsLessForEachArtifactAndOnlyThatSpellIsReduced()
+    {
+        var relic = Scripted("Test Relic", "Artifact", "", """{ "abilities": [] }""", "Invented.");
+        var ritual = Scripted("Test Ritual", "Sorcery", "{1}", """{ "spell": { "effects": [{ "nextNoncreatureSpellAffinityForArtifacts": true }] } }""", "Invented.");
+        var rite = Scripted("Test Rite", "Sorcery", "{4}", """{ "spell": { "effects": [{ "gainLife": 3 }] } }""", "Invented.");
+        var pact = Scripted("Test Pact", "Sorcery", "{4}", """{ "spell": { "effects": [{ "gainLife": 3 }] } }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 5);
+        s.Add(P0, relic);
+        s.Add(P0, relic);
+        var ritualCard = s.InHand(P0, ritual);
+        var riteCard = s.InHand(P0, rite);
+        var pactCard = s.InHand(P0, pact);
+        bool ritualCast = false, riteCast = false, pactOffered = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!ritualCast && legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == ritualCard) is { } ritualSpell) { ritualCast = true; return ritualSpell; }
+            if (ritualCast && !riteCast && legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == riteCard) is { } riteSpell) { riteCast = true; return riteSpell; }
+            if (riteCast) pactOffered |= legal.OfType<CastSpell>().Any(c => c.Card == pactCard);
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.True(riteCast);                                                // {4} less two artifacts is {2}, payable with the four lands left
+        Assert.Equal(23, s.Game.State.GetPlayer(P0).Life);                    // the reduced spell resolved
+        Assert.False(pactOffered);                                            // the reduction was used up by that spell
+    }
+
+    [Fact]
+    public async Task ARevealedCreatureEntersTappedAndAttackingWhenItAttacks()
+    {
+        var ambusher = Scripted("Test Ambusher", "Creature — Ninja", "{1}", """{ "abilities": [{ "trigger": "attacks", "effects": [{ "revealUntil": { "types": ["creature"] }, "to": "battlefield", "attacking": true }] }] }""", "Invented.", "2", "2");
+        var s = new Scenario();
+        s.Add(P0, ambusher);
+        var hunter = s.InHand(P0, Creature("Test Hunter", 3, 3));
+        bool stacked = false;
+        s.Attacker.Act = (_, _) =>
+        {
+            if (!stacked) { stacked = true; s.Restack(P0, hunter); } // the creature is on top of the library
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(hunter).Zone);
+        Assert.True(s.Card(hunter).Tapped);
+        Assert.Equal(15, s.Game.State.GetPlayer(P1).Life); // the revealed creature dealt its combat damage too
+    }
+
+    [Fact]
+    public async Task ACreatureCastFromTheTopOfTheLibraryEntersWithAnExtraCounter()
+    {
+        var diver = Scripted("Test Diver", "Enchantment", "", """{ "playFromLibraryTop": { "types": ["creature"] }, "playFromLibraryTopCounter": true }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        s.Add(P0, diver);
+        var pup = s.InHand(P0, Creature("Test Pup", 1, 1));
+        bool stacked = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!stacked) { stacked = true; s.Restack(P0, pup); return PassPriority.Instance; }
+            return legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == pup) is { } cast ? cast : PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(pup).Zone);
+        Assert.Equal(1, s.Card(pup).CounterCount(CounterKind.PlusOnePlusOne));
+    }
+
+    [Fact]
+    public async Task ExtraManaForCreaturesPaysAnyActivatedAbility()
+    {
+        var font = Scripted("Test Font", "Artifact", "", """{ "extraMana": [{ "types": "{G}", "onlyFor": { "types": ["creature"] }, "anyAbility": true }] }""", "Invented.");
+        var charm = Scripted("Test Charm", "Artifact", "", """{ "abilities": [{ "cost": "{G}", "effects": [{ "gainLife": 2 }] }] }""", "Invented.");
+        var s = new Scenario();
+        s.Add(P0, font);
+        var charmCard = s.Add(P0, charm);
+        s.Attacker.Act = (_, legal) => legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == charmCard) is { } ability ? ability : PassPriority.Instance;
+        await s.RunUntilTurn();
+        Assert.Equal(22, s.Game.State.GetPlayer(P0).Life); // no land: the {G} of the ability came from the artifact
+    }
+
+    [Fact]
+    public async Task ExtraManaForCreaturesDoesNotPayForASpellOutsideTheFilter()
+    {
+        var font = Scripted("Test Font", "Artifact", "", """{ "extraMana": [{ "types": "{G}", "onlyFor": { "types": ["creature"] }, "anyAbility": true }] }""", "Invented.");
+        var rite = Scripted("Test Yellow Rite", "Sorcery", "{G}", """{ "spell": { "effects": [{ "gainLife": 1 }] } }""", "Invented.");
+        var sprout = Scripted("Test Green Sprout", "Creature — Plant", "{G}", """{ "abilities": [] }""", "Invented.", "1", "1");
+        var s = new Scenario();
+        s.Add(P0, font);
+        var riteCard = s.InHand(P0, rite);
+        var sproutCard = s.InHand(P0, sprout);
+        bool riteOffered = false, sproutOffered = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            riteOffered |= legal.OfType<CastSpell>().Any(c => c.Card == riteCard);
+            sproutOffered |= legal.OfType<CastSpell>().Any(c => c.Card == sproutCard);
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.True(sproutOffered);
+        Assert.False(riteOffered);
+    }
+
+    [Fact]
+    public async Task OutsideCardToHandPutsTheChosenCardFromOutsideTheGameIntoHand()
+    {
+        var lore = Scripted("Test Lore", "Creature — Scholar", "{1}", """{ "abilities": [] }""", "Invented.", "1", "1");
+        var summon = Scripted("Test Summon", "Sorcery", "{1}", """{ "spell": { "effects": [{ "outsideCardToHand": true }] } }""", "Invented.");
+        var s = new Scenario(sideboard: new[] { lore });
+        s.Lands(P0, 1);
+        var summonCard = s.InHand(P0, summon);
+        var loreCard = s.Game.State.GetPlayer(P0).Outside[0];
+        s.Attacker.Choose = (_, request) => request.Options.Take(1).Select(o => o.Id).ToList();
+        s.Attacker.Discard = (view, count) => view.Self.Hand.Take(count).Select(c => c.Id).ToList(); // cleanup discards down to seven: keep the card under test
+        Play(s, Cast(s, "Test Summon"));
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(summonCard).Zone);
+        Assert.Contains(loreCard, s.Game.State.GetPlayer(P0).Hand);
+        Assert.Empty(s.Game.State.GetPlayer(P0).Outside);
+    }
+
+    [Fact]
+    public async Task OutsideCardToHandLeavesTheCardOutsideWhenNoneIsChosen()
+    {
+        var lore = Scripted("Test Lore", "Creature — Scholar", "{1}", """{ "abilities": [] }""", "Invented.", "1", "1");
+        var summon = Scripted("Test Summon", "Sorcery", "{1}", """{ "spell": { "effects": [{ "outsideCardToHand": true }] } }""", "Invented.");
+        var s = new Scenario(sideboard: new[] { lore });
+        s.Lands(P0, 1);
+        var summonCard = s.InHand(P0, summon);
+        var loreCard = s.Game.State.GetPlayer(P0).Outside[0];
+        Play(s, Cast(s, "Test Summon")); // the default choice takes none of the cards
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(summonCard).Zone);
+        Assert.Equal(new[] { loreCard }, s.Game.State.GetPlayer(P0).Outside);
+        Assert.DoesNotContain(loreCard, s.Game.State.GetPlayer(P0).Hand);
+    }
+
+    [Fact]
+    public async Task ATargetFilterMatchesOnlyTheCreaturesThatCrewedThisVehicleThisTurn()
+    {
+        var skiff = Scripted("Test Skiff", "Artifact — Vehicle", "{2}", """{ "abilities": [{ "cost": "crew:1", "effects": [{ "gainLife": 1 }] }, { "cost": "{1}", "targets": [{ "kind": "creature", "filter": { "crewedSourceThisTurn": true } }], "effects": [{ "gainLife": 2 }] }] }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        var vehicle = s.Add(P0, skiff);
+        var crewer = s.Add(P0, Creature("Test Crewer", 2, 2));
+        var bystander = s.Add(P0, Creature("Test Bystander", 2, 2));
+        s.Attacker.Choose = (_, request) => request.Options.Where(o => o.Id == crewer).Select(o => o.Id).ToList();
+        var legalTargets = new List<Target>();
+        bool crewed = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!crewed && legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == vehicle && a.Index == 0) is { } crew) { crewed = true; return crew; }
+            return legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == vehicle && a.Index == 1) is { } target ? target : PassPriority.Instance;
+        };
+        s.Attacker.Targets = (_, request) =>
+        {
+            legalTargets.AddRange(request.LegalAt(0));
+            return new[] { request.LegalAt(0).First(t => t.Card == crewer) };
+        };
+        await s.RunUntilTurn();
+        Assert.Contains(Target.Of(crewer), legalTargets);
+        Assert.DoesNotContain(Target.Of(bystander), legalTargets); // it did not crew the vehicle
+    }
+
+    [Fact]
+    public async Task EachOpponentExilesCardsUntilTheFilterMatchesAndAllAreLinkedToTheSource()
+    {
+        var snare = Scripted("Test Snare", "Sorcery", "{1}", """{ "spell": { "effects": [{ "exileUntilLinked": { "types": ["creature"] }, "who": "opponents" }] } }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        var snareCard = s.InHand(P0, snare);
+        var hunter = s.InHand(P1, Creature("Test Hunter", 3, 3));
+        var forest = s.InHand(P1, GenericCards.Forest);
+        bool stacked = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!stacked) { stacked = true; s.Restack(P1, forest, hunter); return PassPriority.Instance; } // the land is on top, the creature under it
+            return Cast(s, "Test Snare")(legal) ?? PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Exile, s.Card(forest).Zone);
+        Assert.Equal(Zone.Exile, s.Card(hunter).Zone);
+        Assert.Equal(snareCard, s.Card(forest).ExiledWith?.Source);
+        Assert.Equal(snareCard, s.Card(hunter).ExiledWith?.Source);
+    }
+
+    [Fact]
+    public async Task ACardExiledWithTheSpellIsCastForFreeWhenItIsChosen()
+    {
+        var spell = Scripted("Test Snare Cast", "Sorcery", "{1}", """{ "spell": { "effects": [{ "exileUntilLinked": { "types": ["creature"] }, "who": "opponents" }, { "castOneExiledWithThisFree": true }] } }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        s.InHand(P0, spell);
+        var hunter = s.InHand(P1, Creature("Test Hunter", 3, 3));
+        bool stacked = false;
+        s.Attacker.Choose = (_, request) => request.Options.Take(1).Select(o => o.Id).ToList(); // cast the one card offered
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!stacked) { stacked = true; s.Restack(P1, hunter); }
+            return Cast(s, "Test Snare Cast")(legal) ?? PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(hunter).Zone);
+        Assert.Equal(P0, s.Card(hunter).Controller); // cast without paying its mana cost
+    }
+
+    [Fact]
+    public async Task ASearchFindsCardsWithDifferentNamesAnOpponentPicksOneOfAndShufflesTheRestBack()
+    {
+        var quest = Scripted("Test Quest", "Sorcery", "{1}", """{ "spell": { "effects": [{ "searchLibraryAndOutside": { "types": ["creature"] }, "count": 3, "opponentChooses": 1 }] } }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        var questCard = s.InHand(P0, quest);
+        var found = new[]
+        {
+            s.InHand(P0, Creature("Test Ash", 1, 1)),
+            s.InHand(P0, Creature("Test Birch", 2, 2)),
+            s.InHand(P0, Creature("Test Cedar", 3, 3)),
+        };
+        bool stacked = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!stacked) { stacked = true; s.Restack(P0, found); }
+            return Cast(s, "Test Quest")(legal) ?? PassPriority.Instance;
+        };
+        s.Attacker.Discard = (view, count) => view.Self.Hand.Take(count).Select(c => c.Id).ToList(); // cleanup discards down to seven: keep the card found
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(questCard).Zone);
+        var player = s.Game.State.GetPlayer(P0);
+        Assert.Equal(1, found.Count(id => player.Hand.Contains(id)));    // the opponent's pick
+        Assert.Equal(2, found.Count(id => player.Library.Contains(id))); // the rest, shuffled into the library
+    }
+
+    [Fact]
+    public async Task ASearchFindsNothingWhenThereAreFewerDifferentNamesThanTheCount()
+    {
+        var quest = Scripted("Test Quest", "Sorcery", "{1}", """{ "spell": { "effects": [{ "searchLibraryAndOutside": { "types": ["creature"] }, "count": 3, "opponentChooses": 1 }] } }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        var questCard = s.InHand(P0, quest);
+        var found = new[]
+        {
+            s.InHand(P0, Creature("Test Ash", 1, 1)),
+            s.InHand(P0, Creature("Test Ash", 1, 1)),
+            s.InHand(P0, Creature("Test Birch", 2, 2)),
+        };
+        bool stacked = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!stacked) { stacked = true; s.Restack(P0, found); }
+            return Cast(s, "Test Quest")(legal) ?? PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(questCard).Zone); // the spell was cast and resolved
+        var player = s.Game.State.GetPlayer(P0);
+        Assert.All(found, id => Assert.Contains(id, player.Library)); // two different names: nothing is found
+        Assert.Empty(player.Hand.Where(id => found.Contains(id)));
+    }
+
+    [Theory]
+    [InlineData("Red", false)]
+    [InlineData("Blue", true)]
+    public async Task TheChosenColorMakesTheSourceHexproofFromThatColorUntilEndOfTurn(string color, bool zapOffered)
+    {
+        var idol = Scripted("Test Idol", "Artifact Creature — Construct", "{1}", """{ "abilities": [{ "cost": "{1}", "effects": [{ "chooseColor": true }, { "becomeChosenColorHexproof": "self" }] }] }""", "Invented.", "2", "2");
+        var zap = Scripted("Test Zap", "Instant", "{R}", """{ "spell": { "targets": ["creature"], "effects": [{ "damage": 1 }] } }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        var source = s.Add(P0, idol);
+        s.Lands(P1, 1);
+        var zapCard = s.InHand(P1, zap);
+        s.Attacker.Option = (_, request) => request.Options.ToList().IndexOf(color);
+        bool activated = false, offered = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!activated && legal.OfType<ActivateAbility>().FirstOrDefault(a => a.Source == source) is { } ability) { activated = true; return ability; }
+            return PassPriority.Instance;
+        };
+        s.Defender.Act = (_, legal) =>
+        {
+            if (activated && s.Game.State.Stack.Count == 0) offered |= legal.OfType<CastSpell>().Any(c => c.Card == zapCard);
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(zapOffered, offered); // a red spell has no legal target once the source is hexproof from red
+    }
+
+    [Fact]
+    public async Task TheLinkedCreatureReturnsUnderYourControlAndTheOtherLinkedCardsGoToTheirOwnersHands()
+    {
+        var recall = Scripted("Test Recall", "Sorcery", "{1}", """{ "spell": { "targets": ["creature"], "effects": [{ "exile": "target", "linked": true }, { "exileUntilLinked": { "types": ["land"] }, "who": "opponents" }, { "returnLinkedCreatureRestToHand": true }] } }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        s.InHand(P0, recall);
+        var foe = s.Add(P1, Creature("Test Foe", 2, 2));
+        s.Attacker.Act = (_, legal) => Cast(s, "Test Recall")(legal) ?? PassPriority.Instance;
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(foe).Zone);
+        Assert.Equal(P0, s.Card(foe).Controller);
+        Assert.Empty(s.Game.State.GetPlayer(P1).Exile); // the linked land went to its owner's hand
+    }
+
+    [Fact]
+    public async Task ATargetedCreatureCardAndEveryOtherCardWithItsNameReturnTapped()
+    {
+        var revive = Scripted("Test Revive", "Sorcery", "{1}", """{ "spell": { "targets": [{ "kind": "graveyardCard", "controller": "you", "filter": { "types": ["creature"] } }], "effects": [{ "reanimateWithSameName": "target", "tapped": true }] } }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 1);
+        s.InHand(P0, revive);
+        var twinA = s.InHand(P0, Creature("Test Twin", 2, 2));
+        var twinB = s.InHand(P0, Creature("Test Twin", 2, 2));
+        var other = s.InHand(P0, Creature("Test Other", 1, 1));
+        var player = s.Game.State.GetPlayer(P0);
+        foreach (var id in new[] { twinA, twinB, other })
+        {
+            player.Hand.Remove(id);
+            player.Graveyard.Add(id);
+            s.Card(id).Zone = Zone.Graveyard;
+        }
+        s.Attacker.Act = (_, legal) => Cast(s, "Test Revive")(legal) ?? PassPriority.Instance;
+        s.Attacker.Targets = (_, request) => new[] { request.LegalAt(0).First(t => t.Card == twinA) };
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(twinA).Zone);
+        Assert.Equal(Zone.Battlefield, s.Card(twinB).Zone); // the same name
+        Assert.True(s.Card(twinA).Tapped);
+        Assert.True(s.Card(twinB).Tapped);
+        Assert.Equal(Zone.Graveyard, s.Card(other).Zone);
+    }
+
+    [Fact]
+    public async Task OneCardExiledWithTheSpellCanBePlayedAndTheOthersCannot()
+    {
+        var cache = Scripted("Test Cache", "Sorcery", "{1}", """{ "spell": { "effects": [{ "exileUntilLinked": { "types": ["creature"] }, "who": "opponents" }, { "exileUntilLinked": { "types": ["creature"] }, "who": "opponents" }, { "playOneExiledWithThis": true }] } }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 3);
+        var cacheCard = s.InHand(P0, cache);
+        var first = s.InHand(P1, Creature("Test Stash A", 1, 1));
+        var second = s.InHand(P1, Creature("Test Stash B", 1, 1));
+        bool stacked = false;
+        CardId? played = null;
+        bool otherOffered = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!stacked) { stacked = true; s.Restack(P1, first, second); return PassPriority.Instance; }
+            if (played is null)
+            {
+                if (legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == cacheCard) is { } spell) return spell;
+                if (legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == first || c.Card == second) is { } exiled) { played = exiled.Card; return exiled; }
+                return PassPriority.Instance;
+            }
+            otherOffered |= legal.OfType<CastSpell>().Any(c => c.Card == first || c.Card == second);
+            return PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.NotNull(played);
+        Assert.Equal(Zone.Battlefield, s.Card(played!.Value).Zone);
+        Assert.False(otherOffered); // after one of them is played, the other cannot be
+    }
+
+    [Fact]
+    public async Task AnOpponentsAttackedTriggerFiresOnceForAllAttackersAtTheOpponents()
+    {
+        var watcher = Scripted("Test Watcher", "Creature — Sentry", "{1}", """{ "abilities": [{ "trigger": "opponentsAttacked", "effects": [{ "gainLife": 1 }] }] }""", "Invented.", "0", "4");
+        var s = new Scenario();
+        s.Add(P0, watcher);
+        s.Add(P0, Creature("Test Bear A", 2, 2));
+        s.Add(P0, Creature("Test Bear B", 2, 2));
+        await s.RunUntilTurn();
+        Assert.Equal(21, s.Game.State.GetPlayer(P0).Life); // one trigger for the attack, not one per attacker
+        Assert.Equal(16, s.Game.State.GetPlayer(P1).Life);
+    }
+
+    [Fact]
+    public async Task ABlinkedCreatureReturnsTappedAndAttackingFromAnAttacksTrigger()
+    {
+        var hopper = Scripted("Test Hopper", "Creature — Ninja", "{1}", """{ "abilities": [{ "trigger": "attacks", "targets": [{ "kind": "creature", "controller": "you" }], "effects": [{ "blink": "target", "underYourControl": true, "attacking": true }] }] }""", "Invented.", "2", "2");
+        var s = new Scenario();
+        var bear = s.Add(P0, Creature("Test Bear", 2, 2));
+        var hop = s.Add(P0, hopper);
+        s.Attacker.Attack = (_, attackers, defenders) => attackers.Where(a => a == hop).Select(a => new AttackDeclaration(a, defenders[0])).ToList();
+        s.Attacker.Targets = (_, request) => new[] { request.LegalAt(0).First(t => t.Card == bear) };
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Battlefield, s.Card(bear).Zone);
+        Assert.True(s.Card(bear).Tapped);
+        Assert.Equal(16, s.Game.State.GetPlayer(P1).Life); // the attacker and the returned creature both dealt combat damage
+    }
+
+    [Fact]
+    public void TheMutagenTokenIsAnArtifactWhoseAbilityIsOnlyAsASorcery()
+    {
+        var token = PredefinedTokens.ByName("Mutagen");
+        Assert.NotNull(token);
+        Assert.Equal(CardType.Artifact, token!.Types);
+        var ability = Assert.IsType<ActivatedAbility>(Assert.Single(token.Abilities));
+        Assert.True(ability.SorcerySpeed);
+    }
+
+    [Fact]
+    public async Task AMutagenTokenPutsACounterOnACreatureWhenItsAbilityIsUsed()
+    {
+        var brewer = Scripted("Test Brewer", "Sorcery", "{1}", """{ "spell": { "effects": [{ "token": "Mutagen", "tokens": 1 }] } }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 2);
+        var bear = s.Add(P0, Creature("Test Bear", 2, 2));
+        s.InHand(P0, brewer);
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (legal.OfType<ActivateAbility>().FirstOrDefault(a => s.Card(a.Source).Name == "Mutagen") is { } activate) return activate;
+            return Cast(s, "Test Brewer")(legal) ?? PassPriority.Instance;
+        };
+        await s.RunUntilTurn();
+        Assert.Equal(1, s.Card(bear).CounterCount(CounterKind.PlusOnePlusOne));
+        Assert.DoesNotContain(s.Game.State.Cards.Values, c => c.Name == "Mutagen" && c.Zone == Zone.Battlefield); // sacrificed as the cost
+    }
+
+    [Fact]
+    public async Task ALifeGainCountsTheCardTypesOfTheSpellsCastThisTurnIncludingItself()
+    {
+        var flash = Scripted("Test Flash", "Instant", "{1}", """{ "spell": { "effects": [{ "gainLife": 1 }] } }""", "Invented.");
+        var tally = Scripted("Test Tally", "Sorcery", "{1}", """{ "spell": { "effects": [{ "gainLife": "cardTypesAmongSpellsCastThisTurn" }] } }""", "Invented.");
+        var s = new Scenario();
+        s.Lands(P0, 3);
+        s.InHand(P0, Creature("Test Bear", 2, 2));
+        s.InHand(P0, flash);
+        var tallyCard = s.InHand(P0, tally);
+        s.Attacker.Act = (_, legal) =>
+            Cast(s, "Test Bear")(legal) ?? Cast(s, "Test Flash")(legal) ?? Cast(s, "Test Tally")(legal) ?? PassPriority.Instance;
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(tallyCard).Zone);
+        Assert.Equal(24, s.Game.State.GetPlayer(P0).Life); // creature, instant and sorcery (the spell itself) gain 1 + 3
+    }
 }

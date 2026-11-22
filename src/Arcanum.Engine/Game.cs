@@ -289,39 +289,29 @@ public sealed partial class Game
 
         bool firstTurn = true;
         var regular = State.ActivePlayer; // whose turn it is in the normal turn order
+        // Makes the next turn's player active: the most recent extra turn, else the next player in turn order. True for an extra turn.
+        bool NextTurn(ref PlayerId inOrder)
+        {
+            State.ExtraTurns.RemoveAll(p => State.GetPlayer(p).HasLost);
+            if (State.ExtraTurns.Count > 0)
+            {
+                State.ActivePlayer = State.ExtraTurns[^1];
+                State.ExtraTurns.RemoveAt(State.ExtraTurns.Count - 1);
+                return true;
+            }
+            inOrder = State.NextLivingPlayer(inOrder);
+            State.ActivePlayer = inOrder;
+            return false;
+        }
         while (!State.IsGameOver)
         {
             if (!firstTurn)
             {
                 // Extra turns come right after the current one, the most recently created first (rule 500.7).
-                State.ExtraTurns.RemoveAll(p => State.GetPlayer(p).HasLost);
-                if (State.ExtraTurns.Count > 0)
-                {
-                    State.ActivePlayer = State.ExtraTurns[^1];
-                    State.ExtraTurns.RemoveAt(State.ExtraTurns.Count - 1);
-                }
-                else
-                {
-                    regular = State.NextLivingPlayer(regular);
-                    State.ActivePlayer = regular;
-                }
-                // "Skips their next turn": that turn doesn't happen, and the next one is picked the same way (rule 614.10).
-                while (State.GetPlayer(State.ActivePlayer).TurnsToSkip > 0 && !State.IsGameOver)
-                {
-                    State.GetPlayer(State.ActivePlayer).TurnsToSkip--;
-                    Emit(new TurnSkipped(State.ActivePlayer));
-                    State.ExtraTurns.RemoveAll(p => State.GetPlayer(p).HasLost);
-                    if (State.ExtraTurns.Count > 0)
-                    {
-                        State.ActivePlayer = State.ExtraTurns[^1];
-                        State.ExtraTurns.RemoveAt(State.ExtraTurns.Count - 1);
-                    }
-                    else
-                    {
-                        regular = State.NextLivingPlayer(regular);
-                        State.ActivePlayer = regular;
-                    }
-                }
+                bool extra = NextTurn(ref regular);
+                // "Skips their next turn" / "if an opponent would begin an extra turn, that player skips that turn instead": that turn
+                // doesn't happen, and the next one is picked the same way (rule 614.10). With both, the player chooses which applies (616.1).
+                while (!State.IsGameOver && await SkipsTurnAsync(State.ActivePlayer, extra)) extra = NextTurn(ref regular);
             }
             await RunTurnAsync(skipDraw: firstTurn && (Config.StartingPlayerSkipsDraw ?? !IsMultiplayer));
             firstTurn = false;

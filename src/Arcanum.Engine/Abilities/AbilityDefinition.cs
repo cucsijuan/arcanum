@@ -237,6 +237,9 @@ public sealed record ActivatedAbility : AbilityDefinition
     /// <summary>"Only your opponents may activate this ability": its controller's opponents may, its controller may not (rule 602.1b).</summary>
     public bool OnlyOpponents { get; init; }
 
+    /// <summary>"Any player may activate this ability": its controller and every other player may (rule 602.1b); the player who activates it controls it.</summary>
+    public bool AnyPlayer { get; init; }
+
     /// <summary>"Activate only if [condition]."</summary>
     public Condition? ActivationCondition { get; init; }
 
@@ -562,6 +565,9 @@ public enum TriggerEvent
     /// (player: the attacking player; defender: that opponent).
     /// </summary>
     PlayerAttacksYourOpponent,
+
+    /// <summary>"Whenever one or more of your opponents are attacked": once per declaration of attackers attacking any of them.</summary>
+    OpponentsAttacked,
     /// <summary>"Whenever one or more creatures [filter] attack" (any player's): once per declaration with a matching attacker (amount: how many).</summary>
     CreaturesAttackMatching,
     /// <summary>"Whenever you activate an ability that isn't a mana ability" (amount: the ability's stack object).</summary>
@@ -721,6 +727,9 @@ public sealed record TriggeredAbility : AbilityDefinition
     /// <summary>For counter triggers: only counters put by you ("Whenever you put one or more counters on").</summary>
     public bool PlacedByYou { get; init; }
 
+    /// <summary>For counter triggers: counters put on a player count too ("on a permanent or player"), the triggered player being that player.</summary>
+    public bool OrPlayer { get; init; }
+
     /// <summary>For counter triggers: the kind of counters (default +1/+1).</summary>
     public CounterKind CounterKind { get; init; } = CounterKind.PlusOnePlusOne;
 
@@ -869,6 +878,12 @@ public sealed record ObjectFilter(
     /// <summary>"That's attacking one of your opponents": attacking an opponent of the source's controller (not a planeswalker or battle).</summary>
     public bool AttackingYourOpponent { get; init; }
 
+    /// <summary>"Target creature that crewed it this turn": a creature tapped to pay a crew cost of the source this turn.</summary>
+    public bool CrewedSourceThisTurn { get; init; }
+
+    /// <summary>"With mana value less than or equal to the number of counters among permanents you control."</summary>
+    public bool MaxManaValueYourCounters { get; init; }
+
     /// <summary>A spell cast from a graveyard / a permanent that entered from a graveyard.</summary>
     public bool FromGraveyard { get; init; }
 
@@ -925,6 +940,9 @@ public sealed record ObjectFilter(
 
     /// <summary>Has at least one counter of this kind on it ("a permanent with a phylactery counter on it").</summary>
     public CounterKind? WithCounterKind { get; init; }
+
+    /// <summary>"Without a +1/+1 counter on it": no counter of this kind.</summary>
+    public CounterKind? WithoutCounterKind { get; init; }
 
     /// <summary>Doesn't share a creature type with a creature the ability's controller controls.</summary>
     public bool NoSharedCreatureTypeWithYours { get; init; }

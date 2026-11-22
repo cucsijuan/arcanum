@@ -115,10 +115,14 @@ public sealed partial class Game
             QuantityKind.AttackingPower => State.Combat?.Attacks.Select(a => State.GetCard(a.Attacker))
                 .Where(c => c.Controller == ctx.Controller && (q.Filter is null || Matches(q.Filter, c, c.Controller, ctx.Source, ctx.Controller))).Sum(c => c.Power) ?? 0,
             QuantityKind.OpponentCount => State.OpponentsOf(ctx.Controller).Count(),
+            QuantityKind.OpponentsAttackedThisTurn => State.GetPlayer(ctx.Controller).PlayersAttackedThisTurn.Count(p => State.OpponentsOf(ctx.Controller).Contains(p)),
+            QuantityKind.ExiledForCostManaValue => ctx.Results.ExiledForCost.Select(State.GetCard).Sum(ManaValueOf),
+            QuantityKind.TargetCounters => ctx.ChosenAt(q.Index)?.Card is { } countedOn && State.GetCard(countedOn) is { Zone: Zone.Battlefield } counted ? counted.CounterCount(q.Counter) : 0,
             QuantityKind.CardsInAllHands => State.LivingPlayers.Sum(p => p.Hand.Count),
             QuantityKind.OtherCreaturesSharingTypeWithAffected => ctx.AffectedCard is { } affectedCard
                 ? State.Battlefield.Select(State.GetCard).Count(c => c.IsCreature && c.Id != affectedCard.Id && SharesCreatureType(c, affectedCard)) : 0,
             QuantityKind.HalfLibrary => State.GetPlayer(ctx.AffectedPlayer ?? ctx.Controller).Library.Count / 2,
+            QuantityKind.HalfLibraryUp => (State.GetPlayer(ctx.AffectedPlayer ?? ctx.Controller).Library.Count + 1) / 2,
             QuantityKind.DamageTakenThisTurn => ctx.ChosenAt(q.Index)?.Player is { } hurt ? State.GetPlayer(hurt).DamageTakenThisTurn : 0,
             QuantityKind.TargetPlayersGreatestPower => ctx.TargetAt(q.Index)?.Player is { } owner
                 ? State.PermanentsControlledBy(owner).Where(c => c.IsCreature).Select(c => c.Power).DefaultIfEmpty(0).Max() : 0,
@@ -166,6 +170,7 @@ public sealed partial class Game
             QuantityKind.MilledThisWay => ctx.Results.Milled.Count(id => q.Filter is null
                 || Matches(q.Filter with { Controller = ControllerFilter.Any }, State.GetCard(id), State.GetCard(id).Owner, ctx.Source, ctx.Controller)),
             QuantityKind.DestroyedThisWay => ctx.Results.Destroyed,
+            QuantityKind.DamagedThisWay => ctx.Results.Damaged.Distinct().Count(),
             QuantityKind.PutIntoGraveyardThisWay => q.Filter is { } putFilter
                 ? ctx.Results.PutIntoGraveyard.Select(State.GetCard).Count(c => Matches(putFilter with { Controller = ControllerFilter.Any }, c, c.Owner, ctx.Source, ctx.Controller))
                 : ctx.Results.PutIntoGraveyard.Count,
@@ -229,7 +234,7 @@ public sealed partial class Game
             QuantityKind.OpponentsWithMore => State.OpponentsOf(ctx.Controller).Count(o => OpponentMeasure(q.Measure!, o) > OpponentMeasure(q.Measure!, ctx.Controller)),
             QuantityKind.AffectedManaValue or QuantityKind.AffectedAttacksThisTurn or QuantityKind.FoundPower or QuantityKind.FoundToughness => EvalOrigins(q, ctx),
             QuantityKind.ManaValueSum or QuantityKind.ControlGainedThisWay or QuantityKind.FoundManaValue or QuantityKind.DiscardedManaValue or QuantityKind.FoundMatching
-                or QuantityKind.CardTypesAmongDiscarded or QuantityKind.CreaturesDiedThisTurn or QuantityKind.CountersRemovedThisWay
+                or QuantityKind.CardTypesAmongDiscarded or QuantityKind.CardTypesAmongSpellsCastThisTurn or QuantityKind.CreaturesDiedThisTurn or QuantityKind.CountersRemovedThisWay
                 or QuantityKind.SpellsAndAbilitiesCounteredThisWay or QuantityKind.Rolled or QuantityKind.OpponentsDealtCombatDamage => EvalHeroes(q, ctx),
             QuantityKind.PermanentsSacrificedThisTurn => State.PermanentsSacrificedThisTurn,
             QuantityKind.SacrificedThisWay => ctx.Results.Sacrificed.Count,

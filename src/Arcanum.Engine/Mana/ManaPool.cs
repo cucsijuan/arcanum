@@ -16,6 +16,9 @@ public sealed record ManaUnit(ManaType Type, Core.CardId Source, Abilities.Objec
     /// <summary>It pays only for abilities (of <see cref="OnlyFor"/> sources), never for spells (<see cref="Cards.ManaOption.AbilitiesOnly"/>).</summary>
     public bool AbilitiesOnly { get; init; }
 
+    /// <summary>Besides the spells it may pay for, it may pay for any activated ability (<see cref="Cards.ManaOption.AnyAbility"/>).</summary>
+    public bool AnyAbility { get; init; }
+
     /// <summary>It may be spent only on costs that contain {X} (<see cref="Cards.ManaOption.XCostsOnly"/>).</summary>
     public bool XCostsOnly { get; init; }
 
@@ -25,6 +28,9 @@ public sealed record ManaUnit(ManaType Type, Core.CardId Source, Abilities.Objec
 
     /// <summary>"This mana can't be spent to pay generic mana costs": only colored (or colorless) symbols.</summary>
     public bool CantPayGeneric { get; init; }
+
+    /// <summary>Produced by an artifact source ("for each mana from an artifact source spent to cast it"), otherwise plain mana.</summary>
+    public bool FromArtifact { get; init; }
 }
 
 public sealed class ManaPool

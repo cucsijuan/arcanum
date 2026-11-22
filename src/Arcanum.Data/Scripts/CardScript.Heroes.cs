@@ -93,6 +93,7 @@ public static partial class CardScriptParser
                 "foundManaValue" => new Quantity(0, QuantityKind.FoundManaValue),
                 "discardedManaValue" => new Quantity(0, QuantityKind.DiscardedManaValue),
                 "cardTypesAmongDiscarded" => new Quantity(0, QuantityKind.CardTypesAmongDiscarded),
+                "cardTypesAmongSpellsCastThisTurn" => new Quantity(0, QuantityKind.CardTypesAmongSpellsCastThisTurn),
                 "creaturesDiedThisTurn" => new Quantity(0, QuantityKind.CreaturesDiedThisTurn),
                 "countersRemovedThisWay" => new Quantity(0, QuantityKind.CountersRemovedThisWay),
                 "spellsAndAbilitiesCounteredThisWay" => new Quantity(0, QuantityKind.SpellsAndAbilitiesCounteredThisWay),

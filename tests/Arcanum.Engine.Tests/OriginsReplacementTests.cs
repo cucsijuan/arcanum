@@ -23,7 +23,7 @@ public class OriginsReplacementTests
 {
     private static int _next;
 
-    private static CardDefinition Make(string name, string typeLine, string script, string cost = "", string? pt = null, string oracle = "", string[]? keywords = null, string[]? colors = null)
+    private static CardDefinition Make(string name, string typeLine, string script, string cost = "{0}", string? pt = null, string oracle = "", string[]? keywords = null, string[]? colors = null)
     {
         var json = JsonSerializer.Serialize(new Dictionary<string, object?>
         {
@@ -82,7 +82,7 @@ public class OriginsReplacementTests
         Make(name, "Instant", $$"""{ "spell": { "targets": ["any"], "effects": [{ "damage": {{amount}}, "to": "target" }] } }""", cost, colors: colors ?? new[] { "R" });
 
     private static CardDefinition Sweep(int amount) =>
-        Make("Sweep", "Sorcery", $$"""{ "spell": { "effects": [{ "damage": {{amount}}, "to": { "each": { "types": ["creature"], "controller": "any" } } }] } }""", "", colors: new[] { "R" });
+        Make("Sweep", "Sorcery", $$"""{ "spell": { "effects": [{ "damage": {{amount}}, "to": { "each": { "types": ["creature"], "controller": "any" } } }] } }""", "{0}", colors: new[] { "R" });
 
     private static CardDefinition Bear(string name = "Bear", string pt = "2/2", string[]? keywords = null, string[]? colors = null) =>
         Make(name, "Creature — Bear", "{}", "{1}", pt, keywords: keywords, colors: colors);
@@ -103,7 +103,7 @@ public class OriginsReplacementTests
         { "replaces": ["ExileInsteadOfDying"], "abilities": [{ "trigger": "enters",
             "targets": [{ "kind": "graveyardCard", "controller": "you", "filter": { "types": ["instant", "sorcery", "creature"] } }],
             "effects": [{ "bounce": "target" }] }] }
-        """, "", "3/2");
+        """, "{0}", "3/2");
 
     private static CardDefinition HallowedMoonlight(bool nontokenOnly = false) => Make(nontokenOnly ? "Mistcall" : "Holy Moonlight", "Instant",
         nontokenOnly

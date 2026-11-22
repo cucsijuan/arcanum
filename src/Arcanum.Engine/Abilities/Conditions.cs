@@ -43,6 +43,8 @@ public sealed record WasEvoked : Condition;
 
 /// <summary>"If this spell was foretold": cast for its foretell cost.</summary>
 public sealed record WasForetold : Condition;
+/// <summary>"If its sneak cost was paid" (the spell, or the permanent it became); with <see cref="ThisTurn"/>, "… was paid this turn".</summary>
+public sealed record WasSneaked(bool ThisTurn = false) : Condition;
 
 /// <summary>"Activate only if this Class is level N" (rule 716.2a).</summary>
 public sealed record ClassLevelIs(int Level) : Condition;
@@ -294,6 +296,9 @@ public sealed record OpponentLifeAtMost(int Life) : Condition;
 /// <summary>"A player has N or less life" (any player, you included).</summary>
 public sealed record APlayerLifeAtMost(int Life) : Condition;
 
+/// <summary>"If a player's life total is less than or equal to half their starting life total."</summary>
+public sealed record APlayerLifeAtMostHalfStarting : Condition;
+
 /// <summary>"If you discarded a card this way" (the resolving effect made its controller discard).</summary>
 public sealed record YouDiscardedThisWay : Condition;
 
@@ -380,6 +385,9 @@ public sealed record OpponentsControlTotal(ObjectFilter Filter, int AtLeast) : C
 
 /// <summary>"Whenever a creature … attacks a player alone": the triggered creature attacks a player and no other creature attacks that player.</summary>
 public sealed record TriggeredAttacksPlayerAlone : Condition;
+
+/// <summary>"Whenever this creature attacks a player": the triggering attacker attacks a player, not a planeswalker or battle.</summary>
+public sealed record TriggeredAttacksPlayer : Condition;
 
 /// <summary>"If an opponent has been dealt noncombat damage this turn" (or, with <paramref name="LastTurn"/>, "… last turn").</summary>
 public sealed record OpponentDealtNoncombatDamage(bool LastTurn) : Condition;
