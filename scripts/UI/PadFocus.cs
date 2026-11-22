@@ -126,6 +126,9 @@ public partial class PadFocus : CanvasLayer
         if (shows is { } height) control.SetMeta(ShowsMeta, height);
     }
 
+    /// <summary>Whether <paramref name="control"/> was marked <see cref="Pressable"/>.</summary>
+    public static bool IsPressable(Control control) => control.HasMeta(PressMeta);
+
     private static void Mark(Control control, string meta)
     {
         control.FocusMode = Control.FocusModeEnum.All;
@@ -235,6 +238,10 @@ public partial class PadFocus : CanvasLayer
                     next.GrabFocus();
                     GetViewport().SetInputAsHandled();
                 }
+                break;
+            case InputEventMouseButton { Pressed: true, Device: -1 }: // made from a touch
+                UsingButtons = false;
+                Board.CardNode.TouchBegan();
                 break;
             case InputEventMouseButton { Pressed: true }:
             case InputEventScreenTouch { Pressed: true }:

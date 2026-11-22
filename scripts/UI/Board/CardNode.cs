@@ -203,11 +203,78 @@ public partial class CardNode : Control
         Resized += ApplySize;
     }
 
+    /// <summary>Mouse events made from touches carry this device id.</summary>
+    private const int TouchDevice = -1;
+
+    /// <summary>The card to pick the last touch showed (a touch screen has no pointer resting over a card).</summary>
+    private static CardNode? _touchShown;
+
+    /// <summary>The current touch landed on a card to pick (otherwise the one shown is put away).</summary>
+    private static bool _touchOnCard;
+
+    /// <summary>Where the card shown was and its name: the screen built again after a click puts a new one in its place.</summary>
+    private static Rect2 _touchAt;
+    private static string? _touchName;
+
+    /// <summary>
+    /// A touch on a card to pick (a collection, a deck being built): the first one shows it, as resting the pointer
+    /// over it does; touching it again does what clicking it does (adds it, takes it out, picks it), and so does each
+    /// touch after that while it stays shown. A card a click does nothing on is put away by the second touch.
+    /// </summary>
+    private void Touched()
+    {
+        _touchOnCard = true;
+        bool sameInNewPlace = _touchShown is not null && (!IsInstanceValid(_touchShown) || !_touchShown.IsInsideTree())
+            && _touchAt == GetGlobalRect() && _touchName == View?.Name;
+        if (sameInNewPlace)
+        {
+            _touchShown = this;
+            HoverStarted?.Invoke(this);
+        }
+        if (_touchShown == this)
+        {
+            if (Clicked is not null)
+            {
+                _touchAt = GetGlobalRect();
+                Clicked(this);
+            }
+            else
+            {
+                _touchShown = null;
+                HoverEnded?.Invoke(this);
+            }
+            return;
+        }
+        PutTouchedAway();
+        _touchShown = this;
+        _touchAt = GetGlobalRect();
+        _touchName = View?.Name;
+        HoverStarted?.Invoke(this);
+    }
+
+    /// <summary>A touch began somewhere (seen before the card under it, if any, gets it).</summary>
+    public static void TouchBegan()
+    {
+        _touchOnCard = false;
+        Callable.From(() => { if (!_touchOnCard) PutTouchedAway(); }).CallDeferred();
+    }
+
+    private static void PutTouchedAway()
+    {
+        if (_touchShown is { } shown && IsInstanceValid(shown)) shown.HoverEnded?.Invoke(shown);
+        _touchShown = null;
+    }
+
     public override void _GuiInput(InputEvent @event)
     {
         if (@event is InputEventMouseMotion motion && IsFoil && Size.X > 0 && Size.Y > 0)
             FoilAt = (motion.Position / Size).Clamp(Vector2.Zero, Vector2.One);
-        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left, Device: TouchDevice } && PadFocus.IsPressable(this))
+        {
+            Touched();
+            AcceptEvent();
+        }
+        else if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
         {
             Clicked?.Invoke(this);
             AcceptEvent();
