@@ -1231,7 +1231,7 @@ public partial class DeckDesk : Control
             }
             if (_deck.Commander.Count == 0)
             {
-                var hint = CareerStyle.Text("Right-click a legendary creature of yours", 14, new Color(1f, 0.95f, 0.85f, 0.7f), wrap: true);
+                var hint = CareerStyle.Text("Right-click or hold a legendary creature of yours", 14, new Color(1f, 0.95f, 0.85f, 0.7f), wrap: true);
                 hint.CustomMinimumSize = new Vector2(columnWidth, 0);
                 box.AddChild(hint);
             }

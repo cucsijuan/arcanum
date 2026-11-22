@@ -252,6 +252,45 @@ public partial class CardNode : Control
         HoverStarted?.Invoke(this);
     }
 
+    /// <summary>How long a finger rests on a card before it does what a right click does (seconds).</summary>
+    private const float LongPress = 0.6f;
+
+    /// <summary>How far the finger may slide while held (further, it's scrolling a list).</summary>
+    private const float HoldSlack = 14f;
+
+    private bool _touchHeld, _heldLong;
+    private int _holdSerial;
+    private Vector2 _touchDownAt;
+
+    /// <summary>
+    /// A finger came down on a card to pick: it's a touch when lifted soon (see <see cref="Touched"/>); held still for
+    /// <see cref="LongPress"/> it does what a right click does (takes a copy out, makes it the commander, sells it),
+    /// showing the card too.
+    /// </summary>
+    private void TouchDown()
+    {
+        _touchOnCard = true;
+        _touchHeld = true;
+        _heldLong = false;
+        _touchDownAt = GetGlobalMousePosition();
+        int serial = ++_holdSerial;
+        GetTree().CreateTimer(LongPress).Timeout += () =>
+        {
+            if (!IsInstanceValid(this) || serial != _holdSerial || !_touchHeld || RightClicked is null) return;
+            if (!Input.IsMouseButtonPressed(MouseButton.Left) || GetGlobalMousePosition().DistanceTo(_touchDownAt) > HoldSlack) return;
+            _heldLong = true;
+            if (_touchShown != this)
+            {
+                PutTouchedAway();
+                _touchShown = this;
+                _touchAt = GetGlobalRect();
+                _touchName = View?.Name;
+                HoverStarted?.Invoke(this);
+            }
+            RightClicked?.Invoke(this);
+        };
+    }
+
     /// <summary>A touch began somewhere (seen before the card under it, if any, gets it).</summary>
     public static void TouchBegan()
     {
@@ -269,9 +308,11 @@ public partial class CardNode : Control
     {
         if (@event is InputEventMouseMotion motion && IsFoil && Size.X > 0 && Size.Y > 0)
             FoilAt = (motion.Position / Size).Clamp(Vector2.Zero, Vector2.One);
-        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left, Device: TouchDevice } && PadFocus.IsPressable(this))
+        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Left, Device: TouchDevice } touch && PadFocus.IsPressable(this))
         {
-            Touched();
+            if (touch.Pressed) TouchDown();
+            else if (_touchHeld && !_heldLong) Touched();
+            if (!touch.Pressed) _touchHeld = false;
             AcceptEvent();
         }
         else if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
