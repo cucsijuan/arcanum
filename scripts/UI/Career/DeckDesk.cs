@@ -99,7 +99,10 @@ public partial class DeckDesk : Control
     private readonly Label _collected = CareerStyle.Text("", 18, new Color(1f, 0.95f, 0.85f));
 
     /// <summary>Cards across the collection's part of the mat: all of it when picking a card.</summary>
-    private int GridColumns => _pick is null ? (_compact ? 5 : 6) : 10;
+    private int GridColumns => _pick is null ? (_compact ? 5 : 6) : _pickColumns;
+
+    /// <summary>Cards across the mat when picking or browsing: as many as fit (see Layout).</summary>
+    private int _pickColumns = 10;
 
     /// <summary>The share of the mat the collection takes while building (the deck's columns have the rest).</summary>
     private float CollectionShare => _pick is not null ? 1f : _compact ? 0.45f : 0.54f;
@@ -111,7 +114,8 @@ public partial class DeckDesk : Control
     private bool _compact;
     private int ControlFont => _compact ? 17 : 20;
 
-    private const int Rows = 3;
+    /// <summary>Rows of cards: two larger ones when browsing or picking on a narrow screen, so they can be read.</summary>
+    private int Rows => _pick is not null && _compact ? 2 : 3;
     private static readonly string[] ColumnNames = { "1", "2", "3", "4", "5", "6+", "Lands" };
     private static readonly (string Label, CardType Type)[] TypeFilters =
     {
@@ -296,6 +300,13 @@ public partial class DeckDesk : Control
         float width = (inner.Size.X * CollectionShare - (columns - 1) * 8) / columns;
         float height = (inner.Size.Y - 52 - (Rows - 1) * 8) / Rows;
         width = Math.Max(60, Math.Min(width, height / 1.39f));
+        if (_pick is not null && _compact)
+        {
+            // The rows' height sizes the cards; as many columns as the mat's width then takes.
+            width = Math.Max(60, height / 1.39f);
+            columns = _pickColumns = Math.Max(1, (int)((inner.Size.X + 8) / (width + 8)));
+            _grid.Columns = columns;
+        }
         _tile = new Vector2(width, width * 1.39f);
         _left.CustomMinimumSize = new Vector2(columns * width + (columns - 1) * 8, 0);
         _deckRoom = inner.Size.X - _left.CustomMinimumSize.X - 28 - 20; // the gap, the scroll bar
