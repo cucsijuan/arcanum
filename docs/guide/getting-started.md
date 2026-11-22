@@ -30,7 +30,12 @@ To install a module:
 3. Click **Install module from zip…** and choose the zip.
 4. Restart the game when it asks.
 
-The module is installed into the game's own folder. Later module updates are offered at start, like game updates.
+The module is installed into the game's data folder. Later module updates are offered at start, like game updates, when
+the module says where its releases are (its `updates` field).
+
+A module zip in the game's folder (on a console, the game's folder on its memory card) is found when the game starts.
+If it holds a module that is not installed, or a newer version than the installed one, the game asks whether to install
+it (**Install** or **Don't install**). A version you don't install is not asked again; a newer one is.
 
 When the game starts with a module, it downloads the card data on first start. The progress shows as
 "Downloading card data… %". Card images are downloaded as they are needed. The game needs a connection for this.

@@ -11,14 +11,14 @@ namespace Arcanum.Client;
 public sealed record ReleaseInfo(string Tag, Version Version, string Notes, string PageUrl, string? ZipUrl, string? ZipName, long ZipSize);
 
 /// <summary>
-/// Updates from the projects' GitHub releases: checks whether a newer game or content module is published, downloads
+/// Updates from published releases: checks whether a newer game (from the game's GitHub releases) or content module
+/// (from where the module's manifest says, see <see cref="Arcanum.Data.Modules.ModuleManifest.Updates"/>) is published, downloads
 /// it, and installs it. The game can't overwrite itself while running, so a small script waits for it to close,
 /// copies the new files over the installed ones and starts it again.
 /// </summary>
 public static class Updater
 {
     private const string GameRepo = "cucsijuan/arcanum";
-    private const string ModuleRepo = "cucsijuan/arcanum-classic";
 
     private static readonly HttpClient Http = CreateClient();
 
@@ -46,17 +46,22 @@ public static class Updater
 
     /// <summary>The newest game release, when it is newer than this build (null otherwise or when it can't be reached).</summary>
     public static async Task<ReleaseInfo?> NewerGameAsync() =>
-        await LatestAsync(GameRepo, PlatformZipSuffix) is { } release && ParseVersion(GameVersion) is { } current && release.Version > current ? release : null;
+        await LatestAsync($"https://api.github.com/repos/{GameRepo}/releases/latest", PlatformZipSuffix) is { } release && ParseVersion(GameVersion) is { } current && release.Version > current ? release : null;
 
-    /// <summary>The newest content module release, when it is newer than the installed module <paramref name="installed"/>.</summary>
-    public static async Task<ReleaseInfo?> NewerModuleAsync(string installed) =>
-        await LatestAsync(ModuleRepo, ".zip") is { } release && ParseVersion(installed) is { } current && release.Version > current ? release : null;
+    /// <summary>
+    /// The newest release of the installed module <paramref name="installed"/>, when it is newer (none when its manifest
+    /// doesn't say where its releases are).
+    /// </summary>
+    public static async Task<ReleaseInfo?> NewerModuleAsync(Arcanum.Data.Modules.ModuleManifest installed) =>
+        installed.Updates is { Length: > 0 } url && await LatestAsync(url, ".zip") is { } release
+        && ParseVersion(installed.Version) is { } current && release.Version > current ? release : null;
 
-    private static async Task<ReleaseInfo?> LatestAsync(string repo, string? zipSuffix)
+    /// <summary>A "latest release" document at <paramref name="url"/> (GitHub's releases API format).</summary>
+    private static async Task<ReleaseInfo?> LatestAsync(string url, string? zipSuffix)
     {
         try
         {
-            using var response = await Http.GetAsync($"https://api.github.com/repos/{repo}/releases/latest");
+            using var response = await Http.GetAsync(url);
             if (!response.IsSuccessStatusCode) return null;
             using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var root = json.RootElement;
@@ -75,11 +80,11 @@ public static class Updater
                     break;
                 }
             return new ReleaseInfo(tag, version, root.TryGetProperty("body", out var body) ? body.GetString() ?? "" : "",
-                root.TryGetProperty("html_url", out var page) ? page.GetString() ?? "" : $"https://github.com/{repo}/releases", zipUrl, zipName, size);
+                root.TryGetProperty("html_url", out var page) ? page.GetString() ?? "" : "", zipUrl, zipName, size);
         }
         catch (Exception e)
         {
-            GD.Print($"Update check for {repo} failed: {e.Message}");
+            GD.Print($"Update check at {url} failed: {e.Message}");
             return null;
         }
     }

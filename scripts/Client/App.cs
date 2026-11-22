@@ -160,6 +160,7 @@ public partial class App : Node
         };
         try
         {
+            await OfferModuleZipsAsync();
             bool loaded = await Content.LoadAsync();
             if (Module is not null)
             {
@@ -170,7 +171,9 @@ public partial class App : Node
             if (Formats.Count == 0) Formats.Add(FormatRules.Casual);
             LoadGameModes();
             if (loaded) await Career.InitAsync(Module!, Cards!);
-            ContentStatus = loaded ? $"{Cards!.Count:N0} cards ready" : "No content module: generic demo only";
+            ContentStatus = loaded ? $"{Cards!.Count:N0} cards ready"
+                : Module is not null ? "The card data couldn't be downloaded (is the device online?): generic demo only"
+                : "No content module: generic demo only";
             ContentProgress?.Invoke(ContentStatus);
             _contentReady.TrySetResult(loaded);
         }
@@ -181,6 +184,69 @@ public partial class App : Node
             ContentProgress?.Invoke(ContentStatus);
             _contentReady.TrySetResult(false);
         }
+    }
+
+    /// <summary>
+    /// Module zips next to the game (see <see cref="ModuleZips"/>): each is offered on the first screen, and installed
+    /// before the cards load when the player says yes.
+    /// </summary>
+    private async Task OfferModuleZipsAsync()
+    {
+        Arcanum.Data.Modules.ModuleInstaller.CleanUp(ProjectSettings.GlobalizePath("user://modules"));
+        var offered = ModuleZips.Offered();
+        if (offered.Count == 0) return;
+        // The questions sit on a layer of their own over every screen: going to another screen meanwhile doesn't take
+        // them away (the cards wait for their answers).
+        var layer = new CanvasLayer { Layer = 100 };
+        var screen = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
+        screen.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        layer.AddChild(screen);
+        AddChild(layer);
+        foreach (var found in offered)
+        {
+            var name = $"{found.Manifest.Name} {found.Manifest.Version}";
+            ContentStatus = $"Found {name} next to the game";
+            ContentProgress?.Invoke(ContentStatus);
+            var answer = new TaskCompletionSource<bool>();
+            Arcanum.UI.Menu.MenuKit.Modal(screen, "Content module found",
+                $"{name} is next to the game ({System.IO.Path.GetFileName(found.Path)})." +
+                (found.Installed is { } installed ? $" It replaces the installed {installed}." : "") +
+                "\nInstall it?\n\nThe first start with it prepares its cards, which takes a few minutes.",
+                null, ("Don't install", () => answer.TrySetResult(false)), ("Install", () => answer.TrySetResult(true)));
+            if (!await answer.Task)
+            {
+                ModuleZips.Decline(found);
+                continue;
+            }
+            ContentStatus = $"Installing {name}…";
+            ContentProgress?.Invoke(ContentStatus);
+            try
+            {
+                var started = DateTime.UtcNow;
+                int shown = -1;
+                IProgress<string> report = new Progress<string>(message =>
+                {
+                    ContentStatus = message;
+                    ContentProgress?.Invoke(message);
+                });
+                await Task.Run(() => Arcanum.Data.Modules.ModuleInstaller.InstallFromZip(found.Path, ProjectSettings.GlobalizePath("user://modules"),
+                    (done, total) =>
+                    {
+                        int percent = total == 0 ? 100 : done * 100 / total;
+                        if (Interlocked.Exchange(ref shown, percent) != percent) report.Report($"Installing {name}… {percent}%");
+                    }));
+                GD.Print($"Installed {name} in {(DateTime.UtcNow - started).TotalSeconds:F0} s.");
+            }
+            catch (Exception e)
+            {
+                GD.PushWarning($"Module install failed: {e}");
+                var closed = new TaskCompletionSource();
+                Arcanum.UI.Menu.MenuKit.Modal(screen, "Install failed", $"{name} couldn't be installed:\n{e.Message}", null,
+                    ("OK", () => closed.TrySetResult()));
+                await closed.Task;
+            }
+        }
+        layer.QueueFree();
     }
 
     /// <summary>

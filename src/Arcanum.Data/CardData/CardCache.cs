@@ -35,8 +35,10 @@ public static class CardCache
             key.Append('|').Append(assembly.ManifestModule.ModuleVersionId);
         var card = new FileInfo(cardFile);
         key.Append('|').Append(card.Name).Append(':').Append(card.Length).Append(':').Append(card.LastWriteTimeUtc.Ticks);
+        // An installed module keeps its scripts in one file next to where the folder would be (scripts.zip).
         var files = Directory.Exists(scriptsDirectory)
             ? new DirectoryInfo(scriptsDirectory).EnumerateFiles("*.json").OrderBy(f => f.Name, StringComparer.Ordinal).ToList()
+            : File.Exists(scriptsDirectory + ".zip") ? new List<FileInfo> { new(scriptsDirectory + ".zip") }
             : new List<FileInfo>();
         // A file system that stamps every file with one time (a read-only image stamps them with when it was mounted)
         // says nothing about which changed: there the contents are what tells.

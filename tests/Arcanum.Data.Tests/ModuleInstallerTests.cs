@@ -43,7 +43,33 @@ public class ModuleInstallerTests
         Assert.True(File.Exists(Path.Combine(modules, "sample", "manifest.json")));
         Assert.True(File.Exists(Path.Combine(modules, "sample", "decks", "a.txt")));
         Assert.False(File.Exists(Path.Combine(modules, "sample", "stale.txt")));
-        Assert.Single(Directory.GetDirectories(modules)); // no staging folder left behind
+        // No staging folder left behind; the replaced copy waits aside for CleanUp.
+        Assert.DoesNotContain(Directory.GetDirectories(modules), d => Path.GetFileName(d).StartsWith(".installing-"));
+        Assert.Single(Directory.GetDirectories(modules), d => Path.GetFileName(d).StartsWith(".old-"));
+        Directory.Delete(dir, recursive: true);
+    }
+
+    [Fact]
+    public void KeepsTheCardScriptsInOneFileAndReadsThemFromIt()
+    {
+        var dir = TempDir();
+        var modules = Path.Combine(dir, "modules");
+        var zip = Zip(dir, ("sample/manifest.json", Manifest), ("sample/sources.json", Sources),
+            ("sample/scripts/aaaa.json", """{"name":"Test Golem","abilities":[]}"""),
+            ("sample/scripts/bbbb.json", """{"name":"Test Wisp","abilities":[]}"""),
+            ("sample/scripts/broken.json", "{ not json"));
+        ModuleInstaller.InstallFromZip(zip, modules);
+
+        var installed = Path.Combine(modules, "sample");
+        Assert.False(Directory.Exists(Path.Combine(installed, "scripts")));
+        Assert.True(File.Exists(Path.Combine(installed, "scripts.zip")));
+        var module = ContentModule.Load(installed);
+        var errors = new List<string>();
+        var scripts = module.LoadScripts(errors);
+        Assert.Equal(new[] { "aaaa", "bbbb" }, scripts.Keys.Order());
+        Assert.Contains(errors, e => e.StartsWith("broken.json"));
+        Assert.NotNull(module.ScriptReader()("bbbb"));
+        Assert.Null(module.ScriptReader()("cccc"));
         Directory.Delete(dir, recursive: true);
     }
 
@@ -66,5 +92,30 @@ public class ModuleInstallerTests
         Assert.False(File.Exists(Path.Combine(dir, "evil.txt")));
         Assert.Empty(Directory.GetDirectories(modules));
         Directory.Delete(dir, recursive: true);
+    }
+
+    [Fact]
+    public void ReadsTheManifestOfAZipWithoutExtractingIt()
+    {
+        var dir = TempDir();
+        var inFolder = Zip(dir, ("sample-1.2.0/manifest.json", Manifest), ("sample-1.2.0/sources.json", Sources));
+        var atRoot = Zip(dir, ("manifest.json", Manifest), ("decks/a.txt", "4 Forest"));
+        var notAModule = Zip(dir, ("readme.txt", "hello"));
+        var notAZip = Path.Combine(dir, "broken.zip");
+        File.WriteAllText(notAZip, "not a zip");
+
+        Assert.Equal(("sample", "Sample", "1.2.0"), ModuleInstaller.PeekManifest(inFolder) is { } a ? (a.Id, a.Name, a.Version) : default);
+        Assert.Equal("sample", ModuleInstaller.PeekManifest(atRoot)?.Id);
+        Assert.Null(ModuleInstaller.PeekManifest(notAModule));
+        Assert.Null(ModuleInstaller.PeekManifest(notAZip));
+        Assert.Empty(Directory.GetDirectories(dir));
+        Assert.Null(ModuleInstaller.PeekManifest(atRoot)?.Updates);
+    }
+
+    [Fact]
+    public void TheManifestSaysWhereTheModulesReleasesAre()
+    {
+        var manifest = ContentModule.ReadManifest(Manifest.Replace("}", ",\"updates\":\"https://example.invalid/latest\"}"));
+        Assert.Equal("https://example.invalid/latest", manifest.Updates);
     }
 }

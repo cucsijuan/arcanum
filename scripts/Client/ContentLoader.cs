@@ -13,8 +13,6 @@ namespace Arcanum.Client;
 /// </summary>
 public partial class ContentLoader : Node
 {
-    private const string ModuleId = "arcanum-classic";
-
     public ContentModule? Module { get; private set; }
     public CardDatabase? Cards { get; private set; }
 
@@ -144,16 +142,26 @@ public partial class ContentLoader : Node
     }
 
     /// <summary>
-    /// ARCANUM_MODULE_PATH, then a sibling checkout next to the project (editor runs), then the installed copy.
+    /// The module to use: ARCANUM_MODULE_PATH, then (editor runs) a module checkout next to the project, then an
+    /// installed module (the one installed last when there are several). The game knows no module by name.
     /// </summary>
     private static string? FindModuleDirectory()
     {
-        var candidates = new List<string>();
+        static bool IsModule(string dir) => File.Exists(Path.Combine(dir, "manifest.json")) && File.Exists(Path.Combine(dir, "sources.json"));
+        static IEnumerable<string> Folders(string parent)
+        {
+            try { return Directory.Exists(parent) ? Directory.GetDirectories(parent) : Array.Empty<string>(); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return Array.Empty<string>(); }
+        }
         var env = OS.GetEnvironment("ARCANUM_MODULE_PATH");
-        if (!string.IsNullOrEmpty(env)) candidates.Add(env);
-        if (OS.HasFeature("editor")) candidates.Add(Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", ModuleId)));
-        candidates.Add(ProjectSettings.GlobalizePath($"user://modules/{ModuleId}"));
-        return candidates.FirstOrDefault(dir => File.Exists(Path.Combine(dir, "manifest.json")));
+        if (!string.IsNullOrEmpty(env) && IsModule(env)) return env;
+        if (OS.HasFeature("editor")
+            && Folders(Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), ".."))).Where(IsModule).Order(StringComparer.Ordinal).FirstOrDefault() is { } checkout)
+            return checkout;
+        return Folders(ProjectSettings.GlobalizePath("user://modules"))
+            .Where(dir => !Path.GetFileName(dir).StartsWith('.') && IsModule(dir))
+            .OrderByDescending(dir => File.GetLastWriteTimeUtc(Path.Combine(dir, "manifest.json")))
+            .FirstOrDefault();
     }
 
     private async Task<string?> ResolveDownloadUrlAsync(string index, string downloadField)
@@ -164,17 +172,47 @@ public partial class ContentLoader : Node
         return doc.RootElement.TryGetProperty(downloadField, out var url) ? url.GetString() : null;
     }
 
+    /// <summary>
+    /// A request, tried again a few times while the connection can't be made (a device's network may still be coming
+    /// up when the game starts).
+    /// </summary>
     private async Task<(bool Ok, byte[] Body)> RequestAsync(string url, string userAgent)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            var (ok, body, connected) = await RequestOnceAsync(url, userAgent);
+            if (ok || connected || attempt == ConnectAttempts) return (ok, body);
+            Report("Waiting for the connection…");
+            await ToSignal(GetTree().CreateTimer(attempt * 2), SceneTreeTimer.SignalName.Timeout);
+        }
+    }
+
+    private const int ConnectAttempts = 6;
+
+    private async Task<(bool Ok, byte[] Body, bool Connected)> RequestOnceAsync(string url, string userAgent)
     {
         var http = new HttpRequest { Timeout = 30 };
         AddChild(http);
         var tcs = new TaskCompletionSource<(bool, byte[])>();
-        http.RequestCompleted += (result, code, _, body) => tcs.TrySetResult((result == (long)HttpRequest.Result.Success && code == 200, body));
-        if (http.Request(url, new[] { $"User-Agent: {userAgent}", "Accept: application/json" }) != Error.Ok) tcs.TrySetResult((false, Array.Empty<byte>()));
+        string outcome = "";
+        bool connected = true;
+        http.RequestCompleted += (result, code, _, body) =>
+        {
+            outcome = $"{(HttpRequest.Result)result}, HTTP {code}";
+            connected = (HttpRequest.Result)result is not (HttpRequest.Result.CantConnect or HttpRequest.Result.CantResolve
+                or HttpRequest.Result.ConnectionError or HttpRequest.Result.Timeout);
+            tcs.TrySetResult((result == (long)HttpRequest.Result.Success && code == 200, body));
+        };
+        var started = http.Request(url, new[] { $"User-Agent: {userAgent}", "Accept: application/json" });
+        if (started != Error.Ok)
+        {
+            outcome = $"not started ({started})";
+            tcs.TrySetResult((false, Array.Empty<byte>()));
+        }
         var response = await tcs.Task;
         http.QueueFree();
-        if (!response.Item1) GD.PushWarning($"Request failed: {url}");
-        return response;
+        if (!response.Item1) GD.PushWarning($"Request failed: {url} ({outcome})");
+        return (response.Item1, response.Item2, connected);
     }
 
     private async Task<bool> DownloadAsync(string url, string path, string userAgent, string what)

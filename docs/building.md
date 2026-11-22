@@ -8,9 +8,12 @@
 ## Running from source
 - `dotnet test Arcanum.sln` runs every test suite (engine, data, network).
 - Open the project folder in Godot .NET and press Play, or run `godot --path .` from a terminal.
-- Content modules: in editor builds a module checked out next to the project folder (`../arcanum-classic`) is
-  found automatically; otherwise set `ARCANUM_MODULE_PATH` or install it under `user://modules/<module-id>`
-  (Extras → "Install module from zip…" does this from a module's release zip).
+- Content modules: the game knows no module by name. `ContentLoader.FindModuleDirectory` takes `ARCANUM_MODULE_PATH`
+  first, then in editor builds the first folder next to the project folder that holds `manifest.json` and `sources.json`
+  (a module checkout), then the installed module under `user://modules`. With several
+  installed, the one installed last is used: the installer sets the time of the module's `manifest.json` to the install
+  time. Install with Extras → "Install module from zip…" (from a module's release zip) or by copying the module into
+  `user://modules/<module-id>`.
 
 ## Interface art
 The gold frames, buttons and dividers come from a private art pack that is not in this repository (`ui-art/` is
@@ -79,7 +82,7 @@ Environment variables useful while developing and testing:
 | `ARCANUM_CAREER_AUTO=online` | On an online event's screen, checks in as soon as check-in opens (once per run) |
 | `ARCANUM_CAREER_TABLE=<n>` | Every career match and event is played at the store's n-th table (from 1) |
 | `ARCANUM_CAREER_MATS=<mine>,<theirs>` | Career matches show those playmat ids on the two seats (`none` for no playmat) |
-| `ARCANUM_MODULE_PATH=<dir>` | Use a content module from this folder |
+| `ARCANUM_MODULE_PATH=<dir>` | Use a content module from this folder (it must hold `manifest.json` and `sources.json`); the module zips next to the game are not offered |
 | `ARCANUM_UPDATE_FROM=<version>` | The update check runs as if the game were that version (shows the update dialog; outside an exported build it offers the download page) |
 | `ARCANUM_OPEN=online` | The main menu opens the online screen at once (exported builds can't be given a scene) |
 | `ARCANUM_OPEN=game` | The main menu opens a game with the module's sample decks at once (devices without a command line, e.g. automatic test runs; `ARCANUM_VS_BOT`, `ARCANUM_AUTOPLAY` and the other quick-start switches apply) |

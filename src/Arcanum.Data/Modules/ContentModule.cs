@@ -3,7 +3,12 @@ using System.Text.Json;
 
 namespace Arcanum.Data.Modules;
 
-public sealed record ModuleManifest(string Id, string Name, string Version, int ApiVersion, string License, string Description);
+/// <summary>
+/// A module's manifest.json. <paramref name="Updates"/>: where the module's newest release is looked up (a "latest
+/// release" document in the format of GitHub's releases API: tag_name, body, html_url, assets with name,
+/// browser_download_url and size); none, and the game doesn't look for updates of it.
+/// </summary>
+public sealed record ModuleManifest(string Id, string Name, string Version, int ApiVersion, string License, string Description, string? Updates = null);
 
 /// <param name="IncludeIfLegalIn">Keep a card only if it is legal, restricted or banned in one of these formats (empty: keep all).</param>
 /// <param name="ExcludeLayouts">Card layouts that are not playable cards and are skipped on import.</param>
@@ -80,13 +85,19 @@ public sealed class ContentModule
         Sources = sources;
     }
 
+    /// <summary>A module's manifest.json (not checked against this build's API version).</summary>
+    public static ModuleManifest ReadManifest(string json)
+    {
+        using var manifestDoc = JsonDocument.Parse(json);
+        var m = manifestDoc.RootElement;
+        return new ModuleManifest(
+            Required(m, "id"), Required(m, "name"), Required(m, "version"),
+            m.GetProperty("apiVersion").GetInt32(), Required(m, "license"), Optional(m, "description") ?? "", Optional(m, "updates"));
+    }
+
     public static ContentModule Load(string directory)
     {
-        using var manifestDoc = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "manifest.json")));
-        var m = manifestDoc.RootElement;
-        var manifest = new ModuleManifest(
-            Required(m, "id"), Required(m, "name"), Required(m, "version"),
-            m.GetProperty("apiVersion").GetInt32(), Required(m, "license"), Optional(m, "description") ?? "");
+        var manifest = ReadManifest(File.ReadAllText(Path.Combine(directory, "manifest.json")));
         if (manifest.ApiVersion > SupportedApiVersion)
             throw new InvalidDataException($"Module '{manifest.Id}' needs engine API {manifest.ApiVersion}; this build supports {SupportedApiVersion}.");
 
@@ -150,13 +161,12 @@ public sealed class ContentModule
     public Dictionary<string, Scripts.CardScript> LoadScripts(List<string>? errors = null, Action<int, int>? progress = null)
     {
         var scripts = new Dictionary<string, Scripts.CardScript>(StringComparer.OrdinalIgnoreCase);
-        if (!System.IO.Directory.Exists(ScriptsDirectory)) return scripts;
-        var files = System.IO.Directory.EnumerateFiles(ScriptsDirectory, "*.json").ToList();
+        var files = ScriptFiles();
         int done = 0;
-        foreach (var file in files)
+        foreach (var (name, text) in files)
         {
             if (++done % 200 == 0) progress?.Invoke(done, files.Count);
-            if (TryParseScript(file, errors) is { } script) scripts[Path.GetFileNameWithoutExtension(file)] = script;
+            if (TryParseScript(name, text(), errors) is { } script) scripts[Path.GetFileNameWithoutExtension(name)] = script;
         }
         progress?.Invoke(files.Count, files.Count);
         return scripts;
@@ -166,34 +176,58 @@ public sealed class ContentModule
     public string ScriptsDirectory => Path.Combine(Directory, "scripts");
 
     /// <summary>
+    /// The card scripts of an installed module, kept in one file (<see cref="ModuleInstaller"/> puts them there: thousands
+    /// of small files are slow to write on some devices' memory cards). Used when there is no scripts folder.
+    /// </summary>
+    public string ScriptsArchive => ScriptsDirectory + ".zip";
+
+    /// <summary>The script files (scripts/*.json, else the entries of scripts.zip): each one's file name and text.</summary>
+    private List<(string Name, Func<string> Text)> ScriptFiles()
+    {
+        if (System.IO.Directory.Exists(ScriptsDirectory))
+            return System.IO.Directory.EnumerateFiles(ScriptsDirectory, "*.json")
+                .Select(file => (Path.GetFileName(file), (Func<string>)(() => File.ReadAllText(file)))).ToList();
+        if (!File.Exists(ScriptsArchive)) return new();
+        // Read whole (a few megabytes): the zip can't be read from several threads at once, and scripts are asked for
+        // from any thread.
+        using var zip = System.IO.Compression.ZipFile.OpenRead(ScriptsArchive);
+        var files = new List<(string, Func<string>)>(zip.Entries.Count);
+        foreach (var entry in zip.Entries)
+        {
+            if (!entry.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || entry.FullName.Contains('/')) continue;
+            using var reader = new StreamReader(entry.Open());
+            var text = reader.ReadToEnd();
+            files.Add((entry.Name, () => text));
+        }
+        return files;
+    }
+
+    /// <summary>
     /// A card's script by oracle id, read and parsed the first time it is asked for (safe to call from any thread):
     /// the same script <see cref="LoadScripts"/> would give it, or null.
     /// </summary>
     public Func<string, Scripts.CardScript?> ScriptReader()
     {
         // Every file named for the card, in the order LoadScripts goes through them: the last that parses is the one.
-        var files = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-        if (System.IO.Directory.Exists(ScriptsDirectory))
+        var files = new Dictionary<string, List<(string Name, Func<string> Text)>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in ScriptFiles())
         {
-            foreach (var file in System.IO.Directory.EnumerateFiles(ScriptsDirectory, "*.json"))
-            {
-                var id = Path.GetFileNameWithoutExtension(file);
-                if (!files.TryGetValue(id, out var named)) files[id] = named = new List<string>(1);
-                named.Add(file);
-            }
+            var id = Path.GetFileNameWithoutExtension(file.Name);
+            if (!files.TryGetValue(id, out var named)) files[id] = named = new(1);
+            named.Add(file);
         }
         var parsed = new System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<Scripts.CardScript?>>(StringComparer.OrdinalIgnoreCase);
         return oracleId => files.TryGetValue(oracleId, out var named)
             ? parsed.GetOrAdd(oracleId, _ => new Lazy<Scripts.CardScript?>(
-                () => named.Select(file => TryParseScript(file, null)).LastOrDefault(script => script is not null))).Value
+                () => named.Select(file => TryParseScript(file.Name, file.Text(), null)).LastOrDefault(script => script is not null))).Value
             : null;
     }
 
-    private static Scripts.CardScript? TryParseScript(string file, List<string>? errors)
+    private static Scripts.CardScript? TryParseScript(string file, string text, List<string>? errors)
     {
         try
         {
-            return Scripts.CardScriptParser.Parse(File.ReadAllText(file));
+            return Scripts.CardScriptParser.Parse(text);
         }
         // An unknown name (a replacement, a counter kind...) is a script error too, not a reason to fail loading the module.
         catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException or ArgumentException)

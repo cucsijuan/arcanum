@@ -52,6 +52,8 @@ public sealed class SettingsData
     public string? SkippedGameVersion { get; set; }
     /// <summary>A content module version the player chose to skip.</summary>
     public string? SkippedModuleVersion { get; set; }
+    /// <summary>Module zips next to the game the player chose not to install ("id version"): not offered again.</summary>
+    public string[] DeclinedModuleZips { get; set; } = Array.Empty<string>();
 
     // Appearance
     public string[] Playmats { get; set; } = { "grid", "grid" };

@@ -17,6 +17,18 @@ Where things live in the rules engine and how a new mechanic goes in. The script
 
 Game content (scripts, sets, decks) lives in the content module repository, not here.
 
+## Content modules and updates
+
+The game knows no module by name. It finds a module by its folder (one with `manifest.json` and `sources.json`).
+
+| Piece | Where |
+|-------|-------|
+| Choosing the module folder (`FindModuleDirectory`): `ARCANUM_MODULE_PATH`, then in editor runs a sibling folder of the project, then the installed modules, the one installed last first | `scripts/Client/ContentLoader.cs` |
+| Module zips next to the game: `*.zip` files in the executable's folder that hold a module not installed, or newer than the installed one, and not declined at that version (`Settings.DeclinedModuleZips`). Offered on the first screen and installed before the cards load. Skipped in editor runs and with `ARCANUM_MODULE_PATH` | `scripts/Client/ModuleZips.cs`, `App.OfferModuleZipsAsync` (`scripts/Client/App.cs`) |
+| Reading a zip's manifest without extracting it (`ModuleInstaller.PeekManifest`); installing a zip (`InstallFromZip`), which sets the installed manifest's time to the install time | `src/Arcanum.Data/Modules/ModuleInstaller.cs` |
+| `manifest.json` fields (`ModuleManifest`, `ContentModule.ReadManifest`), including the optional `updates` | `src/Arcanum.Data/Modules/ContentModule.cs` |
+| Update checks: the game's newest release (`NewerGameAsync`), and the installed module's newest release at its `updates` URL (`NewerModuleAsync`; no `updates` field, no check). Both read a "latest release" document in GitHub's releases API format | `scripts/Client/Updater.cs` |
+
 ## From card data to a definition
 
 1. `OracleJsonl.Import` reads card records. A printing whose `promo_types` has `fracturefoil` is marked `Fracture` (`CardRecord.Printings`), and the compact card file stores it as `fracture_foil`. The same record carries each printing's market prices (`PrintingPrices`: Cardmarket euros and TCGplayer dollars, foil and nonfoil) and its attributes (`Etched`, `Border`, `Frame`, `FrameEffects`, `PromoTypes`, ...); the compact card file keeps them as well, under `cards.v14-<module version>`. A reversible printing (layout `reversible_card`) whose two faces are the same card has its oracle id only on the faces; `ReversibleOracleId` (`OracleJsonl.cs`) takes that id, so the printing is kept under its card.

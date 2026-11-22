@@ -23,8 +23,9 @@ game stops to let you act. You can change them during a game on the phase bar to
 
 **Updates**
 
-- **Check for updates at start**: look for a newer game, or a newer content module, when the game starts. If one is
-  found, a dialog shows what is new, with **Update**, **Later** or **Skip this version**.
+- **Check for updates at start**: look for a newer game, or a newer content module (when the module says where its
+  releases are), when the game starts. If one is found, a dialog shows what is new, with **Update**, **Later** or
+  **Skip this version**.
 
 **Online**
 

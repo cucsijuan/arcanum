@@ -268,7 +268,7 @@ public partial class MainMenu : Control
         if (App.Instance.Module is not { } module
             || !Path.GetFullPath(module.Directory).StartsWith(Path.GetFullPath(ProjectSettings.GlobalizePath("user://modules")), StringComparison.OrdinalIgnoreCase))
             return;
-        if (await Updater.NewerModuleAsync(module.Manifest.Version) is { } content && content.Tag != Settings.Current.SkippedModuleVersion && IsInsideTree())
+        if (await Updater.NewerModuleAsync(module.Manifest) is { } content && content.Tag != Settings.Current.SkippedModuleVersion && IsInsideTree())
             ShowUpdate(content, isGame: false);
     }
 
@@ -386,7 +386,8 @@ public partial class MainMenu : Control
     /// <summary>Up/down move the selector, Enter or Space opens the option.</summary>
     public override void _UnhandledInput(InputEvent @event)
     {
-        if (_items.Count == 0) return;
+        // A dialog over the menu (its answer has the focus) takes the buttons; the options wait.
+        if (_items.Count == 0 || !IsInsideTree() || GetViewport().GuiGetFocusOwner() is not null) return;
         if (_inSubmenu && @event.IsActionPressed("ui_cancel")) ShowItems(null, MainItems());
         else if (@event.IsActionPressed("ui_down")) Select((_selected + 1) % _items.Count);
         else if (@event.IsActionPressed("ui_up")) Select((_selected - 1 + _items.Count) % _items.Count);
