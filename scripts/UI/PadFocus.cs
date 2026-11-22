@@ -184,7 +184,17 @@ public partial class PadFocus : CanvasLayer
         bool show = UsingButtons && owner is not null && owner.HasMeta(ChoiceMeta) && owner.IsVisibleInTree();
         _ring.Visible = show;
         if (!show) return;
+        // Inside a list scrolled by hand (the right stick, a finger) the focused answer may be partly or wholly out of
+        // sight: the ring keeps to the part of it that shows, and goes away while none does.
         var rect = owner!.GetGlobalRect().Grow(4);
+        for (var parent = owner.GetParent(); parent is not null; parent = parent.GetParent())
+            if (parent is ScrollContainer { Visible: true } scroll)
+                rect = rect.Intersection(scroll.GetGlobalRect());
+        if (rect.Size.X < 8 || rect.Size.Y < 8)
+        {
+            _ring.Visible = false;
+            return;
+        }
         if (rect.Position == _ring.Position && rect.Size == _ring.Size) return;
         _ring.Position = rect.Position;
         _ring.Size = rect.Size;

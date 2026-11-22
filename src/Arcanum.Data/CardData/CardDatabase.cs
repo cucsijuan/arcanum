@@ -178,9 +178,24 @@ public sealed class CardDatabase : ICardDatabase
     public SetInfo? FindSet(string code) => Sets.FirstOrDefault(s => s.Code.Equals(code, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Each printing in a set with its card, in collector number order.</summary>
-    public IEnumerable<(CardEntry Card, Printing Printing)> PrintingsIn(string set) =>
-        _sorted.SelectMany(e => e.Record.Printings.Where(p => p.Set.Equals(set, StringComparison.OrdinalIgnoreCase)).Select(p => (e, p)))
-            .OrderBy(x => x.p.CollectorNumber, Comparer<string>.Create(OracleJsonl.CompareNumbers));
+    public IReadOnlyList<(CardEntry Card, Printing Printing)> PrintingsIn(string set)
+    {
+        // Every card's printings are gone through once, the first time any set is asked for: looking through every card
+        // for each set takes seconds on a slow device.
+        var bySet = _printingsBySet;
+        if (bySet is null)
+        {
+            bySet = _sorted.SelectMany(e => e.Record.Printings.Select(p => (Card: e, Printing: p)))
+                .GroupBy(x => x.Printing.Set, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<(CardEntry, Printing)>)g
+                    .OrderBy(x => x.Printing.CollectorNumber, Comparer<string>.Create(OracleJsonl.CompareNumbers)).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+            _printingsBySet = bySet;
+        }
+        return bySet.TryGetValue(set, out var printings) ? printings : Array.Empty<(CardEntry, Printing)>();
+    }
+
+    private Dictionary<string, IReadOnlyList<(CardEntry Card, Printing Printing)>>? _printingsBySet;
 
     private readonly Dictionary<string, CardDefinition> _byPrinting = new();
 

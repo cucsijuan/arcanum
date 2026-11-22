@@ -99,7 +99,17 @@ public partial class DeckDesk : Control
     private readonly Label _collected = CareerStyle.Text("", 18, new Color(1f, 0.95f, 0.85f));
 
     /// <summary>Cards across the collection's part of the mat: all of it when picking a card.</summary>
-    private int GridColumns => _pick is null ? 6 : 10;
+    private int GridColumns => _pick is null ? (_compact ? 5 : 6) : 10;
+
+    /// <summary>The share of the mat the collection takes while building (the deck's columns have the rest).</summary>
+    private float CollectionShare => _pick is not null ? 1f : _compact ? 0.45f : 0.54f;
+
+    /// <summary>
+    /// A screen too narrow for the full layout (a handheld console): smaller controls, the less used actions in a menu,
+    /// and less of the mat for the collection so that the deck's columns stay readable.
+    /// </summary>
+    private bool _compact;
+    private int ControlFont => _compact ? 17 : 20;
 
     private const int Rows = 3;
     private static readonly string[] ColumnNames = { "1", "2", "3", "4", "5", "6+", "Lands" };
@@ -166,6 +176,7 @@ public partial class DeckDesk : Control
     public override void _Ready()
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
+        _compact = GetViewportRect().Size.X < 1700;
         Theme = CareerStyle.Notes;
         _pool = Building;
         Building = null;
@@ -282,7 +293,7 @@ public partial class DeckDesk : Control
         _bottom.Size = new Vector2(mat.Size.X, Math.Max(0, Size.Y - mat.End.Y - 28));
         // Cards of the collection: six across half the mat, three rows under the pager.
         int columns = GridColumns;
-        float width = (inner.Size.X * (_pick is null ? 0.54f : 1f) - (columns - 1) * 8) / columns;
+        float width = (inner.Size.X * CollectionShare - (columns - 1) * 8) / columns;
         float height = (inner.Size.Y - 52 - (Rows - 1) * 8) / Rows;
         width = Math.Max(60, Math.Min(width, height / 1.39f));
         _tile = new Vector2(width, width * 1.39f);
@@ -301,7 +312,7 @@ public partial class DeckDesk : Control
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 10);
         bool picking = _pick is { Browse: false };
-        var back = CareerStyle.Button(picking ? "< Back" : _pool is null ? "< Room" : "< Event", Leave, 20);
+        var back = CareerStyle.Button(picking ? "< Back" : _pool is null ? "< Room" : "< Event", Leave, ControlFont);
         back.TooltipText = picking ? "Back without choosing (Esc)" : _pool is null ? "Back to your room (Esc)" : "Back to the event, keeping this deck (Esc)";
         row.AddChild(back);
         if (_pick is { } pick)
@@ -310,11 +321,11 @@ public partial class DeckDesk : Control
             if (pick.Free is not null)
             {
                 row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-                var deckOnly = new CheckButton { Text = "Hide cards in my decks", FocusMode = FocusModeEnum.None };
+                var deckOnly = new CheckButton { Text = _compact ? "Hide those in decks" : "Hide cards in my decks", FocusMode = FocusModeEnum.None };
                 deckOnly.AddThemeColorOverride("font_color", new Color(1f, 0.95f, 0.85f));
                 deckOnly.AddThemeColorOverride("font_pressed_color", new Color(1f, 0.95f, 0.85f));
                 deckOnly.AddThemeColorOverride("font_hover_color", new Color(1f, 0.95f, 0.85f));
-                deckOnly.AddThemeFontSizeOverride("font_size", 20);
+                deckOnly.AddThemeFontSizeOverride("font_size", ControlFont);
                 deckOnly.Toggled += on => { _hideInDecks = on; ShowPage(0); };
                 row.AddChild(deckOnly);
             }
@@ -326,14 +337,18 @@ public partial class DeckDesk : Control
         }
         if (_pool is { } pool)
         {
-            row.AddChild(CareerStyle.Text(pool.Hint, 20, new Color(1f, 0.95f, 0.85f)));
-            row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-            row.AddChild(CareerStyle.Button(pool.AutoLabel, () => { _deck = pool.AutoBuild(); Refresh(); }, 20));
+            var hint = CareerStyle.Text(pool.Hint, ControlFont, new Color(1f, 0.95f, 0.85f));
+            // The hint gives way to the buttons on a narrow screen.
+            hint.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            hint.ClipText = true;
+            hint.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+            row.AddChild(hint);
+            row.AddChild(CareerStyle.Button(pool.AutoLabel, () => { _deck = pool.AutoBuild(); Refresh(); }, ControlFont));
             var done = CareerStyle.Button("Done", () =>
             {
                 if (pool.Problems(_deck) is [var first, ..]) MenuKit.Toast(this, first);
                 else pool.Done(_deck);
-            }, 20, primary: true);
+            }, ControlFont, primary: true);
             row.AddChild(done);
             _top.AddChild(row);
             BuildFilters();
@@ -347,6 +362,14 @@ public partial class DeckDesk : Control
         row.AddChild(_decks);
         _name.TextChanged += _ => Dirty();
         _name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        // Pickers keep their own width: one as wide as its longest deck name or format would push the buttons off screen.
+        foreach (var picker in new[] { _decks, _format, _suggestSection, _suggestVariant }) picker.FitToLongestItem = false;
+        if (_compact)
+        {
+            _decks.CustomMinimumSize = new Vector2(200, 0);
+            _name.CustomMinimumSize = new Vector2(120, 0);
+            _format.CustomMinimumSize = new Vector2(180, 0);
+        }
         row.AddChild(_name);
         _formats = App.Instance.Formats.Where(f => !f.Limited).ToList();
         if (_formats.Count == 0) _formats = new List<FormatRules> { FormatRules.Casual, Career.World!.CommanderFormat };
@@ -366,12 +389,33 @@ public partial class DeckDesk : Control
         };
         _format.TooltipText = "The deck's format: what it must follow to be played (Commander: 100 cards, one of each, led by a legendary creature)";
         row.AddChild(_format);
-        _suggestButton.AddThemeFontSizeOverride("font_size", 20);
+        _suggestButton.AddThemeFontSizeOverride("font_size", ControlFont);
         _suggestButton.Toggled += SetSuggesting;
         row.AddChild(_suggestButton);
-        row.AddChild(CareerStyle.Button("New", () => Confirm(NewDeck), 20));
-        row.AddChild(CareerStyle.Button("Delete", AskDelete, 20));
-        row.AddChild(CareerStyle.Button("Save", Save, 20, primary: true));
+        if (_compact)
+        {
+            // New and Delete in a menu: Save stays a button of its own.
+            Button more = null!;
+            more = CareerStyle.Button("More…", () =>
+            {
+                var menu = new PopupMenu();
+                menu.AddItem("New deck", 0);
+                menu.AddItem("Delete this deck", 1);
+                menu.AddThemeFontSizeOverride("font_size", 18);
+                menu.IdPressed += id => { menu.QueueFree(); if (id == 0) Confirm(NewDeck); else AskDelete(); };
+                menu.PopupHide += () => menu.QueueFree();
+                AddChild(menu);
+                menu.Position = (Vector2I)more.GetScreenPosition() + new Vector2I(0, (int)more.Size.Y);
+                menu.Popup();
+            }, ControlFont);
+            row.AddChild(more);
+        }
+        else
+        {
+            row.AddChild(CareerStyle.Button("New", () => Confirm(NewDeck), ControlFont));
+            row.AddChild(CareerStyle.Button("Delete", AskDelete, ControlFont));
+        }
+        row.AddChild(CareerStyle.Button("Save", Save, ControlFont, primary: true));
         _top.AddChild(row);
         BuildFilters();
     }
@@ -389,13 +433,13 @@ public partial class DeckDesk : Control
             BuildSuggestionBar();
             filters.AddChild(_suggestBar);
         }
-        var search = new LineEdit { Text = _search, PlaceholderText = CardSearchBox.Placeholder, CustomMinimumSize = new Vector2(380, 0) };
+        var search = new LineEdit { Text = _search, PlaceholderText = CardSearchBox.Placeholder, CustomMinimumSize = new Vector2(_compact ? 220 : 380, 0) };
         CardSearchBox.Read(search, Cards, Terms);
         search.TextChanged += text => { _search = text; CardSearchBox.Read(search, Cards, Terms); ShowPage(0); };
         _filterControls.AddChild(search);
         foreach (char color in "WUBRGC")
         {
-            var toggle = new Button { Text = color.ToString(), ToggleMode = true, FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(40, 40) };
+            var toggle = new Button { Text = color.ToString(), ToggleMode = true, FocusMode = FocusModeEnum.None, CustomMinimumSize = new Vector2(_compact ? 34 : 40, _compact ? 34 : 40) };
             var (bg, fg) = BoardStyle.PipColors(color);
             toggle.AddThemeStyleboxOverride("normal", CareerStyle.Box(bg with { A = 0.45f }, fg with { A = 0.4f }, 2, 20));
             toggle.AddThemeStyleboxOverride("hover", CareerStyle.Box(bg with { A = 0.7f }, fg, 2, 20));
@@ -410,12 +454,16 @@ public partial class DeckDesk : Control
         foreach (var (label, _) in TypeFilters) type.AddItem(label);
         type.ItemSelected += i => { _type = (int)i; ShowPage(0); };
         _filterControls.AddChild(type);
-        // Sets: those of the cards on offer (filled once they are known).
+        // Sets: those of the cards on offer (filled once they are known). Never as wide as the longest set name, which
+        // would push the whole bar off the screen.
+        _sets.FitToLongestItem = false;
+        _sets.ClipText = true;
+        _sets.CustomMinimumSize = new Vector2(_compact ? 170 : 240, 0);
         _sets.ItemSelected += i => { _set = i == 0 ? null : _sets.GetItemMetadata((int)i).AsString(); ShowPage(0); };
         _filterControls.AddChild(_sets);
         if (_pick?.Browse == true)
         {
-            _scenesButton.AddThemeFontSizeOverride("font_size", 20);
+            _scenesButton.AddThemeFontSizeOverride("font_size", ControlFont);
             _scenesButton.TooltipText = "The set's scenes: cards whose art joins into one picture, the ones you don't have in grey";
             _scenesButton.Toggled += on => { _showingScenes = on; ShowPage(0); };
             _filterControls.AddChild(_scenesButton);
@@ -453,11 +501,11 @@ public partial class DeckDesk : Control
         _bottom.AddThemeConstantOverride("separation", 16);
         _bottom.Alignment = BoxContainer.AlignmentMode.Center;
         AddChild(_bottom);
-        _basics.AddThemeConstantOverride("separation", 10);
+        _basics.AddThemeConstantOverride("separation", _compact ? 6 : 10);
         _basics.SizeFlagsVertical = SizeFlags.ShrinkCenter;
         _bottom.AddChild(_basics);
         // A width of its own: a wrapping label measured at no width would make the bar tall.
-        var note = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ShrinkCenter, CustomMinimumSize = new Vector2(380, 0) };
+        var note = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ShrinkCenter, CustomMinimumSize = new Vector2(_compact ? 220 : 380, 0) };
         note.AddThemeStyleboxOverride("panel", CareerStyle.Box(new Color("f7e9a8"), new Color("c9b25a"), 1, 2, 10));
         var noteText = new VBoxContainer();
         noteText.AddThemeConstantOverride("separation", 4);
@@ -1190,7 +1238,7 @@ public partial class DeckDesk : Control
         // Basic lands are free (sideboarding a constructed deck: only the copies brought).
         foreach (var child in _basics.GetChildren()) child.QueueFree();
         var limit = _pool?.Basics;
-        _basics.AddChild(CareerStyle.Text(limit is null ? "Basic lands (free):" : "Basic lands:", 18, new Color(1f, 0.95f, 0.85f)));
+        _basics.AddChild(CareerStyle.Text(limit is null ? (_compact ? "Basics (free):" : "Basic lands (free):") : "Basic lands:", _compact ? 16 : 18, new Color(1f, 0.95f, 0.85f)));
         foreach (var (color, name) in LimitedService.Basics)
         {
             int count = InDeck(name);
@@ -1198,14 +1246,14 @@ public partial class DeckDesk : Control
             var (bg, fg) = BoardStyle.PipColors(ColorLetter(color));
             var cell = new HBoxContainer();
             cell.AddThemeConstantOverride("separation", 2);
-            cell.AddChild(CareerStyle.Button("-", () => { Remove(name); }, 18));
-            var label = CareerStyle.Text($" {name[0]} {count} ", 20, fg);
+            cell.AddChild(CareerStyle.Button("-", () => { Remove(name); }, _compact ? 16 : 18));
+            var label = CareerStyle.Text($" {name[0]} {count} ", _compact ? 17 : 20, fg);
             var chip = new PanelContainer();
             chip.AddThemeStyleboxOverride("panel", CareerStyle.Box(bg, null, 0, 6, 4));
             chip.AddChild(label);
             chip.TooltipText = name;
             cell.AddChild(chip);
-            var add = CareerStyle.Button("+", () => { DeckList.Adjust(_deck.Main, name, 1); Dirty(); Refresh(); }, 18);
+            var add = CareerStyle.Button("+", () => { DeckList.Adjust(_deck.Main, name, 1); Dirty(); Refresh(); }, _compact ? 16 : 18);
             add.Disabled = limit is not null && count >= limit.GetValueOrDefault(name);
             cell.AddChild(add);
             _basics.AddChild(cell);
@@ -1215,6 +1263,7 @@ public partial class DeckDesk : Control
         _count.Text = $"{total} cards";
         var problems = _pool is not null ? _pool.Problems(_deck) : CareerRules.DeckProblems(_deck, Career.State, Career.World!, FormatRulesOf(_formatId))
             .Select(p => p.Replace(" this deck uses", "")).ToList();
+        if (_compact) _problems.AddThemeFontSizeOverride("font_size", 14);
         _problems.Text = problems.Count == 0 ? "Ready to play." : string.Join("\n", problems.Take(_suggesting ? 1 : _noteInfo.Visible ? 2 : 3)); // room for the note below
         _problems.AddThemeColorOverride("font_color", problems.Count == 0 ? CareerStyle.Good : CareerStyle.Bad);
     }
