@@ -56,6 +56,7 @@ public static class MenuKit
         var back = BoardStyle.MakeButton("←  Back", 16);
         back.CustomMinimumSize = new Vector2(120, 44);
         back.Pressed += onBack ?? (() => App.Instance.GoTo(App.MainMenuScene));
+        PadFocus.BackButton(back);
         bar.AddChild(back);
         var label = BoardStyle.MakeTitle(title, 32);
         label.VerticalAlignment = VerticalAlignment.Center;

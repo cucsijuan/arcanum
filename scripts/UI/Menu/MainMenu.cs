@@ -34,6 +34,8 @@ public partial class MainMenu : Control
 
     public override void _Ready()
     {
+        // The selector is the focus here: the arrows move it (see _UnhandledInput), with no ring over the options.
+        PadFocus.OwnArrows(this);
         // ARCANUM_OPEN=online opens the online screen at start (testing exported builds, which can't be given a scene).
         if (OS.GetEnvironment("ARCANUM_OPEN") == "online" && !_opened)
         {

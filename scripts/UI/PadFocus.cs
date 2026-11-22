@@ -30,6 +30,12 @@ public partial class PadFocus : CanvasLayer
     /// <summary>Marks controls other than buttons the screen scan reaches (cards to pick).</summary>
     private const string PressMeta = "pad_press";
 
+    /// <summary>Marks a screen that moves its own selection with the arrows (the title screen's options): left alone.</summary>
+    private const string OwnMeta = "pad_own";
+
+    /// <summary>Marks a screen's back button: the back button of a controller (or Esc) presses it.</summary>
+    private const string BackMeta = "pad_back";
+
     /// <summary>On a control partly covered by the next one (a card in a stack): the height of the part that shows.</summary>
     private const string ShowsMeta = "pad_shows";
 
@@ -126,6 +132,21 @@ public partial class PadFocus : CanvasLayer
         if (shows is { } height) control.SetMeta(ShowsMeta, height);
     }
 
+    /// <summary>A screen with its own selection moved by the arrows: no button of it is focused, no ring shows.</summary>
+    public static void OwnArrows(Control screen) => screen.SetMeta(OwnMeta, true);
+
+    /// <summary>The button the controller's back button (or Esc) presses while its screen shows and nothing is open over it.</summary>
+    public static void BackButton(BaseButton button) => button.SetMeta(BackMeta, true);
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (!@event.IsActionPressed("ui_cancel") || GetTree().Root.GetEmbeddedSubwindows().Any(w => w.Visible)) return;
+        var back = ScreenChoices(GetTree().Root).OfType<BaseButton>().FirstOrDefault(b => b.HasMeta(BackMeta) && !b.Disabled);
+        if (back is null) return;
+        GetViewport().SetInputAsHandled();
+        back.EmitSignal(BaseButton.SignalName.Pressed);
+    }
+
     /// <summary>Whether <paramref name="control"/> was marked <see cref="Pressable"/>.</summary>
     public static bool IsPressable(Control control) => control.HasMeta(PressMeta);
 
@@ -157,7 +178,7 @@ public partial class PadFocus : CanvasLayer
         foreach (var child in node.GetChildren())
         {
             if (child == this || child is VirtualPointer || child.IsQueuedForDeletion() || child is CanvasItem { Visible: false }
-                || child is CanvasLayer { Visible: false }) continue;
+                || child is CanvasLayer { Visible: false } || child.HasMeta(OwnMeta)) continue;
             if (child is BaseButton button) yield return button;
             else if (child is Control { MouseFilter: not Control.MouseFilterEnum.Ignore } pressable && pressable.HasMeta(PressMeta))
                 yield return pressable;
@@ -290,7 +311,7 @@ public partial class PadFocus : CanvasLayer
         foreach (var child in node.GetChildren())
         {
             if (child == this || child is VirtualPointer || child.IsQueuedForDeletion() || child is CanvasItem { Visible: false }
-                || child is CanvasLayer { Visible: false } || child is Window) continue;
+                || child is CanvasLayer { Visible: false } || child is Window || child.HasMeta(OwnMeta)) continue;
             if (child is BaseButton button) yield return button;
             else if (child is Control { MouseFilter: not Control.MouseFilterEnum.Ignore } pressable && pressable.HasMeta(PressMeta))
                 yield return pressable;
