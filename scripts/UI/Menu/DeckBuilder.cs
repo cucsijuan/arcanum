@@ -328,7 +328,7 @@ public partial class DeckBuilder : Control
         _sideTab.Pressed += () => { _editingTokens = false; _editingCommander = false; _editingSideboard = true; RefreshDeck(); };
         right.AddChild(tabs);
 
-        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, FollowFocus = true };
         _list.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _list.AddThemeConstantOverride("separation", 2);
         scroll.AddChild(_list);
@@ -737,6 +737,22 @@ public partial class DeckBuilder : Control
 
     private SetInfo? SelectedSet => _setFilter.Selected > 0 && _setFilter.Selected <= _sets.Count ? _sets[_setFilter.Selected - 1] : null;
 
+    /// <summary>The shoulder buttons (or Page Up / Page Down) turn the pages of cards.</summary>
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        int step = @event switch
+        {
+            InputEventKey { Pressed: true, Echo: false, Keycode: Key.Pageup } => -1,
+            InputEventKey { Pressed: true, Echo: false, Keycode: Key.Pagedown } => 1,
+            InputEventJoypadButton { Pressed: true, ButtonIndex: JoyButton.LeftShoulder } => -1,
+            InputEventJoypadButton { Pressed: true, ButtonIndex: JoyButton.RightShoulder } => 1,
+            _ => 0,
+        };
+        if (step == 0 || !IsVisibleInTree()) return;
+        ShowPage(_page + step);
+        GetViewport().SetInputAsHandled();
+    }
+
     private void ShowPage(int page)
     {
         int pageSize = _columns * _rows;
@@ -763,6 +779,7 @@ public partial class DeckBuilder : Control
         string? set = printing?.Set.ToUpperInvariant(), number = printing?.CollectorNumber;
         card.Setup(ViewOf(DefinitionOf(entry.Name, set, number), -1), showCostPips: false);
         card.Clicked += _ => Add(entry.Name, 1, set, number);
+        PadFocus.Pressable(card);
         card.RightClicked += _ => Add(entry.Name, -1, set, number);
         if (printing is not null) card.TooltipText = $"{printing.SetName} #{printing.CollectorNumber} · {printing.Rarity}";
         card.HoverStarted += c => ShowPreview(c, tile);
@@ -1016,6 +1033,7 @@ public partial class DeckBuilder : Control
                 if (!chosen.Remove(id)) chosen.Add(id);
                 Update();
             };
+            PadFocus.Pressable(node);
             node.HoverStarted += c => ShowPreview(c, node);
             node.HoverEnded += _ => HidePreview();
             tiles.Add((node, id));

@@ -109,7 +109,6 @@ public partial class ArtScene : Control
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
         MouseFilter = MouseFilterEnum.Stop;
-        FocusMode = FocusModeEnum.All;
         _picture.SetAnchorsPreset(LayoutPreset.FullRect);
         _overlay.SetAnchorsPreset(LayoutPreset.FullRect);
         _texture = picture;
@@ -142,6 +141,9 @@ public partial class ArtScene : Control
     public void SetSpots(IReadOnlyList<Hotspot> spots)
     {
         Spots = spots;
+        // A picture with places to go takes the arrows itself; a bare backdrop (the desk under the cards) leaves them
+        // to the controls over it.
+        FocusMode = spots.Count > 0 ? FocusModeEnum.All : FocusModeEnum.None;
         _current = -1;
         UpdateTag();
     }

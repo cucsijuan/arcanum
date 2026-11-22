@@ -242,7 +242,7 @@ public partial class DeckDesk : Control
     };
     private readonly VBoxContainer _top = new(), _left = new();
     private readonly HBoxContainer _matBox = new(), _bottom = new();
-    private readonly ScrollContainer _deckScroll = new() { HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+    private readonly ScrollContainer _deckScroll = new() { FollowFocus = true, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, SizeFlagsHorizontal = SizeFlags.ExpandFill };
     private Vector2 _tile = new(120, 167);
 
     /// <summary>
@@ -638,6 +638,22 @@ public partial class DeckDesk : Control
         return pages;
     }
 
+    /// <summary>The shoulder buttons (or Page Up / Page Down) turn the pages of cards.</summary>
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        int step = @event switch
+        {
+            InputEventKey { Pressed: true, Echo: false, Keycode: Key.Pageup } => -1,
+            InputEventKey { Pressed: true, Echo: false, Keycode: Key.Pagedown } => 1,
+            InputEventJoypadButton { Pressed: true, ButtonIndex: JoyButton.LeftShoulder } => -1,
+            InputEventJoypadButton { Pressed: true, ButtonIndex: JoyButton.RightShoulder } => 1,
+            _ => 0,
+        };
+        if (step == 0 || !IsVisibleInTree()) return;
+        ShowPage(_page + step);
+        GetViewport().SetInputAsHandled();
+    }
+
     private void ShowPage(int page)
     {
         if (_sets.ItemCount == 0) FillSets();
@@ -805,6 +821,7 @@ public partial class DeckDesk : Control
         var holder = new Control { CustomMinimumSize = _tile };
         var card = new CardNode { Size = _tile };
         holder.AddChild(card);
+        PadFocus.Pressable(card);
         card.Setup(ViewOf(definition), showCostPips: false);
         if (used) card.Modulate = new Color(1, 1, 1, 0.45f);
         card.HoverStarted += c => ShowPreview(c, holder);
@@ -1208,6 +1225,7 @@ public partial class DeckDesk : Control
                 card.HoverStarted += c => ShowPreview(c, c);
                 card.HoverEnded += _ => HidePreview();
                 card.Clicked += _ => { _deck.Commander.Remove(entry); Dirty(); Refresh(); };
+                PadFocus.Pressable(card);
                 card.TooltipText = "Click to take it out";
                 box.AddChild(card);
             }
@@ -1240,7 +1258,15 @@ public partial class DeckDesk : Control
                 card.HoverEnded += _ => HidePreview();
                 card.Clicked += _ => Remove(entry.Name);
                 card.TooltipText = "Click to take it out";
+                // Covered by the next one but for its title bar: the arrows go up and down the stack one by one.
+                PadFocus.Pressable(card, i < inColumn.Count - 1 ? step : null);
                 stack.AddChild(card);
+                if (i > 0)
+                {
+                    var above = stack.GetChild<CardNode>(i - 1);
+                    card.FocusNeighborTop = card.GetPathTo(above);
+                    above.FocusNeighborBottom = above.GetPathTo(card);
+                }
             }
             box.AddChild(stack);
             _columns.AddChild(box);

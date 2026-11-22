@@ -197,6 +197,9 @@ public partial class CardNode : Control
 
         MouseEntered += () => { IsHovered = true; ShineFoil(true); HoverStarted?.Invoke(this); };
         MouseExited += () => { IsHovered = false; ShineFoil(false); HoverEnded?.Invoke(this); };
+        // Reached with a controller's arrows (a screen of cards to pick): focused is pointed at.
+        FocusEntered += () => { if (PadFocus.UsingButtons) HoverStarted?.Invoke(this); };
+        FocusExited += () => { if (!IsHovered) HoverEnded?.Invoke(this); };
         Resized += ApplySize;
     }
 
@@ -210,6 +213,17 @@ public partial class CardNode : Control
             AcceptEvent();
         }
         else if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right })
+        {
+            RightClicked?.Invoke(this);
+            AcceptEvent();
+        }
+        // Focused with a controller: the confirm button clicks it, the left face button right-clicks it.
+        else if (HasFocus() && @event.IsActionPressed("ui_accept") && !@event.IsEcho())
+        {
+            Clicked?.Invoke(this);
+            AcceptEvent();
+        }
+        else if (HasFocus() && @event is InputEventJoypadButton { Pressed: true, ButtonIndex: PadFocus.AltButton })
         {
             RightClicked?.Invoke(this);
             AcceptEvent();
