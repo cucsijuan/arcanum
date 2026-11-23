@@ -90,6 +90,9 @@ public partial class ArtScene : Control
     /// <summary>Escape: the screen should go back.</summary>
     public event Action? BackRequested;
 
+    /// <summary>Screen areas (global) the screen draws over the picture, its own tags: a hotspot's name isn't put under them.</summary>
+    public Func<IEnumerable<Rect2>>? Covered { get; set; }
+
     /// <summary>While false (a panel is open over the picture) the hotspots don't react.</summary>
     public bool Interactive
     {
@@ -312,9 +315,20 @@ public partial class ArtScene : Control
         _tag.Visible = true;
         _tag.ResetSize();
         var rect = ScreenRect(spot);
-        var at = new Vector2(rect.GetCenter().X - _tag.Size.X / 2, rect.Position.Y - _tag.Size.Y - 10);
-        if (at.Y < 8) at.Y = rect.End.Y + 10;
-        _tag.Position = at.Clamp(new Vector2(8, 8), Size - _tag.Size - new Vector2(8, 8));
+        // Above the spot, else below it, else just inside its top; the first that fits on screen and clear of the screen's tags.
+        var covered = (Covered?.Invoke() ?? []).Select(r => new Rect2(r.Position - GetGlobalRect().Position, r.Size)).ToList();
+        float x = rect.GetCenter().X - _tag.Size.X / 2;
+        Vector2? first = null;
+        foreach (var y in new[] { rect.Position.Y - _tag.Size.Y - 10, rect.End.Y + 10, rect.Position.Y + 10 })
+        {
+            if (y < 8 || y > Size.Y - _tag.Size.Y - 8) continue;
+            var at = new Vector2(x, y).Clamp(new Vector2(8, 8), Size - _tag.Size - new Vector2(8, 8));
+            first ??= at;
+            if (covered.Any(c => c.Intersects(new Rect2(at, _tag.Size)))) continue;
+            first = at;
+            break;
+        }
+        _tag.Position = first ?? new Vector2(x, rect.End.Y + 10).Clamp(new Vector2(8, 8), Size - _tag.Size - new Vector2(8, 8));
     }
 
     public override void _Notification(int what)

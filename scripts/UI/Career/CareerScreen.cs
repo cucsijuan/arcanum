@@ -89,7 +89,7 @@ public partial class CareerScreen : Control
             loading.Text = Career.World is null && App.Instance.Cards is not null
                 ? Career.Problem ?? "The installed content has no career."
                 : "Card data isn't available: install a content module to play a career.";
-            AddChild(BackTag(CareerStyle.Text("Esc  Back to the menu", 20, new Color(1f, 0.95f, 0.85f)), () => App.Instance.GoTo(App.MainMenuScene)));
+            AddChild(BackTag(CareerStyle.Text("Back to the menu", 20, new Color(1f, 0.95f, 0.85f)), () => App.Instance.GoTo(App.MainMenuScene)));
             return;
         }
         loading.QueueFree();
@@ -105,6 +105,7 @@ public partial class CareerScreen : Control
         AddChild(_store);
 
         BuildHud();
+        _room.Covered = _store.Covered = () => _hud.GetChildren().OfType<Control>().Where(c => c.Visible).Select(c => c.GetGlobalRect());
         AddChild(_preview);
         Career.SeasonChanged += Refresh;
         Career.CloudChanged += Refresh;
@@ -305,7 +306,7 @@ public partial class CareerScreen : Control
     private void UpdateHud()
     {
         Presence.ShowCareer(_web is not null ? "Looking at the PC" : _place == Place.Store ? "At the LGS" : "In their room");
-        _back.Text = _note is not null || _web is not null ? "Esc  Close" : _place == Place.Store ? "Esc  Back home" : "Esc  Main menu";
+        _back.Text = _note is not null || _web is not null ? "Close" : _place == Place.Store ? "Back home" : "Exit";
         if (!Career.HasCareer)
         {
             _money.Text = World.Content.StoreName;
