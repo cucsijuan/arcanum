@@ -331,6 +331,15 @@ public partial class MainMenu : Control
         buttons.AddThemeConstantOverride("separation", 8);
         box.AddChild(buttons);
         void Close() => overlay.QueueFree();
+        // The answers change after the download: the old ones (and their separators) go at once.
+        void ClearAnswers()
+        {
+            foreach (var child in buttons.GetChildren())
+            {
+                buttons.RemoveChild(child);
+                child.QueueFree();
+            }
+        }
         Button Answer(string text, bool primary, Action action)
         {
             if (buttons.GetChildCount() > 0) buttons.AddChild(BoardStyle.MakeModalSeparator());
@@ -339,6 +348,12 @@ public partial class MainMenu : Control
             buttons.AddChild(button);
             return button;
         }
+        // The answers (shown first, or after the download) take the controller's buttons, the last one (the main one,
+        // or Later) first.
+        void FocusAnswers() => Callable.From(() =>
+        {
+            if (IsInstanceValid(buttons) && buttons.GetChildren().OfType<Button>().LastOrDefault() is { } last) PadFocus.OfferModal(buttons, last);
+        }).CallDeferred();
         Answer("Skip this version", false, () =>
         {
             if (isGame) Settings.Current.SkippedGameVersion = release.Tag;
@@ -348,7 +363,10 @@ public partial class MainMenu : Control
         });
         Answer("Later", false, Close);
         bool canInstall = release.ZipUrl is not null && (!isGame || Updater.CanUpdateGame && Updater.InstallFolderWritable());
-        if (!canInstall)
+        if (!canInstall && OS.GetName() == "Switch")
+            // No browser to open the page with: where to find it, to download it on a computer.
+            status.Text = $"Download it from {release.PageUrl} and copy it to the SD card.";
+        else if (!canInstall)
         {
             status.Text = isGame ? "This copy of the game can't update itself here: download it from the release page." : "";
             Answer("Open download page", true, () => { OS.ShellOpen(release.PageUrl); Close(); });
@@ -365,7 +383,9 @@ public partial class MainMenu : Control
                         status.Text = "Checking your career with the career service first…";
                         await career.SyncAsync();
                     }
-                    var zip = await Updater.DownloadAsync(release, p => Callable.From(() => status.Text = $"Downloading… {p:P0}").CallDeferred());
+                    bool downloaded = false; // progress shown late must not cover what follows
+                    var zip = await Updater.DownloadAsync(release, p => Callable.From(() => { if (!downloaded) status.Text = $"Downloading… {p:P0}"; }).CallDeferred());
+                    downloaded = true;
                     if (isGame)
                     {
                         status.Text = "Installing… the game restarts by itself.";
@@ -376,21 +396,24 @@ public partial class MainMenu : Control
                     }
                     var manifest = Updater.InstallModule(zip);
                     status.Text = $"{manifest.Name} {manifest.Version} is installed.";
-                    foreach (var child in buttons.GetChildren()) child.QueueFree();
-                    Answer("Restart now", true, () => { OS.SetRestartOnExit(true); GetTree().Quit(); });
+                    ClearAnswers();
                     Answer("Later", false, Close);
+                    Answer("Restart now", true, () => { OS.SetRestartOnExit(true); GetTree().Quit(); });
+                    FocusAnswers();
                 }
                 catch (Exception e)
                 {
                     GD.PushWarning($"Update failed: {e}");
                     status.Text = $"The update failed: {e.Message}";
-                    foreach (var child in buttons.GetChildren()) child.QueueFree();
-                    Answer("Open download page", true, () => { OS.ShellOpen(release.PageUrl); Close(); });
+                    ClearAnswers();
                     Answer("Close", false, Close);
+                    if (OS.GetName() != "Switch") Answer("Open download page", true, () => { OS.ShellOpen(release.PageUrl); Close(); });
+                    FocusAnswers();
                 }
             });
         }
         AddChild(overlay);
+        FocusAnswers();
     }
 
     /// <summary>Release notes without Markdown marks (headings, bold, code), up to their install steps (the update does those).</summary>

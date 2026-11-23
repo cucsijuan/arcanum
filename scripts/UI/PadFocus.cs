@@ -121,6 +121,19 @@ public partial class PadFocus : CanvasLayer
     }
 
     /// <summary>
+    /// <see cref="Offer"/> for a panel shown over the screen (a question that must be answered): its answer takes the
+    /// focus at once, whatever was used last, so one press of confirm answers it (and never presses the screen's
+    /// focused button under the panel).
+    /// </summary>
+    public static void OfferModal(Control panel, Control? preferred = null)
+    {
+        if (_instance is not { } focus) return;
+        if (focus.GetViewport().GuiGetFocusOwner() is { } owner && !panel.IsAncestorOf(owner)) owner.ReleaseFocus();
+        Offer(panel, preferred);
+        if (!UsingButtons && focus._preferred is { } answer && IsInstanceValid(answer)) answer.CallDeferred(Control.MethodName.GrabFocus);
+    }
+
+    /// <summary>
     /// The control a screen wants focused first with the buttons (a settings page's first option); it gets the focus
     /// now if buttons are in use and nothing has it.
     /// </summary>

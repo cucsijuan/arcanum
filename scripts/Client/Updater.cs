@@ -37,12 +37,15 @@ public static class Updater
     public static bool ChecksGame => CanUpdateGame || OS.GetEnvironment("ARCANUM_UPDATE_FROM").Length > 0;
 
     /// <summary>
-    /// Whether this build can replace itself: an exported desktop build (not the editor) on Windows or Linux, the
+    /// Whether this build can replace itself: an exported build (not the editor) on Windows, Linux or the console, the
     /// systems releases are published for.
     /// </summary>
-    public static bool CanUpdateGame => !OS.HasFeature("editor") && (OS.GetName() is "Windows" or "Linux");
+    public static bool CanUpdateGame => !OS.HasFeature("editor") && (OS.GetName() is "Windows" or "Linux" or "Switch");
 
-    private static string? PlatformZipSuffix => OS.GetName() switch { "Windows" => "-windows.zip", "Linux" => "-linux.zip", _ => null };
+    private static string? PlatformZipSuffix => OS.GetName() switch
+    {
+        "Windows" => "-windows.zip", "Linux" => "-linux.zip", "Switch" => "-console.zip", _ => null,
+    };
 
     /// <summary>The newest game release, when it is newer than this build (null otherwise or when it can't be reached).</summary>
     public static async Task<ReleaseInfo?> NewerGameAsync() =>
@@ -56,37 +59,53 @@ public static class Updater
         installed.Updates is { Length: > 0 } url && await LatestAsync(url, ".zip") is { } release
         && ParseVersion(installed.Version) is { } current && release.Version > current ? release : null;
 
-    /// <summary>A "latest release" document at <paramref name="url"/> (GitHub's releases API format).</summary>
+    /// <summary>
+    /// A "latest release" document at <paramref name="url"/> (GitHub's releases API format). A connection that can't be
+    /// made is tried again a few times (a device's network may still be coming up when the game starts).
+    /// </summary>
     private static async Task<ReleaseInfo?> LatestAsync(string url, string? zipSuffix)
     {
-        try
+        for (int attempt = 1; ; attempt++)
         {
-            using var response = await Http.GetAsync(url);
-            if (!response.IsSuccessStatusCode) return null;
-            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            var root = json.RootElement;
-            var tag = root.GetProperty("tag_name").GetString() ?? "";
-            if (ParseVersion(tag) is not { } version) return null;
-            string? zipUrl = null, zipName = null;
-            long size = 0;
-            if (zipSuffix is not null && root.TryGetProperty("assets", out var assets))
-                foreach (var asset in assets.EnumerateArray())
-                {
-                    var name = asset.GetProperty("name").GetString() ?? "";
-                    if (!name.EndsWith(zipSuffix, StringComparison.OrdinalIgnoreCase)) continue;
-                    zipUrl = asset.GetProperty("browser_download_url").GetString();
-                    zipName = name;
-                    size = asset.GetProperty("size").GetInt64();
-                    break;
-                }
-            return new ReleaseInfo(tag, version, root.TryGetProperty("body", out var body) ? body.GetString() ?? "" : "",
-                root.TryGetProperty("html_url", out var page) ? page.GetString() ?? "" : "", zipUrl, zipName, size);
+            try
+            {
+                return await LatestOnceAsync(url, zipSuffix);
+            }
+            catch (HttpRequestException e) when (attempt < 4)
+            {
+                GD.Print($"Update check at {url}: {e.Message}; trying again");
+                await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
+            }
+            catch (Exception e)
+            {
+                GD.Print($"Update check at {url} failed: {e.Message}");
+                return null;
+            }
         }
-        catch (Exception e)
-        {
-            GD.Print($"Update check at {url} failed: {e.Message}");
-            return null;
-        }
+    }
+
+    private static async Task<ReleaseInfo?> LatestOnceAsync(string url, string? zipSuffix)
+    {
+        using var response = await Http.GetAsync(url);
+        if (!response.IsSuccessStatusCode) return null;
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = json.RootElement;
+        var tag = root.GetProperty("tag_name").GetString() ?? "";
+        if (ParseVersion(tag) is not { } version) return null;
+        string? zipUrl = null, zipName = null;
+        long size = 0;
+        if (zipSuffix is not null && root.TryGetProperty("assets", out var assets))
+            foreach (var asset in assets.EnumerateArray())
+            {
+                var name = asset.GetProperty("name").GetString() ?? "";
+                if (!name.EndsWith(zipSuffix, StringComparison.OrdinalIgnoreCase)) continue;
+                zipUrl = asset.GetProperty("browser_download_url").GetString();
+                zipName = name;
+                size = asset.GetProperty("size").GetInt64();
+                break;
+            }
+        return new ReleaseInfo(tag, version, root.TryGetProperty("body", out var body) ? body.GetString() ?? "" : "",
+            root.TryGetProperty("html_url", out var page) ? page.GetString() ?? "" : "", zipUrl, zipName, size);
     }
 
     /// <summary>"v0.12.0" / "0.12.0" → 0.12.0.</summary>
@@ -143,6 +162,11 @@ public static class Updater
     /// </summary>
     public static void InstallGameAndRestart(string zipPath)
     {
+        if (OS.GetName() == "Switch")
+        {
+            InstallConsoleGame(zipPath);
+            return;
+        }
         var staging = Path.Combine(Path.GetDirectoryName(zipPath)!, Path.GetFileNameWithoutExtension(zipPath));
         if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
         ZipFile.ExtractToDirectory(zipPath, staging);
@@ -181,6 +205,27 @@ public static class Updater
                 "rm -- \"$0\"", ""));
             OS.CreateProcess("/bin/sh", new[] { script });
         }
+    }
+
+    /// <summary>
+    /// The console: the running program can't be replaced while it runs, so the new one goes to the update slot not
+    /// running (update_a.bin / update_b.bin beside it), with update.install; the loader starts it once this game has
+    /// closed, and the console port makes it the version the menu opens (arcanum.nro) as it starts.
+    /// </summary>
+    private static void InstallConsoleGame(string zipPath)
+    {
+        var folder = InstallFolder;
+        var slot = Path.Combine(folder, Path.GetFileName(OS.GetExecutablePath()) == "update_a.bin" ? "update_b.bin" : "update_a.bin");
+        using (var zip = ZipFile.OpenRead(zipPath))
+        {
+            var program = zip.Entries.FirstOrDefault(e => e.Name == "arcanum.nro")
+                          ?? throw new InvalidDataException("The download doesn't contain arcanum.nro.");
+            program.ExtractToFile(slot, overwrite: true);
+        }
+        File.Delete(zipPath);
+        File.WriteAllText(Path.Combine(folder, "update.install"), "");
+        if (OS.CreateProcess(slot, []) < 0)
+            throw new IOException("This loader can't start the new version: start the game again from the menu to finish.");
     }
 
     /// <summary>Installs a downloaded content module zip (it is used from the next start).</summary>

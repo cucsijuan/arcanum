@@ -241,7 +241,7 @@ public static class MenuKit
             buttons.AddChild(button);
         }
         screen.AddChild(overlay);
-        PadFocus.Offer(buttons, buttons.GetChildren().OfType<Button>().LastOrDefault());
+        PadFocus.OfferModal(buttons, buttons.GetChildren().OfType<Button>().LastOrDefault());
         return overlay;
     }
 }

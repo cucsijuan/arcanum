@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Cuts a game release: asks for the version, sets it in project.godot, makes sure the release notes exist
 # (docs/releases/vX.Y.Z.md, opened in $EDITOR from the last notes when missing), commits, pushes, and pushes the tag
-# vX.Y.Z; GitHub Actions then exports Linux/Windows and publishes the release (.github/workflows/release.yml); last it
-# updates the wiki from docs/ (tools/wiki_sync.py).
+# vX.Y.Z; GitHub Actions then exports Linux/Windows and publishes the release (.github/workflows/release.yml); then,
+# when ../godot-switch is there, it builds the console version here and adds it to the release; last it updates the
+# wiki from docs/ (tools/wiki_sync.py).
 #
 # usage: tools/release.sh                              (asks for everything; run from anywhere inside the repository)
 #        tools/release.sh X.Y.Z --yes [--test-export]  (no questions: the notes must already exist; --test-export runs
@@ -80,6 +81,24 @@ sleep 5
 run=$(gh run list --workflow release.yml -L 1 --json databaseId --jq '.[0].databaseId')
 echo "Building the release…"
 gh run watch "$run" --exit-status -i 30 >/dev/null || die "release build failed: gh run view $run --log-failed"
+# The console build, made here (it needs devkitPro and the console's runtime, which the export machines don't have):
+# the game alone (the module is its own release), in a zip laid out as the SD card wants it. The home screen entry
+# (port/forwarder in that checkout) isn't published: it is made with a console's keys.
+console=../godot-switch
+if [[ -x "$console/tools/build_arcanum.sh" ]]; then
+    echo "Building the console version…"
+    out=$(mktemp -d)
+    if ARCANUM_SRC="$PWD" "$console/tools/build_arcanum.sh" --no-module > "$out/build.log" 2>&1; then
+        mkdir -p "$out/sd/switch/arcanum-nx"
+        cp "$console/dist/switch/arcanum-nx/arcanum.nro" "$out/sd/switch/arcanum-nx/"
+        (cd "$out/sd" && zip -qr "$out/Arcanum-$tag-console.zip" switch)
+        gh release upload "$tag" "$out/Arcanum-$tag-console.zip" --clobber
+    else
+        echo "warning: the console build failed ($out/build.log); the release has no console files" >&2
+    fi
+else
+    echo "note: no $console checkout, so the release has no console files" >&2
+fi
 gh release view "$tag" --json url,assets --jq '.url, (.assets[].name)'
 # The wiki mirrors docs/ (the guide, the developer docs and the release notes).
 tools/wiki_sync.py --push || echo "warning: the wiki wasn't updated (rerun tools/wiki_sync.py --push)" >&2

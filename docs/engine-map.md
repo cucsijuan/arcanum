@@ -30,7 +30,8 @@ The game knows no module by name. It finds a module by its folder (one with `man
 | A module's card scripts: `scripts/*.json` in a folder, else the entries of `scripts.zip` (`ContentModule.ScriptFiles`). `ScriptReader()` parses one card's script when that card is asked for; nothing is unpacked at start | `src/Arcanum.Data/Modules/ContentModule.cs` |
 | Card data a zip brings already made (`card-data.bin`, `OracleJsonl.PreparedFileName`): the card records in the card cache's binary encoding (`CardCache.WriteRecords`, `ReadRecords`, `IsRecordsFile`), under the import-rules version `OracleJsonl.CompactFormat`. Made by `tools/PrepareCardData` (`OracleJsonl.Prepare`, then `ReadCompact`) | `src/Arcanum.Data/CardData/OracleJsonl.cs`, `src/Arcanum.Data/CardData/CardCache.cs` |
 | `manifest.json` fields (`ModuleManifest`, `ContentModule.ReadManifest`), including the optional `updates` | `src/Arcanum.Data/Modules/ContentModule.cs` |
-| Update checks: the game's newest release (`NewerGameAsync`), and the installed module's newest release at its `updates` URL (`NewerModuleAsync`; no `updates` field, no check). Both read a "latest release" document in GitHub's releases API format | `scripts/Client/Updater.cs` |
+| Update checks: the game's newest release (`NewerGameAsync`), and the installed module's newest release at its `updates` URL (`NewerModuleAsync`; no `updates` field, no check). Both read a "latest release" document in GitHub's releases API format. A connection that can't be made is tried up to 4 times, 2, 4 and 6 s apart (`LatestAsync`) | `scripts/Client/Updater.cs` |
+| Installing a downloaded game (`InstallGameAndRestart`). Desktop: the zip is unpacked, and a script copies it over the install folder once the game has exited, then starts the game. Console (`Switch`, asset `-console.zip`): `InstallConsoleGame` writes the NRO to the update slot not running (`update_a.bin` / `update_b.bin` beside it), makes an `update.install` marker and starts the slot with `OS.CreateProcess`; the console port then makes it the menu's `arcanum.nro` | `scripts/Client/Updater.cs`; the console side in `godot-switch`'s `port/platform-switch/` |
 
 ## From card data to a definition
 
@@ -322,6 +323,7 @@ false). A touch elsewhere puts the preview away. Hover ends do not hide the prev
 | Slide-out play (`DragState`, `PlaysOnRelease`) | `scripts/UI/Board/GameBoard.cs` |
 | Finger slide that scrolls (14 px deadzone, glide after release, the press under it cancelled), and the right stick scrolling (focus, else the control under the pointer, else the front-most list) | `scripts/UI/ScrollGestures.cs`; added as a child of `App` in `App._Ready` (`scripts/Client/App.cs`) |
 | Controller pointer: the left stick moves a gold dot that sends mouse events (`ui_accept` left click, `ui_cancel` right click while it shows; fades after 4 s unused; a touch or real mouse fades it at once) | `scripts/UI/VirtualPointer.cs`; added as a child of `App` in `App._Ready` (`scripts/Client/App.cs`) |
+| Controller focus on a panel that must be answered (`PadFocus.OfferModal`): the screen behind loses the focus and the answer takes it at once, so one press of confirm answers it | `scripts/UI/PadFocus.cs`; used by `MenuKit`'s modal (`scripts/UI/Menu/MenuKit.cs`) and the update dialog (`scripts/UI/Menu/MainMenu.cs`) |
 
 ## Stops panel
 
