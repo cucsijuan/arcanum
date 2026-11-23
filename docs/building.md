@@ -13,7 +13,8 @@
   (a module checkout), then the installed module under `user://modules`. With several
   installed, the one installed last is used: the installer sets the time of the module's `manifest.json` to the install
   time. Install with Extras → "Install module from zip…" (from a module's release zip) or by copying the module into
-  `user://modules/<module-id>`.
+  `user://modules/<module-id>`. A module folder copied in is read as it is: its scripts come from `scripts/`, and its card
+  data is downloaded and made at the first start unless the folder holds `card-data.bin`.
 
 ## Interface art
 The gold frames, buttons and dividers come from a private art pack that is not in this repository (`ui-art/` is
@@ -87,6 +88,7 @@ Environment variables useful while developing and testing:
 | `ARCANUM_OPEN=online` | The main menu opens the online screen at once (exported builds can't be given a scene) |
 | `ARCANUM_OPEN=game` | The main menu opens a game with the module's sample decks at once (devices without a command line, e.g. automatic test runs; `ARCANUM_VS_BOT`, `ARCANUM_AUTOPLAY` and the other quick-start switches apply) |
 | `ARCANUM_SHOTS=<folder>[,seconds]` | Saves a numbered picture of the screen (`0001.png`, `0002.png`…) every 20 s, or every `seconds`, while the game plays on. Unlike `ARCANUM_SHOT` it doesn't quit (long test runs) |
+| `ARCANUM_PAD_SOAK=<seconds>[,ms]` | Plays with nothing but controller buttons pressed at random (the arrows, confirm and back, weighted roughly as a player uses them), one press every 300 ms or every `ms`, for that many seconds, then quits. It starts a game with the module's sample decks (use with `ARCANUM_VS_BOT=1`), and starts another whenever the table is left. It prints lines starting with `PAD SOAK:`: a stall when the main thread stops for over two seconds, each time the table was left, and a summary at the end (presses per button, games started, stalls, last turn). `ARCANUM_SEED` makes the presses repeatable; with `ARCANUM_SHOTS` it leaves pictures to look over. To keep the player's own settings and career untouched, run it with a separate HOME / XDG_DATA_HOME (copy card_data and settings.json there) |
 
 Online play can be tested with two instances on one machine (run `res://scenes/online/Online.tscn`; add
 `ARCANUM_AUTOPLAY=1` so the players play themselves):

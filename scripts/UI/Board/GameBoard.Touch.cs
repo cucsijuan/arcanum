@@ -62,13 +62,28 @@ public partial class GameBoard
     /// </summary>
     private void HoverStarted(CardNode node)
     {
-        if (!_touch) ShowPreview(node);
+        // Reached with a controller's arrows, a card shows in the preview at once (the confirm button then acts on it).
+        if (!_touch || FocusedWithButtons(node)) ShowPreview(node);
     }
 
     /// <summary>With a mouse, the preview goes away when the pointer leaves the card; touched, it stays until the next touch.</summary>
     private void HoverEnded(CardNode node)
     {
-        if (!_touch) HidePreview(node);
+        if (!_touch || Arcanum.UI.PadFocus.UsingButtons) HidePreview(node);
+    }
+
+    private static bool FocusedWithButtons(CardNode node) => Arcanum.UI.PadFocus.UsingButtons && node.HasFocus();
+
+    /// <summary>
+    /// The back button, on a card focused with a controller's arrows, puts its preview away (moving to another card shows
+    /// that one); true if it did.
+    /// </summary>
+    private bool PutPadPreviewAway()
+    {
+        if (!_preview.Visible || GetViewport().GuiGetFocusOwner() is not CardNode node || !FocusedWithButtons(node)) return false;
+        _touchPick = null;
+        HidePreview(_preview);
+        return true;
     }
 
     /// <summary>

@@ -90,6 +90,42 @@ public static class CardCache
         SafeFile.Replace(temp, path);
     }
 
+    /// <summary>
+    /// Writes card records alone, in this format's encoding (fast to read back, unlike the card data's text): the card
+    /// data a module brings already made (<see cref="OracleJsonl.PreparedFileName"/>).
+    /// </summary>
+    public static void WriteRecords(IReadOnlyList<CardRecord> records, Stream output)
+    {
+        if (!BitConverter.IsLittleEndian) throw new PlatformNotSupportedException("Card records are written in little-endian order.");
+        var writer = new Writer();
+        writer.Records(records);
+        writer.CopyTo(output, RecordsKey);
+    }
+
+    /// <summary>
+    /// The records <see cref="WriteRecords"/> wrote to <paramref name="path"/>; null when there is no such file, or it
+    /// was written in another format or under other import rules (then the card data is made from its source).
+    /// </summary>
+    public static List<CardRecord>? ReadRecords(string path)
+    {
+        if (!BitConverter.IsLittleEndian || !File.Exists(path)) return null;
+        try
+        {
+            var reader = new Reader(File.ReadAllBytes(path));
+            return reader.Header(RecordsKey) ? reader.Records() : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or FormatException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Whether <paramref name="path"/> holds records <see cref="ReadRecords"/> reads (its header alone is read).</summary>
+    public static bool IsRecordsFile(string path) => StoredKey(path) == RecordsKey;
+
+    /// <summary>What records alone are stored under: they hold for this format and these import rules.</summary>
+    private static string RecordsKey => $"card records|{OracleJsonl.CompactFormat}";
+
     private sealed class Writer
     {
         private readonly MemoryStream _body = new();
@@ -168,6 +204,12 @@ public static class CardCache
 
             List(cards.NonbasicLandNames);
             List(cards.CreatureCardNames);
+        }
+
+        public void Records(IReadOnlyList<CardRecord> records)
+        {
+            Int(records.Count);
+            foreach (var record in records) Record(record);
         }
 
         private void Record(CardRecord r)
@@ -417,6 +459,13 @@ public static class CardCache
                 _maps[i] = map;
             }
             return true;
+        }
+
+        public List<CardRecord> Records()
+        {
+            var records = new List<CardRecord>(Int());
+            for (int i = records.Capacity; i > 0; i--) records.Add(Record());
+            return records;
         }
 
         public CardDatabase Database(Func<string, Scripts.CardScript?> scriptFor)

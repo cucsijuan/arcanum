@@ -37,8 +37,10 @@ A module zip in the game's folder (on a console, the game's folder on its memory
 If it holds a module that is not installed, or a newer version than the installed one, the game asks whether to install
 it (**Install** or **Don't install**). A version you don't install is not asked again; a newer one is.
 
-When the game starts with a module, it downloads the card data on first start. The progress shows as
-"Downloading card data… %". Card images are downloaded as they are needed. The game needs a connection for this.
+A module zip from a release brings its card data already made, so the first start has nothing to download for it. The
+cards are ready a few seconds after the install, and the game saves them for the next starts in the background. Card
+images are downloaded as they are needed. A module without card data in its zip downloads it on the first start (a few
+minutes, shown as "Downloading card data… %"), and that needs a connection.
 
 **Extras** also has **Download card data again**, which fetches the card data on the next start, and the module's
 name, version and license.

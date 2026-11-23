@@ -89,6 +89,13 @@ public static partial class CardFactory
         return ok;
     }
 
+    /// <summary>
+    /// The name <see cref="Create"/> gives the card's definition, known without making it: the first face's for a card
+    /// that is its first face (an adventurer, a preparation card, a double-faced card), else the card's own.
+    /// </summary>
+    public static string NameOf(CardRecord record) =>
+        record.Layout is "adventure" or "prepare" or "transform" or "modal_dfc" && record.Faces.Count == 2 ? record.Faces[0].Name : record.Name;
+
     /// <param name="script">The card's ability script from the content module, if it has one.</param>
     public static (CardDefinition Definition, CardSupport Support) Create(CardRecord record, Scripts.CardScript? script = null)
     {

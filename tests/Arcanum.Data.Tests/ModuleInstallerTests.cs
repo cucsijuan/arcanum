@@ -118,4 +118,16 @@ public class ModuleInstallerTests
         var manifest = ContentModule.ReadManifest(Manifest.Replace("}", ",\"updates\":\"https://example.invalid/latest\"}"));
         Assert.Equal("https://example.invalid/latest", manifest.Updates);
     }
+
+    [Fact]
+    public void TellsWhetherAZipBringsItsCardData()
+    {
+        var dir = TempDir();
+        Assert.False(ModuleInstaller.BringsCardData(Zip(dir, ("sample/manifest.json", Manifest), ("sample/sources.json", Sources))));
+        Assert.True(ModuleInstaller.BringsCardData(Zip(dir, ("sample/manifest.json", Manifest), ("sample/sources.json", Sources),
+            ($"sample/{Arcanum.Data.CardData.OracleJsonl.PreparedFileName}", "records"))));
+        Assert.True(ModuleInstaller.BringsCardData(Zip(dir, ("manifest.json", Manifest), (Arcanum.Data.CardData.OracleJsonl.PreparedFileName, "records"))));
+        Assert.False(ModuleInstaller.BringsCardData(Path.Combine(dir, "none.zip")));
+        Directory.Delete(dir, recursive: true);
+    }
 }

@@ -164,6 +164,9 @@ public partial class GameBoard : Control
         StartNewGame(ulong.TryParse(OS.GetEnvironment("ARCANUM_SEED"), out var seed) ? seed : (ulong)Time.GetTicksUsec());
     }
 
+    /// <summary>The turn shown (testing reports).</summary>
+    internal string TurnForTesting => _turnNumber.Text;
+
     private static AutoPassPolicy PolicyFromSettings()
     {
         var policy = new AutoPassPolicy();
@@ -944,6 +947,7 @@ public partial class GameBoard : Control
 
         if (view.IsGameOver)
         {
+            PadPlayReport(view);
             // Say why everyone else lost, so a sudden defeat is never a mystery.
             var winner = view.Winner is { } w ? view.Players[w.Value].Name + " wins!" : "Draw";
             var reasons = _lost.Select(l => $"{view.Players[l.Player.Value].Name} lost: {l.Reason}");
@@ -992,6 +996,7 @@ public partial class GameBoard : Control
             }
             GetTree().CreateTimer(0.35).Timeout += () => { if (!TestStackPick(decision)) AutoAnswer(decision, view); };
         }
+        else if (decision is not null) PadPlayDecision(decision, view);
     }
 
     /// <summary>Debug autopilot (ARCANUM_AUTOPLAY=1): plays both seats greedily for smoke tests and screenshots.</summary>
@@ -1890,6 +1895,11 @@ public partial class GameBoard : Control
     public override void _Input(InputEvent @event)
     {
         TrackPointer(@event);
+        if (@event.IsActionPressed("ui_cancel") && PutPadPreviewAway())
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (_drag is not { } drag) return;
         switch (@event)
         {
@@ -2224,7 +2234,9 @@ public partial class GameBoard : Control
 
     private void OnCardClicked(CardNode node)
     {
-        if (_touch && !TouchActs(node)) return;
+        // Focused with a controller's arrows the card already shows in the preview: the confirm button acts at once.
+        bool withButtons = FocusedWithButtons(node);
+        if (!withButtons && _touch && !TouchActs(node)) return;
         var id = node.Id;
         switch (_session.CurrentDecision)
         {
@@ -2242,7 +2254,7 @@ public partial class GameBoard : Control
             {
                 // Everything a click on this card could mean: play or cast it (or its Adventure), or use one of its abilities.
                 var options = SourceActions(p, id);
-                if (options.Count == 1 && options[0] is PlayLand or CastSpell && node.View?.Zone == Arcanum.Engine.State.Zone.Hand)
+                if (options.Count == 1 && options[0] is PlayLand or CastSpell && node.View?.Zone == Arcanum.Engine.State.Zone.Hand && !withButtons)
                 {
                     // Click plays it on release; dragging it out of the hand plays it too.
                     var area = AreaOf(node.View.Owner);

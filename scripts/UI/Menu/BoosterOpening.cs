@@ -43,6 +43,9 @@ public partial class BoosterOpening : Control
     private readonly string? _imageUrl;
     private readonly (double Top, double Bottom) _seals;
     private readonly bool _automatic;
+
+    /// <summary>Testing (ARCANUM_OPEN=booster): the pack waits for a swipe however long it takes.</summary>
+    public bool WaitsForSwipe { get; init; }
     private readonly string _label;
 
     private readonly ColorRect _dim = new() { Color = new Color(0, 0, 0, 0) };
@@ -177,7 +180,7 @@ public partial class BoosterOpening : Control
                 Mathf.Clamp(mouse.X, -0.5f, 0.5f) * 0.4f, 0);
             _pack.Rotation = _pack.Rotation.Lerp(target, (float)Math.Min(1, delta * 5));
 
-            if (!_dragging && !_autoCutting && _elapsed > (_automatic ? 0.9 : OpensAfter)) AutoCut();
+            if (!_dragging && !_autoCutting && !WaitsForSwipe && _elapsed > (_automatic ? 0.9 : OpensAfter)) AutoCut();
         }
         _lineMaterial.SetShaderParameter("cut_from", _cutFrom);
         _lineMaterial.SetShaderParameter("cut_to", _cutTo);

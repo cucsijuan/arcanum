@@ -226,6 +226,32 @@ public static class OracleJsonl
         return na != nb ? na.CompareTo(nb) : string.CompareOrdinal(sa, sb);
     }
 
+    /// <summary>
+    /// The version of the compact form <see cref="WriteCompact"/> writes. Bumped when it or the import rules change, so a
+    /// file made under other rules isn't used.
+    /// </summary>
+    public const int CompactFormat = 14;
+
+    /// <summary>
+    /// The card data a module brings already made, at its root (records written by <see cref="CardCache.WriteRecords"/>),
+    /// so a device has nothing to download or read as text. A file made under other import rules or in another encoding
+    /// is ignored.
+    /// </summary>
+    public const string PreparedFileName = "card-data.bin";
+
+    /// <summary>
+    /// Makes the compact card data from the source's card file and (optional) printings file, keeping the cards
+    /// <paramref name="filter"/> keeps: what a device does after downloading them, and what a module release starts
+    /// from to make <see cref="PreparedFileName"/>.
+    /// </summary>
+    public static void Prepare(Stream cards, Stream? printings, ImportFilter? filter, Stream destination)
+    {
+        var printingsByCard = printings is null ? null : ImportPrintings(printings);
+        var records = Import(cards, filter);
+        if (printingsByCard is not null) records = WithPrintings(records, printingsByCard);
+        WriteCompact(records, destination);
+    }
+
     /// <summary>Writes records in Arcanum's own compact JSON Lines form (gzip).</summary>
     public static void WriteCompact(IEnumerable<CardRecord> records, Stream destination)
     {

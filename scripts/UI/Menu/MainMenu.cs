@@ -60,6 +60,23 @@ public partial class MainMenu : Control
             _opened = true;
             Callable.From(() => App.Instance.GoTo(App.GameBoardScene)).CallDeferred();
         }
+        // ARCANUM_OPEN=booster: the first set's booster opens over the menu (checking how a pack looks and tears).
+        else if (OS.GetEnvironment("ARCANUM_OPEN") == "booster" && !_opened && BoosterOpening.Available)
+        {
+            void Open()
+            {
+                if (!IsInstanceValid(this) || _opened) return;
+                if (App.Instance.Cards is null) // the sets come with the cards
+                {
+                    GetTree().CreateTimer(0.5).Timeout += Open;
+                    return;
+                }
+                _opened = true;
+                var set = App.Instance.Module?.LoadSets().FirstOrDefault(s => s.PackImage is not null);
+                AddChild(new BoosterOpening(set?.PackImage, set?.PackImageSeals ?? (0.07, 0.06), set?.Name ?? "Booster", automatic: false) { WaitsForSwipe = true });
+            }
+            Callable.From(Open).CallDeferred();
+        }
         SetAnchorsPreset(LayoutPreset.FullRect);
         var backdrop = MenuKit.AddArcaneBackdrop(this);
         var fan = AddFannedCardBacks();
@@ -387,13 +404,14 @@ public partial class MainMenu : Control
     public override void _UnhandledInput(InputEvent @event)
     {
         // A dialog over the menu (its answer has the focus) takes the buttons; the options wait.
-        if (_items.Count == 0 || !IsInsideTree() || GetViewport().GuiGetFocusOwner() is not null) return;
+        if (_items.Count == 0 || !IsInsideTree() || GetViewport() is not { } viewport || viewport.GuiGetFocusOwner() is not null) return;
         if (_inSubmenu && @event.IsActionPressed("ui_cancel")) ShowItems(null, MainItems());
         else if (@event.IsActionPressed("ui_down")) Select((_selected + 1) % _items.Count);
         else if (@event.IsActionPressed("ui_up")) Select((_selected - 1 + _items.Count) % _items.Count);
         else if (@event.IsActionPressed("ui_accept") && _selected >= 0) _items[_selected].EmitSignal(BaseButton.SignalName.Pressed);
         else return;
-        GetViewport().SetInputAsHandled();
+        // The viewport taken before: an option may have left the menu (a new screen frees it).
+        viewport.SetInputAsHandled();
     }
 
     private void Select(int index, bool animate = true)

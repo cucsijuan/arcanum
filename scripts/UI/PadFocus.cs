@@ -39,6 +39,12 @@ public partial class PadFocus : CanvasLayer
     /// <summary>On a control partly covered by the next one (a card in a stack): the height of the part that shows.</summary>
     private const string ShowsMeta = "pad_shows";
 
+    /// <summary>Marks controls other than buttons the arrows reach that handle touches their own way (cards on a game's table).</summary>
+    private const string ReachMeta = "pad_reach";
+
+    /// <summary>On a panel's answer: the panel (the arrows move between its answers first).</summary>
+    private const string PanelMeta = "pad_panel";
+
     /// <summary>The controller button that right-clicks the focused card (the left face button).</summary>
     public const JoyButton AltButton = JoyButton.X;
 
@@ -77,7 +83,10 @@ public partial class PadFocus : CanvasLayer
         AddChild(_ring);
         GetViewport().GuiFocusChanged += focused =>
         {
-            if (focused.HasMeta(ChoiceMeta) && focused is Button button) _lastText = button.Text;
+            // Leaving the panel's answers (for the cards on the table) forgets the one passed last: the next panel
+            // focuses its own default answer, not one the arrows only went through on their way out.
+            if (focused.HasMeta(PanelMeta) && focused is Button button) _lastText = button.Text;
+            else if (focused.HasMeta(ReachMeta)) _lastText = null;
         };
     }
 
@@ -99,6 +108,7 @@ public partial class PadFocus : CanvasLayer
         {
             choice.FocusMode = Control.FocusModeEnum.All;
             choice.SetMeta(ChoiceMeta, true);
+            choice.SetMeta(PanelMeta, panel);
         }
         if (preferred is not null && !choices.Contains(preferred)) preferred = null;
         focus._preferred = preferred ?? choices.FirstOrDefault(c => c is not BaseButton { Disabled: true }) ?? choices.FirstOrDefault();
@@ -147,6 +157,12 @@ public partial class PadFocus : CanvasLayer
         back.EmitSignal(BaseButton.SignalName.Pressed);
     }
 
+    /// <summary>
+    /// A control other than a button the arrows reach (a card on a game's table), which, unlike <see cref="Pressable"/>,
+    /// keeps its own handling of touches.
+    /// </summary>
+    public static void Reachable(Control control) => control.SetMeta(ReachMeta, true);
+
     /// <summary>Whether <paramref name="control"/> was marked <see cref="Pressable"/>.</summary>
     public static bool IsPressable(Control control) => control.HasMeta(PressMeta);
 
@@ -180,7 +196,7 @@ public partial class PadFocus : CanvasLayer
             if (child == this || child is VirtualPointer || child.IsQueuedForDeletion() || child is CanvasItem { Visible: false }
                 || child is CanvasLayer { Visible: false } || child.HasMeta(OwnMeta)) continue;
             if (child is BaseButton button) yield return button;
-            else if (child is Control { MouseFilter: not Control.MouseFilterEnum.Ignore } pressable && pressable.HasMeta(PressMeta))
+            else if (child is Control { MouseFilter: not Control.MouseFilterEnum.Ignore } pressable && (pressable.HasMeta(PressMeta) || pressable.HasMeta(ReachMeta)))
                 yield return pressable;
             else foreach (var inner in ScreenChoices(child)) yield return inner;
         }
@@ -189,7 +205,8 @@ public partial class PadFocus : CanvasLayer
     /// <summary>The part of a control that shows: the whole, or the top of a card covered by the next one.</summary>
     private static Rect2 Shown(Control control)
     {
-        var rect = control.GetGlobalRect();
+        // Where it is drawn, turned included (a tapped card lies sideways around its middle).
+        var rect = control.GetGlobalTransform() * new Rect2(Vector2.Zero, control.Size);
         if (control.HasMeta(ShowsMeta)) rect.Size = rect.Size with { Y = Math.Min(rect.Size.Y, (float)control.GetMeta(ShowsMeta) * control.GetGlobalTransform().Scale.Y) };
         return rect;
     }
@@ -215,6 +232,11 @@ public partial class PadFocus : CanvasLayer
         {
             if (panel.IsVisibleInTree()) Offer(panel, preferred?.Invoke());
         };
+
+    /// <summary>The panel whose answer <paramref name="control"/> is, while that panel shows; else null.</summary>
+    private static Control? PanelOf(Control control) =>
+        control.HasMeta(PanelMeta) && control.GetMeta(PanelMeta).AsGodotObject() is Control panel && IsInstanceValid(panel)
+        && panel.IsVisibleInTree() && control.IsVisibleInTree() ? panel : null;
 
     private static IEnumerable<Control> Choices(Node node)
     {
@@ -250,11 +272,22 @@ public partial class PadFocus : CanvasLayer
                 // Buttons shown since the screen was looked over (another page, a list filled) become reachable too.
                 // (Also when the focus is on something the scan doesn't reach, so the arrows can leave it.)
                 else if (owner.HasMeta(ScreenMeta) || !owner.HasMeta(ChoiceMeta)) MarkScreen();
+                // On a panel's answer the arrows go to the panel's nearest answer that way, and leave the panel only
+                // when it has none there.
+                if (owner is not null && PanelOf(owner) is { } panel && DirectionOf(@event) is { } panelDirection
+                    && !GetTree().Root.GetEmbeddedSubwindows().Any(w => w.Visible))
+                {
+                    MarkScreen();
+                    var next = Neighbor(owner, panelDirection, Choices(panel).Where(c => c.IsVisibleInTree()))
+                               ?? Neighbor(owner, panelDirection, FocusTargets(GetTree().Root));
+                    if (next is not null) next.GrabFocus();
+                    GetViewport().SetInputAsHandled();
+                }
                 // Between the screen's controls the arrows go to the nearest one that way (cards overlapping in a
                 // stack included), unless a menu opened over the screen has them.
-                if (owner is not null && owner.HasMeta(ScreenMeta) && DirectionOf(@event) is { } direction
+                else if (owner is not null && owner.HasMeta(ScreenMeta) && DirectionOf(@event) is { } direction
                     && !GetTree().Root.GetEmbeddedSubwindows().Any(w => w.Visible)
-                    && Neighbor(owner, direction) is { } next)
+                    && Neighbor(owner, direction, FocusTargets(GetTree().Root)) is { } next)
                 {
                     next.GrabFocus();
                     GetViewport().SetInputAsHandled();
@@ -280,13 +313,13 @@ public partial class PadFocus : CanvasLayer
     /// that way, the one nearest along it, a sideways offset counting three times as much (so a card in the next column
     /// beats a filter above it); level ones, the nearest sideways.
     /// </summary>
-    private Control? Neighbor(Control from, Vector2 direction)
+    private static Control? Neighbor(Control from, Vector2 direction, IEnumerable<Control> targets)
     {
         var a = Shown(from);
         bool across = direction.X != 0;
         Control? best = null;
         float bestScore = float.MaxValue;
-        foreach (var target in FocusTargets(GetTree().Root))
+        foreach (var target in targets)
         {
             if (target == from || target is BaseButton { Disabled: true }) continue;
             var b = Shown(target);
@@ -299,7 +332,9 @@ public partial class PadFocus : CanvasLayer
                 ? Math.Max(0, Math.Max(b.Position.Y - a.End.Y, a.Position.Y - b.End.Y))
                 : Math.Max(0, Math.Max(b.Position.X - a.End.X, a.Position.X - b.End.X));
             float level = across ? Math.Abs(b.GetCenter().Y - a.GetCenter().Y) : Math.Abs(b.GetCenter().X - a.GetCenter().X);
-            float score = Math.Max(0, along) + offset * 3 + level * 0.01f;
+            // Off its line counts too: the next card of the same row comes before one of the row above that only
+            // starts a little that way.
+            float score = Math.Max(0, along) + offset * 3 + level * 0.5f;
             if (score < bestScore) (best, bestScore) = (target, score);
         }
         return best;
@@ -313,7 +348,7 @@ public partial class PadFocus : CanvasLayer
             if (child == this || child is VirtualPointer || child.IsQueuedForDeletion() || child is CanvasItem { Visible: false }
                 || child is CanvasLayer { Visible: false } || child is Window || child.HasMeta(OwnMeta)) continue;
             if (child is BaseButton button) yield return button;
-            else if (child is Control { MouseFilter: not Control.MouseFilterEnum.Ignore } pressable && pressable.HasMeta(PressMeta))
+            else if (child is Control { MouseFilter: not Control.MouseFilterEnum.Ignore } pressable && (pressable.HasMeta(PressMeta) || pressable.HasMeta(ReachMeta)))
                 yield return pressable;
             else if (child is (Godot.Range and not ScrollBar) or LineEdit or TextEdit or ItemList or Tree && child is Control { FocusMode: Control.FocusModeEnum.All } field)
                 yield return field;

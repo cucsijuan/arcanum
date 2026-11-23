@@ -250,15 +250,17 @@ public partial class ArtScene : Control
             return;
         }
         if (!Interactive) return;
+        // The viewport taken before: going back or opening a spot may leave the screen (a new one frees it).
+        var viewport = GetViewport();
         if (e.IsActionPressed("ui_cancel"))
         {
             BackRequested?.Invoke();
-            GetViewport().SetInputAsHandled();
+            viewport.SetInputAsHandled();
         }
         else if (e.IsActionPressed("ui_accept") && _current >= 0)
         {
             Activated?.Invoke(Spots[_current].Id);
-            GetViewport().SetInputAsHandled();
+            viewport.SetInputAsHandled();
         }
         else if (Direction(e) is { } direction && Spots.Count > 0)
         {

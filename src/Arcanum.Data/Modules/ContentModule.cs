@@ -176,8 +176,9 @@ public sealed class ContentModule
     public string ScriptsDirectory => Path.Combine(Directory, "scripts");
 
     /// <summary>
-    /// The card scripts of an installed module, kept in one file (<see cref="ModuleInstaller"/> puts them there: thousands
-    /// of small files are slow to write on some devices' memory cards). Used when there is no scripts folder.
+    /// The card scripts of an installed module, kept in one file (<see cref="ModuleInstaller"/> keeps the module's zip
+    /// there: thousands of small files are slow to write on some devices' memory cards). Used when there is no scripts
+    /// folder.
     /// </summary>
     public string ScriptsArchive => ScriptsDirectory + ".zip";
 
@@ -188,18 +189,42 @@ public sealed class ContentModule
             return System.IO.Directory.EnumerateFiles(ScriptsDirectory, "*.json")
                 .Select(file => (Path.GetFileName(file), (Func<string>)(() => File.ReadAllText(file)))).ToList();
         if (!File.Exists(ScriptsArchive)) return new();
-        // Read whole (a few megabytes): the zip can't be read from several threads at once, and scripts are asked for
-        // from any thread.
-        using var zip = System.IO.Compression.ZipFile.OpenRead(ScriptsArchive);
+        // The file is read whole (a few megabytes, one read), and each script is unpacked only when asked for: a start
+        // with the cards already made asks for few of them. One at a time, as a zip can't be read from several threads
+        // at once and scripts are asked for from any thread.
+        var zip = new System.IO.Compression.ZipArchive(new MemoryStream(File.ReadAllBytes(ScriptsArchive)));
+        var gate = new object();
         var files = new List<(string, Func<string>)>(zip.Entries.Count);
+        bool wholeModule = zip.Entries.Any(entry => entry.FullName.Contains('/'));
         foreach (var entry in zip.Entries)
         {
-            if (!entry.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || entry.FullName.Contains('/')) continue;
-            using var reader = new StreamReader(entry.Open());
-            var text = reader.ReadToEnd();
-            files.Add((entry.Name, () => text));
+            if (!entry.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || !IsArchivedScript(entry.FullName, wholeModule)) continue;
+            files.Add((entry.Name, () =>
+            {
+                lock (gate)
+                {
+                    using var reader = new StreamReader(entry.Open());
+                    return reader.ReadToEnd();
+                }
+            }));
         }
         return files;
+    }
+
+    /// <summary>
+    /// Whether an entry of scripts.zip is a card script: the module's zip kept whole (scripts/name.json, at its root
+    /// or inside one top folder), or an archive of the scripts alone (name.json).
+    /// </summary>
+    private static bool IsArchivedScript(string path, bool wholeModule)
+    {
+        var parts = path.Split('/');
+        return parts.Length switch
+        {
+            1 => !wholeModule,
+            2 => parts[0] == "scripts",
+            3 => parts[1] == "scripts",
+            _ => false,
+        };
     }
 
     /// <summary>

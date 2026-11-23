@@ -114,6 +114,8 @@ public partial class App : Node
         // buttons first while it shows).
         AddChild(new Arcanum.UI.PadFocus());
         AddChild(new Arcanum.UI.VirtualPointer());
+        // ARCANUM_PAD_SOAK: games played with random controller presses (testing).
+        if (Arcanum.UI.PadSoak.FromEnvironment() is { } soak) AddChild(soak);
         GetTree().SceneChanged += () => Presence.ShowScreen(GetTree().CurrentScene?.SceneFilePath ?? "");
         if (GetTree().CurrentScene is { } first) Presence.ShowScreen(first.SceneFilePath);
         // ARCANUM_SHOT=<file.png>[,seconds]: saves a picture of the screen after a while (default 8 s) and quits (screenshots).
@@ -211,7 +213,8 @@ public partial class App : Node
             Arcanum.UI.Menu.MenuKit.Modal(screen, "Content module found",
                 $"{name} is next to the game ({System.IO.Path.GetFileName(found.Path)})." +
                 (found.Installed is { } installed ? $" It replaces the installed {installed}." : "") +
-                "\nInstall it?\n\nThe first start with it prepares its cards, which takes a few minutes.",
+                "\nInstall it?" +
+                (ModuleInstaller.BringsCardData(found.Path) ? "" : "\n\nThe first start with it downloads its card data, which takes a few minutes."),
                 null, ("Don't install", () => answer.TrySetResult(false)), ("Install", () => answer.TrySetResult(true)));
             if (!await answer.Task)
             {

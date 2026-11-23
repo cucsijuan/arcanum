@@ -9,8 +9,8 @@ public static class ModuleInstaller
     /// <summary>
     /// Extracts <paramref name="zipPath"/> into <paramref name="modulesDirectory"/>/&lt;module id&gt;, replacing an earlier
     /// copy of the same module. The zip may hold the module's files at its root or inside one top folder. The card
-    /// scripts (thousands of small files, slow to write one by one on some devices' memory cards) go into one file,
-    /// scripts.zip (see <see cref="ContentModule.ScriptsArchive"/>).
+    /// scripts (thousands of small files, slow to write one by one on some devices' memory cards) aren't extracted: the
+    /// zip itself is kept as scripts.zip (see <see cref="ContentModule.ScriptsArchive"/>).
     /// </summary>
     /// <exception cref="InvalidDataException">Not a module (no manifest), or a module this build can't use.</exception>
     public static ModuleManifest InstallFromZip(string zipPath, string modulesDirectory, Action<int, int>? progress = null)
@@ -23,40 +23,26 @@ public static class ModuleInstaller
             {
                 var root = Path.GetFullPath(staging) + Path.DirectorySeparatorChar;
                 var scripts = ModulePrefix(zip) + "scripts/";
-                ZipArchive? scriptsArchive = null;
-                try
+                int done = 0, total = zip.Entries.Count;
+                foreach (var entry in zip.Entries)
                 {
-                    int done = 0, total = zip.Entries.Count;
-                    foreach (var entry in zip.Entries)
-                    {
-                        progress?.Invoke(done++, total);
-                        var target = Path.GetFullPath(Path.Combine(staging, entry.FullName));
-                        if (!target.StartsWith(root, StringComparison.Ordinal))
-                            throw new InvalidDataException($"The zip has a file outside its folder: {entry.FullName}");
-                        if (entry.FullName.StartsWith(scripts, StringComparison.Ordinal))
-                        {
-                            var name = entry.FullName[scripts.Length..];
-                            if (name.Length == 0 || name.Contains('/')) continue;
-                            if (scriptsArchive is null)
-                            {
-                                var archivePath = Path.Combine(staging, scripts[..^1] + ".zip");
-                                Directory.CreateDirectory(Path.GetDirectoryName(archivePath)!);
-                                scriptsArchive = ZipFile.Open(archivePath, ZipArchiveMode.Create);
-                            }
-                            using var from = entry.Open();
-                            using var to = scriptsArchive.CreateEntry(name, CompressionLevel.Fastest).Open();
-                            from.CopyTo(to);
-                            continue;
-                        }
-                        if (entry.FullName.EndsWith('/')) { Directory.CreateDirectory(target); continue; }
-                        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                        entry.ExtractToFile(target, overwrite: true);
-                    }
+                    progress?.Invoke(done++, total);
+                    var target = Path.GetFullPath(Path.Combine(staging, entry.FullName));
+                    if (!target.StartsWith(root, StringComparison.Ordinal))
+                        throw new InvalidDataException($"The zip has a file outside its folder: {entry.FullName}");
+                    if (entry.FullName.StartsWith(scripts, StringComparison.Ordinal)) continue;
+                    if (entry.FullName.EndsWith('/')) { Directory.CreateDirectory(target); continue; }
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    entry.ExtractToFile(target, overwrite: true);
                 }
-                finally
-                {
-                    scriptsArchive?.Dispose();
-                }
+                // The scripts stay in the zip itself, copied whole: one file written in one go.
+                var archivePath = Path.Combine(staging, scripts[..^1] + ".zip");
+                Directory.CreateDirectory(Path.GetDirectoryName(archivePath)!);
+                // A plain copy: some devices lack the system calls File.Copy uses.
+                using (var from = File.OpenRead(zipPath))
+                using (var to = new FileStream(archivePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 20))
+                    from.CopyTo(to, 1 << 20);
+                progress?.Invoke(total, total);
             }
 
             var moduleRoot = FindManifest(staging) ?? throw new InvalidDataException("This zip isn't a content module (no manifest.json found).");
@@ -81,7 +67,8 @@ public static class ModuleInstaller
         }
         finally
         {
-            if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+            // Quietly, so an error that stopped the install isn't hidden by one here; CleanUp tries again later.
+            if (Directory.Exists(staging)) DeleteQuietly(staging);
         }
     }
 
@@ -111,12 +98,26 @@ public static class ModuleInstaller
         }
     }
 
+    /// <summary>
+    /// Whether the module in <paramref name="zipPath"/> brings its card data already made
+    /// (<see cref="CardData.OracleJsonl.PreparedFileName"/>); without it the first start downloads and reads the source's.
+    /// </summary>
+    public static bool BringsCardData(string zipPath)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(zipPath);
+            return zip.GetEntry(ModulePrefix(zip) + CardData.OracleJsonl.PreparedFileName) is not null;
+        }
+        catch (Exception e) when (e is InvalidDataException or IOException or UnauthorizedAccessException) { return false; }
+    }
+
     /// <summary>"" when the zip holds the module's files at its root, else its one top folder ("name/").</summary>
     private static string ModulePrefix(ZipArchive zip)
     {
         if (zip.GetEntry("manifest.json") is not null) return "";
         var tops = zip.Entries.Select(e => e.FullName.Split('/')[0]).Distinct().ToList();
-        return tops.Count == 1 ? tops[0] + "/" : "";
+        return tops.Count == 1 && zip.GetEntry($"{tops[0]}/manifest.json") is not null ? tops[0] + "/" : "";
     }
 
     /// <summary>Removes what earlier installs left behind (a replaced copy, an install cut short), in the background.</summary>

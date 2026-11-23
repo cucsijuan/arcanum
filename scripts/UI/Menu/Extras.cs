@@ -120,7 +120,8 @@ public partial class Extras : Control
         {
             Title = "Module installed",
             DialogText = $"{manifest.Name} {manifest.Version} is installed. Restart Arcanum to use it?" +
-                         "\n(The first start downloads its card data, which takes a few minutes.)",
+                         (Arcanum.Data.Modules.ModuleInstaller.BringsCardData(zipPath) ? ""
+                             : "\n(The first start downloads its card data, which takes a few minutes.)"),
             OkButtonText = "Restart now",
             CancelButtonText = "Later",
         };

@@ -176,7 +176,14 @@ public partial class PlayerArea : Control
         lifeBox.GuiInput += e =>
         {
             if (e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left }) PlayerClicked?.Invoke(Player);
+            // Focused with a controller's arrows, the confirm button picks the player too (a spell's target).
+            else if (lifeBox.HasFocus() && e.IsActionPressed("ui_accept") && !e.IsEcho())
+            {
+                lifeBox.AcceptEvent();
+                PlayerClicked?.Invoke(Player);
+            }
         };
+        Arcanum.UI.PadFocus.Reachable(lifeBox);
 
         // Floating mana, shown under the life total while the pool is not empty.
         _commanderDamage.Position = new Vector2(8, 84);
@@ -523,6 +530,23 @@ public partial class PlayerArea : Control
     /// Mouse input goes to the control that is last in the tree, not to the one with the highest z-index. Keeping the
     /// tree in z order makes the card drawn on top (e.g. a creature over its aura) the one that gets the hover.
     /// </summary>
+    /// <summary>
+    /// Sorted at the end of the frame: a card that loses the focus as it is taken out of the layer (or one focused while
+    /// cards are being added) would otherwise move its siblings while the layer is busy with its children.
+    /// </summary>
+    private void SortLater()
+    {
+        if (_sortQueued) return;
+        _sortQueued = true;
+        Callable.From(() =>
+        {
+            _sortQueued = false;
+            if (IsInstanceValid(this) && IsInsideTree()) SortByDrawOrder();
+        }).CallDeferred();
+    }
+
+    private bool _sortQueued;
+
     private void SortByDrawOrder()
     {
         int index = 0;
@@ -602,16 +626,18 @@ public partial class PlayerArea : Control
         node.Size = view.Zone == Zone.Hand ? HandSize : FieldSize;
         node.Position = _library.Position;
         node.Clicked += c => CardClicked?.Invoke(c);
+        // A controller's arrows reach the cards on the table (and in the hand) too.
+        Arcanum.UI.PadFocus.Reachable(node);
         node.HoverStarted += c =>
         {
             CardHoverStarted?.Invoke(c);
-            if (_handOrder.Contains(c)) { LayoutHand(); SortByDrawOrder(); }
+            if (_handOrder.Contains(c)) { LayoutHand(); SortLater(); }
             LiftGroup(c);
         };
         node.HoverEnded += c =>
         {
             CardHoverEnded?.Invoke(c);
-            if (_handOrder.Contains(c)) { LayoutHand(); SortByDrawOrder(); }
+            if (_handOrder.Contains(c)) { LayoutHand(); SortLater(); }
             if (_hoveredInGroup == c) DropGroup();
         };
         _cardLayer.AddChild(node);
@@ -632,7 +658,7 @@ public partial class PlayerArea : Control
         {
             var node = _handOrder[i];
             float t = n == 1 ? 0 : (i / (float)(n - 1)) * 2 - 1; // -1 .. 1 across the fan
-            bool hovered = node.IsHovered;
+            bool hovered = node.IsPointedAt;
             // The fan hangs from the top edge in the top half (the bottom half's fan turned over).
             var target = new Vector2(startX + i * spacing, FacesDown ? HandPeek - size.Y - t * t * 8 : Size.Y - HandPeek + t * t * 8);
             float rotation = FacesDown ? -t * 6f : t * 6f;
@@ -822,7 +848,7 @@ public partial class PlayerArea : Control
         if (!_groups.TryGetValue(hovered, out var group)) return;
         _hoveredInGroup = hovered;
         Lift(group);
-        SortByDrawOrder();
+        SortLater();
     }
 
     /// <summary>Raises a group to <see cref="LiftedZ"/>, the cards under the permanent still one behind the other.</summary>
@@ -844,7 +870,7 @@ public partial class PlayerArea : Control
         _liftedGroup = null;
         if (wasLifted) GroupLiftChanged?.Invoke(null);
         _hoveredInGroup = null;
-        SortByDrawOrder();
+        SortLater();
     }
 
     /// <summary>How much of a card behind another shows above it: its title.</summary>

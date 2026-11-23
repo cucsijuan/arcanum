@@ -11,12 +11,13 @@ namespace Arcanum.Data.CardData;
 public sealed class CardEntry
 {
     private readonly Lazy<CardDefinition> _definition;
+    private readonly Lazy<CardSupport> _support;
 
     public CardEntry(CardDefinition definition, CardSupport support, CardRecord record)
     {
         _definition = new Lazy<CardDefinition>(definition);
+        _support = new Lazy<CardSupport>(support);
         Name = definition.Name;
-        Support = support;
         Record = record;
     }
 
@@ -24,13 +25,24 @@ public sealed class CardEntry
     internal CardEntry(string name, Func<CardDefinition> definition, CardSupport support, CardRecord record)
     {
         _definition = new Lazy<CardDefinition>(definition, LazyThreadSafetyMode.ExecutionAndPublication);
+        _support = new Lazy<CardSupport>(support);
         Name = name;
-        Support = support;
+        Record = record;
+    }
+
+    /// <summary>An entry whose definition and support are both made when first asked for.</summary>
+    /// <param name="name">The definition's name (<see cref="CardFactory.NameOf"/>).</param>
+    internal CardEntry(string name, Func<(CardDefinition Definition, CardSupport Support)> make, CardRecord record)
+    {
+        var made = new Lazy<(CardDefinition Definition, CardSupport Support)>(make, LazyThreadSafetyMode.ExecutionAndPublication);
+        _definition = new Lazy<CardDefinition>(() => made.Value.Definition, LazyThreadSafetyMode.ExecutionAndPublication);
+        _support = new Lazy<CardSupport>(() => made.Value.Support, LazyThreadSafetyMode.ExecutionAndPublication);
+        Name = name;
         Record = record;
     }
 
     public CardDefinition Definition => _definition.Value;
-    public CardSupport Support { get; }
+    public CardSupport Support => _support.Value;
     public CardRecord Record { get; }
     public string Name { get; }
     public int ManaValue => Definition.ManaCost.ManaValue;
@@ -116,9 +128,55 @@ public sealed class CardDatabase : ICardDatabase
             .ToList();
     }
 
+    /// <summary>
+    /// A database whose cards are made when first asked for, each with its definition and support (a search over all of
+    /// them, or <see cref="MakeDefinitionsAsync"/>, makes the rest): the same cards, lookups and order as
+    /// <see cref="CardDatabase(IEnumerable{CardRecord}, IReadOnlyDictionary{string, Scripts.CardScript}?, Action{int, int}?)"/>
+    /// builds, ready at once. Only the cards that meld are made now (their combined face is found from them).
+    /// </summary>
+    /// <param name="scriptFor">A card's script by oracle id (safe to call from any thread).</param>
+    public static CardDatabase MadeOnDemand(IReadOnlyList<CardRecord> records, Func<string, Scripts.CardScript?> scriptFor)
+    {
+        var byName = new Dictionary<string, CardEntry>(StringComparer.OrdinalIgnoreCase);
+        var tokensByName = new Dictionary<string, List<CardRecord>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var record in records)
+        {
+            if (record.IsToken)
+            {
+                if (!tokensByName.TryGetValue(record.Name, out var tokens)) tokensByName[record.Name] = tokens = new List<CardRecord>();
+                tokens.Add(record);
+                continue;
+            }
+            if (byName.ContainsKey(record.Name)) continue;
+            byName[record.Name] = new CardEntry(CardFactory.NameOf(record),
+                () => CardFactory.Create(record, scriptFor(record.OracleId)), record);
+        }
+        // Meld pairs (rule 712.4), as the constructor above makes them.
+        var meldResults = new HashSet<CardEntry>(ReferenceEqualityComparer.Instance);
+        foreach (var record in records.Where(r => r.Layout == "meld").ToList())
+        {
+            if (scriptFor(record.OracleId)?.MeldInto is not { } into) continue;
+            if (!byName.TryGetValue(record.Name, out var melder) || !byName.TryGetValue(into, out var result)) continue;
+            var back = result.Definition with { IsMeldResult = true };
+            var resultEntry = new CardEntry(back, result.Support, result.Record);
+            byName[result.Record.Name] = resultEntry;
+            meldResults.Add(resultEntry);
+            byName[record.Name] = new CardEntry(melder.Definition with { MeldResult = back }, melder.Support, melder.Record);
+        }
+        foreach (var entry in byName.Values.Where(e => e.Name != e.Record.Name).ToList())
+            byName.TryAdd(entry.Name, entry);
+        var sorted = byName.Values.Distinct().Where(e => !meldResults.Contains(e)).OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var sets = sorted.SelectMany(e => e.Record.Printings)
+            .GroupBy(p => p.Set, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new SetInfo(g.Key, g.First().SetName, g.Min(p => p.Released) ?? "", g.First().SetType, g.Count()))
+            .OrderByDescending(s => s.Released, StringComparer.Ordinal).ThenBy(s => s.Name, StringComparer.Ordinal)
+            .ToList();
+        return new CardDatabase(byName, sorted, tokensByName, sets, null, null);
+    }
+
     /// <summary>A database put back together from <see cref="CardCache"/>, whose entries make their definitions when first asked.</summary>
     internal CardDatabase(Dictionary<string, CardEntry> byName, List<CardEntry> sorted, Dictionary<string, List<CardRecord>> tokensByName,
-        IReadOnlyList<SetInfo> sets, IReadOnlyList<string> nonbasicLandNames, IReadOnlyList<string> creatureCardNames)
+        IReadOnlyList<SetInfo> sets, IReadOnlyList<string>? nonbasicLandNames, IReadOnlyList<string>? creatureCardNames)
     {
         _byName = byName;
         _sorted = sorted;
@@ -141,18 +199,29 @@ public sealed class CardDatabase : ICardDatabase
     /// It uses at most half the processors, so the game around it stays responsive: on a device with few of them
     /// (a handheld console), one thread of the lowest priority does it.
     /// </remarks>
-    public Task MakeDefinitionsAsync(CancellationToken cancel = default)
+    public Task MakeDefinitionsAsync(CancellationToken cancel = default) => MakeDefinitionsAsync(Environment.ProcessorCount / 2, null, cancel);
+
+    /// <summary>
+    /// Makes every card's definition not made yet on <paramref name="workers"/> threads (one: a single thread of the
+    /// lowest priority), reporting how many of them are done out of how many.
+    /// </summary>
+    public Task MakeDefinitionsAsync(int workers, Action<int, int>? progress, CancellationToken cancel = default)
     {
         var entries = _byName.Values.Distinct().Where(e => !e.IsMade).ToList();
-        int workers = Environment.ProcessorCount / 2;
+        int done = 0;
+        void Made()
+        {
+            int now = Interlocked.Increment(ref done);
+            if (now % 200 == 0 || now == entries.Count) progress?.Invoke(now, entries.Count);
+        }
         if (workers > 1)
             return Task.Run(() =>
             {
                 var options = new ParallelOptions { CancellationToken = cancel, MaxDegreeOfParallelism = workers };
-                try { Parallel.ForEach(entries, options, entry => _ = entry.Definition); }
+                try { Parallel.ForEach(entries, options, entry => { _ = entry.Definition; _ = entry.Support; Made(); }); }
                 catch (OperationCanceledException) { }
             }, CancellationToken.None);
-        var done = new TaskCompletionSource();
+        var finished = new TaskCompletionSource();
         var thread = new Thread(() =>
         {
             try
@@ -161,15 +230,17 @@ public sealed class CardDatabase : ICardDatabase
                 {
                     if (cancel.IsCancellationRequested) break;
                     _ = entry.Definition;
+                    _ = entry.Support;
+                    Made();
                 }
-                done.SetResult();
+                finished.SetResult();
             }
-            catch (Exception e) { done.SetException(e); } // as the pool's version: the task faults, the game goes on
+            catch (Exception e) { finished.SetException(e); } // as the pool's version: the task faults, the game goes on
         }) { IsBackground = true, Name = "Card definitions" };
         try { thread.Priority = ThreadPriority.Lowest; }
         catch (Exception e) when (e is PlatformNotSupportedException or ThreadStateException) { }
         thread.Start();
-        return done.Task;
+        return finished.Task;
     }
 
     /// <summary>Every set any known card was printed in, newest first.</summary>

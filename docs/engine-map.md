@@ -12,6 +12,7 @@ Where things live in the rules engine and how a new mechanic goes in. The script
 | `src/Arcanum.Bots` | The computer players (`BotController`). |
 | `scripts/` | The Godot client (UI, board, menus). |
 | `tools/SupportDump` | Lists which cards are fully supported and why not (`support.tsv`, `why.tsv`). |
+| `tools/PrepareCardData` | Makes a module's `card-data.bin` from the sources in its `sources.json` (`dotnet run --project tools/PrepareCardData -- <module folder> <output folder>`). The module's release workflow runs it. |
 | `tests/Arcanum.Engine.Tests` | Rules tests with invented cards (`Scenario`, `TestController`). |
 | `tests/Arcanum.Data.Tests` | Parsing, vocabulary, decks, boosters and the whole-set game soak (`SetGamesTests`). |
 
@@ -25,7 +26,9 @@ The game knows no module by name. It finds a module by its folder (one with `man
 |-------|-------|
 | Choosing the module folder (`FindModuleDirectory`): `ARCANUM_MODULE_PATH`, then in editor runs a sibling folder of the project, then the installed modules, the one installed last first | `scripts/Client/ContentLoader.cs` |
 | Module zips next to the game: `*.zip` files in the executable's folder that hold a module not installed, or newer than the installed one, and not declined at that version (`Settings.DeclinedModuleZips`). Offered on the first screen and installed before the cards load. Skipped in editor runs and with `ARCANUM_MODULE_PATH` | `scripts/Client/ModuleZips.cs`, `App.OfferModuleZipsAsync` (`scripts/Client/App.cs`) |
-| Reading a zip's manifest without extracting it (`ModuleInstaller.PeekManifest`); installing a zip (`InstallFromZip`), which sets the installed manifest's time to the install time | `src/Arcanum.Data/Modules/ModuleInstaller.cs` |
+| Reading a zip's manifest without extracting it (`ModuleInstaller.PeekManifest`); installing a zip (`InstallFromZip`), which sets the installed manifest's time to the install time. Files other than `scripts/` are extracted; the zip is copied whole as `scripts.zip`, and card scripts are read from it. `ModuleInstaller.BringsCardData` tells whether the zip holds `card-data.bin` (the install dialogs use it) | `src/Arcanum.Data/Modules/ModuleInstaller.cs` |
+| A module's card scripts: `scripts/*.json` in a folder, else the entries of `scripts.zip` (`ContentModule.ScriptFiles`). `ScriptReader()` parses one card's script when that card is asked for; nothing is unpacked at start | `src/Arcanum.Data/Modules/ContentModule.cs` |
+| Card data a zip brings already made (`card-data.bin`, `OracleJsonl.PreparedFileName`): the card records in the card cache's binary encoding (`CardCache.WriteRecords`, `ReadRecords`, `IsRecordsFile`), under the import-rules version `OracleJsonl.CompactFormat`. Made by `tools/PrepareCardData` (`OracleJsonl.Prepare`, then `ReadCompact`) | `src/Arcanum.Data/CardData/OracleJsonl.cs`, `src/Arcanum.Data/CardData/CardCache.cs` |
 | `manifest.json` fields (`ModuleManifest`, `ContentModule.ReadManifest`), including the optional `updates` | `src/Arcanum.Data/Modules/ContentModule.cs` |
 | Update checks: the game's newest release (`NewerGameAsync`), and the installed module's newest release at its `updates` URL (`NewerModuleAsync`; no `updates` field, no check). Both read a "latest release" document in GitHub's releases API format | `scripts/Client/Updater.cs` |
 
@@ -37,7 +40,13 @@ The game knows no module by name. It finds a module by its folder (one with `man
    isn't fully supported. Keywords a script must spell out are in `ScriptedKeywords`; derived ones in `SupportedKeywords`. Flavor and
    ability words before " — " are labels and are stripped before keywords are derived.
 3. `CardDatabase` (`CardData/CardDatabase.cs`) holds every card by name, links pairs that need each other (meld), and lists what can
-   be searched, collected and built with. The client gets it from the card cache when there is one (see below).
+   be searched, collected and built with. The client gets it from the card cache when the cache matches, and otherwise builds it
+   with `CardDatabase.MadeOnDemand` (see below).
+
+`ContentLoader` (`scripts/Client/ContentLoader.cs`) picks the card file: the module's `card-data.bin` when it is there and
+readable (used where it is, nothing downloaded or read as text), else the compact file `cards.v14-<module version>.jsonl.gz`
+under `user://card_data/<module id>/`. A missing compact file is made from the source's downloaded card and printing files
+(`PrepareFromSourceAsync`). A module checkout normally has no `card-data.bin` and takes this path.
 
 ## Card cache
 
@@ -47,11 +56,14 @@ adventurer first-face aliases, the sorted order, tokens by name, meld links), ea
 nonbasic-land and creature name lists. Definitions are not stored.
 
 - **Key** (`CardCache.Key`): a cache is used only when the format, the builds of `Arcanum.Data` and `Arcanum.Engine` (their module
-  version ids), the compact card file (name, size, last write) and every `scripts/*.json` file (name, size, last write; contents instead of last write where every file has the same time, as
+  version ids), the card file it is read with (`card-data.bin` or the compact card file: name, size, last write) and every `scripts/*.json` file (name, size, last write; contents instead of last write where every file has the same time, as
   in a read-only image stamped with its mount time) match the
   ones it was written from. Any change makes the cache read as missing.
-- **Rebuild** (`ContentLoader`, `scripts/Client/ContentLoader.cs`): a missing cache makes every card, shows "Preparing cards (once
-  after an install or update)… N%", writes the cache and deletes older `cards*.cache` files. Writing goes through a temporary file.
+- **Rebuild** (`ContentLoader`, `scripts/Client/ContentLoader.cs`): a missing or unmatched cache makes the database with
+  `CardDatabase.MadeOnDemand`, which is ready at once. Each card's definition and support are made when first asked for.
+  `CardFactory.NameOf` gives a card's name without making it, so the start doesn't wait for the cards; only meld cards are made
+  at once. When every card is made, the cache is written (through a temporary file) and older `cards*.cache` files are deleted.
+  A database read from the cache is not written again.
 - **Lazy definitions**: a `CardEntry` read from the cache makes its `Definition` the first time it is asked for (once, thread-safe).
   `CardDatabase.MakeDefinitionsAsync` makes the rest on the thread pool after loading. `ContentModule.ScriptReader()` parses one
   card's script by oracle id for this; it gives the same result as `ContentModule.LoadScripts`.
@@ -458,5 +470,6 @@ service seals a career's checked actions, and online career events run through i
    The real card data comes from `ARCANUM_CARD_FILE` when it is set (optional). Otherwise the checks use the card data the game
    downloaded and converted for the module's current version, `user://card_data/<module id>/cards.v*-<module version>.jsonl.gz`
    (on Linux, `~/.local/share/godot/app_userdata/Arcanum/card_data/<module id>/`). Start the game once with that module version
-   to create it. Without card data, the set and commander soaks fail with a message saying so; the booster and script coverage
+   to create it. A device that installed a module zip with `card-data.bin` keeps no such file, so the checks find none there.
+   Without card data, the set and commander soaks fail with a message saying so; the booster and script coverage
    checks skip.

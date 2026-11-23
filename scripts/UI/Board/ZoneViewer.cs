@@ -96,6 +96,10 @@ public partial class ZoneViewer : PanelContainer
     /// <param name="usable">Cards that do something when clicked now (highlighted).</param>
     /// <param name="selected">Cards already chosen in the current choice.</param>
     /// <param name="closeText">The close button's text ("Back" while picking among several piles).</param>
+    /// <summary>The shown card with this id, if it's shown.</summary>
+    public CardNode? FindCard(CardId id) =>
+        Visible ? _grid.GetChildren().OfType<CardNode>().FirstOrDefault(n => !n.IsQueuedForDeletion() && n.Id == id) : null;
+
     public void Refresh(GameView view, Func<CardId, bool> usable, Func<CardId, bool> selected, string closeText = "Close")
     {
         if (!Visible) return;
@@ -135,6 +139,7 @@ public partial class ZoneViewer : PanelContainer
             var node = new CardNode { CustomMinimumSize = CardSize, Size = CardSize };
             node.Setup(view1, showCostPips: false);
             node.SetHighlight(selected(view1.Id) ? CardHighlight.Selected : usable(view1.Id) ? CardHighlight.Playable : CardHighlight.None);
+            Arcanum.UI.PadFocus.Reachable(node); // a controller's arrows reach the cards to pick
             node.Clicked += n => CardClicked?.Invoke(n);
             node.HoverStarted += n => CardHoverStarted?.Invoke(n);
             node.HoverEnded += n => CardHoverEnded?.Invoke(n);

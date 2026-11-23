@@ -63,6 +63,12 @@ public partial class CardNode : Control
 
     public bool IsHovered { get; private set; }
 
+    /// <summary>Focused with a controller's arrows: pointed at, like a card under the mouse.</summary>
+    public bool IsPadFocused { get; private set; }
+
+    /// <summary>Under the mouse or focused with a controller's arrows (a card in the hand rises to the front).</summary>
+    public bool IsPointedAt => IsHovered || IsPadFocused;
+
     /// <summary>Running move/rotate animation, killed when a new layout starts.</summary>
     public Tween? LayoutTween { get; set; }
 
@@ -198,8 +204,17 @@ public partial class CardNode : Control
         MouseEntered += () => { IsHovered = true; ShineFoil(true); HoverStarted?.Invoke(this); };
         MouseExited += () => { IsHovered = false; ShineFoil(false); HoverEnded?.Invoke(this); };
         // Reached with a controller's arrows (a screen of cards to pick): focused is pointed at.
-        FocusEntered += () => { if (PadFocus.UsingButtons) HoverStarted?.Invoke(this); };
-        FocusExited += () => { if (!IsHovered) HoverEnded?.Invoke(this); };
+        FocusEntered += () =>
+        {
+            if (!PadFocus.UsingButtons) return;
+            IsPadFocused = true;
+            HoverStarted?.Invoke(this);
+        };
+        FocusExited += () =>
+        {
+            IsPadFocused = false;
+            if (!IsHovered) HoverEnded?.Invoke(this);
+        };
         Resized += ApplySize;
     }
 

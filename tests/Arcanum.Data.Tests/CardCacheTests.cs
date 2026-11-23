@@ -135,6 +135,99 @@ public class CardCacheTests : IDisposable
     }
 
     [Fact]
+    public void ADatabaseMadeOnDemandIsTheOneMadeAtOnce()
+    {
+        var scripts = new Dictionary<string, CardScript>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["o-melder-a"] = CardScriptParser.Parse("""{ "meldInto": "Combined Titan" }"""),
+            ["o-melder-b"] = CardScriptParser.Parse("""{ "meldInto": "Combined Titan" }"""),
+        };
+        var records = new List<CardRecord>
+        {
+            new() { OracleId = "o-bear", Name = "Plain Bear", Layout = "normal", ManaCost = "{1}{G}", TypeLine = "Creature — Bear", Power = "2", Toughness = "2", Colors = new[] { "G" } },
+            new() { OracleId = "o-land", Name = "Odd Land", Layout = "normal", TypeLine = "Land", OracleText = "{T}: Add {C}." },
+            new() { OracleId = "o-melder-a", Name = "Melder A", Layout = "meld", ManaCost = "{4}", TypeLine = "Artifact Creature — Golem", Power = "3", Toughness = "3" },
+            new() { OracleId = "o-melder-b", Name = "Melder B", Layout = "meld", ManaCost = "{5}", TypeLine = "Artifact Creature — Golem", Power = "4", Toughness = "4" },
+            new() { OracleId = "o-combined", Name = "Combined Titan", Layout = "meld", TypeLine = "Artifact Creature — Golem", Power = "9", Toughness = "9" },
+            FullRecord with { IsToken = false },
+            new()
+            {
+                OracleId = "o-flip", Name = "Night Watcher // Day Hunter", Layout = "transform", ManaCost = "{2}{B}", TypeLine = "Creature — Human // Creature — Horror",
+                Faces = new[]
+                {
+                    new CardFaceRecord("Night Watcher", "{2}{B}", "Creature — Human", "", "2", "2"),
+                    new CardFaceRecord("Day Hunter", "", "Creature — Horror", "", "4", "4") { Colors = new[] { "B" } },
+                },
+            },
+            new()
+            {
+                OracleId = "o-modal", Name = "Spring Path // Autumn Path", Layout = "modal_dfc", ManaCost = "{1}{G}", TypeLine = "Sorcery // Land",
+                Faces = new[]
+                {
+                    new CardFaceRecord("Spring Path", "{1}{G}", "Sorcery", "Draw a card.", null, null),
+                    new CardFaceRecord("Autumn Path", "", "Land", "{T}: Add {G}.", null, null),
+                },
+            },
+            new()
+            {
+                OracleId = "o-split", Name = "Left Half // Right Half", Layout = "split", ManaCost = "{R} // {U}", TypeLine = "Instant // Instant",
+                Faces = new[]
+                {
+                    new CardFaceRecord("Left Half", "{R}", "Instant", "Draw a card.", null, null),
+                    new CardFaceRecord("Right Half", "{U}", "Instant", "Draw a card.", null, null),
+                },
+            },
+            new() { OracleId = "o-bear", Name = "Plain Bear", Layout = "normal", TypeLine = "Creature — Bear" }, // a second record with a known name is skipped
+            new() { OracleId = "o-tok", Name = "Spirit", Layout = "token", TypeLine = "Token Creature — Spirit", IsToken = true },
+        };
+        var eager = new CardDatabase(records, scripts);
+        var onDemand = CardDatabase.MadeOnDemand(records, id => scripts.GetValueOrDefault(id));
+
+        Assert.False(onDemand.Find("Plain Bear")!.IsMade);
+        Assert.Equal(eager.ByName.Keys, onDemand.ByName.Keys);
+        Assert.Equal(eager.Sorted.Select(e => e.Name), onDemand.Sorted.Select(e => e.Name));
+        Assert.Equal(eager.Sets, onDemand.Sets);
+        Assert.Equal(eager.TokensByName.Keys, onDemand.TokensByName.Keys);
+        foreach (var (name, entry) in eager.ByName)
+        {
+            var other = onDemand.ByName[name];
+            Assert.Equal(entry.Name, other.Name);
+            Assert.Equal(entry.Support, other.Support);
+            Assert.Equal(Summary(entry.Definition), Summary(other.Definition));
+        }
+        Assert.Equal(eager.NonbasicLandNames, onDemand.NonbasicLandNames);
+        Assert.Equal(eager.CreatureCardNames, onDemand.CreatureCardNames);
+        Assert.Equal(eager.Names, onDemand.Names);
+        foreach (var record in records.Where(r => !r.IsToken))
+            Assert.Equal(CardFactory.Create(record, scripts.GetValueOrDefault(record.OracleId)).Definition.Name, CardFactory.NameOf(record));
+
+        // Kept once made, it reads back as the one made at once does.
+        var cached = RoundTrip(onDemand, id => scripts.GetValueOrDefault(id));
+        Assert.Equal(eager.Sorted.Select(e => e.Name), cached.Sorted.Select(e => e.Name));
+        Assert.Same(cached.Find("Combined Titan")!.Definition, cached.Find("Melder A")!.Definition.MeldResult);
+    }
+
+    [Fact]
+    public void RecordsAloneAreWrittenAndReadBack()
+    {
+        var token = FullRecord with { OracleId = "o-token", Name = "Spirit", Layout = "token", Faces = Array.Empty<CardFaceRecord>() };
+        var records = new List<CardRecord> { FullRecord with { IsToken = false }, token };
+        var path = Path.Combine(_dir, OracleJsonl.PreparedFileName);
+        using (var output = File.Create(path)) CardCache.WriteRecords(records, output);
+        Assert.True(CardCache.IsRecordsFile(path));
+        Assert.Equal(records.Select(Json), CardCache.ReadRecords(path)!.Select(Json));
+
+        // A card cache isn't a records file, and a damaged one reads as missing.
+        var cache = Path.Combine(_dir, "cards.cache");
+        CardCache.Write(new CardDatabase(records), cache, "key-1");
+        Assert.False(CardCache.IsRecordsFile(cache));
+        Assert.Null(CardCache.ReadRecords(cache));
+        File.WriteAllBytes(path, File.ReadAllBytes(path)[..^3]);
+        Assert.Null(CardCache.ReadRecords(path));
+        Assert.Null(CardCache.ReadRecords(Path.Combine(_dir, "none.bin")));
+    }
+
+    [Fact]
     public void AnotherKeyOrADamagedFileReadsAsMissing()
     {
         var cards = new CardDatabase(new[] { new CardRecord { OracleId = "o", Name = "Plain Bear", Layout = "normal", TypeLine = "Creature — Bear" } });
@@ -226,6 +319,25 @@ public class CardCacheTests : IDisposable
         }
         foreach (var (name, tokens) in eager.TokensByName)
             Assert.Equal(tokens.Select(Json), cached.TokensByName[name].Select(Json));
+
+        // The records as a module brings them, and the database made from them on demand.
+        var prepared = Path.Combine(_dir, OracleJsonl.PreparedFileName);
+        using (var output = File.Create(prepared)) CardCache.WriteRecords(records, output);
+        var onDemand = CardDatabase.MadeOnDemand(CardCache.ReadRecords(prepared)!, module.ScriptReader());
+        Assert.Equal(eager.ByName.Keys, onDemand.ByName.Keys);
+        Assert.Equal(eager.Sorted.Select(e => e.Name), onDemand.Sorted.Select(e => e.Name));
+        Assert.Equal(eager.Sets, onDemand.Sets);
+        onDemand.MakeDefinitionsAsync().Wait();
+        foreach (var (name, entry) in eager.ByName)
+        {
+            var other = onDemand.ByName[name];
+            Assert.Equal(Json(entry.Record), Json(other.Record));
+            Assert.Equal(entry.Name, other.Name);
+            Assert.Equal(entry.Support, other.Support);
+            Assert.Equal(Summary(entry.Definition), Summary(other.Definition));
+        }
+        Assert.Equal(eager.NonbasicLandNames, onDemand.NonbasicLandNames);
+        Assert.Equal(eager.CreatureCardNames, onDemand.CreatureCardNames);
     }
 
     private CardDatabase RoundTrip(CardDatabase cards, Func<string, CardScript?> scriptFor)
