@@ -92,6 +92,8 @@ public sealed record CardView
     public string? AdventureName { get; init; }
     public string? AdventureCost { get; init; }
     public string? AdventureText { get; init; }
+    /// <summary>What the alternative spell is called on the card ("Adventure", "Omen").</summary>
+    public string? AdventureKind { get; init; }
 
     /// <summary>In exile after its Adventure: its owner may cast it from there.</summary>
     public bool OnAdventure { get; init; }

@@ -566,11 +566,8 @@ public sealed partial class Game
         }
         if (picked.Count == 0) return (cost, choices);
         var paid = ConvokePays(cost, picked);
-        foreach (var creature in paid.Used)
-        {
-            Tap(creature);
-            card.Convokers.Add((creature.Id, creature.Version));
-        }
+        // Tapped by the caller once the rest of the cost is paid.
+        foreach (var creature in paid.Used) card.Convokers.Add((creature.Id, creature.Version));
         Emit(new ChoiceMade(card.Id, $"convoked with {string.Join(", ", paid.Used.Select(c => c.Name))}"));
         return (paid.Remaining, choices with { Convoked = paid.Used.Select(c => c.Id).ToList() });
     }

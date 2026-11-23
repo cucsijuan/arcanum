@@ -1339,7 +1339,7 @@ public partial class GameBoard : Control
                         PlayLand { Back: true } => $"Play {card?.OtherFace?.Name}",
                         PlayLand => $"Play {card?.Name}",
                         CastSpell { Back: true } => $"Cast {card?.OtherFace?.Name} {card?.OtherFace?.ManaCost}",
-                        CastSpell { Adventure: true } => $"Adventure: {card?.AdventureName} {card?.AdventureCost}",
+                        CastSpell { Adventure: true } => $"{card?.AdventureKind ?? "Adventure"}: {card?.AdventureName} {card?.AdventureCost}",
                         CastSpell { Half: { } half } when card?.SplitHalves is { } halves && half < halves.Count => $"Cast {halves[half]}",
                         CastSpell { Half: Arcanum.Engine.Cards.CardDefinition.FusedHalves } when card?.SplitHalves is { Count: 2 } both => $"Fuse: cast {both[0]} and {both[1]}",
                         CastSpell => $"Cast {card?.Name}",
@@ -1579,7 +1579,7 @@ public partial class GameBoard : Control
                         CastSpell { Back: true } c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Graveyard or Arcanum.Engine.State.Zone.Exile } g
                             => (c.Card, $"Cast {g.OtherFace?.Name} ({(g.Zone == Arcanum.Engine.State.Zone.Exile ? "exile" : "graveyard")})"),
                         CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Graveyard } g => (c.Card, $"Flashback {g.Name}"),
-                        CastSpell { Adventure: true } c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (c.Card, $"Adventure: {x.AdventureName} (exile)"),
+                        CastSpell { Adventure: true } c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (c.Card, $"{x.AdventureKind ?? "Adventure"}: {x.AdventureName} (exile)"),
                         CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile, PreparedSpellOf: { } on } x
                             => (c.Card, $"Prepared: {x.Name} {x.ManaCost} ({view.FindCard(on)?.Name})"),
                         CastSpell c when view.FindCard(c.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (c.Card, $"Cast {x.Name} (exile)"),

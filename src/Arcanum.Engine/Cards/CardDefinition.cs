@@ -1031,6 +1031,12 @@ public sealed partial record CardDefinition
     public CardDefinition? Adventure { get; init; }
 
     /// <summary>
+    /// The spell subtype of the alternative spell above as players call it: "Omen" for an Omen card (shuffled into its owner's
+    /// library as it resolves), otherwise "Adventure".
+    /// </summary>
+    public string AlternativeSpellKind => Adventure?.Subtypes.Contains("Omen") == true ? "Omen" : "Adventure";
+
+    /// <summary>
     /// For a preparation card: its prepare spell, an alternative set of characteristics that is never cast from the card itself (the card
     /// is a creature card in every zone). While the creature is prepared, a copy of this spell waits in exile and the creature's
     /// controller may cast it ("While it's prepared, you may cast a copy of its spell. Doing so unprepares it.").

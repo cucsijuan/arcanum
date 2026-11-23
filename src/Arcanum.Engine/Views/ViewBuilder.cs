@@ -186,6 +186,7 @@ public static class ViewBuilder
             AdventureName = card.PrintedDefinition.Adventure?.Name,
             AdventureCost = card.PrintedDefinition.Adventure?.ManaCost.ToString(),
             AdventureText = card.PrintedDefinition.Adventure?.OracleText,
+            AdventureKind = card.PrintedDefinition.Adventure is null ? null : card.PrintedDefinition.AlternativeSpellKind,
             OnAdventure = card.OnAdventure,
             PrepareName = card.Definition.PrepareSpell?.Name,
             PrepareCost = card.Definition.PrepareSpell?.ManaCost.ToString(),

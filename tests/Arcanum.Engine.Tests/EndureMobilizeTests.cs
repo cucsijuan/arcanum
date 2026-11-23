@@ -161,6 +161,29 @@ public class EndureMobilizeTests
     }
 
     [Fact]
+    public async Task CancellingTheManaPaymentLeavesTheHarmonizeCreatureUntapped()
+    {
+        var s = new Scenario();
+        s.Lands(P0, 2);
+        var song = HarmonizeInGraveyard(s);
+        var ox = s.Add(P0, Creature("Ox", 3, 3));
+        bool tried = false, paying = false;
+        s.Attacker.Act = (_, legal) =>
+        {
+            if (!tried && legal.OfType<CastSpell>().FirstOrDefault(c => c.Card == song) is { } a) { tried = true; return a; }
+            return PassPriority.Instance;
+        };
+        s.Attacker.Attack = (_, _, _) => Array.Empty<AttackDeclaration>();
+        s.Attacker.Choose = (_, request) => request.Options.Any(o => o.Id == ox) ? new[] { ox } : request.Options.Take(request.Min).Select(o => o.Id).ToList();
+        s.Attacker.Pay = (_, _) => { paying = true; Assert.False(s.Card(ox).Tapped); return null; };
+        await s.RunUntilTurn();
+        Assert.True(paying);
+        Assert.False(s.Card(ox).Tapped);
+        Assert.Equal(Zone.Graveyard, s.Card(song).Zone);
+        Assert.Equal(20, s.Game.State.GetPlayer(P0).Life);
+    }
+
+    [Fact]
     public async Task HarmonizeTappingIsOptionalAndTooLittleManaMeansItCantBeCast()
     {
         var s = new Scenario();

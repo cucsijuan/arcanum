@@ -886,7 +886,7 @@ public sealed partial class Game
 
     private string Describe(PlayerAction action) => action switch
     {
-        CastSpell c => $"cast {State.GetCard(c.Card).Name}{(c.Adventure ? " (adventure)" : "")}{(c.Half is { } half ? half == CardDefinition.FusedHalves ? " (fused)" : $" (half {half})" : "")}{(c.Back ? " (back face)" : "")}",
+        CastSpell c => $"cast {State.GetCard(c.Card).Name}{(c.Adventure ? $" ({State.GetCard(c.Card).PrintedDefinition.AlternativeSpellKind.ToLowerInvariant()})" : "")}{(c.Half is { } half ? half == CardDefinition.FusedHalves ? " (fused)" : $" (half {half})" : "")}{(c.Back ? " (back face)" : "")}",
         ActivateAbility a => $"activate {State.GetCard(a.Source).Name} #{a.Index}",
         _ => action.ToString() ?? "",
     };
@@ -1312,7 +1312,10 @@ public sealed partial class Game
                 cost = cost.MinusGeneric(delved.Count);
             }
         }
-        if (choices.HarmonizeTapped is { } harmonizer) Tap(State.GetCard(harmonizer));
+        // What harmonize, improvise and convoke tap is chosen now and kept out of the mana payment, but only tapped once the mana is
+        // paid: backing out of the payment leaves them untapped, like the lands.
+        var tapAfterMana = new List<Card>();
+        if (choices.HarmonizeTapped is { } harmonizer) tapAfterMana.Add(State.GetCard(harmonizer));
         // Improvise (702.126): each artifact tapped while paying pays for {1}.
         if (HasImprovise(card, player.Id) && cost.Generic > 0)
         {
@@ -1336,18 +1339,27 @@ public sealed partial class Game
                     if (attempt >= 2) { picked = artifacts.Take(least).Select(a => a.Id).ToList(); break; }
                 }
                 choices = choices with { Improvised = picked.ToList() };
-                foreach (var id in picked) Tap(State.GetCard(id));
+                tapAfterMana.AddRange(picked.Select(State.GetCard));
                 cost = cost.MinusGeneric(picked.Count);
             }
         }
         card.Convokers = new();
-        if (HasConvoke(card, player.Id) && cost.ManaValue > 0) (cost, choices) = await ConvokeAsync(player.Id, card, choices, cost);
+        if (HasConvoke(card, player.Id) && cost.ManaValue > 0)
+        {
+            (cost, choices) = await ConvokeAsync(player.Id, card, choices, cost);
+            tapAfterMana.AddRange(choices.Convoked.Select(State.GetCard));
+        }
         // What an additional cost will tap stays untapped while the mana is paid.
         var spellUsable = SpellManaUsable(card, player.Id, choices);
         var keptForTap = TapCostReserveFor(card, player.Id, choices, cost) ?? new HashSet<CardId>();
         var paidMana = await PayManaTapsAsync(player, cardId, cost, exclude: null,
             keptForTap.Count == 0 ? spellUsable : (s, o) => !keptForTap.Contains(s.Id) && spellUsable(s, o), UnitUsableFor(card, isAbility: false, costHasX: card.Definition.ManaCost.XCount > 0));
-        if (paidMana is null) return false;
+        if (paidMana is null)
+        {
+            card.Convokers = new();
+            return false;
+        }
+        foreach (var tapped in tapAfterMana) Tap(tapped);
         // Compleated (702.150a): two fewer loyalty counters for each of its own Phyrexian symbols paid with life. Symbols only made
         // Phyrexian by another effect take the life first: the payer says which symbol each payment is for (601.2h).
         int ownPhyrexian = choices.Way.Kind == CastingWayKind.ManaCost && card.Definition.Keywords.Contains("Compleated", StringComparer.OrdinalIgnoreCase)
