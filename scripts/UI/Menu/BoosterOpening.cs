@@ -62,6 +62,9 @@ public partial class BoosterOpening : Control
     private readonly Label _hint = BoardStyle.MakeLabel("Swipe across the line to open your booster", 20, BoardStyle.Text);
 
     private double _elapsed;
+
+    /// <summary>A pointer moved over the booster since it opened (without one the pack faces front).</summary>
+    private bool _pointerMoved;
     private bool _dragging, _autoCutting, _torn;
     private float _cutFrom = -1, _cutTo = -1;
     private int _direction = 1;
@@ -174,10 +177,13 @@ public partial class BoosterOpening : Control
         _elapsed += delta;
         if (!_torn)
         {
-            // The pack leans toward the pointer and breathes a little.
-            var mouse = GetLocalMousePosition() / Size - new Vector2(0.5f, 0.5f);
-            var target = new Vector3(Mathf.Clamp(mouse.Y, -0.5f, 0.5f) * 0.25f + 0.03f * Mathf.Sin((float)_elapsed * 1.3f),
-                Mathf.Clamp(mouse.X, -0.5f, 0.5f) * 0.4f, 0);
+            // The pack leans toward the pointer (or the way the left stick is pushed, when the controller was used last
+            // or no pointer has moved: a pointer never moved sits in a corner) and breathes a little.
+            var lean = _pointerMoved && !PadFocus.UsingButtons
+                ? GetLocalMousePosition() / Size - new Vector2(0.5f, 0.5f)
+                : Input.GetVector("ui_left", "ui_right", "ui_up", "ui_down") * 0.5f;
+            var target = new Vector3(Mathf.Clamp(lean.Y, -0.5f, 0.5f) * 0.25f + 0.03f * Mathf.Sin((float)_elapsed * 1.3f),
+                Mathf.Clamp(lean.X, -0.5f, 0.5f) * 0.4f, 0);
             _pack.Rotation = _pack.Rotation.Lerp(target, (float)Math.Min(1, delta * 5));
 
             if (!_dragging && !_autoCutting && !WaitsForSwipe && _elapsed > (_automatic ? 0.9 : OpensAfter)) AutoCut();
@@ -200,6 +206,7 @@ public partial class BoosterOpening : Control
 
     public override void _GuiInput(InputEvent e)
     {
+        if (e is InputEventMouseMotion) _pointerMoved = true;
         if (_torn || _autoCutting) return;
         switch (e)
         {
