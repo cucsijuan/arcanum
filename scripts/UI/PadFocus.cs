@@ -61,8 +61,11 @@ public partial class PadFocus : CanvasLayer
     private readonly Control _ring = new() { MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
     private readonly StyleBoxFlat _ringBox = Ring(UiArt.Gold, 3, 8);
 
-    /// <summary>The career's screens: a thin gold line, like the edges of their tags and panels.</summary>
+    /// <summary>The career's screens: a thin gold line, like the edges of their tags and panels, between two brown ones
+    /// (so it also stands out on their pale paper).</summary>
     private readonly StyleBoxFlat _careerRing = Ring(Career.CareerStyle.Gold, 2, 6);
+
+    private readonly StyleBoxFlat _careerRingEdge = Ring(Career.CareerStyle.PaperEdge, 5, 7);
 
     private StyleBoxFlat _ringShown = null!;
 
@@ -79,7 +82,12 @@ public partial class PadFocus : CanvasLayer
         Layer = 127; // over every screen, under the stick's pointer
         ProcessMode = ProcessModeEnum.Always;
         _ringShown = _ringBox;
-        _ring.Draw += () => _ring.DrawStyleBox(_ringShown, new Rect2(Vector2.Zero, _ring.Size));
+        _ring.Draw += () =>
+        {
+            var rect = new Rect2(Vector2.Zero, _ring.Size);
+            if (_ringShown == _careerRing) _ring.DrawStyleBox(_careerRingEdge, rect.Grow(2));
+            _ring.DrawStyleBox(_ringShown, rect);
+        };
         AddChild(_ring);
         GetViewport().GuiFocusChanged += focused =>
         {
@@ -87,6 +95,19 @@ public partial class PadFocus : CanvasLayer
             // focuses its own default answer, not one the arrows only went through on their way out.
             if (focused.HasMeta(PanelMeta) && focused is Button button) _lastText = button.Text;
             else if (focused.HasMeta(ReachMeta)) _lastText = null;
+            // A list's scroll bar isn't a choice: the arrows would scroll the list under an unmarked focus. It gives the
+            // focus up to the nearest choice and never takes it again.
+            if (focused is ScrollBar bar)
+            {
+                var at = Shown(bar);
+                bar.FocusMode = Control.FocusModeEnum.None; // (lets go of the focus at once)
+                Callable.From(() =>
+                {
+                    if (GetViewport().GuiGetFocusOwner() is not (null or ScrollBar)) return;
+                    if (Nearest(at) is { } choice) choice.GrabFocus();
+                    else GetViewport().GuiReleaseFocus();
+                }).CallDeferred();
+            }
         };
     }
 
@@ -202,16 +223,26 @@ public partial class PadFocus : CanvasLayer
         return first;
     }
 
-    private IEnumerable<Control> ScreenChoices(Node node)
+    // The walks below gather the controls at once, child by child (no engine array of children kept open while other
+    // code runs between steps: on the console that once read a stale array and crashed).
+    private List<Control> ScreenChoices(Node node)
     {
-        foreach (var child in node.GetChildren())
+        var found = new List<Control>();
+        AddScreenChoices(node, found);
+        return found;
+    }
+
+    private void AddScreenChoices(Node node, List<Control> found)
+    {
+        for (int i = 0; i < node.GetChildCount(); i++)
         {
+            var child = node.GetChild(i);
             if (child == this || child is VirtualPointer || child.IsQueuedForDeletion() || child is CanvasItem { Visible: false }
                 || child is CanvasLayer { Visible: false } || child.HasMeta(OwnMeta)) continue;
-            if (child is BaseButton button) yield return button;
+            if (child is BaseButton button) found.Add(button);
             else if (child is Control { MouseFilter: not Control.MouseFilterEnum.Ignore } pressable && (pressable.HasMeta(PressMeta) || pressable.HasMeta(ReachMeta)))
-                yield return pressable;
-            else foreach (var inner in ScreenChoices(child)) yield return inner;
+                found.Add(pressable);
+            else AddScreenChoices(child, found);
         }
     }
 
@@ -251,13 +282,21 @@ public partial class PadFocus : CanvasLayer
         control.HasMeta(PanelMeta) && control.GetMeta(PanelMeta).AsGodotObject() is Control panel && IsInstanceValid(panel)
         && panel.IsVisibleInTree() && control.IsVisibleInTree() ? panel : null;
 
-    private static IEnumerable<Control> Choices(Node node)
+    private static List<Control> Choices(Node node)
     {
-        foreach (var child in node.GetChildren())
+        var found = new List<Control>();
+        AddChoices(node, found);
+        return found;
+    }
+
+    private static void AddChoices(Node node, List<Control> found)
+    {
+        for (int i = 0; i < node.GetChildCount(); i++)
         {
+            var child = node.GetChild(i);
             if (child.IsQueuedForDeletion() || child is CanvasItem { Visible: false }) continue;
-            if (child is BaseButton button) yield return button;
-            else foreach (var inner in Choices(child)) yield return inner;
+            if (child is BaseButton button) found.Add(button);
+            else AddChoices(child, found);
         }
     }
 
@@ -272,6 +311,8 @@ public partial class PadFocus : CanvasLayer
                 // first direction or confirm only puts the focus on the panel's answer.
                 if (!IsNavigation(@event)) break;
                 var owner = GetViewport().GuiGetFocusOwner();
+                if (OS.GetEnvironment("ARCANUM_PAD_DEBUG") == "1")
+                    GD.Print($"PAD {@event.AsText()} owner={owner?.GetType().Name}:{owner?.Name} path={owner?.GetPath()} choice={owner?.HasMeta(ChoiceMeta)} screen={owner?.HasMeta(ScreenMeta)}");
                 if (owner is null)
                 {
                     bool offered = _preferred is { } preferred && IsInstanceValid(preferred) && preferred.IsVisibleInTree();
@@ -307,11 +348,12 @@ public partial class PadFocus : CanvasLayer
                 }
                 // Between the screen's controls the arrows go to the nearest one that way (cards overlapping in a
                 // stack included), unless a menu opened over the screen has them.
+                // With nothing that way the focus stays put (the engine's own navigation could send it to a control
+                // that isn't a choice, such as a picture under a page, and leave the arrows stuck there).
                 else if (owner is not null && owner.HasMeta(ScreenMeta) && DirectionOf(@event) is { } direction
-                    && !GetTree().Root.GetEmbeddedSubwindows().Any(w => w.Visible)
-                    && Neighbor(owner, direction, FocusTargets(GetTree().Root)) is { } next)
+                    && !GetTree().Root.GetEmbeddedSubwindows().Any(w => w.Visible))
                 {
-                    next.GrabFocus();
+                    Neighbor(owner, direction, FocusTargets(GetTree().Root))?.GrabFocus();
                     GetViewport().SetInputAsHandled();
                 }
                 break;
@@ -363,18 +405,26 @@ public partial class PadFocus : CanvasLayer
     }
 
     /// <summary>What the arrows may go to on screen: its buttons and cards, and the fields and sliders that take the focus.</summary>
-    private IEnumerable<Control> FocusTargets(Node node)
+    private List<Control> FocusTargets(Node node)
     {
-        foreach (var child in node.GetChildren())
+        var found = new List<Control>();
+        AddFocusTargets(node, found);
+        return found;
+    }
+
+    private void AddFocusTargets(Node node, List<Control> found)
+    {
+        for (int i = 0; i < node.GetChildCount(); i++)
         {
+            var child = node.GetChild(i);
             if (child == this || child is VirtualPointer || child.IsQueuedForDeletion() || child is CanvasItem { Visible: false }
                 || child is CanvasLayer { Visible: false } || child is Window || child.HasMeta(OwnMeta)) continue;
-            if (child is BaseButton button) yield return button;
+            if (child is BaseButton button) found.Add(button);
             else if (child is Control { MouseFilter: not Control.MouseFilterEnum.Ignore } pressable && (pressable.HasMeta(PressMeta) || pressable.HasMeta(ReachMeta)))
-                yield return pressable;
+                found.Add(pressable);
             else if (child is (Godot.Range and not ScrollBar) or LineEdit or TextEdit or ItemList or Tree && child is Control { FocusMode: Control.FocusModeEnum.All } field)
-                yield return field;
-            else foreach (var inner in FocusTargets(child)) yield return inner;
+                found.Add(field);
+            else AddFocusTargets(child, found);
         }
     }
 
@@ -382,6 +432,15 @@ public partial class PadFocus : CanvasLayer
     {
         for (Node? node = control; node is not null; node = node.GetParent())
             if (node is Control { Theme: { } theme } && (theme == Career.CareerStyle.Notes || theme == Career.CareerStyle.Web)) return true;
+        return false;
+    }
+
+    /// <summary>On the career's website: its theme is the nearest one (notes over the store's picture have their own, inside
+    /// a screen with the website's).</summary>
+    private static bool InWebsite(Control control)
+    {
+        for (Node? node = control; node is not null; node = node.GetParent())
+            if (node is Control { Theme: { } theme }) return theme == Career.CareerStyle.Web;
         return false;
     }
 
@@ -406,7 +465,9 @@ public partial class PadFocus : CanvasLayer
             Nearest(_lostAt)?.GrabFocus();
             return;
         }
-        bool show = UsingButtons && owner is not null && owner.HasMeta(ChoiceMeta) && owner.IsVisibleInTree();
+        // The career's website draws its own selection (a computer's highlight), so no ring there.
+        bool show = UsingButtons && owner is not null && owner.HasMeta(ChoiceMeta) && owner.IsVisibleInTree()
+                    && !(owner is BaseButton && InWebsite(owner));
         _ring.Visible = show;
         if (!show) return;
         // Inside a list scrolled by hand (the right stick, a finger) the focused answer may be partly or wholly out of

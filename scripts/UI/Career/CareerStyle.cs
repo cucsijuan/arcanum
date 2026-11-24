@@ -23,6 +23,9 @@ public static class CareerStyle
     public static readonly Color PaperEdge = new("6b4a2b");
     public static readonly Color Gold = new(1f, 0.82f, 0.42f);
 
+    /// <summary>The website's selection (the d-pad's choice): an old system's light highlight, outlined in the title bar's blue.</summary>
+    public static readonly Color Selection = new("c7d8ff");
+
     private static Font? _font;
     private static Theme? _web, _paper;
 
@@ -80,8 +83,32 @@ public static class CareerStyle
         return theme;
     }
 
-    /// <summary>The store's website: dark text on a light page, grey bevelled buttons.</summary>
-    public static Theme Web => _web ??= Make(Ink, new Color("d6d0c4"), Colors.White);
+    /// <summary>The store's website: dark text on a light page, grey bevelled buttons. The d-pad's choice shows as a
+    /// computer would show it (no gold ring): a button gets a blue focus line just inside its edge.</summary>
+    public static Theme Web => _web ??= WebTheme();
+
+    private static Theme WebTheme()
+    {
+        var theme = Make(Ink, new Color("d6d0c4"), Colors.White);
+        var focus = new StyleBoxFlat
+        {
+            DrawCenter = false, BorderColor = TitleBar,
+            BorderWidthLeft = 2, BorderWidthTop = 2, BorderWidthRight = 2, BorderWidthBottom = 2,
+            ExpandMarginLeft = -5, ExpandMarginTop = -5, ExpandMarginRight = -5, ExpandMarginBottom = -5,
+        };
+        foreach (var type in new[] { "Button", "OptionButton" }) theme.SetStylebox("focus", type, focus);
+        return theme;
+    }
+
+    /// <summary>A website link chosen with the d-pad: highlighted like selected text.</summary>
+    private static StyleBoxFlat LinkSelection(bool current)
+    {
+        var box = Box(Selection, TitleBar, 1);
+        box.ExpandMarginLeft = box.ExpandMarginRight = 4;
+        box.ExpandMarginTop = box.ExpandMarginBottom = 1;
+        if (current) box.BorderWidthBottom = 3;
+        return box;
+    }
 
     /// <summary>Notes over the store's picture: ink on paper, wooden buttons.</summary>
     public static Theme Notes => _paper ??= Make(Ink, new Color("e3c88f"), new Color("fbf5e6"));
@@ -105,7 +132,8 @@ public static class CareerStyle
             button.AddThemeColorOverride(name, name == "font_hover_color" && !current ? Link.Lightened(0.25f) : color);
         var underline = current ? Box(Colors.Transparent, Ink, 0) : new StyleBoxFlat { BgColor = Colors.Transparent };
         if (current) { underline.BorderWidthBottom = 3; underline.BorderColor = Ink; }
-        foreach (var name in new[] { "normal", "hover", "pressed", "focus" }) button.AddThemeStyleboxOverride(name, underline);
+        foreach (var name in new[] { "normal", "hover", "pressed" }) button.AddThemeStyleboxOverride(name, underline);
+        button.AddThemeStyleboxOverride("focus", LinkSelection(current));
         return button;
     }
 

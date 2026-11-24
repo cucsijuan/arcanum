@@ -486,7 +486,7 @@ public partial class EventScreen : Control
     {
         var scroll = new ScrollContainer
         {
-            SizeFlagsVertical = SizeFlags.ExpandFill, SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            FollowFocus = true, SizeFlagsVertical = SizeFlags.ExpandFill, SizeFlagsHorizontal = SizeFlags.ExpandFill,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, CustomMinimumSize = new Vector2(0, height),
         };
         inner.SizeFlagsHorizontal = SizeFlags.ExpandFill;

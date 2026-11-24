@@ -290,14 +290,19 @@ public partial class LimitedScreen : Control
         if (_title.Text == title) KeepScrolls(scrolls);
     }
 
-    private static IEnumerable<ScrollContainer> ScrollsIn(Node node)
+    /// <summary>The lists under <paramref name="node"/>, gathered at once child by child (no engine array of children
+    /// kept open between steps, which once crashed on the console).</summary>
+    private static List<ScrollContainer> ScrollsIn(Node node, List<ScrollContainer>? found = null)
     {
-        foreach (var child in node.GetChildren())
+        found ??= new List<ScrollContainer>();
+        for (int i = 0; i < node.GetChildCount(); i++)
         {
+            var child = node.GetChild(i);
             if (child.IsQueuedForDeletion()) continue;
-            if (child is ScrollContainer scroll) yield return scroll;
-            foreach (var inner in ScrollsIn(child)) yield return inner;
+            if (child is ScrollContainer scroll) found.Add(scroll);
+            ScrollsIn(child, found);
         }
+        return found;
     }
 
     /// <summary>Scrolls the new lists back to <paramref name="positions"/> once their content has its size.</summary>

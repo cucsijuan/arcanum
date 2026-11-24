@@ -232,7 +232,18 @@ public partial class GameBoard
     private IEnumerable<Button> PanelButtons() =>
         Below(_actionButtons).Concat(Below(_actionExtra)).OfType<Button>().Where(b => !b.IsQueuedForDeletion() && b.IsVisibleInTree());
 
-    private static IEnumerable<Node> Below(Node node) => node.GetChildren().SelectMany(c => Below(c).Prepend(c));
+    /// <summary>Every node under <paramref name="node"/>, each before its own, gathered at once child by child.</summary>
+    private static List<Node> Below(Node node, List<Node>? found = null)
+    {
+        found ??= new List<Node>();
+        for (int i = 0; i < node.GetChildCount(); i++)
+        {
+            var child = node.GetChild(i);
+            found.Add(child);
+            Below(child, found);
+        }
+        return found;
+    }
 
     /// <summary>Moves the focus with the arrows until it is on <paramref name="target"/>; false if it can't get there.</summary>
     private async Task<bool> PadFocusAsync(Control target)

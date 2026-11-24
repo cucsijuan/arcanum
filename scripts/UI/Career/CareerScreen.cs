@@ -96,12 +96,12 @@ public partial class CareerScreen : Control
 
         _room = new ArtScene(Picture("room.jpg"), Hotspot.Load(Kit + "room.json", RoomSpots));
         _room.Activated += OnRoom;
-        _room.BackRequested += () => { if (_web is not null) CloseWeb(); else App.Instance.GoTo(App.MainMenuScene); };
+        _room.BackRequested += Back;
         AddChild(_room);
 
         _store = new ArtScene(Picture("store.jpg"), Hotspot.Load(Kit + "store.json", StoreSpots)) { Visible = false };
         _store.Activated += OnStore;
-        _store.BackRequested += () => { if (_note is not null) CloseNote(); else GoTo(Place.Room); };
+        _store.BackRequested += Back;
         AddChild(_store);
 
         BuildHud();
@@ -132,7 +132,7 @@ public partial class CareerScreen : Control
         else if (!Career.HasCareer) OpenWeb(WebPage.Matches, instant: true);
         else if (Enum.TryParse<WebPage>(open, out var page)) OpenWeb(page, instant: true);
         UpdateHud();
-        _room.GrabFocus();
+        FocusPlace();
         if (Career.AnteResult is { } ante)
         {
             Career.AnteResult = null;
@@ -265,7 +265,7 @@ public partial class CareerScreen : Control
         if (_web is not null) CloseWeb(instant: true);
         _room.Visible = place == Place.Room;
         _store.Visible = place == Place.Store;
-        (place == Place.Room ? _room : _store).GrabFocus();
+        FocusPlace();
         UpdateHud();
     }
 
@@ -301,6 +301,17 @@ public partial class CareerScreen : Control
         else if (_web is not null) CloseWeb();
         else if (_place == Place.Store) GoTo(Place.Room);
         else App.Instance.GoTo(App.MainMenuScene);
+    }
+
+    /// <summary>Escape or the controller's back button closes the note or the computer (the covered picture, which takes
+    /// it otherwise, doesn't react then), unless something is open over it: a question, an opened booster.</summary>
+    public override void _UnhandledInput(InputEvent e)
+    {
+        if (!e.IsActionPressed("ui_cancel") || (_note is null && _web is null) || GetTree().Root.GetEmbeddedSubwindows().Any(w => w.Visible)) return;
+        if (GetChildren().OfType<Control>().Any(c => c.ZIndex > _hud.ZIndex && c.MouseFilter == MouseFilterEnum.Stop && c.Visible && !c.IsQueuedForDeletion())) return;
+        var viewport = GetViewport();
+        Back();
+        viewport.SetInputAsHandled();
     }
 
     private void UpdateHud()
@@ -385,6 +396,7 @@ public partial class CareerScreen : Control
         var dim = new ColorRect { Color = new Color(0, 0, 0, 0), AnchorRight = 1, AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore };
         _monitor.AddChild(dim);
         _casing = Casing(out _web);
+        _web.Resized += FitWebWindow;
         _monitor.AddChild(_casing);
         AddChild(_monitor);
         MoveChild(_monitor, _room.GetIndex() + 1);
@@ -402,6 +414,23 @@ public partial class CareerScreen : Control
         tween.TweenProperty(_casing, "scale", Vector2.One, seconds);
         tween.TweenProperty(dim, "color:a", 0.7f, seconds);
         UpdateHud();
+        FocusPlace();
+    }
+
+    /// <summary>
+    /// The picture's hotspots take the arrows while nothing is open over it; with the computer or a note open, the
+    /// picture lets go of the focus so the arrows move between the open page's buttons (the current link first).
+    /// </summary>
+    private void FocusPlace()
+    {
+        var art = _place == Place.Store ? _store : _room;
+        bool covered = _web is not null || _note is not null;
+        // A covered picture can't take the focus at all: else an arrow with nothing that way on the page would send it
+        // there (the engine's own navigation), where the arrows do nothing.
+        foreach (var scene in new[] { _room, _store })
+            scene.FocusMode = !covered && scene.Spots.Count > 0 ? FocusModeEnum.All : FocusModeEnum.None;
+        if (!covered) art.GrabFocus();
+        else if (GetViewport().GuiGetFocusOwner() is { } owner && (owner == _room || owner == _store)) owner.ReleaseFocus();
     }
 
     private void CloseWeb(bool instant = false)
@@ -410,6 +439,7 @@ public partial class CareerScreen : Control
         var casing = _casing;
         _monitor = _casing = _web = null;
         UpdateHud();
+        FocusPlace();
         if (monitor is null || casing is null) return;
         var to = _room.Spot("computer") is { } spot ? _room.ScreenRect(spot) : new Rect2(casing.Position + casing.Size / 2, Vector2.One);
         var tween = CreateTween().SetParallel().SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.In);
@@ -481,9 +511,11 @@ public partial class CareerScreen : Control
     {
         if (_web is null) return;
         foreach (var child in _web.GetChildren()) child.QueueFree();
-        var window = new PanelContainer { AnchorRight = 1, AnchorBottom = 1 };
+        var window = new PanelContainer();
         window.AddThemeStyleboxOverride("panel", CareerStyle.Box(CareerStyle.Chrome, CareerStyle.InkDim, 2));
         _web.AddChild(window);
+        window.MinimumSizeChanged += () => Callable.From(FitWebWindow).CallDeferred();
+        FitWebWindow();
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 0);
         window.AddChild(column);
@@ -495,6 +527,8 @@ public partial class CareerScreen : Control
         var url = World.Content.StoreName.ToLowerInvariant().Replace(" & ", "and").Replace(' ', '-').Replace("'", "");
         var title = CareerStyle.Text($"{World.Content.StoreName}  —  www.{url}.com", 20, Colors.White);
         title.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        title.ClipText = true;
+        title.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
         barRow.AddChild(title);
         var close = CareerStyle.Button("X", () => CloseWeb(), 18);
         close.TooltipText = "Close (Esc)";
@@ -517,17 +551,18 @@ public partial class CareerScreen : Control
             SignUpPage(body);
             return;
         }
-        var nav = new HBoxContainer();
-        nav.AddThemeConstantOverride("separation", 18);
+        // The links wrap onto a second line on a narrow screen instead of widening the page past the monitor.
+        var nav = new HFlowContainer();
+        nav.AddThemeConstantOverride("h_separation", 18);
         // Selling moved: to the store at its counter, to other players on the forum.
         var current = _webPage is WebPage.Practice or WebPage.Events or WebPage.Chat or WebPage.Market ? WebPage.Forum : _webPage;
         foreach (var (p, text) in new[] { (WebPage.Matches, "Daily matches"), (WebPage.Forum, World.Content.Forum.Name), (WebPage.Challenges, "Challenges"), (WebPage.Standings, "Standings"), (WebPage.Cards, "My log") })
         {
             var link = CareerStyle.LinkButton(text, p == current);
+            if (p == current) PadFocus.Prefer(link);
             link.Pressed += () => { _webPage = p; _forumThread = null; ShowWebPage(); };
             nav.AddChild(link);
         }
-        nav.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
         var visit = CareerStyle.LinkButton("Visit the store >>");
         visit.Pressed += () => GoTo(Place.Store);
         nav.AddChild(visit);
@@ -547,6 +582,29 @@ public partial class CareerScreen : Control
             case WebPage.Standings: StandingsPage(content); break;
             default: MatchesPage(content); break;
         }
+    }
+
+    /// <summary>Keeps the website inside the monitor's screen: the page fills the screen, and if its content still needs
+    /// more room than the screen has (a long line that can't wrap), the whole page is drawn smaller until it fits.</summary>
+    private void FitWebWindow()
+    {
+        if (_web is null || !IsInstanceValid(_web) || _web.GetChildCount() == 0) return;
+        if (_web.GetChild(_web.GetChildCount() - 1) is not PanelContainer window || window.IsQueuedForDeletion()) return;
+        var screen = _web.Size;
+        if (screen.X <= 0 || screen.Y <= 0) return;
+        float scale = 1f;
+        // Wrapped text gets taller as the page narrows, so the fit is worked out again with each new width.
+        for (int i = 0; i < 4; i++)
+        {
+            window.Size = screen / scale;
+            var need = window.GetCombinedMinimumSize();
+            float fit = Math.Min(1f, Math.Min(screen.X / Math.Max(1f, need.X), screen.Y / Math.Max(1f, need.Y)));
+            if (fit >= scale - 0.001f) break;
+            scale = Math.Max(0.5f, fit);
+        }
+        window.Position = Vector2.Zero;
+        window.Scale = Vector2.One * scale;
+        window.Size = screen / scale;
     }
 
     private void SignUpPage(VBoxContainer body)
@@ -581,7 +639,7 @@ public partial class CareerScreen : Control
         var day = CareerRules.DayOf(now);
         var featured = World.FeaturedSet(day);
         int left = CareerRules.DailiesLeft(State, World, now);
-        page.AddChild(CareerStyle.Text($"{day:dddd, MMMM d}  ·  {left} of {World.Content.Dailies.PerDay} daily matches left  ·  featured set: {World.SetName(featured)}", 20, CareerStyle.InkDim));
+        page.AddChild(CareerStyle.Text($"{day:dddd, MMMM d}  ·  {left} of {World.Content.Dailies.PerDay} daily matches left  ·  featured set: {World.SetName(featured)}", 20, CareerStyle.InkDim, wrap: true));
         if (left == 0)
         {
             var tomorrow = DateTime.SpecifyKind(day.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc) - now;
@@ -747,7 +805,7 @@ public partial class CareerScreen : Control
         var lines = new VBoxContainer();
         lines.AddThemeConstantOverride("separation", 10);
         foreach (var line in _chat) lines.AddChild(Bubble(line, offer));
-        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        var scroll = new ScrollContainer { FollowFocus = true, SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         lines.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         scroll.AddChild(lines);
         page.AddChild(scroll);
@@ -1102,6 +1160,7 @@ public partial class CareerScreen : Control
         MoveChild(_note, _hud.GetIndex());
         DrawNote();
         UpdateHud();
+        FocusPlace();
     }
 
     private void DrawNote()
@@ -1130,6 +1189,7 @@ public partial class CareerScreen : Control
         _noteContent = null;
         _store.Interactive = true;
         UpdateHud();
+        FocusPlace();
     }
 
     private void RefreshNote()
@@ -1141,7 +1201,7 @@ public partial class CareerScreen : Control
     private void BoostersNote(VBoxContainer box)
     {
         var featured = World.FeaturedSet(CareerRules.DayOf(Career.Now));
-        box.AddChild(CareerStyle.Text($"Every kind of booster each set was sold in. You have {CareerRules.Money(State.Cash)}.", 22, CareerStyle.InkDim));
+        box.AddChild(CareerStyle.Text($"Every kind of booster each set was sold in. You have {CareerRules.Money(State.Cash)}.", 22, CareerStyle.InkDim, wrap: true));
         var list = new VBoxContainer();
         list.AddThemeConstantOverride("separation", 8);
         foreach (var set in World.Content.Sets.Where(World.SellsBoosters))
@@ -1154,8 +1214,9 @@ public partial class CareerScreen : Control
                 var row = new HBoxContainer();
                 row.AddThemeConstantOverride("separation", 12);
                 var name = CareerStyle.Text(World.BoosterName(key) + (first && set.Equals(featured, StringComparison.OrdinalIgnoreCase) ? "  (featured)" : ""), first ? 22 : 20,
-                    first ? CareerStyle.Ink : CareerStyle.PaperEdge);
+                    first ? CareerStyle.Ink : CareerStyle.PaperEdge, wrap: true); // a long name takes two lines instead of widening the note
                 name.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                name.VerticalAlignment = VerticalAlignment.Center;
                 if (World.Sets[set].BoosterOf(kind) is { Description.Length: > 0 } spec)
                 {
                     name.TooltipText = spec.Description;
@@ -1166,9 +1227,11 @@ public partial class CareerScreen : Control
                 if (owned > 0) row.AddChild(CareerStyle.Text($"{owned} unopened", 18, CareerStyle.InkDim));
                 var buy = CareerStyle.Button($"Buy · {CareerRules.Money(price)}", () => { Try(() => Career.Do(new BuyBooster(Career.Now, set, kind))); RefreshNote(); }, 20, primary: true);
                 buy.Disabled = State.Cash < price;
+                buy.SizeFlagsVertical = SizeFlags.ShrinkCenter;
                 row.AddChild(buy);
                 var open = CareerStyle.Button("Open", () => OpenBooster(key), 20);
                 open.Disabled = owned == 0;
+                open.SizeFlagsVertical = SizeFlags.ShrinkCenter;
                 row.AddChild(open);
                 list.AddChild(row);
                 first = false;
@@ -1187,6 +1250,7 @@ public partial class CareerScreen : Control
         foreach (var (selling, text) in new[] { (false, "Singles case"), (true, "Sell to the store") })
         {
             var tab = CareerStyle.LinkButton(text, selling == _sellingAtCounter, 22);
+            tab.AddThemeStyleboxOverride("focus", new StyleBoxEmpty()); // on paper the d-pad's ring marks it, not the website's highlight
             tab.Pressed += () => { _sellingAtCounter = selling; DrawNote(); };
             tabs.AddChild(tab);
         }
@@ -1639,7 +1703,7 @@ public partial class CareerScreen : Control
 
     private static ScrollContainer Scrolled(Control inner)
     {
-        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, SizeFlagsHorizontal = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        var scroll = new ScrollContainer { FollowFocus = true, SizeFlagsVertical = SizeFlags.ExpandFill, SizeFlagsHorizontal = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         inner.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         scroll.AddChild(inner);
         return scroll;
