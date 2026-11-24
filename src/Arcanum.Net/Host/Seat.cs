@@ -69,6 +69,10 @@ internal sealed class Seat : IPlayerController
             if (_computer is not null) return _computer;
             _computer = new BotController(Id) { Pace = _host.Options.ComputerPace };
             _computer.UseCardRules(_rules);
+            // The seat's own cards (its deck and commanders): the deck the computer now plays.
+            _computer.KnowDeck(_game.State.Cards.Values.Where(c => c.Owner == Id && !c.PrintedDefinition.IsToken).Select(c => c.PrintedDefinition).ToList());
+            if (_host.Recording is { } recording && _host.Options.ComputerSearch is { } search)
+                _computer.Search = new Bots.Simulation.Simulator(recording, Id) { Budget = search.Budget, Rollouts = search.Rollouts, Horizon = search.Horizon };
             return _computer;
         }
     }

@@ -45,7 +45,12 @@ public sealed partial class Game
     {
         for (int attempt = 0; ; attempt++)
         {
-            var declared = await ControllerOf(defender).DeclareBlockersAsync(ViewFor(defender), request);
+            // A copy point (see Copy) when blocking is free: with a block tax the attempts to pay would have to be resumed too.
+            bool copyPoint = attempt == 0 && request.TaxPerBlocker is null;
+            if (copyPoint) _waiting = ResumePoint.Blockers;
+            IReadOnlyList<BlockDeclaration> declared;
+            try { declared = await ControllerOf(defender).DeclareBlockersAsync(ViewFor(defender), request); }
+            finally { if (copyPoint) _waiting = ResumePoint.None; }
             Require(request.IsLegal(declared, out var reason), reason ?? "Illegal blocks.");
             if (declared.Count == 0 || BlockTax() is not { } tax) return declared;
             var total = Mana.ManaCost.Zero;

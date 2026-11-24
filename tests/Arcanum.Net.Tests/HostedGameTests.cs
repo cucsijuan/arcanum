@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using Arcanum.Bots;
 using Arcanum.Engine.Core;
 using Arcanum.Engine.Events;
 using Arcanum.Engine.Players;
@@ -239,6 +240,48 @@ public class HostedGameTests
         table.Host.Start();
         Assert.Equal(SeatState.Computer, table.Host.StateOf(P1));
         Assert.True(table.RunUntil(() => table.GameOver));
+    }
+
+    [Fact]
+    public void ComputerSeatsThinkAheadOnTheHost()
+    {
+        // The host's thread runs the game, as in the client: the game goes on there after the search's games played elsewhere.
+        var context = new SingleThreadContext();
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            int before = BotController.SearchedDecisions;
+            var seats = new[] { new HostSeat("Person", NetTable.RedGreen()), new HostSeat("Computer", NetTable.RedGreen(), IsComputer: true) };
+            var table = new NetTable(seats: seats, options: new HostOptions { ComputerSearch = new ComputerSearch(TimeSpan.FromSeconds(5), 1, 1, null) });
+            table.Host.Start();
+            var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(3);
+            while (!table.GameOver && DateTime.UtcNow < deadline)
+            {
+                context.RunPending(TimeSpan.FromMilliseconds(5));
+                table.Step();
+            }
+            Assert.True(table.GameOver);
+            Assert.True(BotController.SearchedDecisions > before);
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+    }
+
+    /// <summary>Runs posted continuations on the thread that asks for them (like a game engine's main loop).</summary>
+    private sealed class SingleThreadContext : SynchronizationContext
+    {
+        private readonly System.Collections.Concurrent.BlockingCollection<(SendOrPostCallback Callback, object? State)> _queue = new();
+
+        public override void Post(SendOrPostCallback d, object? state) => _queue.Add((d, state));
+
+        public void RunPending(TimeSpan wait)
+        {
+            while (_queue.TryTake(out var item, wait))
+            {
+                item.Callback(item.State);
+                wait = TimeSpan.Zero;
+            }
+        }
     }
 
     [Fact]

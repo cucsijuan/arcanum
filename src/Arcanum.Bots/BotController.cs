@@ -14,7 +14,7 @@ namespace Arcanum.Bots;
 /// threat, attack when it's safe or lethal, block to survive and trade well, and use tricks in combat.
 /// It decides only from its own <see cref="GameView"/> plus the printed rules of cards it can see.
 /// </summary>
-public sealed class BotController : IPlayerController
+public sealed partial class BotController : IPlayerController
 {
     private readonly PlayerId _me;
 
@@ -80,7 +80,7 @@ public sealed class BotController : IPlayerController
         if (view.Viewer != _me) return For(view).KeepHandAsync(view, mulligansTaken);
         var hand = view.Self.Hand;
         int lands = hand.Count(c => (c.Types & CardType.Land) != 0);
-        bool keep = AlwaysKeep || mulligansTaken >= 2 || (lands >= 2 && lands <= hand.Count - 2);
+        bool keep = AlwaysKeep || mulligansTaken >= 2 || (lands >= 2 && lands <= hand.Count - 2 && (!Uses(PlanParts.Mulligan) || HandHasColors(view)));
         return Task.FromResult(keep);
     }
 
@@ -288,8 +288,9 @@ public sealed class BotController : IPlayerController
                     + view.Self.Hand.Count(c => (c.Types & CardType.Land) != 0);
         // Lands are dead draws once there are enough; spells far above the mana available are slow.
         bool Unwanted(CardView c) => (c.Types & CardType.Land) != 0 ? lands >= 5 : ManaValue(c.ManaCost) > lands + 2;
-        double Value(CardView c) => request.Purpose == CardChoicePurpose.Sacrifice ? KeepValue(c)
-            : (c.Types & CardType.Creature) != 0 ? CreatureValue(c) : 1 + ManaValue(c.ManaCost);
+        double Value(CardView c) => request.Purpose == CardChoicePurpose.Sacrifice ? KeepValue(c) + OnBoardSynergy(view, c)
+            : ((c.Types & CardType.Creature) != 0 ? CreatureValue(c) : 1 + ManaValue(c.ManaCost))
+              + (request.Purpose is CardChoicePurpose.ToHand or CardChoicePurpose.ToBattlefield or CardChoicePurpose.Keep ? Wanted(view, c, lands) : 0);
 
         IEnumerable<CardView> picks = request.Purpose switch
         {
@@ -310,14 +311,14 @@ public sealed class BotController : IPlayerController
         return Task.FromResult<IReadOnlyList<CardId>>(chosen);
     }
 
-    /// <summary>Extra lands when flooded, otherwise the most expensive spells.</summary>
-    private static List<CardId> LeastUseful(GameView view, int count)
+    /// <summary>Extra lands when flooded, otherwise the most expensive spells (with a plan: those that fit the deck least).</summary>
+    private List<CardId> LeastUseful(GameView view, int count)
     {
         var hand = view.Self.Hand;
         int lands = hand.Count(c => (c.Types & CardType.Land) != 0);
         bool flooded = lands > hand.Count / 2;
         return hand
-            .OrderByDescending(c => (c.Types & CardType.Land) != 0 ? (flooded ? 100 : -1) : ManaValue(c.ManaCost))
+            .OrderByDescending(c => (c.Types & CardType.Land) != 0 ? (flooded ? 100 : -1) : ManaValue(c.ManaCost) - 1.5 * Fit(view, c))
             .Take(count)
             .Select(c => c.Id)
             .ToList();
@@ -338,6 +339,7 @@ public sealed class BotController : IPlayerController
         _lastSignature = signature;
         if (_backedOut.Count > 0) legal = legal.Where(a => !_backedOut.Contains(a)).ToList();
         var action = Decide(view, legal);
+        if (Search is not null) action = await SearchActionAsync(view, legal, action);
         _lastAction = action;
         if (action is not PassPriority) await PaceAsync();
         return action;
@@ -386,6 +388,7 @@ public sealed class BotController : IPlayerController
         if (myTurn && view.Step.IsMain() && emptyStack)
         {
             // A land card first; a modal double-faced card's land face only when there's no other land to play.
+            if (Uses(PlanParts.Lands) && legal.OfType<PlayLand>().ToList() is { Count: > 1 } many && ChooseLand(view, many) is { } chosen) return chosen;
             if (legal.OfType<PlayLand>().OrderBy(l => l.Back).FirstOrDefault() is { } land) return land;
             // A face-down creature it can turn face up: before combat, so it attacks as what it really is.
             if (view.Step == Step.PrecombatMain && legal.OfType<TurnFaceUp>().FirstOrDefault() is { } faceUp) return faceUp;
@@ -452,6 +455,7 @@ public sealed class BotController : IPlayerController
     {
         CastSpell? best = null;
         double bestScore = 0.5;
+        var scored = new List<(CastSpell Cast, double Score, int Cost)>();
         foreach (var cast in legal.OfType<CastSpell>())
         {
             var rules = SpellRules(view, cast);
@@ -480,8 +484,11 @@ public sealed class BotController : IPlayerController
                 score = 1 + ManaValue(cost) + (rules.Is(CardType.Creature) ? 1 : 0);
                 if (rules.EnchantTarget is not null) score = AuraScore(view, rules, ManaValue(cost));
             }
+            if (score > 0) score += PlanBonus(view, rules, mainPhase);
+            if (score > 0.5) scored.Add((cast, score, ManaValue(cost)));
             if (score > bestScore) { bestScore = score; best = cast; }
         }
+        if (Uses(PlanParts.Curve) && mainPhase && scored.Count > 1) return BestUseOfMana(view, scored) ?? best;
         return best;
     }
 
@@ -554,6 +561,7 @@ public sealed class BotController : IPlayerController
             int damage = DamageTo(spell, 0, _x);
             return damage >= view.Players[facePlayer.Value].Life ? 100 : 0; // burn to the face only to finish a player
         }
+        if (StealValue(view, spell, target.Value) is { } stolen) return stolen;
         // A noncreature by what it does (a Food or Treasure token is barely worth a card).
         return view.FindCard(target.Value.Card!.Value) is { } victim ? victim.Power is null ? PermanentValue(victim) : 1 + CreatureValue(victim) : 0;
     }
@@ -911,7 +919,7 @@ public sealed class BotController : IPlayerController
             .Select(t => (Target: t, Card: view.FindCard(t.Card!.Value)!))
             .ToList();
         // In multiplayer, a creature matters more when its controller is the biggest threat to us.
-        double Weight(CardView c) => CreatureValue(c) * (view.Players.Count(p => !p.HasLost) > 2 ? 1 + Threat(view, c.Controller) / 30 : 1);
+        double Weight(CardView c) => (CreatureValue(c) + OnBoardSynergy(view, c)) * (view.Players.Count(p => !p.HasLost) > 2 ? 1 + Threat(view, c.Controller) / 30 : 1);
         if (OnlyLethalHarm(ability, index))
         {
             // "Gets -2/-2" (with damage or not) only matters to a creature it kills; in a combat it changes, CombatTrick aims it.
@@ -933,7 +941,7 @@ public sealed class BotController : IPlayerController
             if (face.Player is not null) return face;
             return killable.Card is not null ? killable.Target : null;
         }
-        var best = creatures.OrderByDescending(x => x.Card.Power is null ? PermanentValue(x.Card) : Weight(x.Card)).FirstOrDefault();
+        var best = creatures.OrderByDescending(x => x.Card.Power is null ? PermanentValue(x.Card) + OnBoardSynergy(view, x.Card) : Weight(x.Card)).FirstOrDefault();
         if (best.Card is not null) return best.Target;
         var opponent = options.FirstOrDefault(t => t.Player is { } pl && pl != _me);
         return opponent.Player is not null ? opponent : null;
@@ -958,6 +966,13 @@ public sealed class BotController : IPlayerController
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders)
     {
         if (view.Viewer != _me) return await For(view).DeclareAttackersAsync(view, possibleAttackers, defenders);
+        var planned = await HeuristicAttacksAsync(view, possibleAttackers, defenders);
+        return Search is null ? planned : await SearchAttacksAsync(view, possibleAttackers, defenders, planned);
+    }
+
+    private async Task<IReadOnlyList<AttackDeclaration>> HeuristicAttacksAsync(
+        GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders)
+    {
         var declared = (await ChooseAttackersAsync(view, possibleAttackers, defenders))
             // A creature that can't attack the chosen player attacks another it may attack, or stays home.
             .Select(d => view.MayAttack(d.Attacker, d.Defender) || d.Planeswalker is not null ? d
@@ -1002,6 +1017,7 @@ public sealed class BotController : IPlayerController
         GameView view, IReadOnlyList<CardId> possibleAttackers, IReadOnlyList<PlayerId> defenders)
     {
         var attackers = possibleAttackers.Select(view.FindCard).OfType<CardView>().ToList();
+        if (Plan is not null && Environment.GetEnvironmentVariable("SABOTAGE") == "1") return new List<AttackDeclaration>();
         List<CardView> BlockersOf(PlayerId p) =>
             view.Battlefield.Where(c => c.Controller == p && (c.Types & CardType.Creature) != 0 && !c.Tapped && !Has(c, "Can't block")).ToList();
 
@@ -1043,7 +1059,7 @@ public sealed class BotController : IPlayerController
         // Opposing planeswalkers: attack one with enough safe power to finish it.
         foreach (var walker in view.Battlefield.Where(c => (c.Types & CardType.Planeswalker) != 0 && defenders.Contains(c.Controller)).OrderByDescending(c => c.Loyalty))
         {
-            var safe = candidates.Where(a => SafeToAttack(a, BlockersOf(walker.Controller))).OrderByDescending(a => a.Power ?? 0).ToList();
+            var safe = candidates.Where(a => SafeToAttack(a, BlockersOf(walker.Controller), TradeMargin(view, walker.Controller))).OrderByDescending(a => a.Power ?? 0).ToList();
             var sent = new List<CardView>();
             foreach (var a in safe)
             {
@@ -1061,7 +1077,7 @@ public sealed class BotController : IPlayerController
         {
             foreach (var defender in byThreat)
             {
-                if (!SafeToAttack(attacker, BlockersOf(defender))) continue;
+                if (!SafeToAttack(attacker, BlockersOf(defender), TradeMargin(view, defender))) continue;
                 declarations.Add(new AttackDeclaration(attacker.Id, defender));
                 break;
             }
@@ -1081,7 +1097,7 @@ public sealed class BotController : IPlayerController
     }
 
     /// <summary>No blocker can kill it without dying in return, or nothing can block it at all.</summary>
-    private static bool SafeToAttack(CardView attacker, List<CardView> blockers)
+    private static bool SafeToAttack(CardView attacker, List<CardView> blockers, double tradeMargin = 1)
     {
         var able = blockers.Where(b => CanBlock(b, attacker)).ToList();
         if (able.Count == 0 || Has(attacker, "Can't be blocked")) return true;
@@ -1092,7 +1108,7 @@ public sealed class BotController : IPlayerController
                 bool killsAttacker = Kills(attacker, new[] { b });
                 bool dies = Dies(b, attacker);
                 if (killsAttacker && !dies) return false;                                         // bad trade for us
-                if (killsAttacker && dies && CreatureValue(attacker) > CreatureValue(b) + 1) return false; // we'd lose more
+                if (killsAttacker && dies && CreatureValue(attacker) > CreatureValue(b) + tradeMargin) return false; // we'd lose more
             }
         // Two blockers that kill it while losing clearly less than it is worth.
         for (int i = 0; i < able.Count; i++)
@@ -1100,7 +1116,7 @@ public sealed class BotController : IPlayerController
             {
                 var pair = new[] { able[i], able[j] };
                 if (!Kills(attacker, pair)) continue;
-                if (MostLost(attacker, pair) + 1 < CreatureValue(attacker)) return false;
+                if (MostLost(attacker, pair) + tradeMargin < CreatureValue(attacker)) return false;
             }
         return true;
     }
@@ -1121,6 +1137,7 @@ public sealed class BotController : IPlayerController
             var paid = blocks.Select(b => b.Blocker).Distinct().Take(request.AffordableBlockers).ToHashSet();
             blocks = request.Complete(blocks.Where(b => paid.Contains(b.Blocker)).ToList()).ToList();
         }
+        if (Search is not null && request.TaxPerBlocker is null) blocks = (await SearchBlocksAsync(view, request, blocks)).ToList();
         if (blocks.Count > 0) await PaceAsync();
         return blocks;
     }

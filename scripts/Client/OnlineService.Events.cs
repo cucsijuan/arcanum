@@ -129,7 +129,9 @@ public partial class OnlineService
 
     private EventOptions EventOptions() => new()
     {
+        // An event runs several games at once: the computer thinks ahead in them only on devices with processors to spare.
         Games = new HostOptions { ComputerPace = EventPaceAsync, Version = Version, Content = ContentId, DecisionTime = DecisionTime,
+            ComputerSearch = System.Environment.ProcessorCount >= 6 ? GameSession.SearchSettings(() => null) : null,
             CardNames = App.Instance?.Cards?.Names, NonbasicLandNames = App.Instance?.Cards?.NonbasicLandNames,
             CreatureCardNames = App.Instance?.Cards?.CreatureCardNames },
     };

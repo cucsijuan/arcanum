@@ -31,6 +31,9 @@ public sealed partial class Game
         // Rules between targets ("two target lands" must be different ones, "attached to that creature"...): there must be
         // a whole choice of the required targets that follows them (rule 601.2c), not just a legal choice for each alone.
         var legal = ability.Targets.Select(spec => LegalTargets(spec, controller, source).ToList()).ToList();
+        // All different: no more required targets than different candidates (spares the search below a hopeless case).
+        if (ability.TargetRule == TargetRule.AllDifferent
+            && ability.Targets.Count(t => !IsUpTo(t)) > legal.SelectMany(l => l).Where(t => !t.IsNone).Distinct().Count()) return false;
         bool Choose(int index, List<Target> before)
         {
             if (index == legal.Count) return true;

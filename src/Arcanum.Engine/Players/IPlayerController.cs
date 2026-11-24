@@ -80,3 +80,12 @@ public sealed record NumberRequest(string Prompt, CardId? Source, int Min, int M
 }
 
 public sealed class InvalidDecisionException(string message) : Exception(message);
+
+/// <summary>
+/// A controller that may be giving back answers it already knows (a recorded game being rebuilt). While
+/// <see cref="Replaying"/>, it reads neither the view nor the legal actions it is given, so the game spares building them.
+/// </summary>
+public interface IReplayingController
+{
+    bool Replaying { get; }
+}

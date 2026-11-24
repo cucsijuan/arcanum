@@ -19,30 +19,44 @@ public sealed partial class Game
     /// </summary>
     private async Task RunPriorityAsync()
     {
-        var player = State.ActivePlayer;
-        int consecutivePasses = 0;
+        // A copied game resumes here, asking the player who had priority (with the passes made before it).
+        bool resuming = _resume == ResumePoint.Priority;
+        _resume = ResumePoint.None;
+        var player = resuming ? State.PriorityPlayer!.Value : State.ActivePlayer;
+        if (!resuming) _passesInARow = 0;
 
         while (true)
         {
-            _ct.ThrowIfCancellationRequested();
-            await SettleBeforePriorityAsync();
-            if (State.IsGameOver || _endTurnRequested) break;
-            if (State.GetPlayer(player).HasLost) player = State.NextLivingPlayer(player);
+            if (!resuming)
+            {
+                _ct.ThrowIfCancellationRequested();
+                await SettleBeforePriorityAsync();
+                if (State.IsGameOver || _endTurnRequested) break;
+                if (State.GetPlayer(player).HasLost) player = State.NextLivingPlayer(player);
 
-            State.PriorityPlayer = player;
-            Emit(new PriorityGiven(player));
-            var legal = GetLegalActions(player);
-            var action = await ControllerOf(player).ChooseActionAsync(ViewFor(player), legal);
-            Require(legal.Contains(action), $"Illegal action {action} for {player}.");
+                State.PriorityPlayer = player;
+                Emit(new PriorityGiven(player));
+            }
+            resuming = false;
+            // A seat replaying a recorded game gives back an action that was legal in this same position: the legal
+            // actions aren't worked out for it.
+            var controller = ControllerOf(player);
+            bool replaying = controller is IReplayingController { Replaying: true };
+            var legal = replaying ? Array.Empty<PlayerAction>() : GetLegalActions(player);
+            _waiting = ResumePoint.Priority; // a copy point (see Copy)
+            PlayerAction action;
+            try { action = await controller.ChooseActionAsync(ViewFor(player), legal); }
+            finally { _waiting = ResumePoint.None; }
+            if (!replaying) Require(legal.Contains(action), $"Illegal action {action} for {player}.");
 
             if (action is PassPriority)
             {
-                consecutivePasses++;
-                if (consecutivePasses >= State.LivingPlayers.Count())
+                _passesInARow++;
+                if (_passesInARow >= State.LivingPlayers.Count())
                 {
                     if (State.Stack.Count == 0) break;
                     await ResolveTopOfStackAsync();
-                    consecutivePasses = 0;
+                    _passesInARow = 0;
                     player = State.ActivePlayer; // rule 117.3b
                 }
                 else
@@ -52,7 +66,7 @@ public sealed partial class Game
                 continue;
             }
 
-            if (await PerformAsync(player, action)) consecutivePasses = 0; // rule 117.3c
+            if (await PerformAsync(player, action)) _passesInARow = 0; // rule 117.3c
         }
         State.PriorityPlayer = null;
     }
@@ -1277,7 +1291,8 @@ public sealed partial class Game
             maxTargets = most;
         }
         _announcedX = x;
-        try { targets = await ChooseTargetsAsync(player.Id, ability, cardId, card.Name, canCancel: true, affordable, maxTargets); }
+        // "X target creatures" with X above the number there are: the spell can't be cast with that X (rule 601.2c).
+        try { targets = HasLegalTargets(ability, player.Id, cardId) ? await ChooseTargetsAsync(player.Id, ability, cardId, card.Name, canCancel: true, affordable, maxTargets) : null; }
         finally { _announcedX = -1; }
         if (targets is null) return false;
         // 601.2d: how damage or counters are divided among the targets.
@@ -1713,7 +1728,9 @@ public sealed partial class Game
         if (affordable is null && ability is { Targets.Count: 1 } && ability.Cost.Mana.ManaValue > 0
             && State.PermanentsControlledBy(player.Id).Any(r => r.Abilities.OfType<AbilityCostReduction>().Any(a => a.FirstTargetingYourCreatureOnYourTurn)))
             affordable = t => Payable(player.Id, ActivationCost(source, ability, player.Id, new[] { new ChosenTarget(t, VersionOf(t)) }).WithX(0), exclude, AbilityManaUsable(source, ability, player.Id));
-        var targets = await ChooseTargetsAsync(player.Id, ability, source.Id, ability.Text, canCancel: true, affordable);
+        var targets = HasLegalTargets(ability, player.Id, source.Id) // rule 602.2b → 601.2c, as for a spell
+            ? await ChooseTargetsAsync(player.Id, ability, source.Id, ability.Text, canCancel: true, affordable)
+            : null;
         _announcedX = -1;
         if (targets is null) return false;
         var division = await ChooseDivisionAsync(player.Id, ability, source.Id, targets); // rule 602.2b → 601.2d

@@ -9,7 +9,10 @@ public sealed class DeterministicRng
 {
     private uint _s0, _s1, _s2, _s3;
 
-    public DeterministicRng(ulong seed)
+    public DeterministicRng(ulong seed) => Reseed(seed);
+
+    /// <summary>Starts the sequence again from a new seed (a bot's rebuilt game must not foresee the real game's luck).</summary>
+    public void Reseed(ulong seed)
     {
         // Expand the seed with SplitMix64 so that small seeds still produce well-mixed state.
         ulong x = seed;

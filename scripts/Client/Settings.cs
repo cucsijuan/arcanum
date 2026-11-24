@@ -33,6 +33,12 @@ public sealed class SettingsData
     public int DecisionSeconds { get; set; }
     public bool ConfirmManaPayment { get; set; } = true;
     public bool RevealHandsInHotseat { get; set; } = true;
+    /// <summary>
+    /// Computer opponents try their main decisions by playing the game on from each option (slower on small devices). Saved
+    /// under a new name: it used to be off by default on devices with few processors, and is on for every device now.
+    /// </summary>
+    [JsonPropertyName("ThinksAhead")]
+    public bool BotThinksAhead { get; set; } = true;
     /// <summary>Show on the player's Discord profile what they are doing in the game (when the Discord app runs).</summary>
     public bool DiscordActivity { get; set; } = true;
 

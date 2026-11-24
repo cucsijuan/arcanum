@@ -178,10 +178,10 @@ public partial class GameBoard : Control
     }
 
     private Func<ulong, GameSession> MatchFactory(IReadOnlyList<GameSession.Seat> seats, int life, bool commander, Action<Arcanum.Engine.Game>? setup,
-        Arcanum.Data.GameModes.GameModeScript? mode = null) =>
+        Arcanum.Data.GameModes.GameModeScript? mode = null, string? limitedSet = null) =>
         seed =>
         {
-            var session = GameSession.CreateMatch(seed, seats, setup, life, PolicyFromSettings(), Settings.Current.ConfirmManaPayment, commander, mode);
+            var session = GameSession.CreateMatch(seed, seats, setup, life, PolicyFromSettings(), Settings.Current.ConfirmManaPayment, commander, mode, limitedSet);
             // The computer's hand stays hidden; with only people at the table it's the players' choice.
             session.RevealAll = !seats.Any(s => s.IsBot) && Settings.Current.RevealHandsInHotseat;
             return session;
@@ -191,7 +191,7 @@ public partial class GameBoard : Control
     {
         _match = match;
         var setup = match.Sandbox ? SandboxSetup() : null;
-        _newSession = MatchFactory(match.Seats, match.StartingLife, match.Commander, setup, match.Mode);
+        _newSession = MatchFactory(match.Seats, match.StartingLife, match.Commander, setup, match.Mode, match.LimitedSet);
     }
 
     /// <summary>Hotseat with the module's sample decks; falls back to generic cards if they can't be built.</summary>

@@ -9,6 +9,7 @@ using Arcanum.Engine.Views;
 using Arcanum.Net.Protocol;
 using Arcanum.Net.Transport;
 
+using Arcanum.Bots.Simulation;
 namespace Arcanum.Net.Host;
 
 /// <param name="IsComputer">Played by the computer from the start (no person will connect to it).</param>
@@ -19,6 +20,9 @@ public sealed record HostSeat(string Name, IReadOnlyList<CardDefinition> Deck, I
 /// <summary>One answer given during a game (real card ids), in order: replaying them rebuilds the game exactly.</summary>
 public sealed record RecordedAnswer(int Seat, JsonElement Value);
 
+/// <summary>How the computer thinks ahead in a hosted game: the most time per decision, games per option and turns played on, and the cards it may imagine in an opponent's hidden cards.</summary>
+public sealed record ComputerSearch(TimeSpan? Budget, int Rollouts, int Horizon, CardCandidates? Candidates);
+
 public sealed record HostOptions
 {
     /// <summary>How long a disconnected player's seat waits before the computer takes over; null waits for the host.</summary>
@@ -28,6 +32,12 @@ public sealed record HostOptions
 
     /// <summary>Optional pause before each visible computer action, so players can follow it.</summary>
     public Func<Task>? ComputerPace { get; init; }
+
+    /// <summary>
+    /// The computer thinks ahead on the seats it plays (<see cref="Bots.BotController.Search"/>) with these settings; null:
+    /// it plays by its rules of thumb alone. The game is then recorded from the start, every seat's answers.
+    /// </summary>
+    public ComputerSearch? ComputerSearch { get; init; }
 
     /// <summary>Must match the players' <see cref="Hello.Version"/> and <see cref="Hello.Content"/>.</summary>
     public string Version { get; init; } = "";
@@ -81,6 +91,9 @@ public sealed class GameHost
 
     public Game Game { get; }
 
+    /// <summary>The record of the game the computer's search plays on from (with <see cref="HostOptions.ComputerSearch"/>).</summary>
+    internal GameRecording? Recording { get; }
+
     /// <summary>Every answer so far: save them with the game's setup to resume it later.</summary>
     public IReadOnlyList<RecordedAnswer> Answers => _answers;
 
@@ -98,7 +111,15 @@ public sealed class GameHost
         _names = seats.Select(s => s.Name).ToList();
         _commander = config.Commander is not null;
         _seats = seats.Select((s, i) => new Seat(this, new PlayerId(i), s.IsComputer, s.Token)).ToList();
-        Game = new Game(config, seats.Select((s, i) => new PlayerSetup(s.Name, _seats[i], s.Deck, s.Commanders, s.Sideboard)).ToList());
+        IReadOnlyList<PlayerSetup> setups = seats.Select((s, i) => new PlayerSetup(s.Name, _seats[i], s.Deck, s.Commanders, s.Sideboard)).ToList();
+        if (Options.ComputerSearch is { } search)
+        {
+            // The computer's search rebuilds or copies this game: every seat's answers are recorded from the start.
+            (Recording, var recorded) = GameRecording.Record(config, setups, null, search.Candidates);
+            setups = recorded;
+        }
+        Game = new Game(config, setups);
+        if (Recording is not null) Recording.Live = () => Game;
         foreach (var seat in _seats) seat.UseCardRules(Game);
         Game.EventRaised += OnEvent;
         Game.KnowledgeLost += ForgetHiddenLibraryCards;

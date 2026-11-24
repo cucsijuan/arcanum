@@ -182,6 +182,7 @@ public partial class OnlineService : Node
     private HostOptions HostOptions() => new()
     {
         ComputerPace = ComputerPaceAsync,
+        ComputerSearch = GameSession.SearchSettings(() => null), // the computer seats this device hosts think ahead as offline
         DecisionTime = DecisionTime,
         CardNames = App.Instance?.Cards?.Names,
         NonbasicLandNames = App.Instance?.Cards?.NonbasicLandNames,

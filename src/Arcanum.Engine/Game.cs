@@ -14,7 +14,7 @@ namespace Arcanum.Engine;
 /// </summary>
 public sealed partial class Game
 {
-    private readonly IReadOnlyList<IPlayerController> _controllers;
+    private IReadOnlyList<IPlayerController> _controllers;
     private readonly List<GameEvent> _log = new();
     private CancellationToken _ct;
 
@@ -111,7 +111,31 @@ public sealed partial class Game
         return card.Id;
     }
 
-    public GameView ViewFor(PlayerId player, bool revealAll = false) =>
+    /// <summary>
+    /// For a bot's rebuilt game only: the card with this id, in a hand or a library, becomes a new card with another
+    /// definition (what the bot imagines a hidden card to be). Its place in the zone stays the same.
+    /// </summary>
+    public void ReplaceHiddenCard(CardId id, CardDefinition definition)
+    {
+        var old = State.GetCard(id);
+        if (old.Zone is not (Zone.Hand or Zone.Library)) throw new InvalidOperationException("Only cards in a hand or a library can be replaced.");
+        State.Cards[id] = new Card(id, definition, old.Owner) { Zone = old.Zone };
+    }
+
+    /// <summary>
+    /// What a player sees. A seat whose controller is replaying known answers (<see cref="IReplayingController"/>) is
+    /// given the first view built instead (it doesn't read it), which keeps rebuilding a recorded game quick.
+    /// </summary>
+    public GameView ViewFor(PlayerId player, bool revealAll = false)
+    {
+        if (!revealAll && _controllers.Count > 0 && ControllerOf(player) is IReplayingController { Replaying: true })
+            return _replayView ??= BuildView(player, revealAll);
+        return BuildView(player, revealAll);
+    }
+
+    private GameView? _replayView;
+
+    private GameView BuildView(PlayerId player, bool revealAll) =>
         ViewBuilder.Build(State, player, revealAll, Config.Commander?.TaxPerCast ?? 0) with
         {
             AttackTaxes = AttackTaxesFor(player),
@@ -252,6 +276,51 @@ public sealed partial class Game
     public async Task RunAsync(CancellationToken ct = default)
     {
         _ct = ct;
+        if (_resume == ResumePoint.None) await StartAsync();
+        // Makes the next turn's player active: the most recent extra turn, else the next player in turn order. True for an extra turn.
+        bool NextTurn()
+        {
+            State.ExtraTurns.RemoveAll(p => State.GetPlayer(p).HasLost);
+            if (State.ExtraTurns.Count > 0)
+            {
+                State.ActivePlayer = State.ExtraTurns[^1];
+                State.ExtraTurns.RemoveAt(State.ExtraTurns.Count - 1);
+                return true;
+            }
+            _regularPlayer = State.NextLivingPlayer(_regularPlayer);
+            State.ActivePlayer = _regularPlayer;
+            return false;
+        }
+        while (!State.IsGameOver)
+        {
+            // A copied game resumes inside the turn it was copied in (see Copy).
+            if (_resume == ResumePoint.None)
+            {
+                if (!_firstTurn)
+                {
+                    // Extra turns come right after the current one, the most recently created first (rule 500.7).
+                    bool extra = NextTurn();
+                    // "Skips their next turn" / "if an opponent would begin an extra turn, that player skips that turn instead": that turn
+                    // doesn't happen, and the next one is picked the same way (rule 614.10). With both, the player chooses which applies (616.1).
+                    while (!State.IsGameOver && await SkipsTurnAsync(State.ActivePlayer, extra)) extra = NextTurn();
+                }
+                _skipDraw = _firstTurn && (Config.StartingPlayerSkipsDraw ?? !IsMultiplayer);
+            }
+            await RunTurnAsync();
+            _firstTurn = false;
+            // The end-of-match procedure: after the additional turns, a game nobody has won is a draw.
+            if (!State.IsGameOver && TimeCalledAt is { } called && State.TurnNumber >= called + AdditionalTurns)
+            {
+                State.IsGameOver = true;
+                State.Winner = null;
+                Emit(new GameEnded(null));
+            }
+        }
+    }
+
+    /// <summary>The game's start: starting player, mulligans, cards that begin the game on the battlefield, the game mode's start.</summary>
+    private async Task StartAsync()
+    {
         var startingPlayer = Config.StartingPlayer ?? new PlayerId(Rng.Next(State.Players.Count));
         Emit(new GameStarted(startingPlayer, Config.Seed));
         State.ActivePlayer = startingPlayer;
@@ -287,42 +356,8 @@ public sealed partial class Game
         await RunModeAsync((m, h) => m.StartAsync(h));
         await DeliverModeEventsAsync();
 
-        bool firstTurn = true;
-        var regular = State.ActivePlayer; // whose turn it is in the normal turn order
-        // Makes the next turn's player active: the most recent extra turn, else the next player in turn order. True for an extra turn.
-        bool NextTurn(ref PlayerId inOrder)
-        {
-            State.ExtraTurns.RemoveAll(p => State.GetPlayer(p).HasLost);
-            if (State.ExtraTurns.Count > 0)
-            {
-                State.ActivePlayer = State.ExtraTurns[^1];
-                State.ExtraTurns.RemoveAt(State.ExtraTurns.Count - 1);
-                return true;
-            }
-            inOrder = State.NextLivingPlayer(inOrder);
-            State.ActivePlayer = inOrder;
-            return false;
-        }
-        while (!State.IsGameOver)
-        {
-            if (!firstTurn)
-            {
-                // Extra turns come right after the current one, the most recently created first (rule 500.7).
-                bool extra = NextTurn(ref regular);
-                // "Skips their next turn" / "if an opponent would begin an extra turn, that player skips that turn instead": that turn
-                // doesn't happen, and the next one is picked the same way (rule 614.10). With both, the player chooses which applies (616.1).
-                while (!State.IsGameOver && await SkipsTurnAsync(State.ActivePlayer, extra)) extra = NextTurn(ref regular);
-            }
-            await RunTurnAsync(skipDraw: firstTurn && (Config.StartingPlayerSkipsDraw ?? !IsMultiplayer));
-            firstTurn = false;
-            // The end-of-match procedure: after the additional turns, a game nobody has won is a draw.
-            if (!State.IsGameOver && TimeCalledAt is { } called && State.TurnNumber >= called + AdditionalTurns)
-            {
-                State.IsGameOver = true;
-                State.Winner = null;
-                Emit(new GameEnded(null));
-            }
-        }
+        _firstTurn = true;
+        _regularPlayer = State.ActivePlayer; // whose turn it is in the normal turn order
     }
 
     /// <summary>The additional turns of the end-of-match procedure after the turn in progress when time is called (two-player games).</summary>

@@ -46,7 +46,80 @@ public sealed partial class Game
         return true;
     }
 
-    private async Task RunTurnAsync(bool skipDraw)
+    private async Task RunTurnAsync()
+    {
+        if (_resume == ResumePoint.None) BeginTurn();
+        for (; _stepIndex < _turnOrder.Count; _stepIndex++)
+        {
+            var step = _turnOrder[_stepIndex];
+            if (State.IsGameOver) return;
+            // A copied game resumes in the step it was copied in: what came before it in this step already happened.
+            bool resuming = _resume != ResumePoint.None;
+            if (!resuming)
+            {
+                if (_endTurnRequested && step != Step.Cleanup) continue; // "end the turn": straight to cleanup
+                // An additional combat phase repeats the combat steps (rule 506.1).
+                if (step == Step.PostcombatMain && _extraCombats > 0 && _turnOrder[_stepIndex - 1] == Step.EndCombat)
+                {
+                    _extraCombats--;
+                    _skipCombatDamageSteps = false;
+                    _stepIndex = _turnOrder.IndexOf(Step.BeginCombat) - 1;
+                    continue;
+                }
+                if (step == Step.Draw && _skipDraw) continue;
+                // "Skip your draw step."
+                if (step == Step.Draw && State.PermanentsControlledBy(State.ActivePlayer).Any(c => c.HasTextAbilities && c.Definition.SkipYourDrawStep)) continue;
+                // 508.8: skipped when no creature was declared as an attacker or put onto the battlefield attacking.
+                if (_skipCombatDamageSteps && step is Step.DeclareBlockers or Step.CombatDamage && State.Combat?.Attacks.AnyEver != true) continue;
+                if (step == Step.CombatDamage && CombatHasFirstStrike())
+                {
+                    // First or double strike: an extra combat damage step before the regular one (rule 510.4).
+                    _damagePass = DamagePass.FirstStrike;
+                    await RunStepAsync(step);
+                    if (State.IsGameOver) return;
+                    _damagePass = DamagePass.Regular;
+                    await RunStepAsync(step);
+                    _damagePass = DamagePass.Only;
+                    continue;
+                }
+                if (step == Step.End) _endStepsThisTurn++;
+                if (step == Step.Upkeep) _upkeepsThisTurn++;
+            }
+            await RunStepAsync(step);
+            // "An additional combat phase after this phase followed by an additional main phase": inserted after this main phase.
+            if (step.IsMain() && _extraCombatsAfterMain > 0 && !_endTurnRequested)
+            {
+                var combat = StepExtensions.TurnOrder.SkipWhile(s => s != Step.BeginCombat).TakeWhile(s => s != Step.PostcombatMain).ToList();
+                for (; _extraCombatsAfterMain > 0; _extraCombatsAfterMain--)
+                    _turnOrder.InsertRange(_stepIndex + 1, combat.Append(Step.PostcombatMain));
+                _skipCombatDamageSteps = false;
+            }
+            // "There's an additional combat phase after this phase": combat phases only, the first one made first.
+            if (step.IsMain() && _extraCombatsAfterMainOnly.Count > 0 && !_endTurnRequested)
+            {
+                var combat = StepExtensions.TurnOrder.SkipWhile(s => s != Step.BeginCombat).TakeWhile(s => s != Step.PostcombatMain).ToList();
+                foreach (var _ in _extraCombatsAfterMainOnly) _turnOrder.InsertRange(_stepIndex + 1, combat);
+                foreach (var delayed in _extraCombatsAfterMainOnly) _insertedCombatTriggers.Enqueue(delayed);
+                _extraCombatsAfterMainOnly.Clear();
+                _skipCombatDamageSteps = false;
+            }
+            // "There is an additional end step after this step" (rule 500.8).
+            if (step == Step.End && _extraEndSteps > 0 && !_endTurnRequested)
+            {
+                _extraEndSteps--;
+                _stepIndex--;
+            }
+            // "An additional upkeep step after this step" (rule 500.8).
+            if (step == Step.Upkeep && _extraUpkeeps > 0 && !_endTurnRequested)
+            {
+                _extraUpkeeps--;
+                _stepIndex--;
+            }
+        }
+    }
+
+    /// <summary>The start of a turn: the turn number, what ends as it begins ("this turn", "until your next turn"), its steps.</summary>
+    private void BeginTurn()
     {
         State.TurnNumber++;
         var active = State.GetPlayer(State.ActivePlayer);
@@ -188,72 +261,31 @@ public sealed partial class Game
         _endStepsThisTurn = 0;
         _extraUpkeeps = 0;
         _upkeepsThisTurn = 0;
-        var order = StepExtensions.TurnOrder.ToList();
-        for (int index = 0; index < order.Count; index++)
-        {
-            var step = order[index];
-            if (State.IsGameOver) return;
-            if (_endTurnRequested && step != Step.Cleanup) continue; // "end the turn": straight to cleanup
-            // An additional combat phase repeats the combat steps (rule 506.1).
-            if (step == Step.PostcombatMain && _extraCombats > 0 && order[index - 1] == Step.EndCombat)
-            {
-                _extraCombats--;
-                _skipCombatDamageSteps = false;
-                index = order.IndexOf(Step.BeginCombat) - 1;
-                continue;
-            }
-            if (step == Step.Draw && skipDraw) continue;
-            // "Skip your draw step."
-            if (step == Step.Draw && State.PermanentsControlledBy(State.ActivePlayer).Any(c => c.HasTextAbilities && c.Definition.SkipYourDrawStep)) continue;
-            // 508.8: skipped when no creature was declared as an attacker or put onto the battlefield attacking.
-            if (_skipCombatDamageSteps && step is Step.DeclareBlockers or Step.CombatDamage && State.Combat?.Attacks.AnyEver != true) continue;
-            if (step == Step.CombatDamage && CombatHasFirstStrike())
-            {
-                // First or double strike: an extra combat damage step before the regular one (rule 510.4).
-                _damagePass = DamagePass.FirstStrike;
-                await RunStepAsync(step);
-                if (State.IsGameOver) return;
-                _damagePass = DamagePass.Regular;
-                await RunStepAsync(step);
-                _damagePass = DamagePass.Only;
-                continue;
-            }
-            if (step == Step.End) _endStepsThisTurn++;
-            if (step == Step.Upkeep) _upkeepsThisTurn++;
-            await RunStepAsync(step);
-            // "An additional combat phase after this phase followed by an additional main phase": inserted after this main phase.
-            if (step.IsMain() && _extraCombatsAfterMain > 0 && !_endTurnRequested)
-            {
-                var combat = StepExtensions.TurnOrder.SkipWhile(s => s != Step.BeginCombat).TakeWhile(s => s != Step.PostcombatMain).ToList();
-                for (; _extraCombatsAfterMain > 0; _extraCombatsAfterMain--)
-                    order.InsertRange(index + 1, combat.Append(Step.PostcombatMain));
-                _skipCombatDamageSteps = false;
-            }
-            // "There's an additional combat phase after this phase": combat phases only, the first one made first.
-            if (step.IsMain() && _extraCombatsAfterMainOnly.Count > 0 && !_endTurnRequested)
-            {
-                var combat = StepExtensions.TurnOrder.SkipWhile(s => s != Step.BeginCombat).TakeWhile(s => s != Step.PostcombatMain).ToList();
-                foreach (var _ in _extraCombatsAfterMainOnly) order.InsertRange(index + 1, combat);
-                foreach (var delayed in _extraCombatsAfterMainOnly) _insertedCombatTriggers.Enqueue(delayed);
-                _extraCombatsAfterMainOnly.Clear();
-                _skipCombatDamageSteps = false;
-            }
-            // "There is an additional end step after this step" (rule 500.8).
-            if (step == Step.End && _extraEndSteps > 0 && !_endTurnRequested)
-            {
-                _extraEndSteps--;
-                index--;
-            }
-            // "An additional upkeep step after this step" (rule 500.8).
-            if (step == Step.Upkeep && _extraUpkeeps > 0 && !_endTurnRequested)
-            {
-                _extraUpkeeps--;
-                index--;
-            }
-        }
+        _turnOrder = StepExtensions.TurnOrder.ToList();
+        _stepIndex = 0;
     }
 
     private async Task RunStepAsync(Step step)
+    {
+        // A copied game resumes at the priority it was copied at (the step's start and turn-based actions already happened),
+        // or asks for attackers or blockers again (the step's start already happened; what follows the declaration doesn't have).
+        bool resuming = _resume == ResumePoint.Priority;
+        bool givesPriority = true;
+        if (_resume is ResumePoint.Attackers or ResumePoint.Blockers)
+        {
+            bool attackers = _resume == ResumePoint.Attackers;
+            _resume = ResumePoint.None;
+            if (attackers) await DeclareAttackersAsync();
+            else await DeclareBlockersAsync(resume: true);
+            await ModeStepAsync(step);
+        }
+        else if (!resuming) givesPriority = await BeginStepAsync(step);
+        if (resuming || (givesPriority && !State.IsGameOver)) await RunPriorityAsync();
+        EndStep(step);
+    }
+
+    /// <summary>The step's start and its turn-based actions; false for a step in which no player gets priority.</summary>
+    private async Task<bool> BeginStepAsync(Step step)
     {
         State.Step = step;
         Emit(new StepBegan(step, State.ActivePlayer));
@@ -365,8 +397,12 @@ public sealed partial class Game
         }
 
         if (step != Step.Cleanup) await ModeStepAsync(step);
-        if (givesPriority && !State.IsGameOver) await RunPriorityAsync();
+        return givesPriority;
+    }
 
+    /// <summary>The step's end: combat is over after the end of combat step, and mana empties from the pools (rule 500.4).</summary>
+    private void EndStep(Step step)
+    {
         if (step == Step.EndCombat) State.Combat = null;
         foreach (var player in State.Players) // rule 500.4
         {

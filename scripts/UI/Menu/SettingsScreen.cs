@@ -192,6 +192,8 @@ public partial class SettingsScreen : Control
         box.AddChild(Row("Your name", playerName, "What other players see in online games, and the name of the first seat on this device."));
         box.AddChild(Switch("Confirm mana payment", S.ConfirmManaPayment, v => S.ConfirmManaPayment = v,
             "Before a spell is cast, choose which lands to tap instead of letting the game pay for you."));
+        box.AddChild(Switch("Computer thinks ahead", S.BotThinksAhead, v => S.BotThinksAhead = v,
+            "Computer opponents try their main plays and attacks by playing the game on from each one: stronger, but each decision takes longer on small devices. Applies from the next game."));
         box.AddChild(Switch("Show both hands in hotseat", S.RevealHandsInHotseat, v => S.RevealHandsInHotseat = v,
             "In hotseat games (several players on this device), every hand stays face up."));
         box.AddChild(Row("Animation speed", SettingsKit.Slider(0.5, 2.5, 0.25, S.AnimationSpeed, v => $"{v:0.##}×", v => { S.AnimationSpeed = v; Settings.Save(); }),

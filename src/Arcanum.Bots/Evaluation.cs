@@ -36,6 +36,7 @@ public static class Evaluation
         DealDamageDivided or DealDamageDividedEvenly or DestroyOneAtRandom => true,
         Discard => true,
         ReturnToHand => true,
+        GainControl { NewController: null } => true,
         PumpUntilEndOfTurn p => p.Power.Estimate + p.Toughness.Estimate < 0,
         AddCounters a => a.Kind == CounterKind.MinusOneMinusOne,
         _ => false,
@@ -48,6 +49,8 @@ public static class Evaluation
         foreach (var effect in Unwrapped(ability.Effects))
         {
             if (!RefersToTarget(effect, index)) continue;
+            // Taking it: whatever else the ability does to it (untap it, give it haste) is for our use of it.
+            if (effect is GainControl { NewController: null }) return true;
             if (IsHarmful(effect)) harmful = true; else helpful = true;
         }
         if (ability is StaticAbility st && StaticIsHarmful(st)) harmful = true;

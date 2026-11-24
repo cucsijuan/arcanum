@@ -506,6 +506,7 @@ public sealed class LimitedService : ILimitedSession
         }
         return new MatchSetup(seats, 20)
         {
+            LimitedSet = ev.Source is { } source && source.StartsWith("set:") ? source[4..] : null,
             Label = $"{_eventName() ?? $"{ev.Mode} match"} · {RoundName(ev, round)}",
             Event = new EventHook(winner => RecordGame(match, winner is null ? null : winner == 0 ? human : opponent),
                 _returnScene, $"Round {ev.Rounds.Count} · game {game}"),

@@ -67,6 +67,8 @@ Environment variables useful while developing and testing:
 |----------|--------|
 | `ARCANUM_SEED=<n>` | Reproducible first game |
 | `ARCANUM_VS_BOT=1` | The demo game's second player is the computer |
+| `ARCANUM_BOT_SEARCH=off\|on\|<milliseconds>` | Forces the computer's thinking ahead (see the **Computer thinks ahead** setting): `off`, `on`, or on with that many milliseconds as the most one decision may take. Unset, the setting decides |
+| `ARCANUM_BOT_SEARCH_SHAPE=<rollouts>x<turns>` | With thinking ahead on: how many games each option is played on, and for how many turns (for example `2x2`). Unset, 4x4 with six or more processors, else 2x2 |
 | `ARCANUM_SANDBOX=1` | Demo game (and a career match) starts from the prepared sandbox board |
 | `ARCANUM_DECKS=<a>,<b>` | Demo game uses these module decks |
 | `ARCANUM_COMMANDER=1` | Demo game is a commander game with the module's commander decks |
@@ -113,6 +115,29 @@ instance its own `HOME` (its own user data and device account; add `ARCANUM_EOS_
 the desktop is locked or the windows are hidden, so screenshots come out blank: run each instance in its own virtual
 compositor, e.g. `kwin_wayland --virtual --xwayland --width 1280 --height 720 --socket <name> --exit-with-session <script>`,
 with the game started with `--display-driver x11`.
+
+The computer player measures are tests, not game options. They need `ARCANUM_MODULE_PATH` (and the card data as in
+`RealCardData`, see [engine-map.md](engine-map.md), *Computer players*). Without their variables they do nothing:
+
+| Variable | Effect |
+|----------|--------|
+| `ARCANUM_MATCHUP=<deck prefix>\|all` | `BotMatchupTests`: the bot with a deck plan plays the plain bot on the module's 60-card decks whose names start with the prefix (`all`: every deck). Prints its share of the wins, overall and per deck |
+| `ARCANUM_MATCHUP_GAMES=<n>` | Games per pairing and seat order (default 2) |
+| `ARCANUM_MATCHUP_SAME=1` | Both seats get the same bot (the measure's own noise) |
+| `ARCANUM_MATCHUP_GUESS=set\|seen\|none` | Which cards the searching bot imagines in an opponent's hidden cards (see [engine-map.md](engine-map.md), *Computer players*): `set` the set in the deck prefix (the part before a dash), as in a limited game; `seen` the sets of the cards seen (default); `none` only the cards seen |
+| `ARCANUM_MATCHUP_PARTS=<names>` | The `PlanParts` in use (for example `Lands`), to measure each part alone (default `All`) |
+| `ARCANUM_MATCHUP_PLANS=1` | Prints each deck's plan (`DeckPlan.ToString`) |
+| `ARCANUM_MATCHUP_LOG=<folder>` | Writes a readable log of each game into that folder |
+| `ARCANUM_MATCHUP_SEARCH=<rollouts>x<horizon>` | The plan bot also searches, with that many rollouts and turns (for example `4x4`) |
+| `ARCANUM_MATCHUP_COPY=0` | The searching plan bot rebuilds the game for each rollout by replay instead of copying it (see [game-copy.md](game-copy.md)) |
+| `ARCANUM_MATCHUP_BUDGET=<milliseconds>` | The most time the searching plan bot may spend on one decision (no limit when unset) |
+| `ARCANUM_MATCHUP_WORKERS=<n>` | How many rollouts may run at once (the `Simulator.Workers` semaphore, by default the processors less one) |
+| `ARCANUM_MATCHUP_SERIAL=1` | One game at a time (the default runs one fewer than the processors). The summary prints the searched decisions' average and longest time |
+| `ARCANUM_MATCHUP_COMMANDER=<prefix>\|all` | `PlanBotInCommanderWhenProvided`: four of the module's commander decks at a table, the plan bot in each seat in turn (equal bots score 25%). `ARCANUM_MATCHUP_GAMES` gives the number of tables (default 20) |
+| `ARCANUM_FORK_COST=<deck prefix>` | `ForkCostTests`: plays recorded bot games, replays each recording into a fresh game and checks that it ends the same way. Prints the times of playing, thinking and replaying |
+| `ARCANUM_COPY_CHECK=<deck prefix>\|all` | `GameCopyTests`: plays recorded bot games, copies the game at each copy point and plays the copy on with the same answers. It must end with the same events and state as the original. Needs `ARCANUM_MODULE_PATH`; prints the time of a copy next to a replay |
+| `ARCANUM_COPY_GAMES=<n>` | With `ARCANUM_COPY_CHECK`: games to check (default 20) |
+| `ARCANUM_WRITE_COPIERS=1` | Writes `src/Arcanum.Engine/Game.Copiers.g.cs` again (the generated copiers) when `GeneratedCopiersTests` runs, e.g. `ARCANUM_WRITE_COPIERS=1 dotnet test tests/Arcanum.Engine.Tests --filter GeneratedCopiers`. Needed after a field of the game's types changes. Does not need `ARCANUM_MODULE_PATH` |
 
 ## Online play
 A player hosts from the Online screen and gives the others an address. The host listens on TCP port 47013 (by

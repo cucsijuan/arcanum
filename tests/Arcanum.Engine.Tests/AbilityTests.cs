@@ -253,6 +253,35 @@ public class AbilityTests
     }
 
     [Fact]
+    public async Task TriggerNeedingMoreDifferentTargetsThanThereAreIsRemoved()
+    {
+        // "Tap three target creatures" with two creatures left: every target alone has a choice, the three together don't (603.3d).
+        var martyr = Creature("Martyr", 1, 1) with
+        {
+            Abilities = new AbilityDefinition[]
+            {
+                new TriggeredAbility
+                {
+                    Trigger = TriggerEvent.Dies, Text = "When this creature dies, tap three target creatures.",
+                    Targets = new[] { new TargetSpec(TargetKind.Creature) { RepeatFrom = new Quantity(3), RepeatExactly = true } },
+                    Effects = new Effect[] { new DealDamage(1, Subject.TargetAt(0)) },
+                },
+            },
+        };
+        CardId victim = default;
+        var s = WithCaster(r => r.Legal[0].First(t => t.Card == victim));
+        s.Lands(P0, 1);
+        s.InHand(P0, Bolt);
+        victim = s.Add(P1, martyr);
+        s.Add(P0, Creature("Bystander", 1, 1));
+        s.Add(P1, Creature("Onlooker", 1, 1));
+        await s.RunUntilTurn();
+        Assert.Equal(Zone.Graveyard, s.Card(victim).Zone);
+        Assert.Contains(s.Game.Log, e => e is TriggerRemovedNoTargets r && r.Source == victim && r.Controller == P1);
+        Assert.DoesNotContain(s.Game.Log, e => e is AbilityTriggered t && t.Source == victim);
+    }
+
+    [Fact]
     public async Task ActivatedTapAbilityPingsAndUsesTheStack()
     {
         var pinger = Creature("Pinger", 1, 1) with

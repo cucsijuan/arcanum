@@ -13,6 +13,14 @@ Switch tabs with the mouse, or with Q and E (or Page Up and Page Down). A short 
 - **Show both hands in hotseat**: in a game on one device, every hand stays face up.
 - **Animation speed**: how fast cards move, turn and fly across the table, from 0.5× to 2.5×. Above 1× is faster.
 - **Full control**: stop at every point where you get priority, even with nothing to do.
+- **Computer thinks ahead**: the computer opponents try their main-phase plays, their attacks and blocks, and their
+  instants and abilities (when they answer a spell or ability, after blockers are declared, and at the end of your turn)
+  by playing the game on from each choice. They play stronger, but each of their decisions takes longer. It is on by
+  default on every device. On a device with fewer than six processor cores (the handheld console) a decision may take up
+  to 5 seconds, and the computer looks 2 turns ahead, trying 2 games for each choice. On other devices a decision may take
+  up to 2 seconds, with 4 games for each choice looking 4 turns ahead. A change applies from the next game. The setting
+  also applies to the computer players in online games this device hosts (in events only on devices with six or more
+  processor cores).
 - **Opening boosters**: how a booster opens in a draft: **Tear them open** (you swipe along its tear line), **Open
   automatically** (it opens by itself if you wait), or **No animation**. See [Limited](limited.md).
 

@@ -35,8 +35,9 @@ public sealed partial class Game
             var request = AttackRequestFor(active, possible, defenders);
             _attackRequest = request;
             IReadOnlyList<AttackDeclaration> declared;
+            _waiting = ResumePoint.Attackers; // a copy point (see Copy)
             try { declared = await ControllerOf(active).DeclareAttackersAsync(ViewFor(active), possible, defenders); }
-            finally { _attackRequest = null; }
+            finally { _attackRequest = null; _waiting = ResumePoint.None; }
             Require(declared.Select(d => d.Attacker).Distinct().Count() == declared.Count, "A creature can attack only once.");
             Require(declared.All(d => possible.Contains(d.Attacker) && defenders.Contains(d.Defender)), "Illegal attacker or defender.");
             Require(declared.All(d => d.Planeswalker is not { } pw
@@ -301,11 +302,18 @@ public sealed partial class Game
     /// <summary>Fewest creatures that can block it: two with menace, or more ("except by three or more creatures").</summary>
     private static int MinimumBlockersOf(Card attacker) => Math.Max(attacker.Has(Keyword.Menace) ? 2 : 1, attacker.HasTextAbilities ? attacker.Definition.MinimumBlockers : 0);
 
-    private async Task DeclareBlockersAsync()
+    /// <summary>The defending player being asked for blocks, as an index in turn order (where a copy resumes).</summary>
+    private int _blockingDefender;
+
+    /// <param name="resume">A copy asks again the defender it was copied at; those before it have declared their blocks.</param>
+    private async Task DeclareBlockersAsync(bool resume = false)
     {
         var combat = State.Combat!;
-        foreach (var defender in State.ApnapOrder().ToList())
+        var defenders = State.ApnapOrder().ToList();
+        for (int index = resume ? _blockingDefender : 0; index < defenders.Count; index++)
         {
+            _blockingDefender = index;
+            var defender = defenders[index];
             var attackers = combat.Attacks.Where(a => a.Defender == defender).Select(a => State.GetCard(a.Attacker)).ToList();
             if (attackers.Count == 0) continue;
             var blockers = State.PermanentsControlledBy(defender).Where(c => c.IsCreature && !c.Tapped).ToList();

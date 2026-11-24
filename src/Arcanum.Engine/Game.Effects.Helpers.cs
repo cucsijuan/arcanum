@@ -728,7 +728,7 @@ public sealed partial class Game
     /// A mana ability (rule 605.1a): it has no target, isn't a loyalty ability and could add mana as it resolves (it may do other things too:
     /// "{T}: Add one mana of any color. When you next cast a creature spell this turn, …").
     /// </summary>
-    private static bool IsManaAbilityOf(ActivatedAbility ability) =>
+    public static bool IsManaAbilityOf(ActivatedAbility ability) =>
         ability.Targets.Count == 0 && ability.Cost.Loyalty is null && !ability.Cost.LoyaltyX && ability.Effects.Count > 0 && ability.Effects.Any(AddsManaOnly);
 
     /// <summary>An effect that only adds mana (or a choice among ways to add mana: "Add {G}{G}, {G}{U}, or {U}{U}").</summary>

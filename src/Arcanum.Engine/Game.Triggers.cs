@@ -1284,6 +1284,12 @@ public sealed partial class Game
                 ability = WithRepeatedTargets(ability, player, State.GetCard(trigger.Source), trigger.Info,
                     trigger.Ability.Trigger == TriggerEvent.EntersBattlefield ? State.GetCard(trigger.Source).CastX : 0);
                 _triggeredPlayer = trigger.Info?.Player;
+                // "X target creatures" with fewer than X to choose from: the targets can't all be chosen (rule 603.3d).
+                if (!ReferenceEquals(ability, trigger.Ability) && !HasLegalTargets(ability, player, trigger.Source))
+                {
+                    Emit(new TriggerRemovedNoTargets(player, trigger.Source, trigger.Ability.Text));
+                    continue;
+                }
                 var targets = (await ChooseTargetsAsync(player, ability, trigger.Source, ability.Text, canCancel: false))!;
                 var division = await ChooseDivisionAsync(player, ability, trigger.Source, targets); // rule 603.3d
                 Emit(new AbilityTriggered(player, trigger.Source, ability.Text));

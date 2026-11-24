@@ -19,6 +19,9 @@ public sealed record MatchSetup(IReadOnlyList<GameSession.Seat> Seats, int Start
     /// <summary>What the player's Discord activity calls this game ("Modern match", an event's name); null: the event hook's title.</summary>
     public string? Label { get; init; }
 
+    /// <summary>The set of a draft or sealed game (the computer guesses its opponent's cards from it); null otherwise.</summary>
+    public string? LimitedSet { get; init; }
+
     /// <summary>A picture of a table both players share (its top half behind the opponent, its bottom half behind this player), instead of the playmats.</summary>
     public string? Table { get; init; }
 
