@@ -1136,6 +1136,8 @@ public sealed partial class Game
                     if (x.Linked && card.Zone == Zone.Exile) card.ExiledWith = (ctx.Source.Id, ctx.SourceVersion ?? ctx.Source.Version);
                     if (x.PlayableThisTurn && card.Zone == Zone.Exile) State.PlayableFromExile.Add(new PlayableFromExile(card.Id, card.Version, ctx.Controller, State.TurnNumber));
                     if (x.OwnerMayPlayUntilEndOfTheirNextTurn && card.Zone == Zone.Exile) OwnerMayPlayUntilEndOfTheirNextTurn(card);
+                    if (x.Airbend && card.Zone == Zone.Exile)
+                        State.PlayableFromExile.Add(new PlayableFromExile(card.Id, card.Version, card.Owner, int.MaxValue) { AltCost = AirbendCost, CastOnly = true });
                     if (x.CastThisTurnAnyManaExileInstead && card.Zone == Zone.Exile)
                         State.PlayableFromExile.Add(new PlayableFromExile(card.Id, card.Version, ctx.Controller, State.TurnNumber)
                         {

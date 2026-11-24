@@ -32,6 +32,13 @@ public sealed partial class Game
             case NameThenExileFromAllZones ne:
                 await NameThenExileFromAllZonesAsync(ne, ctx);
                 break;
+            case AtNextCombatThisTurn next:
+                foreach (var card in CardsFor(next.About, ctx).Where(c => c.Zone == Zone.Battlefield).ToList()) // a creature that left is a new object (rule 400.7)
+                    State.AtNextCombatThisTurn.Add((new DelayedTrigger(ctx.Source.Id, next.Ability, ctx.Controller, 0)
+                    {
+                        SourceVersion = ExpectedSourceVersion(ctx), SourceTransforms = ctx.Source.TransformCount, AboutCard = (card.Id, card.Version),
+                    }, State.TurnNumber));
+                break;
             default:
                 throw new NotSupportedException($"Effect {effect.GetType().Name} is not implemented.");
         }

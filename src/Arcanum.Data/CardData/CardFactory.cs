@@ -32,7 +32,7 @@ public static partial class CardFactory
     /// </summary>
     private static readonly string[] ScriptedKeywords =
     {
-        "Scry", "Surveil", "Collect evidence", "Earthbend", "Fight", "Mill", "Treasure", "Food", "Investigate",
+        "Scry", "Surveil", "Collect evidence", "Earthbend", "Airbend", "Fight", "Mill", "Treasure", "Food", "Investigate",
         "Raid", "Landfall", "Morbid", "Threshold", "Ferocious", "Hexproof from", "Affinity", "Double", "Formidable", "Alliance", "Crew", "Protection", "Vivid",
         "Amass", "Recruit", "Gift", "Behold", "Landwalk", "Goad",
         "Revolt", "Delirium", "Battalion", "Fateful hour", "Spell mastery", "Addendum", "Regenerate", "Triple", "Populate", "Exert",

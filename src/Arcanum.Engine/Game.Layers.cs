@@ -841,6 +841,7 @@ public sealed partial class Game
             card.UnblockableBy.Clear();
             card.BlockRestrictions.Clear();
             card.CantAttackPlayers.Clear();
+            card.CantBlockCreaturesOf.Clear();
             card.CantAttackOwner = false;
             card.CantAttackPlayersAndPlaneswalkers.Clear();
             card.StaticGoaders.Clear();
@@ -903,7 +904,7 @@ public sealed partial class Game
         var changes = new List<LayerEffect>();
         foreach (var candidate in StaticCandidates(context, a => a.LosesAllAbilities || a.Keywords is { Count: > 0 } || a.GrantedKeywords.Count > 0
                                                        || a.GrantsAbilities is not null || a.GrantsMana is not null || a.GrantsWard is not null || a.GrantsWardLife > 0
-                                                       || a.GrantsGraveyardAbilities is not null || a.GrantsYourCreaturesAbilities is not null || a.GrantsExiledCreatureAbilities || a.GrantsExiledCardAbilities is not null || a.CantAttackYou || a.CantAttackYouOrPlaneswalkers || a.Goads || a.ProtectionFromRingBearers || a.ProtectionFromTypes != 0 || a.ProtectionFromChosenColor || a.ProtectionFromColorsOutsideCommanderIdentity
+                                                       || a.GrantsGraveyardAbilities is not null || a.GrantsYourCreaturesAbilities is not null || a.GrantsExiledCreatureAbilities || a.GrantsExiledCardAbilities is not null || a.CantAttackYou || a.CantAttackYouOrPlaneswalkers || a.CantBlockYourCreatures || a.Goads || a.ProtectionFromRingBearers || a.ProtectionFromTypes != 0 || a.ProtectionFromChosenColor || a.ProtectionFromColorsOutsideCommanderIdentity
                                                        || a.LosesKeywords is not null || a.PreventsDamage != StaticDamagePrevention.None || a.CantActivateAbilities || a.CantBeSacrificed
                                                        || a.GrantsCantBeBlockedBy is not null || a.GrantsDyingTriggerBonus, locks))
         {
@@ -934,6 +935,7 @@ public sealed partial class Game
                 if (ability.GrantsWardLife > 0) card.GrantedWardLives.Add(ability.GrantsWardLife);
                 if (ability.GrantsCantBeBlockedBy is { } unblockable) card.BlockRestrictions.Add(unblockable);
                 if (ability.CantAttackYou) card.CantAttackPlayers.Add(source.Controller);
+                if (ability.CantBlockYourCreatures) card.CantBlockCreaturesOf.Add(source.Controller);
                 if (ability.CantAttackYouOrPlaneswalkers) card.CantAttackPlayersAndPlaneswalkers.Add(source.Controller);
                 if (ability.Goads) card.StaticGoaders.Add(source.Controller);
                 if (ability.ProtectionFromRingBearers) card.ProtectedFromRingBearers = true;
@@ -1025,7 +1027,7 @@ public sealed partial class Game
         private readonly ManaCost[] _wards = card.GrantedWards.ToArray();
         private readonly int[] _wardLives = card.GrantedWardLives.ToArray();
         private readonly ObjectFilter[] _blockRestrictions = card.BlockRestrictions.ToArray();
-        private readonly PlayerId[] _cantAttack = card.CantAttackPlayers.ToArray(), _cantAttackOrPlaneswalkers = card.CantAttackPlayersAndPlaneswalkers.ToArray(),
+        private readonly PlayerId[] _cantAttack = card.CantAttackPlayers.ToArray(), _cantBlockCreaturesOf = card.CantBlockCreaturesOf.ToArray(), _cantAttackOrPlaneswalkers = card.CantAttackPlayersAndPlaneswalkers.ToArray(),
             _goaders = card.StaticGoaders.ToArray();
         private readonly (string Color, CardId Aura)[] _colorProtections = card.AuraColorProtections.ToArray();
 
@@ -1047,6 +1049,7 @@ public sealed partial class Game
             Put(card.GrantedWardLives, _wardLives);
             Put(card.BlockRestrictions, _blockRestrictions);
             Put(card.CantAttackPlayers, _cantAttack);
+            Put(card.CantBlockCreaturesOf, _cantBlockCreaturesOf);
             Put(card.CantAttackPlayersAndPlaneswalkers, _cantAttackOrPlaneswalkers);
             Put(card.StaticGoaders, _goaders);
             Put(card.AuraColorProtections, _colorProtections);

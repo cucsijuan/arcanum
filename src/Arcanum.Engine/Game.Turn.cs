@@ -227,6 +227,7 @@ public sealed partial class Game
         State.OpponentsCreaturesMustAttackOthers.RemoveAll(p => p == active.Id);
         State.LastingEffects.RemoveAll(e => e.UntilTurnOf == active.Id);
         State.AttackTaxesUntilNextTurn.RemoveAll(t => t.Protected == active.Id);
+        State.CastOnlyFromHand.RemoveAll(r => r.Until == active.Id);
         active.Protected = false; // "protection from everything until your next turn"
         active.LifeCantChange = false; // "their life total can't change" until their next turn
         foreach (var card in State.Cards.Values)

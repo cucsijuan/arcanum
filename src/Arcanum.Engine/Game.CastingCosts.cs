@@ -17,6 +17,9 @@ namespace Arcanum.Engine;
 public sealed partial class Game
 {
     /// <summary>What a spell is cast for (rule 118.9): its mana cost or one alternative cost.</summary>
+    /// <summary>Airbend's cost (rule 701.65a: "for {2} rather than its mana cost").</summary>
+    private static readonly ManaCost AirbendCost = ManaCost.Parse("{2}");
+
     private enum CastingWayKind { ManaCost, Dash, Warp, Alternative, WithoutPaying, PayLife, Overload, Blitz, Foretold, Impending, FaceDown, Escape, Evoke, Harmonize, RuleAlternative, FreeFromExile, LifeOncePerTurn, Bestow, Sneak }
 
     /// <summary>
@@ -131,6 +134,16 @@ public sealed partial class Game
         if (_miracleCost.TryGetValue(card.Id, out var miracle)) return new() { new(CastingWayKind.ManaCost, miracle) };
         // A foretold card: cast on a later turn for its foretell cost (702.143a), unless something else lets it be cast from exile.
         if (Foretold(card) && !PlayableExile(caster).Contains(card.Id)) return new() { new(CastingWayKind.Foretold, card.Definition.Foretell!) };
+        // Airbend: "its owner may cast it for {2} rather than its mana cost"; another permission to cast it from exile lets it be paid for normally too.
+        if (card.Zone == Zone.Exile && ExilePermissions(caster).Where(p => p.Card == card.Id).ToList() is { Count: > 0 } exilePermissions
+            && exilePermissions.Where(p => p.AltCost is not null).Select(p => p.AltCost!).Distinct().ToList() is { Count: > 0 } altCosts)
+        {
+            var airbent = altCosts.Select(a => new CastingWay(CastingWayKind.RuleAlternative, a)).ToList();
+            if ((exilePermissions.Any(p => p.AltCost is null) || StaticExiledWithPermission(card, caster) is not null
+                 || card.ExiledWith is not null && ExiledWithPlayRightFor(card, caster) is not null) && !card.Definition.NoManaCost)
+                airbent.Insert(0, new(CastingWayKind.ManaCost, card.Definition.ManaCost));
+            return airbent;
+        }
         // A plotted card: cast on a later turn without paying its mana cost (702.170d).
         if (Plotted(card) && !PlayableExile(caster).Contains(card.Id)) return new() { new(CastingWayKind.WithoutPaying, ManaCost.Zero) };
         // Mayhem: cast from the graveyard for its mayhem cost the turn it was discarded.
@@ -556,6 +569,8 @@ public sealed partial class Game
     /// <summary>"Your opponents can't cast noncreature spells this turn."</summary>
     private bool NoncreatureForbidden(Card card, PlayerId caster) =>
         !card.Is(CardType.Creature) && State.NoncreatureSpellsForbiddenFor.Contains((caster, State.TurnNumber))
+        // "Can't cast spells from anywhere other than their hands."
+        || card.Zone != Zone.Hand && State.CastOnlyFromHand.Any(r => r.Restricted == caster)
         // "You can't cast permanent spells."
         || (card.Is(CardType.Creature) || card.Is(CardType.Artifact) || card.Is(CardType.Enchantment) || card.Is(CardType.Planeswalker) || card.Is(CardType.Battle))
            && HasRule(caster, Cards.ExtraRules.YouCantCastPermanentSpells)

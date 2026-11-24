@@ -740,7 +740,8 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   searcher may leave cards, rule 701.19b), `{ "searchThenNameCard": "triggeredPlayer", "filter": f }` (the searcher
   must find a card if there is one; the other player names a card without knowing it), `{ "playTopFree": true }` (reveal the top card,
   play it free or exile it; a land only on your turn with a land play left, and it counts as your land play), `{ "shuffle": "you" }`,
-  `{ "opponentsCantCastSpells": true }` (this turn; "can't cast" also stops casting during an effect).
+  `{ "opponentsCantCastSpells": true }` (this turn; "can't cast" also stops casting during an effect),
+  `{ "opponentsCastOnlyFromHandUntilYourNextTurn": true }` (until your next turn, opponents can cast spells only from their hands).
 - **Existing effects take more options**: `revealUntil` with `"rest": "shuffle"` and `"revealerPuts": true` (the revealing player puts
   the card onto the battlefield under their control), `revealTop` with `"else": [ … ]` (the revealed card is `"found"` there too),
   `reanimate` with `"addColors": ["B"]` ("is black in addition"), `become` with `"setColors"`, `reanimateAll` with `"from": "everyone"` and
@@ -1254,6 +1255,8 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `eachUpkeep` with `"fromGraveyard": true`: the ability works from its owner's graveyard, at the beginning of each upkeep.
 - Cast triggers: `"spellTargetsOpponent": true` (the spell may target an opponent instead of a matching object, with `"spellTargets"`), and
   `"orSpellTargets": true` (the spell matches the filter or targets what `"spellTargets"` describes).
+  With `"spellTargets"`, the subject `"batch"` is the objects the spell targets that match it, as they were when the trigger happened
+  ("those creatures").
 - `creatureBlocks`: whenever a creature blocks, any creature. The triggered player is the blocker's controller.
 - `opponentsDealtCombatDamageDuringYourTurn`: during your turn, when an opponent is dealt combat damage. The triggered player is you.
 - `creaturesAttackOpponent` with `"playersOnly": true`: only attacks on a player trigger it, not attacks on a planeswalker.
@@ -1374,6 +1377,9 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - **Reveal until, rest on the bottom in any order**: `"rest": "bottomAnyOrder"` on `revealUntil`. The revealing player puts the other
   cards on the bottom of their library in an order they choose. `{ "revealUntil": { "types": ["creature"] }, "to": "hand", "rest":
   "bottomAnyOrder" }`.
+- **Exile until a match, which gains abilities**: `{ "exileUntil": filter, "gains": [ abilities ] }`. Cards are exiled from the top of
+  your library until one matches the filter; the others stay exiled. That card gains the abilities while it remains that object in
+  exile. A granted ability with `"fromExile": true` works there.
 - **Protection from the chosen type** (existing `protectionFromChosenType`): the chosen types now include kindred.
 
 ### Card-wide rules
@@ -1453,6 +1459,7 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `{ "spellsHaveCascade": filter }`: spells that match the filter have cascade.
 - `{ "replacesTokenSubtype": "Fish", "instead": token }`: a token of that subtype is made as the given token instead. Works with `"level"`.
 - Activated ability with `"fromCommandZone": true`: the ability can be activated from the command zone.
+- Activated ability with `"fromExile": true`: the ability works only while its card is in exile, and its owner activates it.
 - Static scope `"permanents:opponents"`: the static ability applies to permanents your opponents control.
 - Static `"exiledCreatureAbilities": true`: the source has the activated abilities of the creature cards exiled with it.
 - Static `grantsManaOnlyFor`: restricts the mana the static grants to the given use.
@@ -1691,7 +1698,7 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   `"optionalAdditionalCost"`, derived from the keyword.
 - **Teamwork N**: read from the rules text, no script. An optional additional cost: tap creatures you control with total power N
   or more. It is not crewing: a creature's crew bonus (`crewsAsThoughPowerGreater`) doesn't count. Condition `"additionalCostPaid"`.
-- **Collect evidence N** and **Earthbend N** are keywords the card's script spells out (see Costs and Effects below).
+- **Collect evidence N**, **Earthbend N** and **Airbend** are keywords the card's script spells out (see Costs and Effects below).
 
 ### Costs
 - `life:X`: "Pay X life", with X announced with the other costs.
@@ -1702,6 +1709,8 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `sacrificeEach:Swamp+Forest`: sacrifice one of each named subtype, each a different permanent.
 - `returnToHand`: return this permanent to its owner's hand as the cost.
 - `discardThis` (activated from the hand, e.g. channel): see "Discard this card" above.
+- `exileCardFromHand`: "Exile a card from your hand" (any card, chosen as the cost is paid). Different from `exileFromHand`, which
+  exiles this card from your hand.
 - `"costReductionPerTargetColor": true` on an activated ability: it costs {1} less to activate for each color of the creature
   it targets. The cost shown before targets are chosen uses the best legal target.
 - `"xFromSacrificedManaValue": {"targetOffset": 1}` on an activated ability: "Sacrifice a creature you control with mana value X:
@@ -2047,6 +2056,7 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
 - `{ "exileLibraryAllBut": 6, "faceDown": true }`: the rest of that library is exiled face down.
 - `{ "searchHandOrLibrary": filter, "alsoGraveyard": true }`: search your graveyard, hand and library.
 - `{ "castCopy": subject, "payManaCost": true }`: you may cast the copy paying its own mana cost (not free).
+- `{ "castCopy": "self", "payManaCost": true }` from an ability of a card in exile: copies that card where it is (it isn't moved).
 - `{ "copy": subject, "addColors": ["red"] }`: the copy is also those colors, in addition to its copied colors.
 - `{ "preventDamage": …, "whenPrevented": [ effects ], "whenPreventedText": "…" }`: for each 1 damage prevented this way, the effects happen.
 - `{ "counter": subject, "exilePlayable": true, "ifPaid": [ effects ] }`: the countered spell is exiled instead of going to the graveyard,
@@ -2111,6 +2121,7 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
 - `"protectionFromChosenColor": true` (on an Aura): the enchanted creature has protection from the color the Aura's source chose.
   That protection doesn't remove the Aura.
 - `"cantAttackYouOrPlaneswalkers": true` (static, with `affects`): the affected creatures can't attack you or planeswalkers you control.
+- `"cantBlockYourCreatures": true` (static, with `affects`): the affected creatures can't block creatures you control.
 
 ### Tokens
 - Role token: `"types": "Enchantment — Aura Role"`, `"aura": "creature"`, and static abilities for the enchanted creature. Of the
@@ -2181,6 +2192,9 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
   player this combat. "Triggered" in the effects is that creature.
 - `{ "whenYourCreatureDealsCombatDamageThisTurn": subject, "effects": [ … ], "text": "…" }`: whenever a creature you control deals
   combat damage to a player this turn. "Triggered" in the effects is the first object of the subject.
+- `{ "atNextCombatThisTurn": subject, "effects": [ … ], "text": "…" }`: at the beginning of the next combat this turn, the effects
+  happen for each object the subject names that is on the battlefield as this resolves. "Triggered" in the effects is that object.
+  It lapses if no combat begins that turn.
 - `{ "doubleTriggeredSpellX": true }`: double the X of the spell the trigger is about, while it is on the stack.
 - `{ "exileTopAsYouChooseCastIfTotalAtMost": N }`: as many times as you choose, exile the top card of your library. If the total
   mana value of the cards exiled this way is N or less, you may cast any number of them without paying their mana costs.
@@ -2223,6 +2237,8 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
 - `addManaUntilEndOfTurn` with `"times": quantity`: the mana is added that many times.
 - `lookAtTop` with `"maxTotalManaValue": N`: take any number of matching cards whose total mana value is N or less.
 - `exile` with `"ownerMayPlayUntilEndOfNextTurn": true`: its owner may play it until the end of their next turn.
+- `exile` with `"airbend": true` (airbend): each card exiled this way may be cast by its owner for {2} rather than its mana cost while it
+  stays exiled. Spells only. Another permission to cast it from exile still offers its mana cost too.
 - Tokens (`tokens` effect): `"attackingTriggerDefender": true` (tapped and attacking the trigger's defending player),
   `"forEachOpponentMustAttack": true` (for each opponent, the tokens attack that opponent this turn if able), `"attachTo": subject`
   (an Aura token enters attached to the first of these it can enchant). The token's `"aura"` key is the target spec of an Aura token,

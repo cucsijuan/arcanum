@@ -365,6 +365,9 @@ public sealed class Card
     /// <summary>Players it can't attack ("can't attack you"), from static abilities.</summary>
     internal HashSet<Core.PlayerId> CantAttackPlayers { get; } = new();
 
+    /// <summary>Players whose creatures it can't block ("can't block creatures you control"), from static abilities.</summary>
+    internal HashSet<Core.PlayerId> CantBlockCreaturesOf { get; } = new();
+
     /// <summary>Players it has protection from (rule 702.16j), and "protection from Ring-bearers".</summary>
     internal HashSet<Core.PlayerId> ProtectedFromPlayers { get; } = new();
     internal bool ProtectedFromRingBearers { get; set; }
@@ -528,9 +531,17 @@ public sealed class Card
 
     /// <summary>Its abilities now: printed ones (unless it lost them) plus granted ones. Indices match <c>ActivateAbility.Index</c>.</summary>
     public IReadOnlyList<AbilityDefinition> Abilities =>
-        LosesAbilities || LosesTextAbilities ? GrantedAbilities
+        ExileGrantedAbilities.Count > 0 && Zone == Zone.Exile && ExileGrantedAbilities.Any(g => g.Version == Version)
+            ? AtClassLevel(Definition.Abilities).Concat(ExileGrantedAbilities.Where(g => g.Version == Version).Select(g => g.Ability)).ToList()
+        : LosesAbilities || LosesTextAbilities ? GrantedAbilities
         : GrantedAbilities.Count == 0 ? AtClassLevel(Definition.Abilities)
         : AtClassLevel(Definition.Abilities).Concat(GrantedAbilities).ToList();
+
+    /// <summary>
+    /// Abilities an effect gave this card in exile ("that nonland card gains …"), with the object version they belong to: they last while it
+    /// remains that object in exile.
+    /// </summary>
+    internal List<(int Version, AbilityDefinition Ability)> ExileGrantedAbilities { get; } = new();
 
     /// <summary>Its class level (rule 716.3): 1 as it enters the battlefield, raised by its level abilities; 0 elsewhere.</summary>
     public int ClassLevel { get; set; }
@@ -621,7 +632,10 @@ public sealed class Card
         .Where(t => TypesOverride is null || SubtypeFitsTypes(t)).ToList();
 
     /// <summary>Abilities it has from effects (not printed).</summary>
-    public IReadOnlyList<AbilityDefinition> GainedAbilities => GrantedAbilities;
+    public IReadOnlyList<AbilityDefinition> GainedAbilities =>
+        ExileGrantedAbilities.Count > 0 && Zone == Zone.Exile
+            ? ExileGrantedAbilities.Where(g => g.Version == Version).Select(g => g.Ability).Concat(GrantedAbilities).ToList()
+            : GrantedAbilities;
 
     /// <summary>Whether an effect made it lose its printed abilities.</summary>
     public bool LostAllAbilities => LosesAbilities;

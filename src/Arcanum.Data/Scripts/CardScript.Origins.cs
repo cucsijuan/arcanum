@@ -37,6 +37,13 @@ public static partial class CardScriptParser
         // that name and exile them. That player shuffles, then draws a card for each card exiled from their hand this way."
         if (e.TryGetProperty("exileFromOpponentsGraveyardThenNamesakes", out var efo) && efo.GetBoolean())
             return new NameThenExileFromAllZones(Subject.Self, ObjectFilter.Anything) { FromOpponentsGraveyardCard = true }; // the searched player is the exiled card's owner
+        // { "atNextCombatThisTurn": subject, "effects": [...], "text": "..." }: "at the beginning of the next combat this turn, …" about that object.
+        if (e.TryGetProperty("atNextCombatThisTurn", out var anc))
+            return new AtNextCombatThisTurn(ParseSubject(anc), new TriggeredAbility
+            {
+                Trigger = TriggerEvent.NextUpkeep, Effects = EffectList(e.GetProperty("effects")),
+                Text = e.TryGetProperty("text", out var anct) ? anct.GetString() ?? "" : "",
+            });
         if (e.TryGetProperty("nameAndExile", out var nae))
             return new NameThenExileFromAllZones(ParseSubject(nae),
                 e.TryGetProperty("nameFilter", out var nf) ? ParseFilter(nf, ControllerFilter.Any) : ObjectFilter.Anything)

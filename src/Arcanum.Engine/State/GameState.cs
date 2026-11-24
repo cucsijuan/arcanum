@@ -138,6 +138,9 @@ public sealed record PlayableFromExile(CardId Card, int Version, PlayerId Player
     /// <summary>Cast by paying life equal to its mana value rather than its mana cost.</summary>
     public bool PayLife { get; init; }
 
+    /// <summary>Cast for this cost rather than its mana cost (airbend: "its owner may cast it for {2}"); only spells, no land play.</summary>
+    public Mana.ManaCost? AltCost { get; init; }
+
     /// <summary>"Until you exile another card with [this]": the permission ends when this object exiles another card this way.</summary>
     public (CardId Source, int Version)? UntilAnotherFrom { get; init; }
 
@@ -387,6 +390,9 @@ public sealed partial class GameState
     /// <summary>Attack taxes on attacking a player until that player's next turn.</summary>
     public List<(PlayerId Protected, Mana.ManaCost Tax)> AttackTaxesUntilNextTurn { get; } = new();
 
+    /// <summary>"Until your next turn, your opponents can't cast spells from anywhere other than their hands": the restricted player and whose next turn ends it.</summary>
+    public List<(PlayerId Restricted, PlayerId Until)> CastOnlyFromHand { get; } = new();
+
     /// <summary>"Once during each of your turns, you may cast … from your graveyard": the permanents (as these objects) whose permission was used, by turn.</summary>
     public HashSet<(CardId Source, int Version, int Turn)> GraveyardCastsUsed { get; } = new();
 
@@ -479,6 +485,9 @@ public sealed partial class GameState
 
     /// <summary>Delayed abilities "at end of combat" (rule 603.7): they trigger as the next end of combat step begins.</summary>
     public List<DelayedTrigger> AtEndOfCombat { get; } = new();
+
+    /// <summary>"At the beginning of the next combat this turn": the delayed ability and the turn it was made in (it lapses when that turn ends).</summary>
+    public List<(DelayedTrigger Trigger, int Turn)> AtNextCombatThisTurn { get; } = new();
 
     /// <summary>
     /// The paradigm delayed abilities (rule 702.192a): each triggers at the beginning of each of its controller's precombat main phases for

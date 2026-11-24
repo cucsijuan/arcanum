@@ -47,6 +47,9 @@ public sealed record ExileIt(Subject What) : Effect
     /// <summary>"Its owner may play it until the end of their next turn."</summary>
     public bool OwnerMayPlayUntilEndOfTheirNextTurn { get; init; }
 
+    /// <summary>Airbend: the owner exiles it; while it remains exiled, its owner may cast it for {2} rather than its mana cost.</summary>
+    public bool Airbend { get; init; }
+
     /// <summary>
     /// "You may cast it this turn, and mana of any type can be spent to cast that spell. If that spell would be put into a graveyard, exile it
     /// instead."
@@ -1521,6 +1524,9 @@ public sealed record ShuffleLibrary(Subject Who) : Effect;
 /// <summary>"You can't cast additional spells this turn."</summary>
 public sealed record YouCantCastSpellsThisTurn : Effect;
 
+/// <summary>"Until your next turn, your opponents can't cast spells from anywhere other than their hands."</summary>
+public sealed record OpponentsCastOnlyFromHandUntilYourNextTurn : Effect;
+
 /// <summary>"Your opponents can't cast spells this turn."</summary>
 public sealed record OpponentsCantCastSpellsThisTurn : Effect
 {
@@ -1670,6 +1676,12 @@ public sealed record CastParadigmCopy(Cards.CardDefinition Spell) : Effect;
 /// Exile the target card, copy it, and you may cast the copy without paying its mana cost — or, with <see cref="Cost"/>, "by paying [cost]
 /// rather than paying its mana cost".
 /// </summary>
+/// <summary>
+/// "Exile cards from the top of your library until you exile a [filter] card. That card gains [abilities]": the other cards stay exiled; the
+/// found card keeps the abilities while it remains exiled (they work from exile; see <see cref="ActivatedAbility.FromExile"/>).
+/// </summary>
+public sealed record ExileUntilGains(ObjectFilter Filter, IReadOnlyList<AbilityDefinition> Abilities) : Effect;
+
 public sealed record CastCopyOfExiled(Subject What) : Effect
 {
     public Mana.ManaCost? Cost { get; init; }

@@ -1586,6 +1586,8 @@ public partial class GameBoard : Control
                         PlayLand l when view.FindCard(l.Card) is { Zone: Arcanum.Engine.State.Zone.Exile } x => (l.Card, $"Play {(l.Back ? x.OtherFace?.Name : x.Name)} (exile)"),
                         ActivateAbility a when view.FindCard(a.Source) is { Zone: Arcanum.Engine.State.Zone.Graveyard } g
                             => (a.Source, $"{g.Name}: {Shorten(a.Index < g.AbilityTexts.Count ? g.AbilityTexts[a.Index] : "activate")}"),
+                        ActivateAbility a when view.FindCard(a.Source) is { Zone: Arcanum.Engine.State.Zone.Exile } x
+                            => (a.Source, $"{x.Name} (exile): {Shorten(a.Index < x.AbilityTexts.Count ? x.AbilityTexts[a.Index] : "activate")}"),
                         // The companion waits outside the game, not on the board.
                         PutCompanionIntoHand pc => (pc.Card, $"Companion: {view.FindCard(pc.Card)?.Name ?? "your companion"} into your hand ({{3}})"),
                         _ => (default(CardId?), ""),

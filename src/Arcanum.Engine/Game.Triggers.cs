@@ -495,7 +495,16 @@ public sealed partial class Game
                              || ability.Trigger == TriggerEvent.EnchantedPlayerCastsSpell && observer.Zone == Zone.Battlefield && observer.AttachedPlayer == c.Player)
                             && (ability.FilterOrSpellTargets ? aimedHit || Matches(filter, spell, c.Player, observer, observer.Controller) : Matches(filter, spell, c.Player, observer, observer.Controller)))
                             for (int times = 1 + InstantSorceryExtraTriggers(observer, spell, c.Player); times > 0; times--)
-                                AddPending(observer.Id, ability, observer.Controller, About(spell, c.Player, ManaValueOf(spell)) with { SpellManaSpent = spell.ManaSpent });
+                                AddPending(observer.Id, ability, observer.Controller, About(spell, c.Player, ManaValueOf(spell)) with
+                                {
+                                    SpellManaSpent = spell.ManaSpent,
+                                    // "Those creatures": what the spell targets that the trigger asked about, as they are as it triggers ("batch").
+                                    Batch = ability.SpellTargets is { } aimedAt && spellTargets is not null
+                                        ? spellTargets.Select(t => t.Target.Card).OfType<CardId>().Distinct().Select(State.GetCard)
+                                            .Where(tc => tc.Zone == Zone.Battlefield && Matches(aimedAt, tc, tc.Controller, observer, observer.Controller))
+                                            .Select(tc => (tc.Id, tc.Version)).ToList()
+                                        : null,
+                                });
                     }
                 }
                 break;
@@ -507,6 +516,16 @@ public sealed partial class Game
                     {
                         SourceTransforms = thatCombat.SourceTransforms, SourceVersion = thatCombat.SourceVersion ?? -1,
                     });
+                foreach (var (delayed, turn) in State.AtNextCombatThisTurn.ToList())
+                {
+                    State.AtNextCombatThisTurn.Remove((delayed, turn));
+                    if (turn != State.TurnNumber) continue; // "this turn": it lapsed when its turn ended
+                    _pendingTriggers.Add(new PendingTrigger(delayed.Source, delayed.Ability, delayed.Controller,
+                        new TriggerInfo(delayed.AboutCard?.Card, delayed.AboutCard?.Version ?? 0, delayed.About, delayed.Amount))
+                    {
+                        SourceTransforms = delayed.SourceTransforms, SourceVersion = delayed.SourceVersion ?? -1,
+                    });
+                }
                 foreach (var card in PermanentsAndEmblemsOf(s.ActivePlayer)) Queue(card.Id, TriggerEvent.YourBeginCombat, s.ActivePlayer);
                 foreach (var card in State.GetPlayer(s.ActivePlayer).Graveyard.Select(State.GetCard).ToList())
                     foreach (var ability in card.Definition.Abilities.OfType<TriggeredAbility>().Where(a => a.FromGraveyard && a.Trigger == TriggerEvent.YourBeginCombat))

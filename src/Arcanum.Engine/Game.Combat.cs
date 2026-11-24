@@ -248,6 +248,7 @@ public sealed partial class Game
         && !(attacker.Power <= 2 && !blocker.Has(Keyword.Flying) && !blocker.Has(Keyword.Reach)
              && State.Battlefield.Select(State.GetCard).Any(p => p.HasTextAbilities && p.Definition.OpponentsGroundCantBlockSmall && State.OpponentsOf(p.Controller).Contains(blocker.Controller)))
         && !attacker.UnblockableBy.Contains(blocker.Controller)
+        && !blocker.CantBlockCreaturesOf.Contains(attacker.Controller) // "creatures with flying can't block creatures you control"
         && !(State.Combat?.Unblockable.Contains((attacker.Id, attacker.Version)) ?? false)
         && !State.CantBlockThisTurn.Any(r => r.Turn == State.TurnNumber && Matches(r.Filter with { Controller = Abilities.ControllerFilter.Any }, blocker, blocker.Controller, null, r.Controller))
         && !Landwalks.Any(w => attacker.Has(w.Keyword) && State.PermanentsControlledBy(blocker.Controller).Any(c => c.Is(CardType.Land) && c.HasSubtype(w.Land)))

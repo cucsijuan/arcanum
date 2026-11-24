@@ -210,6 +210,9 @@ public sealed record ActivatedAbility : AbilityDefinition
 {
     public required AbilityCost Cost { get; init; }
 
+    /// <summary>"Activate only if this card is exiled": the ability works only while its card is in exile (and only there).</summary>
+    public bool FromExile { get; init; }
+
     /// <summary>
     /// "Equip—Pay {3} or remove a counter from this Equipment": the costs its controller chooses between as it activates the ability
     /// (<see cref="Cost"/> is the first), with how each is shown.

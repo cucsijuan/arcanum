@@ -609,11 +609,29 @@ public sealed partial class Game
                 }
                 break;
             }
+            case ExileUntilGains eu:
+            {
+                var you = State.GetPlayer(ctx.Controller);
+                while (you.Library.Count > 0)
+                {
+                    var top = you.Library[0];
+                    await MoveCardAsync(top, Zone.Exile);
+                    ctx.Results.Exiled.Add(top);
+                    var exiled = State.GetCard(top);
+                    if (exiled.Zone != Zone.Exile || !Matches(eu.Filter, exiled, exiled.Owner, ctx.Source, ctx.Controller)) continue;
+                    ctx.Results.Found.Add(top);
+                    foreach (var gained in eu.Abilities) exiled.ExileGrantedAbilities.Add((exiled.Version, gained));
+                    break;
+                }
+                break;
+            }
             case CastCopyOfExiled cc:
             {
-                var original = CardsFor(cc.What, ctx).FirstOrDefault() ?? (ctx.TargetAt(0)?.Card is { } tc ? State.GetCard(tc) : null);
-                if (original is null || original.Zone == Zone.Battlefield) break;
-                if (original.Zone != Zone.Exile) await MoveCardAsync(original.Id, Zone.Exile);
+                // "Create a copy of this card" from an ability of a card in exile: the card stays where it is.
+                bool ownCard = cc.What.Kind == SubjectKind.Self && ctx.Source.Zone != Zone.Battlefield;
+                var original = ownCard ? ctx.Source : CardsFor(cc.What, ctx).FirstOrDefault() ?? (ctx.TargetAt(0)?.Card is { } tc ? State.GetCard(tc) : null);
+                if (original is null || (!ownCard && original.Zone == Zone.Battlefield)) break;
+                if (!ownCard && original.Zone != Zone.Exile) await MoveCardAsync(original.Id, Zone.Exile);
                 var id = new CardId(State.Cards.Keys.Max(k => k.Value) + 1);
                 var copy = new Card(id, original.Definition with { IsToken = true }, ctx.Controller) { Zone = Zone.Exile };
                 State.Cards.Add(id, copy);
@@ -956,6 +974,9 @@ public sealed partial class Game
             }
             case ShuffleLibrary sh:
                 foreach (var player in PlayersFor(sh.Who, ctx).ToList()) Shuffle(State.GetPlayer(player));
+                break;
+            case OpponentsCastOnlyFromHandUntilYourNextTurn:
+                foreach (var opponent in State.OpponentsOf(ctx.Controller).ToList()) State.CastOnlyFromHand.Add((opponent, ctx.Controller));
                 break;
             case OpponentsCantCastSpellsThisTurn oc:
                 foreach (var opponent in State.OpponentsOf(ctx.Controller).ToList())

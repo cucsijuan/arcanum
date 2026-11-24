@@ -39,6 +39,12 @@ public sealed record RevealTopCastFree(Subject Whose, int Count, ObjectFilter Fi
 }
 
 /// <summary>
+/// "At the beginning of the next combat this turn, [effects about that creature]": a delayed ability (rule 603.7) about each object
+/// <see cref="About"/> names as this resolves ("triggered" in its effects). It lapses if no combat begins before the turn ends.
+/// </summary>
+public sealed record AtNextCombatThisTurn(Subject About, TriggeredAbility Ability) : OriginsEffect;
+
+/// <summary>
 /// "Choose a [filter] card name. Search target opponent's graveyard, hand, and library for any number of cards with that name and
 /// exile them. That player shuffles." The searcher sees the hand and library and may leave any of those cards (rule 701.19b).
 /// </summary>

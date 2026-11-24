@@ -102,6 +102,9 @@ public sealed record StaticAbility(AffectedFilter Affects, int Power = 0, int To
     /// <summary>"[Affected creatures] can't attack you" (the source's controller).</summary>
     public bool CantAttackYou { get; init; }
 
+    /// <summary>"[Affected creatures] can't block creatures you control" (the source's controller's creatures).</summary>
+    public bool CantBlockYourCreatures { get; init; }
+
     /// <summary>"[Affected creatures] can't attack you or planeswalkers you control" (the source's controller).</summary>
     public bool CantAttackYouOrPlaneswalkers { get; init; }
 

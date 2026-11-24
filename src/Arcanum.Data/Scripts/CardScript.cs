@@ -732,6 +732,7 @@ public static partial class CardScriptParser
                         CantBeCopied = Bool(a, "cantBeCopied"),
                         TapCreaturesForMana = Bool(a, "tapCreaturesForMana"),
                         FromCommandZone = Bool(a, "fromCommandZone"),
+                        FromExile = Bool(a, "fromExile"),
                     }));
                 }
                 else throw new FormatException("An ability needs a \"trigger\", a \"cost\" or a \"static\".");
@@ -1252,6 +1253,7 @@ public static partial class CardScriptParser
             GivesControl = Bool(s, "givesControl"),
             GivesControlToMonarch = Bool(s, "givesControlToMonarch"),
             CantAttackYou = Bool(s, "cantAttackYou"),
+            CantBlockYourCreatures = Bool(s, "cantBlockYourCreatures"),
             CantAttackYouOrPlaneswalkers = Bool(s, "cantAttackYouOrPlaneswalkers"),
             Goads = Bool(s, "goads"),
             ProtectionFromRingBearers = Bool(s, "protectionFromRingBearers"),
@@ -2194,7 +2196,7 @@ public static partial class CardScriptParser
         List<ObjectFilter>? sacrificeEach = null;
         ObjectFilter? discardFilter = null;
         bool exileSelf = false, returnToHand = false, tapGranter = false, exileGranter = false, lifeFromCommanderColors = false, ninjutsu = false, discardX = false, sacrificeX = false, tapX = false, removeCountersX = false, discardThis = false, exileFromHand = false;
-        ObjectFilter? returnPermanent = null;
+        ObjectFilter? returnPermanent = null, exileOtherFromHand = null;
         int? loyalty = null;
         bool loyaltyX = false;
         int addCounters = 0, tapCount = 0, crew = 0, sacrificeCount = 1, exileGraveyard = 0, snow = 0, mill = 0, removeCounterCount = 0;
@@ -2219,6 +2221,7 @@ public static partial class CardScriptParser
             else if (lower == "discard") discard = 1;
             else if (lower == "discardthis") discardThis = true; // "Discard this card": activated from the hand
             else if (lower == "exilefromhand") { discardThis = true; exileFromHand = true; } // "Exile this card from your hand"
+            else if (lower == "exilecardfromhand") exileOtherFromHand = new ObjectFilter(Controller: ControllerFilter.Any); // "Exile a card from your hand"
             else if (lower == "discard:x") discardX = true;
             else if (lower == "discardhand") discardHand = true; // "Discard your hand"
             else if (lower.StartsWith("discard:") && !char.IsDigit(lower[8])) { discard = 1; discardFilter = new ObjectFilter(ParseTypeList(part[8..]), Controller: ControllerFilter.Any); } // "discard:creature", a creature card
@@ -2356,9 +2359,9 @@ public static partial class CardScriptParser
             }
         }
         var extra = discard > 0 || life > 0 || lifeFromCommanderColors || returnPermanent is not null || sacrificeOther is not null || tapFilter is not null || crew > 0 || exileGraveyard > 0 || returnExiled is not null
-                    || mill > 0 || removeCounterFrom is not null || forage || blight > 0 || discardHand || exileGraveyardFilter is not null
+                    || mill > 0 || removeCounterFrom is not null || forage || blight > 0 || discardHand || exileGraveyardFilter is not null || exileOtherFromHand is not null
             ? new ExtraCost(discard, sacrificeOther, sacrificeCount, life) { DiscardHand = discardHand, DiscardFilter = discardFilter, ReturnToHandCount = returnCount, SacrificeEachOf = sacrificeEach, TapCreatures = tapFilter, TapCount = tapCount, LifeFromCommanderColors = lifeFromCommanderColors, ReturnToHand = returnPermanent, CrewPower = crew, ExileFromGraveyard = exileGraveyard, ExileFromGraveyardFilter = exileGraveyardFilter, ReturnExiledWithSource = returnExiled,
-                Mill = mill, RemoveCountersFrom = removeCounterFrom, RemoveCountersFromYourCreatures = removeCounterCount, RemoveCountersKind = removeCounterKind, RemoveCountersFromOne = removeCountersX, Forage = forage, Blight = blight }
+                Mill = mill, RemoveCountersFrom = removeCounterFrom, RemoveCountersFromYourCreatures = removeCounterCount, RemoveCountersKind = removeCounterKind, RemoveCountersFromOne = removeCountersX, Forage = forage, Blight = blight, ExileFromHand = exileOtherFromHand }
             : null;
         return new AbilityCost(mana, tap, sacrifice)
         {
@@ -2487,7 +2490,7 @@ public static partial class CardScriptParser
         if (Value("destroy") is { } destroy) return new Destroy(destroy) { CantBeRegenerated = Flag("noRegeneration"), ExceptCreatedThisWay = Flag("exceptCreated"), ManaValueIs = e.TryGetProperty("manaValueIs", out var dmv) ? ParseQuantity(dmv) : null };
         if (Value("exile") is { } exile)
             return new ExileIt(exile) { WithCounter = Str("withCounter") is { } wc ? ParseCounterKind(wc) : null, ExceptCreatedThisWay = Flag("exceptCreated"), Linked = Flag("linked"), PlayableThisTurn = Flag("mayPlayThisTurn"),
-                CastableUntilEndOfNextTurn = Flag("mayCastUntilEndOfNextTurn"), OwnerMayPlayUntilEndOfTheirNextTurn = Flag("ownerMayPlayUntilEndOfNextTurn"),
+                CastableUntilEndOfNextTurn = Flag("mayCastUntilEndOfNextTurn"), OwnerMayPlayUntilEndOfTheirNextTurn = Flag("ownerMayPlayUntilEndOfNextTurn"), Airbend = Flag("airbend"),
                 CastThisTurnAnyManaExileInstead = Flag("mayCastThisTurnAnyMana") };
         if (Flag("loseGame")) return new LoseGame { Who = e.TryGetProperty("who", out var lgw) ? ParseSubject(lgw) : null };
         if (Value("removeFromCombat") is { } rfc) return new RemoveFromCombat(rfc);
@@ -2932,6 +2935,7 @@ public static partial class CardScriptParser
             return new SearchThenNameCard(stn, e.TryGetProperty("filter", out var stnf) ? ParseFilter(stnf, ControllerFilter.Any) : ObjectFilter.Anything);
         if (Value("shuffle") is { } shuffleWho) return new ShuffleLibrary(shuffleWho);
         if (Flag("opponentsCantCastSpells")) return new OpponentsCantCastSpellsThisTurn();
+        if (Flag("opponentsCastOnlyFromHandUntilYourNextTurn")) return new OpponentsCastOnlyFromHandUntilYourNextTurn();
         if (Flag("opponentsCantCastNoncreatureSpells")) return new OpponentsCantCastSpellsThisTurn { NoncreatureOnly = true };
         if (Value("exchangeControl") is { } exc) return new ExchangeControl(exc, Subj("with", "target2"));
         if (e.TryGetProperty("atTheNextEndStep", out var ane))
@@ -3125,6 +3129,9 @@ public static partial class CardScriptParser
         if (e.TryGetProperty("handToBottom", out _)) return new HandToBottom(Int("handToBottom"));
         if (e.TryGetProperty("tapAnyNumber", out var tan)) return new TapAnyNumber(ParseFilter(tan, ControllerFilter.You));
         if (Str("opponentChooses") is { } ocPrompt) return new OpponentChooses(ocPrompt, EffectList(e.GetProperty("yes")), EffectList(e.GetProperty("no")));
+        // { "exileUntil": filter, "gains": [abilities] }: exile cards from the top of your library until you exile one matching the filter; that card gains the abilities.
+        if (e.TryGetProperty("exileUntil", out var exu))
+            return new ExileUntilGains(ParseFilter(exu, ControllerFilter.Any), e.TryGetProperty("gains", out var exg) ? Parse("{\"abilities\":" + exg.GetRawText() + "}").Abilities : Array.Empty<AbilityDefinition>());
         if (Value("castCopy") is { } castCopy)
             return new CastCopyOfExiled(castCopy) { Cost = Str("cost") is { } castCopyCost ? ManaCost.Parse(castCopyCost) : null, PayManaCost = Flag("payManaCost") };
         if (e.TryGetProperty("amass", out _))

@@ -471,11 +471,14 @@ public sealed partial class Game
 
         foreach (var permanent in State.PermanentsControlledBy(playerId).Concat(player.Graveyard.Select(State.GetCard)).Concat(player.Hand.Select(State.GetCard))
                      .Concat(player.Command.Select(State.GetCard).Where(c => c.Definition.CommanderNinjutsu
-                         || c.Definition.Abilities.OfType<ActivatedAbility>().Any(a => a.FromCommandZone))))
+                         || c.Definition.Abilities.OfType<ActivatedAbility>().Any(a => a.FromCommandZone)))
+                     // A card in exile has no controller but its owner (rule 108.4a), who may activate the abilities that work from there.
+                     .Concat(player.Exile.Select(State.GetCard).Where(c => c.Abilities.OfType<ActivatedAbility>().Any(a => a.FromExile))))
         {
             var abilities = permanent.Abilities;
             for (int i = 0; i < abilities.Count; i++)
                 if (abilities[i] is ActivatedAbility ability && ability.Cost.FromGraveyard == (permanent.Zone == Zone.Graveyard)
+                    && ability.FromExile == (permanent.Zone == Zone.Exile)
                     && (ability.Cost.Ninjutsu ? permanent.Zone == Zone.Hand || (permanent.Zone == Zone.Command && permanent.Definition.CommanderNinjutsu)
                         : ability.FromCommandZone ? permanent.Zone == Zone.Command
                         : ability.Cost.FromHand == (permanent.Zone == Zone.Hand) && permanent.Zone != Zone.Command)
@@ -742,6 +745,10 @@ public sealed partial class Game
     private IEnumerable<CardId> PlayableExile(PlayerId player) =>
         State.GetPlayer(player).Exile.Where(id => StaticExiledWithPermission(State.GetCard(id), player) is not null).Concat(
         State.Cards.Values.Where(c => c.Zone == Zone.Exile && c.ExiledWith is not null && ExiledWithPlayRightFor(c, player) is not null).Select(c => c.Id)).Concat(
+        ExilePermissions(player).Select(p => p.Card)).Distinct().ToList();
+
+    /// <summary>The permissions to play a card from exile (<see cref="GameState.PlayableFromExile"/>) the player can use now.</summary>
+    private IEnumerable<PlayableFromExile> ExilePermissions(PlayerId player) =>
         State.PlayableFromExile.Where(p => p.Player == player && p.UntilTurn >= State.TurnNumber
                                            && State.GetCard(p.Card) is { Zone: Zone.Exile } c && c.Version == p.Version
                                            && (!p.PermanentsOnly || c.Definition.Types.IsPermanent())
@@ -750,8 +757,7 @@ public sealed partial class Game
                                            && (p.LoreSource is not { } lore || State.LoreCounterTurns.Contains((lore.Card, lore.Version, State.TurnNumber)))
                                            && (p.WhileControlling is not { } held || State.GetCard(held.Card) is { Zone: Zone.Battlefield } holder && holder.Version == held.Version && holder.Controller == player)
                                            && (p.MaxManaValue is not { } most || ManaValueOf(c) <= Eval(most, new EffectContext(player,
-                                               p.WhileControlling is { } by ? State.GetCard(by.Card) : c, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))))
-            .Select(p => p.Card)).Distinct().ToList();
+                                               p.WhileControlling is { } by ? State.GetCard(by.Card) : c, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
 
     /// <summary>"During combat, players can't cast spells or activate abilities that aren't mana abilities."</summary>
     private bool CombatLockdown() =>
