@@ -19,6 +19,21 @@ public partial class ContentLoader : Node
     /// <summary>Human-readable progress ("Downloading card data… 42%").</summary>
     public event Action<string>? Progress;
 
+    /// <summary>The longest the game waits, closing, for the thread making cards to leave.</summary>
+    private static readonly TimeSpan ClosingWait = TimeSpan.FromSeconds(2);
+
+    private readonly CancellationTokenSource _closing = new();
+
+    /// <summary>The cards being made, in the background or while the menu waits for them.</summary>
+    private Task _making = Task.CompletedTask;
+
+    /// <summary>The engine is taken down after this: nothing of the game's may still be running on another thread.</summary>
+    public override void _ExitTree()
+    {
+        _closing.Cancel();
+        if (Task.WaitAny(new[] { _making }, ClosingWait) < 0) GD.Print("Closing: the cards being made didn't stop in time.");
+    }
+
     /// <summary>Loads the module and its card data. Returns false (and leaves <see cref="Cards"/> null) if unavailable.</summary>
     public async Task<bool> LoadAsync()
     {
@@ -80,12 +95,14 @@ public partial class ContentLoader : Node
             // at once (a career's boosters, the deck builder's lists): every card is made first, on every processor,
             // while the menu shows how far it is; then the database is kept for the next starts.
             int shown = -1;
-            await Cards.MakeDefinitionsAsync(Math.Max(1, System.Environment.ProcessorCount), (done, total) =>
+            _making = Cards.MakeDefinitionsAsync(Math.Max(1, System.Environment.ProcessorCount), (done, total) =>
             {
                 int percent = (int)(done * 100L / Math.Max(1, total));
                 if (Interlocked.Exchange(ref shown, percent) != percent)
                     progress.Report($"Preparing cards (once after an install or update)… {percent}%");
-            });
+            }, _closing.Token);
+            await _making;
+            if (_closing.IsCancellationRequested) return false; // not all made: nothing to keep
             GD.Print($"Made {Cards.Count} cards in {clock.Elapsed.TotalSeconds:0.0} s ({System.Environment.ProcessorCount} processors).");
             var cards = Cards;
             _ = Task.Run(() =>
@@ -107,7 +124,7 @@ public partial class ContentLoader : Node
             GD.Print($"Loaded {Cards.Count} cards from module '{module.Manifest.Id}' in {clock.Elapsed.TotalSeconds:0.0} s.");
             // Cards make their definitions when first used; the rest are made in the background, so a search over all
             // of them doesn't wait.
-            _ = Cards.MakeDefinitionsAsync();
+            _making = Cards.MakeDefinitionsAsync(_closing.Token);
         }
         if (Settings.Current.DownloadEveryPicture) CardImageCache.DownloadEvery(Cards);
         return true;

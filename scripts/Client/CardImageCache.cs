@@ -77,6 +77,10 @@ public partial class CardImageCache : Node
     private readonly BlockingCollection<(string Key, string Path, byte[]? Bytes)> _toDecode = new();
     private readonly ConcurrentQueue<(string Key, Image? Image)> _decoded = new();
     private System.Threading.Thread? _decoder;
+    private volatile bool _closing;
+
+    /// <summary>The longest the game waits, closing, for the decoding thread to leave.</summary>
+    private static readonly TimeSpan ClosingWait = TimeSpan.FromSeconds(2);
 
     /// <summary>Sets where images come from. Until a module is configured no images are requested.</summary>
     public static void Configure(Arcanum.Data.Modules.ContentModule module)
@@ -104,7 +108,14 @@ public partial class CardImageCache : Node
         _decoder.Start();
     }
 
-    public override void _ExitTree() => _toDecode.CompleteAdding();
+    /// <summary>The engine is taken down after this: the decoding thread (it uses the engine's images) leaves first, with
+    /// the picture in hand done and the rest of its queue left.</summary>
+    public override void _ExitTree()
+    {
+        _closing = true;
+        _toDecode.CompleteAdding();
+        if (_decoder?.Join(ClosingWait) == false) GD.Print("Closing: the picture being decoded didn't finish in time.");
+    }
 
     /// <summary>
     /// Image key for a card: its exact image id when it has one ("id:..."), its name otherwise. Tokens without an
@@ -263,6 +274,7 @@ public partial class CardImageCache : Node
     {
         foreach (var (key, path, bytes) in _toDecode.GetConsumingEnumerable())
         {
+            if (_closing) break;
             Image? image = null;
             try
             {
