@@ -112,8 +112,8 @@ Undo is not available in events, and not in a game run by another player's host.
 
 ## The log
 
-Press the ▤ button at the top right, or **Log** at the bottom left, to open the game log. A badge counts the entries you
-have not read yet. The log lists what happened, in order.
+Press **Log**, under the undo button at the top right, to open the game log at the bottom left. A badge on the button
+counts the entries you have not read yet. The log lists what happened, in order.
 
 ## The menu
 

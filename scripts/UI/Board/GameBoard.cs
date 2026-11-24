@@ -471,7 +471,7 @@ public partial class GameBoard : Control
         AddChild(_announcer);
         AddChild(_turnChime);
 
-        // Top-right: menu, turn counter, log toggle.
+        // Top-right: menu, turn counter, undo, log.
         var corner = new VBoxContainer { AnchorLeft = 1, AnchorRight = 1, OffsetLeft = -62, OffsetTop = 14, OffsetRight = -14 };
         corner.AddThemeConstantOverride("separation", 8);
         var menu = BoardStyle.MakeButton("≡", 22, compact: true);
@@ -500,12 +500,18 @@ public partial class GameBoard : Control
         _undoButton.Pressed += Undo;
         corner.AddChild(_undoButton);
 
-        var logToggle = BoardStyle.MakeButton("▤", 18, compact: true);
-        BoardStyle.RaiseLabel(logToggle, 1);
-        logToggle.CustomMinimumSize = new Vector2(48, 40);
-        logToggle.TooltipText = "Game log";
-        logToggle.Pressed += ToggleLog;
-        corner.AddChild(logToggle);
+        // The log, with a badge for its unread entries.
+        var logButton = BoardStyle.MakeButton("Log", 13, compact: true);
+        logButton.CustomMinimumSize = new Vector2(48, 40);
+        logButton.TooltipText = "Game log";
+        logButton.Pressed += ToggleLog;
+        var badge = new Panel { Position = new Vector2(34, -8), Size = new Vector2(20, 18), MouseFilter = MouseFilterEnum.Ignore, Name = "Badge" };
+        badge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color("b3261e"), 9));
+        _logBadge.HorizontalAlignment = HorizontalAlignment.Center;
+        _logBadge.Size = badge.Size;
+        badge.AddChild(_logBadge);
+        logButton.AddChild(badge);
+        corner.AddChild(logButton);
         AddChild(corner);
 
         // Phase bar on the divider, left of the top player's hand.
@@ -561,19 +567,6 @@ public partial class GameBoard : Control
         AddChild(_actionCard);
         // Shown again as it was (after an announcement, say): its answer takes the focus again.
         Arcanum.UI.PadFocus.OfferWhenShown(_actionPanel, () => _primaryAction is { Disabled: false } primary ? primary : null);
-
-        // Bottom-left log button with unread badge.
-        var logButton = BoardStyle.MakeButton("Log", 13, compact: true);
-        logButton.AnchorTop = 1; logButton.AnchorBottom = 1;
-        logButton.OffsetLeft = 14; logButton.OffsetTop = -54; logButton.OffsetRight = 54; logButton.OffsetBottom = -14;
-        logButton.Pressed += ToggleLog;
-        var badge = new Panel { Position = new Vector2(26, -8), Size = new Vector2(20, 18), MouseFilter = MouseFilterEnum.Ignore, Name = "Badge" };
-        badge.AddThemeStyleboxOverride("panel", BoardStyle.Box(new Color("b3261e"), 9));
-        _logBadge.HorizontalAlignment = HorizontalAlignment.Center;
-        _logBadge.Size = badge.Size;
-        badge.AddChild(_logBadge);
-        logButton.AddChild(badge);
-        AddChild(logButton);
 
         _logPanel.AnchorTop = 1; _logPanel.AnchorBottom = 1;
         _logPanel.OffsetLeft = 14; _logPanel.OffsetTop = -420; _logPanel.OffsetRight = 384; _logPanel.OffsetBottom = -64;

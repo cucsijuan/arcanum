@@ -75,7 +75,7 @@ public partial class GameBoard
         _handButton.Visible = false;
         _handButton.CustomMinimumSize = new Vector2(96, 40);
         _handButton.AnchorTop = _handButton.AnchorBottom = 1;
-        _handButton.OffsetLeft = 64; _handButton.OffsetTop = -54; _handButton.OffsetBottom = -14;
+        _handButton.OffsetLeft = 14; _handButton.OffsetTop = -54; _handButton.OffsetBottom = -14;
         _handButton.ZIndex = BoardStyle.Z.PhaseBar;
         _handButton.Pressed += () =>
         {
@@ -225,7 +225,7 @@ public partial class GameBoard
     {
         float height = _playerList.GetCombinedMinimumSize().Y;
         _playerList.AnchorTop = _playerList.AnchorBottom = onOwnTable ? 1 : 0;
-        _playerList.OffsetTop = onOwnTable ? -64 - height : 60; // above the log button
+        _playerList.OffsetTop = onOwnTable ? -14 - height : 60;
         _playerList.OffsetBottom = _playerList.OffsetTop + height;
     }
 
@@ -383,7 +383,7 @@ public partial class GameBoard
     private static StyleBoxFlat MakeCompactPanelBox()
     {
         var box = BoardStyle.Box(new Color(0.06f, 0.06f, 0.07f, 0.95f), 8, Arcanum.UI.UiArt.Gold with { A = 0.55f }, 1);
-        box.SetContentMarginAll(14);
+        box.SetContentMarginAll(20);
         return box;
     }
 
