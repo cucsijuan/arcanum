@@ -84,6 +84,7 @@ Every event is defined by data (built-in default schedule in the content module,
 | `days` | the run's length in days from its `when` day (default 1) |
 | `kind` | constructed (format id), commander pod, draft, sealed, prerelease |
 | `format` | constructed events: a module format id (`standard`, `modern`…); empty: any cards (casual). Commander events use the Commander format |
+| `decks` | module decks the computer players bring: the visitors' decks in a constructed event (empty: the store's preconstructed decks), the commander decks in a Commander event |
 | `set` | set code for limited events / featured set |
 | `entry` | cash, boosters, or a qualification token |
 | `prizes` | by place or by record (3-0, 2-1…): cash, boosters, promo, qualification token, rank points, reputation; `sealed` (boosters of another set or kind: `set` a code, `featured` or `event`; `kind`; `count`); `minPlayers` (only with that attendance); `qualifies` (an event id: invites the player to that event's next run) |
@@ -98,8 +99,9 @@ Every event is defined by data (built-in default schedule in the content module,
 | `tournamentMat` | the games are played at the big tournaments' table, on one mat for both players with the event's name on its crest (see *Look*) |
 
 An event's format decides which decks it takes. Entering checks the player's deck against it (`CareerRules.Enter`, and
-the same check when a journal is replayed). The computer players bring module decks legal in the format, any of their
-own when none is.
+the same check when a journal is replayed). In a constructed event the visitors bring a deck from the event's `decks`
+that is legal in the format (the store's preconstructed decks when the event lists none). The regulars bring their own
+decks, legal in the format when one is. When no listed deck is legal, the whole list is used.
 
 Between the games of a match in a constructed event, the deck may change only with the cards it was registered with
 (rule 100.4a). The registered deck is the main deck and sideboard as entered; basic lands are free. The main deck keeps

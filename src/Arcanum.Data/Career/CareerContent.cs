@@ -291,7 +291,10 @@ public sealed record EventSpec(string Id, string Name, string When, string Kind,
 {
     public IReadOnlyList<PrizeSpec> Prizes { get; init; } = Prizes ?? Array.Empty<PrizeSpec>();
 
-    /// <summary>Commander events: the module decks the computer players bring.</summary>
+    /// <summary>
+    /// Commander events: the module decks the computer players bring. Constructed events: the module decks the visitors
+    /// bring (empty: the store's preconstructed decks); the regulars bring their own.
+    /// </summary>
     public IReadOnlyList<string> Decks { get; init; } = Array.Empty<string>();
 
     /// <summary>Played online at set times too (null: only against the computer, any time of its day).</summary>

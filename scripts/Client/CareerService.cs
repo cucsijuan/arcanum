@@ -536,7 +536,8 @@ public sealed partial class CareerService
             var legal = names.Where(n => world.Deck(n) is { } d && CareerRules.LegalIn(d, format, world)).ToList();
             return legal.Count > 0 ? legal : names.ToList();
         }
-        var preconDecks = Legal(world.Content.Precons.Select(p => p.Deck).ToList());
+        // Visitors bring the event's decks, or the store's preconstructed decks when it lists none.
+        var preconDecks = Legal(spec.Decks.Count > 0 ? spec.Decks.ToList() : world.Content.Precons.Select(p => p.Deck).ToList());
         for (int i = people.Count; i < players; i++)
         {
             DeckList? deck = null;
