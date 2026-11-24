@@ -87,7 +87,11 @@ public static class Updater
     private static async Task<ReleaseInfo?> LatestOnceAsync(string url, string? zipSuffix)
     {
         using var response = await Http.GetAsync(url);
-        if (!response.IsSuccessStatusCode) return null;
+        if (!response.IsSuccessStatusCode)
+        {
+            GD.Print($"Update check at {url}: {(int)response.StatusCode} {response.ReasonPhrase}");
+            return null;
+        }
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var root = json.RootElement;
         var tag = root.GetProperty("tag_name").GetString() ?? "";

@@ -275,6 +275,7 @@ public partial class MainMenu : Control
     {
         if (_checkedUpdates || !Settings.Current.CheckForUpdates) return;
         _checkedUpdates = true;
+        GD.Print($"Update check: running {Updater.GameVersion} on {OS.GetName()}, checks the game: {Updater.ChecksGame}");
         if (Updater.ChecksGame && await Updater.NewerGameAsync() is { } game && game.Tag != Settings.Current.SkippedGameVersion)
         {
             if (IsInsideTree()) ShowUpdate(game, isGame: true);
