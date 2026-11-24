@@ -125,8 +125,6 @@ public partial class GameBoard
         // The compact board shows the steps as a column at the right instead of the bar.
         _phaseBar.Visible = !compact;
         _stepTrack.Visible = compact;
-        // The action panel stands left of the step column.
-        _actionPanel.OffsetRight = compact ? -_stepTrack.Size.X - 16 : -16;
         _phaseBar.OffsetLeft = compact ? PhaseBarLeftOfList : 110;
         _phaseBar.OpensPanel = compact; // its markers are too small for a finger: the stops panel instead
         if (!compact)
@@ -367,4 +365,82 @@ public partial class GameBoard
     private bool TargetsPlayer(TargetDecision t, PlayerId player) =>
         t.Request.CanAddMore(_chosenTargets.Count)
         && t.Request.LegalAt(_chosenTargets.Count).Any(o => o.Player == player && t.Request.IsAllowed(_chosenTargets.Count, o, _chosenTargets));
+    /// <summary>The action panel's usual frame (the full board's).</summary>
+    private StyleBox? _actionPanelBox;
+
+    /// <summary>The compact board's frame: a thin line, so the panel's room goes to its text.</summary>
+    private static readonly StyleBoxFlat CompactPanelBox = MakeCompactPanelBox();
+
+    /// <summary>The top of the stack's card, drawn big in the compact board's large view of it.</summary>
+    private readonly CardNode _actionCard = new()
+    {
+        SharpImage = true, ShowCounterBadge = false, MouseFilter = MouseFilterEnum.Ignore, Visible = false,
+    };
+
+    /// <summary>The priority question for which the player closed the large view to look at the board (to respond with a card).</summary>
+    private PriorityDecision? _boardSeenFor;
+
+    private static StyleBoxFlat MakeCompactPanelBox()
+    {
+        var box = BoardStyle.Box(new Color(0.06f, 0.06f, 0.07f, 0.95f), 8, Arcanum.UI.UiArt.Gold with { A = 0.55f }, 1);
+        box.SetContentMarginAll(14);
+        return box;
+    }
+
+    /// <summary>Shows <paramref name="card"/> big beside the action panel (placed by <see cref="PlaceActionPanel"/>).</summary>
+    private CardView? _actionCardView;
+
+    private void ShowActionCard(CardView card)
+    {
+        _actionCardView = card.FaceDownCard ?? card;
+        _actionCard.Visible = true;
+    }
+
+    /// <summary>
+    /// Places the action panel for the view in use. The full board keeps it at the right of the bottom half. The compact
+    /// board stands it on the bottom edge left of the step column, so it grows upward and never leaves the screen, with a
+    /// thin frame and bigger text. With a spell or ability on the stack it is half the screen wide and the top of the
+    /// stack's card stands big at its left.
+    /// </summary>
+    private void PlaceActionPanel()
+    {
+        _actionPanel.AddThemeStyleboxOverride("panel", _compact ? CompactPanelBox : _actionPanelBox);
+        _prompt.AddThemeFontSizeOverride("font_size", _compact ? 20 : 15);
+        _stepLabel.AddThemeFontSizeOverride("font_size", _compact ? 24 : 20);
+        if (!_compact)
+        {
+            _actionCard.Visible = false;
+            _actionPanel.AnchorLeft = _actionPanel.AnchorRight = 1;
+            _actionPanel.AnchorTop = _actionPanel.AnchorBottom = 0.75f;
+            _actionPanel.GrowHorizontal = GrowDirection.Begin;
+            _actionPanel.GrowVertical = GrowDirection.Both;
+            _actionPanel.OffsetLeft = _actionPanel.OffsetRight = -16;
+            _actionPanel.OffsetTop = _actionPanel.OffsetBottom = 0;
+            return;
+        }
+        const float margin = 12;
+        // Half the screen wide with a card to show beside it; otherwise as wide as its text.
+        float right = -_stepTrack.Size.X - 16, width = _actionCard.Visible ? Size.X / 2 : 0;
+        _actionPanel.AnchorLeft = _actionPanel.AnchorRight = 1;
+        _actionPanel.AnchorTop = _actionPanel.AnchorBottom = 1;
+        _actionPanel.GrowHorizontal = GrowDirection.Begin;
+        _actionPanel.GrowVertical = GrowDirection.Begin;
+        _actionPanel.OffsetRight = right;
+        _actionPanel.OffsetLeft = right - width;
+        _actionPanel.OffsetTop = _actionPanel.OffsetBottom = -margin;
+        if (!_actionCard.Visible) return;
+
+        // The card: as big as the room left of the panel allows (clear of the list of players), its foot on the same line.
+        float roomX = Size.X + right - width - margin - (PlayerListRight + margin);
+        float height = Mathf.Min(Size.Y - 2 * margin, roomX * BoardStyle.PreviewSize.Y / BoardStyle.PreviewSize.X);
+        var size = new Vector2(height * BoardStyle.PreviewSize.X / BoardStyle.PreviewSize.Y, height);
+        _actionCard.AnchorLeft = _actionCard.AnchorRight = 1;
+        _actionCard.AnchorTop = _actionCard.AnchorBottom = 1;
+        _actionCard.OffsetRight = right - width - margin;
+        _actionCard.OffsetLeft = _actionCard.OffsetRight - size.X;
+        _actionCard.OffsetBottom = -margin;
+        _actionCard.OffsetTop = -margin - size.Y;
+        _actionCard.Size = size;
+        if (_actionCardView is { } shown) _actionCard.Setup(shown, showCostPips: false); // after sizing: its sharp picture is made at this size
+    }
 }

@@ -96,6 +96,7 @@ public partial class GameBoard : Control
     private (PriorityDecision Decision, PlayerAction Action, string Name)? _legendConfirm; // a second legendary permanent waiting for "cast anyway"
     private readonly List<Arcanum.Engine.Abilities.Target> _chosenTargets = new(); // targets picked so far
     private readonly VBoxContainer _actionExtra = new();
+    private readonly VBoxContainer _actionBox = new();
     private readonly Dictionary<CardId, int> _damageSplit = new(); // blocker -> damage, for an unconfirmed assignment
     private int _damageToPlayer;                                   // trample damage to the defending player
     private readonly ArrowLayer _arrows = new();
@@ -537,8 +538,9 @@ public partial class GameBoard : Control
         _actionPanel.ZIndex = BoardStyle.Z.ActionPanel;
         _actionPanel.GrowVertical = GrowDirection.Both;
         _actionPanel.OffsetRight = -16;
-        _actionPanel.AddThemeStyleboxOverride("panel", BoardStyle.DialogBox(PanelKind.Modal, new Color(0.06f, 0.06f, 0.07f, 0.92f), 10, BoardStyle.PanelBorder, 1, artPadding: 14));
-        var actionBox = new VBoxContainer();
+        _actionPanelBox = BoardStyle.DialogBox(PanelKind.Modal, new Color(0.06f, 0.06f, 0.07f, 0.92f), 10, BoardStyle.PanelBorder, 1, artPadding: 14);
+        _actionPanel.AddThemeStyleboxOverride("panel", _actionPanelBox);
+        var actionBox = _actionBox;
         actionBox.AddThemeConstantOverride("separation", 6);
         _stepLabel.HorizontalAlignment = HorizontalAlignment.Center;
         _prompt.HorizontalAlignment = HorizontalAlignment.Center;
@@ -554,6 +556,9 @@ public partial class GameBoard : Control
         actionBox.AddChild(_actionButtons);
         _actionPanel.AddChild(actionBox);
         AddChild(_actionPanel);
+        // The compact board shows the top of the stack's card big, beside the panel.
+        _actionCard.ZIndex = BoardStyle.Z.ActionPanel;
+        AddChild(_actionCard);
         // Shown again as it was (after an announcement, say): its answer takes the focus again.
         Arcanum.UI.PadFocus.OfferWhenShown(_actionPanel, () => _primaryAction is { Disabled: false } primary ? primary : null);
 
@@ -974,13 +979,15 @@ public partial class GameBoard : Control
             ChoicePiles(decision).Count > 1 ? "Back" : "Close");
         UpdateArrows(view, decision);
         BuildActionPanel(view, decision);
+        PlaceActionPanel();
         if (_actionPanel.Visible) Arcanum.UI.PadFocus.Offer(_actionPanel, _primaryAction is { Disabled: false } primary ? primary : null);
         UpdateMulliganView(decision);
         if (_autoplay && decision is not null)
         {
             // ARCANUM_AUTOPLAY=showcase[:DecisionType] freezes on the first decision of that type (default:
-            // ManaPaymentDecision) so screenshots can capture it.
-            if (_showcase is { } freezeOn && decision.GetType().Name == freezeOn)
+            // ManaPaymentDecision) so screenshots can capture it; showcase:StackPriority, on the first "respond?" question.
+            if (_showcase is { } freezeOn && (decision.GetType().Name == freezeOn
+                || freezeOn == "StackPriority" && decision is PriorityDecision && view.Stack.Count > 0))
             {
                 GD.Print($"SHOWCASE frozen on {freezeOn}");
                 if (decision is ManaPaymentDecision pay && FindCard(pay.Request.Source) is { } spellNode) ShowPreview(spellNode);
@@ -1305,6 +1312,7 @@ public partial class GameBoard : Control
 
     private void BuildActionPanel(GameView view, Decision? decision)
     {
+        _actionCard.Visible = false;
         foreach (var child in _actionButtons.GetChildren()) child.QueueFree();
         foreach (var child in _actionExtra.GetChildren()) child.QueueFree();
         _primaryAction = null;
@@ -1553,20 +1561,38 @@ public partial class GameBoard : Control
                     resolve = $"Resolve {Shorten(name)}";
                     _prompt.Text = $"{who}: respond, or let it resolve";
                     _actionExtra.Visible = true;
+                    // The compact board shows it large (card and whole text) unless the player asked to see the board.
+                    bool large = _compact && _boardSeenFor != p;
                     var caster = view.Players[top.Controller.Value].Name;
-                    _actionExtra.AddChild(BoardStyle.MakeLabel($"{caster}: {name}{(top.AbilityText is null ? "" : " (ability)")}", 15, BoardStyle.Text, bold: true));
+                    _actionExtra.AddChild(BoardStyle.MakeLabel($"{caster}: {name}{(top.AbilityText is null ? "" : " (ability)")}", large ? 26 : 15, BoardStyle.Text, bold: true));
                     var rules = top.AbilityText ?? top.Card.OracleText;
                     if (rules.Length > 0)
                     {
-                        var text = BoardStyle.MakeLabel(rules.Length > 170 ? rules[..167] + "\u2026" : rules, 13, BoardStyle.TextDim);
+                        var text = BoardStyle.MakeLabel(large || rules.Length <= 170 ? rules : rules[..167] + "\u2026", large ? 20 : 13, large ? BoardStyle.Text : BoardStyle.TextDim);
                         text.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-                        text.CustomMinimumSize = new Vector2(360, 0);
+                        text.CustomMinimumSize = new Vector2(large ? 0 : 360, 0);
                         _actionExtra.AddChild(text);
                     }
                     if (top.Targets.Count > 0)
                     {
                         var names = top.Targets.Select(t => t.Player is { } pl ? view.Players[pl.Value].Name : view.FindCard(t.Card!.Value)?.Name ?? "?");
-                        _actionExtra.AddChild(BoardStyle.MakeLabel("\u2192 " + string.Join(", ", names), 14, BoardStyle.Playable));
+                        _actionExtra.AddChild(BoardStyle.MakeLabel("\u2192 " + string.Join(", ", names), large ? 20 : 14, BoardStyle.Playable));
+                    }
+                    if (large)
+                    {
+                        ShowActionCard(top.Card);
+                        // The small stack is under this view: what waits below the top is named here.
+                        if (view.Stack.Count > 1)
+                        {
+                            var below = BoardStyle.MakeLabel("Below it on the stack: " + string.Join(", ", view.Stack.Take(view.Stack.Count - 1).Reverse().Select(i => i.Card.Name ?? "?")), 18, BoardStyle.TextDim);
+                            below.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+                            _actionExtra.AddChild(below);
+                        }
+                        AddButton("See the board", () => { _boardSeenFor = p; Refresh(); });
+                    }
+                    else if (_compact)
+                    {
+                        AddButton("Show the card", () => { _boardSeenFor = null; Refresh(); });
                     }
                 }
                 // Cards in the graveyard aren't on the board: flashback and graveyard abilities get their own buttons.
@@ -1838,8 +1864,8 @@ public partial class GameBoard : Control
     /// <summary>A full-width option button in the panel's extra area (modes, long choices).</summary>
     private Button AddChoiceButton(string text, Action onPressed)
     {
-        var button = BoardStyle.MakeModalButton(text, size: 15);
-        button.CustomMinimumSize = new Vector2(320, 34);
+        var button = BoardStyle.MakeModalButton(text, size: _compact ? 17 : 15);
+        button.CustomMinimumSize = new Vector2(320, _compact ? 40 : 34);
         button.Alignment = HorizontalAlignment.Left;
         button.Pressed += () =>
         {
@@ -1856,7 +1882,7 @@ public partial class GameBoard : Control
     {
         // Answers are plain text with a gold line between them; the default one is gold.
         if (_actionButtons.GetChildren().Any(c => !c.IsQueuedForDeletion())) _actionButtons.AddChild(BoardStyle.MakeModalSeparator());
-        var button = BoardStyle.MakeModalButton(text, primary);
+        var button = BoardStyle.MakeModalButton(text, primary, _compact ? 20 : 18);
         button.CustomMinimumSize = new Vector2(80, 36);
         button.Pressed += () =>
         {

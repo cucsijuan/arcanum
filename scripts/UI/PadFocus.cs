@@ -282,6 +282,15 @@ public partial class PadFocus : CanvasLayer
                     target.GrabFocus();
                     GetViewport().SetInputAsHandled();
                 }
+                // Confirm on a panel's answer presses it at once: the panel may be built again before the button is
+                // let go, and a button pressed on release would then never answer.
+                else if (@event.IsActionPressed("ui_accept") && owner is Button { Disabled: false, ToggleMode: false } answer and not OptionButton && PanelOf(owner) is not null
+                    && !GetTree().Root.GetEmbeddedSubwindows().Any(w => w.Visible))
+                {
+                    GetViewport().SetInputAsHandled();
+                    answer.EmitSignal(BaseButton.SignalName.Pressed);
+                    break;
+                }
                 // Buttons shown since the screen was looked over (another page, a list filled) become reachable too.
                 // (Also when the focus is on something the scan doesn't reach, so the arrows can leave it.)
                 else if (owner.HasMeta(ScreenMeta) || !owner.HasMeta(ChoiceMeta)) MarkScreen();

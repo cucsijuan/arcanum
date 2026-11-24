@@ -54,6 +54,12 @@ public partial class VirtualPointer : CanvasLayer
             case InputEventJoypadMotion { Axis: JoyAxis.LeftX or JoyAxis.LeftY } motion:
                 if (Showing || Mathf.Abs(motion.AxisValue) >= StickDeadzone) GetViewport().SetInputAsHandled();
                 break;
+            // The d-pad moves the focus ring: the pointer goes away, so confirm presses the focused answer, not what lies
+            // under the dot.
+            case InputEventJoypadButton { Pressed: true } pad when Showing && _pressed == 0
+                && (pad.IsAction("ui_left") || pad.IsAction("ui_right") || pad.IsAction("ui_up") || pad.IsAction("ui_down")):
+                _unused = float.MaxValue;
+                break;
             case InputEventJoypadButton button when Showing && Click(button) is { } mouse:
                 if (button.Pressed) _pressed |= Mask(mouse);
                 else _pressed &= ~Mask(mouse);
