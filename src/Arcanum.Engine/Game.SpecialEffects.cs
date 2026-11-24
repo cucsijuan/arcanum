@@ -70,6 +70,7 @@ public sealed partial class Game
         var who = ctx.Controller;
         var player = State.GetPlayer(who);
         var found = new List<CardId>();
+        SearchedOwnLibrary(who);
         foreach (var color in s.Colors)
         {
             var options = player.Library.Where(id => !found.Contains(id) && State.GetCard(id).Colors.Contains(color)).ToList();

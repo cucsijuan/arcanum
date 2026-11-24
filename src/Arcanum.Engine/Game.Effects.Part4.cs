@@ -922,6 +922,7 @@ public sealed partial class Game
                 var you = ctx.Controller;
                 var player = State.GetPlayer(you);
                 Look(you, player.Library); // searching is looking through the whole library (rule 701.23a)
+                SearchedOwnLibrary(you);
                 bool Fits(Card c) => c.Owner == you && Matches(so.Filter with { Controller = ControllerFilter.Any }, c, you, ctx.Source, you);
                 var candidates = player.Library.Concat(player.Outside).Select(State.GetCard).Where(Fits).ToList();
                 // "Exactly four … with different names": with fewer different names to find, nothing is found.

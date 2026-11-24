@@ -285,10 +285,19 @@ public sealed partial class Game
     /// <summary>Cards a search puts onto the battlefield together with what it finds (<see cref="SearchLibrary.WithExiled"/>).</summary>
     private List<CardId> _searchWithExiled = new();
 
+    /// <summary>A player searched their own library (rule 701.23): "whenever an opponent searches their library" triggers.</summary>
+    private void SearchedOwnLibrary(PlayerId searcher)
+    {
+        foreach (var (observer, abilities) in Observers().Where(o => o.Card.Controller != searcher && State.OpponentsOf(o.Card.Controller).Contains(searcher)))
+            foreach (var ability in abilities.Where(a => a.Trigger == TriggerEvent.OpponentSearchesLibrary))
+                AddPending(observer.Id, ability, observer.Controller, new TriggerInfo(Player: searcher));
+    }
+
     private async Task<IReadOnlyList<CardId>> SearchLibraryAsync(PlayerId who, SearchLibrary search, Card source)
     {
         var player = State.GetPlayer(who);
         Look(who, player.Library); // searching is looking through the whole library (rule 701.23a)
+        SearchedOwnLibrary(who);
         var filter = search.Filter with { Controller = ControllerFilter.Any };
         var options = player.Library.Select(State.GetCard).Where(c => Matches(filter, c, who, source, who))
             .Select(c => ViewBuilder.Card(State, c.Id, who, reveal: true)).ToList();
@@ -379,7 +388,7 @@ public sealed partial class Game
                     to = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{source.Name}: put {State.GetCard(id).Name} into your hand or graveyard?",
                         id, new[] { "Hand", "Graveyard" }, OptionKind.Other)) == 1 ? Zone.Graveyard : Zone.Hand;
                 await MoveCardAsync(id, to, controller: who, tapped: search.Tapped || (toBattlefield is not null && !untappedInstead),
-                    withCounters: search.EntersWithCounter is { } enterKind && to == Zone.Battlefield ? new[] { (enterKind, 1) } : null);
+                    withCounters: search.EntersWithCounter is { } enterKind && to == Zone.Battlefield ? new[] { (enterKind, search.EntersWithCounterCount) } : null);
             }
             EndEnteringTogether();
             Shuffle(player);
@@ -461,10 +470,13 @@ public sealed partial class Game
     }
 
     private static string DescribeCost(ExtraCost cost) =>
-        cost.Discard > 0 ? $"Discard {cost.Discard} card{(cost.Discard > 1 ? "s" : "")}{(cost.DiscardAtRandom ? " at random" : "")}"
+        cost.Bargain ? "Bargain (sacrifice an artifact, enchantment, or token)"
+        : cost.Teamwork ? $"Teamwork {cost.CrewPower} (tap creatures you control with total power {cost.CrewPower} or more)"
+        : cost.Discard > 0 ? $"Discard {cost.Discard} card{(cost.Discard > 1 ? "s" : "")}{(cost.DiscardAtRandom ? " at random" : "")}"
         : cost.Sacrifice is { } s ? $"Sacrifice {(cost.SacrificeCount > 1 ? cost.SacrificeCount.ToString() : "a")} {(s.Subtype is { } st ? st : s.Token == true ? "token" : s.Types == CardType.Creature ? "creature" : "permanent")}{(cost.SacrificeCount > 1 ? "s" : "")}"
         : cost.PayLife > 0 ? $"Pay {cost.PayLife} life"
         : cost.ExileFromGraveyard > 0 ? $"Exile {cost.ExileFromGraveyard} cards from your graveyard"
+        : cost.CollectEvidence > 0 ? $"Collect evidence {cost.CollectEvidence} (exile cards with total mana value {cost.CollectEvidence} or more from your graveyard)"
         : cost.ExileYouControl is not null ? "Exile a permanent you control"
         : cost.ExileFromHand is { } fromHand ? $"Exile {(fromHand.Colors is { Count: 1 } colors ? (colors[0] switch { "W" => "a white", "U" => "a blue", "B" => "a black", "R" => "a red", "G" => "a green", _ => "a" }) : "a")} card from your hand"
         : cost.Blight > 0 ? $"Blight {cost.Blight} (put {CountersText(cost.Blight)} on a creature you control)"
@@ -677,6 +689,7 @@ public sealed partial class Game
             _movePlans[(card, discarded.Version)] = (Zone.Graveyard, plan);
         }
         await MoveCardAsync(card, Zone.Graveyard);
+        if (discarded.Zone == Zone.Graveyard) discarded.DiscardedTurn = State.TurnNumber;
         Emit(new CardDiscarded(who, card));
         State.GetPlayer(who).CardsDiscardedThisTurn++;
         // "When a spell or ability an opponent controls causes you to discard this card": it triggers wherever the card ended up.

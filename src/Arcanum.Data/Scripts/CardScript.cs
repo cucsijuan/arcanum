@@ -114,6 +114,8 @@ public sealed record CardScript(
     public int ExtraProwess { get; init; }
     public Condition? CastOnlyIf { get; init; }
     public bool EnteringArtifactsAndCreaturesDontTrigger { get; init; }
+    public bool EnteringCreaturesDontTrigger { get; init; }
+    public bool AllExiledInsteadOfGraveyard { get; init; }
     public bool YourInstantsAndSorceriesHaveSplitSecond { get; init; }
     public bool NoSpellsOrAbilitiesDuringCombat { get; init; }
     public bool YourPlaneswalkersSurviveZeroLoyalty { get; init; }
@@ -214,6 +216,11 @@ public sealed record CardScript(
     public bool EntersAsCopyUntilEndOfTurn { get; init; }
     public bool EntersAsCopyWithHaste { get; init; }
     public bool EntersAsCopyFromGraveyards { get; init; }
+    public bool EntersAsCopyKeepName { get; init; }
+    public bool DamageHealsOtherDamage { get; init; }
+    public int? EntersAsCopyPower { get; init; }
+    public int? EntersAsCopyToughness { get; init; }
+    public bool EntersAsCopyExileOriginal { get; init; }
     public bool EntersTappedAsCopy { get; init; }
     public IReadOnlyList<string>? EntersAsCopyAddSubtypes { get; init; }
     public CardType EntersAsCopyAddTypes { get; init; }
@@ -389,6 +396,8 @@ public sealed record CardScript(
         ExtraProwess = ExtraProwess,
         CastOnlyIf = CastOnlyIf ?? d.CastOnlyIf,
         EnteringArtifactsAndCreaturesDontTrigger = EnteringArtifactsAndCreaturesDontTrigger,
+        EnteringCreaturesDontTrigger = EnteringCreaturesDontTrigger,
+        AllExiledInsteadOfGraveyard = AllExiledInsteadOfGraveyard,
         YourInstantsAndSorceriesHaveSplitSecond = YourInstantsAndSorceriesHaveSplitSecond,
         NoSpellsOrAbilitiesDuringCombat = NoSpellsOrAbilitiesDuringCombat,
         YourPlaneswalkersSurviveZeroLoyalty = YourPlaneswalkersSurviveZeroLoyalty,
@@ -486,6 +495,11 @@ public sealed record CardScript(
         EntersAsCopyUntilEndOfTurn = EntersAsCopyUntilEndOfTurn || d.EntersAsCopyUntilEndOfTurn,
         EntersAsCopyWithHaste = EntersAsCopyWithHaste || d.EntersAsCopyWithHaste,
         EntersAsCopyFromGraveyards = EntersAsCopyFromGraveyards || d.EntersAsCopyFromGraveyards,
+        EntersAsCopyKeepName = EntersAsCopyKeepName || d.EntersAsCopyKeepName,
+        DamageHealsOtherDamage = DamageHealsOtherDamage || d.DamageHealsOtherDamage,
+        EntersAsCopyPower = EntersAsCopyPower ?? d.EntersAsCopyPower,
+        EntersAsCopyToughness = EntersAsCopyToughness ?? d.EntersAsCopyToughness,
+        EntersAsCopyExileOriginal = EntersAsCopyExileOriginal || d.EntersAsCopyExileOriginal,
         EntersTappedAsCopy = EntersTappedAsCopy || d.EntersTappedAsCopy,
         EntersAsCopyAddSubtypes = EntersAsCopyAddSubtypes ?? d.EntersAsCopyAddSubtypes,
         EntersAsCopyAddTypes = EntersAsCopyAddTypes | d.EntersAsCopyAddTypes,
@@ -695,7 +709,8 @@ public static partial class CardScriptParser
                         Cost = WithDiscardFilter(ParseCost(cost.GetString()!), a), Targets = Targets(a), Effects = Effects(a), Text = Text(a),
                         SorcerySpeed = Bool(a, "sorcery"),
                         OncePerTurn = Bool(a, "oncePerTurn"),
-                        OnlyOnce = Bool(a, "onlyOnce"),
+                        OnlyOnce = Bool(a, "onlyOnce") || Bool(a, "powerUp"),
+                        PowerUp = Bool(a, "powerUp"),
                         OnlyOpponents = Bool(a, "onlyOpponents"),
                         AnyPlayer = Bool(a, "anyPlayer"),
                         ActivationCondition = a.TryGetProperty("activateIf", out var ifc) ? ParseCondition(ifc) : null,
@@ -871,6 +886,8 @@ public static partial class CardScriptParser
             ExtraProwess = root.TryGetProperty("extraProwess", out var xpw) ? xpw.GetInt32() : 0,
             CastOnlyIf = root.TryGetProperty("castOnlyIf", out var coi) ? ParseCondition(coi) : null,
             EnteringArtifactsAndCreaturesDontTrigger = Bool(root, "enteringArtifactsAndCreaturesDontTrigger"),
+            EnteringCreaturesDontTrigger = Bool(root, "enteringCreaturesDontTrigger"),
+            AllExiledInsteadOfGraveyard = Bool(root, "allExiledInsteadOfGraveyard"),
             YourInstantsAndSorceriesHaveSplitSecond = Bool(root, "yourInstantsAndSorceriesHaveSplitSecond"),
             NoSpellsOrAbilitiesDuringCombat = Bool(root, "noSpellsOrAbilitiesDuringCombat"),
             YourPlaneswalkersSurviveZeroLoyalty = Bool(root, "yourPlaneswalkersSurviveZeroLoyalty"),
@@ -968,6 +985,11 @@ public static partial class CardScriptParser
             EntersAsCopyUntilEndOfTurn = Bool(root, "entersAsCopyUntilEndOfTurn"),
             EntersAsCopyWithHaste = Bool(root, "entersAsCopyWithHaste"),
             EntersAsCopyFromGraveyards = Bool(root, "entersAsCopyFromGraveyards"),
+            EntersAsCopyKeepName = Bool(root, "entersAsCopyKeepName"),
+            DamageHealsOtherDamage = Bool(root, "damageHealsOtherDamage"),
+            EntersAsCopyPower = root.TryGetProperty("entersAsCopySetPT", out var eapt) ? eapt[0].GetInt32() : null,
+            EntersAsCopyToughness = root.TryGetProperty("entersAsCopySetPT", out var eatt) ? eatt[1].GetInt32() : null,
+            EntersAsCopyExileOriginal = Bool(root, "entersAsCopyExileOriginal"),
             EntersTappedAsCopy = Bool(root, "entersTappedAsCopy"),
             EntersAsCopyAddTypes = root.TryGetProperty("entersAsCopyAddTypes", out var eact) ? ParseTypes(eact) : 0,
             EntersAsCopyAddSubtypes = root.TryGetProperty("entersAsCopyAddSubtypes", out var eacs) ? eacs.EnumerateArray().Select(x => x.GetString()!).ToList() : null,
@@ -1145,6 +1167,7 @@ public static partial class CardScriptParser
         RemoveCountersFromDifferent = e.TryGetProperty("removeCountersFromDifferent", out var rcd) && rcd.GetBoolean(),
         DiscardFilter = e.TryGetProperty("discardFilter", out var dfl) ? ParseFilter(dfl, ControllerFilter.Any) : null,
         ExileFromGraveyard = e.TryGetProperty("exileGraveyard", out var exg) ? exg.GetInt32() : 0,
+        CollectEvidence = e.TryGetProperty("collectEvidence", out var cev) ? cev.GetInt32() : 0,
         ExileFromGraveyardFilter = e.TryGetProperty("exileGraveyardFilter", out var exgf) ? ParseFilter(exgf, ControllerFilter.Any) : null,
         ReturnToHand = e.TryGetProperty("returnToHand", out var rth) ? ParseFilter(rth, ControllerFilter.You) : null,
         ExileFromHand = e.TryGetProperty("exileFromHand", out var efh) ? ParseFilter(efh, ControllerFilter.Any) : null,
@@ -1557,6 +1580,7 @@ public static partial class CardScriptParser
         "creatureBecomesRenowned" => TriggerEvent.CreatureBecomesRenowned,
         "creatureBecomesBlocked" => TriggerEvent.CreatureBecomesBlocked,
         "becomesTargetOfYours" => TriggerEvent.BecomesTargetOfYours,
+        "opponentSearchesLibrary" => TriggerEvent.OpponentSearchesLibrary,
         _ => throw new FormatException($"Unknown trigger '{text}'."),
     };
 
@@ -1775,6 +1799,7 @@ public static partial class CardScriptParser
                 "counterPutOnSelfThisTurn" => new TurnHappened(TurnEvent.CounterPutOnSource),
                 "youPutCounterOnSelfThisTurn" => new TurnHappened(TurnEvent.YouPutCounterOnSource),
                 "cardLeftYourGraveyardThisTurn" => new TurnHappened(TurnEvent.CardLeftYourGraveyard),
+                "descended" => new TurnHappened(TurnEvent.YouDescended),
                 "youLostLifeThisTurn" => new TurnHappened(TurnEvent.YouLostLife),
                 "fullParty" => new FullParty(),
                 "attackersMatchChosenNumber" => new AttackersMatchChosenNumber(),
@@ -2032,6 +2057,7 @@ public static partial class CardScriptParser
                     "attached" => new Quantity(0, QuantityKind.AttachedThisWay),
                     "ringBearerPower" => new Quantity(0, QuantityKind.RingBearerPower),
                     "permanentsSacrificedThisTurn" => new Quantity(0, QuantityKind.PermanentsSacrificedThisTurn),
+                    "youSacrificedThisTurn" => new Quantity(0, QuantityKind.YouSacrificedThisTurn),
                     "sacrificedThisWay" => new Quantity(0, QuantityKind.SacrificedThisWay),
                     "amassedPower" => new Quantity(0, QuantityKind.AmassedPower),
                     "halfLibrary" => new Quantity(0, QuantityKind.HalfLibrary),
@@ -2552,6 +2578,7 @@ public static partial class CardScriptParser
                 EntersWithCounter = Str("withCounter") is { } rwc ? ParseCounterKind(rwc) : null,
                 AmongDestroyed = Flag("amongDestroyed"),
                 DifferentNames = Flag("differentNames"),
+                TotalManaValueAtMost = e.TryGetProperty("totalManaValueAtMost", out var rtm) ? rtm.GetInt32() : null,
             };
         if (Value("discardHand") is { } dh) return new DiscardHand(dh);
         if (Value("changeTarget") is { } ctg) return new ChangeTarget(ctg) { ToSource = Str("to") == "self" };
@@ -2791,6 +2818,7 @@ public static partial class CardScriptParser
                 Optional = Flag("optional"),
                 ExileInstead = Flag("exileInstead"),
                 Else = e.TryGetProperty("else", out var dce) ? EffectList(dce) : null,
+                Then = e.TryGetProperty("then", out var dct) ? EffectList(dct) : null,
             };
         if (Value("exileGraveyard") is { } eg)
             return new ExileGraveyard(eg) { Filter = e.TryGetProperty("filter", out var egf) ? ParseFilter(egf, ControllerFilter.Any) : null, Playable = Flag("playable") };
@@ -2850,6 +2878,7 @@ public static partial class CardScriptParser
                 WithExiled = Flag("withExiled"),
                 DifferentNames = Flag("differentNames"),
                 EntersWithCounter = Str("withCounter") is { } swc ? ParseCounterKind(swc) : null,
+                EntersWithCounterCount = e.TryGetProperty("withCounterCount", out var swcc) ? swcc.GetInt32() : 1,
                 HandOrGraveyard = Flag("handOrGraveyard"),
             };
         }
@@ -3205,6 +3234,8 @@ public static partial class CardScriptParser
             Toxic = t.TryGetProperty("toxic", out var ttx) ? ttx.GetInt32() : 0,
             // An Aura token ("a white Aura enchantment token named Contract … The token has enchant creature").
             EnchantTarget = t.TryGetProperty("aura", out var tau) ? ParseTarget(tau) : null,
+            // "This token saddles Mounts and crews Vehicles as though its power were 2 greater."
+            CrewPowerBonus = t.TryGetProperty("crewsAsThoughPowerGreater", out var tcb) ? tcb.GetInt32() : 0,
         };
     }
 }

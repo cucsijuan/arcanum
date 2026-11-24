@@ -32,7 +32,7 @@ public static partial class CardFactory
     /// </summary>
     private static readonly string[] ScriptedKeywords =
     {
-        "Scry", "Surveil", "Fight", "Mill", "Treasure", "Food", "Investigate",
+        "Scry", "Surveil", "Collect evidence", "Earthbend", "Fight", "Mill", "Treasure", "Food", "Investigate",
         "Raid", "Landfall", "Morbid", "Threshold", "Ferocious", "Hexproof from", "Affinity", "Double", "Formidable", "Alliance", "Crew", "Protection", "Vivid",
         "Amass", "Recruit", "Gift", "Behold", "Landwalk", "Goad",
         "Revolt", "Delirium", "Battalion", "Fateful hour", "Spell mastery", "Addendum", "Regenerate", "Triple", "Populate", "Exert",
@@ -68,7 +68,7 @@ public static partial class CardFactory
     /// <summary>Keywords the engine implements. Grows as keyword support lands.</summary>
     /// <remarks>Includes keywords whose rules this factory derives from rules text (Equip, Enchant).</remarks>
     public static ISet<string> SupportedKeywords { get; } =
-        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Morph", "Megamorph", "Impending", "Offspring", "Evoke", "Encore", "Compleated", "Escape", "Toxic", "Vanishing", "Ravenous", "Mobilize", "Harmonize", "Fabricate", "Eternalize", "Embalm", "Suspend", "Demonstrate", "Dredge", "Increment", "Paradigm", "Casualty", "Devoid", "Echo", "Gravestorm", "Bestow", "Station", "Sunburst", "Modular" }).Concat(ScriptedKeywords),
+        new HashSet<string>(Engine.Cards.Keywords.SupportedNames.Concat(new[] { "Equip", "Enchant", "Kicker", "Flashback", "Ward", "Job select", "Convoke", "Unearth", "Rebound", "Foretell", "Plot", "Bargain", "Mayhem", "Teamwork", "Morph", "Megamorph", "Impending", "Offspring", "Evoke", "Encore", "Compleated", "Escape", "Toxic", "Vanishing", "Ravenous", "Mobilize", "Harmonize", "Fabricate", "Eternalize", "Embalm", "Suspend", "Demonstrate", "Dredge", "Increment", "Paradigm", "Casualty", "Devoid", "Echo", "Gravestorm", "Bestow", "Station", "Sunburst", "Modular" }).Concat(ScriptedKeywords),
             StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Why <see cref="Create"/> finds the card unsupported (for tools): each failed requirement, by face.</summary>
@@ -147,6 +147,9 @@ public static partial class CardFactory
             Kicker = derived.Kicker,
             Flashback = derived.Flashback,
             Foretell = ForetellCost(record.OracleText),
+            Mayhem = KeywordLineCost(record.OracleText, MayhemLine()),
+            OptionalAdditionalCost = KeywordInstances(record.OracleText, "Bargain") > 0 ? BargainCost
+                : KeywordLineNumber(record.OracleText, TeamworkLine()) is int teamwork and > 0 ? new Engine.Abilities.ExtraCost { CrewPower = teamwork, Teamwork = true } : null,
             Morph = KeywordLineCost(record.OracleText, MorphLine()) ?? KeywordLineCost(record.OracleText, MegamorphLine()),
             Megamorph = KeywordLineCost(record.OracleText, MegamorphLine()) is not null,
             Impending = KeywordLineCost(record.OracleText, ImpendingLine()),
@@ -358,7 +361,7 @@ public static partial class CardFactory
             if (EntersTappedLine().IsMatch(line)) continue;
             if (KickerLine().IsMatch(line) || FlashbackLine().IsMatch(line) || WardLine().IsMatch(line) || line == "This spell can't be countered") continue;
             if (CyclingLine().IsMatch(line)) continue;
-            if (UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line) || MorphLine().IsMatch(line) || MegamorphLine().IsMatch(line) || ImpendingLine().IsMatch(line) || OffspringLine().IsMatch(line)) continue;
+            if (line == "Bargain" || MayhemLine().IsMatch(line) || TeamworkLine().IsMatch(line) || UnearthLine().IsMatch(line) || ForetellLine().IsMatch(line) || PlotLine().IsMatch(line) || MorphLine().IsMatch(line) || MegamorphLine().IsMatch(line) || ImpendingLine().IsMatch(line) || OffspringLine().IsMatch(line)) continue;
             if (EvokeLine().IsMatch(line) || EvokeExileLine().IsMatch(line) || EncoreLine().IsMatch(line) || MobilizeLine().IsMatch(line) || HarmonizeLine().IsMatch(line)) continue;
             if (FabricateLine().IsMatch(line) || EternalizeLine().IsMatch(line) || EmbalmLine().IsMatch(line) || SuspendLine().IsMatch(line) || DredgeLine().IsMatch(line) || line == "Demonstrate") continue;
             if (CasualtyLine().IsMatch(line) || EchoLine().IsMatch(line) || BestowLine().IsMatch(line)) continue;
@@ -519,6 +522,7 @@ public static partial class CardFactory
                     Text = "Demonstrate (When you cast this spell, you may copy it. If you do, choose an opponent to also copy it. Players may choose new targets for their copies.)",
                 });
             if (ForetellLine().Match(line) is { Success: true }) abilities.Add(ForetellAbility);
+            if (PlotLine().Match(line) is { Success: true } plot) abilities.Add(PlotAbility(ManaCost.Parse(plot.Groups[1].Value)));
             if (PartnerWithAbility(line) is { } partnerWith) abilities.Add(partnerWith);
             var enchantMatch = EnchantLine().Match(line);
             if (enchantMatch.Success)
@@ -647,6 +651,24 @@ public static partial class CardFactory
         ActivationCondition = new Engine.Abilities.YourTurn(),
         Effects = Array.Empty<Engine.Abilities.Effect>(),
         Text = "Foretell: pay {2} and exile this card from your hand face down.",
+    };
+
+    /// <summary>
+    /// Plotting (rule 702.170a): "Any time you have priority during your main phase while the stack is empty, you may exile this card from
+    /// your hand and pay [cost]. It becomes a plotted card." A special action.
+    /// </summary>
+    private static readonly Engine.Abilities.ExtraCost BargainCost = new(Sacrifice: new Engine.Abilities.ObjectFilter(AnyOf: new[]
+    {
+        new Engine.Abilities.ObjectFilter(CardType.Artifact), new Engine.Abilities.ObjectFilter(CardType.Enchantment), new Engine.Abilities.ObjectFilter(Token: true),
+    })) { Bargain = true };
+
+    private static Engine.Abilities.ActivatedAbility PlotAbility(ManaCost cost) => new()
+    {
+        Cost = new Engine.Abilities.AbilityCost(cost) { FromHand = true, Plot = true },
+        SpecialAction = true,
+        SorcerySpeed = true,
+        Effects = Array.Empty<Engine.Abilities.Effect>(),
+        Text = $"Plot {cost}: exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost.",
     };
 
     /// <summary>
@@ -889,6 +911,15 @@ public static partial class CardFactory
 
     [GeneratedRegex(@"^Foretell ((\{[0-9WUBRGC]+\})+)$")]
     private static partial Regex ForetellLine();
+
+    [GeneratedRegex(@"^Teamwork (?<n>[0-9]+)$")]
+    private static partial Regex TeamworkLine();
+
+    [GeneratedRegex(@"^Mayhem (?<cost>(\{[0-9WUBRGC]+\})+)$")]
+    private static partial Regex MayhemLine();
+
+    [GeneratedRegex(@"^Plot ((\{[0-9WUBRGC]+\})+)$")]
+    private static partial Regex PlotLine();
 
     [GeneratedRegex(@"^Unearth ((\{[0-9WUBRGC]+\})+)$")]
     private static partial Regex UnearthLine();

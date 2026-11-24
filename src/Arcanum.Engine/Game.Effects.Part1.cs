@@ -980,6 +980,7 @@ public sealed partial class Game
                         }
                     else
                         foreach (var id in chosen) await DiscardCardAsync(player, id, ctx.Controller, byEffect: true);
+                    if (dc.Then is { } then) await ApplyAllAsync(then, ctx with { Trigger = new TriggerInfo(Player: player), AffectedPlayer = player });
                 }
                 break;
             case CreateEmblem ce:

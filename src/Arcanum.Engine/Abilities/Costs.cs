@@ -70,6 +70,15 @@ public sealed record ExtraCost(int Discard = 0, ObjectFilter? Sacrifice = null, 
     /// <summary>"Exile three cards from your graveyard".</summary>
     public int ExileFromGraveyard { get; init; }
 
+    /// <summary>Collect evidence N (rule 701.59a): exile any number of cards from your graveyard with total mana value N or greater.</summary>
+    public int CollectEvidence { get; init; }
+
+    /// <summary>Bargain (rule 702.166a): the optional sacrifice of an artifact, enchantment, or token, named so in prompts.</summary>
+    public bool Bargain { get; init; }
+
+    /// <summary>Teamwork N: with <see cref="CrewPower"/>, tapping creatures with total power N or more is a spell's cost, not crewing.</summary>
+    public bool Teamwork { get; init; }
+
     /// <summary>The exiled cards must match this ("exile a creature card from your graveyard").</summary>
     public ObjectFilter? ExileFromGraveyardFilter { get; init; }
 

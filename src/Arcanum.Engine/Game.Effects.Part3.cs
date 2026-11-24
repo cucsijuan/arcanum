@@ -83,7 +83,25 @@ public sealed partial class Game
                 int max = Math.Min(rg.Count, options.Count);
                 var purpose = rg.To == Zone.Battlefield ? CardChoicePurpose.ToBattlefield : CardChoicePurpose.ToHand;
                 IReadOnlyList<CardId> chosen;
-                if (rg.DifferentNames)
+                if (rg.TotalManaValueAtMost is { } totalAtMost)
+                {
+                    // "With total mana value 4 or less": one at a time, each within what is left of the total.
+                    var picked = new List<CardId>();
+                    while (picked.Count < max)
+                    {
+                        int room = totalAtMost - picked.Sum(p => ManaValueOf(State.GetCard(p)));
+                        var left = options.Where(o => !picked.Contains(o.Id) && ManaValueOf(State.GetCard(o.Id)) <= room).ToList();
+                        if (left.Count == 0) break;
+                        var one = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest(
+                            $"Choose a card from your graveyard (total mana value {totalAtMost} or less, {room} left; choose none to stop)", ctx.Source.Id, left,
+                            rg.UpTo || picked.Count > 0 ? 0 : 1, 1, purpose));
+                        Require(one.Count <= 1 && one.All(id => left.Any(o => o.Id == id)), "Choose among the listed cards.");
+                        if (one.Count == 0) break;
+                        picked.Add(one[0]);
+                    }
+                    chosen = picked;
+                }
+                else if (rg.DifferentNames)
                 {
                     // "With different names": one at a time, each among the names not chosen yet.
                     var picked = new List<CardId>();
@@ -860,6 +878,7 @@ public sealed partial class Game
                     EndSimultaneous();
                     // Searching a hidden zone for cards with a stated quality: the searcher may find fewer than all (rule 701.19b).
                     Look(ctx.Controller, player.Library);
+                    if (p == ctx.Controller) SearchedOwnLibrary(p);
                     var namesakes = player.Library.Where(id => names.Contains(State.GetCard(id).Name)).ToList();
                     if (namesakes.Count > 0)
                     {
@@ -884,6 +903,7 @@ public sealed partial class Game
                     var player = State.GetPlayer(p);
                     // Search that player's library for a card: with no stated quality, one is found if there is any (rule 701.19b).
                     Look(ctx.Controller, player.Library);
+                    if (p == ctx.Controller) SearchedOwnLibrary(p);
                     CardId? found = null;
                     if (player.Library.Count > 0)
                     {
@@ -1009,6 +1029,7 @@ public sealed partial class Game
                     foreach (var id in pick) await MoveCardAsync(id, shl.To, controller: who);
                     if (fromHand) break;
                 }
+                SearchedOwnLibrary(who);
                 Shuffle(player);
                 break;
             }

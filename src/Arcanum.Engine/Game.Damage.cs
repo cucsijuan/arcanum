@@ -526,6 +526,12 @@ public sealed partial class Game
             Lifelink();
             return;
         }
+        // "Instead that damage is dealt, but all other damage already dealt to him is healed" (a replacement, rule 614.1a).
+        if (target.HasTextAbilities && target.Definition.DamageHealsOtherDamage)
+        {
+            target.Damage = 0;
+            target.DamagedByDeathtouch = false;
+        }
         // Lethal damage is 1 from a deathtouch source (rule 702.2c).
         int lethalBefore = target.DamagedByDeathtouch ? 0 : Math.Max(0, target.Toughness - target.Damage);
         if (source.Has(Keyword.Deathtouch) && lethalBefore > 0) lethalBefore = 1;

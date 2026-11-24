@@ -191,9 +191,24 @@ public sealed partial class Game
                 break;
             case WhenDiesThisTurn wd:
                 foreach (var card in CardsFor(wd.What, ctx).Where(c => c.Zone == Zone.Battlefield).ToList())
-                    State.WhenDiesThisTurn.Add((card.Id, card.Version, State.TurnNumber, ctx.Source.Id, ctx.Controller,
-                        new TriggeredAbility { Trigger = TriggerEvent.Dies, Effects = wd.Effects, Text = wd.Text }, wd.UnderYourControl));
+                    State.WhenDiesThisTurn.Add((card.Id, card.Version, wd.Lasting ? -1 : State.TurnNumber, ctx.Source.Id, ctx.Controller,
+                        new TriggeredAbility { Trigger = TriggerEvent.Dies, Effects = wd.Effects, Text = wd.Text }, wd.UnderYourControl, wd.OrExiled));
                 break;
+            case Earthbend eb:
+            {
+                var lands = CardsFor(eb.What, ctx).Where(c => c.Zone == Zone.Battlefield).ToList();
+                if (lands.Count == 0) break;
+                var bent = ctx with { Targets = lands.Select(l => new ChosenTarget(Target.Of(l.Id), l.Version)).ToList() };
+                foreach (var land in lands) Emit(new ChoiceMade(ctx.Source.Id, $"earthbends {land.Name} ({eb.Count})"));
+                await ApplyAllAsync(new Effect[]
+                {
+                    new Become(Subject.TargetAt(0), 0, 0, CardType.Creature, Keywords: new[] { Keyword.Haste }, Permanent: true),
+                    new AddCounters(eb.Count, Subject.TargetAt(0)),
+                    new WhenDiesThisTurn(Subject.TargetAt(0), new Effect[] { new PutOntoBattlefield(Subject.Triggered, true, false) }, "When it dies or is exiled, return it to the battlefield tapped")
+                        { Lasting = true, OrExiled = true },
+                }, bent);
+                break;
+            }
             case PutExiledWithThis pew:
             {
                 var exiled = State.Cards.Values.Where(c => c.Zone == Zone.Exile && c.ExiledWith is { } w && w.Source == ctx.Source.Id
@@ -664,6 +679,23 @@ public sealed partial class Game
     private bool Foretold(Card card) =>
         card.Zone == Zone.Exile && card.ForetoldTurn >= 0 && card.ForetoldTurn < State.TurnNumber && card.Definition.Foretell is not null && !card.Is(CardType.Land);
 
+    /// <summary>A card with mayhem its owner discarded this turn, still that object in the graveyard.</summary>
+    private bool MayhemCastable(Card card) =>
+        card.Zone == Zone.Graveyard && card.Definition.Mayhem is not null && card.DiscardedTurn == State.TurnNumber && !card.Is(CardType.Land);
+
+    /// <summary>A card its owner plotted on an earlier turn, still that object in exile: it can be cast without paying its mana cost as a sorcery.</summary>
+    private bool Plotted(Card card) =>
+        card.Zone == Zone.Exile && card.PlottedTurn >= 0 && card.PlottedTurn < State.TurnNumber && !card.Is(CardType.Land);
+
+    /// <summary>Plotting (702.170a, a special action): the card goes from its owner's hand into exile face up and becomes plotted.</summary>
+    private async Task PlotAsync(PlayerId player, Card card)
+    {
+        await MoveCardAsync(card.Id, Zone.Exile);
+        if (card.Zone != Zone.Exile) return;
+        card.PlottedTurn = State.TurnNumber;
+        Emit(new ChoiceMade(card.Id, $"{State.GetPlayer(player).Name} plotted {card.Name}"));
+    }
+
     /// <summary>Foretelling (702.143a, a special action): the card goes from its owner's hand into exile face down; only its owner may look at it.</summary>
     private async Task ForetellAsync(PlayerId player, Card card)
     {
@@ -765,6 +797,7 @@ public sealed partial class Game
         TurnEvent.CardLeftYourGraveyard => State.GetPlayer(ctx.Controller).CardsLeftGraveyardThisTurn >= Math.Max(1, th.AtLeast),
         TurnEvent.YouLostLife => State.GetPlayer(ctx.AffectedPlayer ?? ctx.Controller).LifeLostThisTurn >= th.AtLeast,
         TurnEvent.PlayerLostLife => State.Players.Any(p => p.LifeLostThisTurn >= th.AtLeast),
+        TurnEvent.YouDescended => State.GetPlayer(ctx.Controller).DescendedThisTurn,
         _ => false,
     };
 

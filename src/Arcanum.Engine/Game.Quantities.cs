@@ -237,6 +237,7 @@ public sealed partial class Game
                 or QuantityKind.CardTypesAmongDiscarded or QuantityKind.CardTypesAmongSpellsCastThisTurn or QuantityKind.CreaturesDiedThisTurn or QuantityKind.CountersRemovedThisWay
                 or QuantityKind.SpellsAndAbilitiesCounteredThisWay or QuantityKind.Rolled or QuantityKind.OpponentsDealtCombatDamage => EvalHeroes(q, ctx),
             QuantityKind.PermanentsSacrificedThisTurn => State.PermanentsSacrificedThisTurn,
+            QuantityKind.YouSacrificedThisTurn => State.GetPlayer(ctx.Controller).SacrificedThisTurn.Count,
             QuantityKind.SacrificedThisWay => ctx.Results.Sacrificed.Count,
             QuantityKind.AmassedPower => ctx.Results.Amassed is { } army ? PowerOrLastKnown(State.GetCard(army)) : 0,
             QuantityKind.AttackingCount => State.Combat?.Attacks.Select(a => State.GetCard(a.Attacker))

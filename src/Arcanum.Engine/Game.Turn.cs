@@ -193,6 +193,7 @@ public sealed partial class Game
             player.CombatDamagedByDragonThisTurn = false;
             player.CardLeftGraveyardThisTurn = false;
             player.CardsLeftGraveyardThisTurn = 0;
+            player.DescendedThisTurn = false;
             player.CreaturesExiledThisTurn = 0;
             player.PutCounterOnCreatureThisTurn = false;
             player.AttackedThisTurn = false;

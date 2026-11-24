@@ -43,6 +43,9 @@ companion" only decide which two cards can be commanders together.
   `"entersAsCopyAddSubtypes": [...]`, `"entersAsCopyAddKeywords": [...]` and `"entersAsCopyAddAbilities": [ability, …]` (the copy also
   has these subtypes, keywords or abilities, rule 707.9b; the abilities are written like `abilities`, e.g.
   `{ "trigger": "becomesTargetOfAny", "effects": [ { "sacrificeIt": "self" } ], "text": "…" }`),
+  `"entersAsCopyKeepName": true` (the copy keeps this card's name, rule 707.9b), `"entersAsCopySetPT": [p, t]` (the copy's power and
+  toughness are p and t), `"entersAsCopyExileOriginal": true` (a reflexive trigger, "when you do, exile that card", exiles the card
+  copied once this has entered as its copy),
   `"giftTapped": true` (the gift enters tapped), `"cardRulesLevel": N` (the card-wide rules apply from Class level N).
 - `abilities`: a permanent's abilities. An entry with `static` is a static ability; one with `trigger` is a
   triggered ability; one with `cost` is an activated ability (`"sorcery": true` limits it to sorcery timing).
@@ -944,9 +947,14 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   matter, targets, additional costs and "can't cast" effects do); then the revealed cards not cast go to their owner's graveyard.
 - `{ "nameAndExile": "target", "nameFilter": { "types": ["creature"] } }`: choose a creature card name (any creature card's name, from
   `GameConfig.CreatureCardNames`), then search that player's graveyard, hand and library for any number of cards with that name (the
-  searcher sees the hand and library and may leave some, rule 701.19b), exile them, and that player shuffles.
+  searcher sees the hand and library and may leave some, rule 701.19b), exile them, and that player shuffles. `"upTo": N` on it:
+  at most N cards are exiled.
+- `{ "exileFromOpponentsGraveyardThenNamesakes": true }`: exile a card from an opponent's graveyard (chosen, not targeted). Then
+  search that card's owner's graveyard, hand and library for any number of cards with the same name, exile them, and that player
+  shuffles and draws one card for each card exiled from their hand. No name is chosen.
 - `discardChosen` takes `"optional": true` ("you may choose …") and `"else": [ … ]` ("if you don't, …", also when there was nothing to
-  choose), done for that player (`"target"` still names them).
+  choose), done for that player (`"target"` still names them). `"then": [ … ]` is done for that player after the chosen cards are
+  gone ("if you do, that player exiles that card, then draws a card").
 - `keepOneOfEachType` takes `"chooser": "you"` ("for each player, you choose …"), `"kinds": ["artifact", "creature", "enchantment",
   "planeswalker"]` and `"nonlandOnly": true` ("sacrifices all other nonland permanents"). All choices are made first, in turn order; then
   every player sacrifices at the same time. One permanent can be chosen for each of its types.
@@ -1111,7 +1119,8 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
   - `"putExiledWithThis": filter` with `"counterKinds": [kinds]`: put one matching card exiled with this object onto the battlefield
     under your control, with those counters.
   - `"whenDiesThisTurn": subject` with `"effects": […]` and `"text"`: a delayed trigger about that object (rule 603.7). The default
-    text is "When that creature dies this turn".
+    text is "When that creature dies this turn". `"underYourControl": true`: only if you controlled it as it died. `"lasting": true`:
+    no duration, the watch lasts until the object dies or leaves. `"orExiled": true`: "when it dies or is exiled".
   - `"attackTaxUntilYourNextTurn": "{cost}"`: creatures can't attack you unless their controller pays the cost for each.
   - `"distributeCountersFromSelf": kind`: move any number of those counters, one creature at a time, onto other creatures.
   - `"becomeCopy": subject` with `"target"` (default: the first target), `"exceptName"`, `"lasting": true`, `"keywords": […]`
@@ -1672,6 +1681,17 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - **Myriad**: `"myriad": true` (see above). Its tokens are exiled at end of combat. Options on the effect: `"mandatory": true` (no
   choice to skip an opponent), `"playerOnly": true` (only the defending player is attacked, not their planeswalkers), `"notLegendary": true`
   (the copies aren't legendary) and `"sacrificeAtEndOfCombat": true` (the copies are sacrificed, not exiled).
+- **Plot {cost}**: read from the rules text, no script. A special action at sorcery speed: from the hand, the card is exiled face
+  up and pays the cost, and it becomes plotted. On a later turn it can be cast from exile without paying its mana cost, only at
+  sorcery speed (even an instant or a card with flash). `Card.PlottedTurn` holds the turn it was plotted.
+- **Mayhem {cost}**: read from the rules text, no script. The card may be cast from its owner's graveyard for the mayhem cost, only
+  on the turn it was discarded (`Card.DiscardedTurn`). Lands can't be cast this way.
+- **Bargain**: read from the rules text, no script. An optional additional cost: "you may sacrifice an artifact, enchantment, or
+  token" as the spell is cast. Condition `"additionalCostPaid"` (it was bargained). It works like the card-wide
+  `"optionalAdditionalCost"`, derived from the keyword.
+- **Teamwork N**: read from the rules text, no script. An optional additional cost: tap creatures you control with total power N
+  or more. It is not crewing: a creature's crew bonus (`crewsAsThoughPowerGreater`) doesn't count. Condition `"additionalCostPaid"`.
+- **Collect evidence N** and **Earthbend N** are keywords the card's script spells out (see Costs and Effects below).
 
 ### Costs
 - `life:X`: "Pay X life", with X announced with the other costs.
@@ -1690,8 +1710,16 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - Counter kinds `-0/-1`, `rally` and `void` (for `addCounters`, `removeCounters` and the rest). Experience counters belong to
   the player, not to a card: the effect `"getExperienceCounter": true` adds one, the quantity `experience` counts them. The board
   shows them on the player's side.
+- `"collectEvidence": N` in an optional or additional cost object (`"optionalAdditionalCost": { "collectEvidence": 6 }`): collect
+  evidence N (rule 701.59a). As the cost is paid, the player exiles any number of cards from their graveyard with total mana value N
+  or more. The cost can't be paid without enough mana value; the computer player picks the fewest cards that reach the total.
+- Activated ability `"powerUp": true`: "Activate only once", and it costs less when the permanent entered the battlefield this turn.
+  Each colored symbol of the permanent's mana cost takes one of that color off the ability's cost (or, when the cost has no such
+  symbol, one generic), then the generic part of the permanent's mana cost is taken off too.
 
 ### Triggers
+- `opponentSearchesLibrary`: whenever an opponent searches their own library (the opponent is the triggered player). Every search
+  of a player's own library counts, whichever effect does it.
 - `enchantedPlayerAttacked`: "whenever enchanted player is attacked", for an Aura that enchants a player. The triggered player is
   the attacking player. Planeswalkers of that player don't count.
 - `opponentsDealtCombatDamage`: any turn, when an opponent is dealt combat damage. It triggers once per combat damage step; its
@@ -1712,6 +1740,8 @@ Quantities: `{ "attackingPower": filter }`, `"cardsInAllHands"`, `{ "damageTaken
 - `"youAttackedWithCommanderThisTurn"`: during any turn you attacked with a commander (a commander attacked under your control
   this turn).
 - `"yourEndStep"`: during your end step.
+- `"descended"`: you descended this turn, i.e. a permanent card (not a token) of an artifact, creature, enchantment, land,
+  planeswalker or battle type was put into your graveyard from anywhere this turn. Also usable with a spell's `extraModeIf`.
 - `{ "not": … }` inside an effect's `if` is judged with what the effect knows: the triggered player and the results of the
   earlier effects.
 
@@ -1733,10 +1763,13 @@ Numbers in effects can also be these strings:
 - `"greatestOtherToughness"`: the greatest toughness among your creatures other than the source.
 - `"experience"`: your experience counters. `"cardsExiledWithSource"`: the cards exiled with the source, as it is now.
 - `"differentlyNamedTokens"`: the number of differently named tokens you control.
+- `"youSacrificedThisTurn"`: the permanents you sacrificed this turn.
 
 ### Tokens
 - `"Gold"` (a predefined token name, like `"Treasure"`): a colorless Gold artifact token, "Sacrifice this artifact: Add one mana
   of any color."
+- `"crewsAsThoughPowerGreater": N` (token): it crews Vehicles and saddles Mounts as though its power were N greater. Not for
+  teamwork. Ignored once it has lost all its abilities.
 
 ### Targets
 - `"distinctFrom": n` on a target: this target must be different from the other targets from slot n on (not from the earlier
@@ -1751,6 +1784,13 @@ Numbers in effects can also be these strings:
   after the damage targets).
 - `become` with `"addColors": ["B"]`: the object is that color in addition to its other colors.
 - `returnFromGraveyard` with `"differentNames": true` (no two chosen cards share a name) or `"tapped": true` (they enter tapped).
+  `"totalManaValueAtMost": N` (up to that many cards with total mana value N or less): chosen one at a time, within what is left
+  of the total.
+- `{ "earthbend": N, "what": subject }` (what defaults to the first target, a land you control): earthbend N. The land becomes a
+  0/0 creature with haste that is still a land, with N +1/+1 counters on it. When it dies or is exiled, it returns to the
+  battlefield tapped (a lasting `whenDiesThisTurn`, see below). Write the target in the ability's `targets`.
+- `{ "search": …, "withCounter": kind, "withCounterCount": N }`: a card found and put onto the battlefield enters with N counters
+  of that kind (default 1).
 - `returnExiledWithThis` with `"to": "battlefield"`: the cards exiled with the source return to the battlefield at once, under their
   owners' control, instead of to the hand.
 - `lookAtTop` with `"rest": "hand"`: the cards not put elsewhere go into the hand.
@@ -1837,6 +1877,14 @@ Each is one flag or one value, in the effect list. Where each one runs is in doc
   a player draws) triggers one more time, once more for each such permanent.
 - `"nontokenCreaturesYouControlHaveRiot": true`: nontoken creatures you control have riot.
 - `"opponentsSkipExtraTurns": true`: when an opponent would begin an extra turn, that player skips it instead.
+- `"enterLife": N` with `"chooseOnEnter": "basicLandType"`: as it enters, choose a basic land type; then you may pay N life (only
+  if you have that much), or it enters tapped.
+- `"damageHealsOtherDamage": true`: damage that would be dealt to this is dealt instead, and all other damage already dealt to it
+  is healed (rule 614.1a).
+- `"enteringCreaturesDontTrigger": true`: while this is on the battlefield, creatures entering the battlefield don't cause abilities
+  to trigger.
+- `"allExiledInsteadOfGraveyard": true`: while this is on the battlefield, a card or token that would be put into a graveyard from
+  anywhere is exiled instead.
 
 ## Sacrifice deck vocabulary
 

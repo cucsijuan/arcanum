@@ -33,9 +33,14 @@ public static partial class CardScriptParser
                 RestToGraveyard = e.TryGetProperty("rest", out var rest) && rest.GetString() == "graveyard",
                 ExileRestToBottom = Flag("exileRestToBottom"),
             };
+        // "Exile a card from an opponent's graveyard. Then search its owner's graveyard, hand, and library for any number of cards with
+        // that name and exile them. That player shuffles, then draws a card for each card exiled from their hand this way."
+        if (e.TryGetProperty("exileFromOpponentsGraveyardThenNamesakes", out var efo) && efo.GetBoolean())
+            return new NameThenExileFromAllZones(Subject.Self, ObjectFilter.Anything) { FromOpponentsGraveyardCard = true }; // the searched player is the exiled card's owner
         if (e.TryGetProperty("nameAndExile", out var nae))
             return new NameThenExileFromAllZones(ParseSubject(nae),
-                e.TryGetProperty("nameFilter", out var nf) ? ParseFilter(nf, ControllerFilter.Any) : ObjectFilter.Anything);
+                e.TryGetProperty("nameFilter", out var nf) ? ParseFilter(nf, ControllerFilter.Any) : ObjectFilter.Anything)
+                { MaxCount = e.TryGetProperty("upTo", out var nau) ? nau.GetInt32() : null };
         return null;
     }
 }

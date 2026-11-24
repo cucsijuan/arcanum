@@ -519,6 +519,12 @@ public sealed partial record CardDefinition
     /// <summary>Foretell (702.143): the cost of casting it from exile on a later turn after it was foretold. Read from "Foretell {cost}".</summary>
     public ManaCost? Foretell { get; init; }
 
+    /// <summary>Mayhem: "You may cast this card from your graveyard for [cost] if you discarded it this turn." Read from "Mayhem {cost}".</summary>
+    public ManaCost? Mayhem { get; init; }
+
+    /// <summary>"If damage would be dealt to this, instead that damage is dealt, but all other damage already dealt to it is healed."</summary>
+    public bool DamageHealsOtherDamage { get; init; }
+
     /// <summary>Splice onto instant or sorcery (702.47): revealed from the hand and paid as such a spell is cast, adding this card's effects.</summary>
     public ManaCost? Splice { get; init; }
 
@@ -587,6 +593,19 @@ public sealed partial record CardDefinition
 
     /// <summary>"Enter as a copy of any land card in a graveyard": the cards to copy are in graveyards, not on the battlefield.</summary>
     public bool EntersAsCopyFromGraveyards { get; init; }
+
+    /// <summary>"Except his name is [this card's name]": the copy keeps this card's name (rule 707.9b).</summary>
+    public bool EntersAsCopyKeepName { get; init; }
+
+    /// <summary>"This token saddles Mounts and crews Vehicles as though its power were 2 greater": added to its power when it crews.</summary>
+    public int CrewPowerBonus { get; init; }
+
+    /// <summary>"Except he's a 4/4": the copy's power and toughness (rule 707.9b).</summary>
+    public int? EntersAsCopyPower { get; init; }
+    public int? EntersAsCopyToughness { get; init; }
+
+    /// <summary>"When you do, exile that card": a reflexive trigger exiling the card copied, once this has entered as its copy.</summary>
+    public bool EntersAsCopyExileOriginal { get; init; }
 
     /// <summary>"You may have this land enter tapped as a copy of …": it enters tapped when it enters as a copy.</summary>
     public bool EntersTappedAsCopy { get; init; }
@@ -1054,6 +1073,12 @@ public sealed partial record CardDefinition
 
     /// <summary>"Artifacts and creatures entering the battlefield don't cause abilities to trigger" (while on the battlefield).</summary>
     public bool EnteringArtifactsAndCreaturesDontTrigger { get; init; }
+
+    /// <summary>"Creatures entering the battlefield don't cause abilities to trigger" (while on the battlefield).</summary>
+    public bool EnteringCreaturesDontTrigger { get; init; }
+
+    /// <summary>"If a card or token would be put into a graveyard from anywhere, exile it instead" (while on the battlefield).</summary>
+    public bool AllExiledInsteadOfGraveyard { get; init; }
 
     /// <summary>"Instant and sorcery spells you control have split second" (while on the battlefield).</summary>
     public bool YourInstantsAndSorceriesHaveSplitSecond { get; init; }

@@ -217,6 +217,15 @@ public sealed partial class Game
                 card.ChosenType = BasicLandTypes[i];
                 Emit(new ChoiceMade(id, BasicLandTypes[i]));
                 RecomputeContinuousEffects();
+                // "Then you may pay 2 life. If you don't, it enters tapped."
+                if (card.Definition.EnterLife > 0)
+                {
+                    int life = card.Definition.EnterLife;
+                    bool pay = State.GetPlayer(who).Life >= life
+                               && await ControllerOf(who).ChooseYesNoAsync(ViewFor(who), new YesNoRequest($"Pay {life} life so {card.Name} enters untapped?", id));
+                    if (pay) ChangeLife(who, -life);
+                    else EnterTapped(card);
+                }
                 continue;
             }
             else if (card.Definition.ChooseOnEnter == EnterChoice.CardType)
@@ -543,6 +552,12 @@ public sealed partial class Game
         State.PermanentsControlledBy(caster).Concat(State.Emblems.Select(State.GetCard).Where(e => e.Owner == caster))
             .Any(p => p.Abilities.OfType<SpellCostReduction>().Any(r => r.GrantsFlash && ReductionApplies(r, p, card, caster)));
 
+    /// <summary>The power a creature crews with: "crews Vehicles as though its power were 2 greater" adds to it, unless it lost its abilities.</summary>
+    private static int CrewingPower(Card c) => c.Power + (c.LostAllAbilities ? 0 : c.Definition.CrewPowerBonus);
+
+    /// <summary>The power a creature counts with for a "tap creatures with total power N" cost: its crewing power when crewing.</summary>
+    private static int TappingPower(ExtraCost extra, Card c) => extra.Teamwork ? c.Power : CrewingPower(c);
+
     /// <summary>Whether a "spells you cast cost less" ability of <paramref name="permanent"/> applies to <paramref name="card"/>.</summary>
     private bool ReductionApplies(SpellCostReduction reduction, Card permanent, Card card, PlayerId caster) =>
         Matches(reduction.Spells with { Controller = ControllerFilter.Any }, card, caster, permanent, caster)
@@ -615,7 +630,9 @@ public sealed partial class Game
         foreach (var id in player.Graveyard)
             if (SneakCosts(State.GetCard(id), playerId).Count > 0) yield return id;
         foreach (var id in player.Exile)
-            if (Foretold(State.GetCard(id))) yield return id;
+            if (Foretold(State.GetCard(id)) || Plotted(State.GetCard(id))) yield return id;
+        foreach (var id in player.Graveyard)
+            if (MayhemCastable(State.GetCard(id))) yield return id;
         foreach (var id in player.Graveyard)
             if (OncePerTurnGraveyardPermissions(State.GetCard(id), playerId).Any()) yield return id;
         foreach (var id in player.Graveyard)
@@ -856,6 +873,20 @@ public sealed partial class Game
             cost = cost.MinusGeneric(State.Battlefield.Select(State.GetCard).Count(c => Matches(per, c, c.Controller, source, player)));
         if (ability.CostReductionPerSourceCounter is { } perCounter) cost = cost.MinusGeneric(source.CounterCount(perCounter));
         if (ability.CostReductionIf is { } reduceIf && Holds(reduceIf, player, source)) cost = cost.MinusGeneric(ability.CostReductionAmount);
+        // Power-up: {X} less, X being this permanent's mana cost, if it entered this turn. A colored symbol the cost doesn't have
+        // reduces its generic part instead (rule 118.7d).
+        if (ability.PowerUp && Holds(new SourceEnteredThisTurn(), player, source))
+        {
+            var own = source.Definition.ManaCost;
+            int excess = 0;
+            foreach (var color in own.Pips)
+            {
+                var less = cost.MinusColored(color, 1);
+                if (less.Pips.Count + less.Hybrid.Count + less.Phyrexian.Count == cost.Pips.Count + cost.Hybrid.Count + cost.Phyrexian.Count) excess++;
+                cost = less;
+            }
+            cost = cost.MinusGeneric(own.Generic + excess);
+        }
         if (ability.CostReductionFrom is { } reduceBy)
             cost = cost.MinusGeneric(Math.Max(0, Eval(reduceBy, new EffectContext(player, source, Array.Empty<ChosenTarget>(), Array.Empty<bool>()))));
         // "Costs {1} less for each +1/+1 counter on the creature it targets" (before targets are chosen, the best legal one).
@@ -1847,6 +1878,7 @@ public sealed partial class Game
             RemoveCountersFrom(source, ability.Cost.RemoveCounterKind, ability.Cost.RemoveCounters);
         if (ability.Cost.ExileSelf) await MoveCardAsync(source.Id, Zone.Exile);
         if (ability.Cost.FromHand && ability.Cost.ExileFaceDown) await ForetellAsync(player.Id, source);
+        else if (ability.Cost.FromHand && ability.Cost.Plot) await PlotAsync(player.Id, source);
         else if (ability.Cost.FromHand && ability.Cost.ExileFromHand) await MoveCardAsync(source.Id, Zone.Exile);
         else if (ability.Cost.FromHand)
         {
@@ -2036,6 +2068,7 @@ public sealed partial class Game
         int life = LifeToPay(extra, playerId);
         if (life > player.Life || (life > 0 && player.CantLoseLifeNow(State.TurnNumber))) return false; // rule 119.8
         if (ExilableFromGraveyard(player, extra, source).Count < extra.ExileFromGraveyard) return false;
+        if (extra.CollectEvidence > 0 && ExilableFromGraveyard(player, extra, source).Sum(id => State.GetCard(id).ManaValue) < extra.CollectEvidence) return false;
         if (extra.ReturnExiledWithSource is { } exiledFilter && !ExiledWith(State.GetCard(source), exiledFilter).Any()) return false;
         if (extra.Sacrifice is { } filter && SacrificeCandidates(playerId, filter, source).Count < extra.SacrificeCount) return false;
         if (extra.SacrificeEachOf is { } eachOf && extra.Sacrifice is { } eachFilter
@@ -2044,7 +2077,7 @@ public sealed partial class Game
         if (extra.Behold is { } beholdFilter && BeholdCandidates(playerId, beholdFilter, source, extra.BeholdWarpedExile).Count < extra.BeholdCount) return false;
         if (extra.BeholdChooseType && BeholdTypeOptions(playerId, extra, source).Count == 0) return false;
         if (extra.TapCreatures is { } tapFilter && TapCandidates(playerId, tapFilter, source).Count < extra.TapCount) return false;
-        if (extra.CrewPower > 0 && TapCandidates(playerId, new ObjectFilter(CardType.Creature, Other: true), source).Sum(c => c.Power) < extra.CrewPower) return false;
+        if (extra.CrewPower > 0 && TapCandidates(playerId, new ObjectFilter(CardType.Creature, Other: true), source).Sum(c => TappingPower(extra, c)) < extra.CrewPower) return false;
         if (extra.RemoveCountersFromYourCreatures > 0 && extra.RemoveCountersFromOne
             && !CounterHolders(playerId, extra, source).Any(c => RemovableCounters(c, extra) >= extra.RemoveCountersFromYourCreatures)) return false;
         if (extra.RemoveCountersFromYourCreatures > 0
@@ -2182,6 +2215,15 @@ public sealed partial class Game
         static bool Distinct(IReadOnlyList<CardId> ids) => ids.Distinct().Count() == ids.Count;
         switch (kind)
         {
+            case ExtraChoice.Exile when extra.CollectEvidence > 0:
+            {
+                // Collect evidence N: any number of cards with total mana value N or greater (701.59a).
+                var cards = ExilableFromGraveyard(player, extra, source);
+                return (new CardChoiceRequest($"Collect evidence {extra.CollectEvidence}: exile cards from your graveyard with total mana value {extra.CollectEvidence} or more",
+                        source, Views(cards), 1, cards.Count, CardChoicePurpose.Sacrifice) { MinTotalManaValue = extra.CollectEvidence },
+                    c => Distinct(c) && c.All(cards.Contains) && c.Sum(id => State.GetCard(id).ManaValue) >= extra.CollectEvidence,
+                    $"Exile cards with total mana value {extra.CollectEvidence} or more.");
+            }
             case ExtraChoice.Exile when extra.ExileFromGraveyard > 0:
             {
                 var cards = ExilableFromGraveyard(player, extra, source);
@@ -2193,10 +2235,11 @@ public sealed partial class Game
             {
                 var candidates = TapCandidates(playerId, extra.TapCreatures ?? new ObjectFilter(CardType.Creature, Other: true), source);
                 int min = extra.CrewPower > 0 ? 1 : extra.TapCount;
-                var prompt = extra.CrewPower > 0 ? $"Crew {extra.CrewPower}: tap creatures with total power {extra.CrewPower} or more" : $"Tap {extra.TapCount} to pay the cost";
-                return (new CardChoiceRequest(prompt, source, Views(candidates.Select(c => c.Id)), min, extra.CrewPower > 0 ? candidates.Count : extra.TapCount, CardChoicePurpose.Sacrifice),
+                var prompt = extra.CrewPower > 0 ? $"{(extra.Teamwork ? "Teamwork" : "Crew")} {extra.CrewPower}: tap creatures with total power {extra.CrewPower} or more" : $"Tap {extra.TapCount} to pay the cost";
+                return (new CardChoiceRequest(prompt, source, Views(candidates.Select(c => c.Id)), min, extra.CrewPower > 0 ? candidates.Count : extra.TapCount, CardChoicePurpose.Sacrifice)
+                        { MinTotalPower = extra.CrewPower },
                     c => c.All(id => candidates.Any(x => x.Id == id)) && Distinct(c)
-                         && (extra.CrewPower > 0 ? c.Sum(id => State.GetCard(id).Power) >= extra.CrewPower : c.Count == extra.TapCount),
+                         && (extra.CrewPower > 0 ? c.Sum(id => TappingPower(extra, State.GetCard(id))) >= extra.CrewPower : c.Count == extra.TapCount),
                     "Not enough to pay the cost.");
             }
             case ExtraChoice.Discard when extra.Discard > 0:
@@ -2310,11 +2353,12 @@ public sealed partial class Game
             return answer;
         }
         if (LifeToPay(extra, playerId) is > 0 and var lifePaid) ChangeLife(playerId, -lifePaid);
-        if (extra.ExileFromGraveyard > 0)
+        if (extra.ExileFromGraveyard > 0 || extra.CollectEvidence > 0)
         {
             var exiled = await Choose(ExtraChoice.Exile);
             foreach (var id in exiled) await MoveCardAsync(id, Zone.Exile);
             _lastExiledForCost.AddRange(exiled);
+            if (extra.CollectEvidence > 0) Emit(new ChoiceMade(source, $"collected evidence {extra.CollectEvidence}"));
         }
         if (extra.ReturnExiledWithSource is { } returnFilter)
         {
@@ -2329,7 +2373,7 @@ public sealed partial class Game
             {
                 Tap(State.GetCard(id));
                 _lastTappedForCost.Add((id, State.GetCard(id).Version));
-                if (extra.CrewPower > 0) State.CrewedThisTurn.Add((source, id, State.TurnNumber));
+                if (extra.CrewPower > 0 && !extra.Teamwork) State.CrewedThisTurn.Add((source, id, State.TurnNumber));
             }
         if (extra.Mill > 0)
             await ApplyAsync(new Mill(extra.Mill, Subject.You), new EffectContext(playerId, State.GetCard(source), Array.Empty<ChosenTarget>(), Array.Empty<bool>()));

@@ -292,6 +292,9 @@ public sealed record SearchLibrary(ObjectFilter Filter, int Count, State.Zone To
     /// <summary>"Onto the battlefield … with a stun counter on it": the counter it enters with.</summary>
     public CounterKind? EntersWithCounter { get; init; }
 
+    /// <summary>How many <see cref="EntersWithCounter"/> counters it enters with ("with seven charge counters on it").</summary>
+    public int EntersWithCounterCount { get; init; } = 1;
+
     /// <summary>"If [condition] and the revealed card is [filter], put that card onto the battlefield instead of putting it into your hand."</summary>
     public Condition? BattlefieldInsteadIf { get; init; }
     public ObjectFilter? BattlefieldInsteadIfFound { get; init; }
@@ -581,6 +584,9 @@ public sealed record DiscardChosenByYou(Subject Who, ObjectFilter? Filter, int C
 
     /// <summary>"If you don't, …": done for that player when no card was chosen (none could be, or you chose none).</summary>
     public IReadOnlyList<Effect>? Else { get; init; }
+
+    /// <summary>"If you do, that player exiles that card, then draws a card": done for that player after the chosen cards are gone.</summary>
+    public IReadOnlyList<Effect>? Then { get; init; }
 }
 
 /// <summary>Exile every card in the subject players' graveyards.</summary>
@@ -891,6 +897,9 @@ public sealed record AddManaUntilEndOfTurn(IReadOnlyList<Mana.ManaType> Types) :
 /// <summary>Choose cards (not targeted) from your graveyard and put them into <paramref name="To"/> ("return an instant or sorcery card from your graveyard to your hand").</summary>
 public sealed record ReturnFromGraveyard(ObjectFilter? Filter, int Count, State.Zone To, bool UpTo = false) : Effect
 {
+    /// <summary>"Up to two creature cards with total mana value 4 or less": chosen one at a time within what is left of the total.</summary>
+    public int? TotalManaValueAtMost { get; init; }
+
     /// <summary>"Another" card: not one sacrificed by this effect.</summary>
     public bool ExcludeSacrificed { get; init; }
 

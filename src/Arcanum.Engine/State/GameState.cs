@@ -379,7 +379,7 @@ public sealed partial class GameState
     public HashSet<(CardId Card, int Version)> EntersTappedFromStack { get; } = new();
 
     /// <summary>"When that creature dies this turn, …": delayed triggers watching one creature (as that object) for the rest of the turn.</summary>
-    public List<(CardId Card, int Version, int Turn, CardId Source, PlayerId Controller, Abilities.TriggeredAbility Ability, bool UnderControllersControl)> WhenDiesThisTurn { get; } = new();
+    public List<(CardId Card, int Version, int Turn, CardId Source, PlayerId Controller, Abilities.TriggeredAbility Ability, bool UnderControllersControl, bool OrExiled)> WhenDiesThisTurn { get; } = new();
 
     /// <summary>"Gains harmonize until end of turn. Its harmonize cost is equal to its mana cost": cards in graveyards, as those objects.</summary>
     public List<(CardId Card, int Version, int Turn)> HarmonizeGranted { get; } = new();

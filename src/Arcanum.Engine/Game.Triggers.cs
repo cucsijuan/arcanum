@@ -45,6 +45,14 @@ public sealed partial class Game
         if (e is CardMoved { From: Zone.Battlefield, To: Zone.Exile } exiled)
         {
             Queue(exiled.Card, TriggerEvent.DiesOrExiled, exiled.LastController);
+            // "When it dies or is exiled" (earthbend): a delayed trigger about that object.
+            if (State.GetCard(exiled.Card).LastKnownInfo is { } exiledAs)
+                foreach (var watch in State.WhenDiesThisTurn.Where(w => w.OrExiled && w.Card == exiled.Card && w.Version == exiledAs.Version && (w.Turn == State.TurnNumber || w.Turn < 0)
+                             && (!w.UnderControllersControl || w.Controller == exiled.LastController)).ToList())
+                {
+                    State.WhenDiesThisTurn.Remove(watch);
+                    AddPending(watch.Source, watch.Ability, watch.Controller, new TriggerInfo(exiled.Card, State.GetCard(exiled.Card).Version, exiled.LastController));
+                }
             if (State.GetCard(exiled.Card).LastKnownInfo is { } exiledLki && (exiledLki.Types & CardType.Creature) != 0)
                 QueueObservers(TriggerEvent.CreatureDiesOrExiled, State.GetCard(exiled.Card), exiled.LastController);
         }
@@ -175,7 +183,7 @@ public sealed partial class Game
                 if (!WasCreature(State.GetCard(m.Card))) break;
                 Queue(m.Card, TriggerEvent.Dies, m.LastController);
                 if (State.GetCard(m.Card).LastKnownInfo is { } diedAs)
-                    foreach (var watch in State.WhenDiesThisTurn.Where(w => w.Card == m.Card && w.Version == diedAs.Version && w.Turn == State.TurnNumber && (!w.UnderControllersControl || w.Controller == m.LastController)).ToList())
+                    foreach (var watch in State.WhenDiesThisTurn.Where(w => w.Card == m.Card && w.Version == diedAs.Version && (w.Turn == State.TurnNumber || w.Turn < 0) && (!w.UnderControllersControl || w.Controller == m.LastController)).ToList())
                     {
                         State.WhenDiesThisTurn.Remove(watch);
                         AddPending(watch.Source, watch.Ability, watch.Controller, new TriggerInfo(m.Card, State.GetCard(m.Card).Version, m.LastController));
@@ -989,6 +997,7 @@ public sealed partial class Game
         // "Artifacts and creatures entering the battlefield don't cause abilities to trigger" (no enter trigger of any object).
         if ((entering.IsCreature || entering.Is(CardType.Artifact))
             && State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && c.Definition.EnteringArtifactsAndCreaturesDontTrigger)) return;
+        if (entering.IsCreature && State.Battlefield.Select(State.GetCard).Any(c => c.HasTextAbilities && c.Definition.EnteringCreaturesDontTrigger)) return;
         // A permanent spell's promised gift: "when it enters, [they get the gift]" (rule 702.174).
         if (entering.GiftPromised && entering.GiftTo is not null) _pendingTriggers.Add(new PendingTrigger(id, GiftOnEnter, entering.Controller));
         Queue(id, TriggerEvent.EntersBattlefield, entering.Controller);

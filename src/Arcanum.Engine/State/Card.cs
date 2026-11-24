@@ -190,6 +190,12 @@ public sealed class Card
     /// <summary>The turn this card was foretold (exiled face down from its owner's hand, rule 702.143a); -1 when it wasn't, as this object.</summary>
     public int ForetoldTurn { get; set; } = -1;
 
+    /// <summary>The turn this card became plotted (exiled from its owner's hand with plot, rule 702.170a); -1 when it isn't, as this object.</summary>
+    public int PlottedTurn { get; set; } = -1;
+
+    /// <summary>The turn this card was discarded, as this object in the graveyard (mayhem); -1 when it wasn't.</summary>
+    public int DiscardedTurn { get; set; } = -1;
+
     /// <summary>As a spell: the mana spent to cast it.</summary>
     public int ManaSpent { get; set; }
 
@@ -982,6 +988,8 @@ public sealed class Card
         CastFromGraveyard = false;
         CastFromExile = false;
         ForetoldTurn = -1;
+        PlottedTurn = -1;
+        DiscardedTurn = -1;
         ManaSpent = 0;
         ArtifactManaSpent = 0;
         SpentManaTypes = Array.Empty<Mana.ManaType>();

@@ -188,6 +188,10 @@ public sealed partial class Game
             upkeeper.UpkeepStamp = NewTimestamp();
         }
         if (e is CardMoved { From: Zone.Battlefield, To: Zone.Graveyard }) State.PermanentsPutIntoGraveyardThisTurn++;
+        // Descend: "you descended if a permanent card was put into your graveyard from anywhere" this turn.
+        if (e is CardMoved { To: Zone.Graveyard } descended && State.GetCard(descended.Card) is { Definition.IsToken: false } descender
+            && (descender.Definition.Types & (CardType.Artifact | CardType.Creature | CardType.Enchantment | CardType.Land | CardType.Planeswalker | CardType.Battle)) != 0)
+            State.GetPlayer(descender.Owner).DescendedThisTurn = true;
         if (e is DamageDealt damage)
         {
             LogDamage(damage);

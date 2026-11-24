@@ -42,4 +42,14 @@ public sealed record RevealTopCastFree(Subject Whose, int Count, ObjectFilter Fi
 /// "Choose a [filter] card name. Search target opponent's graveyard, hand, and library for any number of cards with that name and
 /// exile them. That player shuffles." The searcher sees the hand and library and may leave any of those cards (rule 701.19b).
 /// </summary>
-public sealed record NameThenExileFromAllZones(Subject Whose, ObjectFilter NameFilter) : OriginsEffect;
+public sealed record NameThenExileFromAllZones(Subject Whose, ObjectFilter NameFilter) : OriginsEffect
+{
+    /// <summary>
+    /// "Exile a card from an opponent's graveyard. Then search its owner's graveyard, hand, and library for any number of cards with that
+    /// name and exile them. That player shuffles, then draws a card for each card exiled from their hand this way." No name is chosen.
+    /// </summary>
+    public bool FromOpponentsGraveyardCard { get; init; }
+
+    /// <summary>"Up to four cards with that name": the most that may be exiled (all of them when null).</summary>
+    public int? MaxCount { get; init; }
+}

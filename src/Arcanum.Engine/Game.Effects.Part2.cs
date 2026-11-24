@@ -620,6 +620,7 @@ public sealed partial class Game
             {
                 var player = State.GetPlayer(ctx.Controller);
                 Look(ctx.Controller, player.Library); // searching is looking through the whole library (rule 701.23a)
+                SearchedOwnLibrary(ctx.Controller);
                 var options = player.Library.Select(State.GetCard).Where(c => Matches(se.Filter with { Controller = ControllerFilter.Any }, c, ctx.Controller, ctx.Source, ctx.Controller))
                     .Select(c => ViewBuilder.Card(State, c.Id, ctx.Controller, reveal: true)).ToList();
                 if (options.Count > 0)

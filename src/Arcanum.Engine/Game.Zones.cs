@@ -24,6 +24,8 @@ public sealed partial class Game
         BottomInsteadOfGraveyard,
         /// <summary>A permanent that exiles instants and sorceries that would be put into a graveyard.</summary>
         ExileInstantsAndSorceries,
+        /// <summary>"If a card or token would be put into a graveyard from anywhere, exile it instead" (<see cref="ZoneReplacement.By"/>).</summary>
+        ExileAllInsteadOfGraveyard,
         /// <summary>A commander that would be put into a hand or library may go to the command zone instead (903.9b).</summary>
         CommandZone,
         /// <summary>The card's own "if a spell or ability an opponent controls causes you to discard it, put it onto the battlefield instead".</summary>
@@ -104,6 +106,8 @@ public sealed partial class Game
             if ((card.Is(Cards.CardType.Instant) || card.Is(Cards.CardType.Sorcery))
                 && State.Battlefield.Any(b => (State.GetCard(b).Replaces & Cards.Replacements.ExileInstantsAndSorceries) != 0))
                 list.Add(new(ZoneReplacementKind.ExileInstantsAndSorceries));
+            if (State.Battlefield.Select(State.GetCard).FirstOrDefault(c => c.HasTextAbilities && c.Definition.AllExiledInsteadOfGraveyard) is { } restInPeace)
+                list.Add(new ZoneReplacement(ZoneReplacementKind.ExileAllInsteadOfGraveyard, restInPeace));
         }
         // A card entering the battlefield from anywhere but the stack wasn't cast (rule 601.2a puts a spell on the stack first);
         // nor was a copy of a permanent spell (rule 707.12) resolving from the stack.
@@ -136,6 +140,7 @@ public sealed partial class Game
         ZoneReplacementKind.ExileInsteadOfGraveyard => "Exile it (the effect it was cast with)",
         ZoneReplacementKind.BottomInsteadOfGraveyard => "Put it on the bottom of its owner's library (the effect it was cast with)",
         ZoneReplacementKind.ExileInstantsAndSorceries => "Exile it (instants and sorceries are exiled)",
+        ZoneReplacementKind.ExileAllInsteadOfGraveyard => $"Exile it ({replacement.By?.Name ?? "cards going to a graveyard are exiled"})",
         ZoneReplacementKind.OntoBattlefieldInsteadOfDiscard => $"Put it onto the battlefield ({card.Name}: an opponent made you discard it)",
         ZoneReplacementKind.ExileUncastEntering => "Exile it (it would enter the battlefield without being cast)",
         ZoneReplacementKind.ExileInsteadOfDying => $"Exile it ({card.Name} would die)",
@@ -274,6 +279,7 @@ public sealed partial class Game
                 if (hosts.Count == 0)
                 {
                     _pendingCopies.Remove((id, card.Version));
+                    _pendingCopyOrigins.Remove((id, card.Version));
                     return;
                 }
                 attachTo = hosts.Count == 1 ? hosts[0] : await ChooseAuraHostAsync(card, enchant, hosts, newController);
@@ -373,6 +379,16 @@ public sealed partial class Game
     /// <summary>Copies chosen for cards about to enter (by card and version before the move).</summary>
     private readonly Dictionary<(CardId Card, int Version), Cards.CardDefinition> _pendingCopies = new();
 
+    /// <summary>The card each pending copy copies, when entering as that copy triggers "when you do, exile that card".</summary>
+    private readonly Dictionary<(CardId Card, int Version), (CardId Original, int Version)> _pendingCopyOrigins = new();
+
+    private static readonly Abilities.TriggeredAbility CopyExileOriginalTrigger = new()
+    {
+        Trigger = Abilities.TriggerEvent.Reflexive,
+        Effects = new Abilities.Effect[] { new Abilities.ExileIt(Abilities.Subject.Triggered) },
+        Text = "When you do, exile that card.",
+    };
+
     /// <summary>Cards that were to enter the battlefield where no choice could be asked: they enter (asking) before the next priority.</summary>
     private readonly List<(CardId Card, int Version, PlayerId Controller, bool Transformed)> _deferredEnters = new();
 
@@ -421,6 +437,12 @@ public sealed partial class Game
         if (entering.EntersAsCopyAddSubtypes is { } extraSubtypes) values = values with { Subtypes = values.Subtypes.Concat(extraSubtypes).Distinct().ToList() };
         if (entering.EntersAsCopyAddKeywords is { } extraKeywords) values = values with { Keywords = values.Keywords.Concat(extraKeywords).Distinct().ToList() };
         if (entering.EntersAsCopyAddAbilities is { } extraAbilities) values = values with { Abilities = values.Abilities.Concat(extraAbilities).ToList() };
+        // "Except his name is Superior …, and he's a 4/4": copiable values of the copy (rule 707.9b).
+        if (entering.EntersAsCopyKeepName) values = values with { Name = entering.Name };
+        if (entering.EntersAsCopyPower is { } copyPower) values = values with { Power = copyPower };
+        if (entering.EntersAsCopyToughness is { } copyToughness) values = values with { Toughness = copyToughness };
+        // "When you do, exile that card": triggers once it has entered as the copy.
+        if (entering.EntersAsCopyExileOriginal) _pendingCopyOrigins[(card.Id, card.Version)] = (original.Id, original.Version);
         return entering.EntersAsCopyWithHaste ? values with { Keywords = values.Keywords.Append("Haste").Distinct().ToList() } : values;
     }
 
@@ -557,8 +579,11 @@ public sealed partial class Game
             card.CopyEndsAtCleanup = EnteringFace(card, card.Transformed).EntersAsCopyUntilEndOfTurn;
             enteredTappedAsCopy = EnteringFace(card, card.Transformed).EntersTappedAsCopy;
             card.CopiedDefinition = copied;
+            if (_pendingCopyOrigins.Remove((id, card.Version - 1), out var origin))
+                _pendingTriggers.Add(new PendingTrigger(id, CopyExileOriginalTrigger, controller ?? card.Owner, new TriggerInfo(origin.Original, origin.Version)));
         }
         _pendingCopies.Remove((id, card.Version - 1));
+        _pendingCopyOrigins.Remove((id, card.Version - 1));
         card.ZoneChangedTurn = State.TurnNumber;
         card.EnteredFrom = from;
         card.Kicked = kicked;

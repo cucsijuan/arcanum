@@ -467,7 +467,7 @@ public sealed partial class Game
         bool searchLibrary = player.Library.Count > 0 && await ControllerOf(ctx.Controller).ChooseYesNoAsync(ViewFor(ctx.Controller),
             new YesNoRequest(inGraveyard.Count > 0 ? "Search your library too (not only your graveyard)?" : "Search your library?", ctx.Source.Id));
         var options = inGraveyard.Concat(searchLibrary ? player.Library.Where(Fits) : Array.Empty<CardId>()).ToList();
-        if (searchLibrary) Look(ctx.Controller, player.Library); // searching is looking through the whole library (rule 701.23a)
+        if (searchLibrary) { Look(ctx.Controller, player.Library); SearchedOwnLibrary(ctx.Controller); } // searching is looking through the whole library (rule 701.23a)
         if (options.Count > 0)
         {
             // A card in the graveyard (a public zone) must be found if there is one (rule 701.19b covers hidden zones only).

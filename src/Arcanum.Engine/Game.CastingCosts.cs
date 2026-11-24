@@ -131,6 +131,11 @@ public sealed partial class Game
         if (_miracleCost.TryGetValue(card.Id, out var miracle)) return new() { new(CastingWayKind.ManaCost, miracle) };
         // A foretold card: cast on a later turn for its foretell cost (702.143a), unless something else lets it be cast from exile.
         if (Foretold(card) && !PlayableExile(caster).Contains(card.Id)) return new() { new(CastingWayKind.Foretold, card.Definition.Foretell!) };
+        // A plotted card: cast on a later turn without paying its mana cost (702.170d).
+        if (Plotted(card) && !PlayableExile(caster).Contains(card.Id)) return new() { new(CastingWayKind.WithoutPaying, ManaCost.Zero) };
+        // Mayhem: cast from the graveyard for its mayhem cost the turn it was discarded.
+        if (MayhemCastable(card) && card.Definition.Flashback is null && !State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version))
+            return new() { new(CastingWayKind.ManaCost, card.Definition.Mayhem!) };
         if (card.Zone == Zone.Graveyard && card.Definition.Flashback is { } flashback && !State.PlayableFromGraveyard.Any(p => p.Card == card.Id && p.Version == card.Version))
         {
             if (card.Definition.FlashbackReduction is { } reduction)
@@ -505,6 +510,8 @@ public sealed partial class Game
 
     /// <summary>Whether the card may be cast now without paying extra for flash: an instant, flash, or a permission to cast it as though it had flash.</summary>
     private bool TimingAllows(Card card, PlayerId caster, bool sorcerySpeed) =>
+        // A plotted card is cast only as a sorcery, even an instant or a card with flash (702.170d).
+        (!Plotted(card) || PlayableExile(caster).Contains(card.Id) || sorcerySpeed) &&
         (sorcerySpeed || !State.OpponentsOf(caster).Any(o => State.PermanentsControlledBy(o).Any(c => c.HasTextAbilities && c.Definition.OpponentsCastAtSorcerySpeed))) &&
         TimingAllowsIgnoringRestrictions(card, caster, sorcerySpeed);
 

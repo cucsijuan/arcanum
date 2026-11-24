@@ -196,6 +196,9 @@ public sealed record AbilityCost(ManaCost Mana, bool Tap = false, bool Sacrifice
     /// <summary>With <see cref="FromHand"/>: "Exile this card from your hand" is the cost (face up), instead of discarding it.</summary>
     public bool ExileFromHand { get; init; }
 
+    /// <summary>With <see cref="FromHand"/>: plotting (rule 702.170a): the card is exiled from the hand face up and becomes plotted.</summary>
+    public bool Plot { get; init; }
+
     /// <summary>{S} symbols: each paid with one mana from a snow source (rule 107.4h).</summary>
     public int SnowMana { get; init; }
 
@@ -233,6 +236,12 @@ public sealed record ActivatedAbility : AbilityDefinition
 
     /// <summary>"Activate only once" (for as long as the permanent stays on the battlefield).</summary>
     public bool OnlyOnce { get; init; }
+
+    /// <summary>
+    /// Power-up: "This ability costs {X} less to activate, where X is this permanent's mana cost, if it entered the battlefield this turn.
+    /// Activate only once." (with <see cref="OnlyOnce"/>).
+    /// </summary>
+    public bool PowerUp { get; init; }
 
     /// <summary>"Only your opponents may activate this ability": its controller's opponents may, its controller may not (rule 602.1b).</summary>
     public bool OnlyOpponents { get; init; }
@@ -656,6 +665,8 @@ public enum TriggerEvent
     OpponentPlaysLand,
     /// <summary>"At the beginning of enchanted player's first upkeep each turn" (an Aura attached to a player; the player is the active player).</summary>
     EnchantedPlayersFirstUpkeep,
+    /// <summary>"Whenever an opponent searches their library" (rule 701.23; the player is that opponent).</summary>
+    OpponentSearchesLibrary,
 }
 
 /// <summary>"When/Whenever/At [event], [effect]." (rule 603).</summary>

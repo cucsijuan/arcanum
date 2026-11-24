@@ -177,6 +177,9 @@ public sealed class Player
     /// <summary>How many cards left this player's graveyard this turn ("if three or more cards left your graveyard this turn").</summary>
     public int CardsLeftGraveyardThisTurn { get; set; }
 
+    /// <summary>A permanent card was put into this player's graveyard from anywhere this turn (descend).</summary>
+    public bool DescendedThisTurn { get; set; }
+
     /// <summary>Creatures exiled from the battlefield this turn while this player controlled them.</summary>
     public int CreaturesExiledThisTurn { get; set; }
 

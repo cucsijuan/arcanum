@@ -158,38 +158,66 @@ public sealed partial class Game
     private async Task NameThenExileFromAllZonesAsync(NameThenExileFromAllZones ne, EffectContext ctx)
     {
         var who = ctx.Controller;
-        // "Choose a [creature] card name" (rule 201.3): any such card's name, not only those in the game.
-        var names = NamesOfCardsMatching(who, ne.NameFilter);
-        if (names.Count == 0) return;
-        int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{ctx.Source.Name}: choose a card name", ctx.Source.Id, names, OptionKind.CardName));
-        Require(i >= 0 && i < names.Count, "Choose one of the names.");
-        var name = names[i];
-        Emit(new ChoiceMade(ctx.Source.Id, name));
-        foreach (var p in InTurnOrder(ne.Whose, ctx))
+        string name;
+        IEnumerable<PlayerId> searched;
+        if (ne.FromOpponentsGraveyardCard)
         {
+            // "Exile a card from an opponent's graveyard": chosen, not targeted; its name is the one searched for, in its owner's zones.
+            var graveyardCards = State.OpponentsOf(who).SelectMany(o => State.GetPlayer(o).Graveyard).ToList();
+            if (graveyardCards.Count == 0) return;
+            var pick = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest(
+                $"{ctx.Source.Name}: exile a card from an opponent's graveyard", ctx.Source.Id,
+                graveyardCards.Select(id => ViewBuilder.Card(State, id, who, reveal: true)).ToList(), 1, 1, CardChoicePurpose.Keep));
+            Require(pick.Count == 1 && graveyardCards.Contains(pick[0]), "Choose a card in an opponent's graveyard.");
+            var first = State.GetCard(pick[0]);
+            name = first.Name;
+            await MoveCardAsync(first.Id, Zone.Exile);
+            if (first.Zone == Zone.Exile) ctx.Results.Exiled.Add(first.Id);
+            Emit(new ChoiceMade(ctx.Source.Id, name));
+            searched = new[] { first.Owner };
+        }
+        else
+        {
+            // "Choose a [creature] card name" (rule 201.3): any such card's name, not only those in the game.
+            var names = NamesOfCardsMatching(who, ne.NameFilter);
+            if (names.Count == 0) return;
+            int i = await ControllerOf(who).ChooseOptionAsync(ViewFor(who), new OptionRequest($"{ctx.Source.Name}: choose a card name", ctx.Source.Id, names, OptionKind.CardName));
+            Require(i >= 0 && i < names.Count, "Choose one of the names.");
+            name = names[i];
+            Emit(new ChoiceMade(ctx.Source.Id, name));
+            searched = InTurnOrder(ne.Whose, ctx);
+        }
+        foreach (var p in searched)
+        {
+            int fromHand = 0;
             var player = State.GetPlayer(p);
             // Searching a hand and a library: the searcher sees them (rule 701.19); a graveyard is public anyway.
             if (player.Hand.Count > 0) Emit(new HandLookedAt(who, p, player.Hand.ToList()));
             Look(who, player.Hand);
             Look(who, player.Library);
+            if (p == who) SearchedOwnLibrary(p);
             var namesakes = player.Graveyard.Concat(player.Hand).Concat(player.Library).Where(id => HasName(State.GetCard(id), name)).ToList();
             if (namesakes.Count > 0)
             {
                 // "Any number": the searcher may leave some (rule 701.19b).
                 var found = await ControllerOf(who).ChooseCardsAsync(ViewFor(who), new CardChoiceRequest(
                     $"{ctx.Source.Name}: exile any number of the cards named {name} from {player.Name}'s graveyard, hand and library", ctx.Source.Id,
-                    namesakes.Select(id => ViewBuilder.Card(State, id, who, reveal: true)).ToList(), 0, namesakes.Count, CardChoicePurpose.Keep));
-                Require(found.Distinct().Count() == found.Count && found.All(namesakes.Contains), "Choose among the cards with that name.");
+                    namesakes.Select(id => ViewBuilder.Card(State, id, who, reveal: true)).ToList(), 0, Math.Min(namesakes.Count, ne.MaxCount ?? namesakes.Count), CardChoicePurpose.Keep));
+                Require(found.Distinct().Count() == found.Count && found.All(namesakes.Contains) && found.Count <= (ne.MaxCount ?? namesakes.Count), "Choose among the cards with that name.");
                 BeginSimultaneous();
                 foreach (var id in found)
                 {
+                    bool wasInHand = State.GetCard(id).Zone == Zone.Hand;
                     await MoveCardAsync(id, Zone.Exile);
-                    if (State.GetCard(id).Zone == Zone.Exile) ctx.Results.Exiled.Add(id);
+                    if (State.GetCard(id).Zone != Zone.Exile) continue;
+                    ctx.Results.Exiled.Add(id);
+                    if (wasInHand) fromHand++;
                 }
                 EndSimultaneous();
             }
-            // "That player shuffles."
+            // "That player shuffles", "then draws a card for each card exiled from their hand this way".
             Shuffle(player);
+            if (ne.FromOpponentsGraveyardCard && fromHand > 0) await DrawAsync(p, fromHand);
         }
     }
 

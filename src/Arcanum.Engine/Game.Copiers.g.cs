@@ -51,132 +51,133 @@ public sealed partial class Game
         copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.ValueTuple<global::Arcanum.Engine.State.Zone, global::Arcanum.Engine.Game.MovePlan>>)] = GeneratedCopiers.C36;
         copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Int32>)] = GeneratedCopiers.C37;
         copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::Arcanum.Engine.Cards.CardDefinition>)] = GeneratedCopiers.C38;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Boolean>>)] = GeneratedCopiers.C39;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId>)] = GeneratedCopiers.C40;
-        copiers[typeof(global::Arcanum.Engine.Core.PlayerId[])] = GeneratedCopiers.C41;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Players.AttackablePlaneswalker>)] = GeneratedCopiers.C42;
-        copiers[typeof(global::Arcanum.Engine.Players.AttackablePlaneswalker[])] = GeneratedCopiers.C43;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Players.AttackForbidden>)] = GeneratedCopiers.C44;
-        copiers[typeof(global::Arcanum.Engine.Players.AttackForbidden[])] = GeneratedCopiers.C45;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Players.AttackRequirement>)] = GeneratedCopiers.C46;
-        copiers[typeof(global::Arcanum.Engine.Players.AttackRequirement[])] = GeneratedCopiers.C47;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.Player>)] = GeneratedCopiers.C48;
-        copiers[typeof(global::Arcanum.Engine.State.Player[])] = GeneratedCopiers.C49;
-        copiers[typeof(global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.State.Card>)] = GeneratedCopiers.C50;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.StackItem>)] = GeneratedCopiers.C51;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.UntilEndOfTurnEffect>)] = GeneratedCopiers.C52;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.ControlEffect>)] = GeneratedCopiers.C53;
-        copiers[typeof(global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.PlayerId, global::System.Int32>)] = GeneratedCopiers.C54;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.LinkedExile>)] = GeneratedCopiers.C55;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedAction>)] = GeneratedCopiers.C56;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.PlayableFromExile>)] = GeneratedCopiers.C57;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.ExiledWithPlayRight>)] = GeneratedCopiers.C58;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Int32, global::System.Boolean>>)] = GeneratedCopiers.C59;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.CardId>>)] = GeneratedCopiers.C60;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.CardId, global::System.Int32>>)] = GeneratedCopiers.C61;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>>)] = GeneratedCopiers.C62;
-        copiers[typeof(global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>>)] = GeneratedCopiers.C63;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32, global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Abilities.TriggeredAbility, global::System.Boolean>>)] = GeneratedCopiers.C64;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>>)] = GeneratedCopiers.C65;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Mana.ManaCost>>)] = GeneratedCopiers.C66;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Boolean, global::System.Int32>>)] = GeneratedCopiers.C67;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::Arcanum.Engine.Core.CardId>>)] = GeneratedCopiers.C68;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.String, global::System.Int32>>)] = GeneratedCopiers.C69;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.GraveyardCastRight>)] = GeneratedCopiers.C70;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Abilities.ObjectFilter, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>>)] = GeneratedCopiers.C71;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId?, global::System.Int32, global::Arcanum.Engine.Core.PlayerId?, global::Arcanum.Engine.Core.CardId, global::System.Int32>>)] = GeneratedCopiers.C72;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId>>)] = GeneratedCopiers.C73;
-        copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.AbilityDefinition>>)] = GeneratedCopiers.C74;
-        copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::Arcanum.Engine.Abilities.CounterKind>)] = GeneratedCopiers.C75;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.ParadigmTrigger>)] = GeneratedCopiers.C76;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::System.Int32>>)] = GeneratedCopiers.C77;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Abilities.ObjectFilter, global::System.Int32>>)] = GeneratedCopiers.C78;
-        copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId>>)] = GeneratedCopiers.C79;
-        copiers[typeof(global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>>)] = GeneratedCopiers.C80;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Core.PlayerId>>)] = GeneratedCopiers.C81;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.Effect>, global::Arcanum.Engine.Abilities.Condition, global::System.Int32?>>)] = GeneratedCopiers.C82;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String, global::System.Int32>>)] = GeneratedCopiers.C83;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Boolean>>)] = GeneratedCopiers.C84;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.DamagePrevention>)] = GeneratedCopiers.C85;
-        copiers[typeof(global::Arcanum.Engine.State.CombatState)] = GeneratedCopiers.C86;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.Int64>>)] = GeneratedCopiers.C87;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.CardId, global::System.Int32>>)] = GeneratedCopiers.C88;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId?>>)] = GeneratedCopiers.C89;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId>>)] = GeneratedCopiers.C90;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Abilities.TriggeredAbility, global::System.Int32>>)] = GeneratedCopiers.C91;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.PreventionShield>)] = GeneratedCopiers.C92;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.RedirectShield>)] = GeneratedCopiers.C93;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.DamageRecord>)] = GeneratedCopiers.C94;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Int32>>)] = GeneratedCopiers.C95;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.AttackPlaneswalkerRequirement>)] = GeneratedCopiers.C96;
-        copiers[typeof(global::Arcanum.Engine.Game.DamagePart)] = GeneratedCopiers.C97;
-        copiers[typeof(global::Arcanum.Engine.State.Card)] = GeneratedCopiers.C98;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.Effect>)] = GeneratedCopiers.C99;
-        copiers[typeof(global::Arcanum.Engine.Abilities.Effect[])] = GeneratedCopiers.C100;
-        copiers[typeof(global::Arcanum.Engine.State.TriggerInfo)] = GeneratedCopiers.C101;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.ActivatedAbility>)] = GeneratedCopiers.C102;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.AbilityDefinition>)] = GeneratedCopiers.C103;
-        copiers[typeof(global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Cards.Keyword>)] = GeneratedCopiers.C104;
-        copiers[typeof(global::Arcanum.Engine.State.SpellOnStack)] = GeneratedCopiers.C105;
-        copiers[typeof(global::Arcanum.Engine.Game.PendingTrigger)] = GeneratedCopiers.C106;
-        copiers[typeof(global::Arcanum.Engine.State.DelayedTrigger)] = GeneratedCopiers.C107;
-        copiers[typeof(global::Arcanum.Engine.Game.MovePlan)] = GeneratedCopiers.C108;
-        copiers[typeof(global::Arcanum.Engine.Players.AttackablePlaneswalker)] = GeneratedCopiers.C109;
-        copiers[typeof(global::Arcanum.Engine.Players.AttackForbidden)] = GeneratedCopiers.C110;
-        copiers[typeof(global::Arcanum.Engine.Players.AttackRequirement)] = GeneratedCopiers.C111;
-        copiers[typeof(global::Arcanum.Engine.State.Player)] = GeneratedCopiers.C112;
-        copiers[typeof(global::Arcanum.Engine.State.AbilityOnStack)] = GeneratedCopiers.C113;
-        copiers[typeof(global::Arcanum.Engine.State.UntilEndOfTurnEffect)] = GeneratedCopiers.C114;
-        copiers[typeof(global::Arcanum.Engine.State.ControlEffect)] = GeneratedCopiers.C115;
-        copiers[typeof(global::Arcanum.Engine.State.LinkedExile)] = GeneratedCopiers.C116;
-        copiers[typeof(global::Arcanum.Engine.State.DelayedAction)] = GeneratedCopiers.C117;
-        copiers[typeof(global::Arcanum.Engine.State.PlayableFromExile)] = GeneratedCopiers.C118;
-        copiers[typeof(global::Arcanum.Engine.State.ExiledWithPlayRight)] = GeneratedCopiers.C119;
-        copiers[typeof(global::Arcanum.Engine.State.GraveyardCastRight)] = GeneratedCopiers.C120;
-        copiers[typeof(global::Arcanum.Engine.Abilities.AbilityDefinition[])] = GeneratedCopiers.C121;
-        copiers[typeof(global::Arcanum.Engine.State.ParadigmTrigger)] = GeneratedCopiers.C122;
-        copiers[typeof(global::Arcanum.Engine.State.DamagePrevention)] = GeneratedCopiers.C123;
-        copiers[typeof(global::Arcanum.Engine.State.AttackList)] = GeneratedCopiers.C124;
-        copiers[typeof(global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId>>)] = GeneratedCopiers.C125;
-        copiers[typeof(global::Arcanum.Engine.State.PreventionShield)] = GeneratedCopiers.C126;
-        copiers[typeof(global::Arcanum.Engine.State.RedirectShield)] = GeneratedCopiers.C127;
-        copiers[typeof(global::Arcanum.Engine.State.DamageRecord)] = GeneratedCopiers.C128;
-        copiers[typeof(global::Arcanum.Engine.State.AttackPlaneswalkerRequirement)] = GeneratedCopiers.C129;
-        copiers[typeof(global::System.Collections.Generic.HashSet<global::System.String>)] = GeneratedCopiers.C130;
-        copiers[typeof(global::Arcanum.Engine.Game.EffectResults)] = GeneratedCopiers.C131;
-        copiers[typeof(global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>[])] = GeneratedCopiers.C132;
-        copiers[typeof(global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.TriggeredAbility>)] = GeneratedCopiers.C133;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaType>)] = GeneratedCopiers.C134;
-        copiers[typeof(global::Arcanum.Engine.Mana.ManaType[])] = GeneratedCopiers.C135;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaCost>)] = GeneratedCopiers.C136;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.Int32>)] = GeneratedCopiers.C137;
-        copiers[typeof(global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Abilities.CounterKind, global::System.Int32>)] = GeneratedCopiers.C138;
-        copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.Int32, global::System.Int32>)] = GeneratedCopiers.C139;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.ObjectFilter>)] = GeneratedCopiers.C140;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::System.String, global::Arcanum.Engine.Core.CardId>>)] = GeneratedCopiers.C141;
-        copiers[typeof(global::System.String[])] = GeneratedCopiers.C142;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.ManaOption>)] = GeneratedCopiers.C143;
-        copiers[typeof(global::Arcanum.Engine.State.LastKnown)] = GeneratedCopiers.C144;
-        copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.Int32, global::Arcanum.Engine.State.LastKnown>)] = GeneratedCopiers.C145;
-        copiers[typeof(global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Abilities.AbilityDefinition, global::System.Int32>)] = GeneratedCopiers.C146;
-        copiers[typeof(global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.Effect>)] = GeneratedCopiers.C147;
-        copiers[typeof(global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.AbilityDefinition>)] = GeneratedCopiers.C148;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.CounterKind>)] = GeneratedCopiers.C149;
-        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>>)] = GeneratedCopiers.C150;
-        copiers[typeof(global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>[])] = GeneratedCopiers.C151;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.ChosenTarget>)] = GeneratedCopiers.C152;
-        copiers[typeof(global::Arcanum.Engine.State.ChosenTarget[])] = GeneratedCopiers.C153;
-        copiers[typeof(global::System.Int32[])] = GeneratedCopiers.C154;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Game.ZoneReplacement>)] = GeneratedCopiers.C155;
-        copiers[typeof(global::Arcanum.Engine.Game.ZoneReplacement[])] = GeneratedCopiers.C156;
-        copiers[typeof(global::Arcanum.Engine.Mana.ManaPool)] = GeneratedCopiers.C157;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.CardType>)] = GeneratedCopiers.C158;
-        copiers[typeof(global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.Int32>)] = GeneratedCopiers.C159;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.Keyword>)] = GeneratedCopiers.C160;
-        copiers[typeof(global::Arcanum.Engine.Cards.Keyword[])] = GeneratedCopiers.C161;
-        copiers[typeof(global::Arcanum.Engine.State.AttackInfo)] = GeneratedCopiers.C162;
-        copiers[typeof(global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.ValueTuple<global::System.Int32, global::System.Int32>>)] = GeneratedCopiers.C163;
-        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaUnit>)] = GeneratedCopiers.C164;
+        copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>>)] = GeneratedCopiers.C39;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Boolean>>)] = GeneratedCopiers.C40;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId>)] = GeneratedCopiers.C41;
+        copiers[typeof(global::Arcanum.Engine.Core.PlayerId[])] = GeneratedCopiers.C42;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Players.AttackablePlaneswalker>)] = GeneratedCopiers.C43;
+        copiers[typeof(global::Arcanum.Engine.Players.AttackablePlaneswalker[])] = GeneratedCopiers.C44;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Players.AttackForbidden>)] = GeneratedCopiers.C45;
+        copiers[typeof(global::Arcanum.Engine.Players.AttackForbidden[])] = GeneratedCopiers.C46;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Players.AttackRequirement>)] = GeneratedCopiers.C47;
+        copiers[typeof(global::Arcanum.Engine.Players.AttackRequirement[])] = GeneratedCopiers.C48;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.Player>)] = GeneratedCopiers.C49;
+        copiers[typeof(global::Arcanum.Engine.State.Player[])] = GeneratedCopiers.C50;
+        copiers[typeof(global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.State.Card>)] = GeneratedCopiers.C51;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.StackItem>)] = GeneratedCopiers.C52;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.UntilEndOfTurnEffect>)] = GeneratedCopiers.C53;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.ControlEffect>)] = GeneratedCopiers.C54;
+        copiers[typeof(global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.PlayerId, global::System.Int32>)] = GeneratedCopiers.C55;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.LinkedExile>)] = GeneratedCopiers.C56;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedAction>)] = GeneratedCopiers.C57;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.PlayableFromExile>)] = GeneratedCopiers.C58;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.ExiledWithPlayRight>)] = GeneratedCopiers.C59;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Int32, global::System.Boolean>>)] = GeneratedCopiers.C60;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.CardId>>)] = GeneratedCopiers.C61;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.CardId, global::System.Int32>>)] = GeneratedCopiers.C62;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>>)] = GeneratedCopiers.C63;
+        copiers[typeof(global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>>)] = GeneratedCopiers.C64;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32, global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Abilities.TriggeredAbility, global::System.Boolean, global::System.ValueTuple<global::System.Boolean>>>)] = GeneratedCopiers.C65;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>>)] = GeneratedCopiers.C66;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Mana.ManaCost>>)] = GeneratedCopiers.C67;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Boolean, global::System.Int32>>)] = GeneratedCopiers.C68;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::Arcanum.Engine.Core.CardId>>)] = GeneratedCopiers.C69;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.String, global::System.Int32>>)] = GeneratedCopiers.C70;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.GraveyardCastRight>)] = GeneratedCopiers.C71;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Abilities.ObjectFilter, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>>)] = GeneratedCopiers.C72;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId?, global::System.Int32, global::Arcanum.Engine.Core.PlayerId?, global::Arcanum.Engine.Core.CardId, global::System.Int32>>)] = GeneratedCopiers.C73;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId>>)] = GeneratedCopiers.C74;
+        copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.AbilityDefinition>>)] = GeneratedCopiers.C75;
+        copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::Arcanum.Engine.Abilities.CounterKind>)] = GeneratedCopiers.C76;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.ParadigmTrigger>)] = GeneratedCopiers.C77;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::System.Int32>>)] = GeneratedCopiers.C78;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Abilities.ObjectFilter, global::System.Int32>>)] = GeneratedCopiers.C79;
+        copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId>>)] = GeneratedCopiers.C80;
+        copiers[typeof(global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>>)] = GeneratedCopiers.C81;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Core.PlayerId>>)] = GeneratedCopiers.C82;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.Effect>, global::Arcanum.Engine.Abilities.Condition, global::System.Int32?>>)] = GeneratedCopiers.C83;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String, global::System.Int32>>)] = GeneratedCopiers.C84;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Boolean>>)] = GeneratedCopiers.C85;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.DamagePrevention>)] = GeneratedCopiers.C86;
+        copiers[typeof(global::Arcanum.Engine.State.CombatState)] = GeneratedCopiers.C87;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.Int64>>)] = GeneratedCopiers.C88;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.CardId, global::System.Int32>>)] = GeneratedCopiers.C89;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId?>>)] = GeneratedCopiers.C90;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId>>)] = GeneratedCopiers.C91;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Abilities.TriggeredAbility, global::System.Int32>>)] = GeneratedCopiers.C92;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.PreventionShield>)] = GeneratedCopiers.C93;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.RedirectShield>)] = GeneratedCopiers.C94;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.DamageRecord>)] = GeneratedCopiers.C95;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Int32>>)] = GeneratedCopiers.C96;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.AttackPlaneswalkerRequirement>)] = GeneratedCopiers.C97;
+        copiers[typeof(global::Arcanum.Engine.Game.DamagePart)] = GeneratedCopiers.C98;
+        copiers[typeof(global::Arcanum.Engine.State.Card)] = GeneratedCopiers.C99;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.Effect>)] = GeneratedCopiers.C100;
+        copiers[typeof(global::Arcanum.Engine.Abilities.Effect[])] = GeneratedCopiers.C101;
+        copiers[typeof(global::Arcanum.Engine.State.TriggerInfo)] = GeneratedCopiers.C102;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.ActivatedAbility>)] = GeneratedCopiers.C103;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.AbilityDefinition>)] = GeneratedCopiers.C104;
+        copiers[typeof(global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Cards.Keyword>)] = GeneratedCopiers.C105;
+        copiers[typeof(global::Arcanum.Engine.State.SpellOnStack)] = GeneratedCopiers.C106;
+        copiers[typeof(global::Arcanum.Engine.Game.PendingTrigger)] = GeneratedCopiers.C107;
+        copiers[typeof(global::Arcanum.Engine.State.DelayedTrigger)] = GeneratedCopiers.C108;
+        copiers[typeof(global::Arcanum.Engine.Game.MovePlan)] = GeneratedCopiers.C109;
+        copiers[typeof(global::Arcanum.Engine.Players.AttackablePlaneswalker)] = GeneratedCopiers.C110;
+        copiers[typeof(global::Arcanum.Engine.Players.AttackForbidden)] = GeneratedCopiers.C111;
+        copiers[typeof(global::Arcanum.Engine.Players.AttackRequirement)] = GeneratedCopiers.C112;
+        copiers[typeof(global::Arcanum.Engine.State.Player)] = GeneratedCopiers.C113;
+        copiers[typeof(global::Arcanum.Engine.State.AbilityOnStack)] = GeneratedCopiers.C114;
+        copiers[typeof(global::Arcanum.Engine.State.UntilEndOfTurnEffect)] = GeneratedCopiers.C115;
+        copiers[typeof(global::Arcanum.Engine.State.ControlEffect)] = GeneratedCopiers.C116;
+        copiers[typeof(global::Arcanum.Engine.State.LinkedExile)] = GeneratedCopiers.C117;
+        copiers[typeof(global::Arcanum.Engine.State.DelayedAction)] = GeneratedCopiers.C118;
+        copiers[typeof(global::Arcanum.Engine.State.PlayableFromExile)] = GeneratedCopiers.C119;
+        copiers[typeof(global::Arcanum.Engine.State.ExiledWithPlayRight)] = GeneratedCopiers.C120;
+        copiers[typeof(global::Arcanum.Engine.State.GraveyardCastRight)] = GeneratedCopiers.C121;
+        copiers[typeof(global::Arcanum.Engine.Abilities.AbilityDefinition[])] = GeneratedCopiers.C122;
+        copiers[typeof(global::Arcanum.Engine.State.ParadigmTrigger)] = GeneratedCopiers.C123;
+        copiers[typeof(global::Arcanum.Engine.State.DamagePrevention)] = GeneratedCopiers.C124;
+        copiers[typeof(global::Arcanum.Engine.State.AttackList)] = GeneratedCopiers.C125;
+        copiers[typeof(global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId>>)] = GeneratedCopiers.C126;
+        copiers[typeof(global::Arcanum.Engine.State.PreventionShield)] = GeneratedCopiers.C127;
+        copiers[typeof(global::Arcanum.Engine.State.RedirectShield)] = GeneratedCopiers.C128;
+        copiers[typeof(global::Arcanum.Engine.State.DamageRecord)] = GeneratedCopiers.C129;
+        copiers[typeof(global::Arcanum.Engine.State.AttackPlaneswalkerRequirement)] = GeneratedCopiers.C130;
+        copiers[typeof(global::System.Collections.Generic.HashSet<global::System.String>)] = GeneratedCopiers.C131;
+        copiers[typeof(global::Arcanum.Engine.Game.EffectResults)] = GeneratedCopiers.C132;
+        copiers[typeof(global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>[])] = GeneratedCopiers.C133;
+        copiers[typeof(global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.TriggeredAbility>)] = GeneratedCopiers.C134;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaType>)] = GeneratedCopiers.C135;
+        copiers[typeof(global::Arcanum.Engine.Mana.ManaType[])] = GeneratedCopiers.C136;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaCost>)] = GeneratedCopiers.C137;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.Int32>)] = GeneratedCopiers.C138;
+        copiers[typeof(global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Abilities.CounterKind, global::System.Int32>)] = GeneratedCopiers.C139;
+        copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.Int32, global::System.Int32>)] = GeneratedCopiers.C140;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.ObjectFilter>)] = GeneratedCopiers.C141;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::System.String, global::Arcanum.Engine.Core.CardId>>)] = GeneratedCopiers.C142;
+        copiers[typeof(global::System.String[])] = GeneratedCopiers.C143;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.ManaOption>)] = GeneratedCopiers.C144;
+        copiers[typeof(global::Arcanum.Engine.State.LastKnown)] = GeneratedCopiers.C145;
+        copiers[typeof(global::System.Collections.Generic.Dictionary<global::System.Int32, global::Arcanum.Engine.State.LastKnown>)] = GeneratedCopiers.C146;
+        copiers[typeof(global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Abilities.AbilityDefinition, global::System.Int32>)] = GeneratedCopiers.C147;
+        copiers[typeof(global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.Effect>)] = GeneratedCopiers.C148;
+        copiers[typeof(global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.AbilityDefinition>)] = GeneratedCopiers.C149;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.CounterKind>)] = GeneratedCopiers.C150;
+        copiers[typeof(global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>>)] = GeneratedCopiers.C151;
+        copiers[typeof(global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>[])] = GeneratedCopiers.C152;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.State.ChosenTarget>)] = GeneratedCopiers.C153;
+        copiers[typeof(global::Arcanum.Engine.State.ChosenTarget[])] = GeneratedCopiers.C154;
+        copiers[typeof(global::System.Int32[])] = GeneratedCopiers.C155;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Game.ZoneReplacement>)] = GeneratedCopiers.C156;
+        copiers[typeof(global::Arcanum.Engine.Game.ZoneReplacement[])] = GeneratedCopiers.C157;
+        copiers[typeof(global::Arcanum.Engine.Mana.ManaPool)] = GeneratedCopiers.C158;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.CardType>)] = GeneratedCopiers.C159;
+        copiers[typeof(global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.Int32>)] = GeneratedCopiers.C160;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.Keyword>)] = GeneratedCopiers.C161;
+        copiers[typeof(global::Arcanum.Engine.Cards.Keyword[])] = GeneratedCopiers.C162;
+        copiers[typeof(global::Arcanum.Engine.State.AttackInfo)] = GeneratedCopiers.C163;
+        copiers[typeof(global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.ValueTuple<global::System.Int32, global::System.Int32>>)] = GeneratedCopiers.C164;
+        copiers[typeof(global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaUnit>)] = GeneratedCopiers.C165;
     }
 
     private static class GeneratedCopiers
@@ -239,7 +240,8 @@ public sealed partial class Game
             A52_Game_movePlans(n) = c.Copy(A52_Game_movePlans(n));
             A53_Game_pendingReadAhead(n) = c.Copy(A53_Game_pendingReadAhead(n));
             A54_Game_pendingCopies(n) = c.Copy(A54_Game_pendingCopies(n));
-            A55_Game_deferredEnters(n) = c.Copy(A55_Game_deferredEnters(n));
+            A55_Game_pendingCopyOrigins(n) = c.Copy(A55_Game_pendingCopyOrigins(n));
+            A56_Game_deferredEnters(n) = c.Copy(A56_Game_deferredEnters(n));
             return n;
         }
         internal static object C1(object o, DeepCopier c)
@@ -249,14 +251,14 @@ public sealed partial class Game
         internal static object C3(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.Players.AttackRequest)c.Shallow(o);
-            A56_AttackRequest_Attackers(n) = c.Copy(A56_AttackRequest_Attackers(n));
-            A57_AttackRequest_Defenders(n) = c.Copy(A57_AttackRequest_Defenders(n));
-            A58_AttackRequest_Planeswalkers(n) = c.Copy(A58_AttackRequest_Planeswalkers(n));
-            A59_AttackRequest_Forbidden(n) = c.Copy(A59_AttackRequest_Forbidden(n));
-            A60_AttackRequest_CantAttackAlone(n) = c.Copy(A60_AttackRequest_CantAttackAlone(n));
-            A61_AttackRequest_OneAttackerPlaneswalkers(n) = c.Copy(A61_AttackRequest_OneAttackerPlaneswalkers(n));
-            A62_AttackRequest_Requirements(n) = c.Copy(A62_AttackRequest_Requirements(n));
-            A63_AttackRequest_Taxed(n) = c.Copy(A63_AttackRequest_Taxed(n));
+            A57_AttackRequest_Attackers(n) = c.Copy(A57_AttackRequest_Attackers(n));
+            A58_AttackRequest_Defenders(n) = c.Copy(A58_AttackRequest_Defenders(n));
+            A59_AttackRequest_Planeswalkers(n) = c.Copy(A59_AttackRequest_Planeswalkers(n));
+            A60_AttackRequest_Forbidden(n) = c.Copy(A60_AttackRequest_Forbidden(n));
+            A61_AttackRequest_CantAttackAlone(n) = c.Copy(A61_AttackRequest_CantAttackAlone(n));
+            A62_AttackRequest_OneAttackerPlaneswalkers(n) = c.Copy(A62_AttackRequest_OneAttackerPlaneswalkers(n));
+            A63_AttackRequest_Requirements(n) = c.Copy(A63_AttackRequest_Requirements(n));
+            A64_AttackRequest_Taxed(n) = c.Copy(A64_AttackRequest_Taxed(n));
             return n;
         }
         internal static object C4(object o, DeepCopier c)
@@ -270,98 +272,98 @@ public sealed partial class Game
         internal static object C8(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.State.GameState)c.Shallow(o);
-            A64_GameState_Players(n) = c.Copy(A64_GameState_Players(n));
-            A65_GameState_Cards(n) = c.Copy(A65_GameState_Cards(n));
-            A66_GameState_Battlefield(n) = c.Copy(A66_GameState_Battlefield(n));
-            A67_GameState_Stack(n) = c.Copy(A67_GameState_Stack(n));
-            A68_GameState_UntilEndOfTurn(n) = c.Copy(A68_GameState_UntilEndOfTurn(n));
-            A69_GameState_LastingEffects(n) = c.Copy(A69_GameState_LastingEffects(n));
-            A70_GameState_ExtraTurns(n) = c.Copy(A70_GameState_ExtraTurns(n));
-            A71_GameState_ControlEffects(n) = c.Copy(A71_GameState_ControlEffects(n));
-            A72_GameState_LastTurnOf(n) = c.Copy(A72_GameState_LastTurnOf(n));
-            A73_GameState_LinkedExiles(n) = c.Copy(A73_GameState_LinkedExiles(n));
-            A74_GameState_AtNextEndStep(n) = c.Copy(A74_GameState_AtNextEndStep(n));
-            A75_GameState_PlayableFromExile(n) = c.Copy(A75_GameState_PlayableFromExile(n));
-            A76_GameState_ExiledWithPlayRights(n) = c.Copy(A76_GameState_ExiledWithPlayRights(n));
-            A77_GameState_PlayableFromGraveyard(n) = c.Copy(A77_GameState_PlayableFromGraveyard(n));
-            A78_GameState_FlashbackGranted(n) = c.Copy(A78_GameState_FlashbackGranted(n));
-            A79_GameState_CopyNextInstantOrSorcery(n) = c.Copy(A79_GameState_CopyNextInstantOrSorcery(n));
-            A80_GameState_DamageDoubledAgainst(n) = c.Copy(A80_GameState_DamageDoubledAgainst(n));
-            A81_GameState_CrewedThisTurn(n) = c.Copy(A81_GameState_CrewedThisTurn(n));
-            A82_GameState_TargetedThisTurn(n) = c.Copy(A82_GameState_TargetedThisTurn(n));
-            A83_GameState_AttackersThisTurn(n) = c.Copy(A83_GameState_AttackersThisTurn(n));
-            A84_GameState_FinalityOnEnter(n) = c.Copy(A84_GameState_FinalityOnEnter(n));
-            A85_GameState_SunburstOnEnter(n) = c.Copy(A85_GameState_SunburstOnEnter(n));
-            A86_GameState_EntersTappedFromStack(n) = c.Copy(A86_GameState_EntersTappedFromStack(n));
-            A87_GameState_WhenDiesThisTurn(n) = c.Copy(A87_GameState_WhenDiesThisTurn(n));
-            A88_GameState_HarmonizeGranted(n) = c.Copy(A88_GameState_HarmonizeGranted(n));
-            A89_GameState_AttackTaxesUntilNextTurn(n) = c.Copy(A89_GameState_AttackTaxesUntilNextTurn(n));
-            A90_GameState_GraveyardCastsUsed(n) = c.Copy(A90_GameState_GraveyardCastsUsed(n));
-            A91_GameState_LoreCounterTurns(n) = c.Copy(A91_GameState_LoreCounterTurns(n));
-            A92_GameState_NextCreatureSpell(n) = c.Copy(A92_GameState_NextCreatureSpell(n));
-            A93_GameState_UnattachWhenControlLost(n) = c.Copy(A93_GameState_UnattachWhenControlLost(n));
-            A94_GameState_Emblems(n) = c.Copy(A94_GameState_Emblems(n));
-            A95_GameState_EmblemsUntilEndOfTurn(n) = c.Copy(A95_GameState_EmblemsUntilEndOfTurn(n));
-            A96_GameState_EmblemsUntilOwnersNextTurn(n) = c.Copy(A96_GameState_EmblemsUntilOwnersNextTurn(n));
-            A97_GameState_EmblemsUntilEndOfOwnersNextTurn(n) = c.Copy(A97_GameState_EmblemsUntilEndOfOwnersNextTurn(n));
-            A98_GameState_PlaneswalkerAttackBans(n) = c.Copy(A98_GameState_PlaneswalkerAttackBans(n));
-            A99_GameState_PendingEnterChoices(n) = c.Copy(A99_GameState_PendingEnterChoices(n));
-            A100_GameState_ExileIfDies(n) = c.Copy(A100_GameState_ExileIfDies(n));
-            A101_GameState_ExileIfLeaves(n) = c.Copy(A101_GameState_ExileIfLeaves(n));
-            A102_GameState_GraveyardCastRights(n) = c.Copy(A102_GameState_GraveyardCastRights(n));
-            A103_GameState_CantBlockThisTurn(n) = c.Copy(A103_GameState_CantBlockThisTurn(n));
-            A104_GameState_CounterBans(n) = c.Copy(A104_GameState_CounterBans(n));
-            A105_GameState_ExileUncastEntering(n) = c.Copy(A105_GameState_ExileUncastEntering(n));
-            A106_GameState_PhasedOut(n) = c.Copy(A106_GameState_PhasedOut(n));
-            A107_GameState_SacrificeAtEndOfCombat(n) = c.Copy(A107_GameState_SacrificeAtEndOfCombat(n));
-            A108_GameState_CantSacrificeThisTurn(n) = c.Copy(A108_GameState_CantSacrificeThisTurn(n));
-            A109_GameState_ExileInsteadOfGraveyard(n) = c.Copy(A109_GameState_ExileInsteadOfGraveyard(n));
-            A110_GameState_BottomInsteadOfGraveyard(n) = c.Copy(A110_GameState_BottomInsteadOfGraveyard(n));
-            A111_GameState_AbilitiesOnEnter(n) = c.Copy(A111_GameState_AbilitiesOnEnter(n));
-            A112_GameState_SuspendOnResolution(n) = c.Copy(A112_GameState_SuspendOnResolution(n));
-            A113_GameState_ExileWithCounterOnResolution(n) = c.Copy(A113_GameState_ExileWithCounterOnResolution(n));
-            A114_GameState_ExileAtEndOfCombat(n) = c.Copy(A114_GameState_ExileAtEndOfCombat(n));
-            A115_GameState_SpellsForbiddenFor(n) = c.Copy(A115_GameState_SpellsForbiddenFor(n));
-            A116_GameState_NoncreatureSpellsForbiddenFor(n) = c.Copy(A116_GameState_NoncreatureSpellsForbiddenFor(n));
-            A117_GameState_AtNextUpkeep(n) = c.Copy(A117_GameState_AtNextUpkeep(n));
-            A118_GameState_AtEndOfCombat(n) = c.Copy(A118_GameState_AtEndOfCombat(n));
-            A119_GameState_Paradigms(n) = c.Copy(A119_GameState_Paradigms(n));
-            A120_GameState_AtYourNextMainPhase(n) = c.Copy(A120_GameState_AtYourNextMainPhase(n));
-            A121_GameState_WhenDealsCombatDamageThisCombat(n) = c.Copy(A121_GameState_WhenDealsCombatDamageThisCombat(n));
-            A122_GameState_WhenYourCreatureDealsCombatDamageThisTurn(n) = c.Copy(A122_GameState_WhenYourCreatureDealsCombatDamageThisTurn(n));
-            A123_GameState_WhenNextCast(n) = c.Copy(A123_GameState_WhenNextCast(n));
-            A124_GameState_AurasAtDeath(n) = c.Copy(A124_GameState_AurasAtDeath(n));
-            A125_GameState_ResolvedSpellNames(n) = c.Copy(A125_GameState_ResolvedSpellNames(n));
-            A126_GameState_AtNextEndStepTriggers(n) = c.Copy(A126_GameState_AtNextEndStepTriggers(n));
-            A127_GameState_AtNextDeclareAttackers(n) = c.Copy(A127_GameState_AtNextDeclareAttackers(n));
-            A128_GameState_AtNextEndStepEffects(n) = c.Copy(A128_GameState_AtNextEndStepEffects(n));
-            A129_GameState_NextCreatureSpellBonus(n) = c.Copy(A129_GameState_NextCreatureSpellBonus(n));
-            A130_GameState_ExtraCountersOnEnter(n) = c.Copy(A130_GameState_ExtraCountersOnEnter(n));
-            A131_GameState_HasteAndSacrificeOnEnter(n) = c.Copy(A131_GameState_HasteAndSacrificeOnEnter(n));
-            A132_GameState_TokensCreatedOnTurn(n) = c.Copy(A132_GameState_TokensCreatedOnTurn(n));
-            A133_GameState_AtPlayersNextEndStep(n) = c.Copy(A133_GameState_AtPlayersNextEndStep(n));
-            A134_GameState_DamagePreventions(n) = c.Copy(A134_GameState_DamagePreventions(n));
-            A135_GameState_CombatDamagePrevented(n) = c.Copy(A135_GameState_CombatDamagePrevented(n));
-            A136_GameState_Combat(n) = c.Copy(A136_GameState_Combat(n));
-            A137_GameState_CreatureDeathsThisTurn(n) = c.Copy(A137_GameState_CreatureDeathsThisTurn(n));
-            A138_GameState_PendingPlayerControl(n) = c.Copy(A138_GameState_PendingPlayerControl(n));
-            A139_GameState_BlocksThisTurn(n) = c.Copy(A139_GameState_BlocksThisTurn(n));
-            A140_GameState_AttackPlayerRequirements(n) = c.Copy(A140_GameState_AttackPlayerRequirements(n));
-            A141_GameState_AttackPlayerThisCombat(n) = c.Copy(A141_GameState_AttackPlayerThisCombat(n));
-            A142_GameState_AttacksThisCombat(n) = c.Copy(A142_GameState_AttacksThisCombat(n));
-            A143_GameState_NextCombatRules(n) = c.Copy(A143_GameState_NextCombatRules(n));
-            A144_GameState_SkipNextUntap(n) = c.Copy(A144_GameState_SkipNextUntap(n));
-            A145_GameState_Goads(n) = c.Copy(A145_GameState_Goads(n));
-            A146_GameState_GoadsForever(n) = c.Copy(A146_GameState_GoadsForever(n));
-            A147_GameState_OpponentsCreaturesMustAttackOthers(n) = c.Copy(A147_GameState_OpponentsCreaturesMustAttackOthers(n));
-            A148_GameState_CreatureDiesThisTurnTriggers(n) = c.Copy(A148_GameState_CreatureDiesThisTurnTriggers(n));
-            A149_GameState_PreventionShields(n) = c.Copy(A149_GameState_PreventionShields(n));
-            A150_GameState_RedirectShields(n) = c.Copy(A150_GameState_RedirectShields(n));
-            A151_GameState_DamageTripled(n) = c.Copy(A151_GameState_DamageTripled(n));
-            A152_GameState_ExiledUntilOpponentIsMonarch(n) = c.Copy(A152_GameState_ExiledUntilOpponentIsMonarch(n));
-            A153_GameState_DamageLog(n) = c.Copy(A153_GameState_DamageLog(n));
-            A154_GameState_CantAttackThisCombat(n) = c.Copy(A154_GameState_CantAttackThisCombat(n));
-            A155_GameState_AttackPlaneswalkerRequirements(n) = c.Copy(A155_GameState_AttackPlaneswalkerRequirements(n));
+            A65_GameState_Players(n) = c.Copy(A65_GameState_Players(n));
+            A66_GameState_Cards(n) = c.Copy(A66_GameState_Cards(n));
+            A67_GameState_Battlefield(n) = c.Copy(A67_GameState_Battlefield(n));
+            A68_GameState_Stack(n) = c.Copy(A68_GameState_Stack(n));
+            A69_GameState_UntilEndOfTurn(n) = c.Copy(A69_GameState_UntilEndOfTurn(n));
+            A70_GameState_LastingEffects(n) = c.Copy(A70_GameState_LastingEffects(n));
+            A71_GameState_ExtraTurns(n) = c.Copy(A71_GameState_ExtraTurns(n));
+            A72_GameState_ControlEffects(n) = c.Copy(A72_GameState_ControlEffects(n));
+            A73_GameState_LastTurnOf(n) = c.Copy(A73_GameState_LastTurnOf(n));
+            A74_GameState_LinkedExiles(n) = c.Copy(A74_GameState_LinkedExiles(n));
+            A75_GameState_AtNextEndStep(n) = c.Copy(A75_GameState_AtNextEndStep(n));
+            A76_GameState_PlayableFromExile(n) = c.Copy(A76_GameState_PlayableFromExile(n));
+            A77_GameState_ExiledWithPlayRights(n) = c.Copy(A77_GameState_ExiledWithPlayRights(n));
+            A78_GameState_PlayableFromGraveyard(n) = c.Copy(A78_GameState_PlayableFromGraveyard(n));
+            A79_GameState_FlashbackGranted(n) = c.Copy(A79_GameState_FlashbackGranted(n));
+            A80_GameState_CopyNextInstantOrSorcery(n) = c.Copy(A80_GameState_CopyNextInstantOrSorcery(n));
+            A81_GameState_DamageDoubledAgainst(n) = c.Copy(A81_GameState_DamageDoubledAgainst(n));
+            A82_GameState_CrewedThisTurn(n) = c.Copy(A82_GameState_CrewedThisTurn(n));
+            A83_GameState_TargetedThisTurn(n) = c.Copy(A83_GameState_TargetedThisTurn(n));
+            A84_GameState_AttackersThisTurn(n) = c.Copy(A84_GameState_AttackersThisTurn(n));
+            A85_GameState_FinalityOnEnter(n) = c.Copy(A85_GameState_FinalityOnEnter(n));
+            A86_GameState_SunburstOnEnter(n) = c.Copy(A86_GameState_SunburstOnEnter(n));
+            A87_GameState_EntersTappedFromStack(n) = c.Copy(A87_GameState_EntersTappedFromStack(n));
+            A88_GameState_WhenDiesThisTurn(n) = c.Copy(A88_GameState_WhenDiesThisTurn(n));
+            A89_GameState_HarmonizeGranted(n) = c.Copy(A89_GameState_HarmonizeGranted(n));
+            A90_GameState_AttackTaxesUntilNextTurn(n) = c.Copy(A90_GameState_AttackTaxesUntilNextTurn(n));
+            A91_GameState_GraveyardCastsUsed(n) = c.Copy(A91_GameState_GraveyardCastsUsed(n));
+            A92_GameState_LoreCounterTurns(n) = c.Copy(A92_GameState_LoreCounterTurns(n));
+            A93_GameState_NextCreatureSpell(n) = c.Copy(A93_GameState_NextCreatureSpell(n));
+            A94_GameState_UnattachWhenControlLost(n) = c.Copy(A94_GameState_UnattachWhenControlLost(n));
+            A95_GameState_Emblems(n) = c.Copy(A95_GameState_Emblems(n));
+            A96_GameState_EmblemsUntilEndOfTurn(n) = c.Copy(A96_GameState_EmblemsUntilEndOfTurn(n));
+            A97_GameState_EmblemsUntilOwnersNextTurn(n) = c.Copy(A97_GameState_EmblemsUntilOwnersNextTurn(n));
+            A98_GameState_EmblemsUntilEndOfOwnersNextTurn(n) = c.Copy(A98_GameState_EmblemsUntilEndOfOwnersNextTurn(n));
+            A99_GameState_PlaneswalkerAttackBans(n) = c.Copy(A99_GameState_PlaneswalkerAttackBans(n));
+            A100_GameState_PendingEnterChoices(n) = c.Copy(A100_GameState_PendingEnterChoices(n));
+            A101_GameState_ExileIfDies(n) = c.Copy(A101_GameState_ExileIfDies(n));
+            A102_GameState_ExileIfLeaves(n) = c.Copy(A102_GameState_ExileIfLeaves(n));
+            A103_GameState_GraveyardCastRights(n) = c.Copy(A103_GameState_GraveyardCastRights(n));
+            A104_GameState_CantBlockThisTurn(n) = c.Copy(A104_GameState_CantBlockThisTurn(n));
+            A105_GameState_CounterBans(n) = c.Copy(A105_GameState_CounterBans(n));
+            A106_GameState_ExileUncastEntering(n) = c.Copy(A106_GameState_ExileUncastEntering(n));
+            A107_GameState_PhasedOut(n) = c.Copy(A107_GameState_PhasedOut(n));
+            A108_GameState_SacrificeAtEndOfCombat(n) = c.Copy(A108_GameState_SacrificeAtEndOfCombat(n));
+            A109_GameState_CantSacrificeThisTurn(n) = c.Copy(A109_GameState_CantSacrificeThisTurn(n));
+            A110_GameState_ExileInsteadOfGraveyard(n) = c.Copy(A110_GameState_ExileInsteadOfGraveyard(n));
+            A111_GameState_BottomInsteadOfGraveyard(n) = c.Copy(A111_GameState_BottomInsteadOfGraveyard(n));
+            A112_GameState_AbilitiesOnEnter(n) = c.Copy(A112_GameState_AbilitiesOnEnter(n));
+            A113_GameState_SuspendOnResolution(n) = c.Copy(A113_GameState_SuspendOnResolution(n));
+            A114_GameState_ExileWithCounterOnResolution(n) = c.Copy(A114_GameState_ExileWithCounterOnResolution(n));
+            A115_GameState_ExileAtEndOfCombat(n) = c.Copy(A115_GameState_ExileAtEndOfCombat(n));
+            A116_GameState_SpellsForbiddenFor(n) = c.Copy(A116_GameState_SpellsForbiddenFor(n));
+            A117_GameState_NoncreatureSpellsForbiddenFor(n) = c.Copy(A117_GameState_NoncreatureSpellsForbiddenFor(n));
+            A118_GameState_AtNextUpkeep(n) = c.Copy(A118_GameState_AtNextUpkeep(n));
+            A119_GameState_AtEndOfCombat(n) = c.Copy(A119_GameState_AtEndOfCombat(n));
+            A120_GameState_Paradigms(n) = c.Copy(A120_GameState_Paradigms(n));
+            A121_GameState_AtYourNextMainPhase(n) = c.Copy(A121_GameState_AtYourNextMainPhase(n));
+            A122_GameState_WhenDealsCombatDamageThisCombat(n) = c.Copy(A122_GameState_WhenDealsCombatDamageThisCombat(n));
+            A123_GameState_WhenYourCreatureDealsCombatDamageThisTurn(n) = c.Copy(A123_GameState_WhenYourCreatureDealsCombatDamageThisTurn(n));
+            A124_GameState_WhenNextCast(n) = c.Copy(A124_GameState_WhenNextCast(n));
+            A125_GameState_AurasAtDeath(n) = c.Copy(A125_GameState_AurasAtDeath(n));
+            A126_GameState_ResolvedSpellNames(n) = c.Copy(A126_GameState_ResolvedSpellNames(n));
+            A127_GameState_AtNextEndStepTriggers(n) = c.Copy(A127_GameState_AtNextEndStepTriggers(n));
+            A128_GameState_AtNextDeclareAttackers(n) = c.Copy(A128_GameState_AtNextDeclareAttackers(n));
+            A129_GameState_AtNextEndStepEffects(n) = c.Copy(A129_GameState_AtNextEndStepEffects(n));
+            A130_GameState_NextCreatureSpellBonus(n) = c.Copy(A130_GameState_NextCreatureSpellBonus(n));
+            A131_GameState_ExtraCountersOnEnter(n) = c.Copy(A131_GameState_ExtraCountersOnEnter(n));
+            A132_GameState_HasteAndSacrificeOnEnter(n) = c.Copy(A132_GameState_HasteAndSacrificeOnEnter(n));
+            A133_GameState_TokensCreatedOnTurn(n) = c.Copy(A133_GameState_TokensCreatedOnTurn(n));
+            A134_GameState_AtPlayersNextEndStep(n) = c.Copy(A134_GameState_AtPlayersNextEndStep(n));
+            A135_GameState_DamagePreventions(n) = c.Copy(A135_GameState_DamagePreventions(n));
+            A136_GameState_CombatDamagePrevented(n) = c.Copy(A136_GameState_CombatDamagePrevented(n));
+            A137_GameState_Combat(n) = c.Copy(A137_GameState_Combat(n));
+            A138_GameState_CreatureDeathsThisTurn(n) = c.Copy(A138_GameState_CreatureDeathsThisTurn(n));
+            A139_GameState_PendingPlayerControl(n) = c.Copy(A139_GameState_PendingPlayerControl(n));
+            A140_GameState_BlocksThisTurn(n) = c.Copy(A140_GameState_BlocksThisTurn(n));
+            A141_GameState_AttackPlayerRequirements(n) = c.Copy(A141_GameState_AttackPlayerRequirements(n));
+            A142_GameState_AttackPlayerThisCombat(n) = c.Copy(A142_GameState_AttackPlayerThisCombat(n));
+            A143_GameState_AttacksThisCombat(n) = c.Copy(A143_GameState_AttacksThisCombat(n));
+            A144_GameState_NextCombatRules(n) = c.Copy(A144_GameState_NextCombatRules(n));
+            A145_GameState_SkipNextUntap(n) = c.Copy(A145_GameState_SkipNextUntap(n));
+            A146_GameState_Goads(n) = c.Copy(A146_GameState_Goads(n));
+            A147_GameState_GoadsForever(n) = c.Copy(A147_GameState_GoadsForever(n));
+            A148_GameState_OpponentsCreaturesMustAttackOthers(n) = c.Copy(A148_GameState_OpponentsCreaturesMustAttackOthers(n));
+            A149_GameState_CreatureDiesThisTurnTriggers(n) = c.Copy(A149_GameState_CreatureDiesThisTurnTriggers(n));
+            A150_GameState_PreventionShields(n) = c.Copy(A150_GameState_PreventionShields(n));
+            A151_GameState_RedirectShields(n) = c.Copy(A151_GameState_RedirectShields(n));
+            A152_GameState_DamageTripled(n) = c.Copy(A152_GameState_DamageTripled(n));
+            A153_GameState_ExiledUntilOpponentIsMonarch(n) = c.Copy(A153_GameState_ExiledUntilOpponentIsMonarch(n));
+            A154_GameState_DamageLog(n) = c.Copy(A154_GameState_DamageLog(n));
+            A155_GameState_CantAttackThisCombat(n) = c.Copy(A155_GameState_CantAttackThisCombat(n));
+            A156_GameState_AttackPlaneswalkerRequirements(n) = c.Copy(A156_GameState_AttackPlaneswalkerRequirements(n));
             return n;
         }
         internal static object C9(object o, DeepCopier c)
@@ -428,491 +430,493 @@ public sealed partial class Game
         internal static object C38(object o, DeepCopier c)
             => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::Arcanum.Engine.Cards.CardDefinition>)o, null);
         internal static object C39(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Boolean>>)o, null);
+            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>>)o, null);
         internal static object C40(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Boolean>>)o, null);
         internal static object C41(object o, DeepCopier c)
-            => c.CopyArray((global::Arcanum.Engine.Core.PlayerId[])o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId>)o, null);
         internal static object C42(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Players.AttackablePlaneswalker>)o, static (x, c) => c.Copy(x));
+            => c.CopyArray((global::Arcanum.Engine.Core.PlayerId[])o, null);
         internal static object C43(object o, DeepCopier c)
-            => c.CopyArray((global::Arcanum.Engine.Players.AttackablePlaneswalker[])o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Players.AttackablePlaneswalker>)o, static (x, c) => c.Copy(x));
         internal static object C44(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Players.AttackForbidden>)o, static (x, c) => c.Copy(x));
+            => c.CopyArray((global::Arcanum.Engine.Players.AttackablePlaneswalker[])o, static (x, c) => c.Copy(x));
         internal static object C45(object o, DeepCopier c)
-            => c.CopyArray((global::Arcanum.Engine.Players.AttackForbidden[])o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Players.AttackForbidden>)o, static (x, c) => c.Copy(x));
         internal static object C46(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Players.AttackRequirement>)o, static (x, c) => c.Copy(x));
+            => c.CopyArray((global::Arcanum.Engine.Players.AttackForbidden[])o, static (x, c) => c.Copy(x));
         internal static object C47(object o, DeepCopier c)
-            => c.CopyArray((global::Arcanum.Engine.Players.AttackRequirement[])o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Players.AttackRequirement>)o, static (x, c) => c.Copy(x));
         internal static object C48(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.Player>)o, static (x, c) => c.Copy(x));
+            => c.CopyArray((global::Arcanum.Engine.Players.AttackRequirement[])o, static (x, c) => c.Copy(x));
         internal static object C49(object o, DeepCopier c)
-            => c.CopyArray((global::Arcanum.Engine.State.Player[])o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.Player>)o, static (x, c) => c.Copy(x));
         internal static object C50(object o, DeepCopier c)
-            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.State.Card>)o, static (x, c) => c.Copy(x));
+            => c.CopyArray((global::Arcanum.Engine.State.Player[])o, static (x, c) => c.Copy(x));
         internal static object C51(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.StackItem>)o, static (x, c) => c.Copy(x));
+            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.State.Card>)o, static (x, c) => c.Copy(x));
         internal static object C52(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.UntilEndOfTurnEffect>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.StackItem>)o, static (x, c) => c.Copy(x));
         internal static object C53(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.ControlEffect>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.UntilEndOfTurnEffect>)o, static (x, c) => c.Copy(x));
         internal static object C54(object o, DeepCopier c)
-            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.PlayerId, global::System.Int32>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.ControlEffect>)o, static (x, c) => c.Copy(x));
         internal static object C55(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.LinkedExile>)o, static (x, c) => c.Copy(x));
+            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.PlayerId, global::System.Int32>)o, null);
         internal static object C56(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedAction>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.LinkedExile>)o, static (x, c) => c.Copy(x));
         internal static object C57(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.PlayableFromExile>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedAction>)o, static (x, c) => c.Copy(x));
         internal static object C58(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.ExiledWithPlayRight>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.PlayableFromExile>)o, static (x, c) => c.Copy(x));
         internal static object C59(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Int32, global::System.Boolean>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.ExiledWithPlayRight>)o, static (x, c) => c.Copy(x));
         internal static object C60(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.CardId>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Int32, global::System.Boolean>>)o, null);
         internal static object C61(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.CardId, global::System.Int32>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.CardId>>)o, null);
         internal static object C62(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.CardId, global::System.Int32>>)o, null);
         internal static object C63(object o, DeepCopier c)
-            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>>)o);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>>)o, null);
         internal static object C64(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32, global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Abilities.TriggeredAbility, global::System.Boolean>>)o, null);
+            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>>)o);
         internal static object C65(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32, global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Abilities.TriggeredAbility, global::System.Boolean, global::System.ValueTuple<global::System.Boolean>>>)o, null);
         internal static object C66(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Mana.ManaCost>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>>)o, null);
         internal static object C67(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Boolean, global::System.Int32>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Mana.ManaCost>>)o, null);
         internal static object C68(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::Arcanum.Engine.Core.CardId>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Boolean, global::System.Int32>>)o, null);
         internal static object C69(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.String, global::System.Int32>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::Arcanum.Engine.Core.CardId>>)o, null);
         internal static object C70(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.GraveyardCastRight>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.String, global::System.Int32>>)o, null);
         internal static object C71(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Abilities.ObjectFilter, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.GraveyardCastRight>)o, static (x, c) => c.Copy(x));
         internal static object C72(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId?, global::System.Int32, global::Arcanum.Engine.Core.PlayerId?, global::Arcanum.Engine.Core.CardId, global::System.Int32>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Abilities.ObjectFilter, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>>)o, null);
         internal static object C73(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId?, global::System.Int32, global::Arcanum.Engine.Core.PlayerId?, global::Arcanum.Engine.Core.CardId, global::System.Int32>>)o, null);
         internal static object C74(object o, DeepCopier c)
-            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.AbilityDefinition>>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId>>)o, null);
         internal static object C75(object o, DeepCopier c)
-            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::Arcanum.Engine.Abilities.CounterKind>)o, null);
+            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.AbilityDefinition>>)o, static (x, c) => c.Copy(x));
         internal static object C76(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.ParadigmTrigger>)o, static (x, c) => c.Copy(x));
+            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::Arcanum.Engine.Abilities.CounterKind>)o, null);
         internal static object C77(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::System.Int32>>)o, static (x, c) => S4(x, c));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.ParadigmTrigger>)o, static (x, c) => c.Copy(x));
         internal static object C78(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Abilities.ObjectFilter, global::System.Int32>>)o, static (x, c) => S5(x, c));
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::System.Int32>>)o, static (x, c) => S4(x, c));
         internal static object C79(object o, DeepCopier c)
-            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId>>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Abilities.ObjectFilter, global::System.Int32>>)o, static (x, c) => S5(x, c));
         internal static object C80(object o, DeepCopier c)
-            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>>)o);
+            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId>>)o, static (x, c) => c.Copy(x));
         internal static object C81(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Core.PlayerId>>)o, static (x, c) => S6(x, c));
+            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>>)o);
         internal static object C82(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.Effect>, global::Arcanum.Engine.Abilities.Condition, global::System.Int32?>>)o, static (x, c) => S7(x, c));
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Core.PlayerId>>)o, static (x, c) => S6(x, c));
         internal static object C83(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String, global::System.Int32>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.Effect>, global::Arcanum.Engine.Abilities.Condition, global::System.Int32?>>)o, static (x, c) => S7(x, c));
         internal static object C84(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Boolean>>)o, static (x, c) => S8(x, c));
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String, global::System.Int32>>)o, null);
         internal static object C85(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.DamagePrevention>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Boolean>>)o, static (x, c) => S8(x, c));
         internal static object C86(object o, DeepCopier c)
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.DamagePrevention>)o, static (x, c) => c.Copy(x));
+        internal static object C87(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.State.CombatState)c.Shallow(o);
-            A156_CombatState_Attacks(n) = c.Copy(A156_CombatState_Attacks(n));
-            A157_CombatState_Unblockable(n) = c.Copy(A157_CombatState_Unblockable(n));
-            A158_CombatState_Declared(n) = c.Copy(A158_CombatState_Declared(n));
-            A159_CombatState_PlayersAttacked(n) = c.Copy(A159_CombatState_PlayersAttacked(n));
+            A157_CombatState_Attacks(n) = c.Copy(A157_CombatState_Attacks(n));
+            A158_CombatState_Unblockable(n) = c.Copy(A158_CombatState_Unblockable(n));
+            A159_CombatState_Declared(n) = c.Copy(A159_CombatState_Declared(n));
+            A160_CombatState_PlayersAttacked(n) = c.Copy(A160_CombatState_PlayersAttacked(n));
             return n;
         }
-        internal static object C87(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.Int64>>)o, null);
         internal static object C88(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.CardId, global::System.Int32>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.Int64>>)o, null);
         internal static object C89(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId?>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.CardId, global::System.Int32>>)o, null);
         internal static object C90(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId?>>)o, null);
         internal static object C91(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Abilities.TriggeredAbility, global::System.Int32>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId>>)o, null);
         internal static object C92(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.PreventionShield>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Abilities.TriggeredAbility, global::System.Int32>>)o, null);
         internal static object C93(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.RedirectShield>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.PreventionShield>)o, static (x, c) => c.Copy(x));
         internal static object C94(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.DamageRecord>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.RedirectShield>)o, static (x, c) => c.Copy(x));
         internal static object C95(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Int32>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.DamageRecord>)o, static (x, c) => c.Copy(x));
         internal static object C96(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.AttackPlaneswalkerRequirement>)o, static (x, c) => c.Copy(x));
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Int32>>)o, null);
         internal static object C97(object o, DeepCopier c)
-        {
-            var n = (global::Arcanum.Engine.Game.DamagePart)c.Shallow(o);
-            A160_DamagePart_Source(n) = c.Copy(A160_DamagePart_Source(n));
-            A161_DamagePart_ToCard(n) = c.Copy(A161_DamagePart_ToCard(n));
-            A162_DamagePart_Applied(n) = c.Copy(A162_DamagePart_Applied(n));
-            A163_DamagePart_Report(n) = c.Copy(A163_DamagePart_Report(n));
-            return n;
-        }
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.AttackPlaneswalkerRequirement>)o, static (x, c) => c.Copy(x));
         internal static object C98(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.State.Card)c.Shallow(o);
-            A164_Card_MeldPartner(n) = c.Copy(A164_Card_MeldPartner(n));
-            A165_Card_Beheld(n) = c.Copy(A165_Card_Beheld(n));
-            A166_Card_CombatDamagedPlayers(n) = c.Copy(A166_Card_CombatDamagedPlayers(n));
-            A167_Card_ChosenModes(n) = c.Copy(A167_Card_ChosenModes(n));
-            A168_Card_ActivatedEver(n) = c.Copy(A168_Card_ActivatedEver(n));
-            A169_Card_TriggeredEver(n) = c.Copy(A169_Card_TriggeredEver(n));
-            A170_Card_SpentManaTypes(n) = c.Copy(A170_Card_SpentManaTypes(n));
-            A171_Card_KnownTo(n) = c.Copy(A171_Card_KnownTo(n));
-            A172_Card_GrantedWards(n) = c.Copy(A172_Card_GrantedWards(n));
-            A173_Card_GrantedWardLives(n) = c.Copy(A173_Card_GrantedWardLives(n));
-            A174_Card_Counters(n) = c.Copy(A174_Card_Counters(n));
-            A175_Card_GrantedKeywords(n) = c.Copy(A175_Card_GrantedKeywords(n));
-            A176_Card_LostKeywords(n) = c.Copy(A176_Card_LostKeywords(n));
-            A177_Card_ActivationsThisTurn(n) = c.Copy(A177_Card_ActivationsThisTurn(n));
-            A178_Card_UnblockableBy(n) = c.Copy(A178_Card_UnblockableBy(n));
-            A179_Card_BlockRestrictions(n) = c.Copy(A179_Card_BlockRestrictions(n));
-            A180_Card_CantAttackPlayers(n) = c.Copy(A180_Card_CantAttackPlayers(n));
-            A181_Card_ProtectedFromPlayers(n) = c.Copy(A181_Card_ProtectedFromPlayers(n));
-            A182_Card_AuraColorProtections(n) = c.Copy(A182_Card_AuraColorProtections(n));
-            A183_Card_StaticGoaders(n) = c.Copy(A183_Card_StaticGoaders(n));
-            A184_Card_CantAttackPlayersAndPlaneswalkers(n) = c.Copy(A184_Card_CantAttackPlayersAndPlaneswalkers(n));
-            A185_Card_GrantedSubtypes(n) = c.Copy(A185_Card_GrantedSubtypes(n));
-            A186_Card_SubtypesOverride(n) = c.Copy(A186_Card_SubtypesOverride(n));
-            A187_Card_ColorsOverride(n) = c.Copy(A187_Card_ColorsOverride(n));
-            A188_Card_GrantedAbilities(n) = c.Copy(A188_Card_GrantedAbilities(n));
-            A189_Card_GrantedManaOptions(n) = c.Copy(A189_Card_GrantedManaOptions(n));
-            A190_Card_HexproofFromColorsThisTurn(n) = S9(A190_Card_HexproofFromColorsThisTurn(n), c);
-            A191_Card_ChosenCreatureTypes(n) = c.Copy(A191_Card_ChosenCreatureTypes(n));
-            A192_Card_LastKnownInfo(n) = c.Copy(A192_Card_LastKnownInfo(n));
-            A193_Card_lastKnownByVersion(n) = c.Copy(A193_Card_lastKnownByVersion(n));
-            A194_Card_ResolvedThisTurn(n) = c.Copy(A194_Card_ResolvedThisTurn(n));
-            A195_Card_AddedColors(n) = c.Copy(A195_Card_AddedColors(n));
-            A196_Card_CommanderIdentityTypes(n) = c.Copy(A196_Card_CommanderIdentityTypes(n));
-            A197_Card_OpponentsLandColors(n) = c.Copy(A197_Card_OpponentsLandColors(n));
-            A198_Card_YourLandTypes(n) = c.Copy(A198_Card_YourLandTypes(n));
-            A199_Card_InactiveManaOptions(n) = c.Copy(A199_Card_InactiveManaOptions(n));
-            A200_Card_ColorsAmongYourPermanents(n) = c.Copy(A200_Card_ColorsAmongYourPermanents(n));
-            A201_Card_ColorsAmongGraveyardLegends(n) = c.Copy(A201_Card_ColorsAmongGraveyardLegends(n));
-            A202_Card_NotedTypes(n) = c.Copy(A202_Card_NotedTypes(n));
-            A203_Card_DoneThisTurn(n) = c.Copy(A203_Card_DoneThisTurn(n));
-            A204_Card_CounterPuttersThisTurn(n) = c.Copy(A204_Card_CounterPuttersThisTurn(n));
-            A205_Card_Convokers(n) = c.Copy(A205_Card_Convokers(n));
-            A206_Card_ActivatedThisTurn(n) = c.Copy(A206_Card_ActivatedThisTurn(n));
-            A207_Card_TriggeredThisTurn(n) = c.Copy(A207_Card_TriggeredThisTurn(n));
+            var n = (global::Arcanum.Engine.Game.DamagePart)c.Shallow(o);
+            A161_DamagePart_Source(n) = c.Copy(A161_DamagePart_Source(n));
+            A162_DamagePart_ToCard(n) = c.Copy(A162_DamagePart_ToCard(n));
+            A163_DamagePart_Applied(n) = c.Copy(A163_DamagePart_Applied(n));
+            A164_DamagePart_Report(n) = c.Copy(A164_DamagePart_Report(n));
             return n;
         }
         internal static object C99(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.Effect>)o, null);
+        {
+            var n = (global::Arcanum.Engine.State.Card)c.Shallow(o);
+            A165_Card_MeldPartner(n) = c.Copy(A165_Card_MeldPartner(n));
+            A166_Card_Beheld(n) = c.Copy(A166_Card_Beheld(n));
+            A167_Card_CombatDamagedPlayers(n) = c.Copy(A167_Card_CombatDamagedPlayers(n));
+            A168_Card_ChosenModes(n) = c.Copy(A168_Card_ChosenModes(n));
+            A169_Card_ActivatedEver(n) = c.Copy(A169_Card_ActivatedEver(n));
+            A170_Card_TriggeredEver(n) = c.Copy(A170_Card_TriggeredEver(n));
+            A171_Card_SpentManaTypes(n) = c.Copy(A171_Card_SpentManaTypes(n));
+            A172_Card_KnownTo(n) = c.Copy(A172_Card_KnownTo(n));
+            A173_Card_GrantedWards(n) = c.Copy(A173_Card_GrantedWards(n));
+            A174_Card_GrantedWardLives(n) = c.Copy(A174_Card_GrantedWardLives(n));
+            A175_Card_Counters(n) = c.Copy(A175_Card_Counters(n));
+            A176_Card_GrantedKeywords(n) = c.Copy(A176_Card_GrantedKeywords(n));
+            A177_Card_LostKeywords(n) = c.Copy(A177_Card_LostKeywords(n));
+            A178_Card_ActivationsThisTurn(n) = c.Copy(A178_Card_ActivationsThisTurn(n));
+            A179_Card_UnblockableBy(n) = c.Copy(A179_Card_UnblockableBy(n));
+            A180_Card_BlockRestrictions(n) = c.Copy(A180_Card_BlockRestrictions(n));
+            A181_Card_CantAttackPlayers(n) = c.Copy(A181_Card_CantAttackPlayers(n));
+            A182_Card_ProtectedFromPlayers(n) = c.Copy(A182_Card_ProtectedFromPlayers(n));
+            A183_Card_AuraColorProtections(n) = c.Copy(A183_Card_AuraColorProtections(n));
+            A184_Card_StaticGoaders(n) = c.Copy(A184_Card_StaticGoaders(n));
+            A185_Card_CantAttackPlayersAndPlaneswalkers(n) = c.Copy(A185_Card_CantAttackPlayersAndPlaneswalkers(n));
+            A186_Card_GrantedSubtypes(n) = c.Copy(A186_Card_GrantedSubtypes(n));
+            A187_Card_SubtypesOverride(n) = c.Copy(A187_Card_SubtypesOverride(n));
+            A188_Card_ColorsOverride(n) = c.Copy(A188_Card_ColorsOverride(n));
+            A189_Card_GrantedAbilities(n) = c.Copy(A189_Card_GrantedAbilities(n));
+            A190_Card_GrantedManaOptions(n) = c.Copy(A190_Card_GrantedManaOptions(n));
+            A191_Card_HexproofFromColorsThisTurn(n) = S9(A191_Card_HexproofFromColorsThisTurn(n), c);
+            A192_Card_ChosenCreatureTypes(n) = c.Copy(A192_Card_ChosenCreatureTypes(n));
+            A193_Card_LastKnownInfo(n) = c.Copy(A193_Card_LastKnownInfo(n));
+            A194_Card_lastKnownByVersion(n) = c.Copy(A194_Card_lastKnownByVersion(n));
+            A195_Card_ResolvedThisTurn(n) = c.Copy(A195_Card_ResolvedThisTurn(n));
+            A196_Card_AddedColors(n) = c.Copy(A196_Card_AddedColors(n));
+            A197_Card_CommanderIdentityTypes(n) = c.Copy(A197_Card_CommanderIdentityTypes(n));
+            A198_Card_OpponentsLandColors(n) = c.Copy(A198_Card_OpponentsLandColors(n));
+            A199_Card_YourLandTypes(n) = c.Copy(A199_Card_YourLandTypes(n));
+            A200_Card_InactiveManaOptions(n) = c.Copy(A200_Card_InactiveManaOptions(n));
+            A201_Card_ColorsAmongYourPermanents(n) = c.Copy(A201_Card_ColorsAmongYourPermanents(n));
+            A202_Card_ColorsAmongGraveyardLegends(n) = c.Copy(A202_Card_ColorsAmongGraveyardLegends(n));
+            A203_Card_NotedTypes(n) = c.Copy(A203_Card_NotedTypes(n));
+            A204_Card_DoneThisTurn(n) = c.Copy(A204_Card_DoneThisTurn(n));
+            A205_Card_CounterPuttersThisTurn(n) = c.Copy(A205_Card_CounterPuttersThisTurn(n));
+            A206_Card_Convokers(n) = c.Copy(A206_Card_Convokers(n));
+            A207_Card_ActivatedThisTurn(n) = c.Copy(A207_Card_ActivatedThisTurn(n));
+            A208_Card_TriggeredThisTurn(n) = c.Copy(A208_Card_TriggeredThisTurn(n));
+            return n;
+        }
         internal static object C100(object o, DeepCopier c)
-            => c.CopyArray((global::Arcanum.Engine.Abilities.Effect[])o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.Effect>)o, null);
         internal static object C101(object o, DeepCopier c)
+            => c.CopyArray((global::Arcanum.Engine.Abilities.Effect[])o, null);
+        internal static object C102(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.State.TriggerInfo)c.Shallow(o);
-            A208_TriggerInfo_CounterKinds(n) = c.Copy(A208_TriggerInfo_CounterKinds(n));
-            A209_TriggerInfo_Batch(n) = c.Copy(A209_TriggerInfo_Batch(n));
-            A210_TriggerInfo_Found(n) = c.Copy(A210_TriggerInfo_Found(n));
-            A211_TriggerInfo_Votes(n) = c.Copy(A211_TriggerInfo_Votes(n));
+            A209_TriggerInfo_CounterKinds(n) = c.Copy(A209_TriggerInfo_CounterKinds(n));
+            A210_TriggerInfo_Batch(n) = c.Copy(A210_TriggerInfo_Batch(n));
+            A211_TriggerInfo_Found(n) = c.Copy(A211_TriggerInfo_Found(n));
+            A212_TriggerInfo_Votes(n) = c.Copy(A212_TriggerInfo_Votes(n));
             return n;
         }
-        internal static object C102(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.ActivatedAbility>)o, null);
         internal static object C103(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.AbilityDefinition>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.ActivatedAbility>)o, null);
         internal static object C104(object o, DeepCopier c)
-            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Cards.Keyword>)o);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.AbilityDefinition>)o, null);
         internal static object C105(object o, DeepCopier c)
-        {
-            var n = (global::Arcanum.Engine.State.SpellOnStack)c.Shallow(o);
-            A212_SpellOnStack_ChosenTargets(n) = c.Copy(A212_SpellOnStack_ChosenTargets(n));
-            A213_StackItem_Targets(n) = c.Copy(A213_StackItem_Targets(n));
-            A214_StackItem_Division(n) = c.Copy(A214_StackItem_Division(n));
-            A215_StackItem_SacrificedForCost(n) = c.Copy(A215_StackItem_SacrificedForCost(n));
-            A216_StackItem_DiscardedForCost(n) = c.Copy(A216_StackItem_DiscardedForCost(n));
-            A217_StackItem_ExiledForCost(n) = c.Copy(A217_StackItem_ExiledForCost(n));
-            A218_StackItem_TappedForCost(n) = c.Copy(A218_StackItem_TappedForCost(n));
-            return n;
-        }
+            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Cards.Keyword>)o);
         internal static object C106(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.Game.PendingTrigger)c.Shallow(o);
-            A219_PendingTrigger_Info(n) = c.Copy(A219_PendingTrigger_Info(n));
+            var n = (global::Arcanum.Engine.State.SpellOnStack)c.Shallow(o);
+            A213_SpellOnStack_ChosenTargets(n) = c.Copy(A213_SpellOnStack_ChosenTargets(n));
+            A214_StackItem_Targets(n) = c.Copy(A214_StackItem_Targets(n));
+            A215_StackItem_Division(n) = c.Copy(A215_StackItem_Division(n));
+            A216_StackItem_SacrificedForCost(n) = c.Copy(A216_StackItem_SacrificedForCost(n));
+            A217_StackItem_DiscardedForCost(n) = c.Copy(A217_StackItem_DiscardedForCost(n));
+            A218_StackItem_ExiledForCost(n) = c.Copy(A218_StackItem_ExiledForCost(n));
+            A219_StackItem_TappedForCost(n) = c.Copy(A219_StackItem_TappedForCost(n));
             return n;
         }
         internal static object C107(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.State.DelayedTrigger)c.Shallow(o);
+            var n = (global::Arcanum.Engine.Game.PendingTrigger)c.Shallow(o);
+            A220_PendingTrigger_Info(n) = c.Copy(A220_PendingTrigger_Info(n));
             return n;
         }
         internal static object C108(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.Game.MovePlan)c.Shallow(o);
-            A220_MovePlan_Applied(n) = c.Copy(A220_MovePlan_Applied(n));
+            var n = (global::Arcanum.Engine.State.DelayedTrigger)c.Shallow(o);
             return n;
         }
         internal static object C109(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.Players.AttackablePlaneswalker)c.Shallow(o);
+            var n = (global::Arcanum.Engine.Game.MovePlan)c.Shallow(o);
+            A221_MovePlan_Applied(n) = c.Copy(A221_MovePlan_Applied(n));
             return n;
         }
         internal static object C110(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.Players.AttackForbidden)c.Shallow(o);
+            var n = (global::Arcanum.Engine.Players.AttackablePlaneswalker)c.Shallow(o);
             return n;
         }
         internal static object C111(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.Players.AttackRequirement)c.Shallow(o);
+            var n = (global::Arcanum.Engine.Players.AttackForbidden)c.Shallow(o);
             return n;
         }
         internal static object C112(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.State.Player)c.Shallow(o);
-            A221_Player_Library(n) = c.Copy(A221_Player_Library(n));
-            A222_Player_Hand(n) = c.Copy(A222_Player_Hand(n));
-            A223_Player_Graveyard(n) = c.Copy(A223_Player_Graveyard(n));
-            A224_Player_Exile(n) = c.Copy(A224_Player_Exile(n));
-            A225_Player_Command(n) = c.Copy(A225_Player_Command(n));
-            A226_Player_Outside(n) = c.Copy(A226_Player_Outside(n));
-            A227_Player_ManaPool(n) = c.Copy(A227_Player_ManaPool(n));
-            A228_Player_InstantLoyaltySubtypes(n) = c.Copy(A228_Player_InstantLoyaltySubtypes(n));
-            A229_Player_SpellsCastThisTurn(n) = c.Copy(A229_Player_SpellsCastThisTurn(n));
-            A230_Player_SpellManaValuesThisTurn(n) = c.Copy(A230_Player_SpellManaValuesThisTurn(n));
-            A231_Player_SpellTypesThisTurn(n) = c.Copy(A231_Player_SpellTypesThisTurn(n));
-            A232_Player_DrawnThisTurn(n) = c.Copy(A232_Player_DrawnThisTurn(n));
-            A233_Player_TokenDoublingsThisTurn(n) = c.Copy(A233_Player_TokenDoublingsThisTurn(n));
-            A234_Player_SacrificedThisTurn(n) = c.Copy(A234_Player_SacrificedThisTurn(n));
-            A235_Player_PlayersAttackedThisTurn(n) = c.Copy(A235_Player_PlayersAttackedThisTurn(n));
-            A236_Player_PlayersAttackedDuringLastTurn(n) = c.Copy(A236_Player_PlayersAttackedDuringLastTurn(n));
-            A237_Player_CombatDamageSourcesThisTurn(n) = c.Copy(A237_Player_CombatDamageSourcesThisTurn(n));
-            A238_Player_CombatDamagedByNames(n) = c.Copy(A238_Player_CombatDamagedByNames(n));
-            A239_Player_EnteredThisTurn(n) = c.Copy(A239_Player_EnteredThisTurn(n));
-            A240_Player_HexproofFromColorsThisTurn(n) = S9(A240_Player_HexproofFromColorsThisTurn(n), c);
-            A241_Player_CommanderCasts(n) = c.Copy(A241_Player_CommanderCasts(n));
-            A242_Player_CommanderDamageTaken(n) = c.Copy(A242_Player_CommanderDamageTaken(n));
+            var n = (global::Arcanum.Engine.Players.AttackRequirement)c.Shallow(o);
             return n;
         }
         internal static object C113(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.State.AbilityOnStack)c.Shallow(o);
-            A243_AbilityOnStack_ChosenTargets(n) = c.Copy(A243_AbilityOnStack_ChosenTargets(n));
-            A244_AbilityOnStack_Trigger(n) = c.Copy(A244_AbilityOnStack_Trigger(n));
-            A213_StackItem_Targets(n) = c.Copy(A213_StackItem_Targets(n));
-            A214_StackItem_Division(n) = c.Copy(A214_StackItem_Division(n));
-            A215_StackItem_SacrificedForCost(n) = c.Copy(A215_StackItem_SacrificedForCost(n));
-            A216_StackItem_DiscardedForCost(n) = c.Copy(A216_StackItem_DiscardedForCost(n));
-            A217_StackItem_ExiledForCost(n) = c.Copy(A217_StackItem_ExiledForCost(n));
-            A218_StackItem_TappedForCost(n) = c.Copy(A218_StackItem_TappedForCost(n));
+            var n = (global::Arcanum.Engine.State.Player)c.Shallow(o);
+            A222_Player_Library(n) = c.Copy(A222_Player_Library(n));
+            A223_Player_Hand(n) = c.Copy(A223_Player_Hand(n));
+            A224_Player_Graveyard(n) = c.Copy(A224_Player_Graveyard(n));
+            A225_Player_Exile(n) = c.Copy(A225_Player_Exile(n));
+            A226_Player_Command(n) = c.Copy(A226_Player_Command(n));
+            A227_Player_Outside(n) = c.Copy(A227_Player_Outside(n));
+            A228_Player_ManaPool(n) = c.Copy(A228_Player_ManaPool(n));
+            A229_Player_InstantLoyaltySubtypes(n) = c.Copy(A229_Player_InstantLoyaltySubtypes(n));
+            A230_Player_SpellsCastThisTurn(n) = c.Copy(A230_Player_SpellsCastThisTurn(n));
+            A231_Player_SpellManaValuesThisTurn(n) = c.Copy(A231_Player_SpellManaValuesThisTurn(n));
+            A232_Player_SpellTypesThisTurn(n) = c.Copy(A232_Player_SpellTypesThisTurn(n));
+            A233_Player_DrawnThisTurn(n) = c.Copy(A233_Player_DrawnThisTurn(n));
+            A234_Player_TokenDoublingsThisTurn(n) = c.Copy(A234_Player_TokenDoublingsThisTurn(n));
+            A235_Player_SacrificedThisTurn(n) = c.Copy(A235_Player_SacrificedThisTurn(n));
+            A236_Player_PlayersAttackedThisTurn(n) = c.Copy(A236_Player_PlayersAttackedThisTurn(n));
+            A237_Player_PlayersAttackedDuringLastTurn(n) = c.Copy(A237_Player_PlayersAttackedDuringLastTurn(n));
+            A238_Player_CombatDamageSourcesThisTurn(n) = c.Copy(A238_Player_CombatDamageSourcesThisTurn(n));
+            A239_Player_CombatDamagedByNames(n) = c.Copy(A239_Player_CombatDamagedByNames(n));
+            A240_Player_EnteredThisTurn(n) = c.Copy(A240_Player_EnteredThisTurn(n));
+            A241_Player_HexproofFromColorsThisTurn(n) = S9(A241_Player_HexproofFromColorsThisTurn(n), c);
+            A242_Player_CommanderCasts(n) = c.Copy(A242_Player_CommanderCasts(n));
+            A243_Player_CommanderDamageTaken(n) = c.Copy(A243_Player_CommanderDamageTaken(n));
             return n;
         }
         internal static object C114(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.State.UntilEndOfTurnEffect)c.Shallow(o);
-            A245_UntilEndOfTurnEffect_Keywords(n) = c.Copy(A245_UntilEndOfTurnEffect_Keywords(n));
-            A246_UntilEndOfTurnEffect_AddSubtypes(n) = c.Copy(A246_UntilEndOfTurnEffect_AddSubtypes(n));
-            A247_UntilEndOfTurnEffect_SetSubtypes(n) = c.Copy(A247_UntilEndOfTurnEffect_SetSubtypes(n));
-            A248_UntilEndOfTurnEffect_SetColors(n) = c.Copy(A248_UntilEndOfTurnEffect_SetColors(n));
-            A249_UntilEndOfTurnEffect_AddColors(n) = c.Copy(A249_UntilEndOfTurnEffect_AddColors(n));
-            A250_UntilEndOfTurnEffect_Abilities(n) = c.Copy(A250_UntilEndOfTurnEffect_Abilities(n));
-            A251_UntilEndOfTurnEffect_LoseKeywords(n) = c.Copy(A251_UntilEndOfTurnEffect_LoseKeywords(n));
-            A252_UntilEndOfTurnEffect_GrantsMana(n) = c.Copy(A252_UntilEndOfTurnEffect_GrantsMana(n));
-            A253_UntilEndOfTurnEffect_ProtectionFromPlayers(n) = c.Copy(A253_UntilEndOfTurnEffect_ProtectionFromPlayers(n));
+            var n = (global::Arcanum.Engine.State.AbilityOnStack)c.Shallow(o);
+            A244_AbilityOnStack_ChosenTargets(n) = c.Copy(A244_AbilityOnStack_ChosenTargets(n));
+            A245_AbilityOnStack_Trigger(n) = c.Copy(A245_AbilityOnStack_Trigger(n));
+            A214_StackItem_Targets(n) = c.Copy(A214_StackItem_Targets(n));
+            A215_StackItem_Division(n) = c.Copy(A215_StackItem_Division(n));
+            A216_StackItem_SacrificedForCost(n) = c.Copy(A216_StackItem_SacrificedForCost(n));
+            A217_StackItem_DiscardedForCost(n) = c.Copy(A217_StackItem_DiscardedForCost(n));
+            A218_StackItem_ExiledForCost(n) = c.Copy(A218_StackItem_ExiledForCost(n));
+            A219_StackItem_TappedForCost(n) = c.Copy(A219_StackItem_TappedForCost(n));
             return n;
         }
         internal static object C115(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.State.ControlEffect)c.Shallow(o);
+            var n = (global::Arcanum.Engine.State.UntilEndOfTurnEffect)c.Shallow(o);
+            A246_UntilEndOfTurnEffect_Keywords(n) = c.Copy(A246_UntilEndOfTurnEffect_Keywords(n));
+            A247_UntilEndOfTurnEffect_AddSubtypes(n) = c.Copy(A247_UntilEndOfTurnEffect_AddSubtypes(n));
+            A248_UntilEndOfTurnEffect_SetSubtypes(n) = c.Copy(A248_UntilEndOfTurnEffect_SetSubtypes(n));
+            A249_UntilEndOfTurnEffect_SetColors(n) = c.Copy(A249_UntilEndOfTurnEffect_SetColors(n));
+            A250_UntilEndOfTurnEffect_AddColors(n) = c.Copy(A250_UntilEndOfTurnEffect_AddColors(n));
+            A251_UntilEndOfTurnEffect_Abilities(n) = c.Copy(A251_UntilEndOfTurnEffect_Abilities(n));
+            A252_UntilEndOfTurnEffect_LoseKeywords(n) = c.Copy(A252_UntilEndOfTurnEffect_LoseKeywords(n));
+            A253_UntilEndOfTurnEffect_GrantsMana(n) = c.Copy(A253_UntilEndOfTurnEffect_GrantsMana(n));
+            A254_UntilEndOfTurnEffect_ProtectionFromPlayers(n) = c.Copy(A254_UntilEndOfTurnEffect_ProtectionFromPlayers(n));
             return n;
         }
         internal static object C116(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.State.LinkedExile)c.Shallow(o);
+            var n = (global::Arcanum.Engine.State.ControlEffect)c.Shallow(o);
             return n;
         }
         internal static object C117(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.State.DelayedAction)c.Shallow(o);
+            var n = (global::Arcanum.Engine.State.LinkedExile)c.Shallow(o);
             return n;
         }
         internal static object C118(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.State.PlayableFromExile)c.Shallow(o);
+            var n = (global::Arcanum.Engine.State.DelayedAction)c.Shallow(o);
             return n;
         }
         internal static object C119(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.State.ExiledWithPlayRight)c.Shallow(o);
+            var n = (global::Arcanum.Engine.State.PlayableFromExile)c.Shallow(o);
             return n;
         }
         internal static object C120(object o, DeepCopier c)
         {
-            var n = (global::Arcanum.Engine.State.GraveyardCastRight)c.Shallow(o);
+            var n = (global::Arcanum.Engine.State.ExiledWithPlayRight)c.Shallow(o);
             return n;
         }
         internal static object C121(object o, DeepCopier c)
-            => c.CopyArray((global::Arcanum.Engine.Abilities.AbilityDefinition[])o, null);
+        {
+            var n = (global::Arcanum.Engine.State.GraveyardCastRight)c.Shallow(o);
+            return n;
+        }
         internal static object C122(object o, DeepCopier c)
+            => c.CopyArray((global::Arcanum.Engine.Abilities.AbilityDefinition[])o, null);
+        internal static object C123(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.State.ParadigmTrigger)c.Shallow(o);
             return n;
         }
-        internal static object C123(object o, DeepCopier c)
+        internal static object C124(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.State.DamagePrevention)c.Shallow(o);
             return n;
         }
-        internal static object C124(object o, DeepCopier c)
+        internal static object C125(object o, DeepCopier c)
         {
             var s = (global::Arcanum.Engine.State.AttackList)o;
             var n = new global::Arcanum.Engine.State.AttackList();
             c.Remember(o, n);
             c.FillList(s, n, static (x, c) => c.Copy(x));
-            A254_AttackList_AnyEver(n) = A254_AttackList_AnyEver(s);
+            A255_AttackList_AnyEver(n) = A255_AttackList_AnyEver(s);
             return n;
         }
-        internal static object C125(object o, DeepCopier c)
-            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId>>)o);
         internal static object C126(object o, DeepCopier c)
+            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId>>)o);
+        internal static object C127(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.State.PreventionShield)c.Shallow(o);
             return n;
         }
-        internal static object C127(object o, DeepCopier c)
+        internal static object C128(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.State.RedirectShield)c.Shallow(o);
             return n;
         }
-        internal static object C128(object o, DeepCopier c)
+        internal static object C129(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.State.DamageRecord)c.Shallow(o);
             return n;
         }
-        internal static object C129(object o, DeepCopier c)
+        internal static object C130(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.State.AttackPlaneswalkerRequirement)c.Shallow(o);
             return n;
         }
-        internal static object C130(object o, DeepCopier c)
-            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::System.String>)o);
         internal static object C131(object o, DeepCopier c)
+            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::System.String>)o);
+        internal static object C132(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.Game.EffectResults)c.Shallow(o);
-            A255_EffectResults_Sacrificed(n) = c.Copy(A255_EffectResults_Sacrificed(n));
-            A256_EffectResults_Milled(n) = c.Copy(A256_EffectResults_Milled(n));
-            A257_EffectResults_DestroyedCards(n) = c.Copy(A257_EffectResults_DestroyedCards(n));
-            A258_EffectResults_Exiled(n) = c.Copy(A258_EffectResults_Exiled(n));
-            A259_EffectResults_Proliferated(n) = c.Copy(A259_EffectResults_Proliferated(n));
-            A260_EffectResults_PutIntoGraveyard(n) = c.Copy(A260_EffectResults_PutIntoGraveyard(n));
-            A261_EffectResults_Created(n) = c.Copy(A261_EffectResults_Created(n));
-            A262_EffectResults_Discarded(n) = c.Copy(A262_EffectResults_Discarded(n));
-            A263_EffectResults_ExiledForCost(n) = c.Copy(A263_EffectResults_ExiledForCost(n));
-            A264_EffectResults_TappedForCost(n) = c.Copy(A264_EffectResults_TappedForCost(n));
-            A265_EffectResults_HandDiscarders(n) = c.Copy(A265_EffectResults_HandDiscarders(n));
-            A266_EffectResults_Found(n) = c.Copy(A266_EffectResults_Found(n));
-            A267_EffectResults_Entered(n) = c.Copy(A267_EffectResults_Entered(n));
-            A268_EffectResults_AttachedCards(n) = c.Copy(A268_EffectResults_AttachedCards(n));
-            A269_EffectResults_PlayersWhoDrew(n) = c.Copy(A269_EffectResults_PlayersWhoDrew(n));
-            A270_EffectResults_Surveilled(n) = c.Copy(A270_EffectResults_Surveilled(n));
-            A271_EffectResults_FoundStats(n) = c.Copy(A271_EffectResults_FoundStats(n));
-            A272_EffectResults_Returned(n) = c.Copy(A272_EffectResults_Returned(n));
-            A273_EffectResults_Damaged(n) = c.Copy(A273_EffectResults_Damaged(n));
-            A274_EffectResults_Votes(n) = c.Copy(A274_EffectResults_Votes(n));
-            A275_EffectResults_Chosen(n) = c.Copy(A275_EffectResults_Chosen(n));
-            A276_EffectResults_ChosenElsewhere(n) = c.Copy(A276_EffectResults_ChosenElsewhere(n));
-            A277_EffectResults_ControlGained(n) = c.Copy(A277_EffectResults_ControlGained(n));
-            A278_EffectResults_Countered(n) = c.Copy(A278_EffectResults_Countered(n));
-            A279_EffectResults_DamagedPlayers(n) = c.Copy(A279_EffectResults_DamagedPlayers(n));
+            A256_EffectResults_Sacrificed(n) = c.Copy(A256_EffectResults_Sacrificed(n));
+            A257_EffectResults_Milled(n) = c.Copy(A257_EffectResults_Milled(n));
+            A258_EffectResults_DestroyedCards(n) = c.Copy(A258_EffectResults_DestroyedCards(n));
+            A259_EffectResults_Exiled(n) = c.Copy(A259_EffectResults_Exiled(n));
+            A260_EffectResults_Proliferated(n) = c.Copy(A260_EffectResults_Proliferated(n));
+            A261_EffectResults_PutIntoGraveyard(n) = c.Copy(A261_EffectResults_PutIntoGraveyard(n));
+            A262_EffectResults_Created(n) = c.Copy(A262_EffectResults_Created(n));
+            A263_EffectResults_Discarded(n) = c.Copy(A263_EffectResults_Discarded(n));
+            A264_EffectResults_ExiledForCost(n) = c.Copy(A264_EffectResults_ExiledForCost(n));
+            A265_EffectResults_TappedForCost(n) = c.Copy(A265_EffectResults_TappedForCost(n));
+            A266_EffectResults_HandDiscarders(n) = c.Copy(A266_EffectResults_HandDiscarders(n));
+            A267_EffectResults_Found(n) = c.Copy(A267_EffectResults_Found(n));
+            A268_EffectResults_Entered(n) = c.Copy(A268_EffectResults_Entered(n));
+            A269_EffectResults_AttachedCards(n) = c.Copy(A269_EffectResults_AttachedCards(n));
+            A270_EffectResults_PlayersWhoDrew(n) = c.Copy(A270_EffectResults_PlayersWhoDrew(n));
+            A271_EffectResults_Surveilled(n) = c.Copy(A271_EffectResults_Surveilled(n));
+            A272_EffectResults_FoundStats(n) = c.Copy(A272_EffectResults_FoundStats(n));
+            A273_EffectResults_Returned(n) = c.Copy(A273_EffectResults_Returned(n));
+            A274_EffectResults_Damaged(n) = c.Copy(A274_EffectResults_Damaged(n));
+            A275_EffectResults_Votes(n) = c.Copy(A275_EffectResults_Votes(n));
+            A276_EffectResults_Chosen(n) = c.Copy(A276_EffectResults_Chosen(n));
+            A277_EffectResults_ChosenElsewhere(n) = c.Copy(A277_EffectResults_ChosenElsewhere(n));
+            A278_EffectResults_ControlGained(n) = c.Copy(A278_EffectResults_ControlGained(n));
+            A279_EffectResults_Countered(n) = c.Copy(A279_EffectResults_Countered(n));
+            A280_EffectResults_DamagedPlayers(n) = c.Copy(A280_EffectResults_DamagedPlayers(n));
             return n;
         }
-        internal static object C132(object o, DeepCopier c)
-            => c.CopyArray((global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>[])o, null);
         internal static object C133(object o, DeepCopier c)
-            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.TriggeredAbility>)o);
+            => c.CopyArray((global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>[])o, null);
         internal static object C134(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaType>)o, null);
+            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.TriggeredAbility>)o);
         internal static object C135(object o, DeepCopier c)
-            => c.CopyArray((global::Arcanum.Engine.Mana.ManaType[])o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaType>)o, null);
         internal static object C136(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaCost>)o, null);
+            => c.CopyArray((global::Arcanum.Engine.Mana.ManaType[])o, null);
         internal static object C137(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.Int32>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaCost>)o, null);
         internal static object C138(object o, DeepCopier c)
-            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Abilities.CounterKind, global::System.Int32>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.Int32>)o, null);
         internal static object C139(object o, DeepCopier c)
-            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::System.Int32, global::System.Int32>)o, null);
+            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Abilities.CounterKind, global::System.Int32>)o, null);
         internal static object C140(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.ObjectFilter>)o, null);
+            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::System.Int32, global::System.Int32>)o, null);
         internal static object C141(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::System.String, global::Arcanum.Engine.Core.CardId>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.ObjectFilter>)o, null);
         internal static object C142(object o, DeepCopier c)
-            => c.CopyArray((global::System.String[])o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::System.String, global::Arcanum.Engine.Core.CardId>>)o, null);
         internal static object C143(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.ManaOption>)o, null);
+            => c.CopyArray((global::System.String[])o, null);
         internal static object C144(object o, DeepCopier c)
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.ManaOption>)o, null);
+        internal static object C145(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.State.LastKnown)c.Shallow(o);
-            A280_LastKnown_Counters(n) = c.Copy(A280_LastKnown_Counters(n));
-            A281_LastKnown_Subtypes(n) = c.Copy(A281_LastKnown_Subtypes(n));
-            A282_LastKnown_Abilities(n) = c.Copy(A282_LastKnown_Abilities(n));
-            A283_LastKnown_Colors(n) = c.Copy(A283_LastKnown_Colors(n));
-            A284_LastKnown_Keywords(n) = c.Copy(A284_LastKnown_Keywords(n));
+            A281_LastKnown_Counters(n) = c.Copy(A281_LastKnown_Counters(n));
+            A282_LastKnown_Subtypes(n) = c.Copy(A282_LastKnown_Subtypes(n));
+            A283_LastKnown_Abilities(n) = c.Copy(A283_LastKnown_Abilities(n));
+            A284_LastKnown_Colors(n) = c.Copy(A284_LastKnown_Colors(n));
+            A285_LastKnown_Keywords(n) = c.Copy(A285_LastKnown_Keywords(n));
             return n;
         }
-        internal static object C145(object o, DeepCopier c)
-            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::System.Int32, global::Arcanum.Engine.State.LastKnown>)o, static (x, c) => c.Copy(x));
         internal static object C146(object o, DeepCopier c)
-            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Abilities.AbilityDefinition, global::System.Int32>)o, null);
+            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::System.Int32, global::Arcanum.Engine.State.LastKnown>)o, static (x, c) => c.Copy(x));
         internal static object C147(object o, DeepCopier c)
-            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.Effect>)o);
+            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Abilities.AbilityDefinition, global::System.Int32>)o, null);
         internal static object C148(object o, DeepCopier c)
-            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.AbilityDefinition>)o);
+            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.Effect>)o);
         internal static object C149(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.CounterKind>)o, null);
+            => c.CopyHashSet((global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.AbilityDefinition>)o);
         internal static object C150(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.CounterKind>)o, null);
         internal static object C151(object o, DeepCopier c)
-            => c.CopyArray((global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>[])o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>>)o, null);
         internal static object C152(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.ChosenTarget>)o, null);
+            => c.CopyArray((global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>[])o, null);
         internal static object C153(object o, DeepCopier c)
-            => c.CopyArray((global::Arcanum.Engine.State.ChosenTarget[])o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.State.ChosenTarget>)o, null);
         internal static object C154(object o, DeepCopier c)
-            => c.CopyArray((global::System.Int32[])o, null);
+            => c.CopyArray((global::Arcanum.Engine.State.ChosenTarget[])o, null);
         internal static object C155(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Game.ZoneReplacement>)o, static (x, c) => S10(x, c));
+            => c.CopyArray((global::System.Int32[])o, null);
         internal static object C156(object o, DeepCopier c)
-            => c.CopyArray((global::Arcanum.Engine.Game.ZoneReplacement[])o, static (x, c) => S10(x, c));
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Game.ZoneReplacement>)o, static (x, c) => S10(x, c));
         internal static object C157(object o, DeepCopier c)
+            => c.CopyArray((global::Arcanum.Engine.Game.ZoneReplacement[])o, static (x, c) => S10(x, c));
+        internal static object C158(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.Mana.ManaPool)c.Shallow(o);
-            A285_ManaPool_amounts(n) = c.Copy(A285_ManaPool_amounts(n));
-            A286_ManaPool_special(n) = c.Copy(A286_ManaPool_special(n));
-            A287_ManaPool_untilEndOfTurn(n) = c.Copy(A287_ManaPool_untilEndOfTurn(n));
+            A286_ManaPool_amounts(n) = c.Copy(A286_ManaPool_amounts(n));
+            A287_ManaPool_special(n) = c.Copy(A287_ManaPool_special(n));
+            A288_ManaPool_untilEndOfTurn(n) = c.Copy(A288_ManaPool_untilEndOfTurn(n));
             return n;
         }
-        internal static object C158(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.CardType>)o, null);
         internal static object C159(object o, DeepCopier c)
-            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.Int32>)o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.CardType>)o, null);
         internal static object C160(object o, DeepCopier c)
-            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.Keyword>)o, null);
+            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.Int32>)o, null);
         internal static object C161(object o, DeepCopier c)
-            => c.CopyArray((global::Arcanum.Engine.Cards.Keyword[])o, null);
+            => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.Keyword>)o, null);
         internal static object C162(object o, DeepCopier c)
+            => c.CopyArray((global::Arcanum.Engine.Cards.Keyword[])o, null);
+        internal static object C163(object o, DeepCopier c)
         {
             var n = (global::Arcanum.Engine.State.AttackInfo)c.Shallow(o);
-            A288_AttackInfo_Blockers(n) = c.Copy(A288_AttackInfo_Blockers(n));
+            A289_AttackInfo_Blockers(n) = c.Copy(A289_AttackInfo_Blockers(n));
             return n;
         }
-        internal static object C163(object o, DeepCopier c)
-            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.ValueTuple<global::System.Int32, global::System.Int32>>)o, null);
         internal static object C164(object o, DeepCopier c)
+            => c.CopyDictionary((global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.ValueTuple<global::System.Int32, global::System.Int32>>)o, null);
+        internal static object C165(object o, DeepCopier c)
             => c.CopyList((global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaUnit>)o, null);
         private static global::System.ValueTuple<global::Arcanum.Engine.State.Card, global::System.Int32> S0(global::System.ValueTuple<global::Arcanum.Engine.State.Card, global::System.Int32> v, DeepCopier c)
         {
@@ -968,7 +972,7 @@ public sealed partial class Game
         }
         private static global::Arcanum.Engine.Game.ZoneReplacement S10(global::Arcanum.Engine.Game.ZoneReplacement v, DeepCopier c)
         {
-            A289_ZoneReplacement_By(ref v) = c.Copy(A289_ZoneReplacement_By(ref v));
+            A290_ZoneReplacement_By(ref v) = c.Copy(A290_ZoneReplacement_By(ref v));
             return v;
         }
         [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_freeFromExileUsed")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>> A0_Game_freeFromExileUsed(global::Arcanum.Engine.Game o);
@@ -1026,240 +1030,241 @@ public sealed partial class Game
         [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_movePlans")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.ValueTuple<global::Arcanum.Engine.State.Zone, global::Arcanum.Engine.Game.MovePlan>> A52_Game_movePlans(global::Arcanum.Engine.Game o);
         [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_pendingReadAhead")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Int32> A53_Game_pendingReadAhead(global::Arcanum.Engine.Game o);
         [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_pendingCopies")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::Arcanum.Engine.Cards.CardDefinition> A54_Game_pendingCopies(global::Arcanum.Engine.Game o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_deferredEnters")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Boolean>> A55_Game_deferredEnters(global::Arcanum.Engine.Game o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Attackers>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A56_AttackRequest_Attackers(global::Arcanum.Engine.Players.AttackRequest o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Defenders>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.PlayerId> A57_AttackRequest_Defenders(global::Arcanum.Engine.Players.AttackRequest o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Planeswalkers>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Players.AttackablePlaneswalker> A58_AttackRequest_Planeswalkers(global::Arcanum.Engine.Players.AttackRequest o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Forbidden>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Players.AttackForbidden> A59_AttackRequest_Forbidden(global::Arcanum.Engine.Players.AttackRequest o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CantAttackAlone>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A60_AttackRequest_CantAttackAlone(global::Arcanum.Engine.Players.AttackRequest o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<OneAttackerPlaneswalkers>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A61_AttackRequest_OneAttackerPlaneswalkers(global::Arcanum.Engine.Players.AttackRequest o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Requirements>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Players.AttackRequirement> A62_AttackRequest_Requirements(global::Arcanum.Engine.Players.AttackRequest o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Taxed>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.PlayerId> A63_AttackRequest_Taxed(global::Arcanum.Engine.Players.AttackRequest o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Players>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.State.Player> A64_GameState_Players(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Cards>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.State.Card> A65_GameState_Cards(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Battlefield>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A66_GameState_Battlefield(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Stack>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.StackItem> A67_GameState_Stack(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<UntilEndOfTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.UntilEndOfTurnEffect> A68_GameState_UntilEndOfTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LastingEffects>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.UntilEndOfTurnEffect> A69_GameState_LastingEffects(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExtraTurns>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId> A70_GameState_ExtraTurns(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ControlEffects>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.ControlEffect> A71_GameState_ControlEffects(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LastTurnOf>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.PlayerId, global::System.Int32> A72_GameState_LastTurnOf(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LinkedExiles>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.LinkedExile> A73_GameState_LinkedExiles(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtNextEndStep>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedAction> A74_GameState_AtNextEndStep(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlayableFromExile>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.PlayableFromExile> A75_GameState_PlayableFromExile(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExiledWithPlayRights>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.ExiledWithPlayRight> A76_GameState_ExiledWithPlayRights(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlayableFromGraveyard>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.PlayableFromExile> A77_GameState_PlayableFromGraveyard(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<FlashbackGranted>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.PlayableFromExile> A78_GameState_FlashbackGranted(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CopyNextInstantOrSorcery>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Int32, global::System.Boolean>> A79_GameState_CopyNextInstantOrSorcery(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DamageDoubledAgainst>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.CardId>> A80_GameState_DamageDoubledAgainst(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CrewedThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.CardId, global::System.Int32>> A81_GameState_CrewedThisTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TargetedThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A82_GameState_TargetedThisTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttackersThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>> A83_GameState_AttackersThisTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<FinalityOnEnter>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A84_GameState_FinalityOnEnter(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SunburstOnEnter>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A85_GameState_SunburstOnEnter(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<EntersTappedFromStack>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A86_GameState_EntersTappedFromStack(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<WhenDiesThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32, global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Abilities.TriggeredAbility, global::System.Boolean>> A87_GameState_WhenDiesThisTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<HarmonizeGranted>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>> A88_GameState_HarmonizeGranted(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttackTaxesUntilNextTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Mana.ManaCost>> A89_GameState_AttackTaxesUntilNextTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GraveyardCastsUsed>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>> A90_GameState_GraveyardCastsUsed(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LoreCounterTurns>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>> A91_GameState_LoreCounterTurns(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<NextCreatureSpell>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Boolean, global::System.Int32>> A92_GameState_NextCreatureSpell(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<UnattachWhenControlLost>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::Arcanum.Engine.Core.CardId>> A93_GameState_UnattachWhenControlLost(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Emblems>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A94_GameState_Emblems(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<EmblemsUntilEndOfTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A95_GameState_EmblemsUntilEndOfTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<EmblemsUntilOwnersNextTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A96_GameState_EmblemsUntilOwnersNextTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<EmblemsUntilEndOfOwnersNextTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A97_GameState_EmblemsUntilEndOfOwnersNextTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlaneswalkerAttackBans>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.String, global::System.Int32>> A98_GameState_PlaneswalkerAttackBans(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PendingEnterChoices>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A99_GameState_PendingEnterChoices(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExileIfDies>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A100_GameState_ExileIfDies(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExileIfLeaves>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A101_GameState_ExileIfLeaves(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GraveyardCastRights>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.GraveyardCastRight> A102_GameState_GraveyardCastRights(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CantBlockThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Abilities.ObjectFilter, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A103_GameState_CantBlockThisTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CounterBans>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId?, global::System.Int32, global::Arcanum.Engine.Core.PlayerId?, global::Arcanum.Engine.Core.CardId, global::System.Int32>> A104_GameState_CounterBans(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExileUncastEntering>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Abilities.ObjectFilter, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A105_GameState_ExileUncastEntering(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PhasedOut>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId>> A106_GameState_PhasedOut(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SacrificeAtEndOfCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A107_GameState_SacrificeAtEndOfCombat(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CantSacrificeThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A108_GameState_CantSacrificeThisTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExileInsteadOfGraveyard>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A109_GameState_ExileInsteadOfGraveyard(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<BottomInsteadOfGraveyard>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A110_GameState_BottomInsteadOfGraveyard(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AbilitiesOnEnter>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.AbilityDefinition>> A111_GameState_AbilitiesOnEnter(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SuspendOnResolution>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Int32> A112_GameState_SuspendOnResolution(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExileWithCounterOnResolution>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::Arcanum.Engine.Abilities.CounterKind> A113_GameState_ExileWithCounterOnResolution(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExileAtEndOfCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A114_GameState_ExileAtEndOfCombat(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SpellsForbiddenFor>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A115_GameState_SpellsForbiddenFor(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<NoncreatureSpellsForbiddenFor>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A116_GameState_NoncreatureSpellsForbiddenFor(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtNextUpkeep>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedTrigger> A117_GameState_AtNextUpkeep(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtEndOfCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedTrigger> A118_GameState_AtEndOfCombat(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Paradigms>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.ParadigmTrigger> A119_GameState_Paradigms(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtYourNextMainPhase>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedTrigger> A120_GameState_AtYourNextMainPhase(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<WhenDealsCombatDamageThisCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::System.Int32>> A121_GameState_WhenDealsCombatDamageThisCombat(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<WhenYourCreatureDealsCombatDamageThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::System.Int32>> A122_GameState_WhenYourCreatureDealsCombatDamageThisTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<WhenNextCast>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Abilities.ObjectFilter, global::System.Int32>> A123_GameState_WhenNextCast(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AurasAtDeath>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId>> A124_GameState_AurasAtDeath(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ResolvedSpellNames>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>> A125_GameState_ResolvedSpellNames(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtNextEndStepTriggers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedTrigger> A126_GameState_AtNextEndStepTriggers(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtNextDeclareAttackers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Core.PlayerId>> A127_GameState_AtNextDeclareAttackers(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtNextEndStepEffects>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.Effect>, global::Arcanum.Engine.Abilities.Condition, global::System.Int32?>> A128_GameState_AtNextEndStepEffects(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<NextCreatureSpellBonus>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String, global::System.Int32>> A129_GameState_NextCreatureSpellBonus(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExtraCountersOnEnter>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Int32> A130_GameState_ExtraCountersOnEnter(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<HasteAndSacrificeOnEnter>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A131_GameState_HasteAndSacrificeOnEnter(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TokensCreatedOnTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.PlayerId, global::System.Int32> A132_GameState_TokensCreatedOnTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtPlayersNextEndStep>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Boolean>> A133_GameState_AtPlayersNextEndStep(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DamagePreventions>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DamagePrevention> A134_GameState_DamagePreventions(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CombatDamagePrevented>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A135_GameState_CombatDamagePrevented(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Combat>k__BackingField")] private static extern ref global::Arcanum.Engine.State.CombatState A136_GameState_Combat(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CreatureDeathsThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A137_GameState_CreatureDeathsThisTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PendingPlayerControl>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.Int64>> A138_GameState_PendingPlayerControl(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<BlocksThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.CardId, global::System.Int32>> A139_GameState_BlocksThisTurn(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttackPlayerRequirements>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A140_GameState_AttackPlayerRequirements(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttackPlayerThisCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A141_GameState_AttackPlayerThisCombat(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttacksThisCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>> A142_GameState_AttacksThisCombat(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<NextCombatRules>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A143_GameState_NextCombatRules(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SkipNextUntap>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId?>> A144_GameState_SkipNextUntap(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Goads>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId>> A145_GameState_Goads(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GoadsForever>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId>> A146_GameState_GoadsForever(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<OpponentsCreaturesMustAttackOthers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId> A147_GameState_OpponentsCreaturesMustAttackOthers(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CreatureDiesThisTurnTriggers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Abilities.TriggeredAbility, global::System.Int32>> A148_GameState_CreatureDiesThisTurnTriggers(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PreventionShields>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.PreventionShield> A149_GameState_PreventionShields(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<RedirectShields>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.RedirectShield> A150_GameState_RedirectShields(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DamageTripled>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A151_GameState_DamageTripled(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExiledUntilOpponentIsMonarch>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId>> A152_GameState_ExiledUntilOpponentIsMonarch(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DamageLog>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DamageRecord> A153_GameState_DamageLog(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CantAttackThisCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Int32>> A154_GameState_CantAttackThisCombat(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttackPlaneswalkerRequirements>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.AttackPlaneswalkerRequirement> A155_GameState_AttackPlaneswalkerRequirements(global::Arcanum.Engine.State.GameState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Attacks>k__BackingField")] private static extern ref global::Arcanum.Engine.State.AttackList A156_CombatState_Attacks(global::Arcanum.Engine.State.CombatState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Unblockable>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A157_CombatState_Unblockable(global::Arcanum.Engine.State.CombatState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Declared>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A158_CombatState_Declared(global::Arcanum.Engine.State.CombatState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlayersAttacked>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId>> A159_CombatState_PlayersAttacked(global::Arcanum.Engine.State.CombatState o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Source>k__BackingField")] private static extern ref global::Arcanum.Engine.State.Card A160_DamagePart_Source(global::Arcanum.Engine.Game.DamagePart o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ToCard>k__BackingField")] private static extern ref global::Arcanum.Engine.State.Card A161_DamagePart_ToCard(global::Arcanum.Engine.Game.DamagePart o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Applied>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlySet<global::System.String> A162_DamagePart_Applied(global::Arcanum.Engine.Game.DamagePart o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Report>k__BackingField")] private static extern ref global::Arcanum.Engine.Game.EffectResults A163_DamagePart_Report(global::Arcanum.Engine.Game.DamagePart o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<MeldPartner>k__BackingField")] private static extern ref global::Arcanum.Engine.State.Card A164_Card_MeldPartner(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Beheld>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A165_Card_Beheld(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CombatDamagedPlayers>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A166_Card_CombatDamagedPlayers(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ChosenModes>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.Int32> A167_Card_ChosenModes(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ActivatedEver>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.Int32> A168_Card_ActivatedEver(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TriggeredEver>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.TriggeredAbility> A169_Card_TriggeredEver(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SpentManaTypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A170_Card_SpentManaTypes(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<KnownTo>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A171_Card_KnownTo(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantedWards>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaCost> A172_Card_GrantedWards(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantedWardLives>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.Int32> A173_Card_GrantedWardLives(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Counters>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Abilities.CounterKind, global::System.Int32> A174_Card_Counters(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantedKeywords>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Cards.Keyword> A175_Card_GrantedKeywords(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LostKeywords>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Cards.Keyword> A176_Card_LostKeywords(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ActivationsThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.Int32, global::System.Int32> A177_Card_ActivationsThisTurn(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<UnblockableBy>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A178_Card_UnblockableBy(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<BlockRestrictions>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.ObjectFilter> A179_Card_BlockRestrictions(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CantAttackPlayers>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A180_Card_CantAttackPlayers(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ProtectedFromPlayers>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A181_Card_ProtectedFromPlayers(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AuraColorProtections>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::System.String, global::Arcanum.Engine.Core.CardId>> A182_Card_AuraColorProtections(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<StaticGoaders>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A183_Card_StaticGoaders(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CantAttackPlayersAndPlaneswalkers>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A184_Card_CantAttackPlayersAndPlaneswalkers(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantedSubtypes>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.String> A185_Card_GrantedSubtypes(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SubtypesOverride>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A186_Card_SubtypesOverride(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ColorsOverride>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A187_Card_ColorsOverride(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantedAbilities>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.AbilityDefinition> A188_Card_GrantedAbilities(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantedManaOptions>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.ManaOption> A189_Card_GrantedManaOptions(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<HexproofFromColorsThisTurn>k__BackingField")] private static extern ref global::System.ValueTuple<global::System.Int32, global::System.Collections.Generic.IReadOnlyList<global::System.String>> A190_Card_HexproofFromColorsThisTurn(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ChosenCreatureTypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyCollection<global::System.String> A191_Card_ChosenCreatureTypes(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LastKnownInfo>k__BackingField")] private static extern ref global::Arcanum.Engine.State.LastKnown A192_Card_LastKnownInfo(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_lastKnownByVersion")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.Int32, global::Arcanum.Engine.State.LastKnown> A193_Card_lastKnownByVersion(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ResolvedThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Abilities.AbilityDefinition, global::System.Int32> A194_Card_ResolvedThisTurn(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AddedColors>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A195_Card_AddedColors(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CommanderIdentityTypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A196_Card_CommanderIdentityTypes(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<OpponentsLandColors>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A197_Card_OpponentsLandColors(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<YourLandTypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A198_Card_YourLandTypes(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<InactiveManaOptions>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.Int32> A199_Card_InactiveManaOptions(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ColorsAmongYourPermanents>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A200_Card_ColorsAmongYourPermanents(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ColorsAmongGraveyardLegends>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A201_Card_ColorsAmongGraveyardLegends(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<NotedTypes>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.String> A202_Card_NotedTypes(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DoneThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.Effect> A203_Card_DoneThisTurn(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CounterPuttersThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A204_Card_CounterPuttersThisTurn(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Convokers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A205_Card_Convokers(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ActivatedThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.Int32> A206_Card_ActivatedThisTurn(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TriggeredThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.AbilityDefinition> A207_Card_TriggeredThisTurn(global::Arcanum.Engine.State.Card o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CounterKinds>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.CounterKind> A208_TriggerInfo_CounterKinds(global::Arcanum.Engine.State.TriggerInfo o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Batch>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A209_TriggerInfo_Batch(global::Arcanum.Engine.State.TriggerInfo o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Found>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A210_TriggerInfo_Found(global::Arcanum.Engine.State.TriggerInfo o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Votes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>> A211_TriggerInfo_Votes(global::Arcanum.Engine.State.TriggerInfo o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ChosenTargets>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.State.ChosenTarget> A212_SpellOnStack_ChosenTargets(global::Arcanum.Engine.State.SpellOnStack o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Targets>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.State.ChosenTarget> A213_StackItem_Targets(global::Arcanum.Engine.State.StackItem o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Division>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.Int32> A214_StackItem_Division(global::Arcanum.Engine.State.StackItem o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SacrificedForCost>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A215_StackItem_SacrificedForCost(global::Arcanum.Engine.State.StackItem o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DiscardedForCost>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A216_StackItem_DiscardedForCost(global::Arcanum.Engine.State.StackItem o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExiledForCost>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A217_StackItem_ExiledForCost(global::Arcanum.Engine.State.StackItem o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TappedForCost>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A218_StackItem_TappedForCost(global::Arcanum.Engine.State.StackItem o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Info>k__BackingField")] private static extern ref global::Arcanum.Engine.State.TriggerInfo A219_PendingTrigger_Info(global::Arcanum.Engine.Game.PendingTrigger o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Applied>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Game.ZoneReplacement> A220_MovePlan_Applied(global::Arcanum.Engine.Game.MovePlan o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Library>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A221_Player_Library(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Hand>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A222_Player_Hand(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Graveyard>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A223_Player_Graveyard(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Exile>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A224_Player_Exile(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Command>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A225_Player_Command(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Outside>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A226_Player_Outside(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ManaPool>k__BackingField")] private static extern ref global::Arcanum.Engine.Mana.ManaPool A227_Player_ManaPool(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<InstantLoyaltySubtypes>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.String> A228_Player_InstantLoyaltySubtypes(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SpellsCastThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A229_Player_SpellsCastThisTurn(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SpellManaValuesThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.Int32> A230_Player_SpellManaValuesThisTurn(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SpellTypesThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.CardType> A231_Player_SpellTypesThisTurn(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DrawnThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A232_Player_DrawnThisTurn(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TokenDoublingsThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.Int32> A233_Player_TokenDoublingsThisTurn(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SacrificedThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A234_Player_SacrificedThisTurn(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlayersAttackedThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A235_Player_PlayersAttackedThisTurn(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlayersAttackedDuringLastTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A236_Player_PlayersAttackedDuringLastTurn(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CombatDamageSourcesThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A237_Player_CombatDamageSourcesThisTurn(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CombatDamagedByNames>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.String> A238_Player_CombatDamagedByNames(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<EnteredThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A239_Player_EnteredThisTurn(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<HexproofFromColorsThisTurn>k__BackingField")] private static extern ref global::System.ValueTuple<global::System.Int32, global::System.Collections.Generic.IReadOnlyList<global::System.String>> A240_Player_HexproofFromColorsThisTurn(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CommanderCasts>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.Int32> A241_Player_CommanderCasts(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CommanderDamageTaken>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.Int32> A242_Player_CommanderDamageTaken(global::Arcanum.Engine.State.Player o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ChosenTargets>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.State.ChosenTarget> A243_AbilityOnStack_ChosenTargets(global::Arcanum.Engine.State.AbilityOnStack o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Trigger>k__BackingField")] private static extern ref global::Arcanum.Engine.State.TriggerInfo A244_AbilityOnStack_Trigger(global::Arcanum.Engine.State.AbilityOnStack o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Keywords>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Cards.Keyword> A245_UntilEndOfTurnEffect_Keywords(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AddSubtypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A246_UntilEndOfTurnEffect_AddSubtypes(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SetSubtypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A247_UntilEndOfTurnEffect_SetSubtypes(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SetColors>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A248_UntilEndOfTurnEffect_SetColors(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AddColors>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A249_UntilEndOfTurnEffect_AddColors(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Abilities>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.AbilityDefinition> A250_UntilEndOfTurnEffect_Abilities(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LoseKeywords>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Cards.Keyword> A251_UntilEndOfTurnEffect_LoseKeywords(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantsMana>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A252_UntilEndOfTurnEffect_GrantsMana(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ProtectionFromPlayers>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.PlayerId> A253_UntilEndOfTurnEffect_ProtectionFromPlayers(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AnyEver>k__BackingField")] private static extern ref global::System.Boolean A254_AttackList_AnyEver(global::Arcanum.Engine.State.AttackList o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Sacrificed>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A255_EffectResults_Sacrificed(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Milled>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A256_EffectResults_Milled(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DestroyedCards>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A257_EffectResults_DestroyedCards(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Exiled>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A258_EffectResults_Exiled(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Proliferated>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A259_EffectResults_Proliferated(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PutIntoGraveyard>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A260_EffectResults_PutIntoGraveyard(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Created>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A261_EffectResults_Created(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Discarded>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A262_EffectResults_Discarded(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExiledForCost>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A263_EffectResults_ExiledForCost(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TappedForCost>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A264_EffectResults_TappedForCost(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<HandDiscarders>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId> A265_EffectResults_HandDiscarders(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Found>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A266_EffectResults_Found(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Entered>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A267_EffectResults_Entered(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttachedCards>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A268_EffectResults_AttachedCards(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlayersWhoDrew>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId> A269_EffectResults_PlayersWhoDrew(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Surveilled>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A270_EffectResults_Surveilled(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<FoundStats>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.ValueTuple<global::System.Int32, global::System.Int32>> A271_EffectResults_FoundStats(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Returned>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A272_EffectResults_Returned(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Damaged>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A273_EffectResults_Damaged(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Votes>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>> A274_EffectResults_Votes(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Chosen>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A275_EffectResults_Chosen(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ChosenElsewhere>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A276_EffectResults_ChosenElsewhere(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ControlGained>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A277_EffectResults_ControlGained(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Countered>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A278_EffectResults_Countered(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DamagedPlayers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId> A279_EffectResults_DamagedPlayers(global::Arcanum.Engine.Game.EffectResults o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Counters>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyDictionary<global::Arcanum.Engine.Abilities.CounterKind, global::System.Int32> A280_LastKnown_Counters(global::Arcanum.Engine.State.LastKnown o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Subtypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A281_LastKnown_Subtypes(global::Arcanum.Engine.State.LastKnown o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Abilities>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.AbilityDefinition> A282_LastKnown_Abilities(global::Arcanum.Engine.State.LastKnown o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Colors>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A283_LastKnown_Colors(global::Arcanum.Engine.State.LastKnown o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Keywords>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlySet<global::Arcanum.Engine.Cards.Keyword> A284_LastKnown_Keywords(global::Arcanum.Engine.State.LastKnown o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_amounts")] private static extern ref global::System.Int32[] A285_ManaPool_amounts(global::Arcanum.Engine.Mana.ManaPool o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_special")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaUnit> A286_ManaPool_special(global::Arcanum.Engine.Mana.ManaPool o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_untilEndOfTurn")] private static extern ref global::System.Int32[] A287_ManaPool_untilEndOfTurn(global::Arcanum.Engine.Mana.ManaPool o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Blockers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A288_AttackInfo_Blockers(global::Arcanum.Engine.State.AttackInfo o);
-        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<By>k__BackingField")] private static extern ref global::Arcanum.Engine.State.Card A289_ZoneReplacement_By(ref global::Arcanum.Engine.Game.ZoneReplacement o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_pendingCopyOrigins")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A55_Game_pendingCopyOrigins(global::Arcanum.Engine.Game o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_deferredEnters")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Boolean>> A56_Game_deferredEnters(global::Arcanum.Engine.Game o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Attackers>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A57_AttackRequest_Attackers(global::Arcanum.Engine.Players.AttackRequest o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Defenders>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.PlayerId> A58_AttackRequest_Defenders(global::Arcanum.Engine.Players.AttackRequest o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Planeswalkers>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Players.AttackablePlaneswalker> A59_AttackRequest_Planeswalkers(global::Arcanum.Engine.Players.AttackRequest o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Forbidden>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Players.AttackForbidden> A60_AttackRequest_Forbidden(global::Arcanum.Engine.Players.AttackRequest o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CantAttackAlone>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A61_AttackRequest_CantAttackAlone(global::Arcanum.Engine.Players.AttackRequest o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<OneAttackerPlaneswalkers>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A62_AttackRequest_OneAttackerPlaneswalkers(global::Arcanum.Engine.Players.AttackRequest o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Requirements>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Players.AttackRequirement> A63_AttackRequest_Requirements(global::Arcanum.Engine.Players.AttackRequest o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Taxed>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.PlayerId> A64_AttackRequest_Taxed(global::Arcanum.Engine.Players.AttackRequest o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Players>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.State.Player> A65_GameState_Players(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Cards>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.State.Card> A66_GameState_Cards(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Battlefield>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A67_GameState_Battlefield(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Stack>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.StackItem> A68_GameState_Stack(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<UntilEndOfTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.UntilEndOfTurnEffect> A69_GameState_UntilEndOfTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LastingEffects>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.UntilEndOfTurnEffect> A70_GameState_LastingEffects(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExtraTurns>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId> A71_GameState_ExtraTurns(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ControlEffects>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.ControlEffect> A72_GameState_ControlEffects(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LastTurnOf>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.PlayerId, global::System.Int32> A73_GameState_LastTurnOf(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LinkedExiles>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.LinkedExile> A74_GameState_LinkedExiles(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtNextEndStep>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedAction> A75_GameState_AtNextEndStep(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlayableFromExile>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.PlayableFromExile> A76_GameState_PlayableFromExile(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExiledWithPlayRights>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.ExiledWithPlayRight> A77_GameState_ExiledWithPlayRights(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlayableFromGraveyard>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.PlayableFromExile> A78_GameState_PlayableFromGraveyard(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<FlashbackGranted>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.PlayableFromExile> A79_GameState_FlashbackGranted(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CopyNextInstantOrSorcery>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Int32, global::System.Boolean>> A80_GameState_CopyNextInstantOrSorcery(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DamageDoubledAgainst>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.CardId>> A81_GameState_DamageDoubledAgainst(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CrewedThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.CardId, global::System.Int32>> A82_GameState_CrewedThisTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TargetedThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A83_GameState_TargetedThisTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttackersThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>> A84_GameState_AttackersThisTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<FinalityOnEnter>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A85_GameState_FinalityOnEnter(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SunburstOnEnter>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A86_GameState_SunburstOnEnter(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<EntersTappedFromStack>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A87_GameState_EntersTappedFromStack(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<WhenDiesThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32, global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Abilities.TriggeredAbility, global::System.Boolean, global::System.ValueTuple<global::System.Boolean>>> A88_GameState_WhenDiesThisTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<HarmonizeGranted>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>> A89_GameState_HarmonizeGranted(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttackTaxesUntilNextTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Mana.ManaCost>> A90_GameState_AttackTaxesUntilNextTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GraveyardCastsUsed>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>> A91_GameState_GraveyardCastsUsed(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LoreCounterTurns>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>> A92_GameState_LoreCounterTurns(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<NextCreatureSpell>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Boolean, global::System.Int32>> A93_GameState_NextCreatureSpell(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<UnattachWhenControlLost>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::Arcanum.Engine.Core.CardId>> A94_GameState_UnattachWhenControlLost(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Emblems>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A95_GameState_Emblems(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<EmblemsUntilEndOfTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A96_GameState_EmblemsUntilEndOfTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<EmblemsUntilOwnersNextTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A97_GameState_EmblemsUntilOwnersNextTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<EmblemsUntilEndOfOwnersNextTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A98_GameState_EmblemsUntilEndOfOwnersNextTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlaneswalkerAttackBans>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.String, global::System.Int32>> A99_GameState_PlaneswalkerAttackBans(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PendingEnterChoices>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A100_GameState_PendingEnterChoices(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExileIfDies>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A101_GameState_ExileIfDies(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExileIfLeaves>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A102_GameState_ExileIfLeaves(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GraveyardCastRights>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.GraveyardCastRight> A103_GameState_GraveyardCastRights(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CantBlockThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Abilities.ObjectFilter, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A104_GameState_CantBlockThisTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CounterBans>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId?, global::System.Int32, global::Arcanum.Engine.Core.PlayerId?, global::Arcanum.Engine.Core.CardId, global::System.Int32>> A105_GameState_CounterBans(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExileUncastEntering>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Abilities.ObjectFilter, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A106_GameState_ExileUncastEntering(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PhasedOut>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId>> A107_GameState_PhasedOut(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SacrificeAtEndOfCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A108_GameState_SacrificeAtEndOfCombat(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CantSacrificeThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A109_GameState_CantSacrificeThisTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExileInsteadOfGraveyard>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A110_GameState_ExileInsteadOfGraveyard(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<BottomInsteadOfGraveyard>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A111_GameState_BottomInsteadOfGraveyard(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AbilitiesOnEnter>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.AbilityDefinition>> A112_GameState_AbilitiesOnEnter(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SuspendOnResolution>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Int32> A113_GameState_SuspendOnResolution(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExileWithCounterOnResolution>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::Arcanum.Engine.Abilities.CounterKind> A114_GameState_ExileWithCounterOnResolution(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExileAtEndOfCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A115_GameState_ExileAtEndOfCombat(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SpellsForbiddenFor>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A116_GameState_SpellsForbiddenFor(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<NoncreatureSpellsForbiddenFor>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A117_GameState_NoncreatureSpellsForbiddenFor(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtNextUpkeep>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedTrigger> A118_GameState_AtNextUpkeep(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtEndOfCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedTrigger> A119_GameState_AtEndOfCombat(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Paradigms>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.ParadigmTrigger> A120_GameState_Paradigms(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtYourNextMainPhase>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedTrigger> A121_GameState_AtYourNextMainPhase(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<WhenDealsCombatDamageThisCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::System.Int32>> A122_GameState_WhenDealsCombatDamageThisCombat(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<WhenYourCreatureDealsCombatDamageThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::System.Int32>> A123_GameState_WhenYourCreatureDealsCombatDamageThisTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<WhenNextCast>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Abilities.ObjectFilter, global::System.Int32>> A124_GameState_WhenNextCast(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AurasAtDeath>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId>> A125_GameState_AurasAtDeath(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ResolvedSpellNames>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>> A126_GameState_ResolvedSpellNames(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtNextEndStepTriggers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DelayedTrigger> A127_GameState_AtNextEndStepTriggers(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtNextDeclareAttackers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Core.PlayerId>> A128_GameState_AtNextDeclareAttackers(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtNextEndStepEffects>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.Effect>, global::Arcanum.Engine.Abilities.Condition, global::System.Int32?>> A129_GameState_AtNextEndStepEffects(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<NextCreatureSpellBonus>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String, global::System.Int32>> A130_GameState_NextCreatureSpellBonus(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExtraCountersOnEnter>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>, global::System.Int32> A131_GameState_ExtraCountersOnEnter(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<HasteAndSacrificeOnEnter>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A132_GameState_HasteAndSacrificeOnEnter(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TokensCreatedOnTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.PlayerId, global::System.Int32> A133_GameState_TokensCreatedOnTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AtPlayersNextEndStep>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.State.DelayedTrigger, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Boolean>> A134_GameState_AtPlayersNextEndStep(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DamagePreventions>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DamagePrevention> A135_GameState_DamagePreventions(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CombatDamagePrevented>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A136_GameState_CombatDamagePrevented(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Combat>k__BackingField")] private static extern ref global::Arcanum.Engine.State.CombatState A137_GameState_Combat(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CreatureDeathsThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A138_GameState_CreatureDeathsThisTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PendingPlayerControl>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.Int64>> A139_GameState_PendingPlayerControl(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<BlocksThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.CardId, global::System.Int32>> A140_GameState_BlocksThisTurn(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttackPlayerRequirements>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A141_GameState_AttackPlayerRequirements(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttackPlayerThisCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A142_GameState_AttackPlayerThisCombat(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttacksThisCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::System.Int32>> A143_GameState_AttacksThisCombat(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<NextCombatRules>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A144_GameState_NextCombatRules(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SkipNextUntap>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId?>> A145_GameState_SkipNextUntap(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Goads>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId>> A146_GameState_Goads(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GoadsForever>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId>> A147_GameState_GoadsForever(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<OpponentsCreaturesMustAttackOthers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId> A148_GameState_OpponentsCreaturesMustAttackOthers(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CreatureDiesThisTurnTriggers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Abilities.TriggeredAbility, global::System.Int32>> A149_GameState_CreatureDiesThisTurnTriggers(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PreventionShields>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.PreventionShield> A150_GameState_PreventionShields(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<RedirectShields>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.RedirectShield> A151_GameState_RedirectShields(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DamageTripled>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.Int32>> A152_GameState_DamageTripled(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExiledUntilOpponentIsMonarch>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32, global::Arcanum.Engine.Core.PlayerId>> A153_GameState_ExiledUntilOpponentIsMonarch(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DamageLog>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.DamageRecord> A154_GameState_DamageLog(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CantAttackThisCombat>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId, global::System.Int32, global::System.Int32>> A155_GameState_CantAttackThisCombat(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttackPlaneswalkerRequirements>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.State.AttackPlaneswalkerRequirement> A156_GameState_AttackPlaneswalkerRequirements(global::Arcanum.Engine.State.GameState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Attacks>k__BackingField")] private static extern ref global::Arcanum.Engine.State.AttackList A157_CombatState_Attacks(global::Arcanum.Engine.State.CombatState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Unblockable>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A158_CombatState_Unblockable(global::Arcanum.Engine.State.CombatState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Declared>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A159_CombatState_Declared(global::Arcanum.Engine.State.CombatState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlayersAttacked>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::Arcanum.Engine.Core.PlayerId>> A160_CombatState_PlayersAttacked(global::Arcanum.Engine.State.CombatState o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Source>k__BackingField")] private static extern ref global::Arcanum.Engine.State.Card A161_DamagePart_Source(global::Arcanum.Engine.Game.DamagePart o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ToCard>k__BackingField")] private static extern ref global::Arcanum.Engine.State.Card A162_DamagePart_ToCard(global::Arcanum.Engine.Game.DamagePart o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Applied>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlySet<global::System.String> A163_DamagePart_Applied(global::Arcanum.Engine.Game.DamagePart o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Report>k__BackingField")] private static extern ref global::Arcanum.Engine.Game.EffectResults A164_DamagePart_Report(global::Arcanum.Engine.Game.DamagePart o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<MeldPartner>k__BackingField")] private static extern ref global::Arcanum.Engine.State.Card A165_Card_MeldPartner(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Beheld>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A166_Card_Beheld(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CombatDamagedPlayers>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A167_Card_CombatDamagedPlayers(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ChosenModes>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.Int32> A168_Card_ChosenModes(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ActivatedEver>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.Int32> A169_Card_ActivatedEver(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TriggeredEver>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.TriggeredAbility> A170_Card_TriggeredEver(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SpentManaTypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A171_Card_SpentManaTypes(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<KnownTo>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A172_Card_KnownTo(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantedWards>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaCost> A173_Card_GrantedWards(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantedWardLives>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.Int32> A174_Card_GrantedWardLives(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Counters>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Abilities.CounterKind, global::System.Int32> A175_Card_Counters(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantedKeywords>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Cards.Keyword> A176_Card_GrantedKeywords(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LostKeywords>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Cards.Keyword> A177_Card_LostKeywords(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ActivationsThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.Int32, global::System.Int32> A178_Card_ActivationsThisTurn(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<UnblockableBy>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A179_Card_UnblockableBy(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<BlockRestrictions>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.ObjectFilter> A180_Card_BlockRestrictions(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CantAttackPlayers>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A181_Card_CantAttackPlayers(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ProtectedFromPlayers>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A182_Card_ProtectedFromPlayers(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AuraColorProtections>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::System.String, global::Arcanum.Engine.Core.CardId>> A183_Card_AuraColorProtections(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<StaticGoaders>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A184_Card_StaticGoaders(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CantAttackPlayersAndPlaneswalkers>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A185_Card_CantAttackPlayersAndPlaneswalkers(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantedSubtypes>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.String> A186_Card_GrantedSubtypes(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SubtypesOverride>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A187_Card_SubtypesOverride(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ColorsOverride>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A188_Card_ColorsOverride(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantedAbilities>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.AbilityDefinition> A189_Card_GrantedAbilities(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantedManaOptions>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.ManaOption> A190_Card_GrantedManaOptions(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<HexproofFromColorsThisTurn>k__BackingField")] private static extern ref global::System.ValueTuple<global::System.Int32, global::System.Collections.Generic.IReadOnlyList<global::System.String>> A191_Card_HexproofFromColorsThisTurn(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ChosenCreatureTypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyCollection<global::System.String> A192_Card_ChosenCreatureTypes(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LastKnownInfo>k__BackingField")] private static extern ref global::Arcanum.Engine.State.LastKnown A193_Card_LastKnownInfo(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_lastKnownByVersion")] private static extern ref global::System.Collections.Generic.Dictionary<global::System.Int32, global::Arcanum.Engine.State.LastKnown> A194_Card_lastKnownByVersion(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ResolvedThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Abilities.AbilityDefinition, global::System.Int32> A195_Card_ResolvedThisTurn(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AddedColors>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A196_Card_AddedColors(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CommanderIdentityTypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A197_Card_CommanderIdentityTypes(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<OpponentsLandColors>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A198_Card_OpponentsLandColors(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<YourLandTypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A199_Card_YourLandTypes(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<InactiveManaOptions>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.Int32> A200_Card_InactiveManaOptions(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ColorsAmongYourPermanents>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A201_Card_ColorsAmongYourPermanents(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ColorsAmongGraveyardLegends>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A202_Card_ColorsAmongGraveyardLegends(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<NotedTypes>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.String> A203_Card_NotedTypes(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DoneThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.Effect> A204_Card_DoneThisTurn(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CounterPuttersThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A205_Card_CounterPuttersThisTurn(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Convokers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A206_Card_Convokers(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ActivatedThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.Int32> A207_Card_ActivatedThisTurn(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TriggeredThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Abilities.AbilityDefinition> A208_Card_TriggeredThisTurn(global::Arcanum.Engine.State.Card o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CounterKinds>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Abilities.CounterKind> A209_TriggerInfo_CounterKinds(global::Arcanum.Engine.State.TriggerInfo o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Batch>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A210_TriggerInfo_Batch(global::Arcanum.Engine.State.TriggerInfo o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Found>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A211_TriggerInfo_Found(global::Arcanum.Engine.State.TriggerInfo o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Votes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>> A212_TriggerInfo_Votes(global::Arcanum.Engine.State.TriggerInfo o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ChosenTargets>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.State.ChosenTarget> A213_SpellOnStack_ChosenTargets(global::Arcanum.Engine.State.SpellOnStack o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Targets>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.State.ChosenTarget> A214_StackItem_Targets(global::Arcanum.Engine.State.StackItem o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Division>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.Int32> A215_StackItem_Division(global::Arcanum.Engine.State.StackItem o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SacrificedForCost>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A216_StackItem_SacrificedForCost(global::Arcanum.Engine.State.StackItem o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DiscardedForCost>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A217_StackItem_DiscardedForCost(global::Arcanum.Engine.State.StackItem o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExiledForCost>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.CardId> A218_StackItem_ExiledForCost(global::Arcanum.Engine.State.StackItem o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TappedForCost>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A219_StackItem_TappedForCost(global::Arcanum.Engine.State.StackItem o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Info>k__BackingField")] private static extern ref global::Arcanum.Engine.State.TriggerInfo A220_PendingTrigger_Info(global::Arcanum.Engine.Game.PendingTrigger o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Applied>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Game.ZoneReplacement> A221_MovePlan_Applied(global::Arcanum.Engine.Game.MovePlan o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Library>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A222_Player_Library(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Hand>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A223_Player_Hand(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Graveyard>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A224_Player_Graveyard(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Exile>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A225_Player_Exile(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Command>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A226_Player_Command(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Outside>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A227_Player_Outside(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ManaPool>k__BackingField")] private static extern ref global::Arcanum.Engine.Mana.ManaPool A228_Player_ManaPool(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<InstantLoyaltySubtypes>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.String> A229_Player_InstantLoyaltySubtypes(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SpellsCastThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A230_Player_SpellsCastThisTurn(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SpellManaValuesThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.Int32> A231_Player_SpellManaValuesThisTurn(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SpellTypesThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Cards.CardType> A232_Player_SpellTypesThisTurn(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DrawnThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A233_Player_DrawnThisTurn(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TokenDoublingsThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.Int32> A234_Player_TokenDoublingsThisTurn(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SacrificedThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A235_Player_SacrificedThisTurn(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlayersAttackedThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A236_Player_PlayersAttackedThisTurn(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlayersAttackedDuringLastTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::Arcanum.Engine.Core.PlayerId> A237_Player_PlayersAttackedDuringLastTurn(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CombatDamageSourcesThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A238_Player_CombatDamageSourcesThisTurn(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CombatDamagedByNames>k__BackingField")] private static extern ref global::System.Collections.Generic.HashSet<global::System.String> A239_Player_CombatDamagedByNames(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<EnteredThisTurn>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A240_Player_EnteredThisTurn(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<HexproofFromColorsThisTurn>k__BackingField")] private static extern ref global::System.ValueTuple<global::System.Int32, global::System.Collections.Generic.IReadOnlyList<global::System.String>> A241_Player_HexproofFromColorsThisTurn(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CommanderCasts>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.Int32> A242_Player_CommanderCasts(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<CommanderDamageTaken>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.Int32> A243_Player_CommanderDamageTaken(global::Arcanum.Engine.State.Player o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ChosenTargets>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.State.ChosenTarget> A244_AbilityOnStack_ChosenTargets(global::Arcanum.Engine.State.AbilityOnStack o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Trigger>k__BackingField")] private static extern ref global::Arcanum.Engine.State.TriggerInfo A245_AbilityOnStack_Trigger(global::Arcanum.Engine.State.AbilityOnStack o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Keywords>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Cards.Keyword> A246_UntilEndOfTurnEffect_Keywords(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AddSubtypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A247_UntilEndOfTurnEffect_AddSubtypes(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SetSubtypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A248_UntilEndOfTurnEffect_SetSubtypes(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<SetColors>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A249_UntilEndOfTurnEffect_SetColors(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AddColors>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A250_UntilEndOfTurnEffect_AddColors(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Abilities>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.AbilityDefinition> A251_UntilEndOfTurnEffect_Abilities(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<LoseKeywords>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Cards.Keyword> A252_UntilEndOfTurnEffect_LoseKeywords(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<GrantsMana>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Mana.ManaType> A253_UntilEndOfTurnEffect_GrantsMana(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ProtectionFromPlayers>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Core.PlayerId> A254_UntilEndOfTurnEffect_ProtectionFromPlayers(global::Arcanum.Engine.State.UntilEndOfTurnEffect o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AnyEver>k__BackingField")] private static extern ref global::System.Boolean A255_AttackList_AnyEver(global::Arcanum.Engine.State.AttackList o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Sacrificed>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A256_EffectResults_Sacrificed(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Milled>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A257_EffectResults_Milled(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DestroyedCards>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A258_EffectResults_DestroyedCards(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Exiled>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A259_EffectResults_Exiled(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Proliferated>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A260_EffectResults_Proliferated(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PutIntoGraveyard>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A261_EffectResults_PutIntoGraveyard(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Created>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A262_EffectResults_Created(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Discarded>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A263_EffectResults_Discarded(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ExiledForCost>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A264_EffectResults_ExiledForCost(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<TappedForCost>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A265_EffectResults_TappedForCost(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<HandDiscarders>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId> A266_EffectResults_HandDiscarders(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Found>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A267_EffectResults_Found(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Entered>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A268_EffectResults_Entered(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<AttachedCards>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A269_EffectResults_AttachedCards(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<PlayersWhoDrew>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId> A270_EffectResults_PlayersWhoDrew(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Surveilled>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A271_EffectResults_Surveilled(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<FoundStats>k__BackingField")] private static extern ref global::System.Collections.Generic.Dictionary<global::Arcanum.Engine.Core.CardId, global::System.ValueTuple<global::System.Int32, global::System.Int32>> A272_EffectResults_FoundStats(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Returned>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A273_EffectResults_Returned(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Damaged>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A274_EffectResults_Damaged(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Votes>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.PlayerId, global::System.String>> A275_EffectResults_Votes(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Chosen>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A276_EffectResults_Chosen(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ChosenElsewhere>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A277_EffectResults_ChosenElsewhere(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<ControlGained>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A278_EffectResults_ControlGained(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Countered>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::System.ValueTuple<global::Arcanum.Engine.Core.CardId, global::System.Int32>> A279_EffectResults_Countered(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<DamagedPlayers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.PlayerId> A280_EffectResults_DamagedPlayers(global::Arcanum.Engine.Game.EffectResults o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Counters>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyDictionary<global::Arcanum.Engine.Abilities.CounterKind, global::System.Int32> A281_LastKnown_Counters(global::Arcanum.Engine.State.LastKnown o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Subtypes>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A282_LastKnown_Subtypes(global::Arcanum.Engine.State.LastKnown o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Abilities>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::Arcanum.Engine.Abilities.AbilityDefinition> A283_LastKnown_Abilities(global::Arcanum.Engine.State.LastKnown o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Colors>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlyList<global::System.String> A284_LastKnown_Colors(global::Arcanum.Engine.State.LastKnown o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Keywords>k__BackingField")] private static extern ref global::System.Collections.Generic.IReadOnlySet<global::Arcanum.Engine.Cards.Keyword> A285_LastKnown_Keywords(global::Arcanum.Engine.State.LastKnown o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_amounts")] private static extern ref global::System.Int32[] A286_ManaPool_amounts(global::Arcanum.Engine.Mana.ManaPool o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_special")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Mana.ManaUnit> A287_ManaPool_special(global::Arcanum.Engine.Mana.ManaPool o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_untilEndOfTurn")] private static extern ref global::System.Int32[] A288_ManaPool_untilEndOfTurn(global::Arcanum.Engine.Mana.ManaPool o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<Blockers>k__BackingField")] private static extern ref global::System.Collections.Generic.List<global::Arcanum.Engine.Core.CardId> A289_AttackInfo_Blockers(global::Arcanum.Engine.State.AttackInfo o);
+        [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "<By>k__BackingField")] private static extern ref global::Arcanum.Engine.State.Card A290_ZoneReplacement_By(ref global::Arcanum.Engine.Game.ZoneReplacement o);
     }
 }

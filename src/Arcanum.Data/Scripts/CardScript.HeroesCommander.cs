@@ -32,7 +32,8 @@ public static partial class CardScriptParser
             return new PutExiledWithThis(ParseFilter(pew, ControllerFilter.Any),
                 e.TryGetProperty("counterKinds", out var pek) ? pek.EnumerateArray().Select(k => ParseCounterKind(k.GetString())).ToList() : Array.Empty<CounterKind>());
         if (e.TryGetProperty("whenDiesThisTurn", out var wdt))
-            return new WhenDiesThisTurn(ParseSubject(wdt), EffectList(e.GetProperty("effects")), e.TryGetProperty("text", out var wdx) ? wdx.GetString()! : "When that creature dies this turn") { UnderYourControl = e.TryGetProperty("underYourControl", out var wdu) && wdu.GetBoolean() };
+            return new WhenDiesThisTurn(ParseSubject(wdt), EffectList(e.GetProperty("effects")), e.TryGetProperty("text", out var wdx) ? wdx.GetString()! : "When that creature dies this turn") { UnderYourControl = e.TryGetProperty("underYourControl", out var wdu) && wdu.GetBoolean(), Lasting = e.TryGetProperty("lasting", out var wdl) && wdl.GetBoolean(), OrExiled = e.TryGetProperty("orExiled", out var wdo) && wdo.GetBoolean() };
+        if (e.TryGetProperty("earthbend", out var ebd)) return new Earthbend(e.TryGetProperty("what", out var ebw) ? ParseSubject(ebw) : Subject.TargetAt(0), ebd.GetInt32());
         if (e.TryGetProperty("attackTaxUntilYourNextTurn", out var atx)) return new AttackTaxUntilYourNextTurn(Arcanum.Engine.Mana.ManaCost.Parse(atx.GetString()!));
         if (e.TryGetProperty("distributeCountersFromSelf", out var dcs)) return new DistributeSourceCounters(ParseCounterKind(dcs.GetString()));
         if (e.TryGetProperty("sacrificeAllBut", out var sab))

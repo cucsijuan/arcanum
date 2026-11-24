@@ -302,6 +302,31 @@ public sealed partial class BotController : IPlayerController
             CardChoicePurpose.DamageSource => request.Options.OrderByDescending(c => c.Controller != _me).ThenByDescending(c => c.Power ?? 0).ThenByDescending(Value).Take(request.Min),
             _ => request.Options.OrderBy(Value).Take(request.Min),
         };
+        // Crew, teamwork: the least valuable creatures, until their total power is enough.
+        if (request.MinTotalPower > 0)
+        {
+            var tapped = new List<CardId>();
+            int power = 0;
+            foreach (var c in request.Options.Where(c => (c.Power ?? 0) > 0).OrderBy(Value).ThenByDescending(c => c.Power ?? 0))
+            {
+                if (power >= request.MinTotalPower) break;
+                tapped.Add(c.Id);
+                power += c.Power ?? 0;
+            }
+            if (power < request.MinTotalPower) tapped = request.Options.Select(c => c.Id).ToList();
+            return Task.FromResult<IReadOnlyList<CardId>>(tapped);
+        }
+        // Collect evidence: the fewest cards that reach the total, the biggest mana values first.
+        if (request.MinTotalManaValue > 0)
+        {
+            var evidence = new List<CardId>();
+            foreach (var c in request.Options.OrderByDescending(c => ManaValue(c.ManaCost)).ThenBy(Value))
+            {
+                if (evidence.Sum(id => ManaValue(request.Options.First(o => o.Id == id).ManaCost)) >= request.MinTotalManaValue) break;
+                evidence.Add(c.Id);
+            }
+            return Task.FromResult<IReadOnlyList<CardId>>(evidence);
+        }
         var chosen = picks.Take(request.Max).Select(c => c.Id).ToList();
         foreach (var extra in request.Options.OrderBy(Value).Where(c => !chosen.Contains(c.Id)))
         {

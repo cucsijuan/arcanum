@@ -390,6 +390,8 @@ public enum QuantityKind
     PermanentsPutIntoGraveyardThisTurn,
     /// <summary>"For each nontoken creature you controlled that was destroyed this way" (as each last existed on the battlefield).</summary>
     YourNontokenCreaturesDestroyedThisWay,
+    /// <summary>"The number of permanents you've sacrificed this turn".</summary>
+    YouSacrificedThisTurn,
 }
 
 /// <summary>

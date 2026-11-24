@@ -44,4 +44,10 @@ public sealed record CardChoiceRequest(
 
     /// <summary>How many counters a <see cref="CardChoicePurpose.Weaken"/> choice puts on.</summary>
     public int Amount { get; init; }
+
+    /// <summary>The chosen cards' total mana value must be at least this (collect evidence); 0 when there is no such rule.</summary>
+    public int MinTotalManaValue { get; init; }
+
+    /// <summary>The chosen creatures' total power must be at least this (crew, teamwork); 0 when there is no such rule.</summary>
+    public int MinTotalPower { get; init; }
 }

@@ -71,7 +71,9 @@ public sealed record TurnHappened(TurnEvent Event, int AtLeast = 1) : Condition;
 
 public enum TurnEvent { YouPutCounterOnCreature, CounterPutOnSource, CardLeftYourGraveyard, YouLostLife, PlayerLostLife,
     /// <summary>"If you put a counter on this creature this turn": the ability's controller put one on the source.</summary>
-    YouPutCounterOnSource }
+    YouPutCounterOnSource,
+    /// <summary>"If you descended this turn": a permanent card was put into your graveyard from anywhere this turn.</summary>
+    YouDescended }
 
 /// <summary>"If you have a full party" (rule 700.8): you control a Cleric, a Rogue, a Warrior and a Wizard, each a different creature.</summary>
 public sealed record FullParty : Condition;
@@ -102,7 +104,19 @@ public sealed record WhenDiesThisTurn(Subject What, IReadOnlyList<Effect> Effect
 {
     /// <summary>"When it dies under your control this turn": only if the ability's controller controlled it as it died.</summary>
     public bool UnderYourControl { get; init; }
+
+    /// <summary>"When it dies": no duration, it watches the object until it leaves (earthbend).</summary>
+    public bool Lasting { get; init; }
+
+    /// <summary>"When it dies or is exiled".</summary>
+    public bool OrExiled { get; init; }
 }
+
+/// <summary>
+/// Earthbend N (a keyword action): "Target land you control becomes a 0/0 creature with haste that's still a land. Put N +1/+1 counters on it.
+/// When it dies or is exiled, return it to the battlefield tapped."
+/// </summary>
+public sealed record Earthbend(Subject What, int Count) : HeroesCommanderEffect;
 
 /// <summary>
 /// "You may put a [filter] card exiled with [this] onto the battlefield under your control [with a finality counter on it]": one card, chosen
