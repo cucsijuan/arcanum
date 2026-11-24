@@ -967,6 +967,11 @@ public partial class GameBoard : Control
 
         ApplyHighlights(view, decision);
         if (_zoneViewer.Pile is not null && decision is not TargetDecision) _zoneViewer.Close(); // the targets were chosen or the choice ended
+        if (_zoneOpenFor is { } choosing && !ReferenceEquals(choosing, decision)) // likewise, a graveyard or exile opened to choose from
+        {
+            _zoneOpenFor = null;
+            _zoneViewer.Close();
+        }
         _zoneViewer.Refresh(view, id => UsableNow(decision, id),
             id => decision is ChooseCardsDecision ? _selected.Contains(id) : _chosenTargets.Any(t => t.Card == id),
             ChoicePiles(decision).Count > 1 ? "Back" : "Close");
@@ -1992,11 +1997,16 @@ public partial class GameBoard : Control
     /// <summary>Graveyard or exile shown in full (clicking a pile).</summary>
     private readonly ZoneViewer _zoneViewer = new();
 
+    /// <summary>The choice the zone shown now was opened to make (it closes with it); null for one opened just to look.</summary>
+    private Decision? _zoneOpenFor;
+
     private void OpenZone(PlayerId player, Arcanum.Engine.State.Zone zone)
     {
-        if (_zoneViewer.Visible && _zoneViewer.Player == player && _zoneViewer.Zone == zone) { _zoneViewer.Close(); return; }
+        if (_zoneViewer.Visible && _zoneViewer.Player == player && _zoneViewer.Zone == zone) { _zoneOpenFor = null; _zoneViewer.Close(); return; }
         AttachZoneViewer();
         _zoneViewer.Open(player, zone);
+        var decision = _session.CurrentDecision;
+        _zoneOpenFor = ChoicePiles(decision).Any(p => p.Owner == player && p.Zone == zone) ? decision : null;
         Refresh();
     }
 
@@ -2004,6 +2014,7 @@ public partial class GameBoard : Control
     private void OpenTokenPile(PlayerId controller, IReadOnlyList<CardId> tokens)
     {
         AttachZoneViewer();
+        _zoneOpenFor = null; // (closes by its own rule)
         _zoneViewer.OpenPile(controller, tokens);
         Refresh();
     }
@@ -2477,7 +2488,7 @@ public partial class GameBoard : Control
                 _pileOpenedFor = pick;
                 var (owner, zone, _) = piles[0];
                 if (!(_zoneViewer.Visible && _zoneViewer.Player == owner && _zoneViewer.Zone == zone))
-                    Callable.From(() => OpenZone(owner, zone)).CallDeferred();
+                    Callable.From(() => { if (ReferenceEquals(_session.CurrentDecision, decision)) OpenZone(owner, zone); }).CallDeferred();
             }
             return;
         }
