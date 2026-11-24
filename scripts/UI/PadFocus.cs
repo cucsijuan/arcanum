@@ -41,6 +41,7 @@ public partial class PadFocus : CanvasLayer
 
     /// <summary>Marks controls other than buttons the arrows reach that handle touches their own way (cards on a game's table).</summary>
     private const string ReachMeta = "pad_reach";
+    private const string InsideMeta = "pad_inside";
 
     /// <summary>On a panel's answer: the panel (the arrows move between its answers first).</summary>
     private const string PanelMeta = "pad_panel";
@@ -197,6 +198,17 @@ public partial class PadFocus : CanvasLayer
     /// </summary>
     public static void Reachable(Control control) => control.SetMeta(ReachMeta, true);
 
+    /// <summary>While the focus is inside <paramref name="panel"/> (one covering the screen) the arrows don't leave it.</summary>
+    public static void KeepInside(Control panel, bool keep) => panel.SetMeta(InsideMeta, keep);
+
+    /// <summary>Where the arrows may go from <paramref name="from"/>: the panel that keeps them (<see cref="KeepInside"/>), else the screen.</summary>
+    private Node ReachOf(Control from)
+    {
+        for (Node? node = from; node is not null; node = node.GetParent())
+            if (node.HasMeta(InsideMeta) && node.GetMeta(InsideMeta).AsBool()) return node;
+        return GetTree().Root;
+    }
+
     /// <summary>Whether <paramref name="control"/> was marked <see cref="Pressable"/>.</summary>
     public static bool IsPressable(Control control) => control.HasMeta(PressMeta);
 
@@ -342,7 +354,7 @@ public partial class PadFocus : CanvasLayer
                 {
                     MarkScreen();
                     var next = Neighbor(owner, panelDirection, Choices(panel).Where(c => c.IsVisibleInTree()))
-                               ?? Neighbor(owner, panelDirection, FocusTargets(GetTree().Root));
+                               ?? Neighbor(owner, panelDirection, FocusTargets(ReachOf(owner)));
                     if (next is not null) next.GrabFocus();
                     GetViewport().SetInputAsHandled();
                 }
@@ -353,7 +365,7 @@ public partial class PadFocus : CanvasLayer
                 else if (owner is not null && owner.HasMeta(ScreenMeta) && DirectionOf(@event) is { } direction
                     && !GetTree().Root.GetEmbeddedSubwindows().Any(w => w.Visible))
                 {
-                    Neighbor(owner, direction, FocusTargets(GetTree().Root))?.GrabFocus();
+                    Neighbor(owner, direction, FocusTargets(ReachOf(owner)))?.GrabFocus();
                     GetViewport().SetInputAsHandled();
                 }
                 break;

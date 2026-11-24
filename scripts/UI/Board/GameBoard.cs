@@ -1732,8 +1732,11 @@ public partial class GameBoard : Control
                 if (ChoicePiles(c).Count > 1 && !_zoneViewer.Visible) _prompt.Text += "\nChoose where to look:";
                 AddPileButtons(c);
                 // A cost chosen before anything is paid: backing out cancels the spell or ability.
+                // While the board shows, going back to the cards is the default answer (confirm never chooses none by accident).
+                bool seeingBoard = _compact && ReferenceEquals(_boardSeenForChoice, c);
+                if (seeingBoard) AddButton("Show the cards", () => { _boardSeenForChoice = null; Refresh(); }, primary: true);
                 if (c.Request.CanCancel) AddButton("Cancel", () => c.Answer(Array.Empty<CardId>()));
-                var done = AddButton(ChoiceConfirmText(_selected.Count, c.Request), () => c.Answer(_selected.ToList()), primary: true);
+                var done = AddButton(ChoiceConfirmText(_selected.Count, c.Request), () => c.Answer(_selected.ToList()), primary: !seeingBoard);
                 done.Disabled = _selected.Count < c.Request.Min || _selected.Count > c.Request.Max;
                 break;
             }
@@ -1989,6 +1992,11 @@ public partial class GameBoard : Control
         {
             var primary = _actionButtons.GetChildren().OfType<Button>().LastOrDefault();
             if (primary is { Disabled: false }) primary.EmitSignal(BaseButton.SignalName.Pressed);
+            GetViewport().SetInputAsHandled();
+        }
+        else if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Space } && _mulligan is { Visible: true, Main: { Disabled: false } main })
+        {
+            main.EmitSignal(BaseButton.SignalName.Pressed);
             GetViewport().SetInputAsHandled();
         }
     }
@@ -2495,8 +2503,18 @@ public partial class GameBoard : Control
         if (decision is ChooseCardsDecision choice)
         {
             var who = PlayerName(choice.Player);
-            _mulligan.Large = false; // its answers stay in the action panel
-            _mulligan.ShowHand(choice.Request.Options, $"{who}: {choice.Request.Prompt}", _selected, selectable: true);
+            // The compact board: the whole screen with the answers under the cards, unless the player asked to see the
+            // board; the full board keeps them in the action panel.
+            if (_compact && !LargeChoice(choice))
+            {
+                _mulligan.HideHand();
+                return;
+            }
+            _mulligan.Large = _compact;
+            if (_compact) _mulligan.SetAnswers(ChoiceAnswers(choice), small: true);
+            bool ordering = choice.Request.Purpose is CardChoicePurpose.ScryToBottom or CardChoicePurpose.SurveilToGraveyard;
+            _mulligan.ShowHand(choice.Request.Options, $"{who}: {choice.Request.Prompt}", _selected, selectable: true,
+                choice, complete: _selected.Count >= choice.Request.Max, startOnCards: !ordering);
             return;
         }
         bool bottom = decision is SelectCardsDecision { Reason: SelectCardsReason.MulliganBottom };
@@ -2530,8 +2548,9 @@ public partial class GameBoard : Control
                     ($"Confirm ({_selected.Count}/{s.Count})", Answer(() => s.Answer(_selected.ToList())), true, _selected.Count == s.Count),
                 },
                 _ => Array.Empty<(string, Action, bool, bool)>(),
-            });
-        _mulligan.ShowHand(view.Players[decision.Player.Value].Hand, title, _selected, selectable: bottom);
+            }, small: bottom);
+        _mulligan.ShowHand(view.Players[decision.Player.Value].Hand, title, _selected, selectable: bottom,
+            decision, complete: decision is SelectCardsDecision select && _selected.Count >= select.Count, startOnCards: true);
     }
 
     /// <summary>An answer to the current decision from a button of the large mulligan view (as the action panel's buttons do).</summary>
@@ -2542,9 +2561,27 @@ public partial class GameBoard : Control
         if (_session.CurrentDecision is null) _mulligan.SetAnswers(Array.Empty<(string, Action, bool, bool)>());
     };
 
-    /// <summary>The compact board answers a mulligan in the large mulligan view, not in the action panel.</summary>
+    /// <summary>The compact board answers a mulligan, and a choice among cards, in the large view, not in the action panel.</summary>
     private bool LargeMulligan(Decision? decision) =>
-        _compact && decision is MulliganDecision or SelectCardsDecision { Reason: SelectCardsReason.MulliganBottom };
+        _compact && decision is MulliganDecision or SelectCardsDecision { Reason: SelectCardsReason.MulliganBottom }
+        || _compact && decision is ChooseCardsDecision choice && LargeChoice(choice);
+
+    /// <summary>Whether the compact board shows this choice's cards over the whole screen now.</summary>
+    private bool LargeChoice(ChooseCardsDecision choice) => ChoicePiles(choice).Count == 0 && !ReferenceEquals(_boardSeenForChoice, choice);
+
+    /// <summary>The choice for which the player closed the large view to look at the board.</summary>
+    private ChooseCardsDecision? _boardSeenForChoice;
+
+    /// <summary>The answers to a choice among cards in the large view (the action panel's, and looking at the board).</summary>
+    private IReadOnlyList<(string, Action, bool, bool)> ChoiceAnswers(ChooseCardsDecision choice)
+    {
+        var request = choice.Request;
+        var answers = new List<(string, Action, bool, bool)> { ("See the board", () => { _boardSeenForChoice = choice; Refresh(); }, false, true) };
+        if (request.CanCancel) answers.Add(("Cancel", Answer(() => choice.Answer(Array.Empty<CardId>())), false, true));
+        answers.Add((ChoiceConfirmText(_selected.Count, request), Answer(() => choice.Answer(_selected.ToList())), true,
+            _selected.Count >= request.Min && _selected.Count <= request.Max));
+        return answers;
+    }
 
     /// <summary>The pick the single pile was last opened for, so it opens by itself only once.</summary>
     private (Decision, int)? _pileOpenedFor;

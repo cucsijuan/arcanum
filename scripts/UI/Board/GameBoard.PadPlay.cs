@@ -134,9 +134,9 @@ public partial class GameBoard
 
     private IEnumerable<PadStep> PadPlan(Decision decision, GameView view)
     {
-        PadStep Primary() => new("the default answer", () => _primaryAction is { Disabled: false } p ? p : null);
+        PadStep Primary() => new("the default answer", () => _mulligan.Visible && _mulligan.Main is { } main ? main : _primaryAction is { Disabled: false } p ? p : null);
         PadStep Button(string text) => new($"\"{text}\"", () => PanelButtons().FirstOrDefault(b => b.Text == text && !b.Disabled));
-        PadStep Card(CardId id, string why) => new($"{why} {view.FindCard(id)?.Name ?? id.ToString()}", () => _zoneViewer.FindCard(id) ?? FindCard(id) ?? PileCard(id));
+        PadStep Card(CardId id, string why) => new($"{why} {view.FindCard(id)?.Name ?? id.ToString()}", () => _zoneViewer.FindCard(id) ?? _mulligan.FindCard(id) ?? FindCard(id) ?? PileCard(id));
 
         switch (decision)
         {
