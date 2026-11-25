@@ -252,7 +252,7 @@ public partial class ArtScene : Control
             GetViewport().SetInputAsHandled();
             return;
         }
-        if (!Interactive) return;
+        if (!Interactive || PadFocus.IsCovered(this)) return;
         // The viewport taken before: going back or opening a spot may leave the screen (a new one frees it).
         var viewport = GetViewport();
         if (e.IsActionPressed("ui_cancel"))

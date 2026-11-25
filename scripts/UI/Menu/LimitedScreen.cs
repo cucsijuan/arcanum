@@ -405,7 +405,7 @@ public partial class LimitedScreen : Control
 
     private void ShowPreview(CardNode card, Control anchor)
     {
-        if (card.View is not { } view) return;
+        if (card.View is not { IsHidden: false } view) return; // (still face down, out of the pack)
         _preview.Setup(view, showCostPips: false);
         var rect = anchor.GetGlobalRect();
         var screen = GetViewportRect().Size;
@@ -425,7 +425,7 @@ public partial class LimitedScreen : Control
 
     private static ScrollContainer Scroll(Control inner)
     {
-        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, SizeFlagsHorizontal = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        var scroll = new ScrollContainer { FollowFocus = true, SizeFlagsVertical = SizeFlags.ExpandFill, SizeFlagsHorizontal = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         inner.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         scroll.AddChild(inner);
         return scroll;
@@ -556,10 +556,8 @@ public partial class LimitedScreen : Control
         left.AddChild(MenuKit.Hint(draft.Picked ? Session.Status ?? "Waiting for the other players…"
             : "Click a card to select it, then take it (or double-click). The other players pick at the same time."
               + (Session.IsOnline ? " When time runs out, a card is taken for you." : "")));
-        var grid = new HFlowContainer();
-        grid.AddThemeConstantOverride("h_separation", 10);
-        grid.AddThemeConstantOverride("v_separation", 10);
-        left.AddChild(Scroll(grid));
+        var grid = new Control { MouseFilter = MouseFilterEnum.Pass };
+        left.AddChild(MenuKit.FittedCards(grid, draft.Pack.Count + draft.PickInRound, TileSize, 10));
         var take = BoardStyle.MakePrimaryButton("Take card", 20);
         take.CustomMinimumSize = new Vector2(220, 52);
         take.Disabled = true;
@@ -573,6 +571,7 @@ public partial class LimitedScreen : Control
             int index = i;
             var node = Tile(DefinitionOf(pack[i]), grid);
             node.TooltipText = pack[i].Rarity;
+            PadFocus.Reachable(node);
             nodes.Add(node);
             node.Clicked += _ =>
             {
@@ -589,6 +588,7 @@ public partial class LimitedScreen : Control
             take.Disabled = false;
         }
         else _selected = -1;
+        PadFocus.Prefer(nodes.FirstOrDefault());
 
         // The first pick of a round is from the booster this player opens: it opens on screen first. Redrawn while the
         // pack is still closed (an online update), the new cards wait in it too; once the pick has moved on (time ran
@@ -639,6 +639,8 @@ public partial class LimitedScreen : Control
             DealFrom(_inPack, from);
         };
         opening.ClickThrough.Add(_abandon);
+        // The buttons go to the first card once the pack is gone.
+        opening.TreeExited += () => Callable.From(() => { if (_inPack.FirstOrDefault() is { } card && IsInstanceValid(card) && card.IsInsideTree()) PadFocus.Prefer(card); }).CallDeferred();
         AddChild(opening);
         _opening = opening;
     }
@@ -656,7 +658,7 @@ public partial class LimitedScreen : Control
         _opening = null;
     }
 
-    private static void DealFrom(List<CardNode> cards, Vector2 from)
+    private void DealFrom(List<CardNode> cards, Vector2 from)
     {
         for (int i = 0; i < cards.Count; i++)
         {
@@ -675,7 +677,11 @@ public partial class LimitedScreen : Control
             deal.TweenProperty(card, "scale:x", 0f, 0.09);
             deal.TweenCallback(Callable.From(() => card.Setup(face, showCostPips: false)));
             deal.TweenProperty(card, "scale:x", 1f, 0.09);
-            deal.TweenCallback(Callable.From(() => card.MouseFilter = MouseFilterEnum.Stop));
+            deal.TweenCallback(Callable.From(() =>
+            {
+                card.MouseFilter = MouseFilterEnum.Stop;
+                if (card.IsPadFocused || card.IsHovered) ShowPreview(card, card.GetParent<Control>()); // focused face down
+            }));
         }
     }
 
@@ -702,8 +708,7 @@ public partial class LimitedScreen : Control
                 row.AddChild(name);
                 row.AddChild(BoardStyle.MakeCostRow(x.Def.ManaCost.ToString(), 16, 10));
                 var def = x.Def;
-                row.MouseEntered += () => ShowPreviewLeftOf(def, row);
-                row.MouseExited += () => _preview.Visible = false;
+                PadFocus.Shows(row, () => ShowPreviewLeftOf(def, row), () => _preview.Visible = false);
                 list.AddChild(row);
             }
         }
@@ -752,6 +757,7 @@ public partial class LimitedScreen : Control
             foreach (var x in group.OrderBy(x => x.Def.ManaCost.ManaValue).ThenBy(x => x.Card.Name))
             {
                 var node = Tile(x.Def, flow);
+                PadFocus.Pressable(node);
                 var entry = x.Card.ToEntry();
                 node.Clicked += _ =>
                 {
@@ -777,8 +783,7 @@ public partial class LimitedScreen : Control
             var row = new Button { Flat = true, FocusMode = FocusModeEnum.None, Alignment = HorizontalAlignment.Left, TooltipText = "Take it out of the deck" };
             row.Text = $"{entry.Count}  {entry.Name}";
             row.AddThemeFontSizeOverride("font_size", 14);
-            row.MouseEntered += () => ShowPreviewLeftOf(def, row);
-            row.MouseExited += () => _preview.Visible = false;
+            PadFocus.Shows(row, () => ShowPreviewLeftOf(def, row), () => _preview.Visible = false);
             row.Pressed += () =>
             {
                 DeckList.Adjust(deck.Main, entry.Name, -1, entry.Set, entry.Number);

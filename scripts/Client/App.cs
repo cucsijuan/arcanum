@@ -119,6 +119,8 @@ public partial class App : Node
         AddChild(new Arcanum.UI.VirtualPointer());
         // ARCANUM_PAD_SOAK: games played with random controller presses (testing).
         if (Arcanum.UI.PadSoak.FromEnvironment() is { } soak) AddChild(soak);
+        // ARCANUM_PAD_KEYS: the controller presses listed (testing).
+        if (Arcanum.UI.PadScript.FromEnvironment() is { } presses) AddChild(presses);
         GetTree().SceneChanged += () => Presence.ShowScreen(GetTree().CurrentScene?.SceneFilePath ?? "");
         if (GetTree().CurrentScene is { } first) Presence.ShowScreen(first.SceneFilePath);
         // ARCANUM_SHOT=<file.png>[,seconds]: saves a picture of the screen after a while (default 8 s) and quits (screenshots).

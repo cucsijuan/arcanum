@@ -61,6 +61,8 @@ public partial class CareerScreen : Control
 
     // The computer drawn over the dimmed room, the website on its screen, and a note over the store (when one is open).
     private Control? _monitor, _casing, _web;
+    private bool _webFitQueued;
+    private int _webFits; // fits worked out since the page was shown or the monitor changed size
     private Control? _note;
     private WebPage _webPage = WebPage.Matches;
     private string _reward = CareerRules.CashReward;
@@ -514,7 +516,12 @@ public partial class CareerScreen : Control
         var window = new PanelContainer();
         window.AddThemeStyleboxOverride("panel", CareerStyle.Box(CareerStyle.Chrome, CareerStyle.InkDim, 2));
         _web.AddChild(window);
-        window.MinimumSizeChanged += () => Callable.From(FitWebWindow).CallDeferred();
+        window.MinimumSizeChanged += () =>
+        {
+            if (_webFitQueued) return;
+            _webFitQueued = true;
+            Callable.From(RefitWebWindow).CallDeferred();
+        };
         FitWebWindow();
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 0);
@@ -588,20 +595,34 @@ public partial class CareerScreen : Control
     /// more room than the screen has (a long line that can't wrap), the whole page is drawn smaller until it fits.</summary>
     private void FitWebWindow()
     {
-        if (_web is null || !IsInstanceValid(_web) || _web.GetChildCount() == 0) return;
-        if (_web.GetChild(_web.GetChildCount() - 1) is not PanelContainer window || window.IsQueuedForDeletion()) return;
+        _webFits = 0;
+        ScaleWebWindow(1f);
+    }
+
+    /// <summary>
+    /// What the page needs changed. Its wrapped text gets taller as the page narrows, so the fit is worked out again a
+    /// few times; from there it only gets smaller: a page too tall at one width and too short at the next would be
+    /// fitted to one and the other without end.
+    /// </summary>
+    private void RefitWebWindow()
+    {
+        _webFitQueued = false;
+        if (_web is null || !IsInstanceValid(_web) || WebWindow() is not { } window) return;
+        ScaleWebWindow(_webFits++ < 4 ? 1f : window.Scale.X);
+    }
+
+    private PanelContainer? WebWindow() =>
+        _web!.GetChildCount() > 0 && _web.GetChild(_web.GetChildCount() - 1) is PanelContainer window && !window.IsQueuedForDeletion() ? window : null;
+
+    /// <summary>The website's window at the largest scale (up to the one given) at which its page fits.</summary>
+    private void ScaleWebWindow(float largest)
+    {
+        if (_web is null || !IsInstanceValid(_web) || WebWindow() is not { } window) return;
         var screen = _web.Size;
         if (screen.X <= 0 || screen.Y <= 0) return;
-        float scale = 1f;
-        // Wrapped text gets taller as the page narrows, so the fit is worked out again with each new width.
-        for (int i = 0; i < 4; i++)
-        {
-            window.Size = screen / scale;
-            var need = window.GetCombinedMinimumSize();
-            float fit = Math.Min(1f, Math.Min(screen.X / Math.Max(1f, need.X), screen.Y / Math.Max(1f, need.Y)));
-            if (fit >= scale - 0.001f) break;
-            scale = Math.Max(0.5f, fit);
-        }
+        var need = window.GetCombinedMinimumSize();
+        float fit = Math.Min(largest, Math.Min(screen.X / Math.Max(1f, need.X), screen.Y / Math.Max(1f, need.Y)));
+        float scale = Math.Max(0.5f, fit >= largest - 0.001f ? largest : fit);
         window.Position = Vector2.Zero;
         window.Scale = Vector2.One * scale;
         window.Size = screen / scale;
@@ -1016,7 +1037,9 @@ public partial class CareerScreen : Control
         go.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
         go.Theme = CareerStyle.Notes;
         column.AddChild(go);
+        PadFocus.BackButton(go);
         AddChild(overlay);
+        PadFocus.Cover(overlay, go);
 
         // The room darkens, the card grows in and its glow breathes.
         var tween = overlay.CreateTween();
@@ -1605,9 +1628,7 @@ public partial class CareerScreen : Control
         box.AddThemeConstantOverride("separation", 16);
         overlay.AddChild(box);
         box.AddChild(CareerStyle.Text($"{World.BoosterName(key)}", 34, CareerStyle.Gold));
-        var flow = new HFlowContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
-        flow.AddThemeConstantOverride("h_separation", 10);
-        flow.AddThemeConstantOverride("v_separation", 10);
+        var flow = new Control { MouseFilter = MouseFilterEnum.Pass };
         var nodes = new List<CardNode>();
         foreach (var card in cards)
         {
@@ -1618,20 +1639,24 @@ public partial class CareerScreen : Control
             node.Setup(ViewOf(DefinitionOf(cardKey)), showCostPips: false);
             node.HoverStarted += _ => ShowPreview(DefinitionOf(cardKey), holder);
             node.HoverEnded += _ => _preview.Visible = false;
+            PadFocus.Pressable(node);
             node.TooltipText = $"{card.Rarity}{(card.Foil ? $" · {FoilWord(cardKey)}" : "")} · sells for {CareerRules.Money(SellPrice(cardKey))}";
             flow.AddChild(holder);
             nodes.Add(node);
         }
-        box.AddChild(Scrolled(flow));
+        box.AddChild(MenuKit.FittedCards(flow, cards.Count, TileSize, 10));
         var actions = new HBoxContainer();
         actions.AddThemeConstantOverride("separation", 12);
         int left = State.Sealed.GetValueOrDefault(key);
         var again = CareerStyle.Button($"Open another ({left} left)", () => { overlay.QueueFree(); _preview.Visible = false; OpenBooster(key); }, 22, primary: true);
         again.Disabled = left == 0;
         actions.AddChild(again);
-        actions.AddChild(CareerStyle.Button("Done", () => { overlay.QueueFree(); _preview.Visible = false; }, 22));
+        var done = CareerStyle.Button("Done", () => { overlay.QueueFree(); _preview.Visible = false; }, 22);
+        PadFocus.BackButton(done);
+        actions.AddChild(done);
         box.AddChild(actions);
         AddChild(overlay);
+        PadFocus.Cover(overlay);
         MoveChild(_preview, GetChildCount() - 1);
 
         // The booster opens in 3D first, then the cards turn over.
@@ -1643,8 +1668,11 @@ public partial class CareerScreen : Control
                 spec?.PackImage is not null ? spec.PackImageSeals ?? (0.07, 0.06) : definition.PackImageSeals,
                 World.BoosterName(key), automatic: Settings.Current.BoosterOpening == "auto");
             opening.Opened += _ => Reveal(nodes);
+            // The buttons go to the first card once the pack is gone.
+            opening.TreeExited += () => Callable.From(() => { if (IsInstanceValid(overlay) && !overlay.IsQueuedForDeletion()) PadFocus.Prefer(nodes.FirstOrDefault()); }).CallDeferred();
             overlay.AddChild(opening);
         }
+        else PadFocus.Prefer(nodes.FirstOrDefault());
     }
 
     private static void Reveal(List<CardNode> nodes)

@@ -152,15 +152,16 @@ public partial class EventScreen : Control
         _content.AddChild(body);
 
         // The booster in front of the player, its cards laid on the table.
-        var pack = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        pack.AddThemeConstantOverride("h_separation", 12);
-        pack.AddThemeConstantOverride("v_separation", 12);
+        var pack = new Control { MouseFilter = MouseFilterEnum.Pass };
         var ratings = DraftGrades.ForPlayer(Service);
+        var cards = new List<CardNode>();
         for (int i = 0; i < draft.Pack.Count; i++)
         {
             int index = i;
             var card = Tile(draft.Pack[i], pack);
             card.TooltipText = "Take this card";
+            PadFocus.Pressable(card);
+            cards.Add(card);
             if (ratings is not null) DraftGrades.Mark(card.GetParent<Control>(), card, ratings, draft.Pack[i].Name);
             card.Clicked += _ =>
             {
@@ -168,7 +169,8 @@ public partial class EventScreen : Control
                 Show();
             };
         }
-        body.AddChild(pack);
+        body.AddChild(MenuKit.FittedCards(pack, draft.Pack.Count + draft.PickInRound, TileSize, 12));
+        PadFocus.Prefer(cards.FirstOrDefault());
 
         // The picks so far, on a note.
         var note = Note(new Vector2(360, 0));
@@ -182,8 +184,7 @@ public partial class EventScreen : Control
             var row = CareerStyle.Text(card.Name, 18, CareerStyle.Ink);
             row.MouseFilter = MouseFilterEnum.Pass;
             var def = Definition(card);
-            row.MouseEntered += () => ShowPreview(def, row);
-            row.MouseExited += () => _preview.Visible = false;
+            PadFocus.Shows(row, () => ShowPreview(def, row), () => _preview.Visible = false);
             picks.AddChild(row);
         }
         list.AddChild(Scrolled(picks));

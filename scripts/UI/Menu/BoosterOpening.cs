@@ -101,6 +101,7 @@ public partial class BoosterOpening : Control
         _hint.OffsetTop = -96;
         _hint.OffsetBottom = -64;
         _hint.Visible = !_automatic;
+        if (PadFocus.UsingButtons) _hint.Text = "Press the confirm button to open your booster";
         AddChild(_hint);
 
         var skip = BoardStyle.MakeButton("Skip", 16);
@@ -110,6 +111,10 @@ public partial class BoosterOpening : Control
         skip.OffsetLeft = -140; skip.OffsetTop = -70; skip.OffsetRight = -24; skip.OffsetBottom = -24;
         skip.Pressed += () => Tear(1, quick: true);
         AddChild(skip);
+
+        // The confirm button opens it and back skips (below); the arrows lean it. Nothing under it is reached.
+        PadFocus.OwnArrows(this);
+        PadFocus.Cover(this);
 
         // The pack rises into view while the table dims.
         _pack.Position = new Vector3(0, -2.6f, 0);
@@ -238,7 +243,8 @@ public partial class BoosterOpening : Control
 
     public override void _UnhandledInput(InputEvent e)
     {
-        if (e.IsActionPressed("ui_cancel") && !_torn) { Tear(1, quick: true); GetViewport().SetInputAsHandled(); }
+        if (e.IsActionPressed("ui_accept") && !_torn && !_autoCutting && !_dragging) { AutoCut(); GetViewport().SetInputAsHandled(); }
+        else if (e.IsActionPressed("ui_cancel") && !_torn) { Tear(1, quick: true); GetViewport().SetInputAsHandled(); }
     }
 
     /// <summary>Where a point falls along the tear line on screen (0 at its left end, 1 at its right) and how far from it.</summary>

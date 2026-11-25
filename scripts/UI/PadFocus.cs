@@ -133,13 +133,15 @@ public partial class PadFocus : CanvasLayer
             choice.SetMeta(PanelMeta, panel);
         }
         if (preferred is not null && !choices.Contains(preferred)) preferred = null;
+        // Under something covering the screen (a question): its answers wait.
+        if (IsCovered(panel)) return;
         focus._preferred = preferred ?? choices.FirstOrDefault(c => c is not BaseButton { Disabled: true }) ?? choices.FirstOrDefault();
         if (!UsingButtons || focus._preferred is null) return;
         var owner = focus.GetViewport().GuiGetFocusOwner();
         if (owner is not null && choices.Contains(owner)) return;
         var same = choices.FirstOrDefault(c => c is Button b && b.Text == focus._lastText && !b.Disabled);
         // The panel's buttons may just have been added: focus once they are in place.
-        (same ?? focus._preferred).CallDeferred(Control.MethodName.GrabFocus);
+        GrabSoon(same ?? focus._preferred);
     }
 
     /// <summary>
@@ -152,8 +154,15 @@ public partial class PadFocus : CanvasLayer
         if (_instance is not { } focus) return;
         if (focus.GetViewport().GuiGetFocusOwner() is { } owner && !panel.IsAncestorOf(owner)) owner.ReleaseFocus();
         Offer(panel, preferred);
-        if (!UsingButtons && focus._preferred is { } answer && IsInstanceValid(answer)) answer.CallDeferred(Control.MethodName.GrabFocus);
+        if (IsCovered(panel)) return;
+        if (!UsingButtons && focus._preferred is { } answer && IsInstanceValid(answer)) GrabSoon(answer);
     }
+
+    /// <summary>Focuses <paramref name="control"/> once it's in place, unless something covers it by then.</summary>
+    private static void GrabSoon(Control control) => Callable.From(() =>
+    {
+        if (IsInstanceValid(control) && control.IsInsideTree() && !IsCovered(control)) control.GrabFocus();
+    }).CallDeferred();
 
     /// <summary>
     /// The control a screen wants focused first with the buttons (a settings page's first option); it gets the focus
@@ -164,7 +173,7 @@ public partial class PadFocus : CanvasLayer
         if (_instance is not { } focus || control is null) return;
         Mark(control, ScreenMeta);
         focus._preferred = control;
-        if (UsingButtons && focus.GetViewport().GuiGetFocusOwner() is null) control.CallDeferred(Control.MethodName.GrabFocus);
+        if (UsingButtons && focus.GetViewport().GuiGetFocusOwner() is null) GrabSoon(control);
     }
 
     /// <summary>
@@ -186,7 +195,7 @@ public partial class PadFocus : CanvasLayer
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!@event.IsActionPressed("ui_cancel") || GetTree().Root.GetEmbeddedSubwindows().Any(w => w.Visible)) return;
-        var back = ScreenChoices(GetTree().Root).OfType<BaseButton>().FirstOrDefault(b => b.HasMeta(BackMeta) && !b.Disabled);
+        var back = ScreenChoices(Scope()).OfType<BaseButton>().FirstOrDefault(b => b.HasMeta(BackMeta) && !b.Disabled);
         if (back is null) return;
         GetViewport().SetInputAsHandled();
         back.EmitSignal(BaseButton.SignalName.Pressed);
@@ -206,7 +215,73 @@ public partial class PadFocus : CanvasLayer
     {
         for (Node? node = from; node is not null; node = node.GetParent())
             if (node.HasMeta(InsideMeta) && node.GetMeta(InsideMeta).AsBool()) return node;
-        return GetTree().Root;
+        return Scope();
+    }
+
+    /// <summary>What covers the screen now, the last one on top (see <see cref="Cover"/>).</summary>
+    private static readonly List<Control> Covers = new();
+
+    /// <summary>What had the focus when the screen was covered, and where: it goes back there.</summary>
+    private Control? _covered;
+    private Rect2? _coveredAt;
+
+    /// <summary>
+    /// <paramref name="overlay"/>, just added, covers the screen (an opened booster, a question): until it goes away the
+    /// buttons reach nothing under it, and the focus goes to <paramref name="first"/> (else to its first choice when a
+    /// direction is pressed). Closed, the focus goes back to what had it, or the nearest choice left.
+    /// </summary>
+    public static void Cover(Control overlay, Control? first = null)
+    {
+        if (_instance is not { } focus) return;
+        var owner = focus.GetViewport().GuiGetFocusOwner();
+        if (TopCover() is null)
+        {
+            // The focused one may have just gone (the page under was built again): then where it was.
+            focus._covered = owner;
+            focus._coveredAt = owner is not null && !owner.IsQueuedForDeletion() ? Shown(owner) : focus._lost is not null ? focus._lostAt : null;
+        }
+        Covers.Remove(overlay);
+        Covers.Add(overlay);
+        focus._lost = null;
+        if (owner is not null && !overlay.IsAncestorOf(owner)) owner.ReleaseFocus();
+        overlay.TreeExited += () => Callable.From(Uncovered).CallDeferred();
+        if (first is not null) Prefer(first);
+    }
+
+    private static void Uncovered()
+    {
+        if (_instance is not { } focus || TopCover() is not null) return;
+        var (covered, at) = (focus._covered, focus._coveredAt);
+        (focus._covered, focus._coveredAt) = (null, null);
+        if (focus.GetViewport().GuiGetFocusOwner() is not null) return;
+        if (covered is not null && IsInstanceValid(covered) && !covered.IsQueuedForDeletion() && covered.IsVisibleInTree() && covered.FocusMode != Control.FocusModeEnum.None)
+            covered.GrabFocus();
+        else if (UsingButtons && at is { } place) focus.Nearest(place)?.GrabFocus();
+    }
+
+    private static Control? TopCover()
+    {
+        Covers.RemoveAll(c => !IsInstanceValid(c) || c.IsQueuedForDeletion());
+        return Covers.LastOrDefault(c => c.IsVisibleInTree());
+    }
+
+    /// <summary>Whether something covers <paramref name="control"/> (see <see cref="Cover"/>).</summary>
+    public static bool IsCovered(Control control) => TopCover() is { } cover && cover != control && !cover.IsAncestorOf(control);
+
+    /// <summary>Where the buttons reach now: what covers the screen, else all of it.</summary>
+    private Node Scope() => TopCover() ?? (Node)GetTree().Root;
+
+    /// <summary>
+    /// A line of a list that shows something while pointed at (a card's name): it does while focused too, and the arrows
+    /// reach it.
+    /// </summary>
+    public static void Shows(Control row, Action show, Action hide)
+    {
+        Reachable(row);
+        row.MouseEntered += show;
+        row.MouseExited += hide;
+        row.FocusEntered += () => { if (UsingButtons) show(); };
+        row.FocusExited += hide;
     }
 
     /// <summary>Whether <paramref name="control"/> was marked <see cref="Pressable"/>.</summary>
@@ -223,7 +298,7 @@ public partial class PadFocus : CanvasLayer
     private Control? MarkScreen()
     {
         Control? first = null;
-        foreach (var button in ScreenChoices(GetTree().Root))
+        foreach (var button in ScreenChoices(Scope()))
         {
             Mark(button, ScreenMeta);
             if (button is BaseButton { Disabled: true }) continue;
@@ -240,7 +315,7 @@ public partial class PadFocus : CanvasLayer
     private List<Control> ScreenChoices(Node node)
     {
         var found = new List<Control>();
-        AddScreenChoices(node, found);
+        if (!node.HasMeta(OwnMeta)) AddScreenChoices(node, found);
         return found;
     }
 
@@ -272,7 +347,7 @@ public partial class PadFocus : CanvasLayer
     {
         Control? nearest = null;
         float best = float.MaxValue;
-        foreach (var choice in ScreenChoices(GetTree().Root))
+        foreach (var choice in ScreenChoices(Scope()))
         {
             Mark(choice, ScreenMeta);
             if (choice is BaseButton { Disabled: true }) continue;
@@ -325,9 +400,15 @@ public partial class PadFocus : CanvasLayer
                 var owner = GetViewport().GuiGetFocusOwner();
                 if (OS.GetEnvironment("ARCANUM_PAD_DEBUG") == "1")
                     GD.Print($"PAD {@event.AsText()} owner={owner?.GetType().Name}:{owner?.Name} path={owner?.GetPath()} choice={owner?.HasMeta(ChoiceMeta)} screen={owner?.HasMeta(ScreenMeta)}");
+                // (Nothing under what covers the screen keeps it.)
+                if (owner is not null && IsCovered(owner))
+                {
+                    owner.ReleaseFocus();
+                    owner = null;
+                }
                 if (owner is null)
                 {
-                    bool offered = _preferred is { } preferred && IsInstanceValid(preferred) && preferred.IsVisibleInTree();
+                    bool offered = _preferred is { } preferred && IsInstanceValid(preferred) && preferred.IsVisibleInTree() && !IsCovered(preferred);
                     // No panel offered an answer: the screen's buttons, the preferred one first.
                     var first = MarkScreen();
                     var target = offered ? _preferred : first;

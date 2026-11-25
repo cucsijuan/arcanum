@@ -414,6 +414,7 @@ public partial class MainMenu : Control
             });
         }
         AddChild(overlay);
+        PadFocus.Cover(overlay);
         FocusAnswers();
     }
 

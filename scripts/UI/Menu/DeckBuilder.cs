@@ -1009,7 +1009,7 @@ public partial class DeckBuilder : Control
         var flow = new HFlowContainer();
         flow.AddThemeConstantOverride("h_separation", 10);
         flow.AddThemeConstantOverride("v_separation", 10);
-        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        var scroll = new ScrollContainer { FollowFocus = true, SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         flow.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         scroll.AddChild(flow);
         box.AddChild(scroll);
@@ -1054,11 +1054,13 @@ public partial class DeckBuilder : Control
             MarkDirty();
             RefreshDeck();
         };
+        PadFocus.BackButton(done);
         buttons.AddChild(any);
         buttons.AddChild(done);
         box.AddChild(buttons);
         Update();
         AddChild(overlay);
+        PadFocus.Cover(overlay, tiles.Count > 0 ? tiles[0].Node : done);
         MoveChild(_preview, -1); // the large preview shows over the picker
     }
 

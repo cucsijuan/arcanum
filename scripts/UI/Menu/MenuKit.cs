@@ -195,6 +195,50 @@ public static class MenuKit
     }
 
     /// <summary>
+    /// The cards of a booster in rows filling the space given to the list, as large as they all fit in (up to
+    /// <paramref name="full"/>, shrinking on a small screen); <paramref name="count"/> places are kept, so the size
+    /// stays the same as the cards are taken. Each child of <paramref name="cards"/> holds a <see cref="CardNode"/>.
+    /// Too small to read, they scroll.
+    /// </summary>
+    public static ScrollContainer FittedCards(Control cards, int count, Vector2 full, float gap)
+    {
+        const float edge = 6, smallest = 90; // the edge is room for the focus ring around the outer cards
+        var scroll = new ScrollContainer
+        {
+            FollowFocus = true, SizeFlagsVertical = Control.SizeFlags.ExpandFill, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        scroll.AddChild(cards);
+        var placed = Vector2.Zero;
+        scroll.Resized += () =>
+        {
+            if (scroll.Size == placed || !GodotObject.IsInstanceValid(cards)) return;
+            placed = scroll.Size;
+            var area = placed - new Vector2(edge, edge) * 2;
+            float width = full.X;
+            int Columns() => Math.Max(1, (int)((area.X + gap) / (width + gap)));
+            float Height() => Mathf.Floor(width * full.Y / full.X);
+            float Total(int n) => (n + Columns() - 1) / Columns() * (Height() + gap) - gap;
+            while (width > smallest && Total(count) > area.Y) width--;
+            if (Total(count) > area.Y) area.X -= 24; // the scroll bar's
+            var size = new Vector2(width, Height());
+            int columns = Columns(), i = 0;
+            for (int child = 0; child < cards.GetChildCount(); child++)
+            {
+                if (cards.GetChild(child) is not Control holder) continue;
+                holder.CustomMinimumSize = size;
+                holder.Size = size;
+                holder.Position = new Vector2(edge + i % columns * (width + gap), edge + i / columns * (size.Y + gap));
+                i++;
+                for (int c = 0; c < holder.GetChildCount(); c++)
+                    if (holder.GetChild(c) is CardNode card) card.Size = size;
+            }
+            cards.CustomMinimumSize = new Vector2(0, Total(i) + 2 * edge);
+        };
+        return scroll;
+    }
+
+    /// <summary>
     /// A modal dialog over <paramref name="screen"/>: a title, a text, optional content and its answers in a row (the
     /// last one primary); choosing an answer runs it and closes the dialog.
     /// </summary>
@@ -241,6 +285,7 @@ public static class MenuKit
             buttons.AddChild(button);
         }
         screen.AddChild(overlay);
+        PadFocus.Cover(overlay);
         PadFocus.OfferModal(buttons, buttons.GetChildren().OfType<Button>().LastOrDefault());
         return overlay;
     }

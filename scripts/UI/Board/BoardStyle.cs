@@ -179,6 +179,7 @@ public static class BoardStyle
         button.AddThemeFontSizeOverride("font_size", size);
         var color = primary ? UiArt.Gold : new Color(0.86f, 0.87f, 0.9f);
         button.AddThemeColorOverride("font_color", color);
+        button.AddThemeColorOverride("font_focus_color", color); // (a career dialog's theme has dark ink)
         button.AddThemeColorOverride("font_hover_color", primary ? color.Lightened(0.3f) : Colors.White);
         button.AddThemeColorOverride("font_pressed_color", color.Darkened(0.2f));
         button.AddThemeColorOverride("font_hover_pressed_color", color.Darkened(0.2f));
