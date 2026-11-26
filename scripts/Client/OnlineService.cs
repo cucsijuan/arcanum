@@ -306,6 +306,7 @@ public partial class OnlineService : Node
     private void ListAddresses()
     {
         ShareAddresses.Clear();
+        if (!AcceptsConnections) return; // players reach this device through the service only
         foreach (var ip in IP.GetLocalAddresses().Where(a => !a.Contains(':') && !a.StartsWith("127.") && !a.StartsWith("169.254.")))
             ShareAddresses.Add($"{ip}:{_port} (local network)");
     }
@@ -314,6 +315,7 @@ public partial class OnlineService : Node
     private void OpenRouterPort()
     {
         int port = _port;
+        if (!AcceptsConnections) return; // nobody comes in by address: the router has nothing to forward
         // Some builds (a console's) have no UPnP: players outside the network then need the port forwarded by hand.
         if (!ClassDB.ClassExists("UPNP"))
         {

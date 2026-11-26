@@ -439,7 +439,7 @@ public partial class OnlineScreen : Control
             box.AddChild(line);
             box.AddChild(MenuKit.Hint($"The lobby is listed in the lobby browser ({Online.Services.Name})."));
         }
-        if (Online.IsHosting)
+        if (Online.IsHosting && Online.ShareAddresses.Count > 0)
         {
             box.AddChild(MenuKit.Hint("Or give the other players one of these addresses:"));
             foreach (var address in Online.ShareAddresses)

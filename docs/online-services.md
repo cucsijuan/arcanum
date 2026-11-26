@@ -148,7 +148,9 @@ internet lobby library. Its identity is the EOS ID token: on a console, from the
 internet lobby service once it is signed in. Signing in signs in to the internet lobby service first, then to the relay.
 A console never accepts connections, so its local network service only finds and joins lobbies (no announce, no
 listener), and a console's hosted lobby is reached through the relay. The listing's `port` is set only when the router
-mapped it, else 0. `ARCANUM_ONLINE_RELAY_ONLY=1` and `ARCANUM_ONLINE_INTERNET_ONLY=1` are in the testing list above.
+mapped it, else 0. `ARCANUM_ONLINE_RELAY_ONLY=1` and `ARCANUM_ONLINE_INTERNET_ONLY=1` are in the testing list above. On a device that takes no incoming connections (`OnlineService.AcceptsConnections` false, the console), the lobby screen lists no addresses and the host is not asked to forward a port: `ListAddresses` and `OpenRouterPort` in `scripts/Client/OnlineService.cs` return early, and `scripts/UI/Menu/OnlineScreen.cs` shows the address list only when there are addresses. Players join such a host through the lobby browser or the invite code.
+
+A measured 14-turn two-player game through the relay moved about 1.5 MB each way on the service's machine (2026-11-26).
 
 ## Discord activity
 
