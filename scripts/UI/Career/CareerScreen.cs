@@ -142,7 +142,7 @@ public partial class CareerScreen : Control
         }
     }
 
-    private static Texture2D? Picture(string file) => ResourceLoader.Exists(Kit + file) ? GD.Load<Texture2D>(Kit + file) : null;
+    private static Texture2D? Picture(string file) => ScenePictures.Load(Kit + file);
 
     /// <summary>Testing (ARCANUM_CAREER_PAGE=online:&lt;event id&gt;): registers online for today's run of the event, with the first deck.</summary>
     private async void EnterOnlineForTest(EventSpec e)
@@ -1580,7 +1580,8 @@ public partial class CareerScreen : Control
     /// The copies of each printing no deck uses (<see cref="CardKey"/> text: copies), counted as <see cref="Extras"/> does
     /// with nothing kept beyond what the decks use; basic lands left out.
     /// </summary>
-    internal static Dictionary<string, int> NotInDecks() => Beyond(used => used, sellable: false).ToDictionary(e => e.Card.ToString(), e => e.Count);
+    internal static Lazy<Dictionary<string, int>> NotInDecks() =>
+        new(() => Beyond(used => used, sellable: false).ToDictionary(e => e.Card.ToString(), e => e.Count));
 
     /// <summary>
     /// Copies beyond what is kept of each card (<paramref name="keepOf"/>: from the most any deck uses), keeping first the

@@ -75,6 +75,35 @@ public class PrintingTests
         Assert.Equal(new[] { "10", "10★", "11", "300" }, db.PrintingsIn("new").Select(x => x.Printing.CollectorNumber));
     }
 
+    [Theory]
+    [InlineData("9", "10")]
+    [InlineData("A-9", "A-10")]
+    [InlineData("10", "10★")]
+    [InlineData("007", "7")] // the same number: the text decides
+    [InlineData("12a", "12b")]
+    [InlineData("99999999999", "no number")] // too large a number counts as none
+    [InlineData("300", "99999999999")]
+    public void CollectorNumbersGoInNumericOrder(string before, string after)
+    {
+        Assert.True(OracleJsonl.CompareNumbers(before, after) < 0);
+        Assert.True(OracleJsonl.CompareNumbers(after, before) > 0);
+        Assert.Equal(0, OracleJsonl.CompareNumbers(after, after));
+    }
+
+    [Fact]
+    public void BasicCardsAreKnownByTheirTypes()
+    {
+        const string cards = """
+            {"oracle_id":"b-1","id":"b1","name":"Mossfield","layout":"normal","type_line":"Basic Land — Forest","oracle_text":""}
+            {"oracle_id":"b-2","id":"b2","name":"Mosskeep","layout":"normal","type_line":"Land — Forest","oracle_text":""}
+            {"oracle_id":"b-3","id":"b3","name":"Basics Teacher","layout":"normal","mana_cost":"{1}","type_line":"Artifact Creature — Wizard","oracle_text":"","power":"1","toughness":"1"}
+            """;
+        var db = new CardDatabase(OracleJsonl.Import(Text(cards)));
+        Assert.True(db.Find("Mossfield")!.IsBasicLand);
+        Assert.False(db.Find("Mosskeep")!.IsBasic);
+        Assert.False(db.Find("Basics Teacher")!.IsBasic);
+    }
+
     [Fact]
     public void APrintingBringsItsPictureAndItsTokens()
     {

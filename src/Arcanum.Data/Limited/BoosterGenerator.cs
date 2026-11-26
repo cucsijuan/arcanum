@@ -58,7 +58,7 @@ public sealed class BoosterGenerator : IBoosterSource
     {
         if (sheet.Rarity is { } rarity && !printing.Rarity.Equals(rarity, StringComparison.OrdinalIgnoreCase)) return false;
         if (sheet.Booster is { } booster && printing.Booster != booster) return false;
-        if (sheet.Basic is { } basic && ((card.Definition.Supertypes & Supertype.Basic) != 0) != basic) return false;
+        if (sheet.Basic is { } basic && card.IsBasic != basic) return false;
         if (sheet.Names is { } names && !names.Contains(card.Name, StringComparer.OrdinalIgnoreCase)) return false;
         if (sheet.Numbers is { } numbers && !numbers.Contains(printing.CollectorNumber, StringComparer.OrdinalIgnoreCase)) return false;
         if (sheet.Exclude.Contains(card.Name, StringComparer.OrdinalIgnoreCase)) return false;

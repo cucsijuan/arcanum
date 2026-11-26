@@ -24,7 +24,34 @@ public sealed partial class CareerService
     public bool CheckedCareerDiffers { get; private set; }
 
     /// <summary>Whether the career service checked every action of the career (needed for online events).</summary>
-    public bool IsChecked => _save is { Seal: { } seal } save && seal.Count == save.Journal.Count && CareerSeals.Covers(seal, save.Journal);
+    public bool IsChecked => _save is { Seal: { } seal } save && seal.Count == save.Journal.Count && Covered(seal, save.Journal);
+
+    // The last seal found to cover a journal. A journal only grows, so a seal that covers it keeps covering it.
+    private (CareerSeal Seal, List<CareerAction> Journal)? _covered;
+
+    /// <summary>
+    /// Whether the seal covers the start of the journal (worked out once for each: it goes through the whole journal).
+    /// </summary>
+    private bool Covered(CareerSeal seal, List<CareerAction> journal)
+    {
+        if (IsKnownCovered(seal, journal)) return true;
+        if (!CareerSeals.Covers(seal, journal)) return false;
+        _covered = (seal, journal);
+        return true;
+    }
+
+    /// <summary><see cref="Covered"/>, worked out on a worker thread (a long journal takes a while on slow devices).</summary>
+    private async Task<bool> CoveredAsync(CareerSeal seal, List<CareerAction> journal)
+    {
+        if (IsKnownCovered(seal, journal)) return true;
+        var actions = journal.ToArray(); // the career may go on meanwhile
+        if (!await Task.Run(() => CareerSeals.Covers(seal, actions))) return false;
+        _covered = (seal, journal);
+        return true;
+    }
+
+    private bool IsKnownCovered(CareerSeal seal, List<CareerAction> journal) =>
+        _covered is { } known && ReferenceEquals(known.Seal, seal) && ReferenceEquals(known.Journal, journal);
 
     private static HttpClient Service(string token)
     {
@@ -37,7 +64,7 @@ public sealed partial class CareerService
     private async Task<bool> CheckOnce()
     {
         if (_save is not { } save || save.Journal.Count == 0 || CareerSeals.PublicKeys.Count == 0) return false;
-        int checkedCount = save.Seal is { } seal && CareerSeals.Covers(seal, save.Journal) ? seal.Count : 0;
+        int checkedCount = save.Seal is { } seal && await CoveredAsync(seal, save.Journal) ? seal.Count : 0;
         if (checkedCount == save.Journal.Count)
         {
             SetCheck("Checked by the career service.", differs: false);
@@ -48,26 +75,38 @@ public sealed partial class CareerService
             SetCheck("Not checked by the career service: sign in with Discord (online events need a checked career).", differs: false);
             return false;
         }
-        using var http = Service(token);
+        using var http = await Task.Run(() => Service(token));
         for (int attempt = 0; attempt < 2; attempt++)
         {
-            var actions = save.Journal.Skip(checkedCount).ToList();
+            // What is sent is this moment's career, put together here (a state the career may change is copied) and
+            // written out on a worker thread; the answer is read on one too.
+            if (!ReferenceEquals(_save, save)) return false; // another career took its place meanwhile
+            var journal = save.Journal.ToArray();
             // The states kept at version changes go only for the actions not checked yet.
             var versions = save.Versions.Select(v => v.From > checkedCount ? v : v with { Before = null }).ToList();
-            var request = new CareerSyncRequest(_contentId, OnlineService.Version, checkedCount, CareerSeals.Hash(save.Journal, checkedCount), actions,
-                checkedCount == 0 ? save.State : null, versions);
-            using var reply = await http.PostAsJsonAsync("career/sync", request, Web);
+            var state = checkedCount == 0 ? CareerChecker.Copy(save.State) : null;
+            int start = checkedCount;
+            using var body = new ByteArrayContent(await Task.Run(() => JsonSerializer.SerializeToUtf8Bytes(
+                new CareerSyncRequest(_contentId, OnlineService.Version, start, CareerSeals.Hash(journal, start), journal.Skip(start).ToList(), state, versions), Web)));
+            body.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+            using var reply = await Task.Run(() => http.PostAsync("career/sync", body));
             if (!reply.IsSuccessStatusCode)
             {
                 SetCheck($"Not checked by the career service ({(int)reply.StatusCode}).", differs: false);
                 return false;
             }
-            var response = await reply.Content.ReadFromJsonAsync<CareerSyncResponse>(Web) ?? throw new InvalidDataException("The career service's answer is empty.");
-            var genuine = response.Seal is { } s && s.Count <= save.Journal.Count && CareerSeals.Covers(s, save.Journal) ? s : null;
+            var answer = await reply.Content.ReadAsByteArrayAsync();
+            var (response, genuine) = await Task.Run(() =>
+            {
+                var response = JsonSerializer.Deserialize<CareerSyncResponse>(answer, Web) ?? throw new InvalidDataException("The career service's answer is empty.");
+                return (response, response.Seal is { } s && s.Count <= journal.Length && CareerSeals.Covers(s, journal) ? s : null);
+            });
+            if (!ReferenceEquals(_save, save)) return false; // another career took its place meanwhile
             switch (response.Status)
             {
                 case CareerSyncStatus.Ok when genuine is not null:
                     save.Seal = genuine;
+                    _covered = (genuine, save.Journal);
                     DropCheckedVersionStates(save);
                     Write();
                     SetCheck("Checked by the career service.", differs: false);
@@ -76,7 +115,7 @@ public sealed partial class CareerService
                     checkedCount = genuine.Count; // another device's sync checked more of this same career: build on it
                     continue;
                 case CareerSyncStatus.Rejected:
-                    if (genuine is not null) { save.Seal = genuine; DropCheckedVersionStates(save); Write(); }
+                    if (genuine is not null) { save.Seal = genuine; _covered = (genuine, save.Journal); DropCheckedVersionStates(save); Write(); }
                     SetCheck($"The career service doesn't accept this career's latest actions: {response.Reason} You can go back to the checked career.", differs: true);
                     return genuine is not null;
                 case CareerSyncStatus.Unsupported:

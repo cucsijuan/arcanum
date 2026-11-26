@@ -166,6 +166,8 @@ public partial class GameBoard
             // This screen's own table alone: its hand bigger (it's the hand being played from), right of the list.
             area.HandScale = isShown && mine ? OwnHandScale : 1;
             area.HandLeftInset = isShown && mine ? PlayerListRight : 0;
+            // The rows may take the left side but for the button that opens the hand, or the list of players.
+            area.RowsLeftLimit = acrossAt >= 0 && across.Count > 1 ? null : isShown && !mine ? PlayerListRight + 4 : 118;
             area.AnchorLeft = 0; area.AnchorRight = 1;
             area.OffsetLeft = area.OffsetRight = area.OffsetTop = area.OffsetBottom = 0;
             area.RightInset = isShown && !mine ? 64 : 0;
@@ -245,6 +247,7 @@ public partial class GameBoard
             area.SmallPiles = false;
             area.HandScale = 1;
             area.HandLeftInset = 0;
+            area.RowsLeftLimit = null;
             area.CardScale = 1;
             area.RightInset = place == opponents ? 64 : 0;
             area.OffsetLeft = area.OffsetRight = area.OffsetTop = area.OffsetBottom = 0;
@@ -377,8 +380,102 @@ public partial class GameBoard
         SharpImage = true, ShowCounterBadge = false, MouseFilter = MouseFilterEnum.Ignore, Visible = false,
     };
 
-    /// <summary>The priority question for which the player closed the large view to look at the board (to respond with a card).</summary>
-    private PriorityDecision? _boardSeenFor;
+    /// <summary>
+    /// The question whose panel (or large view) the player put away to look at the board; it shows as a small button under
+    /// the step column until it's pressed or the question is answered (a card may be picked or played meanwhile).
+    /// </summary>
+    private Decision? _panelAwayFor;
+
+    /// <summary>The panel put away: a small button that brings it back.</summary>
+    private readonly Button _panelTab = BoardStyle.MakeButton("", 15, compact: true, plain: true);
+
+    /// <summary>In the panel's corner: puts it away.</summary>
+    private readonly Button _panelHide = BoardStyle.MakeButton("–", 22, compact: true, plain: true);
+
+    private readonly Control _panelTabBox = new() { MouseFilter = MouseFilterEnum.Ignore };
+    private string _panelTabText = "";
+
+    private void BuildPanelTab()
+    {
+        _panelHide.Visible = false;
+        _panelHide.CustomMinimumSize = new Vector2(44, 36);
+        _panelHide.SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
+        _panelHide.SizeFlagsVertical = SizeFlags.ShrinkBegin;
+        _panelHide.TooltipText = "See the board";
+        _panelHide.AddThemeStyleboxOverride("normal", BoardStyle.Box(new Color(1, 1, 1, 0.06f), 8, Arcanum.UI.UiArt.Gold with { A = 0.6f }, 1));
+        _panelHide.Pressed += () => { if (_session.CurrentDecision is { } decision) PutPanelAway(decision); };
+        _actionPanel.AddChild(_panelHide);
+
+        _panelTabBox.Visible = false;
+        _panelTabBox.ZIndex = BoardStyle.Z.ActionPanel;
+        _panelTab.TooltipText = "Show the question";
+        var box = BoardStyle.Box(new Color(0.06f, 0.06f, 0.07f, 0.95f), 8, Arcanum.UI.UiArt.Gold, 2);
+        var lit = BoardStyle.Box(new Color("26272c"), 8, Arcanum.UI.UiArt.Gold, 2);
+        _panelTab.AddThemeStyleboxOverride("normal", box);
+        _panelTab.AddThemeStyleboxOverride("hover", lit);
+        _panelTab.AddThemeStyleboxOverride("pressed", lit);
+        _panelTab.AddThemeColorOverride("font_color", BoardStyle.Playable);
+        _panelTab.Pressed += BringPanelBack;
+        _panelTabBox.AddChild(_panelTab);
+        AddChild(_panelTabBox);
+    }
+
+    private void PutPanelAway(Decision decision)
+    {
+        _panelAwayFor = decision;
+        Refresh();
+    }
+
+    private void BringPanelBack()
+    {
+        _panelAwayFor = null;
+        Refresh();
+    }
+
+    private bool _panelAway;
+
+    /// <summary>
+    /// Whether the player put this question's panel away. A question inside the question (which ability to use, a second
+    /// legendary permanent) shows its panel anyway.
+    /// </summary>
+    private bool IsPanelAway(Decision? decision)
+    {
+        if (!ReferenceEquals(_panelAwayFor, decision)) _panelAwayFor = null;
+        return _compact && _panelAwayFor is not null && _abilityChoiceSource is null && _legendConfirm is null;
+    }
+
+    /// <summary>After the panel is built: the small button in its place, if it was put away.</summary>
+    private void ShowPanelTab(GameView view, Decision? decision)
+    {
+        // With the card large beside it, the panel has its own "See the board".
+        _panelHide.Visible = _compact && !_actionCard.Visible;
+        _panelTabBox.Visible = _panelAway;
+        if (!_panelAway) return;
+        _actionCard.Visible = false;
+        _panelTabText = decision switch
+        {
+            PriorityDecision when view.Stack.Count > 0 => "Respond",
+            PriorityDecision => "Your\nmove",
+            ManaPaymentDecision => "Pay",
+            TargetDecision => "Target",
+            AttackDecision => "Attack",
+            BlockDecision => "Block",
+            ChooseCardsDecision => "Cards",
+            _ => "Answer",
+        };
+        _panelTab.Text = _panelTabText;
+        // Under the step column, where it covers no card.
+        var size = new Vector2(_stepTrack.Size.X, 48);
+        _panelTab.Size = size;
+        _panelTabBox.Position = new Vector2(Size.X - 8 - size.X, Mathf.Min(StepTrackTop + _stepTrack.Size.Y + 8, Size.Y - 8 - size.Y));
+        Arcanum.UI.PadFocus.Offer(_panelTabBox, _panelTab);
+    }
+
+    /// <summary>The time left to answer, in online games, on the panel put away too.</summary>
+    private void ShowPanelTabTime(int left)
+    {
+        if (_panelTabBox.Visible) _panelTab.Text = left >= 0 ? $"{_panelTabText.Replace('\n', ' ')}\n{left / 60}:{left % 60:00}" : _panelTabText;
+    }
 
     private static StyleBoxFlat MakeCompactPanelBox()
     {

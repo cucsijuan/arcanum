@@ -75,8 +75,17 @@ public partial class CardImageCache : Node
     /// <summary>Pictures being read and decoded, and the decoded ones waiting to become textures.</summary>
     private readonly HashSet<string> _decoding = new();
     private readonly BlockingCollection<(string Key, string Path, byte[]? Bytes)> _toDecode = new();
-    private readonly ConcurrentQueue<(string Key, Image? Image)> _decoded = new();
-    private System.Threading.Thread? _decoder;
+    private readonly ConcurrentQueue<(string Key, Image? Image, bool Missing)> _decoded = new();
+
+    /// <summary>Pictures to fetch ahead that aren't on disk, found by a worker thread.</summary>
+    private readonly ConcurrentQueue<string> _toPrefetch = new();
+    private System.Threading.Thread? _decoder, _writer;
+
+    /// <summary>Downloaded pictures being saved (their bytes are used meanwhile), and those saved, with whether it went well
+    /// (the run of the download of every card's picture it's part of, 0 for none).</summary>
+    private readonly Dictionary<string, byte[]> _saving = new();
+    private readonly BlockingCollection<(string Key, string Path, byte[] Bytes, int Run)> _toSave = new();
+    private readonly ConcurrentQueue<(string Key, int Run, bool Saved)> _saved = new();
     private volatile bool _closing;
 
     /// <summary>The longest the game waits, closing, for the decoding thread to leave.</summary>
@@ -98,22 +107,31 @@ public partial class CardImageCache : Node
         for (int i = 0; i < CardConnections; i++) _cardLanes.Add(new Lane());
         foreach (var lane in _cardLanes.Append(_addressLane))
         {
-            lane.Http = new HttpRequest { Timeout = 20 };
+            lane.Http = new HttpRequest { Timeout = 20, UseThreads = true }; // a connection's handshake takes several frames on slow devices
             AddChild(lane.Http);
             lane.Http.RequestCompleted += (result, code, headers, body) => OnRequestCompleted(lane, result, code, headers, body);
         }
-        _decoder = new System.Threading.Thread(Decode) { IsBackground = true, Name = "Card pictures" };
-        try { _decoder.Priority = System.Threading.ThreadPriority.BelowNormal; }
+        _decoder = StartThread(Decode, "Card pictures");
+        _writer = StartThread(Save, "Card pictures saved");
+    }
+
+    private static System.Threading.Thread StartThread(System.Threading.ThreadStart work, string name)
+    {
+        var thread = new System.Threading.Thread(work) { IsBackground = true, Name = name };
+        try { thread.Priority = System.Threading.ThreadPriority.BelowNormal; }
         catch (Exception e) when (e is PlatformNotSupportedException or System.Threading.ThreadStateException) { }
-        _decoder.Start();
+        thread.Start();
+        return thread;
     }
 
     /// <summary>The engine is taken down after this: the decoding thread (it uses the engine's images) leaves first, with
-    /// the picture in hand done and the rest of its queue left.</summary>
+    /// the picture in hand done and the rest of its queue left. So does the one saving pictures (what it leaves is downloaded again).</summary>
     public override void _ExitTree()
     {
         _closing = true;
         _toDecode.CompleteAdding();
+        _toSave.CompleteAdding();
+        if (_writer?.Join(ClosingWait) == false) GD.Print("Closing: the picture being saved didn't finish in time.");
         if (_decoder?.Join(ClosingWait) == false) GD.Print("Closing: the picture being decoded didn't finish in time.");
     }
 
@@ -214,14 +232,19 @@ public partial class CardImageCache : Node
     public static void Prefetch(IEnumerable<string> keys)
     {
         if (_instance is not { _module: not null } cache) return;
-        foreach (var key in keys)
+        // Looking for each file takes long enough on slow devices to freeze the screen: a worker thread does.
+        var wanted = keys.Where(key => !key.StartsWith(UrlPrefix) && cache.MayPrefetch(key)).Distinct()
+            .Select(key => (Key: key, Path: ProjectSettings.GlobalizePath(CachePath(key)))).ToList();
+        _ = System.Threading.Tasks.Task.Run(() =>
         {
-            if (key.StartsWith(UrlPrefix) || cache._memory.ContainsKey(key) || cache._failed.Contains(key)
-                || cache._pending.Contains(key) || FileAccess.FileExists(CachePath(key))) continue;
-            cache._pending.Add(key);
-            cache._prefetchQueue.AddLast(key);
-        }
+            foreach (var (key, path) in wanted)
+                if (!System.IO.File.Exists(path)) cache._toPrefetch.Enqueue(key);
+        });
     }
+
+    private bool MayPrefetch(string key) =>
+        !_memory.ContainsKey(key) && !_failed.Contains(key) && !_pending.Contains(key) && !_decoding.Contains(key) && !_waiting.ContainsKey(key)
+        && !_saving.ContainsKey(key);
 
     /// <summary>
     /// Like <see cref="Request"/>, but returns a copy resampled once with Lanczos to exactly <paramref name="size"/>.
@@ -250,23 +273,37 @@ public partial class CardImageCache : Node
 
         if (!_waiting.TryGetValue(cardName, out var callbacks)) _waiting[cardName] = callbacks = new List<Action<Texture2D>>();
         callbacks.Add(onLoaded);
-        if (_decoding.Contains(cardName) || _pending.Contains(cardName) && !_prefetchQueue.Contains(cardName)) return;
-
-        var path = CachePath(cardName);
-        if (FileAccess.FileExists(path))
-        {
-            StartDecoding(cardName, path, null);
-            return;
-        }
+        if (_decoding.Contains(cardName)) return;
+        if (!_pending.Contains(cardName)) StartDecoding(cardName, CachePath(cardName), _saving.GetValueOrDefault(cardName)); // downloaded when it isn't on disk
         // Wanted on screen now: ahead of the pictures fetched ahead (a prefetched key left in that queue is skipped).
-        _pending.Add(cardName);
-        Enqueue(cardName);
+        else if (_prefetchQueue.Contains(cardName)) Enqueue(cardName);
     }
 
     private void StartDecoding(string key, string path, byte[]? bytes)
     {
         _decoding.Add(key);
         _toDecode.Add((key, ProjectSettings.GlobalizePath(path), bytes));
+    }
+
+    /// <summary>The saving thread: writes the downloaded pictures to disk (several frames each on a console's memory card).</summary>
+    private void Save()
+    {
+        foreach (var (key, path, bytes, run) in _toSave.GetConsumingEnumerable())
+        {
+            if (_closing) break;
+            bool saved = false;
+            try
+            {
+                System.IO.File.WriteAllBytes(path, bytes);
+                saved = true;
+            }
+            catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException)
+            {
+                try { System.IO.File.Delete(path); }
+                catch (Exception d) when (d is System.IO.IOException or UnauthorizedAccessException) { }
+            }
+            _saved.Enqueue((key, run, saved));
+        }
     }
 
     /// <summary>The decoding thread: reads a picture from disk (or takes the downloaded bytes) and decodes it.</summary>
@@ -276,13 +313,13 @@ public partial class CardImageCache : Node
         {
             if (_closing) break;
             Image? image = null;
+            bool missing = bytes is null && !System.IO.File.Exists(path);
             try
             {
-                var data = bytes ?? System.IO.File.ReadAllBytes(path);
-                image = TryDecode(data);
+                if (!missing) image = TryDecode(bytes ?? System.IO.File.ReadAllBytes(path));
             }
             catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException) { }
-            _decoded.Enqueue((key, image));
+            _decoded.Enqueue((key, image, missing));
         }
     }
 
@@ -318,6 +355,21 @@ public partial class CardImageCache : Node
         }
         if (_addressLane.InFlight is null && _addressQueue.TryDequeue(out var address)) Start(_addressLane, address);
 
+        while (_saved.TryDequeue(out var put))
+        {
+            _saving.Remove(put.Key);
+            if (put.Run == 0 || put.Run != _everyRun) continue;
+            if (put.Saved) _everyHave++;
+            // Most likely the memory card is full: the rest would fail the same way.
+            else _everyStopped = "No room left to save the pictures.";
+        }
+        while (_toPrefetch.TryDequeue(out var ahead))
+        {
+            if (!MayPrefetch(ahead)) continue;
+            _pending.Add(ahead);
+            _prefetchQueue.AddLast(ahead);
+        }
+
         // Decoded pictures become textures, a few per frame.
         ulong start = Time.GetTicksMsec();
         while (Time.GetTicksMsec() - start < TextureBudgetMs && _decoded.TryDequeue(out var done))
@@ -325,8 +377,8 @@ public partial class CardImageCache : Node
             _decoding.Remove(done.Key);
             if (done.Image is null)
             {
-                // A broken file on disk: download it again if it's still wanted.
-                DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(CachePath(done.Key)));
+                // Not on disk, or a broken file: downloaded (again) if it's still wanted.
+                if (!done.Missing) DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(CachePath(done.Key)));
                 if (_waiting.ContainsKey(done.Key) && _pending.Add(done.Key)) Enqueue(done.Key);
                 continue;
             }
@@ -467,14 +519,8 @@ public partial class CardImageCache : Node
             return;
         }
         bool every = _everyActive.Remove(key);
-        using (var file = FileAccess.Open(CachePath(key), FileAccess.ModeFlags.Write))
-        {
-            file?.StoreBuffer(body);
-            bool stored = file is not null && file.GetError() == Error.Ok;
-            if (every && stored) _everyHave++;
-            // Most likely the memory card is full: the rest would fail the same way.
-            if (every && !stored) _everyStopped = "No room left to save the pictures.";
-        }
+        _saving[key] = body;
+        _toSave.Add((key, ProjectSettings.GlobalizePath(CachePath(key)), body, every ? _everyRun : 0));
         // Fetched ahead and not wanted yet: it stays on disk only.
         if (_waiting.ContainsKey(key)) StartDecoding(key, CachePath(key), body);
     }

@@ -15,6 +15,7 @@ Where things live in the rules engine and how a new mechanic goes in. The script
 | `tools/PrepareCardData` | Makes a module's `card-data.bin` from the sources in its `sources.json` (`dotnet run --project tools/PrepareCardData -- <module folder> <output folder>`). The module's release workflow runs it. |
 | `tests/Arcanum.Engine.Tests` | Rules tests with invented cards (`Scenario`, `TestController`). |
 | `tests/Arcanum.Data.Tests` | Parsing, vocabulary, decks, boosters and the whole-set game soak (`SetGamesTests`). |
+| `tests/Arcanum.Service.Tests` | The career service's lobby relay on a loopback port (`LobbyRelayTests`); players are named by an `X-Player` header instead of a token. The game's `ServiceOnlineServices` against that relay (`ServiceOnlineServicesTests`). |
 
 Game content (scripts, sets, decks) lives in the content module repository, not here.
 
@@ -29,9 +30,10 @@ The game knows no module by name. It finds a module by its folder (one with `man
 | Reading a zip's manifest without extracting it (`ModuleInstaller.PeekManifest`); installing a zip (`InstallFromZip`), which sets the installed manifest's time to the install time. Files other than `scripts/` are extracted; the zip is copied whole as `scripts.zip`, and card scripts are read from it. `ModuleInstaller.BringsCardData` tells whether the zip holds `card-data.bin` (the install dialogs use it) | `src/Arcanum.Data/Modules/ModuleInstaller.cs` |
 | A module's card scripts: `scripts/*.json` in a folder, else the entries of `scripts.zip` (`ContentModule.ScriptFiles`). `ScriptReader()` parses one card's script when that card is asked for; nothing is unpacked at start | `src/Arcanum.Data/Modules/ContentModule.cs` |
 | Card data a zip brings already made (`card-data.bin`, `OracleJsonl.PreparedFileName`): the card records in the card cache's binary encoding (`CardCache.WriteRecords`, `ReadRecords`, `IsRecordsFile`), under the import-rules version `OracleJsonl.CompactFormat`. Made by `tools/PrepareCardData` (`OracleJsonl.Prepare`, then `ReadCompact`) | `src/Arcanum.Data/CardData/OracleJsonl.cs`, `src/Arcanum.Data/CardData/CardCache.cs` |
+| A module's sets (`LoadSets`, read the first time they're asked for, with their errors), deck names (`DeckNames`) and deck texts (`ReadDeck`, each file read once). `SharedDeck(name)` parses a starter deck once and shares it, only to look at (`DeckStore.Peek` uses it). `App.PrepareAhead` runs on a lowest-priority thread once content is loaded: `CardDatabase.PrepareLists` (card names, search words), then every starter deck and its cards' definitions | `src/Arcanum.Data/Modules/ContentModule.cs`, `scripts/Client/App.cs`, `src/Arcanum.Data/CardData/CardDatabase.cs` |
 | `manifest.json` fields (`ModuleManifest`, `ContentModule.ReadManifest`), including the optional `updates` | `src/Arcanum.Data/Modules/ContentModule.cs` |
 | Update checks: the game's newest release (`NewerGameAsync`), and the installed module's newest release at its `updates` URL (`NewerModuleAsync`; no `updates` field, no check). Both read a "latest release" document in GitHub's releases API format. A connection that can't be made is tried up to 4 times, 2, 4 and 6 s apart (`LatestAsync`) | `scripts/Client/Updater.cs` |
-| Installing a downloaded game (`InstallGameAndRestart`). Desktop: the zip is unpacked, and a script copies it over the install folder once the game has exited, then starts the game. Console (`Switch`, asset `-console.zip`): `InstallConsoleGame` writes the NRO to the update slot not running (`update_a.bin` / `update_b.bin` beside it), makes an `update.install` marker and starts the slot with `OS.CreateProcess`; the console port then makes it the menu's `arcanum.nro` | `scripts/Client/Updater.cs`; the console side in `godot-switch`'s `port/platform-switch/` |
+| Installing a downloaded game (`InstallGameAndRestart`). Desktop: the zip is unpacked, and a script copies it over the install folder once the game has exited, then starts the game. Console (recognized by its OS name, asset `-console.zip`): `InstallConsoleGame` writes the NRO to the update slot not running (`update_a.bin` / `update_b.bin` beside it), makes an `update.install` marker and starts the slot with `OS.CreateProcess`; the console port then makes it the menu's `arcanum.nro` | `scripts/Client/Updater.cs`; the console side in the console port's platform code |
 
 ## From card data to a definition
 
@@ -68,6 +70,13 @@ nonbasic-land and creature name lists. Definitions are not stored.
 - **Lazy definitions**: a `CardEntry` read from the cache makes its `Definition` the first time it is asked for (once, thread-safe).
   `CardDatabase.MakeDefinitionsAsync` makes the rest on the thread pool after loading. `ContentModule.ScriptReader()` parses one
   card's script by oracle id for this; it gives the same result as `ContentModule.LoadScripts`.
+- **Facts without the definition**: `CardEntry` gives `ManaCost`, `Types`, `ManaValue`, `IsMeldResult`, `IsBasic` and `IsBasicLand`
+  without making the definition. A card of one face takes its cost and types from its record (`CardFactory.CostOf`, the type line);
+  a card with more faces makes it. `IsMeldResult` is kept in the cache. `IsBasic` is false without the definition when no type
+  line of the record says "Basic"; otherwise the definition is made. Code that looks at many cards (the market, deck checks,
+  boosters) uses these, not `Definition`, because making thousands of definitions freezes slow devices. `PrintingsIn` groups
+  every card's printings once, the first time any set is asked for, and puts a set's printings in collector number order the
+  first time that set is asked for.
 - **Keeping it right**: a new field on `CardRecord`, `Printing`, `CardFaceRecord`, `RelatedToken` or `PrintingPrices` needs
   `CardCache`'s writer and reader updated. `CardCacheTests.EveryRecordFieldIsKept` fails until it is. A change to the file's
   layout (what the writer and reader store) needs the cache's `Format` number bumped, so older files read as missing.
@@ -325,10 +334,14 @@ with its height, and the career table pictures are not drawn (`GameBoard.AtTable
 | Setting, `CompactBoard`, `SmallScreen`, `CheckScreen`; small screens draw the interface `SmallScreenScale` (1.5) bigger | `scripts/Client/Settings.cs`; the "Board view" row in `scripts/UI/Menu/SettingsScreen.cs`; `App._Process` (`scripts/Client/App.cs`) |
 | Layout of the shown table and the strip of this screen's cards (`PlaceAreas`, run first in `Refresh`; `StripDivider` 0.66, `StripWithHandDivider` 0.5; `ScaleFor`, `UsualSideHeight`); the stack (`_stackView`) sits near the top, over the table shown large | `scripts/UI/Board/GameBoard.Compact.cs` |
 | Hand button, and the hand opening by itself for a decision about cards in it | `GameBoard.Compact.cs` (`_handButton`, `_handOpen`, `handWanted`) |
-| Choice among cards (`ChooseCardsDecision`, unless every option is in a graveyard or exile, which keep the zone viewer): the cards over the whole screen in `MulliganView.ShowChoice`, answers under them; "See the board" (`_boardSeenForChoice`) closes it for that choice and "Show the cards" in the action panel brings it back. Controller focus reaches the cards (`PadFocus.Reachable`) and stays inside the view (`PadFocus.KeepInside`) | `scripts/UI/Board/GameBoard.cs` (`LargeChoice`, `ChoiceAnswers`, `LargeMulligan`); `scripts/UI/Board/MulliganView.cs`; `scripts/UI/PadFocus.cs` |
+| Choice among cards (`ChooseCardsDecision`, unless every option is in a graveyard or exile, which keep the zone viewer): the cards over the whole screen in `MulliganView.ShowChoice`, answers under them; "See the board" puts the choice's panel away (`PutPanelAway`, `_panelAwayFor`) and the small "Cards" button brings it back (`BringPanelBack`). Controller focus reaches the cards (`PadFocus.Reachable`) and stays inside the view (`PadFocus.KeepInside`) | `scripts/UI/Board/GameBoard.cs` (`LargeChoice`, `ChoiceAnswers`, `LargeMulligan`); `scripts/UI/Board/MulliganView.cs`; `scripts/UI/PadFocus.cs` |
+| Compact board, any question's panel can be put away: "–" in the panel's corner, or "See the board" in the large view of a stack. `_panelAwayFor` holds the question; `ShowPanelTab` shows a small button under the step column (Respond, Target, Pay, Attack, and so on; the time left too in online games) that brings it back. A question inside the question (ability choice, legend confirm) shows its panel anyway (`IsPanelAway`) | `scripts/UI/Board/GameBoard.Compact.cs` (`IsPanelAway`, `ShowPanelTab`); `scripts/UI/Board/GameBoard.cs` (`BuildActionPanel`) |
+| While the large view of the stack shows, the arrows stay on its answers (`PadFocus.KeepInside` on the action panel, while `_actionCard` is visible); `PanelAnswer` picks the answer that takes the focus | `scripts/UI/Board/GameBoard.cs` (`PanelAnswer`); `scripts/UI/Board/GameBoard.Compact.cs` (`ShowActionCard`); `scripts/UI/PadFocus.cs` (`KeepInside`) |
+| Large card preview with a controller or touch: a card shows when an arrow reaches it (`PadFocus.MovedByArrow`), not when the focus lands on it by itself. Each board refresh (`CheckPreview`) closes it when its card changed zone, or when something new is on top of the stack or the turn changed. The announcer's `Shown` closes it too (`PreviewGivesWay`). A mouse's preview is left alone except for the zone change | `scripts/UI/Board/GameBoard.Touch.cs` (`HoverStarted`, `CheckPreview`, `PreviewGivesWay`); `scripts/UI/Board/GameBoard.cs` (`_announcer.Shown`, `CheckPreview` call); `scripts/UI/PadFocus.cs` (`MovedByArrow`) |
 | The list of players: life buttons pick attack and target choices; name buttons show a table, a second press follows the turn again | `GameBoard.Compact.cs` (`RefreshPlayerList`, `_viewed`); a new turn resets the view (`_compactTurn`) |
 | Re-checking the view every 0.5 s (a console taken out of its dock) | `GameBoard.Compact.cs` (`CheckScreen`), called from `GameBoard._Process` |
 | Per-side hand, strip and pile settings (`RightInset`, `HideHand`, `CardScale`; piles never below `PileScale` 0.8) | `scripts/UI/Board/PlayerArea.cs` |
+| Rows of permanents on a side: `BattlefieldLayout.RowSteps` gives the distance between cards (room to be tapped, then side by side untapped, then lands of one name one over the other, `CanCloseUp`, then everything); `PlayerArea.LayoutRow` ends a row before the piles when they share its height (`RowMeetsPiles`); `PlayerArea.RowsLeftLimit` (set by `GameBoard.Compact`) lets a crowded row begin further left | `scripts/UI/Board/PlayerArea.cs` (`LayoutRow`, `RowMeetsPiles`, `RowsLeftLimit`); `src/Arcanum.Engine/Views/BattlefieldLayout.cs` (`RowSteps`, `CanCloseUp`, `RowOf`, `Stack`), tested in `tests/Arcanum.Engine.Tests/BattlefieldLayoutTests.cs` |
 | Banner of the announcer centred at 0.27 of the board's height | `scripts/UI/Board/Announcer.cs` |
 
 ## Touch input
@@ -492,6 +505,25 @@ collection shows one scene at a time; cards not owned are drawn grey (`CardNode.
 | Greyed card | `scripts/UI/Board/CardNode.cs`, `shaders/rounded_card.gdshader` |
 | Tests | `tests/Arcanum.Data.Tests/SetPackTests.cs` |
 
+## Online play connections
+
+Players connect over TCP. The connection and listener are in `TcpTransport.cs`; the protocol and the host are in `src/Arcanum.Net`.
+
+| Piece | Where |
+|-------|-------|
+| `TcpConnection` and `TcpConnectionListener` use IPv6 dual-mode sockets. IPv4 is used only where the system can't open IPv6 sockets (`TcpConnection.Ipv6Works`, the console) | `src/Arcanum.Net/Transport/TcpTransport.cs` |
+| `TcpConnection.UseNoDelay` (default true). `App._Ready` sets it to false on the console: its sockets refuse the no-delay option on accepted connections, and a refused option leaves the connection unusable | `src/Arcanum.Net/Transport/TcpTransport.cs`; `scripts/Client/App.cs` |
+| The accept loop drops a connection that fails to set up and keeps accepting the others (`AcceptLoop`) | `src/Arcanum.Net/Transport/TcpTransport.cs` |
+| Router port mapping (UPnP, `OpenRouterPort`) is skipped when the build has no `UPNP` class (the console build). The host is told to forward the port by hand | `scripts/Client/OnlineService.cs` |
+| `WebSocketClient`: an RFC 6455 client over TCP (TLS for `wss`), written in the project because the console's runtime has no WebSocket. It checks `Sec-WebSocket-Accept`, masks client frames, answers pings and closes after `SilenceLimit` (75 s). A refused upgrade throws `WebSocketRefusedException` with the HTTP status | `src/Arcanum.Net/Transport/WebSocketClient.cs` |
+| `ServiceOnlineServices` (name "Internet relay"): the game's `IOnlineServices` for the career service's lobby relay. Publishing keeps the host's WebSocket to `/play/host`; joining tries a direct TCP connection for 3 s, then `/play/join`. Relayed players go through `PacketRelay` over a host or player link. Identity headers come from a function given to the constructor | `src/Arcanum.Net/Services/ServiceOnlineServices.cs` |
+| `CombinedOnlineServices.SignInAsync` signs in to every service, not only the first that answers. The returned identity is the first one that signed in | `src/Arcanum.Net/Services/CombinedOnlineServices.cs` |
+| Client wiring: `MakeServices` builds the local network (`LanOnlineServices`, `hosts: AcceptsConnections`), the internet lobby service when the build has it, and the relay, combined in that order; `RelayIdentityAsync` gives the relay its identity; `AcceptsConnections` is false on the console | `scripts/Client/OnlineService.Directory.cs` |
+
+Known limit: on the console, connections a host accepts still fail on their first read ("Operation canceled" from the
+console's runtime). So a console doesn't host on the local network (`hosts: false`): its hosted lobby is reached through
+the relay. Joining a host on the local network works.
+
 ## Career service and online career events
 
 The career rules run in the game and in the career service (`CareerRules.Replay`, through `CareerChecker`). The
@@ -511,11 +543,18 @@ service seals a career's checked actions, and online career events run through i
 | Service: online tables, host reports, results, leaderboards (SQLite) | `server/Arcanum.CareerService/EventDesk.cs` |
 | Service: checked careers (SQLite) | `server/Arcanum.CareerService/CareerStore.cs` |
 | Service: EOS Connect ID token check | `server/Arcanum.CareerService/EosIdentity.cs` |
+| Service: internet lobbies and the relay for consoles (`/lobbies`, `/play/host`, `/play/join`, `LobbyRelay`, `ByteBudget`; see [online-services.md](online-services.md)) | `server/Arcanum.CareerService/LobbyRelay.cs`, `server/Arcanum.CareerService/Program.cs` |
 | Service: device sign-in links (`/auth/link`, `/link`, `/link/callback`) | `server/Arcanum.CareerService/DiscordLinks.cs` |
 | Service: cloud files (`/cloud/{name}`, `CloudFile`, `SaveCloudFile`) | `server/Arcanum.CareerService/CareerStore.cs` |
 | Service: career world per content version, built at start | `server/Arcanum.CareerService/CareerWorlds.cs` |
 | Service: systemd unit, Caddy, deploy scripts | `server/Arcanum.CareerService/deploy/` |
 | Client: sync and checked status | `scripts/Client/CareerService.Check.cs` |
+| Client: cloud sync unpacks, reads and compares the careers on a worker thread, and checks this device's files again before it replaces them (`SameFiles`) | `scripts/Client/CareerService.cs` (`SyncOnce`, `TakeBundle`) |
+| Client: work the career's screens need, worked out ahead on a lowest-priority thread at start and when the season changes (`PrepareTrading`: `CareerWorld.PrepareTrading`, `CareerMarket.Prepare`, the definitions of owned cards) | `scripts/Client/CareerService.cs`, `src/Arcanum.Data/Career/CareerWorld.cs`, `src/Arcanum.Data/Career/CareerMarket.cs` |
+| Client: a career's deck files, the player's deck texts kept by time and size until `Forget()` (called when the career's files are replaced). `Peek` gives a starter deck's shared list (`SharedDeck`) without a copy | `scripts/Client/DeckStore.cs`, `scripts/Client/CareerService.cs` |
+| Client: large scene pictures of the career screens read in the background at start (`ScenePictures.ReadAhead`, `ScenePictures.Load`) | `scripts/Client/ScenePictures.cs`, `scripts/Client/App.cs` |
+| Client: card pictures. A picture is looked for on disk, read and decoded on a decoding thread (`Decode`), and one that is missing is then downloaded. The prefetch list is checked by a worker (`Prefetch`), downloads are saved by a saving thread (`Save`, their bytes kept in `_saving` meanwhile), and requests use threads. Nothing reads or writes a picture on the main thread: file access there costs milliseconds each on a console's memory card | `scripts/Client/CardImageCache.cs` |
+| Client: settings. `Settings.Save` writes the file on a worker, one write after another; `Settings.Flush` waits (up to 2 s) for them when the game exits (`App._ExitTree`) | `scripts/Client/Settings.cs`, `scripts/Client/App.cs` |
 | Client: check-in, table, result, leaderboards | `scripts/Client/CareerService.Online.cs` |
 | Client: the table's unlisted lobby, started when its people are in | `scripts/Client/OnlineService.CareerTable.cs` |
 | Client: EOS ID token (`IdTokenAsync`, `IIdentityTokens`) | `scripts/Client/OnlineService.Directory.cs`, `scripts/Client/Eos/EosOnlineServices.cs`; without the services' library, `scripts/Client/Eos/EosWebIdentity.cs` |
@@ -523,7 +562,7 @@ service seals a career's checked actions, and online career events run through i
 | Client: cloud files on the career service (`CloudAsync`) | `scripts/Client/ServiceCloud.cs`, `scripts/Client/OnlineService.Directory.cs` |
 | Client: file times where the file system can't set them (`file-times.json`) | `scripts/Client/FileTimes.cs` |
 | Client: online event screen and standings | `scripts/UI/Career/EventScreen.Online.cs`, `scripts/UI/Career/CareerScreen.Standings.cs` |
-| Tests | `tests/Arcanum.Data.Tests/CareerSealTests.cs`, `tests/Arcanum.Data.Tests/OnlineEventsTests.cs` |
+| Tests | `tests/Arcanum.Data.Tests/CareerSealTests.cs`, `tests/Arcanum.Data.Tests/OnlineEventsTests.cs`, `tests/Arcanum.Service.Tests/LobbyRelayTests.cs` |
 
 ## Adding a mechanic
 

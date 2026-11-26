@@ -31,39 +31,47 @@ internal static class EosWebIdentity
         {
             if (_kept is { } kept && kept.Until > DateTime.UtcNow.AddMinutes(5)) return kept.Token;
             if (await Account.DiscordAccessTokenAsync(cancel) is not { } discord) return null;
-            using var request = new HttpRequestMessage(HttpMethod.Post, TokenUrl)
+            // The request is made and its answer read on a worker thread: setting up a connection takes long on slow devices.
+            var (ok, status, answer) = await Task.Run(() => AskAsync(keys, discord, cancel), cancel);
+            if (!ok)
             {
-                Content = new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["grant_type"] = "external_auth",
-                    ["external_auth_type"] = "discord_access_token",
-                    ["external_auth_token"] = discord,
-                    ["deployment_id"] = keys.DeploymentId,
-                    ["nonce"] = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)),
-                }),
-            };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Basic",
-                Convert.ToBase64String(Encoding.UTF8.GetBytes($"{keys.ClientId}:{keys.ClientSecret}")));
-            using var response = await Http.SendAsync(request, cancel);
-            var body = await response.Content.ReadAsStringAsync(cancel);
-            if (!response.IsSuccessStatusCode)
-            {
-                Godot.GD.Print($"Online services: the web sign-in was refused ({(int)response.StatusCode}).");
+                Godot.GD.Print($"Online services: the web sign-in was refused ({status}).");
                 // A Discord token the services no longer take: the next try asks Discord for a fresh one.
-                if ((int)response.StatusCode is 400 or 401 or 500) Account.ForgetAccessToken();
+                if (status is 400 or 401 or 500) Account.ForgetAccessToken();
                 return null;
             }
-            using var json = JsonDocument.Parse(body);
-            var root = json.RootElement;
-            var token = (root.TryGetProperty("id_token", out var id) ? id : root.GetProperty("access_token")).GetString();
-            if (token is not { Length: > 0 }) return null;
-            var until = root.TryGetProperty("expires_at", out var at) && at.GetString() is { } text && DateTime.TryParse(text, null,
-                System.Globalization.DateTimeStyles.AdjustToUniversal, out var expires)
-                ? expires
-                : DateTime.UtcNow.AddSeconds(root.TryGetProperty("expires_in", out var seconds) ? seconds.GetInt32() : 3600);
-            _kept = (token, until);
-            return token;
+            _kept = answer;
+            return answer?.Token;
         }
         finally { Asking.Release(); }
+    }
+
+    private static async Task<(bool Ok, int Status, (string Token, DateTime Until)? Answer)> AskAsync(EosKeys keys, string discord, CancellationToken cancel)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, TokenUrl)
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "external_auth",
+                ["external_auth_type"] = "discord_access_token",
+                ["external_auth_token"] = discord,
+                ["deployment_id"] = keys.DeploymentId,
+                ["nonce"] = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)),
+            }),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Basic",
+            Convert.ToBase64String(Encoding.UTF8.GetBytes($"{keys.ClientId}:{keys.ClientSecret}")));
+        using var response = await Http.SendAsync(request, cancel);
+        var body = await response.Content.ReadAsStringAsync(cancel);
+        if (!response.IsSuccessStatusCode) return (false, (int)response.StatusCode, null);
+        using var json = JsonDocument.Parse(body);
+        var root = json.RootElement;
+        var token = (root.TryGetProperty("id_token", out var id) ? id : root.GetProperty("access_token")).GetString();
+        if (token is not { Length: > 0 }) return (true, (int)response.StatusCode, null);
+        var until = root.TryGetProperty("expires_at", out var at) && at.GetString() is { } text && DateTime.TryParse(text, null,
+            System.Globalization.DateTimeStyles.AdjustToUniversal, out var expires)
+            ? expires
+            : DateTime.UtcNow.AddSeconds(root.TryGetProperty("expires_in", out var seconds) ? seconds.GetInt32() : 3600);
+        return (true, (int)response.StatusCode, (token, until));
     }
 }

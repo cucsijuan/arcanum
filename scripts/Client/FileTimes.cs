@@ -14,10 +14,19 @@ public sealed class FileTimes(string listPath)
     private sealed record Entry(DateTime Written, DateTime Meant);
 
     /// <summary>The time the file was last written, or the one the game set on it.</summary>
-    public DateTime GetUtc(string path)
+    public DateTime GetUtc(string path) => TimeOf(path, Read());
+
+    private static DateTime TimeOf(string path, Dictionary<string, Entry> list)
     {
         var written = File.GetLastWriteTimeUtc(path);
-        return Read().TryGetValue(Path.GetFullPath(path), out var entry) && entry.Written == written ? entry.Meant : written;
+        return list.TryGetValue(Path.GetFullPath(path), out var entry) && entry.Written == written ? entry.Meant : written;
+    }
+
+    /// <summary><see cref="GetUtc"/> for several files, with the list read once.</summary>
+    public Func<string, DateTime> Snapshot()
+    {
+        var list = Read();
+        return path => TimeOf(path, list);
     }
 
     public void SetUtc(string path, DateTime utc)

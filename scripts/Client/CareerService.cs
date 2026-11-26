@@ -86,7 +86,42 @@ public sealed partial class CareerService
         App.Instance.Online.EventFinished += OnOnlineEventFinished;
         App.Instance.Online.EventDayOver += OnOnlineDayOver;
         Load();
+        PrepareTrading();
         UpdateSeason();
+    }
+
+    private CancellationTokenSource? _preparing;
+
+    /// <summary>
+    /// Works out ahead, on a thread of the lowest priority, what the career's screens need of the sets
+    /// (<see cref="CareerWorld.PrepareTrading"/>) and of the cards owned, so opening the forum or the collection doesn't
+    /// wait for it.
+    /// </summary>
+    private void PrepareTrading()
+    {
+        _preparing?.Cancel();
+        if (World is not { } world || _cards is not { } cards) return;
+        var cancel = (_preparing = new CancellationTokenSource()).Token;
+        var owned = _save is { } save ? save.State.Cards.Select(c => c.Card.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList() : new List<string>();
+        var career = _save?.State;
+        var (seed, started, day, today) = (career?.Seed, career?.StartedUtc, career?.Day, CareerRules.DayOf(Now));
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                world.PrepareTrading(cancel);
+                if (seed is not null) CareerMarket.Prepare(seed.Value, started!.Value, day!.Value, world, today);
+                foreach (var name in owned)
+                {
+                    if (cancel.IsCancellationRequested) return;
+                    _ = cards.Find(name)?.Definition;
+                }
+            }
+            catch (Exception e) { GD.PushWarning($"Career: {e}"); } // worked out when it's needed then (and its problem shown)
+        }) { IsBackground = true, Name = "Career" };
+        try { thread.Priority = ThreadPriority.Lowest; }
+        catch (Exception e) when (e is PlatformNotSupportedException or ThreadStateException) { }
+        thread.Start();
     }
 
     /// <summary>Builds the career world; safe on a worker thread (it only reads the module and the cards).</summary>
@@ -139,6 +174,7 @@ public sealed partial class CareerService
             if (world is not null)
             {
                 World = world;
+                PrepareTrading();
                 SeasonChanged?.Invoke();
             }
         }
@@ -289,21 +325,34 @@ public sealed partial class CareerService
             return;
         }
         var remoteBytes = await cloud.ReadAsync(CloudFile);
-        var remote = remoteBytes is null ? null : CareerBundle.Unpack(remoteBytes);
         var local = LocalBundle();
         var key = CareerSave.DefaultKey;
-        switch (CareerCloud.Compare(local, remote, key))
+        // The careers are unpacked, read and compared on a worker thread: a long one takes a second on slow devices. What
+        // this device's was like then is checked again before the cloud's replaces it.
+        var (remote, sync, mine, theirs) = await Task.Run(() =>
+        {
+            var remote = remoteBytes is null ? null : CareerBundle.Unpack(remoteBytes);
+            var sync = CareerCloud.Compare(local, remote, key);
+            bool apart = sync == CloudSync.Conflict;
+            return (remote, sync, apart ? CareerCloud.Read(local!, key) : null, apart ? CareerCloud.Read(remote!, key) : null);
+        });
+        switch (sync)
         {
             case CloudSync.Same:
                 break;
             case CloudSync.Upload:
-                await cloud.WriteAsync(CloudFile, local!.Pack());
+                await cloud.WriteAsync(CloudFile, await Task.Run(local!.Pack));
                 break;
             case CloudSync.Download:
+                if (!SameFiles(local, LocalBundle()))
+                {
+                    _syncAgain = true;
+                    return;
+                }
                 TakeBundle(remote!, local);
                 break;
             case CloudSync.Conflict:
-                bool? keepMine = AskConflict is { } ask ? await ask(CareerCloud.Read(local!, key)!, CareerCloud.Read(remote!, key)!) : null;
+                bool? keepMine = AskConflict is { } ask ? await ask(mine!, theirs!) : null;
                 if (keepMine is null)
                 {
                     SetCloud("Not saved to the cloud: this computer's career and the cloud's went on separately.");
@@ -312,9 +361,17 @@ public sealed partial class CareerService
                 if (keepMine == true)
                 {
                     Backup(remote!, "cloud");
-                    await cloud.WriteAsync(CloudFile, local!.Pack());
+                    await cloud.WriteAsync(CloudFile, await Task.Run(local!.Pack));
                 }
-                else TakeBundle(remote!, local);
+                else
+                {
+                    if (!SameFiles(local, LocalBundle()))
+                    {
+                        _syncAgain = true;
+                        return;
+                    }
+                    TakeBundle(remote!, local);
+                }
                 break;
         }
         SetCloud($"Saved to the cloud ({DateTime.Now:HH:mm}).");
@@ -332,23 +389,28 @@ public sealed partial class CareerService
         CloudChanged?.Invoke();
     }
 
+    private static bool SameFiles(CareerBundle? a, CareerBundle? b) =>
+        a is null || b is null ? a is null && b is null
+            : a.Files.Count == b.Files.Count && a.Files.All(f => b.Files.TryGetValue(f.Key, out var other) && other.AsSpan().SequenceEqual(f.Value));
+
     /// <summary>The career's files here (null: there has never been a career on this device).</summary>
     private CareerBundle? LocalBundle()
     {
         var bundle = new CareerBundle();
         var times = new List<DateTime>();
+        var fileTimes = Times.Snapshot();
         void Add(string path, string name)
         {
             if (!File.Exists(path)) return;
             bundle.Files[name] = File.ReadAllBytes(path);
-            times.Add(Times.GetUtc(path));
+            times.Add(fileTimes(path));
         }
         Add(SavePath, CareerBundle.SaveName);
         Add(Path.Combine(FolderPath, "event.json"), "event.json");
         var decks = Path.Combine(FolderPath, "decks");
         if (Directory.Exists(decks))
             foreach (var file in Directory.GetFiles(decks)) Add(file, "decks/" + Path.GetFileName(file));
-        if (bundle.Save is null && File.Exists(EndedPath)) times.Add(Times.GetUtc(EndedPath));
+        if (bundle.Save is null && File.Exists(EndedPath)) times.Add(fileTimes(EndedPath));
         if (times.Count == 0) return null;
         bundle.SavedUtc = times.Max();
         return bundle;
@@ -376,6 +438,7 @@ public sealed partial class CareerService
             Times.SetUtc(EndedPath, remote.SavedUtc);
         }
         else if (File.Exists(EndedPath)) File.Delete(EndedPath);
+        Decks.Forget();
         _save = null;
         _events = null;
         Problem = null;

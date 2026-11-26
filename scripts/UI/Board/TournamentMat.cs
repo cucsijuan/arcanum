@@ -28,7 +28,7 @@ public partial class TournamentMat : Control
     private const float BandScale = 0.42f;
 
     private readonly StyleBoxFlat _shadow, _cloth;
-    private readonly Texture2D? _shieldArt = ResourceLoader.Exists(Shield) ? GD.Load<Texture2D>(Shield) : null;
+    private readonly Texture2D? _shieldArt = Arcanum.Client.ScenePictures.Load(Shield);
     private readonly Font _font = ResourceLoader.Exists(FontPath) ? GD.Load<Font>(FontPath) : ThemeDB.FallbackFont;
     private readonly string[] _name = { "", "" };
     private float _line = 0.5f;

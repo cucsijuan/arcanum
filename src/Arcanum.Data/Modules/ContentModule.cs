@@ -83,6 +83,7 @@ public sealed class ContentModule
         Directory = directory;
         Manifest = manifest;
         Sources = sources;
+        _sets = new(ReadSets);
     }
 
     /// <summary>A module's manifest.json (not checked against this build's API version).</summary>
@@ -136,12 +137,22 @@ public sealed class ContentModule
         return new ContentModule(directory, manifest, sources);
     }
 
-    public IEnumerable<string> DeckNames() =>
-        System.IO.Directory.Exists(DecksDirectory)
-            ? System.IO.Directory.EnumerateFiles(DecksDirectory, "*.txt").Select(Path.GetFileNameWithoutExtension).OfType<string>().Order()
-            : Enumerable.Empty<string>();
+    /// <summary>The module's decks by name (looked up once: a module's files don't change while it's loaded).</summary>
+    public IEnumerable<string> DeckNames() => _deckNames ??= System.IO.Directory.Exists(DecksDirectory)
+        ? System.IO.Directory.EnumerateFiles(DecksDirectory, "*.txt").Select(Path.GetFileNameWithoutExtension).OfType<string>().Order().ToList()
+        : new List<string>();
 
-    public string ReadDeck(string name) => File.ReadAllText(Path.Combine(DecksDirectory, name + ".txt"));
+    private List<string>? _deckNames;
+
+    /// <summary>A deck's text (its file is read once).</summary>
+    public string ReadDeck(string name) => _deckTexts.GetOrAdd(name, n => File.ReadAllText(Path.Combine(DecksDirectory, n + ".txt")));
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _deckTexts = new(StringComparer.Ordinal);
+
+    /// <summary>A deck as read once, the same list for everyone asking: only to look at, never to change.</summary>
+    public Decks.DeckList SharedDeck(string name) => _sharedDecks.GetOrAdd(name, n => Decks.DeckList.Parse(ReadDeck(n)));
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Decks.DeckList> _sharedDecks = new(StringComparer.Ordinal);
 
     /// <summary>Cube lists in cubes/*.txt (deck-list format: one line per card, printing optional).</summary>
     public IEnumerable<string> CubeNames() =>
@@ -276,18 +287,28 @@ public sealed class ContentModule
         return formats;
     }
 
-    /// <summary>Card sets in sets/*.json (their cards, boosters and limited settings).</summary>
+    /// <summary>Card sets in sets/*.json (their cards, boosters and limited settings), read the first time they're asked for.</summary>
     public List<Limited.SetDefinition> LoadSets(List<string>? errors = null)
     {
+        var (sets, problems) = _sets.Value;
+        errors?.AddRange(problems);
+        return sets.ToList();
+    }
+
+    private readonly Lazy<(List<Limited.SetDefinition> Sets, List<string> Errors)> _sets;
+
+    private (List<Limited.SetDefinition> Sets, List<string> Errors) ReadSets()
+    {
         var sets = new List<Limited.SetDefinition>();
+        var errors = new List<string>();
         var dir = Path.Combine(Directory, "sets");
-        if (!System.IO.Directory.Exists(dir)) return sets;
+        if (!System.IO.Directory.Exists(dir)) return (sets, errors);
         foreach (var file in System.IO.Directory.EnumerateFiles(dir, "*.json").Order())
         {
             try { sets.Add(Limited.SetDefinition.Parse(File.ReadAllText(file))); }
-            catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException) { errors?.Add($"{Path.GetFileName(file)}: {e.Message}"); }
+            catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException) { errors.Add($"{Path.GetFileName(file)}: {e.Message}"); }
         }
-        return sets;
+        return (sets, errors);
     }
 
     /// <summary>A set's draft statistics (ratings/&lt;set&gt;.json), or null when the module has none for it.</summary>

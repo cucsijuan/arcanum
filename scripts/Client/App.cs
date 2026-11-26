@@ -104,11 +104,14 @@ public partial class App : Node
     public override async void _Ready()
     {
         Instance = this;
+        // The console's sockets refuse no-delay on accepted connections (and are then unusable).
+        Arcanum.Net.Transport.TcpConnection.UseNoDelay = OS.GetName() != "Switch";
         AddSymbolFallbacks();
         Settings.Load();
         Settings.Apply();
         // Kit scroll bars everywhere (screens set the rest of their look themselves).
         if (Arcanum.UI.UiArt.Theme() is { } theme) GetTree().Root.Theme = theme;
+        ScenePictures.ReadAhead();
         AddChild(Content);
         AddChild(Online);
         // Controllers and touch screens: sliding a finger and the right stick scroll; the left stick moves a pointer.
@@ -183,6 +186,7 @@ public partial class App : Node
                 : "No content module: generic demo only";
             ContentProgress?.Invoke(ContentStatus);
             _contentReady.TrySetResult(loaded);
+            if (loaded) PrepareAhead(Module!, Cards!);
         }
         catch (Exception e)
         {
@@ -276,7 +280,42 @@ public partial class App : Node
         ThemeDB.FallbackFont.Fallbacks = symbols;
     }
 
-    public override void _ExitTree() => Presence.Stop();
+    /// <summary>
+    /// Works out ahead, on a thread of the lowest priority, what the first game and the screens listing decks need of the
+    /// cards and the module's decks, so they don't wait for it.
+    /// </summary>
+    private void PrepareAhead(Arcanum.Data.Modules.ContentModule module, CardDatabase cards)
+    {
+        var thread = new System.Threading.Thread(() =>
+        {
+            try
+            {
+                cards.PrepareLists();
+                foreach (var name in module.DeckNames())
+                {
+                    var deck = module.SharedDeck(name);
+                    foreach (var entry in deck.Main.Concat(deck.Commander).Concat(deck.Sideboard))
+                    {
+                        if (_closing) return;
+                        _ = cards.Find(entry.Name)?.Definition;
+                    }
+                }
+            }
+            catch (Exception e) { GD.PushWarning($"Decks: {e}"); } // worked out when it's needed then (and its problem shown)
+        }) { IsBackground = true, Name = "Decks" };
+        try { thread.Priority = System.Threading.ThreadPriority.Lowest; }
+        catch (Exception e) when (e is PlatformNotSupportedException or System.Threading.ThreadStateException) { }
+        thread.Start();
+    }
+
+    private volatile bool _closing;
+
+    public override void _ExitTree()
+    {
+        _closing = true;
+        Settings.Flush();
+        Presence.Stop();
+    }
 
     public override void _Process(double delta) => Settings.CheckScreen(delta);
 

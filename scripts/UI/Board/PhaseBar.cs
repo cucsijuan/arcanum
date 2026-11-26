@@ -150,18 +150,28 @@ public partial class PhaseBar : PanelContainer
         return marker;
     }
 
+    private readonly Dictionary<Step, (bool OpponentStop, bool OwnStop, bool Current, bool OwnTurn)> _looks = new();
+    private bool? _fullShown;
+
     private void UpdateVisuals()
     {
         foreach (var (step, (opponent, chip, label, own)) in _chips)
         {
-            StyleMarker(opponent, _policy?.HasStop(ownTurn: false, step) ?? false, OpponentStop);
-            StyleMarker(own, _policy?.HasStop(ownTurn: true, step) ?? false, OwnStop);
+            bool opponentStop = _policy?.HasStop(ownTurn: false, step) ?? false, ownStop = _policy?.HasStop(ownTurn: true, step) ?? false;
             bool current = step == _current;
+            // Only what changed is styled again: the bar follows every refresh of the board.
+            var look = (opponentStop, ownStop, current, current && _ownTurn);
+            if (_looks.TryGetValue(step, out var shown) && shown == look) continue;
+            _looks[step] = look;
+            StyleMarker(opponent, opponentStop, OpponentStop);
+            StyleMarker(own, ownStop, OwnStop);
             chip.AddThemeStyleboxOverride("panel", BoardStyle.Box(current ? (_ownTurn ? BoardStyle.ActiveBorder : OpponentStop) : new Color("1c1d21"), 4,
                 current ? null : BoardStyle.PanelBorder, current ? 0 : 1));
             label.AddThemeColorOverride("font_color", current ? new Color("16171a") : BoardStyle.TextDim);
         }
         _fullControl.SetPressedNoSignal(_policy?.FullControl ?? false);
+        if (_fullShown == _fullControl.ButtonPressed) return;
+        _fullShown = _fullControl.ButtonPressed;
         var fullStyle = BoardStyle.Box(_fullControl.ButtonPressed ? BoardStyle.Attacking : BoardStyle.Panel, 4, BoardStyle.PanelBorder, 1);
         _fullControl.AddThemeStyleboxOverride("normal", fullStyle);
         _fullControl.AddThemeStyleboxOverride("pressed", fullStyle);

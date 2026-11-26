@@ -6,7 +6,9 @@
   (Editor → Manage Export Templates).
 
 ## Running from source
-- `dotnet test Arcanum.sln` runs every test suite (engine, data, network).
+- `dotnet test Arcanum.sln` runs every test suite (engine, data, network, service).
+- `dotnet test tests/Arcanum.Service.Tests` runs the career service's lobby relay on a loopback port. The players are named
+  by an `X-Player` header instead of a token, so no EOS login is needed.
 - Open the project folder in Godot .NET and press Play, or run `godot --path .` from a terminal.
 - Content modules: the game knows no module by name. `ContentLoader.FindModuleDirectory` takes `ARCANUM_MODULE_PATH`
   first, then in editor builds the first folder next to the project folder that holds `manifest.json` and `sources.json`
@@ -70,6 +72,7 @@ Environment variables useful while developing and testing:
 | `ARCANUM_BOT_SEARCH=off\|on\|<milliseconds>` | Forces the computer's thinking ahead (see the **Computer thinks ahead** setting): `off`, `on`, or on with that many milliseconds as the most one decision may take. Unset, the setting decides |
 | `ARCANUM_BOT_SEARCH_SHAPE=<rollouts>x<turns>` | With thinking ahead on: how many games each option is played on, and for how many turns (for example `2x2`). Unset, 4x4 with six or more processors, else 2x2 |
 | `ARCANUM_SANDBOX=1` | Demo game (and a career match) starts from the prepared sandbox board |
+| `ARCANUM_SANDBOX_LANDS=<n>` | With `ARCANUM_SANDBOX=1`: that many more Mountains on each side (how crowded rows look) |
 | `ARCANUM_DECKS=<a>,<b>` | Demo game uses these module decks |
 | `ARCANUM_COMMANDER=1` | Demo game is a commander game with the module's commander decks |
 | `ARCANUM_COMMANDER_DECKS=<prefix>` | With `ARCANUM_COMMANDER`: use the module decks whose names start with the prefix |
@@ -97,6 +100,7 @@ Environment variables useful while developing and testing:
 | `ARCANUM_PAD_KEYS="w5 r r d a b"` | Presses the controller's buttons in that order once the cards are loaded: `l` `r` `u` `d` the d-pad, `a` confirm, `b` back, `x` the left face button, `w<seconds>` waits. It prints `PAD KEYS: <step> -> <what has the focus>` after each press, then quits. With `ARCANUM_SHOTS=<folder>[,seconds]` it also saves a picture after each press (`pad_01_r.png`…) |
 | `ARCANUM_PAD_PLAY=1` (with `ARCANUM_VS_BOT=1`) | The player's side plays the way the autopilot would (lands, then spells, attacking with everything, the first legal targets), but only by pressing controller buttons: the arrows move the focus, confirm presses it, and a choice the buttons can't make is printed as `PAD PLAY: stuck` (with what was wanted) and answered directly so the game goes on. With `ARCANUM_SHOTS` it saves a picture of each stuck choice (with and without the player's own half). Each choice made with the buttons is printed as `PAD PLAY: <decision type>: <steps pressed> (<presses> presses)`. When the game ends it prints `PAD PLAY: game over on turn <n>` with the choices made, the stuck ones and the presses, then quits after three seconds |
 | `ARCANUM_PAD_PLAY_GAMES=<n>` | With `ARCANUM_PAD_PLAY=1`: plays n games (default 1). Each game after the first is dealt from the next `ARCANUM_SEED` (default 1, plus one per game) and the scene is reloaded; the game quits after the last one |
+| `ARCANUM_NO_PAD=1` | Controllers (joypad buttons and axes) don't press a screen's back button. For test runs on a computer where a stray device (for example a flight throttle) sends the back action and would leave screens such as the online screen (`PadFocus._UnhandledInput`) |
 
 Online play can be tested with two instances on one machine (run `res://scenes/online/Online.tscn`; add
 `ARCANUM_AUTOPLAY=1` so the players play themselves):

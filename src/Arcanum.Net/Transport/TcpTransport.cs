@@ -30,16 +30,47 @@ public sealed class TcpConnection : IConnection
     public TcpConnection(TcpClient client)
     {
         _client = client;
-        _client.NoDelay = true;
+        if (UseNoDelay) _client.NoDelay = true; // small messages go out at once
         _stream = client.GetStream();
         new Thread(ReadLoop) { IsBackground = true, Name = "net-read" }.Start();
         new Thread(WriteLoop) { IsBackground = true, Name = "net-write" }.Start();
     }
 
+    /// <summary>
+    /// Whether connections send small messages at once (no-delay). Off on systems that refuse the option on accepted
+    /// connections (a console): there a refused option leaves the connection unusable, and it's only an optimization.
+    /// </summary>
+    public static bool UseNoDelay { get; set; } = true;
+
+    private static bool? _ipv6Works;
+
+    /// <summary>Whether this system can open IPv6 sockets (some systems, like a console, only have IPv4).</summary>
+    internal static bool Ipv6Works
+    {
+        get
+        {
+            if (_ipv6Works is { } known) return known;
+            try
+            {
+                using var probe = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp) { DualMode = true };
+                _ipv6Works = true;
+            }
+            catch (SocketException) { _ipv6Works = false; }
+            catch (NotSupportedException) { _ipv6Works = false; }
+            return _ipv6Works.Value;
+        }
+    }
+
+    /// <summary>A client socket for IPv4 and IPv6 addresses (IPv4 only where the system has no IPv6).</summary>
+    internal static TcpClient NewClient()
+    {
+        return Ipv6Works ? new TcpClient(AddressFamily.InterNetworkV6) { Client = { DualMode = true } } : new TcpClient(AddressFamily.InterNetwork);
+    }
+
     /// <summary>Connects to a host; throws <see cref="SocketException"/> or <see cref="TimeoutException"/> on failure.</summary>
     public static async Task<TcpConnection> ConnectAsync(string host, int port, TimeSpan timeout)
     {
-        var client = new TcpClient(AddressFamily.InterNetworkV6) { Client = { DualMode = true } };
+        var client = NewClient();
         using var cts = new CancellationTokenSource(timeout);
         try
         {
@@ -143,7 +174,7 @@ public sealed class TcpConnection : IConnection
     }
 }
 
-/// <summary>Accepts players' TCP connections on a port (IPv4 and IPv6).</summary>
+/// <summary>Accepts players' TCP connections on a port (IPv4 and IPv6; IPv4 only where the system has no IPv6).</summary>
 public sealed class TcpConnectionListener : IConnectionListener
 {
     private readonly TcpListener _listener;
@@ -155,8 +186,12 @@ public sealed class TcpConnectionListener : IConnectionListener
     /// <param name="port">0 picks a free port (see <see cref="Port"/>).</param>
     public TcpConnectionListener(int port)
     {
-        _listener = new TcpListener(IPAddress.IPv6Any, port);
-        _listener.Server.DualMode = true;
+        if (TcpConnection.Ipv6Works)
+        {
+            _listener = new TcpListener(IPAddress.IPv6Any, port);
+            _listener.Server.DualMode = true;
+        }
+        else _listener = new TcpListener(IPAddress.Any, port);
         _listener.Start();
         Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         new Thread(AcceptLoop) { IsBackground = true, Name = "net-accept" }.Start();
@@ -166,7 +201,15 @@ public sealed class TcpConnectionListener : IConnectionListener
     {
         try
         {
-            while (_open) _pending.Enqueue(new TcpConnection(_listener.AcceptTcpClient()));
+            while (_open)
+            {
+                var client = _listener.AcceptTcpClient();
+                try { _pending.Enqueue(new TcpConnection(client)); }
+                catch (Exception e) when (e is SocketException or IOException or InvalidOperationException)
+                {
+                    client.Dispose(); // that player can try again; the others still get in
+                }
+            }
         }
         catch (Exception) { } // stopped
     }

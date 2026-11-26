@@ -20,7 +20,8 @@ public static class CareerMarket
     /// <summary>The weekly tournament winners of the week (two of the regulars, rivals more often).</summary>
     public static IReadOnlyList<MetaWin> Meta(CareerState state, CareerWorld world, int week)
     {
-        var key = (state.Seed, week);
+        // A rival's deck improves week by week, up to the week the career is in: the winners are that week's too.
+        var key = (state.Seed, week, CareerRules.WeekOf(state.Day));
         if (world.MetaCache.TryGetValue(key, out var cached)) return cached;
         var random = CareerRandom.For(state.Seed, "meta", week);
         var weighted = world.Content.Opponents.SelectMany(o => Enumerable.Repeat(o, o.Rival ? 3 : 1)).ToList();
@@ -35,17 +36,38 @@ public static class CareerMarket
         return world.MetaCache[key] = wins;
     }
 
+    /// <summary>The names of the cards the week's winners play (the prices of a whole collection ask for each card).</summary>
+    private static HashSet<string> MetaNames(CareerState state, CareerWorld world, int week)
+    {
+        var key = (state.Seed, week, CareerRules.WeekOf(state.Day));
+        if (world.MetaNamesCache.TryGetValue(key, out var cached)) return cached;
+        return world.MetaNamesCache[key] = Meta(state, world, week).SelectMany(w => w.Deck.Main).Select(e => e.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Works out ahead the tournament winners a day's prices need, for a worker thread (seconds on slow devices): they come
+    /// from the career's seed, its start and the day it's on, so the career itself isn't needed.
+    /// </summary>
+    public static void Prepare(ulong seed, DateTime startedUtc, DateOnly careerDay, CareerWorld world, DateOnly day)
+    {
+        foreach (var on in new[] { careerDay, day }.DistinctBy(CareerRules.WeekOf))
+            for (int ago = 0; ago < MetaDemand.Length; ago++)
+                Meta(new CareerState { Seed = seed, StartedUtc = startedUtc, Day = on }, world, CareerRules.WeekOf(day) - ago);
+    }
+
     /// <summary>How a card's price compares to its value on a day (1: at its value).</summary>
     public static double Factor(CareerState state, CareerWorld world, string name, DateOnly day)
     {
         int week = CareerRules.WeekOf(day);
         // Drift: from this week's level to next week's through the week.
         double through = (day.DayNumber % 7) / 7.0;
-        double factor = Drift(state.Seed, name, week) * (1 - through) + Drift(state.Seed, name, week + 1) * through;
+        long hash = NameHash(name);
+        double factor = Drift(state.Seed, hash, week) * (1 - through) + Drift(state.Seed, hash, week + 1) * through;
         for (int ago = 0; ago < MetaDemand.Length; ago++)
-            if (Meta(state, world, week - ago).Any(w => w.Deck.Main.Any(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase))))
+            if (MetaNames(state, world, week - ago).Contains(name))
                 factor *= 1 + MetaDemand[ago];
-        if (world.Cards.Find(name)?.Record.Printings.Any(p => p.Set.Equals(world.FeaturedSet(day), StringComparison.OrdinalIgnoreCase)) == true)
+        var featured = world.FeaturedSet(day);
+        if (world.Cards.Find(name)?.Record.Printings.Any(p => p.Set.Equals(featured, StringComparison.OrdinalIgnoreCase)) == true)
             factor *= 0.9;
         return Math.Clamp(factor, 0.5, 3);
     }
@@ -74,10 +96,13 @@ public static class CareerMarket
         (int)Math.Floor(Price(state, world, card, day) * world.Content.SellRate);
 
     /// <summary>A card's own drift in a week: between 0.85 and 1.15.</summary>
-    private static double Drift(ulong seed, string name, int week)
+    private static double Drift(ulong seed, long nameHash, int week) =>
+        0.85 + 0.3 * CareerRandom.For(seed, "drift", nameHash, week).NextDouble();
+
+    private static long NameHash(string name)
     {
         long hash = 17;
         foreach (char c in name.ToLowerInvariant()) hash = hash * 31 + c;
-        return 0.85 + 0.3 * CareerRandom.For(seed, "drift", hash, week).NextDouble();
+        return hash;
     }
 }

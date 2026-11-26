@@ -481,7 +481,8 @@ public static class CardCache
                 var support = (CardSupport)Int();
                 CardDefinition Make() => CardFactory.Create(record, scriptFor(record.OracleId)).Definition;
                 Func<CardDefinition> make;
-                switch (Byte())
+                byte kind = Byte();
+                switch (kind)
                 {
                     case PlainEntry:
                         make = Make;
@@ -496,7 +497,7 @@ public static class CardCache
                     default:
                         throw new FormatException("Unknown card entry kind.");
                 }
-                entries[i] = new CardEntry(name, make, support, record);
+                entries[i] = new CardEntry(name, make, support, record, kind == MeldResultEntry);
             }
 
             int names = Int();

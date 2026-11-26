@@ -130,4 +130,43 @@ public class BattlefieldLayoutTests
         (add, remove) = BattlefieldLayout.Pick(ids, _ => false, 9);
         Assert.Equal(ids, add);
     }
+
+    [Fact]
+    public void RowClosesUpOnlyAsMuchAsItNeeds()
+    {
+        float[] Steps(float width, params bool[] closeUp) => BattlefieldLayout.RowSteps(closeUp, width, last: 100, full: 100, whole: 70, close: 20);
+
+        Assert.Empty(Steps(50));
+        // Room to spare, then room for the untapped cards side by side.
+        Assert.Equal(new[] { 100f, 100f, 100f }, Steps(900, true, false, true));
+        Assert.Equal(new[] { 80f, 80f, 80f }, Steps(340, true, false, true));
+        // Short of it: the neighbors that may lie one over the other do, the rest keep their place.
+        Assert.Equal(new[] { 40f, 70f, 40f }, Steps(250, true, false, true));
+        Assert.Equal(new[] { 20f, 70f, 20f }, Steps(210, true, false, true));
+    }
+
+    [Theory]
+    [InlineData(40, 900)]
+    [InlineData(40, 300)]
+    [InlineData(12, 120)]
+    [InlineData(5, 60)]
+    public void RowNeverPassesItsWidth(int cards, float width)
+    {
+        foreach (var close in new[] { true, false })
+        {
+            var steps = BattlefieldLayout.RowSteps(Enumerable.Range(0, cards - 1).Select(i => close && i % 3 > 0).ToList(), width, 50, 100, 70, 20);
+            Assert.All(steps, s => Assert.True(s >= 0));
+            Assert.True(steps.Sum() <= Math.Max(0, width - 50) + 0.01f);
+        }
+    }
+
+    [Fact]
+    public void OnlyLandsOfOneNameCloseUp()
+    {
+        var mountain = Card("Mountain", CardType.Land);
+        Assert.True(BattlefieldLayout.CanCloseUp(mountain, Card("Mountain", CardType.Land)));
+        Assert.False(BattlefieldLayout.CanCloseUp(mountain, Card("Forest", CardType.Land)));
+        Assert.False(BattlefieldLayout.CanCloseUp(mountain, Card("Mountain", CardType.Land | CardType.Creature)));
+        Assert.False(BattlefieldLayout.CanCloseUp(Card("Cub", CardType.Creature), Card("Cub", CardType.Creature)));
+    }
 }

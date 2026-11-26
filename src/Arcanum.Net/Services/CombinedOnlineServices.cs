@@ -35,7 +35,12 @@ public sealed class CombinedOnlineServices : IOnlineServices
         OnlineIdentity? first = null;
         foreach (var service in _services)
         {
-            try { first ??= await service.SignInAsync(displayName, cancel); }
+            try
+            {
+                // Every service signs in (the first identity is the one returned).
+                var identity = await service.SignInAsync(displayName, cancel);
+                first ??= identity;
+            }
             catch (Exception) when (!cancel.IsCancellationRequested) { /* that service stays unavailable */ }
         }
         return first ?? throw new InvalidOperationException("No online service could sign in.");

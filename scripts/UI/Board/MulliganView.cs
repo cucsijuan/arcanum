@@ -87,6 +87,7 @@ public partial class MulliganView : Control
 
     /// <summary>The choice being shown, to tell one shown again from a new one.</summary>
     private object? _about;
+    private string? _shown;
 
     public event Action<CardNode>? CardClicked;
     public event Action<CardNode>? CardHoverStarted;
@@ -115,10 +116,19 @@ public partial class MulliganView : Control
     public void ShowHand(IReadOnlyList<CardView> hand, string title, ISet<CardId> selected, bool selectable,
         object? about = null, bool complete = false, bool startOnCards = false)
     {
+        bool choosing = _large && selectable, opening = !ReferenceEquals(about, _about);
+        // The same hand shown again (the board refreshes after every event): its cards stay.
+        var shown = choosing ? null : $"{_large}|{selectable}|{Size}|{title}|"
+            + string.Join(",", hand.Select(c => $"{c.Id.Value}{(c.IsHidden ? "h" : "")}{(selected.Contains(c.Id) ? "s" : "")}"));
+        if (Visible && !opening && about is not null && shown is not null && shown == _shown)
+        {
+            if (_answers.Visible) PadFocus.Offer(_answers, _main);
+            return;
+        }
+        _shown = shown;
+        _about = about;
         Visible = true;
         _title.Text = title;
-        bool choosing = _large && selectable, opening = !ReferenceEquals(about, _about);
-        _about = about;
         var focused = _row.GetChildren().OfType<CardNode>().FirstOrDefault(c => !c.IsQueuedForDeletion() && c.HasFocus())?.Id ?? _placing;
         foreach (var child in _row.GetChildren()) child.QueueFree();
         PadFocus.KeepInside(this, choosing);

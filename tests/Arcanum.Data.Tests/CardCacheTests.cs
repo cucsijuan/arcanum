@@ -316,7 +316,17 @@ public class CardCacheTests : IDisposable
             Assert.Equal(Json(entry.Record), Json(other.Record));
             Assert.Equal(entry.Support, other.Support);
             Assert.Equal(Summary(entry.Definition), Summary(other.Definition));
+            // Known without the definition.
+            Assert.Equal((entry.Definition.Supertypes & Supertype.Basic) != 0, entry.IsBasic);
+            var unmade = CardDatabase.MadeOnDemand(new[] { entry.Record }, _ => null).Find(name)!;
+            Assert.Equal(entry.Definition.Types, unmade.Types);
+            Assert.Equal(entry.Definition.ManaCost.ToString(), unmade.ManaCost.ToString());
+            Assert.Equal(entry.Definition.ManaCost.ManaValue, unmade.ManaValue);
         }
+        foreach (var set in eager.Sets)
+            Assert.Equal(eager.Sorted.SelectMany(e => e.Record.Printings.Where(p => p.Set.Equals(set.Code, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(p => p.CollectorNumber, Comparer<string>.Create(OracleJsonl.CompareNumbers)).Select(p => p.Id),
+                eager.PrintingsIn(set.Code).Select(x => x.Printing.Id));
         foreach (var (name, tokens) in eager.TokensByName)
             Assert.Equal(tokens.Select(Json), cached.TokensByName[name].Select(Json));
 

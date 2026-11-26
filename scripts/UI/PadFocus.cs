@@ -22,6 +22,14 @@ public partial class PadFocus : CanvasLayer
     /// <summary>The last input was a controller's button or a key (not a mouse, the stick's pointer or a finger).</summary>
     public static bool UsingButtons { get; private set; }
 
+    private static ulong _arrowFrame;
+
+    /// <summary>
+    /// Whether the focus is being moved by an arrow right now, rather than by itself (the focused card or a panel went away
+    /// and the nearest card takes the focus).
+    /// </summary>
+    public static bool MovedByArrow => Godot.Engine.GetProcessFrames() - _arrowFrame <= 1;
+
     private const string ChoiceMeta = "pad_choice";
 
     /// <summary>Marks buttons made reachable by looking over the whole screen (looked over again as it changes).</summary>
@@ -192,8 +200,12 @@ public partial class PadFocus : CanvasLayer
     /// <summary>The button the controller's back button (or Esc) presses while its screen shows and nothing is open over it.</summary>
     public static void BackButton(BaseButton button) => button.SetMeta(BackMeta, true);
 
+    private static readonly bool NoPad = OS.GetEnvironment("ARCANUM_NO_PAD") == "1";
+
     public override void _UnhandledInput(InputEvent @event)
     {
+        // ARCANUM_NO_PAD=1 (test runs): controllers don't press back, so a stray device (a flight throttle) leaves screens be.
+        if (@event is InputEventJoypadButton or InputEventJoypadMotion && NoPad) return;
         if (!@event.IsActionPressed("ui_cancel") || GetTree().Root.GetEmbeddedSubwindows().Any(w => w.Visible)) return;
         var back = ScreenChoices(Scope()).OfType<BaseButton>().FirstOrDefault(b => b.HasMeta(BackMeta) && !b.Disabled);
         if (back is null) return;
@@ -397,6 +409,7 @@ public partial class PadFocus : CanvasLayer
                 // Nothing focused (a mouse or a finger was used last, or the panel opened before any button was): the
                 // first direction or confirm only puts the focus on the panel's answer.
                 if (!IsNavigation(@event)) break;
+                if (DirectionOf(@event) is not null) _arrowFrame = Godot.Engine.GetProcessFrames();
                 var owner = GetViewport().GuiGetFocusOwner();
                 if (OS.GetEnvironment("ARCANUM_PAD_DEBUG") == "1")
                     GD.Print($"PAD {@event.AsText()} owner={owner?.GetType().Name}:{owner?.Name} path={owner?.GetPath()} choice={owner?.HasMeta(ChoiceMeta)} screen={owner?.HasMeta(ScreenMeta)}");

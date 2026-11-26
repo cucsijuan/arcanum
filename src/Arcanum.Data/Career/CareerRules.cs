@@ -168,7 +168,7 @@ public static partial class CareerRules
         var colors = new HashSet<char>();
         foreach (var entry in deck.Main)
             if (world.Cards.Find(entry.Name) is { } card)
-                foreach (char c in card.Definition.ManaCost.ToString())
+                foreach (char c in card.ManaCost.ToString())
                     if ("WUBRG".Contains(c)) colors.Add(c);
         return colors;
     }
@@ -449,8 +449,8 @@ public static partial class CareerRules
         var improved = DeckList.Parse(deck.Export());
         var colors = DeckColors(deck, world);
         var pool = world.Content.Sets.SelectMany(world.Playable)
-            .Where(c => world.Cards.Find(c.Card.Name) is { } e && !e.Definition.Is(CardType.Land)
-                && e.Definition.ManaCost.ToString().Where(ch => "WUBRG".Contains(ch)).All(colors.Contains))
+            .Where(c => world.Cards.Find(c.Card.Name) is { } e && (e.Types & CardType.Land) == 0
+                && e.ManaCost.ToString().Where(ch => "WUBRG".Contains(ch)).All(colors.Contains))
             .GroupBy(c => c.Card.Name).Select(g => g.First()).ToList();
         for (int week = 1; week <= weeks; week++)
         {
@@ -459,12 +459,12 @@ public static partial class CareerRules
             {
                 // The least valuable spell goes; a better card of about its mana value, not yet four times in the deck, comes in.
                 var weakest = improved.Main
-                    .Where(e => world.Cards.Find(e.Name) is { } c && !c.Definition.Is(CardType.Land))
+                    .Where(e => world.Cards.Find(e.Name) is { } c && (c.Types & CardType.Land) == 0)
                     .OrderBy(e => world.Value(CardKey.Of(e))).ThenBy(e => e.Name, StringComparer.Ordinal).FirstOrDefault();
                 if (weakest is null) break;
                 int value = world.Value(CardKey.Of(weakest));
-                int manaValue = world.Cards.Find(weakest.Name)!.Definition.ManaCost.ManaValue;
-                var better = pool.Where(c => c.Value > value && Math.Abs(world.Cards.Find(c.Card.Name)!.Definition.ManaCost.ManaValue - manaValue) <= 1
+                int manaValue = world.Cards.Find(weakest.Name)!.ManaValue;
+                var better = pool.Where(c => c.Value > value && Math.Abs(world.Cards.Find(c.Card.Name)!.ManaValue - manaValue) <= 1
                         && improved.Main.Where(e => e.Name == c.Card.Name).Sum(e => e.Count) < 4).ToList();
                 if (better.Count == 0) break;
                 var chosen = better[random.Next(better.Count)].Card;

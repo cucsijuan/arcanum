@@ -34,13 +34,18 @@ TCP listener and port mapping) and through the services at the same time.
 - **Reconnecting**: a player who joined through the services reconnects through them (`ConnectToHostAsync`); one who joined by
   address reconnects to the address as before.
 
-The provider today is `LanOnlineServices`. Swapping it is one line (`OnlineService.Services`).
+The providers are built in `MakeServices()` (`OnlineService.Services` is what the screens use), in this order: the local
+network (`LanOnlineServices`), the internet lobby service when the build has it (Epic Online Services, below), and the
+career service's relay (`ServiceOnlineServices`, see [Internet lobbies and relay](#internet-lobbies-and-relay-career-service)).
+They are combined (`CombinedOnlineServices`): a hosted lobby is published on every available one, and the browser shows a
+lobby found on several once, from the first in that order. Players reach a host through the first service that has the
+lobby, so a game between PCs goes through the internet lobby service and the relay carries only games with a console in them.
 
 ## Internet provider: Epic Online Services
 
 `scripts/Client/Eos/EosOnlineServices.cs`, used together with the local network (`CombinedOnlineServices`: a hosted lobby
-is listed on both, the browser shows each lobby once, preferring the local network, and players join through the service
-the lobby was found on).
+is listed on each of the services in use, the browser shows each lobby once, preferring the local network, then this
+service, and players join through the service the lobby was found on; see Client flow above).
 
 | Our interface | EOS |
 |---|---|
@@ -69,9 +74,81 @@ The release workflow does both from repository secrets: `EOS_SDK_TOKEN` (a token
 `cucsijuan/eos-sdk` repository, which holds the SDK) and the `EOS_*` keys above. Without them it still releases,
 with local-network lobbies only.
 
-Testing on one computer: `ARCANUM_ONLINE_INTERNET_ONLY=1` leaves the local network out, `ARCANUM_EOS_NEW_DEVICE=1`
-makes a second instance sign in as a new device account instead of with Discord (`ARCANUM_EOS_DEVICE=1` signs in with
-this computer's device account without making a new one), and `ARCANUM_EOS_LOG=1` shows the SDK's log.
+Testing on one computer: `ARCANUM_ONLINE_INTERNET_ONLY=1` leaves the local network and the relay out, `ARCANUM_ONLINE_RELAY_ONLY=1`
+uses only the career service's relay, `ARCANUM_EOS_NEW_DEVICE=1` makes a second instance sign in as a new device account
+instead of with Discord (`ARCANUM_EOS_DEVICE=1` signs in with this computer's device account without making a new one),
+and `ARCANUM_EOS_LOG=1` shows the SDK's log. `ARCANUM_RELAY_PLAYER=<name>` names the player to the relay instead of
+sending a sign-in token; the service must run with `Lobbies:TrustPlayerHeader=true` (it logs a warning when that is on;
+never in production).
+
+## Internet lobbies and relay (career service)
+
+A console build has no internet lobby library, so it can't use the provider above. The career service gives such
+players internet lobbies and carries their games (`server/Arcanum.CareerService/LobbyRelay.cs`, wired in `Program.cs`).
+PCs keep their own lobby service.
+
+Every route needs the player's EOS Connect ID token, as the career routes do (without one: 401). The WebSocket routes
+answer 400 when the request isn't a WebSocket request.
+
+| Route | What it does |
+|---|---|
+| `GET /lobbies?version=&content=&open=` | The listed lobbies of that version and content, by host name, at most 100. `open` (default true) leaves out lobbies with no free seats. |
+| `GET /lobbies/code/{code}` | The lobby with that invite code (404 when there is none). |
+| `/play/host` (WebSocket) | The host's socket. The lobby lives while it is open. |
+| `/play/join?lobby=id` (WebSocket) | A player's socket. 404 when the lobby is gone; 429 when the lobby or the service is full. |
+
+Host socket:
+
+- The first message must be a text message `{"type":"publish","lobby":{…}}` within 10 seconds. The lobby's fields are
+  those of a listing (lobby id, host name, format, commander, seats, open seats, version, content, invite code, listed,
+  event) and its `port`. Later `publish` messages with the same lobby id update the listing. A lobby that isn't valid,
+  or no lobby in time, closes the socket.
+- The service sends `{"type":"open","peer":n}` when a player joins and `{"type":"closed","peer":n}` when one leaves. The
+  host may send `{"type":"close","peer":n}` to remove a player.
+- Binary messages are packets, each starting with a player's peer number (4 bytes, big-endian). The host writes the
+  number of the player it sends to; the service adds the number of the player a packet came from.
+
+Player socket: binary messages are packets to and from the host, without the peer number. Text messages are ignored.
+
+The service stamps the host's public address on the listing (the first address in `X-Forwarded-For`, else the connection's
+address). The listing's `port` is where the host takes direct connections, tried before the relay; 0 means relay only.
+
+Limits (`LobbyRelayOptions`, from the `Lobbies` section of the configuration; the defaults are used when it is missing):
+
+| Limit | Default |
+|---|---|
+| Lobbies on the service | 200 |
+| Lobbies per player | 2 |
+| Players per lobby | 8 |
+| Players on the service | 1000 |
+| Largest packet | 16 KiB (a larger message closes the socket) |
+| Relayed bytes per lobby | 256 KiB a second, with a burst of 1 MiB (`ByteBudget`: a packet waits until the rate has room for it) |
+| Time to publish | 10 seconds |
+
+The lobby list and invite-code routes share the `lobbies` rate limit: 60 requests a minute per address. The WebSocket
+keep-alive is 30 seconds.
+
+Nothing is stored: lobbies live in memory and are gone when the service restarts. When the host's socket closes, its
+lobby is removed and its players are closed with "the host left". A player's socket closing sends `closed` to the host.
+
+Game side: `ServiceOnlineServices` (`src/Arcanum.Net/Services`) is the game's `IOnlineServices` for this relay, named
+"Internet relay". Its constructor takes the service address and a function that gives the identity headers (in the game,
+`Authorization: Bearer` with the EOS ID token). Publishing a lobby opens the host's WebSocket and sends `publish` again on
+each update, reopening the socket if it was lost; removing the lobby closes it. Search and invite codes use the HTTP
+routes. A `closed` message or a lost service connection drops the relayed players. Joining tries a direct TCP connection
+to the listing's address and port for 3 seconds when the port is above 0, then the relay. The player's connection closes
+its WebSocket too. Messages already received are read before a lost connection is reported.
+
+The WebSocket is `WebSocketClient` (`src/Arcanum.Net/Transport/WebSocketClient.cs`). It accepts `ws` and `wss`, sends extra
+headers on the upgrade, answers pings and closes after 75 seconds of silence. It takes server messages up to 4 MiB. A
+refused upgrade reports its HTTP status (401, 404 or 429).
+
+Client wiring (`scripts/Client/OnlineService.Directory.cs`): the relay is the internet service on a console, which has no
+internet lobby library. Its identity is the EOS ID token: on a console, from the web sign-in with Discord; on PC, from the
+internet lobby service once it is signed in. Signing in signs in to the internet lobby service first, then to the relay.
+A console never accepts connections, so its local network service only finds and joins lobbies (no announce, no
+listener), and a console's hosted lobby is reached through the relay. The listing's `port` is set only when the router
+mapped it, else 0. `ARCANUM_ONLINE_RELAY_ONLY=1` and `ARCANUM_ONLINE_INTERNET_ONLY=1` are in the testing list above.
 
 ## Discord activity
 

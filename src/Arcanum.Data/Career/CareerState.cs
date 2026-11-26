@@ -130,7 +130,7 @@ public sealed class CareerState
     public SortedDictionary<string, int> Collection
     {
         get => _collection;
-        set => _collection = new(value, StringComparer.Ordinal); // loaded saves keep the same order
+        set { _collection = new(value, StringComparer.Ordinal); _ownedByName = null; } // loaded saves keep the same order
     }
 
     private SortedDictionary<string, int> _collection = new(StringComparer.Ordinal);
@@ -200,14 +200,31 @@ public sealed class CareerState
     public int Owned(CardKey card) => Collection.GetValueOrDefault(card.ToString());
 
     /// <summary>Copies owned of a card in any printing.</summary>
-    public int OwnedByName(string name) =>
-        Collection.Where(kv => CardKey.Parse(kv.Key).Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Sum(kv => kv.Value);
+    public int OwnedByName(string name)
+    {
+        if (_ownedByName is null || _ownedCards != Collection.Count)
+        {
+            _ownedByName = new(StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, count) in Collection)
+            {
+                var owned = CardKey.Parse(key).Name;
+                _ownedByName[owned] = _ownedByName.GetValueOrDefault(owned) + count;
+            }
+            _ownedCards = Collection.Count;
+        }
+        return _ownedByName.GetValueOrDefault(name);
+    }
+
+    // What OwnedByName counted (null: the collection changed since).
+    private Dictionary<string, int>? _ownedByName;
+    private int _ownedCards;
 
     public IEnumerable<(CardKey Card, int Count)> Cards => Collection.Select(kv => (CardKey.Parse(kv.Key), kv.Value));
 
     internal void AddCard(CardKey card, int count)
     {
         var key = card.ToString();
+        _ownedByName = null;
         int now = Collection.GetValueOrDefault(key) + count;
         if (now > 0) Collection[key] = now;
         else Collection.Remove(key);

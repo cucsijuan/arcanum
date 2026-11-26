@@ -73,9 +73,9 @@ public partial class DeckDesk : Control
     /// collection: the cards (printings) on offer, the tag each card shows at its foot (its price), and what happens when
     /// one is picked or the player goes back. Each card shows the copies owned.
     /// </summary>
-    /// <param name="Free">The copies of each printing (<see cref="CardKey"/> text) no deck uses: a toggle then counts only those, hiding the rest.</param>
+    /// <param name="Free">The copies of each printing (<see cref="CardKey"/> text) no deck uses (worked out when asked for): a toggle then counts only those, hiding the rest.</param>
     public sealed record CardPick(string Title, IReadOnlyList<CardKey> Cards, Func<CardKey, string> Tag, Action<CardKey> Picked, Action Cancelled,
-        IReadOnlyDictionary<string, int>? Free = null)
+        Lazy<Dictionary<string, int>>? Free = null)
     {
         /// <summary>Looking through the collection: nothing is picked; it shows how much of each set is collected, and its scenes.</summary>
         public bool Browse { get; init; }
@@ -208,7 +208,7 @@ public partial class DeckDesk : Control
             // Testing: ARCANUM_COLLECTION_SET=<set code> chooses a set, ARCANUM_COLLECTION_SCENE=<n> shows its nth scene.
             if (OS.GetEnvironment("ARCANUM_COLLECTION_SET") is { Length: > 0 } testSet) _set = testSet.ToUpperInvariant();
             if (int.TryParse(OS.GetEnvironment("ARCANUM_COLLECTION_SCENE"), out int testScene)) _showingScenes = true;
-            ShowPage(testScene > 0 ? testScene - 1 : 0);
+            _page = testScene > 0 ? testScene - 1 : 0;
             return;
         }
         RefreshSaved();
@@ -253,7 +253,7 @@ public partial class DeckDesk : Control
     private void BuildTable()
     {
         AddChild(new ColorRect { Color = new Color("3b2618"), AnchorRight = 1, AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore });
-        var picture = ResourceLoader.Exists(Kit + "desk.jpg") ? GD.Load<Texture2D>(Kit + "desk.jpg") : null;
+        var picture = ScenePictures.Load(Kit + "desk.jpg");
         _desk = new ArtScene(picture, Array.Empty<Hotspot>());
         _desk.BackRequested += Leave;
         AddChild(_desk);
@@ -310,7 +310,9 @@ public partial class DeckDesk : Control
         _tile = new Vector2(width, width * 1.39f);
         _left.CustomMinimumSize = new Vector2(columns * width + (columns - 1) * 8, 0);
         _deckRoom = inner.Size.X - _left.CustomMinimumSize.X - 28 - 20; // the gap, the scroll bar
-        if (IsNodeReady()) Refresh();
+        if (!IsNodeReady()) return;
+        _laidOut = true;
+        Refresh();
     }
 
     private void BuildLayout()
@@ -562,7 +564,7 @@ public partial class DeckDesk : Control
             k.Foil, new SearchItem(k, copies));
 
     /// <summary>The copies of a printing counted when picking: all of them, or those no deck uses (the toggle).</summary>
-    private int Copies(CardKey k) => _hideInDecks && _pick?.Free is { } free ? free.GetValueOrDefault(k.ToString()) : Career.State.Owned(k);
+    private int Copies(CardKey k) => _hideInDecks && _pick?.Free?.Value is { } free ? free.GetValueOrDefault(k.ToString()) : Career.State.Owned(k);
 
     /// <summary>The cards owned that pass the filters, one per name (with the printing owned most), by mana value.</summary>
     private List<Owned> OwnedCards()
@@ -576,7 +578,7 @@ public partial class DeckDesk : Control
         var cards = (_pool is not null
             ? _pool.Pool.Select(c => (Card: CardKey.Of(c), Count: 1))
             : Career.State.Cards).Where(c => InSet(c.Card) && (_search.Length == 0 || Found(filter, c.Card, _pool is null ? Career.State.OwnedByName(c.Card.Name) : c.Count)));
-        return ByName(cards).Where(Passes).OrderBy(o => o.Card.Definition.Is(CardType.Land)).ThenBy(o => o.Card.ManaValue).ThenBy(o => o.Card.Name).ToList();
+        return ByName(cards).Where(Passes).OrderBy(o => (o.Card.Types & CardType.Land) != 0).ThenBy(o => o.Card.ManaValue).ThenBy(o => o.Card.Name).ToList();
     }
 
     /// <summary>The cards one per name, with the printing owned most and the copies of every printing; basic lands left out.</summary>
@@ -612,13 +614,13 @@ public partial class DeckDesk : Control
         if (selected == 0) _set = null;
     }
 
-    private bool Passes(Owned owned) => Passes(owned.Card.Definition);
+    private bool Passes(Owned owned) => Passes(owned.Card);
 
-    private bool Passes(CardDefinition d)
+    private bool Passes(CardEntry card)
     {
-        if (TypeFilters[_type].Type != CardType.None && !d.Is(TypeFilters[_type].Type)) return false;
+        if (TypeFilters[_type].Type != CardType.None && (card.Types & TypeFilters[_type].Type) == 0) return false;
         if (_colors.Count == 0) return true;
-        var colors = ColorsOf(d);
+        var colors = ColorsOf(card.Definition);
         return colors.Count == 0 ? _colors.Contains('C') : colors.Any(_colors.Contains);
     }
 
@@ -750,19 +752,25 @@ public partial class DeckDesk : Control
     private string Collected()
     {
         var filter = Cards.Filter(_search, Terms);
-        var owned = Career.State.Cards.Where(c => c.Count > 0).Select(c => $"{c.Card.Set}|{c.Card.Number}".ToUpperInvariant()).ToHashSet();
+        var owned = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase); // collector numbers by set
+        foreach (var (card, count) in Career.State.Cards)
+        {
+            if (count <= 0) continue;
+            if (!owned.TryGetValue(card.Set, out var numbers)) owned[card.Set] = numbers = new(StringComparer.OrdinalIgnoreCase);
+            numbers.Add(card.Number);
+        }
         int printings = 0, have = 0;
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var namesHave = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var set in CollectedSets())
             foreach (var (entry, printing) in Cards.PrintingsIn(set))
             {
-                if (Career.World!.IsBasicLand(entry.Name) || !Passes(entry.Definition)) continue;
-                var key = new CardKey(entry.Name, printing.Set.ToUpperInvariant(), printing.CollectorNumber);
-                if (_search.Length > 0 && !filter.Matches(entry, printing, null, new SearchItem(key, null))) continue;
+                if (entry.IsBasicLand || !Passes(entry)) continue;
+                if (_search.Length > 0 && !filter.Matches(entry, printing, null,
+                        new SearchItem(new CardKey(entry.Name, printing.Set.ToUpperInvariant(), printing.CollectorNumber), null))) continue;
                 printings++;
                 names.Add(entry.Name);
-                if (!owned.Contains($"{key.Set}|{key.Number}".ToUpperInvariant())) continue;
+                if (!owned.TryGetValue(printing.Set, out var numbers) || !numbers.Contains(printing.CollectorNumber)) continue;
                 have++;
                 namesHave.Add(entry.Name);
             }
@@ -1199,8 +1207,12 @@ public partial class DeckDesk : Control
         Refresh();
     }
 
+    /// <summary>Whether the desk's sizes are known (see <see cref="Layout"/>, which then shows the cards at them).</summary>
+    private bool _laidOut;
+
     private void Refresh()
     {
+        if (!_laidOut) return; // the cards shown now would be made again for the sizes
         HidePreview();
         ShowPage(_page);
         if (_pick is null) ShowDeck();

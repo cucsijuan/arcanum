@@ -213,17 +213,22 @@ public static class OracleJsonl
     /// <summary>Collector numbers in numeric order ("9" before "10"), with any letters after the digits breaking ties.</summary>
     public static int CompareNumbers(string a, string b)
     {
-        static (int, string) Key(string n)
+        // The first digits, read by hand: sorting a set asks for them thousands of times, which is slow through a substring.
+        static int Number(string n)
         {
             int i = 0;
             while (i < n.Length && !char.IsDigit(n[i])) i++;
             int start = i;
-            while (i < n.Length && char.IsDigit(n[i])) i++;
-            return (i > start && int.TryParse(n[start..i], out int v) ? v : int.MaxValue, n);
+            long value = 0;
+            while (i < n.Length && char.IsDigit(n[i]))
+            {
+                if (n[i] is < '0' or > '9') return int.MaxValue;
+                value = Math.Min(value * 10 + (n[i++] - '0'), int.MaxValue);
+            }
+            return i > start ? (int)value : int.MaxValue;
         }
-        var (na, sa) = Key(a);
-        var (nb, sb) = Key(b);
-        return na != nb ? na.CompareTo(nb) : string.CompareOrdinal(sa, sb);
+        int na = Number(a), nb = Number(b);
+        return na != nb ? na.CompareTo(nb) : string.CompareOrdinal(a, b);
     }
 
     /// <summary>

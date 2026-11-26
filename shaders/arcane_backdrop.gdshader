@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Animated menu backdrop: a slowly drifting nebula, twinkling stars (the brighter ones with four-pointed glints) and a
+// Animated menu backdrop: a slowly drifting nebula (drawn small by arcane_nebula.gdshader), twinkling stars (the brighter ones with four-pointed glints) and a
 // faint arcane circle of turning rune rings. Procedural; no external assets.
 shader_type canvas_item;
 
 uniform vec2 rect_size = vec2(1920.0, 1080.0);
-uniform vec4 deep : source_color = vec4(0.03, 0.02, 0.06, 1.0);
-uniform vec4 mid : source_color = vec4(0.17, 0.07, 0.27, 1.0);
-uniform vec4 glow : source_color = vec4(0.10, 0.28, 0.45, 1.0);
+uniform sampler2D nebula : filter_linear; // arcane_nebula.gdshader, drawn small
 uniform vec4 gold : source_color = vec4(0.95, 0.78, 0.45, 1.0);
 uniform vec4 violet : source_color = vec4(0.62, 0.42, 1.0, 1.0);
 // Center of the arcane circle (0..1 of the screen) and its outer radius (fraction of the screen height).
@@ -17,20 +15,6 @@ uniform float seed = 3.0;
 
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7)) + seed) * 43758.5453); }
-
-float noise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	vec2 u = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
-
-float fbm(vec2 p) {
-	float v = 0.0;
-	float a = 0.5;
-	for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; }
-	return v;
-}
 
 // A thin line at distance d (pixels) with a soft glow around it.
 float line(float d, float width) { return smoothstep(width, 0.0, abs(d)) + 0.25 * smoothstep(width * 6.0, 0.0, abs(d)); }
@@ -109,13 +93,8 @@ void fragment() {
 	float t = TIME;
 	vec2 p = UV * rect_size;
 
-	// Nebula: domain-warped noise drifting slowly.
-	vec2 n = p / 300.0;
-	vec2 drift = vec2(t * 0.012, -t * 0.008);
-	float warp = fbm(n * 0.7 + drift + vec2(fbm(n + t * 0.01), fbm(n - t * 0.013)));
-	vec3 col = mix(deep.rgb, mid.rgb, smoothstep(0.35, 0.78, warp));
-	col = mix(col, glow.rgb, smoothstep(0.62, 0.92, fbm(n * 1.6 + 4.0 - drift * 1.4)) * 0.55);
-	col *= 0.8;
+	// Nebula (arcane_nebula.gdshader).
+	vec3 col = texture(nebula, UV).rgb * 0.5;
 
 	// Stars: three layers, the far ones slowly moving.
 	col += vec3(0.85, 0.82, 1.0) * stars(p + vec2(t * 2.0, 0.0), 22.0, 0.10, t) * 0.45;
@@ -145,35 +124,37 @@ void fragment() {
 	vec2 c = circle_center * rect_size;
 	vec2 v = p - c;
 	float r = length(v);
-	float a = atan(v.y, v.x);
 	float R = circle_radius * rect_size.y;
-	float pulse = 0.75 + 0.25 * sin(t * 0.7);
-	float circle = 0.0;
-	circle += line(r - R, 1.4);
-	circle += line(r - R * 0.93, 1.0);
-	circle += runes(r, a, R * 0.80, R * 0.90, 36.0, t * 0.03) * 0.9;
-	circle += line(r - R * 0.78, 1.0);
-	circle += line(r - R * 0.62, 1.2);
-	circle += runes(r, a, R * 0.52, R * 0.60, 24.0, -t * 0.05) * 0.8;
-	circle += line(r - R * 0.50, 0.9);
-	// Two triangles turning opposite ways (a hexagram), inside the inner ring.
-	for (int k = 0; k < 2; k++) {
-		float rot = (k == 0 ? 1.0 : -1.0) * t * 0.04 + float(k) * TAU / 6.0;
-		float d = 1e9;
-		for (int i = 0; i < 3; i++) {
-			float a0 = rot + float(i) * TAU / 3.0, a1 = rot + float(i + 1) * TAU / 3.0;
-			d = min(d, segment(v, vec2(cos(a0), sin(a0)) * R * 0.48, vec2(cos(a1), sin(a1)) * R * 0.48));
+	if (r < R * 1.08 && r > R * 0.2) { // it fades out by these radii
+		float a = atan(v.y, v.x);
+		float pulse = 0.75 + 0.25 * sin(t * 0.7);
+		float circle = 0.0;
+		circle += line(r - R, 1.4);
+		circle += line(r - R * 0.93, 1.0);
+		circle += runes(r, a, R * 0.80, R * 0.90, 36.0, t * 0.03) * 0.9;
+		circle += line(r - R * 0.78, 1.0);
+		circle += line(r - R * 0.62, 1.2);
+		circle += runes(r, a, R * 0.52, R * 0.60, 24.0, -t * 0.05) * 0.8;
+		circle += line(r - R * 0.50, 0.9);
+		// Two triangles turning opposite ways (a hexagram), inside the inner ring.
+		for (int k = 0; k < 2; k++) {
+			float rot = (k == 0 ? 1.0 : -1.0) * t * 0.04 + float(k) * TAU / 6.0;
+			float d = 1e9;
+			for (int i = 0; i < 3; i++) {
+				float a0 = rot + float(i) * TAU / 3.0, a1 = rot + float(i + 1) * TAU / 3.0;
+				d = min(d, segment(v, vec2(cos(a0), sin(a0)) * R * 0.48, vec2(cos(a1), sin(a1)) * R * 0.48));
+			}
+			circle += line(d, 1.0) * 0.8;
 		}
-		circle += line(d, 1.0) * 0.8;
+		// Small ticks on the outer band.
+		float ticks = step(0.92, fract((a - t * 0.02) / TAU * 120.0)) * step(R * 0.94, r) * step(r, R * 0.98);
+		circle += ticks * 0.6;
+		// A brighter light slowly running around the rings.
+		float runner = pow(max(0.0, cos(a - t * 0.25)), 24.0);
+		float fade = smoothstep(R * 1.08, R * 0.95, r) * smoothstep(R * 0.2, R * 0.45, r);
+		vec3 circleColor = mix(violet.rgb, gold.rgb, 0.45 + 0.35 * runner);
+		col += circleColor * circle * fade * circle_strength * (pulse * 0.6 + runner * 0.8) * 0.5;
 	}
-	// Small ticks on the outer band.
-	float ticks = step(0.92, fract((a - t * 0.02) / TAU * 120.0)) * step(R * 0.94, r) * step(r, R * 0.98);
-	circle += ticks * 0.6;
-	// A brighter light slowly running around the rings.
-	float runner = pow(max(0.0, cos(a - t * 0.25)), 24.0);
-	float fade = smoothstep(R * 1.08, R * 0.95, r) * smoothstep(R * 0.2, R * 0.45, r);
-	vec3 circleColor = mix(violet.rgb, gold.rgb, 0.45 + 0.35 * runner);
-	col += circleColor * circle * fade * circle_strength * (pulse * 0.6 + runner * 0.8) * 0.5;
 
 	// Vignette keeps the edges dark.
 	vec2 uv = UV - 0.5;

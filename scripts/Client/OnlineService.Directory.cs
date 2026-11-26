@@ -22,11 +22,51 @@ public partial class OnlineService
 
     private Task? _signIn;
 
-    /// <summary>Where lobbies are listed and how players reach hosts: the local network, and the internet when this build can.</summary>
-    /// (ARCANUM_ONLINE_INTERNET_ONLY=1 leaves the local network out, for testing internet lobbies on one network.)
-    public IOnlineServices Services => _services ??= Internet is { } internet
-        ? OS.GetEnvironment("ARCANUM_ONLINE_INTERNET_ONLY") == "1" ? internet : new CombinedOnlineServices(new LanOnlineServices(), internet)
-        : new LanOnlineServices();
+    /// <summary>
+    /// Where lobbies are listed and how players reach hosts, in order of preference: the local network, the internet
+    /// lobby service when this build has it, and the career service's relay (for systems without that service, a
+    /// console; a hosted lobby is listed there too, so they find it, and only their games go through it).
+    /// ARCANUM_ONLINE_INTERNET_ONLY=1 keeps only the internet lobby service and ARCANUM_ONLINE_RELAY_ONLY=1 only the
+    /// relay, for testing them on one network.
+    /// </summary>
+    public IOnlineServices Services => _services ??= MakeServices();
+
+    private IOnlineServices MakeServices()
+    {
+        if (OS.GetEnvironment("ARCANUM_ONLINE_RELAY_ONLY") == "1") return Relay;
+        if (Internet is { } internet && OS.GetEnvironment("ARCANUM_ONLINE_INTERNET_ONLY") == "1") return internet;
+        var lan = new LanOnlineServices(hosts: AcceptsConnections);
+        return Internet is { } both ? new CombinedOnlineServices(lan, both, Relay) : new CombinedOnlineServices(lan, Relay);
+    }
+
+    /// <summary>
+    /// Whether this system can take players' connections. A console can't (the connections it accepts fail): its
+    /// lobbies are reached through the relay only.
+    /// </summary>
+    public static bool AcceptsConnections => OS.GetName() != "Switch";
+
+    private ServiceOnlineServices? _relay;
+
+    /// <summary>The career service's lobbies and relay.</summary>
+    private ServiceOnlineServices Relay => _relay ??= new ServiceOnlineServices(Account.ServiceUrl, RelayIdentityAsync);
+
+    /// <summary>
+    /// Who the player is for the relay: the same identity token the career service takes (from the internet lobby
+    /// service when signed in, else from its web interface for the Discord sign-in). ARCANUM_RELAY_PLAYER=name names the
+    /// player instead, for a local service started with Lobbies:TrustPlayerHeader (testing).
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, string>?> RelayIdentityAsync(CancellationToken cancel)
+    {
+        if (OS.GetEnvironment("ARCANUM_RELAY_PLAYER") is { Length: > 0 } tester) return new Dictionary<string, string> { ["X-Player"] = tester };
+        string? token = null;
+        try
+        {
+            if (Internet is null) token = Account.HasDiscord ? await Eos.EosWebIdentity.IdTokenAsync(cancel) : null;
+            else if (Internet is IIdentityTokens tokens && Internet.IsAvailable) token = await tokens.IdTokenAsync(cancel);
+        }
+        catch (Exception e) when (e is InvalidOperationException or TimeoutException or System.Net.Http.HttpRequestException) { }
+        return token is null ? null : new Dictionary<string, string> { ["Authorization"] = $"Bearer {token}" };
+    }
 
     private IOnlineServices? _internet;
     private bool _internetMade;
@@ -45,33 +85,58 @@ public partial class OnlineService
     }
 
     /// <summary>Playing on the internet needs the player to sign in with Discord first (this build has internet lobbies).</summary>
-    public bool NeedsAccount => Internet is not null && !Internet.IsAvailable && !Account.HasDiscord && !Account.UsesDeviceAccount;
+    public bool NeedsAccount => !(Internet ?? (IOnlineServices)Relay).IsAvailable && !Account.HasDiscord && !Account.UsesDeviceAccount
+                                && OS.GetEnvironment("ARCANUM_RELAY_PLAYER").Length == 0;
 
     private string? _internetError;
+    private string? _relayError;
     private bool _publishWaiting;
 
     /// <summary>Whether this build has internet lobbies, and whether they're ready.</summary>
-    public string InternetStatus => Internet is null ? "Internet lobbies aren't part of this build."
+    public string InternetStatus => Internet is null ? RelayStatus
         : Internet.IsAvailable ? "Internet lobbies are on."
         : _internetError is { } error ? $"Internet lobbies are off: {error}"
         : "Connecting to internet lobbies…";
 
-    /// <summary>Signs in to the internet service (once; again after a failure).</summary>
+    /// <summary>The relay's state, where it's the only way onto the internet (a console).</summary>
+    private string RelayStatus => Relay.IsAvailable ? "Internet lobbies are on."
+        : _relayError is { } error ? $"Internet lobbies are off: {error}"
+        : _signIn is { IsCompleted: false } ? "Connecting to internet lobbies…"
+        : "Sign in with Discord (Settings, Account) to play on the internet.";
+
+    /// <summary>Signs in to the internet service, then the relay (once each; again after a failure).</summary>
     public async void SignIn(string name)
     {
-        if (Internet is not { } internet || internet.IsAvailable || _signIn is { IsCompleted: false }) return;
-        _internetError = null;
-        var signIn = internet.SignInAsync(name);
+        bool internet = Internet is { IsAvailable: false }, relay = !Relay.IsAvailable;
+        if ((!internet && !relay) || _signIn is { IsCompleted: false }) return;
+        var signIn = SignInServicesAsync(name, internet, relay);
         _signIn = signIn;
+        await signIn;
         try
         {
-            await signIn;
             // A lobby hosted before signing in is listed on the internet too now.
             if (_lobby is not null && _published is { } published) await Services.Lobbies.PublishAsync(published);
             else if (_lobby is not null && _publishWaiting) PublishHostedLobby();
         }
-        catch (Exception e) { _internetError = e.GetBaseException().Message; }
+        catch (Exception e) { _internetError ??= e.GetBaseException().Message; }
         Changed?.Invoke();
+    }
+
+    /// <summary>The relay's identity token comes from the internet service where there is one, so it signs in after it.</summary>
+    private async Task SignInServicesAsync(string name, bool internet, bool relay)
+    {
+        if (internet)
+        {
+            _internetError = null;
+            try { await Internet!.SignInAsync(name); }
+            catch (Exception e) { _internetError = e.GetBaseException().Message; }
+        }
+        if (relay)
+        {
+            _relayError = null;
+            try { await Relay.SignInAsync(name); }
+            catch (Exception e) { _relayError = e.GetBaseException().Message; }
+        }
     }
 
     /// <summary>
@@ -128,13 +193,18 @@ public partial class OnlineService
     }
 
     private LobbyListing ListingOf(LobbyHost lobby, string id, string code) =>
-        new(id, lobby.State.Seats.FirstOrDefault()?.Name ?? "Host", lobby.Settings.Format, lobby.Settings.Commander, lobby.Settings.Seats,
-            lobby.State.Seats.Count(s => s.Kind == LobbySeatKind.Open), Version, ContentId, code, Listed: !_unlisted, lobby.Settings.Event);
+        new(id, lobby.State.Seats.FirstOrDefault()?.Name is { Length: > 0 } host ? host : Settings.PlayerName, lobby.Settings.Format, lobby.Settings.Commander, lobby.Settings.Seats,
+            lobby.State.Seats.Count(s => s.Kind == LobbySeatKind.Open), Version, ContentId, code, Listed: !_unlisted, lobby.Settings.Event)
+        {
+            // Players on the internet try the host directly first when its router lets them in (the relay otherwise;
+            // the local network fills in its own port).
+            Port = _upnp is not null ? _port : 0,
+        };
 
     private async void UpdatePublishedLobby()
     {
         if (_lobby is not { } lobby || _published is not { } published) return;
-        var now = ListingOf(lobby, published.LobbyId, published.InviteCode) with { Port = published.Port };
+        var now = ListingOf(lobby, published.LobbyId, published.InviteCode);
         if (lobby.Game is not null || lobby.Event is not null) now = now with { OpenSeats = 0 }; // started: no longer joinable
         if (now == published) return;
         _published = now;

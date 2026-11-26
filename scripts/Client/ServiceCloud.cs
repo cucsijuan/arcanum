@@ -41,6 +41,6 @@ public sealed class ServiceCloud(Func<Task<string?>> idToken, ICloudStorage? ear
         using var request = new HttpRequestMessage(method, $"cloud/{Uri.EscapeDataString(name)}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         if (data is not null) request.Content = new ByteArrayContent(data);
-        return await Http.SendAsync(request, cancel);
+        return await Task.Run(() => Http.SendAsync(request, cancel), cancel); // not on the screen's thread: setting up a connection takes long on slow devices
     }
 }

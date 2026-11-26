@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using Arcanum.Engine.Cards;
+using Arcanum.Engine.Mana;
 
 namespace Arcanum.Data.CardData;
 
@@ -19,11 +20,13 @@ public sealed class CardEntry
         _support = new Lazy<CardSupport>(support);
         Name = definition.Name;
         Record = record;
+        IsMeldResult = definition.IsMeldResult;
     }
 
     /// <param name="name">The definition's name (its first face's for an adventurer card).</param>
-    internal CardEntry(string name, Func<CardDefinition> definition, CardSupport support, CardRecord record)
+    internal CardEntry(string name, Func<CardDefinition> definition, CardSupport support, CardRecord record, bool meldResult)
     {
+        IsMeldResult = meldResult;
         _definition = new Lazy<CardDefinition>(definition, LazyThreadSafetyMode.ExecutionAndPublication);
         _support = new Lazy<CardSupport>(support);
         Name = name;
@@ -45,7 +48,39 @@ public sealed class CardEntry
     public CardSupport Support => _support.Value;
     public CardRecord Record { get; }
     public string Name { get; }
-    public int ManaValue => Definition.ManaCost.ManaValue;
+    public int ManaValue => ManaCost.ManaValue;
+
+    /// <summary>Whether it's the combined face two cards meld into (rule 712.4), known without making the definition.</summary>
+    public bool IsMeldResult { get; }
+
+    /// <summary>The definition's mana cost: a card of a single face has its record's, known without making the definition.</summary>
+    public ManaCost ManaCost => IsMade || Record.Faces.Count > 0 ? Definition.ManaCost : _cost ??= CardFactory.CostOf(Record);
+    private ManaCost? _cost;
+
+    /// <summary>The definition's card types, known as <see cref="ManaCost"/> is.</summary>
+    public CardType Types => IsMade || Record.Faces.Count > 0 ? Definition.Types : _types ??= TypeLine.Parse(Record.TypeLine).Types;
+    private CardType? _types;
+
+    /// <summary>
+    /// Whether the card has the basic supertype. A definition takes its supertypes from the record's type lines, so a card
+    /// with no such word in any of them is known not to be basic without making its definition.
+    /// </summary>
+    public bool IsBasic => SaysBasic && (Definition.Supertypes & Supertype.Basic) != 0;
+
+    /// <summary>Whether the card is a basic land (see <see cref="IsBasic"/>).</summary>
+    public bool IsBasicLand => IsBasic && Definition.Is(CardType.Land);
+
+    private bool SaysBasic => _saysBasic ??= ReadBasic();
+    private bool? _saysBasic;
+
+    private bool ReadBasic()
+    {
+        const string basic = nameof(Supertype.Basic);
+        if (Record.TypeLine.Contains(basic, StringComparison.OrdinalIgnoreCase)) return true;
+        foreach (var face in Record.Faces)
+            if (face.TypeLine.Contains(basic, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
 
     /// <summary>Whether the definition has been made already.</summary>
     internal bool IsMade => _definition.IsValueCreated;
@@ -251,22 +286,40 @@ public sealed class CardDatabase : ICardDatabase
     /// <summary>Each printing in a set with its card, in collector number order.</summary>
     public IReadOnlyList<(CardEntry Card, Printing Printing)> PrintingsIn(string set)
     {
-        // Every card's printings are gone through once, the first time any set is asked for: looking through every card
-        // for each set takes seconds on a slow device.
-        var bySet = _printingsBySet;
-        if (bySet is null)
+        // Every card's printings are gone through once, the first time any set is asked for (looking through every card
+        // for each set takes seconds on a slow device), and a set's are put in order the first time that set is.
+        lock (_printingsLock)
         {
-            bySet = _sorted.SelectMany(e => e.Record.Printings.Select(p => (Card: e, Printing: p)))
-                .GroupBy(x => x.Printing.Set, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => (IReadOnlyList<(CardEntry, Printing)>)g
-                    .OrderBy(x => x.Printing.CollectorNumber, Comparer<string>.Create(OracleJsonl.CompareNumbers)).ToList(),
-                    StringComparer.OrdinalIgnoreCase);
-            _printingsBySet = bySet;
+            if (_printingsBySet is null)
+            {
+                _printingsBySet = new Dictionary<string, SetPrintings>(StringComparer.OrdinalIgnoreCase);
+                foreach (var entry in _sorted)
+                    foreach (var printing in entry.Record.Printings)
+                    {
+                        if (!_printingsBySet.TryGetValue(printing.Set, out var found)) _printingsBySet[printing.Set] = found = new SetPrintings();
+                        found.List.Add((entry, printing));
+                    }
+            }
+            if (!_printingsBySet.TryGetValue(set, out var printings)) return Array.Empty<(CardEntry, Printing)>();
+            if (!printings.InOrder)
+            {
+                var keys = printings.List.Select((x, i) => (Number: x.Printing.CollectorNumber, Index: i)).ToArray();
+                Array.Sort(keys, (a, b) => OracleJsonl.CompareNumbers(a.Number, b.Number) is var c && c != 0 ? c : a.Index.CompareTo(b.Index));
+                printings.List = keys.Select(k => printings.List[k.Index]).ToList();
+                printings.InOrder = true;
+            }
+            return printings.List;
         }
-        return bySet.TryGetValue(set, out var printings) ? printings : Array.Empty<(CardEntry, Printing)>();
     }
 
-    private Dictionary<string, IReadOnlyList<(CardEntry Card, Printing Printing)>>? _printingsBySet;
+    private sealed class SetPrintings
+    {
+        public List<(CardEntry Card, Printing Printing)> List = new();
+        public bool InOrder;
+    }
+
+    private readonly object _printingsLock = new();
+    private Dictionary<string, SetPrintings>? _printingsBySet;
 
     private readonly Dictionary<string, CardDefinition> _byPrinting = new();
 
@@ -374,6 +427,16 @@ public sealed class CardDatabase : ICardDatabase
     /// <summary>The tags and the promo kinds the printings have, for <c>is:</c> values.</summary>
     private SearchVocabulary Vocabulary => _vocabulary ??= new SearchVocabulary(_searchTags,
         _sorted.SelectMany(e => e.Record.Printings).SelectMany(p => p.PromoTypes).ToHashSet(StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Makes ahead the lists read off every card the first time they're asked for (a game's card names, a search's
+    /// words), for a worker thread: on slow devices the screen asking first would wait.
+    /// </summary>
+    public void PrepareLists()
+    {
+        _ = Names;
+        _ = Vocabulary;
+    }
 
     /// <summary>Reads a search in the card search language, with this database's sets for release dates.</summary>
     public CardFilter Filter(string text, SearchTerms? extra = null) => CardSearch.Parse(text, FindSet, extra, Vocabulary);

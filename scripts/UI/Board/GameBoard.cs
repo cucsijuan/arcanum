@@ -161,6 +161,14 @@ public partial class GameBoard : Control
         if (match is not null) UseMatch(match);
         else if (loaded) UseModuleDecks();
 
+        // The table is seen while the game is set up: that takes a second on slow devices, with the screen left otherwise on
+        // the one before.
+        _loading.Text = "Shuffling…";
+        _loading.Visible = true;
+        for (int frame = 0; frame < 2; frame++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        if (!IsInsideTree()) return; // left meanwhile
+        _loading.Visible = false;
+
         // ARCANUM_SEED makes the first game reproducible (debugging, screenshots).
         StartNewGame(ulong.TryParse(OS.GetEnvironment("ARCANUM_SEED"), out var seed) ? seed : (ulong)Time.GetTicksUsec());
     }
@@ -271,6 +279,9 @@ public partial class GameBoard : Control
             Put(p1, Arcanum.Cards.GenericCards.Forest, 3);
             Put(p1, Arcanum.Cards.GenericCards.Mountain, 2);
             Put(p1, Arcanum.Cards.GenericCards.Swamp);
+            // ARCANUM_SANDBOX_LANDS=<n>: that many more Mountains on each side (how crowded rows look).
+            if (int.TryParse(OS.GetEnvironment("ARCANUM_SANDBOX_LANDS"), out int lands))
+                foreach (var side in new[] { p1, p2 }) Put(side, Arcanum.Cards.GenericCards.Mountain, lands);
             var cub = game.SetupPermanent(p1, Arcanum.Cards.GenericCards.GladeCub);
             game.SetupPermanent(p1, Arcanum.Cards.GenericCards.StoneSkin, attachTo: cub);
             game.SetupPermanent(p1, Arcanum.Cards.GenericCards.IronBlade, attachTo: cub);
@@ -468,6 +479,7 @@ public partial class GameBoard : Control
         AddChild(_mulligan);
         _announcer.ZIndex = BoardStyle.Z.Announcer;
         _announcer.ArrowsChanged += arrows => _arrows.SetOverlayArrows(arrows);
+        _announcer.Shown += PreviewGivesWay;
         AddChild(_announcer);
         AddChild(_turnChime);
 
@@ -561,12 +573,13 @@ public partial class GameBoard : Control
         actionBox.AddChild(_actionExtra);
         actionBox.AddChild(_actionButtons);
         _actionPanel.AddChild(actionBox);
+        BuildPanelTab();
         AddChild(_actionPanel);
         // The compact board shows the top of the stack's card big, beside the panel.
         _actionCard.ZIndex = BoardStyle.Z.ActionPanel;
         AddChild(_actionCard);
         // Shown again as it was (after an announcement, say): its answer takes the focus again.
-        Arcanum.UI.PadFocus.OfferWhenShown(_actionPanel, () => _primaryAction is { Disabled: false } primary ? primary : null);
+        Arcanum.UI.PadFocus.OfferWhenShown(_actionPanel, PanelAnswer);
 
         _logPanel.AnchorTop = 1; _logPanel.AnchorBottom = 1;
         _logPanel.OffsetLeft = 14; _logPanel.OffsetTop = -420; _logPanel.OffsetRight = 384; _logPanel.OffsetBottom = -64;
@@ -824,7 +837,7 @@ public partial class GameBoard : Control
             MoveChild(_tournamentMat, 2 + _tableMats.Length);
             Resized += LayoutTable;
         }
-        if (_tablePicture.Texture is null && ResourceLoader.Exists(table)) _tablePicture.Texture = GD.Load<Texture2D>(table);
+        _tablePicture.Texture ??= ScenePictures.Load(table);
         var json = System.IO.Path.ChangeExtension(table, ".json");
         if (_compact)
         {
@@ -941,6 +954,7 @@ public partial class GameBoard : Control
         _stepTrack.SetActivePlayer(view.TurnNumber == 0 ? null : view.Players[view.ActivePlayer.Value].Name, view.ActivePlayer == Bottom,
             BoardStyle.PlayerColor(view.ActivePlayer.Value));
         _stackView.Refresh(view.Stack);
+        CheckPreview(view);
         _undoButton.Disabled = !_session.CanUndo || _match?.Event is not null; // no take-backs in event games
 
         if (view.IsGameOver)
@@ -978,7 +992,10 @@ public partial class GameBoard : Control
         UpdateArrows(view, decision);
         BuildActionPanel(view, decision);
         PlaceActionPanel();
-        if (_actionPanel.Visible) Arcanum.UI.PadFocus.Offer(_actionPanel, _primaryAction is { Disabled: false } primary ? primary : null);
+        ShowPanelTab(view, decision);
+        // The large view covers the table: the arrows stay on its answers ("See the board" among them).
+        Arcanum.UI.PadFocus.KeepInside(_actionPanel, _actionCard.Visible);
+        if (_actionPanel.Visible) Arcanum.UI.PadFocus.Offer(_actionPanel, PanelAnswer());
         UpdateMulliganView(decision);
         if (_autoplay && decision is not null)
         {
@@ -1315,7 +1332,9 @@ public partial class GameBoard : Control
         foreach (var child in _actionExtra.GetChildren()) child.QueueFree();
         _primaryAction = null;
         _actionExtra.Visible = false;
-        _actionPanel.Visible = decision is not null && !view.IsGameOver && !LargeMulligan(decision);
+        bool asked = decision is not null && !view.IsGameOver && !LargeMulligan(decision);
+        _panelAway = asked && IsPanelAway(decision);
+        _actionPanel.Visible = asked && !_panelAway;
         if (decision is null) return;
 
         string who = view.Players[decision.Player.Value].Name;
@@ -1559,8 +1578,8 @@ public partial class GameBoard : Control
                     resolve = $"Resolve {Shorten(name)}";
                     _prompt.Text = $"{who}: respond, or let it resolve";
                     _actionExtra.Visible = true;
-                    // The compact board shows it large (card and whole text) unless the player asked to see the board.
-                    bool large = _compact && _boardSeenFor != p;
+                    // The compact board shows it large (card and whole text).
+                    bool large = _compact;
                     var caster = view.Players[top.Controller.Value].Name;
                     _actionExtra.AddChild(BoardStyle.MakeLabel($"{caster}: {name}{(top.AbilityText is null ? "" : " (ability)")}", large ? 26 : 15, BoardStyle.Text, bold: true));
                     var rules = top.AbilityText ?? top.Card.OracleText;
@@ -1571,9 +1590,11 @@ public partial class GameBoard : Control
                         text.CustomMinimumSize = new Vector2(large ? 0 : 360, 0);
                         _actionExtra.AddChild(text);
                     }
-                    if (top.Targets.Count > 0)
+                    // An "up to" target may have been left unchosen.
+                    var targets = top.Targets.Where(t => !t.IsNone).ToList();
+                    if (targets.Count > 0)
                     {
-                        var names = top.Targets.Select(t => t.Player is { } pl ? view.Players[pl.Value].Name : view.FindCard(t.Card!.Value)?.Name ?? "?");
+                        var names = targets.Select(t => t.Player is { } pl ? view.Players[pl.Value].Name : view.FindCard(t.Card!.Value)?.Name ?? "?");
                         _actionExtra.AddChild(BoardStyle.MakeLabel("\u2192 " + string.Join(", ", names), large ? 20 : 14, BoardStyle.Playable));
                     }
                     if (large)
@@ -1586,11 +1607,7 @@ public partial class GameBoard : Control
                             below.AutowrapMode = TextServer.AutowrapMode.WordSmart;
                             _actionExtra.AddChild(below);
                         }
-                        AddButton("See the board", () => { _boardSeenFor = p; Refresh(); });
-                    }
-                    else if (_compact)
-                    {
-                        AddButton("Show the card", () => { _boardSeenFor = null; Refresh(); });
+                        AddButton("See the board", () => PutPanelAway(p));
                     }
                 }
                 // Cards in the graveyard aren't on the board: flashback and graveyard abilities get their own buttons.
@@ -1732,11 +1749,8 @@ public partial class GameBoard : Control
                 if (ChoicePiles(c).Count > 1 && !_zoneViewer.Visible) _prompt.Text += "\nChoose where to look:";
                 AddPileButtons(c);
                 // A cost chosen before anything is paid: backing out cancels the spell or ability.
-                // While the board shows, going back to the cards is the default answer (confirm never chooses none by accident).
-                bool seeingBoard = _compact && ReferenceEquals(_boardSeenForChoice, c);
-                if (seeingBoard) AddButton("Show the cards", () => { _boardSeenForChoice = null; Refresh(); }, primary: true);
                 if (c.Request.CanCancel) AddButton("Cancel", () => c.Answer(Array.Empty<CardId>()));
-                var done = AddButton(ChoiceConfirmText(_selected.Count, c.Request), () => c.Answer(_selected.ToList()), primary: !seeingBoard);
+                var done = AddButton(ChoiceConfirmText(_selected.Count, c.Request), () => c.Answer(_selected.ToList()), primary: true);
                 done.Disabled = _selected.Count < c.Request.Min || _selected.Count > c.Request.Max;
                 break;
             }
@@ -1899,6 +1913,15 @@ public partial class GameBoard : Control
     /// <summary>The prompt's default answer (where a controller's focus starts).</summary>
     private Button? _primaryAction;
 
+    /// <summary>
+    /// Where a controller's focus starts in the panel: the default answer, else the first one that can be given, else the
+    /// default one all the same (never the button that puts the panel away).
+    /// </summary>
+    private Control? PanelAnswer() =>
+        _primaryAction is { Disabled: false } ? _primaryAction
+        : _actionBox.FindChildren("*", nameof(Button), true, false).OfType<Button>()
+            .FirstOrDefault(b => !b.Disabled && b.IsVisibleInTree() && !b.IsQueuedForDeletion()) ?? _primaryAction;
+
     // ---------------------------------------------------------------- input
 
     public override void _Process(double delta)
@@ -1910,6 +1933,7 @@ public partial class GameBoard : Control
             int left = _online.DecisionSecondsLeft;
             _decisionTimer.Visible = left >= 0;
             if (left >= 0) _decisionTimer.Text = $"⏱ {left / 60}:{left % 60:00}";
+            ShowPanelTabTime(left);
         }
         // Count down the seats waiting for a disconnected player.
         if (_online is not null && Time.GetTicksMsec() >= _nextSeatTick && _seatStates.Values.Any(s => s.Deadline is not null))
@@ -2423,6 +2447,7 @@ public partial class GameBoard : Control
         _preview.Visible = true;
         // Beside it: what effects changed about the card and its state now.
         var game = _session.ViewFor(Bottom);
+        _previewZone = game.FindCard(_previewView.Id)?.Zone;
         if (_status.ShowFor(game.FindCard(view.Id) ?? view, game))
             _status.Position = _preview.Position + new Vector2(_preview.Size.X + 12, 0);
     }
@@ -2567,16 +2592,13 @@ public partial class GameBoard : Control
         || _compact && decision is ChooseCardsDecision choice && LargeChoice(choice);
 
     /// <summary>Whether the compact board shows this choice's cards over the whole screen now.</summary>
-    private bool LargeChoice(ChooseCardsDecision choice) => ChoicePiles(choice).Count == 0 && !ReferenceEquals(_boardSeenForChoice, choice);
-
-    /// <summary>The choice for which the player closed the large view to look at the board.</summary>
-    private ChooseCardsDecision? _boardSeenForChoice;
+    private bool LargeChoice(ChooseCardsDecision choice) => ChoicePiles(choice).Count == 0 && !ReferenceEquals(_panelAwayFor, choice);
 
     /// <summary>The answers to a choice among cards in the large view (the action panel's, and looking at the board).</summary>
     private IReadOnlyList<(string, Action, bool, bool)> ChoiceAnswers(ChooseCardsDecision choice)
     {
         var request = choice.Request;
-        var answers = new List<(string, Action, bool, bool)> { ("See the board", () => { _boardSeenForChoice = choice; Refresh(); }, false, true) };
+        var answers = new List<(string, Action, bool, bool)> { ("See the board", () => PutPanelAway(choice), false, true) };
         if (request.CanCancel) answers.Add(("Cancel", Answer(() => choice.Answer(Array.Empty<CardId>())), false, true));
         answers.Add((ChoiceConfirmText(_selected.Count, request), Answer(() => choice.Answer(_selected.ToList())), true,
             _selected.Count >= request.Min && _selected.Count <= request.Max));

@@ -62,8 +62,9 @@ public partial class GameBoard
     /// </summary>
     private void HoverStarted(CardNode node)
     {
-        // Reached with a controller's arrows, a card shows in the preview at once (the confirm button then acts on it).
-        if (!_touch || FocusedWithButtons(node)) ShowPreview(node);
+        // Reached with a controller's arrows, a card shows in the preview at once (the confirm button then acts on it); not
+        // when it got the focus by itself (the card focused before was played, or left the table).
+        if (FocusedWithButtons(node) ? node.IsHovered || Arcanum.UI.PadFocus.MovedByArrow : !_touch) ShowPreview(node);
     }
 
     /// <summary>With a mouse, the preview goes away when the pointer leaves the card; touched, it stays until the next touch.</summary>
@@ -84,6 +85,38 @@ public partial class GameBoard
         _touchPick = null;
         HidePreview(_preview);
         return true;
+    }
+
+    /// <summary>The preview shows a card a button or a touch chose: no pointer rests on it to take it away by leaving.</summary>
+    private bool PreviewStays => _touch || Arcanum.UI.PadFocus.UsingButtons;
+
+    /// <summary>Something happens on the table (an announcement, a spell or ability on the stack): a preview left open makes way for it.</summary>
+    private void PreviewGivesWay()
+    {
+        if (!_preview.Visible || !PreviewStays || _mulligan.Visible || _zoneViewer.Visible) return;
+        _touchPick = null;
+        HidePreview(_preview);
+    }
+
+    /// <summary>What the preview's card and the table were like when last looked at (see <see cref="CheckPreview"/>).</summary>
+    private Arcanum.Engine.State.Zone? _previewZone;
+    private (int Count, int Top, int Turn) _previewTable;
+
+    /// <summary>
+    /// With the board drawn again: the preview goes away when its card has moved to another zone, and a preview left open
+    /// (<see cref="PreviewStays"/>) when something new is on top of the stack or the turn has changed.
+    /// </summary>
+    private void CheckPreview(Arcanum.Engine.Views.GameView view)
+    {
+        var table = (view.Stack.Count, view.Stack.Count > 0 ? view.Stack[^1].Id : 0, view.TurnNumber);
+        bool stackGrew = table.Count > _previewTable.Count || table.Count == _previewTable.Count && table.Item2 != _previewTable.Top;
+        if (stackGrew || table.TurnNumber != _previewTable.Turn) PreviewGivesWay();
+        _previewTable = table;
+        if (_preview.Visible && _previewZone is { } zone && _previewView is { } shown && view.FindCard(shown.Id)?.Zone != zone)
+        {
+            _touchPick = null;
+            HidePreview(_preview);
+        }
     }
 
     /// <summary>

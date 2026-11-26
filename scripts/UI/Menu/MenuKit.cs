@@ -28,6 +28,9 @@ public static class MenuKit
     /// <summary>The menus' backdrop: the animated arcane sky, darker behind screens full of panels and text.</summary>
     public static void AddBackdrop(Control screen) => AddArcaneBackdrop(screen, shade: 0.5f);
 
+    /// <summary>The nebula is drawn this many times smaller than the screen.</summary>
+    private const int NebulaScale = 4;
+
     /// <summary>
     /// Animated backdrop: a drifting nebula, twinkling stars and a faint arcane circle of turning rune rings behind the
     /// right half of the screen.
@@ -39,7 +42,20 @@ public static class MenuKit
         sky.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         var material = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/arcane_backdrop.gdshader") };
         sky.Material = material;
-        sky.Resized += () => material.SetShaderParameter("rect_size", sky.Size);
+        // The nebula, the costly part, has no fine detail: drawn at a fraction of the size and stretched.
+        var nebula = new SubViewport { Disable3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Always, Size = new Vector2I(480, 270) };
+        var nebulaMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/arcane_nebula.gdshader") };
+        var clouds = new ColorRect { Material = nebulaMaterial };
+        clouds.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        nebula.AddChild(clouds);
+        sky.AddChild(nebula);
+        material.SetShaderParameter("nebula", nebula.GetTexture());
+        sky.Resized += () =>
+        {
+            material.SetShaderParameter("rect_size", sky.Size);
+            nebulaMaterial.SetShaderParameter("rect_size", sky.Size);
+            nebula.Size = new Vector2I(Math.Max(16, (int)sky.Size.X / NebulaScale), Math.Max(16, (int)sky.Size.Y / NebulaScale));
+        };
         screen.AddChild(sky);
         if (shade <= 0) return material;
         var dim = new ColorRect { Color = new Color(0.03f, 0.02f, 0.05f, shade), MouseFilter = Control.MouseFilterEnum.Ignore };

@@ -29,6 +29,9 @@ public partial class Announcer : Control
     /// <summary>Arrows of the current announcement changed (from the banner card to its targets).</summary>
     public event Action<IReadOnlyList<ArrowLayer.Arrow>>? ArrowsChanged;
 
+    /// <summary>An announcement starts being shown.</summary>
+    public event Action? Shown;
+
     public bool Busy => _remaining > 0 || _queue.Count > 0;
 
     public Announcer()
@@ -93,6 +96,7 @@ public partial class Announcer : Control
         }
         _remaining = next.Seconds * BoardStyle.AnimationScale;
         next.OnShown?.Invoke();
+        Shown?.Invoke();
         // ARCANUM_SHOT_ON=<text> (with ARCANUM_SHOT=<file.png>): saves a picture of the board shortly after an announcement
         // containing that text appears, and quits (screenshots of announcements).
         if (ShotOn.Length > 0 && next.Text.Contains(ShotOn, StringComparison.OrdinalIgnoreCase) && OS.GetEnvironment("ARCANUM_SHOT") is { Length: > 0 } shot)

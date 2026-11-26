@@ -314,6 +314,12 @@ public partial class OnlineService : Node
     private void OpenRouterPort()
     {
         int port = _port;
+        // Some builds (a console's) have no UPnP: players outside the network then need the port forwarded by hand.
+        if (!ClassDB.ClassExists("UPNP"))
+        {
+            Status?.Invoke($"Players outside your network need you to forward TCP port {port} to this device.");
+            return;
+        }
         Task.Run(() =>
         {
             var upnp = new Upnp();
@@ -327,6 +333,7 @@ public partial class OnlineService : Node
                 Callable.From(() =>
                 {
                     ShareAddresses.Add(message);
+                    UpdatePublishedLobby(); // internet players can now come straight in
                     Changed?.Invoke();
                 }).CallDeferred();
             }

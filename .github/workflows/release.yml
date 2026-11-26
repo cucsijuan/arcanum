@@ -42,6 +42,7 @@ jobs:
           dotnet test tests/Arcanum.Engine.Tests --configuration Release
           dotnet test tests/Arcanum.Data.Tests --configuration Release
           dotnet test tests/Arcanum.Net.Tests --configuration Release
+          dotnet test tests/Arcanum.Service.Tests --configuration Release
 
       - name: Install Godot (.NET) and its export templates
         run: |

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -25,11 +26,17 @@ public sealed class LanOnlineServices : IOnlineServices
     private readonly ConcurrentDictionary<string, TcpConnectionListener> _listeners = new();
     private readonly CancellationTokenSource _stop = new();
     private Task? _announcer;
+    private readonly bool _hosts;
 
     /// <param name="announcePort">The UDP port lobbies are announced on (the same for everyone on the network).</param>
-    public LanOnlineServices(int announcePort = DefaultAnnouncePort)
+    /// <param name="hosts">
+    /// False where the system can't take connections (a console): its lobbies aren't announced here (players reach them
+    /// through another service), and it only finds and joins other hosts.
+    /// </param>
+    public LanOnlineServices(int announcePort = DefaultAnnouncePort, bool hosts = true)
     {
         _announcePort = announcePort;
+        _hosts = hosts;
         Lobbies = new Directory(this);
         Network = new Direct(this);
     }
@@ -109,6 +116,7 @@ public sealed class LanOnlineServices : IOnlineServices
     {
         public Task<LobbyListing> PublishAsync(LobbyListing listing, CancellationToken cancel = default)
         {
+            if (!lan._hosts) return Task.FromResult(listing);
             if (lan._listeners.TryGetValue(listing.LobbyId, out var listener)) listing = listing with { Port = listener.Port };
             lan._published[listing.LobbyId] = listing;
             lan.StartAnnouncing();
@@ -141,12 +149,25 @@ public sealed class LanOnlineServices : IOnlineServices
 
     private sealed class Direct(LanOnlineServices lan) : IRelayNetwork
     {
-        public IConnectionListener Listen(string lobbyId) => lan._listeners.GetOrAdd(lobbyId, _ => new TcpConnectionListener(0));
+        public IConnectionListener Listen(string lobbyId) =>
+            lan._hosts ? lan._listeners.GetOrAdd(lobbyId, _ => new TcpConnectionListener(0)) : new NoListener();
 
         public async Task<IConnection> ConnectAsync(LobbyListing lobby, CancellationToken cancel = default)
         {
             if (lobby.Address is not { } address || lobby.Port <= 0) throw new InvalidOperationException("That lobby can't be reached directly.");
             return await TcpConnection.ConnectAsync(address, lobby.Port, TimeSpan.FromSeconds(8));
         }
+    }
+
+    /// <summary>Where nothing is accepted (a system that can't take connections).</summary>
+    private sealed class NoListener : IConnectionListener
+    {
+        public bool TryAccept([NotNullWhen(true)] out IConnection? connection)
+        {
+            connection = null;
+            return false;
+        }
+
+        public void Dispose() { }
     }
 }

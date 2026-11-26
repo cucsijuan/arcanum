@@ -19,6 +19,8 @@ builder.Services.AddHttpClient<EosIdentity>(c => c.Timeout = TimeSpan.FromSecond
 builder.Services.AddSingleton<CareerStore>();
 builder.Services.AddSingleton<CareerWorlds>();
 builder.Services.AddSingleton<EventDesk>();
+builder.Services.AddSingleton(builder.Configuration.GetSection("Lobbies").Get<LobbyRelayOptions>() ?? new LobbyRelayOptions());
+builder.Services.AddSingleton<LobbyRelay>();
 builder.Services.AddSingleton(services =>
 {
     // The sealing key never leaves this machine (deploy/setup.sh makes it); the game has its public key (CareerSeals.PublicKeys).
@@ -45,6 +47,10 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("career", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? context.Connection.RemoteIpAddress?.ToString() ?? "",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
+    // The lobby browser refreshes every few seconds while it's open.
+    options.AddPolicy("lobbies", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? context.Connection.RemoteIpAddress?.ToString() ?? "",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1) }));
     // A device asks for its link every few seconds while the player signs in on another one.
     options.AddPolicy("link-poll", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? context.Connection.RemoteIpAddress?.ToString() ?? "",
@@ -53,6 +59,7 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 app.UseRateLimiter();
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
 
 // Alive, and the service's clock (dailies and event windows use it when the game is online).
 app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTimeOffset.UtcNow }));
@@ -190,5 +197,14 @@ app.MapPost("/events/tables/{id}/result", async (HttpRequest http, string id, Ow
 app.MapGet("/leaderboard/{board}", async (HttpRequest http, string board, EosIdentity eos, EventDesk desk, CancellationToken cancel) =>
         board is "rank" or "month" && await PlayerOf(http, eos, cancel) is { } player ? Results.Ok(desk.Leaderboard(player, board, DateTime.UtcNow)) : Results.Unauthorized())
     .RequireRateLimiting("career");
+
+// Internet lobbies and their relay, for players without another lobby service (see LobbyRelay).
+// Lobbies:TrustPlayerHeader=true takes the player's name from an X-Player header instead of a token: only for a service
+// run locally to test the game (never on the public one).
+bool trustPlayerHeader = app.Configuration.GetValue<bool>("Lobbies:TrustPlayerHeader");
+if (trustPlayerHeader) app.Logger.LogWarning("Lobbies:TrustPlayerHeader is on: anyone can name themselves. Local testing only.");
+app.MapLobbyRelay(http => trustPlayerHeader && http.Request.Headers["X-Player"].FirstOrDefault() is { Length: > 0 } tester
+    ? Task.FromResult<string?>(tester)
+    : http.RequestServices.GetRequiredService<EosIdentity>().PlayerAsync(http.Request, http.RequestAborted), "lobbies");
 
 app.Run();

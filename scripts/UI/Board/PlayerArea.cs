@@ -682,6 +682,9 @@ public partial class PlayerArea : Control
     /// unattached Equipment), then lands. Identical tokens stand as one stack; an Aura or Equipment attached to one of our
     /// permanents tucks behind it instead of taking a slot, and so do the cards held under one.
     /// </summary>
+    /// <summary>The permanents with cards under them (attached to them, or held in exile under them).</summary>
+    private readonly HashSet<CardId> _carrying = new();
+
     private void LayoutBattlefield(IReadOnlyList<CardView> battlefield, IReadOnlyList<CardView> held, GameView view)
     {
         _shownBy.Clear();
@@ -691,7 +694,9 @@ public partial class PlayerArea : Control
 
         var hosts = battlefield.Select(c => c.Id).ToHashSet();
         var attached = battlefield.Where(c => c.AttachedTo is { } host && hosts.Contains(host)).ToList();
-        var carrying = attached.Select(c => c.AttachedTo!.Value).Concat(held.Select(c => c.HeldUnder!.Value)).ToHashSet();
+        var carrying = _carrying;
+        carrying.Clear();
+        carrying.UnionWith(attached.Select(c => c.AttachedTo!.Value).Concat(held.Select(c => c.HeldUnder!.Value)));
         var free = battlefield.Except(attached).ToList();
 
         // Blockers leave their row and stand in front of the attacker they block.
@@ -756,16 +761,48 @@ public partial class PlayerArea : Control
         LayoutUnder(attached, held);
     }
 
+    /// <summary>
+    /// How far left the rows may go when they need more room than their usual one (the compact board, where what stands
+    /// at the left leaves them some); null: no further than usual.
+    /// </summary>
+    public float? RowsLeftLimit { get; set; }
+
+    /// <summary>Room kept between a row of cards and the piles it ends before.</summary>
+    private const float PilesMargin = 14;
+
+    /// <summary>How much of a land shows, at the least, under the next land of its name (in card widths).</summary>
+    private const float CloseStep = 0.3f;
+
+    /// <summary>Whether a row at this height would run into the piles (or their titles) if it went that far right.</summary>
+    private bool RowMeetsPiles(float y, float height)
+    {
+        const float title = 16; // a row ending right by the titles (see DefaultFieldBand) does not run into them
+        float top = FacesDown ? Peek - PileSize.Y : Size.Y - Peek - title, bottom = FacesDown ? Peek + title : Size.Y;
+        return y < bottom && y + height > top;
+    }
+
     private void LayoutRow(IReadOnlyList<CardStack> row, float y, int zBase)
     {
         if (row.Count == 0) return;
         var size = FieldSize;
         float peek = StackStep * Math.Min(row.Max(s => s.Count) - 1, StackPeeks);
         float slot = size.Y + 6 + peek; // tapped cards are rotated, so reserve their full height
-        float available = Size.X - 2 * (Compact ? 40 : 230);
-        float spacing = Mathf.Min(slot, available / row.Count);
-        float totalWidth = spacing * (row.Count - 1) + slot;
-        float startX = (Size.X - totalWidth) / 2 + (slot - peek - size.X) / 2;
+        float whole = size.X + 4 + peek;
+        float side = Compact ? 40 : 230;
+        float left = side, right = Size.X - side;
+        if (RowMeetsPiles(y, size.Y)) right = Math.Min(right, _pilesLeft - PilesMargin);
+        // Short of room even with the untapped cards side by side: the row may begin further left.
+        if (RowsLeftLimit is { } limit && whole * (row.Count - 1) + slot > right - left) left = Math.Min(left, limit);
+
+        bool Alone(CardStack s) => s.Count == 1 && !_carrying.Contains(s.Top.Id);
+        var closeUp = new bool[row.Count - 1];
+        for (int i = 0; i < closeUp.Length; i++)
+            closeUp[i] = Alone(row[i]) && Alone(row[i + 1]) && BattlefieldLayout.CanCloseUp(row[i].Top, row[i + 1].Top);
+        var steps = BattlefieldLayout.RowSteps(closeUp, right - left, slot, slot, whole, size.X * CloseStep);
+
+        // Centered, unless that runs past its end.
+        float totalWidth = steps.Sum() + slot;
+        float x = Math.Max(left, Math.Min((Size.X - totalWidth) / 2, right - totalWidth)) + (slot - peek - size.X) / 2;
 
         for (int i = 0; i < row.Count; i++)
         {
@@ -773,7 +810,8 @@ public partial class PlayerArea : Control
             bool tapped = top.Tapped || _staged.Contains(top.Id);
             // Attackers step forward towards the opponent.
             float forward = _attacking.Contains(top.Id) ? (FacesDown ? 28 : -28) * Scale : 0;
-            PlaceStack(row[i], new Vector2(startX + i * spacing, y + forward), size, tapped ? 90 : 0, zBase + Math.Min(i * 4, 90) + StackPeeks);
+            PlaceStack(row[i], new Vector2(x, y + forward), size, tapped ? 90 : 0, zBase + Math.Min(i * 4, 90) + StackPeeks);
+            if (i < steps.Length) x += steps[i];
         }
     }
 

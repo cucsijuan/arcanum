@@ -49,6 +49,37 @@ public static class BattlefieldLayout
             card.OracleText);
     }
 
+    /// <summary>Whether two neighbors of a row may lie one over the other when the row is short of room: lands of one name.</summary>
+    public static bool CanCloseUp(CardView left, CardView right) =>
+        left.Name is not null && left.Name == right.Name && RowOf(left) == BattlefieldRow.Lands && RowOf(right) == BattlefieldRow.Lands;
+
+    /// <summary>
+    /// How far each card of a row stands from the one before it, so the row fits in <paramref name="width"/>: every card
+    /// with room to be tapped (<paramref name="full"/>) while there is room for it; then closer, down to side by side when
+    /// untapped (<paramref name="whole"/>); then the neighbors that may (<paramref name="closeUp"/>, one per pair) lie one
+    /// over the other, down to <paramref name="close"/>; and only then all of them.
+    /// </summary>
+    /// <param name="last">The width the last card takes, whatever the steps.</param>
+    public static float[] RowSteps(IReadOnlyList<bool> closeUp, float width, float last, float full, float whole, float close)
+    {
+        var steps = new float[closeUp.Count];
+        if (steps.Length == 0) return steps;
+        float room = Math.Max(0, width - last);
+        Array.Fill(steps, Math.Clamp(room / steps.Length, whole, full));
+        if (steps[0] > whole || steps.Length * whole <= room) return steps;
+
+        int closing = closeUp.Count(c => c);
+        if (closing > 0)
+        {
+            float step = Math.Clamp((room - (steps.Length - closing) * whole) / closing, close, whole);
+            for (int i = 0; i < steps.Length; i++) if (closeUp[i]) steps[i] = step;
+        }
+        float total = steps.Sum();
+        if (total > room)
+            for (int i = 0; i < steps.Length; i++) steps[i] *= room / total;
+        return steps;
+    }
+
     /// <summary>
     /// Groups a row's cards into stacks. <paramref name="keyOf"/> gives a card's stack key (null: never stacks);
     /// cards with equal keys share a stack. A stack stands where its first card was, except that tokens with the same

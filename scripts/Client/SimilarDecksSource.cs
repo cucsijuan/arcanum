@@ -127,7 +127,7 @@ public static class SimilarDecksSource
         cards.Find(name)?.Record.Printings.Select(p => p.Rarity switch { "mythic" => 3, "rare" => 2, "uncommon" => 1, _ => 0 }).DefaultIfEmpty(0).Max() ?? 0;
 
     private static bool IsBasicLand(CardDatabase cards, string name) =>
-        cards.Find(name) is { } card && (card.Definition.Supertypes & Supertype.Basic) != 0 && card.Definition.Is(CardType.Land);
+        cards.Find(name) is { IsBasicLand: true };
 
     private static string? TypeKey(CardDatabase cards, string name) => cards.Find(name)?.Definition switch
     {

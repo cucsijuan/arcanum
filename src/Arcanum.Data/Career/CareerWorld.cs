@@ -10,6 +10,10 @@ namespace Arcanum.Data.Career;
 public sealed class CareerWorld
 {
     private readonly Func<string, string?> _readDeck;
+
+    // What is worked out once and kept (boosters, sheets, decks, arts): the game does it ahead on a worker thread
+    // (PrepareTrading), so every use is under this lock.
+    private readonly object _kept = new();
     private readonly Dictionary<string, BoosterGenerator> _generators = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DeckList> _decks = new(StringComparer.OrdinalIgnoreCase);
 
@@ -59,10 +63,13 @@ public sealed class CareerWorld
     public BoosterGenerator Generator(string set, string? kind = null)
     {
         var key = CareerRules.SealedKey(set, kind);
-        if (_generators.TryGetValue(key, out var generator)) return generator;
-        if (!Sets.TryGetValue(set, out var definition) || definition.BoosterOf(kind) is not { } spec)
-            throw new CareerRuleException($"There are no {kind} boosters of '{set}'.");
-        return _generators[key] = new BoosterGenerator(definition, Cards, spec);
+        lock (_kept)
+        {
+            if (_generators.TryGetValue(key, out var generator)) return generator;
+            if (!Sets.TryGetValue(set, out var definition) || definition.BoosterOf(kind) is not { } spec)
+                throw new CareerRuleException($"There are no {kind} boosters of '{set}'.");
+            return _generators[key] = new BoosterGenerator(definition, Cards, spec);
+        }
     }
 
     /// <summary>The kinds of boosters the store sells of a set: null (its play or draft booster) first, then its others with a price.</summary>
@@ -91,9 +98,12 @@ public sealed class CareerWorld
 
     public DeckList Deck(string name)
     {
-        if (_decks.TryGetValue(name, out var deck)) return deck;
-        var text = _readDeck(name) ?? throw new CareerRuleException($"There is no deck '{name}'.");
-        return _decks[name] = DeckList.Parse(text);
+        lock (_kept)
+        {
+            if (_decks.TryGetValue(name, out var deck)) return deck;
+            var text = _readDeck(name) ?? throw new CareerRuleException($"There is no deck '{name}'.");
+            return _decks[name] = DeckList.Parse(text);
+        }
     }
 
     /// <summary>The set featured in the week of <paramref name="day"/> (weeks start on Monday), unless the season features another.</summary>
@@ -107,8 +117,7 @@ public sealed class CareerWorld
 
     public int PreconPrice(PreconSpec precon) => precon.Price > 0 ? precon.Price : Content.PreconPrice;
 
-    public bool IsBasicLand(string name) =>
-        Cards.Find(name) is { } card && (card.Definition.Supertypes & Supertype.Basic) != 0 && card.Definition.Is(CardType.Land);
+    public bool IsBasicLand(string name) => Cards.Find(name) is { IsBasicLand: true };
 
     /// <summary>A card's value in cents, from its printing's rarity (a card without a known printing counts as its rarest one); a foil is worth more.</summary>
     public int Value(CardKey card)
@@ -128,14 +137,17 @@ public sealed class CareerWorld
     /// <summary>A set's booster cards that work fully in games (one printing each, basic lands left out), with their values.</summary>
     public IReadOnlyList<(PoolCard Card, int Value)> Playable(string set)
     {
-        if (_printings.TryGetValue(set, out var list)) return list;
-        list = Cards.PrintingsIn(set)
-            .Where(x => x.Printing.Booster && x.Card.Support == CardSupport.Full && !IsBasicLand(x.Card.Name))
-            .GroupBy(x => x.Card.Name)
-            .Select(g => PoolCard.Of(g.First().Card, g.First().Printing))
-            .Select(c => (c, Value(CardKey.Of(c))))
-            .ToList();
-        return _printings[set] = list;
+        lock (_kept)
+        {
+            if (_printings.TryGetValue(set, out var list)) return list;
+            list = Cards.PrintingsIn(set)
+                .Where(x => x.Printing.Booster && x.Card.Support == CardSupport.Full && !IsBasicLand(x.Card.Name))
+                .GroupBy(x => x.Card.Name)
+                .Select(g => PoolCard.Of(g.First().Card, g.First().Printing))
+                .Select(c => (c, Value(CardKey.Of(c))))
+                .ToList();
+            return _printings[set] = list;
+        }
     }
 
     // ---------------------------------------------------------------- printings' art
@@ -151,23 +163,42 @@ public sealed class CareerWorld
     public CardArt ArtOf(CardKey card)
     {
         if (card.Set.Length == 0 || card.Number.Length == 0) return CardArt.Usual;
-        if (!_baseNumbers.TryGetValue(card.Set, out var bases))
-            _baseNumbers[card.Set] = bases = Cards.PrintingsIn(card.Set).GroupBy(x => x.Card.Name, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.First().Printing.CollectorNumber, StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string>? bases;
+        lock (_kept)
+            if (!_baseNumbers.TryGetValue(card.Set, out bases))
+            {
+                _baseNumbers[card.Set] = bases = new(StringComparer.OrdinalIgnoreCase);
+                foreach (var (entry, printing) in Cards.PrintingsIn(card.Set)) bases.TryAdd(entry.Name, printing.CollectorNumber);
+            }
         if (!bases.TryGetValue(card.Name, out var number) || number == card.Number) return CardArt.Usual;
         return InPlayBoosters.Contains($"{card.Set.ToLowerInvariant()}|{card.Number}") ? CardArt.SpecialPlay : CardArt.SpecialCollector;
     }
 
     /// <summary>Every printing a set's play boosters can hold ("set|number").</summary>
-    private HashSet<string> InPlayBoosters => _inPlayBoosters ??= Sets.Values.Where(s => s.Booster is not null)
-        .SelectMany(s => s.Booster!.Sheets.Keys.SelectMany(sheet => Generator(s.Code).Sheet(sheet)))
-        .Select(c => $"{c.Set.ToLowerInvariant()}|{c.Number}").ToHashSet();
+    private HashSet<string> InPlayBoosters
+    {
+        get
+        {
+            lock (_kept)
+                return _inPlayBoosters ??= Sets.Values.Where(s => s.Booster is not null)
+                    .SelectMany(s => s.Booster!.Sheets.Keys.SelectMany(sheet => Generator(s.Code).Sheet(sheet)))
+                    .Select(c => $"{c.Set.ToLowerInvariant()}|{c.Number}").ToHashSet();
+        }
+    }
 
     /// <summary>The cards of a set's boosters (every kind) a single can be, with their art; basic lands and cards that don't work fully left out.</summary>
     public IReadOnlyList<SingleCandidate> Singles(string set)
     {
-        if (_singles.TryGetValue(set, out var list)) return list;
-        list = new List<SingleCandidate>();
+        lock (_kept)
+        {
+            if (!_singles.TryGetValue(set, out var list)) _singles[set] = list = MakeSingles(set);
+            return list;
+        }
+    }
+
+    private List<SingleCandidate> MakeSingles(string set)
+    {
+        var list = new List<SingleCandidate>();
         if (Sets.TryGetValue(set, out var definition))
         {
             var seen = new HashSet<string>();
@@ -180,11 +211,34 @@ public sealed class CareerWorld
                             list.Add(new SingleCandidate(card with { Foil = false, Surge = false }, ArtOf(CardKey.Of(card with { Foil = false, Surge = false }))));
             }
         }
-        return _singles[set] = list;
+        return list;
+    }
+
+    /// <summary>
+    /// Works out ahead what the store's case, the forum and the collection's prices need of every set (the sets' printings
+    /// in order, their boosters' cards and their arts), for a worker thread: seconds on slow devices. Safe while the
+    /// world is in use.
+    /// </summary>
+    public void PrepareTrading(CancellationToken cancel = default)
+    {
+        foreach (var set in Sets.Values)
+        {
+            if (cancel.IsCancellationRequested) return;
+            Cards.PrintingsIn(set.Code);
+            if (set.Booster is not null) Generator(set.Code);
+        }
+        _ = InPlayBoosters;
+        foreach (var set in Content.Sets.Where(SellsBoosters))
+        {
+            if (cancel.IsCancellationRequested) return;
+            Singles(set);
+            Playable(set);
+        }
     }
 
     /// <summary>The weeks' tournament winners worked out so far (see <see cref="CareerMarket.Meta"/>).</summary>
-    internal Dictionary<(ulong Seed, int Week), IReadOnlyList<MetaWin>> MetaCache { get; } = new();
+    internal System.Collections.Concurrent.ConcurrentDictionary<(ulong Seed, int Week, int CareerWeek), IReadOnlyList<MetaWin>> MetaCache { get; } = new();
+    internal System.Collections.Concurrent.ConcurrentDictionary<(ulong Seed, int Week, int CareerWeek), HashSet<string>> MetaNamesCache { get; } = new();
 }
 
 /// <summary>A printing's art: the card's usual one, or a special art found in play boosters or only in collector boosters.</summary>

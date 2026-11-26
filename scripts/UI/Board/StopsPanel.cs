@@ -69,8 +69,8 @@ public partial class StopsPanel : PanelContainer
 
     public void Open()
     {
-        UpdateToggles();
         Visible = true;
+        UpdateToggles();
         // Drawn smaller when the board is too short for it.
         ResetSize();
         float room = GetParentAreaSize().Y - 16;
@@ -104,6 +104,7 @@ public partial class StopsPanel : PanelContainer
 
     private void UpdateToggles()
     {
+        if (!Visible) return; // brought up to date when it opens
         foreach (var (button, isOn, color) in _toggles)
         {
             bool on = isOn();

@@ -118,11 +118,22 @@ public static class Settings
 
     public static void Save()
     {
-        using var file = FileAccess.Open(Path, FileAccess.ModeFlags.Write);
-        file?.StoreString(JsonSerializer.Serialize(Current, SettingsJsonContext.Default.SettingsData));
+        // Written by a worker thread, one after another: several frames on a console's memory card.
+        var text = JsonSerializer.Serialize(Current, SettingsJsonContext.Default.SettingsData);
+        var path = ProjectSettings.GlobalizePath(Path);
+        _writing = _writing.ContinueWith(_ =>
+        {
+            try { System.IO.File.WriteAllText(path, text); }
+            catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException) { GD.PushWarning($"Settings: not saved ({e.Message})."); }
+        }, System.Threading.Tasks.TaskScheduler.Default);
         Apply();
         Changed?.Invoke();
     }
+
+    private static System.Threading.Tasks.Task _writing = System.Threading.Tasks.Task.CompletedTask;
+
+    /// <summary>Waits (a little) for the settings saved last to be on disk, as the game closes.</summary>
+    public static void Flush() => _writing.Wait(TimeSpan.FromSeconds(2));
 
     /// <summary>Applies window, audio and scale settings to the running app.</summary>
     public static void Apply()

@@ -124,7 +124,7 @@ public sealed class LimitedService : ILimitedSession
         if (App.Instance.Module is not { } module || App.Instance.Cards is null) return list;
         foreach (var set in module.LoadSets().Where(s => s.Booster is not null))
         {
-            var generator = new BoosterGenerator(set, Cards);
+            var generator = GeneratorOf(set);
             if (generator.EmptySheets.Any()) continue; // the card data doesn't know this set's printings
             list.Add(new LimitedSource("set:" + set.Code, generator.Name, false, set.BoostersPerPlayer, set.SealedBoosters));
         }
@@ -144,6 +144,21 @@ public sealed class LimitedService : ILimitedSession
         File.WriteAllText(System.IO.Path.Combine(UserCubes, safe + ".txt"), list);
         return "cube:user:" + safe;
     }
+
+    /// <summary>A set's boosters, put together once for the cards at hand (it goes through the whole set).</summary>
+    private static BoosterGenerator GeneratorOf(SetDefinition set)
+    {
+        if (!ReferenceEquals(_generatorCards, Cards))
+        {
+            _generators.Clear();
+            _generatorCards = Cards;
+        }
+        if (!_generators.TryGetValue(set, out var generator)) _generators[set] = generator = new BoosterGenerator(set, Cards);
+        return generator;
+    }
+
+    private static readonly Dictionary<SetDefinition, BoosterGenerator> _generators = new(ReferenceEqualityComparer.Instance);
+    private static Arcanum.Data.CardData.CardDatabase? _generatorCards;
 
     /// <summary>A source's name to show, without building its boosters as <see cref="Sources"/> does.</summary>
     public static string SourceName(string sourceId)
@@ -200,7 +215,7 @@ public sealed class LimitedService : ILimitedSession
         if (ev.Source.StartsWith("set:"))
         {
             var set = App.Instance.Module!.LoadSets().First(s => s.Code == ev.Source[4..]);
-            return new BoosterGenerator(set, Cards);
+            return GeneratorOf(set);
         }
         var remaining = ev.CubeCards.ToList();
         if (opened is not null)

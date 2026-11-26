@@ -15,3 +15,4 @@ jobs:
       # Only the Godot-independent projects; the Godot assembly needs the Godot SDK packages.
       - run: dotnet test tests/Arcanum.Engine.Tests --configuration Release
       - run: dotnet test tests/Arcanum.Data.Tests --configuration Release
+      - run: dotnet test tests/Arcanum.Service.Tests --configuration Release

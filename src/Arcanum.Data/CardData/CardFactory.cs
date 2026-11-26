@@ -96,6 +96,13 @@ public static partial class CardFactory
     public static string NameOf(CardRecord record) =>
         record.Layout is "adventure" or "prepare" or "transform" or "modal_dfc" && record.Faces.Count == 2 ? record.Faces[0].Name : record.Name;
 
+    /// <summary>The mana cost <see cref="Create"/> gives the definition of a card of a single face.</summary>
+    internal static ManaCost CostOf(CardRecord record)
+    {
+        TryParseCost(record.ManaCost, out var cost);
+        return cost;
+    }
+
     /// <param name="script">The card's ability script from the content module, if it has one.</param>
     public static (CardDefinition Definition, CardSupport Support) Create(CardRecord record, Scripts.CardScript? script = null)
     {

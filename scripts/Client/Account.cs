@@ -80,7 +80,7 @@ public static class Account
             if (_refreshToken is not { } refresh) return null;
             try
             {
-                Keep(await Discord.RefreshAsync(refresh, cancel));
+                await Task.Run(async () => Keep(await Discord.RefreshAsync(refresh, cancel)), cancel); // the request and the file are slow on some devices
                 return _access?.Token;
             }
             catch (DiscordRefusedException)
@@ -123,9 +123,15 @@ public static class Account
         catch (JsonException e) { GD.PushWarning($"Account file unreadable: {e.Message}"); }
     }
 
+    private static readonly object Saving = new();
+
     private static void Save()
     {
-        string file = ProjectSettings.GlobalizePath(Path);
+        lock (Saving) Write(ProjectSettings.GlobalizePath(Path));
+    }
+
+    private static void Write(string file)
+    {
         if (_refreshToken is null)
         {
             if (File.Exists(file)) File.Delete(file);

@@ -137,8 +137,11 @@ public partial class PlaySetup : Control
     private void ChooseMode(string id)
     {
         if (id is "draft" or "sealed" && App.Instance.Cards is null) id = FormatRules.Casual.Id;
-        Settings.Current.PlayMode = id;
-        Settings.Save();
+        if (Settings.Current.PlayMode != id)
+        {
+            Settings.Current.PlayMode = id;
+            Settings.Save();
+        }
         foreach (var button in _modes.GetChildren().OfType<Button>()) BoardStyle.StyleChoice(button, (string)button.GetMeta("mode") == id);
         if (id is "draft" or "sealed")
         {
@@ -177,7 +180,7 @@ public partial class PlaySetup : Control
         if (App.Instance.Cards is not { } cards) return _allDecks;
         if (!_legal.TryGetValue(format.Id, out var legal))
             _legal[format.Id] = legal = _allDecks
-                .Where(d => DeckValidator.Validate(App.Instance.Decks.Load(d).Deck, format, cards).All(i => i.Severity != IssueSeverity.Error))
+                .Where(d => DeckValidator.Validate(App.Instance.Decks.Peek(d), format, cards).All(i => i.Severity != IssueSeverity.Error))
                 .ToList();
         return legal;
     }

@@ -90,8 +90,10 @@ public static class DeckValidator
         int side = deck.Sideboard.Sum(e => e.Count) - (format.Commander && companions.Sum(e => e.Count) == 1 ? 1 : 0);
         if (format.Commander && companions.Sum(e => e.Count) > 1)
             issues.Add(new(IssueSeverity.Error, "Only one companion can wait outside a Commander deck."));
-        var startingDeck = deck.Main.Concat(format.Commander ? deck.Commander : Enumerable.Empty<DeckEntry>())
-            .Select(e => cards.Find(e.Name)?.Definition).OfType<CardDefinition>().ToList();
+        // Every card's definition, for the companions' conditions alone (without any, none has to be made).
+        var startingDeck = companions.Count == 0 ? new List<CardDefinition>()
+            : deck.Main.Concat(format.Commander ? deck.Commander : Enumerable.Empty<DeckEntry>())
+                .Select(e => cards.Find(e.Name)?.Definition).OfType<CardDefinition>().ToList();
         foreach (var companion in companions.Select(e => cards.Find(e.Name)!).DistinctBy(c => c.Name))
             if (!companion.Definition.Companion!.Value.FulfilledBy(startingDeck))
                 issues.Add(new(IssueSeverity.Warning, $"Your deck doesn't meet {companion.Name}'s companion condition, so it can't be revealed as your companion.", companion.Name));
@@ -110,12 +112,12 @@ public static class DeckValidator
                 issues.Add(new(IssueSeverity.Error, $"Unknown card: {name}.", name));
                 continue;
             }
-            if (entry.Definition.IsMeldResult)
+            if (entry.IsMeldResult)
             {
                 issues.Add(new(IssueSeverity.Error, $"{name} is the melded half of two cards, not a card a deck can have (rule 712.4).", name));
                 continue;
             }
-            bool basic = (entry.Definition.Supertypes & Supertype.Basic) != 0;
+            bool basic = entry.IsBasic;
             string status = format.Legality is { } key ? entry.Record.Legalities.GetValueOrDefault(key, "not_legal") : "legal";
             if (status is "banned" or "not_legal")
                 issues.Add(new(IssueSeverity.Error, $"{name} is {(status == "banned" ? "banned" : "not legal")} in {format.Name}.", name));
@@ -145,7 +147,7 @@ public static class DeckValidator
             var name = group.First().Name;
             var entry = cards.Find(name);
             if (entry is null) { issues.Add(new(IssueSeverity.Error, $"Unknown card: {name}.", name)); continue; }
-            bool basic = (entry.Definition.Supertypes & Supertype.Basic) != 0 && entry.Definition.Is(CardType.Land);
+            bool basic = entry.IsBasicLand;
             int copies = group.Sum(e => e.Count);
             int have = available.GetValueOrDefault(name);
             if (!basic && copies > have)
@@ -244,6 +246,7 @@ public static class DeckValidator
     {
         var text = entry.Record.OracleText;
         if (text.Contains("A deck can have any number of cards named", StringComparison.Ordinal)) return int.MaxValue;
+        if (!text.Contains("A deck can have up to ", StringComparison.Ordinal)) return format.MaxCopies;
         var m = System.Text.RegularExpressions.Regex.Match(text, @"A deck can have up to (\w+) cards named");
         if (m.Success && Array.IndexOf(NumberWords, m.Groups[1].Value.ToLowerInvariant()) is var n and > 0)
             return n; // in singleton formats too (the card's rule overrides the deck's, rule 100.2a)
